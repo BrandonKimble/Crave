@@ -212,7 +212,7 @@ Systematic updates of tracked entities:
 
    Example: "best ramen downtown"
    - First query: Process and cache results
-   - Same query within hour: Return cached results
+   - Same query within hour: Instant results
    - Benefits: Handles viral/trending searches efficiently
 
 2. Recent Search Results (24 hour retention)
