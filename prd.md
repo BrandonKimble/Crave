@@ -6,12 +6,27 @@ This app enables users to make confident dining decisions by surfacing evidence-
 
 ## Core System Flow
 
-1. User Query → NLP → Search Terms
-2. Cache/DB Check → Skip or Continue to API
-3. Optimized API Data Collection
-4. Data Analysis & Processing
-5. Ranking & Evidence Compilation
-6. Result Presentation
+#### Query Processing Flow:
+
+1. User Query
+2. Cache Check
+   - If cached: Return cached results
+   - If not cached: Continue to step 3
+3. LLM Analysis
+4. Entity/Intent Extraction
+5. Query Builder
+6. Database Query
+7. Database Returns Pre-computed Rankings
+8. Cache New Results
+9. Return Results to User
+
+#### Data Collection Flow:
+
+1. Collect Reddit/Review Data
+2. LLM Analysis
+3. Entity/Relationship Extraction
+4. Database Storage
+5. Score Computation
 
 ## 1. Query Processing & Understanding
 
@@ -75,30 +90,42 @@ _Note: All post-launch features require a mature database with substantial dish-
 - Portion Specifications: "large portions"
 - Custom Combinations: "extra crispy"
 
-### 1.4 Natural Language Processing
+### 1.4 Natural Language Processing with LLM
 
-#### Query Processing
+#### Query Understanding & Processing
 
-- Extract search intent and type (dish-specific, venue-specific, broad)
+Primary Function: Convert natural language queries to structured search parameters
+
+Processing Tasks:
+
 - Entity extraction (restaurants, dishes, experience and category tags)
-- Identify location and availability requirements
+  - Extract search intent and type (dish-specific, venue-specific, broad)
+- Term normalization and categorization
+  - Handle entity variations/expansions
+  - Standardize entity references
 - Detect and validate tag requests
 - Map generic terms to specific tags
   - Create new categories if needed
-- Handle query term variations and expansions
-- Process nested query requirements
+- Identify location and availability requirements
+- Output standardized format for query builder and filtering
 
-#### Content Processing
+#### Content Processing & Analysis
+
+Primary Function: Process Reddit/review content into structured data
+
+Processing Tasks:
 
 - Entity extraction (restaurants, dishes, experience and category tags)
 - Sentiment analysis (positive/negative classification)
-- Comment thread context maintenance and association
-  - Link dishes to restaurants in nested comments, and vice versa
+  - Discard negative sentiment content
 - Relationship mapping between entities
+  - Link dishes to restaurants in nested comments
+  - Process implicit entity connections
+  - Maintain comment thread context
 - Term normalization and categorization
-- Discard negative sentiment content
-- Process implicit entity connections
-- Handle term variations/expansions if needed
+  - Handle entity variations/expansions
+  - Standardize entity references
+- Output structured data for database insertion
 
 ## 2. Data Architecture
 
@@ -136,7 +163,7 @@ _Note: Query-dependent rankings like dish-specific rankings may have to calculat
 
 ### 2.2 Data Collection
 
-The system uses two distinct collection processes: initial query-driven collection for immediate user needs and background collection for comprehensive data enrichment. Both processes leverage AI for entity extraction and relationship analysis.
+The system uses two distinct collection processes: initial query-driven collection for immediate user needs and background collection for comprehensive data enrichment. Both processes leverage a cheap LLM for entity extraction and relationship analysis.
 
 #### Initial Data Collection (Query-Driven)
 
@@ -161,11 +188,11 @@ When new entities (restaurants, dishes) are discovered:
 
 ##### 3. AI-Powered Analysis:
 
-- Send structured data to AI:
+- Send structured data to LLM:
   - Combined posts and comments
   - Thread hierarchies
   - Contextual relationships/semantic connections
-- AI extracts:
+- LLM extracts:
   - Entities (restaurants, dishes, experience and category tags)
   - Sentiment analysis
   - Entity relationships
@@ -173,7 +200,7 @@ When new entities (restaurants, dishes) are discovered:
 ##### 4. Scope:
 
 - Process only data from query-related searches
-- Store all entities and relationships identified by AI
+- Store all entities and relationships identified by LLM
 - No additional API calls for discovered entities
 - Focus on quick result generation
 - Mark new entities for priority enrichment in next update cycle
@@ -187,7 +214,7 @@ For each tracked entity (restaurant, dish, experience and category tags):
 - Prioritize entities marked as 'pending_enrichment'
 - Call Reddit search API for posts and comments
 - Collect complete discussion contexts
-- Send structured data to AI for analysis
+- Send structured data to LLM for analysis
 - Update existing entity metrics
 - Add newly discovered entities
 - Assign standardized experience and category tags
@@ -204,7 +231,7 @@ When new entities are found:
 
 ##### 3. Relationship Processing
 
-- AI analyzes discussion context to identify:
+- LLM analyzes discussion context to identify:
   - Restaurant-dish associations
   - Experience and category tag assignments
   - Implicit entity connections
@@ -333,12 +360,19 @@ Example: Restaurant basic info, historical trends
 
 ### 4.1 Scoring Architecture
 
-##### Core System:
+##### Scoring System
 
-- Maintains continuously updated base scores
-- Supports dynamic filtering
-- Enables flexible query-time ranking
-- Adapts to query context
+- Scores computed during data collection/processing
+- Stored with dish/restaurant records
+- Updated periodically in background jobs
+- No real-time score computation needed
+
+##### Database Ranking Operations
+
+- Fast retrieval of pre-computed scores
+- Simple ranking based on stored scores
+- Efficient filtering by extracted entities
+- Minimal computation at query time
 
 #### Base Score Components
 
