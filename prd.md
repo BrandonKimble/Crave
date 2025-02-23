@@ -443,10 +443,11 @@ Filters applied during query processing:
 - **Core:**
   - React Native
   - TypeScript
-  - NativeBase
+  - Tailwind React Native
 - **Essential Libraries:**
   - React Query for server state & caching
   - Zustand for client state management
+  - React Native Reanimated for advanced animations
   - React Navigation
   - React Hook Form
   - React Native Maps
@@ -457,7 +458,6 @@ Filters applied during query processing:
     - expo-linking for deep linking
     - expo-updates for OTA updates
 - **Add When Needed:**
-  - React Native Reanimated for advanced animations
   - date-fns for complex date operations
   - Zod for advanced validation
 
@@ -520,7 +520,7 @@ Filters applied during query processing:
 - **Frontend:**
   - Jest for unit testing
   - React Native Testing Library
-  - Maestro for E2E mobile testing
+  - Detox for E2E mobile testing
 - **Backend:**
   - JUnit 5
   - TestContainers
