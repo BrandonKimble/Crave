@@ -441,18 +441,25 @@ Filters applied during query processing:
 ### 5.1 Frontend Layer
 
 - **Core:**
-  - Next.js with TypeScript
-  - Tailwind CSS for styling
+  - React Native
+  - TypeScript
+  - NativeBase
 - **Essential Libraries:**
   - React Query for server state & caching
   - Zustand for client state management
-  - @shadcn/ui for components
-  - React Hook Form for forms
-  - Google Maps React
+  - React Navigation
+  - React Hook Form
+  - React Native Maps
+  - React Native Async Storage
+  - Expo (for faster development)
+    - expo-location for location services
+    - expo-notifications for push notifications
+    - expo-linking for deep linking
+    - expo-updates for OTA updates
 - **Add When Needed:**
-  - Zod for advanced validation
+  - React Native Reanimated for advanced animations
   - date-fns for complex date operations
-  - numeral for advanced number formatting
+  - Zod for advanced validation
 
 ### 5.2 Backend Layer
 
@@ -488,29 +495,36 @@ Filters applied during query processing:
   - ElastiCache for Redis
   - S3 for storage
   - CloudFront CDN
-  - Application Load Balancer
+  - SNS for push notifications
+- **Mobile Specific**
+  - Expo Application Services (EAS)
+      - Build automation
+      - OTA updates
+      - Push notifications
+      - App Store and Play Store deployments
 - **DevOps:**
   - Docker
   - GitHub Actions for CI/CD
   - Terraform for infrastructure
   - Datadog for monitoring (APM, Logs, Infrastructure)
+  - Sentry for mobile crash reporting
 
 ### 5.5 External APIs
 
 - Reddit API for community data
 - Google Places API for location services
-- OpenAI API for content analysis
+- Google or Deepseek LLM API for content analysis
 
 ### 5.6 Testing Stack
 
 - **Frontend:**
-  - Vitest for unit testing
-  - React Testing Library
-  - Playwright for E2E
+  - Jest for unit testing
+  - React Native Testing Library
+  - Maestro for E2E mobile testing
 - **Backend:**
   - JUnit 5
   - TestContainers
-  - JMeter for performance
+  - k6 for performance testing
 
 ## 6. Implementation Challenges
 
