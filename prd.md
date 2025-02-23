@@ -36,11 +36,13 @@ Our search functionality focuses on core value-driving features at launch, with 
 
 #### Core Query Types
 
-##### These queries represent our core value proposition, offering the most reliable recommendations backed by substantial community evidence.
+##### These queries represent our core value proposition, offering reliable recommendations backed by community evidence.
+
+_Note: All queries are processed through entity matching and pre-computed rankings, without need for specialized search engines._
 
 - Dish-specific: "best ramen", "best chicken caesar wrap"
-- Venue-specific: "best dishes at Franklin BBQ", "what to order at Uchi"
-- Dish-level broad queries: "best dishes in Austin" (requires database maturity)
+- Venue-specific: "best dishes at Franklin BBQ"
+- Dish-level broad queries: "best dishes in Austin"
 
 #### Location & Availability
 
@@ -90,11 +92,13 @@ _Note: All post-launch features require a mature database with substantial dish-
 - Portion Specifications: "large portions"
 - Custom Combinations: "extra crispy"
 
-### 1.4 Natural Language Processing with LLM
+### 1.4 Natural Language Processing via LLM Integration
 
 #### Query Understanding & Processing
 
-Primary Function: Convert natural language queries to structured search parameters
+##### Primary Function: Convert natural language queries to Primary Function: Convert natural language queries to structured search parameters matching our pre-computed entities.
+
+_Important: This process does not require specialized search engines or text analysis - it simply maps queries to existing entities and filters._
 
 Processing Tasks:
 
@@ -111,7 +115,7 @@ Processing Tasks:
 
 #### Content Processing & Analysis
 
-Primary Function: Process Reddit/review content into structured data
+##### Primary Function: Process Reddit/review content into structured data
 
 Processing Tasks:
 
@@ -360,12 +364,17 @@ Example: Restaurant basic info, historical trends
 
 ### 4.1 Scoring Architecture
 
+_Important: This system relies entirely on pre-computed scores and simple database queries. No specialized search engines or real-time text analysis are required._
+
 ##### Scoring System
 
 - Scores computed during data collection/processing
 - Stored with dish/restaurant records
 - Updated periodically in background jobs
-- No real-time score computation needed
+- No real-time score computation needed -- Query time only involves:
+  - Entity matching
+  - Score retrieval
+  - Basic filtering
 
 ##### Database Ranking Operations
 
@@ -427,9 +436,85 @@ Filters applied during query processing:
 - Availability checks
 - Time sensitivity
 
-## 5. Implementation Challenges
+### 5. Technology Stack
 
-### 5.1 Generic Term/Dish Category Handling
+### 5.1 Frontend Layer
+
+- **Core:**
+  - Next.js with TypeScript
+  - Tailwind CSS for styling
+- **Essential Libraries:**
+  - React Query for server state & caching
+  - Zustand for client state management
+  - @shadcn/ui for components
+  - React Hook Form for forms
+  - Google Maps React
+- **Add When Needed:**
+  - Zod for advanced validation
+  - date-fns for complex date operations
+  - numeral for advanced number formatting
+
+### 5.2 Backend Layer
+
+- **Core:**
+  - Spring Boot with Java 17
+  - Spring WebFlux for reactive endpoints
+- **Essential Libraries:**
+  - Spring Batch for background jobs
+  - Spring Cache
+  - Spring Security
+  - Hibernate Validator
+  - Apache Commons
+- **Add When Needed:**
+  - MapStruct for complex object mapping
+  - Project Lombok for boilerplate reduction
+  - Google Guava for additional utilities
+
+### 5.3 Data Layer
+
+- **Database:**
+  - PostgreSQL 15
+  - Flyway for migrations
+  - Hibernate ORM
+  - HikariCP connection pool
+- **Cache:**
+  - Redis with Lettuce client
+
+### 5.4 Infrastructure
+
+- **AWS Services:**
+  - ECS for container orchestration
+  - RDS for PostgreSQL
+  - ElastiCache for Redis
+  - S3 for storage
+  - CloudFront CDN
+  - Application Load Balancer
+- **DevOps:**
+  - Docker
+  - GitHub Actions for CI/CD
+  - Terraform for infrastructure
+  - Datadog for monitoring (APM, Logs, Infrastructure)
+
+### 5.5 External APIs
+
+- Reddit API for community data
+- Google Places API for location services
+- OpenAI API for content analysis
+
+### 5.6 Testing Stack
+
+- **Frontend:**
+  - Vitest for unit testing
+  - React Testing Library
+  - Playwright for E2E
+- **Backend:**
+  - JUnit 5
+  - TestContainers
+  - JMeter for performance
+
+## 6. Implementation Challenges
+
+### 6.1 Generic Term/Dish Category Handling
 
 Challenge: Balancing specific vs broad dishes
 Example: "best salad" vs "best caesar salad"
@@ -446,7 +531,7 @@ Proposed Solution:
 - Performance implications
 - Hierarchy maintenance
 
-### 5.2 Thread Context Processing
+### 6.2 Thread Context Processing
 
 Challenge: Maintaining context in nested comments
 Example: Parent asks about tacos, sub-comment recommends specific dish
@@ -457,7 +542,7 @@ Strategy:
 - Link related mentions
 - Process full conversation chains
 
-### 5.3 Ranking Optimization
+### 6.3 Ranking Optimization
 
 Challenge: Balance pre-computation vs runtime
 Considerations:
