@@ -387,7 +387,7 @@ _Important: This system relies entirely on pre-computed scores and simple databa
 
 ##### 1. Dish Scoring
 
-Calculated from Mention frequency, Vote count, Source diversity, and Time relevance (minimal impact)
+Calculated from Mention frequency, upvotes, Source diversity, and Time relevance (minimal impact)
 
 - Updated with new mentions
 - Independent of other dishes
@@ -438,16 +438,15 @@ Filters applied during query processing:
 
 ### 5. Technology Stack
 
-### 5.1 Frontend Layer
+#### Frontend Layer
 
 - **Core:**
   - React Native
   - TypeScript
-  - Tailwind React Native
+  - Tailwind React Native or alternative
 - **Essential Libraries:**
   - React Query for server state & caching
   - Zustand for client state management
-  - React Native Reanimated for advanced animations
   - React Navigation
   - React Hook Form
   - React Native Maps
@@ -458,73 +457,90 @@ Filters applied during query processing:
     - expo-linking for deep linking
     - expo-updates for OTA updates
 - **Add When Needed:**
+  - React Native Reanimated for advanced animations
   - date-fns for complex date operations
   - Zod for advanced validation
 
-### 5.2 Backend Layer
+#### Backend Layer
 
 - **Core:**
-  - Spring Boot with Java 17
-  - Spring WebFlux for reactive endpoints
+  - NestJS
+  - TypeScript
+  - Express
 - **Essential Libraries:**
-  - Spring Batch for background jobs
-  - Spring Cache
-  - Spring Security
-  - Hibernate Validator
-  - Apache Commons
+  - @nestjs/bull for background jobs
+  - @nestjs/cache-manager with Redis
+  - @nestjs/config for configuration
+  - @nestjs/swagger for API documentation
+  - class-validator & class-transformer
+  - Passport.js for authentication
+  - winston for logging
+  - helmet (security)
+  - express-rate-limit
 - **Add When Needed:**
-  - MapStruct for complex object mapping
-  - Project Lombok for boilerplate reduction
-  - Google Guava for additional utilities
+  - @nestjs/microservices if scaling needs arise
+  - @nestjs/websockets for real-time features
+  - @nestjs/schedule for cron jobs
+  - Node worker_threads for CPU-intensive tasks
 
-### 5.3 Data Layer
+#### Data Layer
 
 - **Database:**
   - PostgreSQL 15
-  - Flyway for migrations
-  - Hibernate ORM
-  - HikariCP connection pool
+  - Prisma
+  - node-postgres for raw queries when needed
 - **Cache:**
-  - Redis with Lettuce client
+  - Redis with ioredis
+  - Bull for job queues
+  - Bull Board for queue monitoring
+- **Migrations:**
+  - Prisma migrations
 
-### 5.4 Infrastructure
+#### Infrastructure
 
 - **AWS Services:**
-  - ECS for container orchestration
   - RDS for PostgreSQL
   - ElastiCache for Redis
   - S3 for storage
-  - CloudFront CDN
   - SNS for push notifications
-- **Mobile Specific**
-  - Expo Application Services (EAS)
-      - Build automation
-      - OTA updates
-      - Push notifications
-      - App Store and Play Store deployments
-- **DevOps:**
+- **Deployment**
+  - Railway.app (initial deployment)
   - Docker
   - GitHub Actions for CI/CD
-  - Terraform for infrastructure
-  - Datadog for monitoring (APM, Logs, Infrastructure)
-  - Sentry for mobile crash reporting
+- **Mobile Specific**
+  - Expo Application Services (EAS)
+    - Build automation
+    - OTA updates
+    - Push notifications
+    - App Store and Play Store deployments
+- **Monitoring:**
+  - Sentry for error and mobile crash reporting
+  - CloudWatch for basic monitoring
 
-### 5.5 External APIs
+#### External APIs
 
 - Reddit API for community data
 - Google Places API for location services
 - Google or Deepseek LLM API for content analysis
 
-### 5.6 Testing Stack
+#### Testing Stack
 
 - **Frontend:**
   - Jest for unit testing
   - React Native Testing Library
-  - Detox for E2E mobile testing
+  - Maestro for E2E mobile testing
 - **Backend:**
-  - JUnit 5
-  - TestContainers
+  - Jest for unit testing
+  - @nestjs/testing for integration tests
+  - Supertest for HTTP testing
   - k6 for performance testing
+
+#### Development Tools
+
+- **Essential:**
+  - yarn for package management
+  - husky for commit rules and git hooks
+  - dotenv for environment management
 
 ## 6. Implementation Challenges
 
