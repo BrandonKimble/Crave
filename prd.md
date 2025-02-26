@@ -478,6 +478,7 @@ Filters applied during query processing:
   - winston for logging
   - helmet (security)
   - express-rate-limit
+  - prom-client for Prometheus metrics
 - **Add When Needed:**
   - @nestjs/microservices if scaling needs arise
   - @nestjs/schedule for cron jobs
@@ -514,8 +515,12 @@ Filters applied during query processing:
     - Push notifications
     - App Store and Play Store deployments
 - **Monitoring:**
+  - Prometheus for metrics collection (implement in Phase 2)
+  - Grafana for dashboards and visualization
+  - Docker Compose setup for local Prometheus/Grafana development
   - Sentry for error and mobile crash reporting
-  - CloudWatch for basic monitoring
+- **Analytics:**
+  - PostHog (open source) or Amplitude (free tier)
 
 #### External APIs
 
