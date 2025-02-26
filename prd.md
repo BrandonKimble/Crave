@@ -472,6 +472,7 @@ Filters applied during query processing:
   - @nestjs/cache-manager with Redis
   - @nestjs/config for configuration
   - @nestjs/swagger for API documentation
+  - @nestjs/websockets for real-time features
   - class-validator & class-transformer
   - Passport.js for authentication
   - winston for logging
@@ -479,7 +480,6 @@ Filters applied during query processing:
   - express-rate-limit
 - **Add When Needed:**
   - @nestjs/microservices if scaling needs arise
-  - @nestjs/websockets for real-time features
   - @nestjs/schedule for cron jobs
   - Node worker_threads for CPU-intensive tasks
 
