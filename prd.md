@@ -443,21 +443,24 @@ Filters applied during query processing:
 - **Core:**
   - React Native
   - TypeScript
-  - Tailwind React Native or alternative
+  - Nativewind
 - **Essential Libraries:**
   - React Query for server state & caching
   - Zustand for client state management
   - React Navigation
   - React Hook Form
   - React Native Maps
-  - React Native Async Storage
+  - React Native MMKV
+  - React Native Reanimated for advanced animations
+  - React Native Placeholder
   - Expo (for faster development)
     - expo-location for location services
     - expo-notifications for push notifications
     - expo-linking for deep linking
     - expo-updates for OTA updates
 - **Add When Needed:**
-  - React Native Reanimated for advanced animations
+  - React Native SVG
+  - FlashList
   - date-fns for complex date operations
   - Zod for advanced validation
 
@@ -466,13 +469,14 @@ Filters applied during query processing:
 - **Core:**
   - NestJS
   - TypeScript
-  - Express
+  - Fastify
 - **Essential Libraries:**
   - @nestjs/bull for background jobs
   - @nestjs/cache-manager with Redis
   - @nestjs/config for configuration
   - @nestjs/swagger for API documentation
   - @nestjs/websockets for real-time features
+  - @nestjs/config (with dotenv-vault) 
   - class-validator & class-transformer
   - Passport.js for authentication
   - winston for logging
@@ -543,9 +547,11 @@ Filters applied during query processing:
 #### Development Tools
 
 - **Essential:**
-  - yarn for package management
-  - husky for commit rules and git hooks
+  - pnpm for package management
+  - Lefthook for commit rules and git hooks
   - dotenv for environment management
+  - Postman or Insomnia for API testing
+  - Storybook for component development
 
 ## 6. Implementation Challenges
 
