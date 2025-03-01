@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Restaurant {
+  id          String    @id @default(uuid())
+  name        String
+  location    String?
+  hours       Json?
+  tags        String[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  dishes      Dish[]
+  mentions    Mention[]
+}
+
+model Dish {
+  id           String    @id @default(uuid())
+  name         String
+  score        Float     @default(0)
+  tags         String[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  restaurantId String
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id])
+  mentions     Mention[]
+}
+
+model Mention {
+  id           String    @id @default(uuid())
+  source       String    // Reddit post/comment ID
+  content      String
+  sentiment    Float?
+  upvotes      Int       @default(0)
+  threadContext String?  // For maintaining nested comment context
+  createdAt    DateTime  @default(now())
+  timestamp    DateTime  // Original post/comment timestamp
+  dishId       String?
+  dish         Dish?     @relation(fields: [dishId], references: [id])
+  restaurantId String?
+  restaurant   Restaurant? @relation(fields: [restaurantId], references: [id])
+}

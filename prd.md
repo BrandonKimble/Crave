@@ -1,4 +1,4 @@
-# Local Food Discovery App - Product Requirements Document
+# Crave - Local Food Discovery App - Product Requirements Document
 
 ## Overview
 
