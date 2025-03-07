@@ -43,6 +43,7 @@ _Note: All queries are processed through entity matching and pre-computed rankin
 - Dish-specific: "best ramen", "best chicken caesar wrap"
 - Venue-specific: "best dishes at Franklin BBQ"
 - Dish-level broad queries: "best dishes in Austin"
+- Category-specific queries: "best sandwiches in Austin"
 
 #### Location & Availability
 
@@ -59,9 +60,10 @@ _Note: All queries are processed through entity matching and pre-computed rankin
 
 - Restaurant-level broad queries: "best restaurant open now", "best patio spots"
 - Tag-Based Queries
-  - With dish-specific: "best vegan ramen", "happy hour sushi"
+  - With category-specific: "best vegan ramen", "happy hour sushi"
+  - With dish-specific: "best vegan pad thai", "best brunch chicken and waffles", best chicken fingers
   - With venue-specific: "best dishes at vegan restaurants"
-  - With broad: "best patio restaurants"
+  - With broad: "best patio restaurants", "best brunch"
 
 #### Restaurant Tag System
 
@@ -74,7 +76,7 @@ _Note: All queries are processed through entity matching and pre-computed rankin
 
 ##### Tag Categories:
 
-- Dish Categories: thai, sandwich, noodles, asian, etc.
+- Dish Categories: thai, sandwich, noodles, asian, tacos, ramen, sushi, etc.
 - Dietary: vegan, vegetarian, halal, keto
 - Time-based: happy hour, brunch
 - Atmosphere: patio, quiet, good for groups
