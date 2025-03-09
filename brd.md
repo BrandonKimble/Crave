@@ -12,7 +12,20 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
   - Share recommendation
   - "Also worth trying" alternatives
 
-### 2.1 Discovery Feed
+### 2.1 Search
+
+#### Search Results
+##### Example:
+- Ramen Tatsu-Ya's Tonkotsu Ramen
+  - Mentioned 47 times in the community
+  - 312 total upvotes
+  - Discussed in 18 different threads
+  - 5 mentions in the past month
+
+  - "Their tonkotsu broth is unmatched in richness and depth" - u/ramenLover23 (53 upvotes)
+  - "The perfect balance of pork and garlic" - u/foodieFan (37 upvotes)
+
+### 2.2 Discovery Feed
 
 #### Basic Categories (99¢)
 - Recently Discussed: "This birria taco truck is getting attention (23 mentions this week)"
@@ -33,7 +46,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Trending Searches
 - Popular Categories
 
-### 2.2 Feature Tiers
+### 2.3 Feature Tiers
 
 #### Basic Tier (99¢/month)
 - Full search functionality

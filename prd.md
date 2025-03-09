@@ -2,7 +2,7 @@
 
 ## Overview
 
-This app enables users to make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences.
+This app enables users to make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences using a flexible, relationship-based approach.
 
 ## Core System Flow
 
@@ -15,8 +15,8 @@ This app enables users to make confident dining decisions by surfacing evidence-
 3. LLM Analysis
 4. Entity/Intent Extraction
 5. Query Builder
-6. Database Query
-7. Database Returns Pre-computed Rankings
+6. Graph-Based Database Query
+7. Database Returns Connection-Strength Based Rankings
 8. Cache New Results
 9. Return Results to User
 
@@ -25,8 +25,8 @@ This app enables users to make confident dining decisions by surfacing evidence-
 1. Collect Reddit/Review Data
 2. LLM Analysis
 3. Entity/Relationship Extraction
-4. Database Storage
-5. Score Computation
+4. Connection-Based Graph Storage
+5. Connection Strength Computation
 
 ## 1. Query Processing & Understanding
 
@@ -38,7 +38,7 @@ Our search functionality focuses on core value-driving features at launch, with 
 
 ##### These queries represent our core value proposition, offering reliable recommendations backed by community evidence.
 
-_Note: All queries are processed through entity matching and pre-computed rankings, without need for specialized search engines._
+_Note: All queries are processed through entity matching and graph traversal, without need for specialized search engines._
 
 - Dish-specific: "best ramen", "best chicken caesar wrap"
 - Venue-specific: "best dishes at Franklin BBQ"
@@ -59,22 +59,22 @@ _Note: All queries are processed through entity matching and pre-computed rankin
 #### Advanced Query Types
 
 - Restaurant-level broad queries: "best restaurant open now", "best patio spots"
-- Tag-Based Queries
+- Attribute-specific queries
   - With category-specific: "best vegan ramen", "happy hour sushi"
   - With dish-specific: "best vegan pad thai", "best brunch chicken and waffles", best chicken fingers
   - With venue-specific: "best dishes at vegan restaurants"
   - With broad: "best patio restaurants", "best brunch"
 
-#### Restaurant Tag System
+#### Attribute Entity System
 
 ##### Implementation Strategy:
 
-- Tags attached to restaurant records only
-- Tags identified through background data collection
-- Natural language processing for tag requests in queries
+- Entities can have connections to attribute entities
+- Attributes identified through background data collection
+- Natural language processing for attribute requests in queries
 - No separate filter UI - integrated into queries
 
-##### Tag Categories:
+##### Attribute Types:
 
 - Dish Categories: thai, sandwich, noodles, asian, tacos, ramen, sushi, etc.
 - Dietary: vegan, vegetarian, halal, keto
@@ -82,7 +82,7 @@ _Note: All queries are processed through entity matching and pre-computed rankin
 - Atmosphere: patio, quiet, good for groups
 - Service-type: sports bar, BYOB
 
-_Note: All post-launch features require a mature database with substantial dish-level data._
+_Note: All post-launch features require a mature database with substantial connection data._
 
 ### 1.3 Search Limitations
 
@@ -98,154 +98,117 @@ _Note: All post-launch features require a mature database with substantial dish-
 
 #### Query Understanding & Processing
 
-##### Primary Function: Convert natural language queries to Primary Function: Convert natural language queries to structured search parameters matching our pre-computed entities.
+##### Primary Function: Convert natural language queries to structured graph traversal parameters
 
-_Important: This process does not require specialized search engines or text analysis - it simply maps queries to existing entities and filters._
+_Important: This process maps queries to existing entities and relationships for traversal._
 
 Processing Tasks:
 
-- Entity extraction (restaurants, dishes, experience and category tags)
+- Entity extraction (restaurants, dishes, attributes)
   - Extract search intent and type (dish-specific, venue-specific, broad)
-- Term normalization and categorization
+- Term normalization and entity resolution
   - Handle entity variations/expansions
   - Standardize entity references
-- Detect and validate tag requests
-- Map generic terms to specific tags
-  - Create new categories if needed
+- Detect and validate attribute requests
+- Map generic terms to specific entities
 - Identify location and availability requirements
-- Output standardized format for query builder and filtering
+- Output standardized format for dynamic graph traversal and filtering
 
 #### Content Processing & Analysis
 
-##### Primary Function: Process Reddit/review content into structured data
+##### Primary Function: Process Reddit/review content into structured data with graph entities and connections
 
 Processing Tasks:
 
-- Entity extraction (restaurants, dishes, experience and category tags)
+- Entity extraction (restaurants, dishes, attributes)
+- Relationship identification (serves, is_a, has_attribute)
+- Infer likely attributes and connection types from content
 - Sentiment analysis (positive/negative classification)
   - Discard negative sentiment content
-- Relationship mapping between entities
+- Connection mapping between entities
   - Link dishes to restaurants in nested comments
   - Process implicit entity connections
   - Maintain comment thread context
-- Term normalization and categorization
+- Term normalization and entity resolution
   - Handle entity variations/expansions
   - Standardize entity references
-- Output structured data for database insertion
+  - Map to canonical entities
+- Output structured data for graph insertion
 
 ## 2. Data Architecture
 
 ### 2.1 Database Structure
 
-#### Core Tables & Relationships
+#### Graph-Based Model
 
-##### 1. Restaurants
+##### 1. Entities Table
 
-- Basic info (name, location, hours)
-- Experience tags
-- Digital menu
-- Aggregate metrics and stats
+- Entity ID
+- Name (canonical)
+- Type (restaurant, dish, category, attribute)
+- Aliases (known variations)
+- Basic info (for restaurants: location, hours, etc.)
+- Entity metadata (when relevant)
 
-##### 2. Dishes
+##### 2. Connections Table
 
-- Name and variations
-- Restaurant association
-- Category tags
-- Dietary tags (maybe)
-- Mention metrics and statistics
-- Base score
+- Connection ID
+- From Entity ID
+- To Entity ID
+- Relationship Type (serves, is_a, has_attribute)
+- Connection Strength (computed score)
+- Mention metrics (count, upvotes, sources, recency)
+- Last updated timestamp
 
-##### 3. Mentions
+##### 3. Mentions Table
 
+- Mention ID
+- Connection ID
 - Source (post/comment ID)
 - Content excerpt
-- Thread context/relationships
-- Sentiment indicator
-- Associated entities (dish/restaurant)
+- Author
 - Upvotes
 - Timestamp
 
-_Note: Query-dependent rankings like dish-specific rankings may have to calculated at runtime to be cost effective_
+_Note: Connection strengths are pre-computed during data processing but can be augmented with runtime factors_
 
 ### 2.2 Data Collection
 
-The system uses two distinct collection processes: initial query-driven collection for immediate user needs and background collection for comprehensive data enrichment. Both processes leverage a cheap LLM for entity extraction and relationship analysis.
+The system uses two distinct collection processes:  background collection for comprehensive data enrichment and initial query-driven collection for immediate user needs. Both processes leverage a cheap LLM for entity and relationship extraction.
 
-#### Initial Data Collection (Query-Driven)
-
-Triggered when query results fall below threshold:
-
-##### 1. Query-Specific Search:
-
-- Search Reddit posts and comments for query terms
-- Collect full context:
-  - Post content
-  - All comment threads
-  - Parent-child relationships
-  - Discussion context
-
-##### 2. Entity Processing:
-
-When new entities (restaurants, dishes) are discovered:
-
-- Create immediate database record with 'pending_enrichment' status
-- Include minimal required data for search functionality
-- Add basic Google Places data if immediately available
-
-##### 3. AI-Powered Analysis:
-
-- Send structured data to LLM:
-  - Combined posts and comments
-  - Thread hierarchies
-  - Contextual relationships/semantic connections
-- LLM extracts:
-  - Entities (restaurants, dishes, experience and category tags)
-  - Sentiment analysis
-  - Entity relationships
-
-##### 4. Scope:
-
-- Process only data from query-related searches
-- Store all entities and relationships identified by LLM
-- No additional API calls for discovered entities
-- Focus on quick result generation
-- Mark new entities for priority enrichment in next update cycle
 
 #### Background Data Collection and Freshness (Database-Driven)
 
 ##### 1. Entity Processing Cycle
 
-For each tracked entity (restaurant, dish, experience and category tags):
+For each tracked entity:
 
-- Prioritize entities marked as 'pending_enrichment'
+- Prioritize the newest entities
 - Call Reddit search API for posts and comments
 - Collect complete discussion contexts
 - Send structured data to LLM for analysis
-- Update existing entity metrics
-- Add newly discovered entities
-- Assign standardized experience and category tags
+- Create new entities and connections
+- Strengthen existing connections with new mentions and update metrics
+- Update connection strength scores
 
 ##### 2. Entity Discovery Flow
 
-When new entities are found:
+When new entities or connections are found:
 
-- Immediate database creation with minimal data
-- Marked as 'pending_enrichment'
-- Prioritized in next update cycle
-- Status updates as processing completes
-- Regular refresh cycle once 'active'
+- Immediate creation in database
+- Background job for Google Places data enrichment (for restaurants)
+- Included in regular refresh cycle
 
 ##### 3. Relationship Processing
 
 - LLM analyzes discussion context to identify:
-  - Restaurant-dish associations
-  - Experience and category tag assignments
-  - Implicit entity connections
-  - Sentiment patterns
+  - Entity relationships (serves, is_a, has_attribute)
+  - Supporting mention evidence
+  - Context and sentiment
 - System updates:
-  - Entity metrics
-  - Associations
-  - Tags
+  - Connection strengths
+  - Entity metadata
+  - Mention aggregation
 
 ##### 4. Implementation Strategy
 
@@ -261,16 +224,78 @@ When new entities are found:
 
 - Continuous Enrichment:
 
-  - Update existing entity metrics
-  - Add newly discovered entities
-  - Refresh entity relationships
-  - Update experience and category tags
+  - Strengthen existing connections
+  - Create new entity relationships
+  - Add supporting mentions and update metrics
+  - Update connection strengths
 
 - Progressive Building:
-  - New entities become tracked entities
-  - Each cycle builds on previous data
-  - Metrics become more comprehensive
-  - Relationships grow more detailed
+  - New entities are incorporated into the graph
+  - Each cycle strengthens the connection network
+  - Connection strengths become more reliable
+  - The graph naturally evolves to match community patterns
+
+#### Initial Data Collection (Query-Driven)
+
+Triggered when query results fall below threshold:
+
+##### 1. Query-Specific Search:
+
+- Only search Reddit posts and comments for query terms
+- Collect full context:
+  - Post content
+  - All comment threads
+  - Parent-child relationships
+  - Discussion context
+
+##### 2. Entity Processing:
+
+When new entities are discovered:
+
+- Create entities in Entities table
+- Create appropriate connections in Connections table
+- Add mention data that supports these connections
+- Include basic Google Places data if immediately available
+
+##### 3. AI-Powered Analysis:
+
+- Send structured data to LLM:
+  - Combined posts and comments
+  - Thread hierarchies
+  - Contextual and semantic relationships
+- LLM extracts:
+  - Entities (restaurants, dishes, attributes)
+  - Relationships between entities
+  - Sentiment analysis
+  - Supporting mention text
+
+##### 4. Scope:
+
+- Process only data from query-related searches
+- Store all entities, connections, and mentions identified by LLM
+- No additional API calls for discovered entities
+- Focus on quick result generation
+
+### 2.3 Entity Name Variation Handling
+
+To ensure accurate metrics and search functionality:
+
+1. **Entity Resolution During Ingestion**:
+   - LLM identifies potential variations of the same entity
+   - System considers candidate matches for resolution
+
+2. **Canonical Entity Structure**:
+   - Each entity has a canonical name in the Entities table
+   - Known variations stored as aliases
+   - All mentions map to the same entity regardless of reference style
+
+3. **Fuzzy Matching**:
+   - Implement similarity algorithms for detecting spelling variations
+   - Apply during both data ingestion and query processing
+
+4. **Contextual Disambiguation**:
+   - Use location, related entities, and other contextual clues
+   - Progressively refine entity resolution as more evidence emerges
 
 ### 2.4 Caching Strategy
 
@@ -293,7 +318,7 @@ Purpose: Optimize for follow-up searches
 Example: User searches "best tacos", comes back later
 
 - Store complete result sets
-- Include ranking context
+- Include connection strengths and evidence
 - Update if significant new data
 
 ##### 3. Static Data (7 day retention)
@@ -303,8 +328,8 @@ Purpose: Reduce database load for common data
 Example: Restaurant basic info, historical trends
 
 - Location/hours data
-- Historical rankings
-- Tag associations
+- Entity metadata
+- Common connection patterns
 
 ## 3. External Integration
 
@@ -357,86 +382,81 @@ Example: Restaurant basic info, historical trends
 
 ##### Implementation Strategy:
 
-- Limited review access (5 most recent only)
-- Focus on core business data
-- Consider third-party review data sources
-- Optimize API call patterns
+- Store location and hours data with restaurant entities
+- Update periodically in background jobs
+- Optimize API calls through batching
+- Consider third-party review data sources (Google, Yelp, etc.)
 
 ## 4. Ranking System
 
-### 4.1 Scoring Architecture
+### 4.1 Connection Strength Architecture
 
-_Important: This system relies entirely on pre-computed scores and simple database queries. No specialized search engines or real-time text analysis are required._
+_Important: This system relies on pre-computed connection strengths with simple graph traversals at query time._
 
-##### Scoring System
+##### Strength Calculation
 
-- Scores computed during data collection/processing
-- Stored with dish/restaurant records
-- Updated periodically in background jobs
-- No real-time score computation needed -- Query time only involves:
-  - Entity matching
-  - Score retrieval
-  - Basic filtering
+- Core components:
+  - Mention frequency (number of distinct mentions)
+  - Upvote weighting (with logarithmic scaling)
+  - Source diversity (unique threads/posts)
+  - Time recency (more recent mentions worth more)
 
-##### Database Ranking Operations
+- Pre-computed during data processing:
+  - Stored with each connection
+  - Updated periodically in background jobs
+  - Incrementally adjusted with new mentions
 
-- Fast retrieval of pre-computed scores
-- Simple ranking based on stored scores
-- Efficient filtering by extracted entities
-- Minimal computation at query time
+##### Evidence Storage
 
-#### Base Score Components
-
-##### 1. Dish Scoring
-
-Calculated from Mention frequency, upvotes, Source diversity, and Time relevance (minimal impact)
-
-- Updated with new mentions
-- Independent of other dishes
-- Reflects community sentiment
-
-##### 2. Restaurant Scoring
-
-Derived from top dish scores
-
-- Updated automatically with dish changes
-- Independent of other restaurants
+- Each connection stores its supporting mentions
+- Top quotes by upvotes are easily retrievable
+- Source attribution maintained
+- Mention metrics aggregated for transparency
 
 ### 4.2 Query-Time Ranking
 
 ##### Adapts based on query specificity:
 
-1. Broad Queries
+1. Dish-Specific Queries
 
-   - Returns: Dishes/Restaurants ranked via base scores
-   - Filtered by: Any specified tags
-   - Example: "best restaurants" "best food"
+   - Traverses graph from dish entity
+   - Finds connections to restaurant entities
+   - Ranks by connection strength
+   - Example: "best chicken fingers"
 
-2. Category Queries
+2. Venue-Specific Queries
 
-   - Returns: Dishes with matching tags
-   - Ranked by: Base score
-   - Example: "best sandwiches"
+   - Traverses graph from restaurant entity
+   - Finds dish connections
+   - Ranks by connection strength
+   - Example: "best dishes at Franklin BBQ"
 
-3. Specific Dish Queries
+3. Attribute Queries
 
-   - Returns: Matching dishes across restaurants
-   - Ranked by: Base score
-   - Example: "best pad thai"
+   - Traverses graph from attribute entity
+   - Finds connections to restaurants or dishes
+   - Ranks by connection strength
+   - Example: "best patio restaurants", "best tacos"
 
-4. Venue Queries
-   - Returns: Restaurant's dishes
-   - Uses: Restaurant menu rankings
-   - Example: "what to order at [restaurant]"
+4. Compound Queries
+   - Finds paths requiring multiple connections
+   - Ranks by combined strength across connections
+   - Example: "best vegan ramen"
+
+5. Broad Queries
+   - Finds connections to restaurants or dishes
+   
+   - Ranks by connection strength
+   - Example: "best tacos"
 
 ### 4.3 Runtime Modifications
 
 Filters applied during query processing:
 
-- Tag requirements
-- Location constraints
-- Availability checks
-- Time sensitivity
+- Location constraints (using stored coordinates)
+- Availability checks (using stored hours data)
+- Distance calculations
+- Time-sensitive adjustments
 
 ### 5. Technology Stack
 
@@ -532,7 +552,7 @@ Filters applied during query processing:
 
 - Reddit API for community data
 - Google Places API for location services
-- Google or Deepseek LLM API for content analysis
+- Gemini or Deepseek LLM API for content analysis
 
 #### Testing Stack
 
@@ -557,43 +577,40 @@ Filters applied during query processing:
 
 ## 6. Implementation Challenges
 
-### 6.1 Generic Term/Dish Category Handling
+### 6.1 Entity Resolution 
 
-Challenge: Balancing specific vs broad dishes
-Example: "best salad" vs "best caesar salad"
+Challenge: Identifying when different mentions refer to the same entity
+Example: "Ramen Tatsu-Ya" vs "Tatsuya Ramen" vs "Tatsu Ya"
 Proposed Solution:
 
-- Implement dish category system
-- Maintain hierarchy of specificity
-- Store category relationships
-- Compute specific rankings at query time
-  Open Questions:
-- How to classify a Reuben as a sandwich
-- Reliable categorization method
-- Possibility of a tagging system
-- Performance implications
-- Hierarchy maintenance
+- Multi-layered entity resolution system
+- Fuzzy matching for name variations
+- Contextual clues for disambiguation
+- Progressive refinement of entity mapping
+- Canonical entity structure with alias storage
 
-### 6.2 Thread Context Processing
+### 6.2 Graph Traversal Optimization
 
-Challenge: Maintaining context in nested comments
-Example: Parent asks about tacos, sub-comment recommends specific dish
+Challenge: Efficient path finding for complex queries
+Example: "best vegan ramen near downtown open now"
 Strategy:
 
-- Track thread relationships
-- Store context indicators
-- Link related mentions
-- Process full conversation chains
+- Optimize SQL for graph traversal patterns
+- Index connection properties strategically 
+- Pre-compute common traversal patterns
+- Cache traversal results
+- Use query planning optimization
 
-### 6.3 Ranking Optimization
+### 6.3 Connection Strength Calculation
 
-Challenge: Balance pre-computation vs runtime
+Challenge: Balance between pre-computation and freshness
 Considerations:
 
 - Storage vs computation trade-offs
-- Query performance requirements
+- Update frequency requirements
 - Data freshness needs
 - Approach:
-  - Pre-compute stable rankings
-  - Runtime calculation for dynamic factors
-  - Caching for common patterns
+  - Hybrid model with periodic updates
+  - Store aggregated metrics with connections
+  - Background jobs for strength recalculation
+  - Incremental updates for new mentions
