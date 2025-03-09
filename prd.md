@@ -174,8 +174,7 @@ _Note: Connection strengths are pre-computed during data processing but can be a
 
 ### 2.2 Data Collection
 
-The system uses two distinct collection processes:  background collection for comprehensive data enrichment and initial query-driven collection for immediate user needs. Both processes leverage a cheap LLM for entity and relationship extraction.
-
+The system uses two distinct collection processes: background collection for comprehensive data enrichment and initial query-driven collection for immediate user needs. Both processes leverage a cheap LLM for entity and relationship extraction.
 
 #### Background Data Collection and Freshness (Database-Driven)
 
@@ -281,15 +280,18 @@ When new entities are discovered:
 To ensure accurate metrics and search functionality:
 
 1. **Entity Resolution During Ingestion**:
+
    - LLM identifies potential variations of the same entity
    - System considers candidate matches for resolution
 
 2. **Canonical Entity Structure**:
+
    - Each entity has a canonical name in the Entities table
    - Known variations stored as aliases
    - All mentions map to the same entity regardless of reference style
 
 3. **Fuzzy Matching**:
+
    - Implement similarity algorithms for detecting spelling variations
    - Apply during both data ingestion and query processing
 
@@ -396,6 +398,7 @@ _Important: This system relies on pre-computed connection strengths with simple 
 ##### Strength Calculation
 
 - Core components:
+
   - Mention frequency (number of distinct mentions)
   - Upvote weighting (with logarithmic scaling)
   - Source diversity (unique threads/posts)
@@ -439,13 +442,15 @@ _Important: This system relies on pre-computed connection strengths with simple 
    - Example: "best patio restaurants", "best tacos"
 
 4. Compound Queries
+
    - Finds paths requiring multiple connections
    - Ranks by combined strength across connections
    - Example: "best vegan ramen"
 
 5. Broad Queries
+
    - Finds connections to restaurants or dishes
-   
+
    - Ranks by connection strength
    - Example: "best tacos"
 
@@ -498,7 +503,7 @@ Filters applied during query processing:
   - @nestjs/config for configuration
   - @nestjs/swagger for API documentation
   - @nestjs/websockets for real-time features
-  - @nestjs/config (with dotenv-vault) 
+  - @nestjs/config (with dotenv-vault)
   - class-validator & class-transformer
   - Passport.js for authentication
   - winston for logging
@@ -577,7 +582,7 @@ Filters applied during query processing:
 
 ## 6. Implementation Challenges
 
-### 6.1 Entity Resolution 
+### 6.1 Entity Resolution
 
 Challenge: Identifying when different mentions refer to the same entity
 Example: "Ramen Tatsu-Ya" vs "Tatsuya Ramen" vs "Tatsu Ya"
@@ -596,7 +601,7 @@ Example: "best vegan ramen near downtown open now"
 Strategy:
 
 - Optimize SQL for graph traversal patterns
-- Index connection properties strategically 
+- Index connection properties strategically
 - Pre-compute common traversal patterns
 - Cache traversal results
 - Use query planning optimization

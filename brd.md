@@ -1,6 +1,7 @@
 # Local Food Discovery App - User Experience Specification
 
 ## 1. Core Value Proposition
+
 Evidence-based food discovery powered by community knowledge, emphasizing social proof and transparent ranking criteria to help users make informed decisions about specific dishes.
 
 ## 2. User Experience Framework
@@ -15,8 +16,11 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 ### 2.1 Search
 
 #### Search Results
+
 ##### Example:
+
 - Ramen Tatsu-Ya's Tonkotsu Ramen
+
   - Mentioned 47 times in the community
   - 312 total upvotes
   - Discussed in 18 different threads
@@ -28,12 +32,14 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 ### 2.2 Discovery Feed
 
 #### Basic Categories (99¢)
+
 - Recently Discussed: "This birria taco truck is getting attention (23 mentions this week)"
 - Quick Bites: "Most mentioned casual spots this week"
 - Hidden Gems: "These dishes are quietly gaining traction"
 - Community Highlights: "Recent mentions that caught our eye"
 
 #### Premium Categories ($7.99 Tier)
+
 - Trending Deep Dives: "Why everyone's talking about this new ramen spot"
 - Neighborhood Insights: "South Austin's rising stars"
 - Time-Based Trends: "What's hot for breakfast lately"
@@ -41,6 +47,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Rising Stars: "New dishes gaining serious praise"
 
 #### Search Interface
+
 - Smart Prompt: "What are you craving?"
 - Recent Searches
 - Trending Searches
@@ -49,6 +56,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 ### 2.3 Feature Tiers
 
 #### Basic Tier (99¢/month)
+
 - Full search functionality
 - Basic result display
 - Dish bookmarking/lists
@@ -56,12 +64,15 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Google Maps/ordering links
 
 #### Premium Tier ($7.99/month)
+
 **Core Value Props:**
+
 - "Never miss a trending dish"
 - "Build your personal food map"
 - "Be the first to know about rising stars"
 
 **Features:**
+
 - Full discovery feed access
 - Smart Alerts:
   - "That ramen you bookmarked? It's trending again with winter weather"
@@ -75,6 +86,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Early Trend Access
 
 ### 2.4 Bookmarking System
+
 - **Dish-Centric Lists:**
   - Save specific dishes with restaurant context
   - Add personal notes
@@ -87,6 +99,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 ## 3. Restaurant Partnership Program
 
 ### 3.1 Data-Driven Outreach/Onboarding Triggers
+
 - highActivity:
   - condition: monthly mentions > 50
   - action: Generate insight preview
@@ -100,7 +113,9 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 ### 3.2 Partnership Tiers
 
 #### Basic Tier ($99/month)
+
 Triggered when restaurant reaches consistent mention threshold:
+
 - Community Monitoring:
   - "Your chicken caesar wrap was mentioned 12 times this week"
   - "New Reddit thread discussing your happy hour deals"
@@ -112,7 +127,9 @@ Triggered when restaurant reaches consistent mention threshold:
 - Simple analytics dashboard
 
 #### Pro Tier ($249/month)
+
 Offered to highly-discussed restaurants:
+
 - Enhanced Insights:
   - Real-time mention alerts
   - Detailed sentiment analysis
@@ -128,7 +145,9 @@ Offered to highly-discussed restaurants:
   - Trend analysis
 
 #### Enterprise Tier ($399/month)
+
 For market-leading establishments:
+
 - Advanced Analytics:
   - Dish-by-dish popularity tracking
   - Trend forecasting and predictions
@@ -146,18 +165,21 @@ For market-leading establishments:
 ## 4. Implementation Phases
 
 ### 4.1 Phase 1: Core Search (Months 1-2)
+
 - Natural language query processing
 - Reddit data integration
 - Basic result display
 - Essential dish bookmarking
 
 ### 4.2 Phase 2: Enhanced Features (Months 3-4)
+
 - Premium user features
 - Discovery feed
 - Improved ranking algorithms
 - Sharing capabilities
 
 ### 4.3 Phase 3: Growth (Months 5+)
+
 - Restaurant partnership rollout
 - Advanced analytics
 - Additional data sources
@@ -166,11 +188,13 @@ For market-leading establishments:
 ## 5. Platform Integration Strategy
 
 ### 5.1 Initial Integrations
+
 - Google Maps (location/basic info)
 - Popular delivery platforms
 - Social sharing (native OS)
 
 ### 5.2 Future Integrations
+
 - Direct ordering systems
 - POS systems for real-time data
 - Reservation platforms
