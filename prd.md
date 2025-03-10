@@ -284,7 +284,7 @@ Regardless of cycle type, all background collection follows this process:
 4. **Knowledge Graph Updates**
 
 - Create new entities, connections, and mentions as discovered
-- **Also add ANY discovered connections**, even for entities not in the original selection
+- When processing content, the system will **create or update ANY connections between entities that are mentioned**, even if those entities weren't part of the original search target
 - Store supporting mentions with metrics
 - Update raw connection metrics
 - No attempt to fully enrich newly discovered entities or attributes
@@ -332,7 +332,7 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
 
 - Update query-relevant entities and connections
 - Create new entities, connections, and mentions as discovered
-- **Also add ANY discovered connections** from the retrieved content
+- When processing content, the system will **create or update ANY connections between entities that are mentioned**, even if those entities weren't part of the original search target
 - Recalculate global quality scores for affected entities
 - No additional API calls for newly discovered entities
 
@@ -356,13 +356,6 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
   - Batch similar API calls
   - Cache intermediate processing results
   - Avoid redundant API calls for the same content
-
-##### Circuit Breakers and Controls
-
-- API usage limits with automatic throttling
-- Content processing size limitations
-- Error handling with graceful degradation
-- Performance monitoring with automatic adjustments
 
 #### Knowledge Graph Growth
 
