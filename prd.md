@@ -231,123 +231,153 @@ A key advantage of our graph approach is allowing specific dish categories to em
 
 ### 2.3 Data Collection
 
-The system uses two complementary data collection strategies to build and maintain the knowledge graph: continuous background collection and on-demand query-driven collection. Both leverage the same LLM-powered entity extraction pipeline.
+The system uses two complementary data collection strategies to build and maintain the knowledge graph: scheduled background collection and on-demand query-driven collection. Both share the same LLM-powered entity extraction pipeline but serve different purposes in the system.
 
-#### Continuous Background Collection
+#### Scheduled Background Collection
 
 ##### Purpose
 
 Build and maintain a comprehensive knowledge graph by systematically processing community content.
 
-##### Process Flow
+##### Collection Cycles
 
-1. **Entity Discovery & Selection**
+The system implements two types of background collection cycles:
 
-   - Prioritize processing for:
-     - Newest entities in the database
-     - Entities with limited connection data
-     - High-interest entities based on user queries
-   - Schedule regular processing cycles (weekly during off-peak hours)
+1. **Weekly New Entity Enrichment**
+
+- **Purpose**: Process newly discovered entities from the previous week
+- **Scope**: All entities created but not yet enriched
+- **Schedule**: Weekly during off-peak hours
+- **Focus**: Building initial connections for new entities
+
+2. **Quarterly Full Refresh**
+
+- **Purpose**: Comprehensive update of all entities in the database
+- **Scope**: All existing entities, prioritizing those with oldest data
+- **Schedule**: Quarterly (every 3 months)
+- **Focus**: Capturing new mentions and trends, refreshing quality scores
+
+##### Standard Process Flow
+
+Regardless of cycle type, all background collection follows this process:
+
+1. **Entity Selection**
+
+- Select entities based on cycle type (new or all)
+- Batch entities for efficient processing
+- Prepare search terms based on entity names and aliases
 
 2. **Data Retrieval**
 
-   - Call Reddit API with entity names as search terms
-   - Fetch complete posts and comment threads
-   - Optimize API usage through batching and caching
-   - Store post/comment IDs for direct future access
+- Call Reddit API with entity or attribute-specific search terms
+- Fetch complete posts and comment threads
+- Store post/comment IDs for future direct access
+- Optimize API usage through batching
 
-3. **LLM Processing & Entity Extraction**
+3. **Content Processing**
 
-   - Process structured data through LLM
-   - Extract entities, relationships, and supporting mentions
-   - Analyze sentiment and context
-   - Normalize entity references
+- Parse and structure the retrieved content
+- Send to LLM for entity and relationship extraction
+- Extract sentiment and context information
+- Connect to Google Places API for restaurant entities
 
-4. **Database Updates**
+4. **Knowledge Graph Updates**
 
-   - Create new entities as discovered
-   - Add new connections between entities
-   - Store supporting mentions with metrics
-   - Update raw connection metrics
-   - Google Places enrichment for restaurant entities
+- Create new entities, connections, and mentions as discovered
+- **Also add ANY discovered connections**, even for entities not in the original selection
+- Store supporting mentions with metrics
+- Update raw connection metrics
+- No attempt to fully enrich newly discovered entities or attributes
 
-5. **Quality Score Calculation**
-   - Store aggregated metrics with connections
-   - Calculate global quality scores for restaurants and dishes
-   - Store updated scores in entity records
+5. **Quality Score Updates**
 
-##### Optimization Strategies
+- Recalculate global quality scores for affected entities
+- Update score timestamps
+- Maintain score history for trend analysis
 
-- Batch similar API calls
-- Cache intermediate processing results
-- Store post IDs to enable direct access (bypassing search limitations)
-- Prioritize processing based on entity activity and user interest
+##### Processing Approach
+
+- **Single-Pass Processing**: Each processing cycle focuses only on enriching the selected entities
+- **Complete Context Capture**: All discovered entities and relationships from the content are stored
+- **Opportunistic Connection Updates**: Any relationships found are updated, even for entities not in the current selection
+- **No Recursive API Calls**: New entities are simply created to be enriched in the next weekly cycle
 
 #### On-Demand Query-Driven Collection
 
 ##### Purpose
 
-Provide immediate data enrichment when user queries return insufficient results.
+Fill knowledge gaps in real-time when user queries return insufficient data.
 
 ##### Trigger Conditions
 
-- Query results fall below minimum threshold
-- High-interest queries with limited data
+- Query results fall below quality or quantity threshold
+- High-interest entities with limited data
 - User explicitly requests more information
 
 ##### Process Flow
 
 1. **Query-Specific Search**
 
-   - Search Reddit specifically for query terms and entities
-   - Process complete discussion contexts
-   - Limit scope to content directly relevant to query
+- Search Reddit using query terms and relevant entities
+- Process complete discussion contexts
+- Focus only on content directly relevant to query
 
 2. **Rapid Processing**
 
-   - Use same LLM pipeline as background collection
-   - Focus on entities relevant to the query
-   - Prioritize speed over comprehensiveness
+- Use the same LLM pipeline as background collection
+- Process only content needed for current query
+- Optimize for response speed
 
-3. **Immediate Integration**
+3. **Knowledge Graph Updates**
 
-   - Create discovered entities, connections, and mentions
-   - Calculate preliminary quality scores
-   - Make new data immediately available for search
+- Update query-relevant entities and connections
+- Create new entities, connections, and mentions as discovered
+- **Also add ANY discovered connections** from the retrieved content
+- Recalculate global quality scores for affected entities
+- No additional API calls for newly discovered entities
 
 4. **Result Enhancement**
-   - Enhance query results with newly discovered data
-   - Provide transparent indication of data freshness
 
-##### Implementation Notes
+- Immediately incorporate new data into query results
 
-- Maintain separate processing queues for on-demand vs. background collection
-- No additional enrichment for non-query related entities
-- Implement circuit breakers to prevent excessive API usage
-- Cache query-specific processing results to avoid redundant calls
+##### Key Differences from Background Collection
 
-#### 2.3.3 Data Freshness & Growth
+- Triggered by user queries rather than scheduled
+- Narrower initial search focus (query-specific)
 
-- **Continuous Enrichment:**
+#### Data Processing Efficiency
 
-  - Each cycle adds new mentions to existing connections
-  - Strengthens entity relationships
-  - Updates global quality scores
-  - Expands the entity network
+##### Shared Processing Optimizations
 
-- **Progressive Building:**
+- **Content Maximization**: Extract all possible entities and connections from any retrieved content
+- **Connection Reuse**: All content contributes to the knowledge graph, regardless of the original search purpose
+- **Efficient API Usage**:
+  - Store post IDs to enable direct full access (bypassing search limitations)
+  - Batch similar API calls
+  - Cache intermediate processing results
+  - Avoid redundant API calls for the same content
 
-  - Knowledge graph grows naturally based on community discussions
-  - Entity relationships become richer and more nuanced over time
+##### Circuit Breakers and Controls
+
+- API usage limits with automatic throttling
+- Content processing size limitations
+- Error handling with graceful degradation
+- Performance monitoring with automatic adjustments
+
+#### Knowledge Graph Growth
+
+- **Organic Expansion**:
+
+  - Graph grows naturally based on community discussions
+  - Weekly cycles incorporate new entities
+  - Quarterly refreshes capture evolving trends
+  - User queries trigger targeted enrichment
+
+- **Connection Strengthening**:
+  - Each mention adds evidence to connections
+  - Raw metrics accumulate over time
   - Quality scores become more reliable with additional data
-  - Graph adapts to evolving food trends and new establishments
-
-- **Adaptive Prioritization:**
-
-  - Processing prioritizes entities with user interest
-  - Resources allocated based on query patterns
-  - Background processing fills gaps identified during user queries
-  - Focus on quality over quantity of data
+  - Entity relationships develop natural patterns based on community knowledge
 
 ### 2.4 Entity Name Variation Handling
 
