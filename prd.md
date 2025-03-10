@@ -2,7 +2,7 @@
 
 ## Overview
 
-This app enables users to make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences using a flexible, relationship-based approach.
+This app enables users to make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences.
 
 ## Core System Flow
 
@@ -16,7 +16,7 @@ This app enables users to make confident dining decisions by surfacing evidence-
 4. Entity/Intent Extraction
 5. Query Builder
 6. Graph-Based Database Query
-7. Database Returns Connection-Strength Based Rankings
+7. Database Returns Results Ordered by Global Quality Scores
 8. Cache New Results
 9. Return Results to User
 
@@ -25,8 +25,8 @@ This app enables users to make confident dining decisions by surfacing evidence-
 1. Collect Reddit/Review Data
 2. LLM Analysis
 3. Entity/Relationship Extraction
-4. Connection-Based Graph Storage
-5. Connection Strength Computation
+4. Graph Database Storage & Metric Aggregation
+5. Global Quality Score Computation
 
 ## 1. Query Processing & Understanding
 
@@ -40,10 +40,10 @@ Our search functionality focuses on core value-driving features at launch, with 
 
 _Note: All queries are processed through entity matching and graph traversal, without need for specialized search engines._
 
-- Dish-specific: "best ramen", "best chicken caesar wrap"
-- Venue-specific: "best dishes at Franklin BBQ"
-- Dish-level broad queries: "best dishes in Austin"
-- Category-specific queries: "best sandwiches in Austin"
+- **Dish-specific**: "best ramen", "best chicken caesar wrap"
+- **Venue-specific**: "best dishes at Franklin BBQ"
+- **Dish-level broad queries**: "best dishes in Austin"
+- **Category-specific queries**: "best sandwiches in Austin"
 
 #### Location & Availability
 
@@ -58,29 +58,61 @@ _Note: All queries are processed through entity matching and graph traversal, wi
 
 #### Advanced Query Types
 
-- Restaurant-level broad queries: "best restaurant open now", "best patio spots"
-- Attribute-specific queries
+- **Restaurant-level broad queries**: "best restaurant open now", "best patio spots"
+- **Attribute-specific Queries**
   - With category-specific: "best vegan ramen", "happy hour sushi"
-  - With dish-specific: "best vegan pad thai", "best brunch chicken and waffles", best chicken fingers
+  - With dish-specific: "best vegan pad thai", "best brunch chicken and waffles", "best chicken fingers"
   - With venue-specific: "best dishes at vegan restaurants"
   - With broad: "best patio restaurants", "best brunch"
 
-#### Attribute Entity System
+#### Entity Attribute System
 
 ##### Implementation Strategy:
 
-- Entities can have connections to attribute entities
+- Entities have connections to attribute entities in the graph
 - Attributes identified through background data collection
 - Natural language processing for attribute requests in queries
 - No separate filter UI - integrated into queries
 
 ##### Attribute Types:
 
-- Dish Categories: thai, sandwich, noodles, asian, tacos, ramen, sushi, etc.
-- Dietary: vegan, vegetarian, halal, keto
-- Time-based: happy hour, brunch
-- Atmosphere: patio, quiet, good for groups
-- Service-type: sports bar, BYOB
+Will likely include but not limited to:
+
+- Cuisine Categories:
+
+  - Regional: thai, japanese, chinese, mexican, italian, mediterranean, etc.
+  - Dish Types: sandwich, noodles, tacos, ramen, sushi, pizza, burger, etc.
+  - Preparation: grilled, fried, raw, smoked, etc.
+
+- Dietary Preferences & Restrictions:
+
+  - Restrictions: vegan, vegetarian, halal, kosher, etc.
+  - Health-focused: keto, gluten-free, dairy-free, low-carb, etc.
+  - Allergens: nut-free, shellfish-free, etc.
+
+- Time & Occasion:
+
+  - Meal Periods: breakfast, brunch, lunch, dinner, late night, etc.
+  - Special Times: happy hour, daily specials, weekend specials, etc.
+  - Events: date night, business lunch, family dining, etc.
+
+- Atmosphere & Ambiance:
+
+  - Seating: patio, rooftop, outdoor, indoor, bar, etc.
+  - Environment: quiet, romantic, casual, upscale, family-friendly, etc.
+  - Features: view, fireplace, live music, sports viewing, etc.
+  - Group Size: large groups, intimate, communal seating, etc.
+
+- Service & Style:
+
+  - Format: counter service, full service, fast casual, fine dining, etc.
+  - Options: BYOB, reservations accepted, walk-ins only, etc.
+  - Specialties: tasting menu, chef's table, buffet, etc.
+
+- Experience Attributes:
+  - Value: great value, budget-friendly, worth the splurge, generous portions, etc.
+  - Service: great service, attentive service, quick service, etc.
+  - Convenience: easy parking, delivery available, takeout friendly, etc.
 
 _Note: All post-launch features require a mature database with substantial connection data._
 
@@ -116,12 +148,14 @@ Processing Tasks:
 
 #### Content Processing & Analysis
 
-##### Primary Function: Process Reddit/review content into structured data with graph entities and connections
+##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
 
 Processing Tasks:
 
 - Entity extraction (restaurants, dishes, attributes)
 - Relationship identification (serves, is_a, has_attribute)
+  - **Create specific and general dish category entities** (e.g., "french dip", not just "sandwich")
+  - Allow entities to emerge organically from community mentions
 - Infer likely attributes and connection types from content
 - Sentiment analysis (positive/negative classification)
   - Discard negative sentiment content
@@ -148,6 +182,7 @@ Processing Tasks:
 - Type (restaurant, dish, category, attribute)
 - Aliases (known variations)
 - Basic info (for restaurants: location, hours, etc.)
+- Global quality score (pre-computed for restaurants and dishes)
 - Entity metadata (when relevant)
 
 ##### 2. Connections Table
@@ -156,8 +191,11 @@ Processing Tasks:
 - From Entity ID
 - To Entity ID
 - Relationship Type (serves, is_a, has_attribute)
-- Connection Strength (computed score)
-- Mention metrics (count, upvotes, sources, recency)
+- Raw metrics:
+  - Mention count
+  - Total upvotes
+  - Source diversity count
+  - Most recent mention timestamp
 - Last updated timestamp
 
 ##### 3. Mentions Table
@@ -170,9 +208,28 @@ Processing Tasks:
 - Upvotes
 - Timestamp
 
-_Note: Connection strengths are pre-computed during data processing but can be augmented with runtime factors_
+_Note: Global quality scores are pre-computed during data processing and used as the primary ranking factor_
 
-### 2.2 Data Collection
+### 2.2 Natural Category Emergence
+
+A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
+
+- When users mention "the French Dip at Bartlett's," the system creates:
+
+  - A specific dish entity ("French Dip at Bartlett's")
+  - A dish category entity ("french dip") if it doesn't exist
+  - A broader category entity ("sandwich") if it doesn't exist
+  - Appropriate connections between these entities
+
+- This enables both specific and general queries:
+  - "Best french dip" finds all dishes connected to the "french dip" category
+  - "Best sandwich" includes all sandwich types, including french dips
+- Categories evolve organically based on how the community discusses food:
+  - No need for predetermined hierarchies
+  - New categories automatically created as they appear in discussions
+  - Relationships between categories formed naturally through mentions
+
+### 2.3 Data Collection
 
 The system uses two distinct collection processes: background collection for comprehensive data enrichment and initial query-driven collection for immediate user needs. Both processes leverage a cheap LLM for entity and relationship extraction.
 
@@ -187,8 +244,8 @@ For each tracked entity:
 - Collect complete discussion contexts
 - Send structured data to LLM for analysis
 - Create new entities and connections
-- Strengthen existing connections with new mentions and update metrics
-- Update connection strength scores
+- Add new mentions to existing connections and update raw metrics
+- Update global quality scores
 
 ##### 2. Entity Discovery Flow
 
@@ -205,9 +262,9 @@ When new entities or connections are found:
   - Supporting mention evidence
   - Context and sentiment
 - System updates:
-  - Connection strengths
+  - Raw metrics on connections
+  - Global quality scores
   - Entity metadata
-  - Mention aggregation
 
 ##### 4. Implementation Strategy
 
@@ -223,15 +280,15 @@ When new entities or connections are found:
 
 - Continuous Enrichment:
 
-  - Strengthen existing connections
+  - Add new mentions to connections
   - Create new entity relationships
-  - Add supporting mentions and update metrics
-  - Update connection strengths
+  - Update global quality scores
+  - Expand entity network
 
 - Progressive Building:
   - New entities are incorporated into the graph
-  - Each cycle strengthens the connection network
-  - Connection strengths become more reliable
+  - Each cycle enriches the connection network
+  - Global quality scores become more reliable
   - The graph naturally evolves to match community patterns
 
 #### Initial Data Collection (Query-Driven)
@@ -275,7 +332,7 @@ When new entities are discovered:
 - No additional API calls for discovered entities
 - Focus on quick result generation
 
-### 2.3 Entity Name Variation Handling
+### 2.4 Entity Name Variation Handling
 
 To ensure accurate metrics and search functionality:
 
@@ -299,7 +356,7 @@ To ensure accurate metrics and search functionality:
    - Use location, related entities, and other contextual clues
    - Progressively refine entity resolution as more evidence emerges
 
-### 2.4 Caching Strategy
+### 2.5 Caching Strategy
 
 #### Cache Levels & Implementation
 
@@ -320,7 +377,7 @@ Purpose: Optimize for follow-up searches
 Example: User searches "best tacos", comes back later
 
 - Store complete result sets
-- Include connection strengths and evidence
+- Include global quality scores and evidence
 - Update if significant new data
 
 ##### 3. Static Data (7 day retention)
@@ -391,30 +448,49 @@ Example: Restaurant basic info, historical trends
 
 ## 4. Ranking System
 
-### 4.1 Connection Strength Architecture
+### 4.1 Global Quality Score Architecture
 
-_Important: This system relies on pre-computed connection strengths with simple graph traversals at query time._
+_Important: This system relies on pre-computed global quality scores for ranking with attributes serving as filters._
 
-##### Strength Calculation
+##### Global Quality Score Calculation
 
-- Core components:
+For Restaurants:
 
-  - Mention frequency (number of distinct mentions)
-  - Upvote weighting (with logarithmic scaling)
-  - Source diversity (unique threads/posts)
-  - Time recency (more recent mentions worth more)
+- Primary component (80%): Quality of food offerings
+  - Weighted sum of top dish scores (typically top 3-5 dishes)
+  - Logarithmic scaling to prevent outliers from dominating
+- Secondary component (20%): Overall restaurant mentions
+  - Praise tied to attributes or food categories
+  - Consistency across mentions
+  - Source diversity
 
-- Pre-computed during data processing:
-  - Stored with each connection
-  - Updated periodically in background jobs
-  - Incrementally adjusted with new mentions
+For Dishes:
 
-##### Evidence Storage
+- Primary component (85%): Direct dish mentions
+  - Upvote-weighted mention frequency
+  - Source diversity factor
+  - Time recency factor
+- Secondary component (10%): Attribute Strength
+  - How well the dish represents its category
+  - Category significance in discussions
+- Tertiary component (5%): Restaurant context
+  - Quality of other dishes at the same restaurant
+  - Overall restaurant reputation
 
-- Each connection stores its supporting mentions
-- Top quotes by upvotes are easily retrievable
-- Source attribution maintained
-- Mention metrics aggregated for transparency
+##### Metric Aggregation
+
+- Raw metrics stored with each connection:
+
+  - Mention count
+  - Total upvotes
+  - Source diversity count
+  - Recent mention count
+  - Timestamp of latest mentions
+
+- Metrics used for:
+  - Evidence display
+  - Global quality score calculation
+  - Filtering thresholds
 
 ### 4.2 Query-Time Ranking
 
@@ -422,48 +498,43 @@ _Important: This system relies on pre-computed connection strengths with simple 
 
 1. Dish-Specific Queries
 
-   - Traverses graph from dish entity
-   - Finds connections to restaurant entities
-   - Ranks by connection strength
-   - Example: "best chicken fingers"
+   - Filter: Find dishes connected to the specified category
+   - Rank: By dish global quality score
+   - Example: "best ramen" returns highest-quality ramen dishes
 
 2. Venue-Specific Queries
 
-   - Traverses graph from restaurant entity
-   - Finds dish connections
-   - Ranks by connection strength
-   - Example: "best dishes at Franklin BBQ"
+   - Filter: Find dishes connected to the specified restaurant
+   - Rank: By dish global quality score
+   - Example: "best dishes at Franklin BBQ" returns their highest-quality offerings
 
 3. Attribute Queries
 
-   - Traverses graph from attribute entity
-   - Finds connections to restaurants or dishes
-   - Ranks by connection strength
-   - Example: "best patio restaurants", "best tacos"
+   - Filter: Find entities connected to the specified attribute
+   - Rank: By entity global quality score
+   - Example: "best patio restaurants" returns highest-quality restaurants with patios
 
 4. Compound Queries
 
-   - Finds paths requiring multiple connections
-   - Ranks by combined strength across connections
-   - Example: "best vegan ramen"
+   - Filter: Find entities matching all specified attributes
+   - Rank: By entity global quality score
+   - Example: "best vegan ramen" returns highest-quality ramen dishes that are vegan
 
 5. Broad Queries
+   - Filter: Find all dish or restaurant entities
+   - Rank: By entity global quality score
+   - Example: "best dishes" returns highest-quality dishes
 
-   - Finds connections to restaurants or dishes
+### 4.3 Runtime Filters
 
-   - Ranks by connection strength
-   - Example: "best tacos"
-
-### 4.3 Runtime Modifications
-
-Filters applied during query processing:
+Applied during query processing:
 
 - Location constraints (using stored coordinates)
 - Availability checks (using stored hours data)
 - Distance calculations
 - Time-sensitive adjustments
 
-### 5. Technology Stack
+## 5. Technology Stack
 
 #### Frontend Layer
 
@@ -596,26 +667,27 @@ Proposed Solution:
 
 ### 6.2 Graph Traversal Optimization
 
-Challenge: Efficient path finding for complex queries
+Challenge: Efficient filtering and ranking in the graph model
 Example: "best vegan ramen near downtown open now"
 Strategy:
 
 - Optimize SQL for graph traversal patterns
-- Index connection properties strategically
-- Pre-compute common traversal patterns
+- Index entity global quality scores
+- Pre-compute common attribute relationships
 - Cache traversal results
-- Use query planning optimization
+- Use efficient filtering steps before ranking
 
-### 6.3 Connection Strength Calculation
+### 6.3 Global Quality Score Computation
 
 Challenge: Balance between pre-computation and freshness
 Considerations:
 
-- Storage vs computation trade-offs
 - Update frequency requirements
 - Data freshness needs
+- Computational efficiency
 - Approach:
-  - Hybrid model with periodic updates
+  - Background jobs for score recalculation
+  - Incremental updates based on new mentions
+  - Periodic full recalculation
   - Store aggregated metrics with connections
-  - Background jobs for strength recalculation
-  - Incremental updates for new mentions
+  - Score version tracking for consistency
