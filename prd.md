@@ -231,106 +231,106 @@ A key advantage of our graph approach is allowing specific dish categories to em
 
 ### 2.3 Data Collection
 
-The system uses two distinct collection processes: background collection for comprehensive data enrichment and initial query-driven collection for immediate user needs. Both processes leverage a cheap LLM for entity and relationship extraction.
+The system uses two complementary data collection strategies to build and maintain the knowledge graph: continuous background collection and on-demand query-driven collection. Both leverage the same LLM-powered entity extraction pipeline.
 
-#### Background Data Collection and Freshness (Database-Driven)
+#### Continuous Background Collection
 
-##### 1. Entity Processing Cycle
+##### Purpose
+Build and maintain a comprehensive knowledge graph by systematically processing community content.
 
-For each tracked entity:
+##### Process Flow
+1. **Entity Discovery & Selection**
+   - Prioritize processing for:
+     - Newest entities in the database
+     - Entities with limited connection data
+     - High-interest entities based on user queries
+   - Schedule regular processing cycles (weekly during off-peak hours)
 
-- Prioritize the newest entities
-- Call Reddit search API for posts and comments
-- Collect complete discussion contexts
-- Send structured data to LLM for analysis
-- Create new entities and connections
-- Add new mentions to existing connections and update raw metrics
-- Update global quality scores
+2. **Data Retrieval**
+   - Call Reddit API with entity names as search terms
+   - Fetch complete posts and comment threads
+   - Optimize API usage through batching and caching
+   - Store post/comment IDs for direct future access
 
-##### 2. Entity Discovery Flow
+3. **LLM Processing & Entity Extraction**
+   - Process structured data through LLM
+   - Extract entities, relationships, and supporting mentions
+   - Analyze sentiment and context
+   - Normalize entity references
 
-When new entities or connections are found:
+4. **Database Updates**
+   - Create new entities as discovered
+   - Add new connections between entities
+   - Store supporting mentions with metrics
+   - Update raw connection metrics
+   - Google Places enrichment for restaurant entities
 
-- Immediate creation in database
-- Background job for Google Places data enrichment (for restaurants)
-- Included in regular refresh cycle
+5. **Quality Score Calculation**
+   - Store aggregated metrics with connections
+   - Calculate global quality scores for restaurants and dishes
+   - Store updated scores in entity records
 
-##### 3. Relationship Processing
+##### Optimization Strategies
+- Batch similar API calls
+- Cache intermediate processing results
+- Store post IDs to enable direct access (bypassing search limitations)
+- Prioritize processing based on entity activity and user interest
 
-- LLM analyzes discussion context to identify:
-  - Entity relationships (serves, is_a, has_attribute)
-  - Supporting mention evidence
-  - Context and sentiment
-- System updates:
-  - Raw metrics on connections
-  - Global quality scores
-  - Entity metadata
+#### On-Demand Query-Driven Collection
 
-##### 4. Implementation Strategy
+##### Purpose
+Provide immediate data enrichment when user queries return insufficient results.
 
-- Weekly processing during off-peak hours
-- Update basic info via Google Places API
-- Store post/comment IDs for historical access (bypasses Reddit API limitations)
-- Optimization techniques:
-  - Batch similar API calls
-  - Prioritize high-activity entities
-  - Cache intermediate results
+##### Trigger Conditions
+- Query results fall below minimum threshold
+- High-interest queries with limited data
+- User explicitly requests more information
 
-##### 5. Key Behaviors
+##### Process Flow
+1. **Query-Specific Search**
+   - Search Reddit specifically for query terms and entities
+   - Process complete discussion contexts
+   - Limit scope to content directly relevant to query
 
-- Continuous Enrichment:
+2. **Rapid Processing**
+   - Use same LLM pipeline as background collection
+   - Focus on entities relevant to the query
+   - Prioritize speed over comprehensiveness
 
-  - Add new mentions to connections
-  - Create new entity relationships
-  - Update global quality scores
-  - Expand entity network
+3. **Immediate Integration**
+   - Create discovered entities, connections, and mentions
+   - Calculate preliminary quality scores
+   - Make new data immediately available for search
 
-- Progressive Building:
-  - New entities are incorporated into the graph
-  - Each cycle enriches the connection network
-  - Global quality scores become more reliable
-  - The graph naturally evolves to match community patterns
+4. **Result Enhancement**
+   - Enhance query results with newly discovered data
+   - Provide transparent indication of data freshness
 
-#### Initial Data Collection (Query-Driven)
+##### Implementation Notes
+- Maintain separate processing queues for on-demand vs. background collection
+- No additional enrichment for non-query related entities
+- Implement circuit breakers to prevent excessive API usage
+- Cache query-specific processing results to avoid redundant calls
 
-Triggered when query results fall below threshold:
+#### 2.3.3 Data Freshness & Growth
 
-##### 1. Query-Specific Search:
+- **Continuous Enrichment:**
+  - Each cycle adds new mentions to existing connections
+  - Strengthens entity relationships
+  - Updates global quality scores
+  - Expands the entity network
 
-- Only search Reddit posts and comments for query terms
-- Collect full context:
-  - Post content
-  - All comment threads
-  - Parent-child relationships
-  - Discussion context
+- **Progressive Building:**
+  - Knowledge graph grows naturally based on community discussions
+  - Entity relationships become richer and more nuanced over time
+  - Quality scores become more reliable with additional data
+  - Graph adapts to evolving food trends and new establishments
 
-##### 2. Entity Processing:
-
-When new entities are discovered:
-
-- Create entities in Entities table
-- Create appropriate connections in Connections table
-- Add mention data that supports these connections
-- Include basic Google Places data if immediately available
-
-##### 3. AI-Powered Analysis:
-
-- Send structured data to LLM:
-  - Combined posts and comments
-  - Thread hierarchies
-  - Contextual and semantic relationships
-- LLM extracts:
-  - Entities (restaurants, dishes, attributes)
-  - Relationships between entities
-  - Sentiment analysis
-  - Supporting mention text
-
-##### 4. Scope:
-
-- Process only data from query-related searches
-- Store all entities, connections, and mentions identified by LLM
-- No additional API calls for discovered entities
-- Focus on quick result generation
+- **Adaptive Prioritization:**
+  - Processing prioritizes entities with user interest
+  - Resources allocated based on query patterns
+  - Background processing fills gaps identified during user queries
+  - Focus on quality over quantity of data
 
 ### 2.4 Entity Name Variation Handling
 
@@ -456,31 +456,36 @@ _Important: This system relies on pre-computed global quality scores for ranking
 
 For Restaurants:
 
-- Primary component (80%): Quality of food offerings
-  - Weighted sum of top dish scores (typically top 3-5 dishes)
-  - Logarithmic scaling to prevent outliers from dominating
-- Secondary component (20%): Overall restaurant mentions
-  - Praise tied to attributes or food categories
-  - Consistency across mentions
-  - Source diversity
+- **Primary Component (80%)**:
+  - Top 3-5 dish connections by strength
+  - Direct connections to food categories (treated similarly to top dishes)
+  - This captures the standout offerings that define a restaurant
+
+- **Secondary Component (20%)**:
+  - Holistic assessment of the restaurant's entire digital menu
+  - Breadth of positively mentioned dishes beyond the top ones
+  - Average quality across all mentioned dishes
+  - Consistency across menu items
+  - This rewards restaurants with overall menu strength beyond a few star items
 
 For Dishes:
 
-- Primary component (85%): Direct dish mentions
-  - Upvote-weighted mention frequency
-  - Source diversity factor
-  - Time recency factor
-- Secondary component (10%): Attribute Strength
-  - How well the dish represents its category
-  - Category significance in discussions
-- Tertiary component (5%): Restaurant context
-  - Quality of other dishes at the same restaurant
-  - Overall restaurant reputation
+- **Primary Component (85-90%)**:
+  - Combined strength from all mention types:
+  - Dish-restaurant mentions ("their pad thai is amazing")
+  - Dish-category mentions ("best pad thai in town")
+  - Dish-attribute mentions (any that occur)
+  - This captures all relevant praise regardless of context
+
+- **Secondary Component (10-15%)**:
+  - Restaurant context factor
+  - Derived from the parent restaurant's quality score
+  - Provides a small boost to dishes from generally excellent restaurants
+  - Serves as an effective tiebreaker between similar dishes
 
 ##### Metric Aggregation
 
 - Raw metrics stored with each connection:
-
   - Mention count
   - Total upvotes
   - Source diversity count
@@ -488,9 +493,9 @@ For Dishes:
   - Timestamp of latest mentions
 
 - Metrics used for:
-  - Evidence display
+  - Evidence display to users
   - Global quality score calculation
-  - Filtering thresholds
+  - Attribute filtering thresholds
 
 ### 4.2 Query-Time Ranking
 
