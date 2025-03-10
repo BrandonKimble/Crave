@@ -236,10 +236,13 @@ The system uses two complementary data collection strategies to build and mainta
 #### Continuous Background Collection
 
 ##### Purpose
+
 Build and maintain a comprehensive knowledge graph by systematically processing community content.
 
 ##### Process Flow
+
 1. **Entity Discovery & Selection**
+
    - Prioritize processing for:
      - Newest entities in the database
      - Entities with limited connection data
@@ -247,18 +250,21 @@ Build and maintain a comprehensive knowledge graph by systematically processing 
    - Schedule regular processing cycles (weekly during off-peak hours)
 
 2. **Data Retrieval**
+
    - Call Reddit API with entity names as search terms
    - Fetch complete posts and comment threads
    - Optimize API usage through batching and caching
    - Store post/comment IDs for direct future access
 
 3. **LLM Processing & Entity Extraction**
+
    - Process structured data through LLM
    - Extract entities, relationships, and supporting mentions
    - Analyze sentiment and context
    - Normalize entity references
 
 4. **Database Updates**
+
    - Create new entities as discovered
    - Add new connections between entities
    - Store supporting mentions with metrics
@@ -271,6 +277,7 @@ Build and maintain a comprehensive knowledge graph by systematically processing 
    - Store updated scores in entity records
 
 ##### Optimization Strategies
+
 - Batch similar API calls
 - Cache intermediate processing results
 - Store post IDs to enable direct access (bypassing search limitations)
@@ -279,25 +286,31 @@ Build and maintain a comprehensive knowledge graph by systematically processing 
 #### On-Demand Query-Driven Collection
 
 ##### Purpose
+
 Provide immediate data enrichment when user queries return insufficient results.
 
 ##### Trigger Conditions
+
 - Query results fall below minimum threshold
 - High-interest queries with limited data
 - User explicitly requests more information
 
 ##### Process Flow
+
 1. **Query-Specific Search**
+
    - Search Reddit specifically for query terms and entities
    - Process complete discussion contexts
    - Limit scope to content directly relevant to query
 
 2. **Rapid Processing**
+
    - Use same LLM pipeline as background collection
    - Focus on entities relevant to the query
    - Prioritize speed over comprehensiveness
 
 3. **Immediate Integration**
+
    - Create discovered entities, connections, and mentions
    - Calculate preliminary quality scores
    - Make new data immediately available for search
@@ -307,6 +320,7 @@ Provide immediate data enrichment when user queries return insufficient results.
    - Provide transparent indication of data freshness
 
 ##### Implementation Notes
+
 - Maintain separate processing queues for on-demand vs. background collection
 - No additional enrichment for non-query related entities
 - Implement circuit breakers to prevent excessive API usage
@@ -315,18 +329,21 @@ Provide immediate data enrichment when user queries return insufficient results.
 #### 2.3.3 Data Freshness & Growth
 
 - **Continuous Enrichment:**
+
   - Each cycle adds new mentions to existing connections
   - Strengthens entity relationships
   - Updates global quality scores
   - Expands the entity network
 
 - **Progressive Building:**
+
   - Knowledge graph grows naturally based on community discussions
   - Entity relationships become richer and more nuanced over time
   - Quality scores become more reliable with additional data
   - Graph adapts to evolving food trends and new establishments
 
 - **Adaptive Prioritization:**
+
   - Processing prioritizes entities with user interest
   - Resources allocated based on query patterns
   - Background processing fills gaps identified during user queries
@@ -457,6 +474,7 @@ _Important: This system relies on pre-computed global quality scores for ranking
 For Restaurants:
 
 - **Primary Component (80%)**:
+
   - Top 3-5 dish connections by strength
   - Direct connections to food categories (treated similarly to top dishes)
   - This captures the standout offerings that define a restaurant
@@ -471,6 +489,7 @@ For Restaurants:
 For Dishes:
 
 - **Primary Component (85-90%)**:
+
   - Combined strength from all mention types:
   - Dish-restaurant mentions ("their pad thai is amazing")
   - Dish-category mentions ("best pad thai in town")
@@ -486,6 +505,7 @@ For Dishes:
 ##### Metric Aggregation
 
 - Raw metrics stored with each connection:
+
   - Mention count
   - Total upvotes
   - Source diversity count
