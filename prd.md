@@ -181,7 +181,7 @@ Processing Tasks:
 - Name (canonical)
 - Type (restaurant, dish, category, attribute)
 - Aliases (known variations)
-- Basic info (for restaurants: location, hours, etc.)
+- Basic info from Google Places API (for restaurants: location, hours, etc.)
 - Global quality score (pre-computed for restaurants and dishes)
 - Entity metadata (when relevant)
 
