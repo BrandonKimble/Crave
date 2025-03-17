@@ -47,12 +47,23 @@ _Note: All queries are processed through entity matching and graph traversal, wi
 
 #### Location & Availability
 
-##### Implemented through Google Maps/Places API integration:
+Enabled by Google Maps/Places API integration and attribute-based filtering:
 
-- Availability: "open now", "late night", "open until midnight"
-- Distance-based: "within 2 miles"
-- Location-based: "near me", "downtown"
-- Neighborhood-specific: "south austin"
+##### Location Filtering: Map-Based Approach
+
+- **Map-Centric UI**: Users navigate a map interface to define their area of interest
+- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
+- **Implementation**:
+  - Each query includes viewport coordinates (NE and SW bounds)
+  - Database filters restaurants within these coordinates
+  - No text-based location parsing required
+
+##### Availability Filtering: Toggle + Attribute Approach
+
+- "Open Now" Toggle: Simple binary filter using current time against operating hours
+- Time/Occasion Terms: Processed as attribute entities through natural language
+  - Examples: "brunch", "happy hour", "late night"
+  - System finds restaurants with connections to these attribute entities
 
 ### 1.2 Post-Launch Features ($7.99 Tier)
 
@@ -136,11 +147,10 @@ Processing Tasks:
 
 - Entity extraction (restaurants, dishes, attributes)
   - Extract search intent and type (dish-specific, venue-specific, broad)
+  - Identify attribute requests (brunch, dinner, vegan, etc.)
 - Term normalization and entity resolution
   - Handle entity variations/expansions
   - Standardize entity references
-- Detect and validate attribute requests
-- Map generic terms to specific entities
 - Identify location and availability requirements
 - Output standardized format for dynamic graph traversal and filtering
 
@@ -462,7 +472,9 @@ Example: Restaurant basic info, historical trends
 
 ## 3. External Integration
 
-### 3.1 Reddit API Strategy
+_Note: Consider additional third-party review data sources (Google, Yelp, etc.)_
+
+### 3.1 Reddit API
 
 #### Implementation Challenges
 
@@ -500,21 +512,21 @@ Example: Restaurant basic info, historical trends
 - Smart update scheduling
 - Maintain post ID database
 
-### 3.2 Google Places Integration
+### 3.2 Google Places API
 
 ##### Primary Functions:
 
 - Basic restaurant information
 - Location data/geocoding
-- Operating hours
+- Operating hours for "Open Now" filtering
 - Order/reservation links
 
 ##### Implementation Strategy:
 
-- Store location and hours data with restaurant entities
+- Store precise coordinates with restaurant entities
+- Store structured operating hours data
 - Update periodically in background jobs
 - Optimize API calls through batching
-- Consider third-party review data sources (Google, Yelp, etc.)
 
 ## 4. Ranking System
 
@@ -522,17 +534,18 @@ Example: Restaurant basic info, historical trends
 
 _Important: This system relies on pre-computed global quality scores for ranking with attributes serving as filters._
 
-##### Global Quality Score Calculation
+#### Global Quality Score Calculation
 
 For Restaurants:
 
-- **Primary Component (80%)**:
+- ##### Primary Component (80%):
 
   - Top 3-5 dish connections by strength
   - Direct connections to food categories (treated similarly to top dishes)
   - This captures the standout offerings that define a restaurant
 
-- **Secondary Component (20%)**:
+- ##### Secondary Component (20%):
+
   - Holistic assessment of the restaurant's entire digital menu
   - Breadth of positively mentioned dishes beyond the top ones
   - Average quality across all mentioned dishes
@@ -541,7 +554,7 @@ For Restaurants:
 
 For Dishes:
 
-- **Primary Component (85-90%)**:
+- ##### Primary Component (85-90%):
 
   - Combined strength from all mention types:
   - Dish-restaurant mentions ("their pad thai is amazing")
@@ -549,7 +562,8 @@ For Dishes:
   - Dish-attribute mentions (any that occur)
   - This captures all relevant praise regardless of context
 
-- **Secondary Component (10-15%)**:
+- ##### Secondary Component (10-15%):
+
   - Restaurant context factor
   - Derived from the parent restaurant's quality score
   - Provides a small boost to dishes from generally excellent restaurants
@@ -566,50 +580,86 @@ For Dishes:
   - Timestamp of latest mentions
 
 - Metrics used for:
+
   - Evidence display to users
   - Global quality score calculation
   - Attribute filtering thresholds
 
+#### Results Display
+
+- ##### List View: Scrollable results with:
+
+  - Name of dish/restaurant pair
+  - Global quality score representation
+  - Supporting evidence (top mentions, connection metrics)
+  - Open/closed status
+
+- ##### Detail View: Expanded information on selection
+
+  - Name of dish/restaurant pair
+  - Complete evidence display
+  - All connected entities, top mentions, connection metrics
+  - Operating hours
+  - Order/reservation links
+
 ### 4.2 Query-Time Ranking
 
-##### Adapts based on query specificity:
+#### Adapts based on query specificity:
 
-1. Dish-Specific Queries
+##### 1. Dish-Specific Queries
 
-   - Filter: Find dishes connected to the specified category
-   - Rank: By dish global quality score
-   - Example: "best ramen" returns highest-quality ramen dishes
+- Filter: Find dishe/restaurant pair connected to the specified dish or category
+- Apply map viewport boundary filter
+- Apply "Open Now" filter if enabled
+- Rank: By dish global quality score
+- Example: "best ramen" returns highest-quality ramen dishes in map area
 
-2. Venue-Specific Queries
+##### 2. Venue-Specific Queries
 
-   - Filter: Find dishes connected to the specified restaurant
-   - Rank: By dish global quality score
-   - Example: "best dishes at Franklin BBQ" returns their highest-quality offerings
+- Filter: Find dishes connected to the specified restaurant
+- Rank: By dish global quality score
+- Example: "best dishes at Franklin BBQ" returns their highest-quality offerings
 
-3. Attribute Queries
+##### 3. Attribute Queries
 
-   - Filter: Find entities connected to the specified attribute
-   - Rank: By entity global quality score
-   - Example: "best patio restaurants" returns highest-quality restaurants with patios
+- Filter: Find entities connected to the specified attribute
+- Apply map viewport boundary filter
+- Apply "Open Now" filter if enabled
+- Rank: By entity global quality score
+- Example: "best patio restaurants" returns highest-quality restaurants with patios in map area
 
-4. Compound Queries
+##### 4. Compound Queries
 
-   - Filter: Find entities matching all specified attributes
-   - Rank: By entity global quality score
-   - Example: "best vegan ramen" returns highest-quality ramen dishes that are vegan
+- Filter: Find entities matching all specified attributes
+- Apply map viewport boundary filter
+- Apply "Open Now" filter if enabled
+- Rank: By entity global quality score
+- Example: "best vegan dessert" returns highest-quality vegan dessert dish/restaurant pairs in map area
+- Example: "best patio brunch spot" returns highest-quality brunch restaurants with patios in map area
 
-5. Broad Queries
-   - Filter: Find all dish or restaurant entities
-   - Rank: By entity global quality score
-   - Example: "best dishes" returns highest-quality dishes
+_Note: "entities" refers to dish/restaurant pairs or a restaurants_
+
+##### 5. Broad Queries
+
+- Filter: Find all dish or restaurant entities
+- Rank: By entity global quality score
+- Example: "best dishes" returns highest-quality dishes
 
 ### 4.3 Runtime Filters
 
 Applied during query processing:
 
-- Location constraints (using stored coordinates)
-- Availability checks (using stored hours data)
-- Time-sensitive adjustments
+##### 1. Map Viewport Boundary Filter
+
+- Applied to all queries
+- Uses viewport coordinates from client
+- Applied before ranking to improve performance
+
+##### 2. Open Now Filter
+
+- Only applied when toggle is enabled
+- Checks current time against stored hours data
+- Applied before ranking to improve performance
 
 ## 5. Technology Stack
 
