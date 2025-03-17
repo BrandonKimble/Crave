@@ -124,7 +124,6 @@ _Note: All post-launch features require a mature database with substantial conne
 - Specific Price Points: "under $15"
 - Ingredient Exclusions: "peanut free pad thai"
 
-
 ### 1.4 Natural Language Processing via LLM Integration
 
 #### Query Understanding & Processing
