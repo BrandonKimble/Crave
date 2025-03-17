@@ -65,7 +65,7 @@ _Note: All queries are processed through entity matching and graph traversal, wi
   - With venue-specific: "best dishes at vegan restaurants"
   - With broad: "best patio restaurants", "best brunch"
 
-#### Entity Attribute System
+#### Attribute-Entity System
 
 ##### Implementation Strategy:
 
@@ -92,7 +92,7 @@ Will likely include but not limited to:
 
 - Time & Occasion:
 
-  - Meal Periods: breakfast, brunch, lunch, dinner, late night, etc.
+  - Meal Periods: breakfast, brunch, lunch, dinner, late night, sunday brunch, dessert, etc.
   - Special Times: happy hour, daily specials, weekend specials, etc.
   - Events: date night, business lunch, family dining, etc.
 
@@ -122,9 +122,8 @@ _Note: All post-launch features require a mature database with substantial conne
 
 - Dish Modifications: "ramen with no egg"
 - Specific Price Points: "under $15"
-- Ingredient Exclusions: "dairy free pad thai"
-- Portion Specifications: "large portions"
-- Custom Combinations: "extra crispy"
+- Ingredient Exclusions: "peanut free pad thai"
+
 
 ### 1.4 Natural Language Processing via LLM Integration
 
@@ -152,11 +151,11 @@ Processing Tasks:
 
 Processing Tasks:
 
-- Entity extraction (restaurants, dishes, attributes)
+- Entity extraction (restaurants, dishes, dish categories, attributes)
 - Relationship identification (serves, is_a, has_attribute)
+- Inference-based attribute and dish category assignment
   - **Create specific and general dish category entities** (e.g., "french dip", not just "sandwich")
   - Allow entities to emerge organically from community mentions
-- Infer likely attributes and connection types from content
 - Sentiment analysis (positive/negative classification)
   - Discard negative sentiment content
 - Connection mapping between entities
@@ -177,36 +176,43 @@ Processing Tasks:
 
 ##### 1. Entities Table
 
-- Entity ID
-- Name (canonical)
-- Type (restaurant, dish, category, attribute)
-- Aliases (known variations)
-- Basic info from Google Places API (for restaurants: location, hours, etc.)
-- Global quality score (pre-computed for restaurants and dishes)
-- Entity metadata (when relevant)
+- entity id
+- name (canonical)
+- type (restaurant, dish, category, attribute)
+- aliases (known variations)
+- basic info from google places api (for restaurants: location, hours, etc.)
+- global quality score (pre-computed for restaurants and dishes)
+- entity metadata (when relevant)
+- last updated timestamp
+- created at timestamp
 
 ##### 2. Connections Table
 
-- Connection ID
-- From Entity ID
-- To Entity ID
-- Relationship Type (serves, is_a, has_attribute)
-- Raw metrics:
-  - Mention count
-  - Total upvotes
-  - Source diversity count
-  - Most recent mention timestamp
-- Last updated timestamp
+- connection id
+- from entity id
+- to entity id
+- relationship type (serves, is_a, has_attribute)
+- raw metrics:
+  - mention count
+  - total upvotes
+  - source diversity (thread count)
+  - avg of age of 5 most recent mentions
+  - top 5-10 mentions
+    - mention id
+    - content
+    - upvotes
+- last updated timestamp
+- created at timestamp
 
 ##### 3. Mentions Table
 
-- Mention ID
-- Connection ID
-- Source (post/comment ID)
-- Content excerpt
-- Author
-- Upvotes
-- Timestamp
+- mention id
+- connection id
+- source (post/comment id)
+- content excerpt
+- author
+- upvotes
+- created at timestamp
 
 _Note: Global quality scores are pre-computed during data processing and used as the primary ranking factor_
 
@@ -269,7 +275,7 @@ Regardless of cycle type, all background collection follows this process:
 
 2. **Data Retrieval**
 
-- Call Reddit API with entity or attribute-specific search terms
+- Call Reddit API with entity-specific search terms
 - Fetch complete posts and comment threads
 - Store post/comment IDs for future direct access
 - Optimize API usage through batching
@@ -372,29 +378,54 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
   - Quality scores become more reliable with additional data
   - Entity relationships develop natural patterns based on community knowledge
 
-### 2.4 Entity Name Variation Handling
+### 2.4 Entity Resolution System
 
-To ensure accurate metrics and search functionality:
+To ensure accurate metrics and search functionality, the system employs a multi-phase approach to name variations of all entity types: restaurants, dishes, attributes, and dish categories:
 
-1. **Entity Resolution During Ingestion**:
+#### 2.4.2 Resolution Process Flow
 
-   - LLM identifies potential variations of the same entity
-   - System considers candidate matches for resolution
+##### Phase 1: LLM Entity Extraction & Normalization
 
-2. **Canonical Entity Structure**:
+During data collection, the LLM:
 
-   - Each entity has a canonical name in the Entities table
-   - Known variations stored as aliases
-   - All mentions map to the same entity regardless of reference style
+- Extracts raw entity mentions from content
+- Normalizes spelling, formatting, and common variations
+- Provides both raw text and normalized version
 
-3. **Fuzzy Matching**:
+##### Phase 2: Database Entity Resolution (Server-Side)
 
-   - Implement similarity algorithms for detecting spelling variations
-   - Apply during both data ingestion and query processing
+For each normalized entity from the LLM:
 
-4. **Contextual Disambiguation**:
-   - Use location, related entities, and other contextual clues
-   - Progressively refine entity resolution as more evidence emerges
+1. Matching Algorithm
+
+- Check for exact match against canonical names
+- If no match, check for exact match against aliases
+- If no match, apply fuzzy matching with Levenshtein distance
+
+2. Resolution Decision
+
+- High confidence match (>0.85): Merge with existing entity
+- Medium confidence (0.7-0.85): Apply heuristic rules or flag for review
+- Low confidence (<0.7): Create new entity
+
+3. Alias Management
+
+- When merging with existing entity, add raw text as new alias if not exists
+- Periodically consolidate aliases to avoid duplication
+
+##### 2.4.3 Query Processing Application
+
+The same entity resolution process applies during user queries:
+
+1. LLM normalizes user query terms
+2. System matches against canonical names and aliases
+3. System expands search to include all matching entities and their aliases
+
+Example:
+
+- User searches: "best food at tatsuyas"
+- System identifies "tatsuyas" as alias for "Ramen Tatsu-Ya"
+- Query processes as venue-specific search for this canonical entity
 
 ### 2.5 Caching Strategy
 
@@ -579,7 +610,6 @@ Applied during query processing:
 
 - Location constraints (using stored coordinates)
 - Availability checks (using stored hours data)
-- Distance calculations
 - Time-sensitive adjustments
 
 ## 5. Technology Stack
