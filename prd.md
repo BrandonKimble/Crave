@@ -41,9 +41,9 @@ Our search functionality focuses on core value-driving features at launch, with 
 _Note: All queries are processed through entity matching and graph traversal, without need for specialized search engines._
 
 - **Dish-specific**: "best ramen", "best chicken caesar wrap"
+- **Category-specific queries**: "best sandwiches in Austin"
 - **Venue-specific**: "best dishes at Franklin BBQ"
 - **Dish-level broad queries**: "best dishes in Austin"
-- **Category-specific queries**: "best sandwiches in Austin"
 
 #### Location & Availability
 
@@ -89,10 +89,10 @@ Enabled by Google Maps/Places API integration and attribute-based filtering:
 
 Will likely include but not limited to:
 
-- Cuisine Categories:
+- Dish Categories:
 
   - Regional: thai, japanese, chinese, mexican, italian, mediterranean, etc.
-  - Dish Types: sandwich, noodles, tacos, ramen, sushi, pizza, burger, etc.
+  - Dish Types: sandwich, noodles, tacos, ramen, sushi, pizza, burger, dessert, etc.
   - Preparation: grilled, fried, raw, smoked, etc.
 
 - Dietary Preferences & Restrictions:
@@ -589,14 +589,14 @@ For Dishes:
 
 - ##### List View: Scrollable results with:
 
-  - Name of dish/restaurant pair
+  - Name of dish-restaurant pair
   - Global quality score representation
   - Supporting evidence (top mentions, connection metrics)
   - Open/closed status
 
 - ##### Detail View: Expanded information on selection
 
-  - Name of dish/restaurant pair
+  - Name of dish-restaurant pair
   - Complete evidence display
   - All connected entities, top mentions, connection metrics
   - Operating hours
@@ -606,13 +606,22 @@ For Dishes:
 
 #### Adapts based on query specificity:
 
-##### 1. Dish-Specific Queries
+##### 1. Dish Queries
 
-- Filter: Find dishe/restaurant pair connected to the specified dish or category
+- Filter: Find dish-restaurant pair connected to the specified dish or category
 - Apply map viewport boundary filter
 - Apply "Open Now" filter if enabled
+- Return: Dish-restaurant pairs
 - Rank: By dish global quality score
-- Example: "best ramen" returns highest-quality ramen dishes in map area
+- Example: "best ramen" returns highest-quality ramen dishes
+
+##### 1.1 Dish-Category Queries
+
+- Filter: Find entities connected to the specified dish category
+- Apply map viewport boundary filter
+- Apply "Open Now" filter if enabled
+- Rank: By entity global quality score
+- Example: "best sandwiches in Austin" returns highest-quality sandwiche entities
 
 ##### 2. Venue-Specific Queries
 
@@ -626,24 +635,25 @@ For Dishes:
 - Apply map viewport boundary filter
 - Apply "Open Now" filter if enabled
 - Rank: By entity global quality score
-- Example: "best patio restaurants" returns highest-quality restaurants with patios in map area
+- Example: "best patio restaurants" returns highest-quality restaurants with patios
 
-##### 4. Compound Queries
+##### 4. Broad Queries
+
+- Filter: Find all dish or restaurant entities
+- Rank: By entity global quality score
+- Example: "best dishes" or "best food" returns highest-quality dishes
+
+##### 5. Compound Queries
 
 - Filter: Find entities matching all specified attributes
 - Apply map viewport boundary filter
 - Apply "Open Now" filter if enabled
 - Rank: By entity global quality score
-- Example: "best vegan dessert" returns highest-quality vegan dessert dish/restaurant pairs in map area
-- Example: "best patio brunch spot" returns highest-quality brunch restaurants with patios in map area
+- Example: "best vegan dessert" returns highest-quality vegan dessert dish-restaurant pairs
+- Example: "best patio brunch spot" returns highest-quality brunch restaurants with patios
+- Example: "best vegan food" returns highest-quality vegan dishes
 
-_Note: "entities" refers to dish/restaurant pairs or a restaurants_
-
-##### 5. Broad Queries
-
-- Filter: Find all dish or restaurant entities
-- Rank: By entity global quality score
-- Example: "best dishes" returns highest-quality dishes
+_Note: "entities" refers to dish-restaurant pairs or a restaurants_
 
 ### 4.3 Runtime Filters
 
