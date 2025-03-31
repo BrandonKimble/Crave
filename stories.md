@@ -9,6 +9,7 @@
 **So that I can reliably collect community data while respecting API constraints**
 
 #### Acceptance Criteria:
+
 - Reddit API authentication configured using OAuth
 - Rate limiting handling implemented (100 req/min limit)
 - Error handling for API failures with exponential backoff
@@ -17,6 +18,7 @@
 - Store post/comment IDs for direct future access
 
 #### Technical Scope:
+
 - Reddit API client implementation with authentication
 - Rate limiting middleware with queue management
 - Retry mechanism for failed requests
@@ -24,6 +26,7 @@
 - API response validation and error handling
 
 #### Scaling Considerations:
+
 - Implement cost tracking to forecast API expenses as usage grows
 - Design rate limiting to handle multiple concurrent collection processes
 - Plan for handling subreddits with 100K+ posts and comments
@@ -35,6 +38,7 @@
 **So that I can build a comprehensive knowledge base while minimizing API calls**
 
 #### Acceptance Criteria:
+
 - Implement search functionality for posts by keywords and entities
 - Fetch complete comment threads maintaining parent-child relationships
 - Store raw post and comment data with proper indexing
@@ -43,6 +47,7 @@
 - Store post/comment IDs to enable direct future access
 
 #### Technical Scope:
+
 - Reddit search implementation with pagination
 - Comment tree retrieval and hierarchical storage
 - Database schema for Reddit content
@@ -50,6 +55,7 @@
 - Post/comment ID indexing for future reference
 
 #### Scaling Considerations:
+
 - Design for handling hundreds of thousands of posts and comments
 - Implement data retention policies for storage optimization
 - Create indexes optimized for the types of searches needed
@@ -61,6 +67,7 @@
 **So that I can transform raw Reddit content into structured knowledge**
 
 #### Acceptance Criteria:
+
 - Integration with Gemini or Deepseek LLM API
 - Prompt engineering for entity extraction
 - Implement efficient batching to optimize token usage
@@ -69,6 +76,7 @@
 - Infer dish categories even when not explicitly stated
 
 #### Technical Scope:
+
 - LLM client implementation with error handling
 - Prompt template management system
 - Content chunking for optimal token usage
@@ -76,6 +84,7 @@
 - Content preprocessing to improve extraction accuracy
 
 #### Scaling Considerations:
+
 - Design for handling increasing volumes of text efficiently
 - Implement cost optimization strategies for LLM API
 - Create monitoring for extraction quality over time
@@ -87,6 +96,7 @@
 **So that I can maintain accurate relationship metrics and avoid duplicates**
 
 #### Acceptance Criteria:
+
 - Implement storage for both canonical names and aliases
 - Process LLM's normalized text against existing entities
 - Implement exact matching against canonical names and aliases
@@ -96,6 +106,7 @@
 - Apply resolution to all entity types (restaurants, dishes, categories, attributes)
 
 #### Technical Scope:
+
 - Alias storage system within the entities table
 - Matching algorithm implementation with tiered confidence
 - Fuzzy matching integration with configurable thresholds
@@ -103,6 +114,7 @@
 - Quality metrics for entity resolution performance
 
 #### Scaling Considerations:
+
 - Optimize matching algorithms for large entity databases
 - Implement periodic alias consolidation for performance
 - Design resolution system to improve with more data
@@ -114,6 +126,7 @@
 **So that I can represent the relationships between entities accurately**
 
 #### Acceptance Criteria:
+
 - Implement the Entities table with all required fields
 - Implement the Connections table for relationship storage
 - Implement the Mentions table for evidence storage
@@ -123,6 +136,7 @@
 - Ensure proper indexing for efficient relationship queries
 
 #### Technical Scope:
+
 - Database schema implementation for the graph model
 - Entity type system implementation
 - Relationship type system implementation
@@ -131,6 +145,7 @@
 - Transaction management for graph updates
 
 #### Scaling Considerations:
+
 - Design indexes for efficient traversal of large graphs
 - Implement partitioning strategy for mentions table
 - Plan for handling millions of entities and connections
@@ -142,6 +157,7 @@
 **So that dishes can be properly categorized for searches**
 
 #### Acceptance Criteria:
+
 - Extract specific and general dish categories from mentions
 - Create dish-to-category connections of type "is_a"
 - Infer hierarchical category relationships from context
@@ -150,6 +166,7 @@
 - Infer categories for dishes even when categories aren't explicitly mentioned
 
 #### Technical Scope:
+
 - LLM prompt enhancement for category inference
 - Category hierarchy extraction logic
 - Connection creation for category relationships
@@ -157,6 +174,7 @@
 - Index optimization for category searches
 
 #### Scaling Considerations:
+
 - Design for organically growing category system
 - Implement monitoring for category accuracy
 - Create strategy for handling evolving category terms
@@ -168,6 +186,7 @@
 **So that I can systematically build the knowledge graph**
 
 #### Acceptance Criteria:
+
 - Identify and select all entities created but not yet enriched
 - Implement batch processing to optimize API usage
 - Create search terms based on entity names and aliases
@@ -178,6 +197,7 @@
 - Schedule jobs to run during off-peak hours
 
 #### Technical Scope:
+
 - Background job implementation for weekly cycles
 - Entity selection query optimization
 - Batch processing implementation
@@ -186,6 +206,7 @@
 - Scheduling system for regular execution
 
 #### Scaling Considerations:
+
 - Design for processing increasing volumes of new entities
 - Implement circuit breakers to prevent excessive API usage
 - Create monitoring system for cycle performance
@@ -197,6 +218,7 @@
 **So that I can keep the knowledge graph up-to-date**
 
 #### Acceptance Criteria:
+
 - Select all existing entities, prioritizing those with oldest data
 - Implement batch processing for efficient API usage
 - Retrieve and process new content since last update
@@ -206,6 +228,7 @@
 - Schedule jobs to distribute load over time
 
 #### Technical Scope:
+
 - Background job implementation for quarterly cycles
 - Entity prioritization algorithm
 - Delta-based content retrieval (only get new content)
@@ -214,6 +237,7 @@
 - Progress tracking and reporting
 
 #### Scaling Considerations:
+
 - Design for processing millions of entities efficiently
 - Implement partitioning strategy for large refreshes
 - Create fallback mechanisms for interrupted processes
@@ -225,6 +249,7 @@
 **So that I can enrich restaurant entities with location and operational data**
 
 #### Acceptance Criteria:
+
 - Google Places API authentication configured
 - Implement search functionality to find place details
 - Extract location coordinates for spatial queries
@@ -235,6 +260,7 @@
 - Update restaurant entities with Google Places data
 
 #### Technical Scope:
+
 - Google Places API client implementation
 - Restaurant entity matching with Places API
 - Location data extraction and formatting
@@ -243,6 +269,7 @@
 - Periodic update mechanism
 
 #### Scaling Considerations:
+
 - Design for cost-effective API usage
 - Implement caching for frequently accessed places
 - Create update strategy based on data freshness needs
@@ -254,6 +281,7 @@
 **So that I can enhance results for user queries in real-time**
 
 #### Acceptance Criteria:
+
 - Implement criteria to detect insufficient query results
 - Create targeted Reddit search based on query terms
 - Process content using the same LLM pipeline as background collection
@@ -263,6 +291,7 @@
 - Store new entities for later enrichment by weekly cycle
 
 #### Technical Scope:
+
 - Query result quality assessment
 - Targeted search implementation
 - Real-time processing optimization
@@ -270,6 +299,7 @@
 - Background job creation for newly discovered entities
 
 #### Scaling Considerations:
+
 - Design for concurrent on-demand collection requests
 - Implement result caching to prevent duplicate requests
 - Create circuit breakers to prevent API overuse
@@ -283,6 +313,7 @@
 **So that I can calculate meaningful quality scores and provide evidence to users**
 
 #### Acceptance Criteria:
+
 - Store mention count with each connection
 - Track total upvotes across all mentions
 - Calculate source diversity (unique threads/posts)
@@ -292,6 +323,7 @@
 - Ensure efficient retrieval of metrics for score calculation
 
 #### Technical Scope:
+
 - Metrics storage schema optimization
 - Incremental update operations
 - Top mention selection algorithm
@@ -299,6 +331,7 @@
 - Batched metrics update operations
 
 #### Scaling Considerations:
+
 - Design for high-volume metrics processing
 - Implement metrics compression for older data
 - Create performance monitoring for metric operations
@@ -310,6 +343,7 @@
 **So that I can rank restaurants accurately across different queries**
 
 #### Acceptance Criteria:
+
 - Calculate primary component (80%) based on:
   - Top 3-5 dish connections by strength
   - Direct connections to food categories
@@ -322,6 +356,7 @@
 - Implement score version tracking for consistency
 
 #### Technical Scope:
+
 - Score calculation algorithm implementation
 - Top dish identification algorithm
 - Menu breadth assessment method
@@ -330,6 +365,7 @@
 - Version tracking implementation
 
 #### Scaling Considerations:
+
 - Design for efficient batch recalculation
 - Implement background jobs for score updates
 - Create monitoring for score distribution and trends
@@ -341,6 +377,7 @@
 **So that I can rank dishes accurately across different queries**
 
 #### Acceptance Criteria:
+
 - Calculate primary component (85-90%) based on:
   - Dish-restaurant mentions
   - Dish-category mentions
@@ -353,6 +390,7 @@
 - Implement score version tracking for consistency
 
 #### Technical Scope:
+
 - Score calculation algorithm implementation
 - Mention aggregation method
 - Restaurant context integration
@@ -361,6 +399,7 @@
 - Version tracking implementation
 
 #### Scaling Considerations:
+
 - Design for efficient batch recalculation
 - Implement background jobs for score updates
 - Create monitoring for score distribution and trends
@@ -372,6 +411,7 @@
 **So that rankings remain accurate as new data is collected**
 
 #### Acceptance Criteria:
+
 - Trigger score updates when connections are significantly modified
 - Implement incremental score updates for efficiency
 - Schedule periodic full recalculation for consistency
@@ -380,6 +420,7 @@
 - Ensure score freshness for query-time ranking
 
 #### Technical Scope:
+
 - Change detection for connection metrics
 - Incremental update algorithm
 - Full recalculation job implementation
@@ -387,6 +428,7 @@
 - Performance optimization for update operations
 
 #### Scaling Considerations:
+
 - Design for processing millions of score updates efficiently
 - Implement prioritization for update operations
 - Create monitoring for update performance and frequency
@@ -400,6 +442,7 @@
 **So that I can route queries to the appropriate processing paths**
 
 #### Acceptance Criteria:
+
 - Identify query type (dish-specific, venue-specific, attribute-specific, broad)
 - Extract primary entities (dishes, restaurants, attributes)
 - Normalize entity terms for matching
@@ -409,6 +452,7 @@
 - Output structured query parameters for database operations
 
 #### Technical Scope:
+
 - LLM integration for query analysis
 - Intent classification algorithm
 - Entity extraction and normalization
@@ -417,6 +461,7 @@
 - Validation and error handling
 
 #### Scaling Considerations:
+
 - Design for sub-100ms response time
 - Implement caching for similar queries
 - Create performance monitoring for query processing
@@ -428,6 +473,7 @@
 **So that users see recommendations relevant to their area of interest**
 
 #### Acceptance Criteria:
+
 - Accept viewport coordinates (NE and SW bounds) from client
 - Filter restaurant entities within the specified boundaries
 - Optimize spatial queries for performance
@@ -436,6 +482,7 @@
 - Support for different zoom levels and viewports
 
 #### Technical Scope:
+
 - Spatial query implementation
 - Geo-index optimization
 - Boundary validation
@@ -443,6 +490,7 @@
 - Result limiting based on viewport size
 
 #### Scaling Considerations:
+
 - Design indices for efficient spatial queries
 - Implement viewport size-based optimization
 - Create strategy for handling dense urban areas
@@ -454,6 +502,7 @@
 **So that users can find available options**
 
 #### Acceptance Criteria:
+
 - Implement "Open Now" toggle in query processing
 - Compare current time against stored operating hours
 - Handle timezone differences correctly
@@ -462,6 +511,7 @@
 - Ensure operating hours data is kept up-to-date
 
 #### Technical Scope:
+
 - Time comparison algorithm
 - Operating hours data structure
 - Timezone handling
@@ -469,6 +519,7 @@
 - Performance optimization for time-based filtering
 
 #### Scaling Considerations:
+
 - Design for efficient batch filtering
 - Implement hours data refresh strategy
 - Create monitoring for hours data accuracy
@@ -480,6 +531,7 @@
 **So that users can find options matching specific criteria**
 
 #### Acceptance Criteria:
+
 - Filter entities based on connections to attribute entities
 - Process time/occasion terms (brunch, happy hour) as attributes
 - Combine multiple attribute filters correctly
@@ -487,12 +539,14 @@
 - Handle category-based filtering consistently with attribute filtering
 
 #### Technical Scope:
+
 - Graph traversal implementation for attribute filtering
 - Multiple attribute combination logic
 - Query optimization for attribute-based filtering
 - Category and attribute unified processing
 
 #### Scaling Considerations:
+
 - Design for efficient filtering with multiple attributes
 - Implement indexing strategy for common attribute combinations
 - Create monitoring for attribute filter performance
@@ -504,6 +558,7 @@
 **So that I can find the most relevant entities based on query intent**
 
 #### Acceptance Criteria:
+
 - Implement query builders for each query type
 - Create traversal patterns for dish-specific queries
 - Create traversal patterns for venue-specific queries
@@ -513,6 +568,7 @@
 - Optimize query execution plan for performance
 
 #### Technical Scope:
+
 - SQL query generation for graph traversal
 - Query templating system for different query types
 - Parameter binding for secure queries
@@ -520,6 +576,7 @@
 - Performance monitoring and logging
 
 #### Scaling Considerations:
+
 - Design queries to scale with growing graph size
 - Implement query plan caching
 - Create monitoring for query performance across types
@@ -531,6 +588,7 @@
 **So that users see the most relevant recommendations first**
 
 #### Acceptance Criteria:
+
 - Apply global quality score ranking to filtered results
 - Format results with restaurant and dish information
 - Include connection metrics and evidence with results
@@ -539,6 +597,7 @@
 - Indicate open/closed status on results
 
 #### Technical Scope:
+
 - Result ranking algorithm implementation
 - Result formatting and transformation
 - Evidence compilation for display
@@ -546,6 +605,7 @@
 - Performance optimization for large result sets
 
 #### Scaling Considerations:
+
 - Design for handling large result sets efficiently
 - Implement pagination for performance
 - Create monitoring for ranking quality
@@ -557,6 +617,7 @@
 **So that I can provide fast responses and reduce API costs**
 
 #### Acceptance Criteria:
+
 - Implement hot query cache (1 hour retention)
 - Implement recent search results cache (24 hour retention)
 - Implement static data cache (7 day retention)
@@ -565,6 +626,7 @@
 - Implement cache warming for popular queries
 
 #### Technical Scope:
+
 - Redis cache implementation
 - Cache key generation strategy
 - TTL management for different cache types
@@ -573,6 +635,7 @@
 - Warming job implementation
 
 #### Scaling Considerations:
+
 - Design for distributed caching as traffic grows
 - Implement memory management for cache growth
 - Create monitoring for cache performance metrics
@@ -586,6 +649,7 @@
 **So that users understand why recommendations are being made**
 
 #### Acceptance Criteria:
+
 - Select top mentions by upvotes for each result
 - Include mention metrics (count, total upvotes, source diversity)
 - Format mention content for display
@@ -594,6 +658,7 @@
 - Prioritize recent and highly-upvoted mentions
 
 #### Technical Scope:
+
 - Evidence selection algorithm
 - Content formatting for display
 - Relevance ranking for mentions
@@ -601,6 +666,7 @@
 - Performance optimization for evidence compilation
 
 #### Scaling Considerations:
+
 - Design for efficient evidence compilation at scale
 - Implement evidence caching strategy
 - Create monitoring for evidence quality and relevance
@@ -612,6 +678,7 @@
 **So that users understand the connections in recommendations**
 
 #### Acceptance Criteria:
+
 - Display restaurant-dish connections with evidence
 - Display dish-category connections with evidence
 - Display entity-attribute connections with evidence
@@ -620,6 +687,7 @@
 - Highlight particularly strong relationships
 
 #### Technical Scope:
+
 - Relationship evidence compilation
 - Strength indicator design
 - Display formatting implementation
@@ -627,6 +695,7 @@
 - Performance optimization for relationship data
 
 #### Scaling Considerations:
+
 - Design for efficient relationship data retrieval
 - Implement progressive loading for complex relationships
 - Create monitoring for relationship display performance
@@ -638,6 +707,7 @@
 **So that users have actionable information about recommendations**
 
 #### Acceptance Criteria:
+
 - Display location and map integration
 - Show current operating hours with open/closed status
 - Provide links to ordering/reservation platforms
@@ -646,6 +716,7 @@
 - Show price level indicator when available
 
 #### Technical Scope:
+
 - Google Places data integration
 - Operating hours formatting
 - Deep linking to ordering/reservation platforms
@@ -653,6 +724,7 @@
 - Map integration implementation
 
 #### Scaling Considerations:
+
 - Design for efficient place details retrieval
 - Implement caching strategy for place details
 - Create monitoring for place data freshness
