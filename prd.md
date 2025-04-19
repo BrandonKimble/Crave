@@ -389,7 +389,7 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
 
 ### 2.4 Entity Resolution System
 
-To ensure accurate metrics and search functionality, the system employs a multi-phase approach to name variations of all entity types: restaurants, dishes, attributes, and dish categories:
+To aviod duplicate entities and ensure accurate metrics and search functionality, the system employs a multi-phase approach to handle name variations of all entity types: restaurants, dishes, attributes, and dish categories:
 
 #### 2.4.2 Resolution Process Flow
 
