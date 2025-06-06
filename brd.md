@@ -33,7 +33,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 
 #### Basic Categories ($3.99)
 
-*No Discovery Feed for Basic Tier*
+_No Discovery Feed for Basic Tier_
 
 #### Premium Categories ($9.99 Tier)
 
