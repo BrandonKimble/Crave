@@ -31,14 +31,11 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 
 ### 2.2 Discovery Feed
 
-#### Basic Categories (99¢)
+#### Basic Categories ($3.99)
 
-- Recently Discussed: "This birria taco truck is getting attention (23 mentions this week)"
-- Quick Bites: "Most mentioned casual spots this week"
-- Hidden Gems: "These dishes are quietly gaining traction"
-- Community Highlights: "Recent mentions that caught our eye"
+*No Discovery Feed for Basic Tier*
 
-#### Premium Categories ($7.99 Tier)
+#### Premium Categories ($9.99 Tier)
 
 - Trending Deep Dives: "Why everyone's talking about this new ramen spot"
 - Neighborhood Insights: "South Austin's rising stars"
@@ -53,9 +50,20 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Trending Searches
 - Popular Categories
 
-### 2.3 Feature Tiers
+### 2.3 Bookmarking System
 
-#### Basic Tier (99¢/month)
+- **Dish-Centric Lists:**
+  - Save specific dishes with restaurant context
+  - Add personal notes
+  - Share curated dish lists
+  - Examples:
+    - "My Austin Taco Journey"
+    - "Best Business Lunch Spots"
+    - "Date Night Winners"
+
+### 2.4 Feature Tiers
+
+#### Basic Tier ($3.99/month)
 
 - Full search functionality
 - Basic result display
@@ -63,7 +71,7 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - List sharing capability
 - Google Maps/ordering links
 
-#### Premium Tier ($7.99/month)
+#### Premium Tier ($9.99/month)
 
 **Core Value Props:**
 
@@ -84,17 +92,6 @@ Evidence-based food discovery powered by community knowledge, emphasizing social
 - Advanced Search History
 - Personal Food Maps
 - Early Trend Access
-
-### 2.4 Bookmarking System
-
-- **Dish-Centric Lists:**
-  - Save specific dishes with restaurant context
-  - Add personal notes
-  - Share curated dish lists
-  - Examples:
-    - "My Austin Taco Journey"
-    - "Best Business Lunch Spots"
-    - "Date Night Winners"
 
 ## 3. Restaurant Partnership Program
 
