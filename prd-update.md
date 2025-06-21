@@ -44,7 +44,7 @@ _These sections function together as a logical processing flow for the LLM: firs
       "temp_id": "string",
       "restaurant": {
         "normalized_name": "string",
-        "original_text": "string",
+        "original_text": "string" | null,
         "temp_id": "string"
       },
       "restaurant_attributes": ["string"] | null,
@@ -211,6 +211,10 @@ Examples:
 
 _Apply these rules only to food-related compound terms, not restaurant names or other entities._
 
+#### Attribute Exclusion Principle
+
+Before applying compound term processing to food mentions, exclude any terms that are preparation methods, cooking styles, dietary restrictions, cuisines meal periods, or serving formats. Apply compound term processing only to remaining food substance terms.
+
 #### Complete Preservation Rule
 
 Always store the complete compound food term as primary category in singular form, **excluding any terms identified as attributes**.
@@ -223,10 +227,6 @@ Create all meaningful food noun combinations as additional categories:
 - Convert all category terms to singular form
 - Include parent categories when term represents specific subtype
 - **Exclude any terms identified as attributes from decomposition**
-
-#### Attribute Exclusion Principle
-
-Before applying compound term processing to food mentions, exclude any terms that are preparation methods, cooking styles, dietary restrictions, cuisines, or meal periods. Apply compound term processing only to remaining food substance terms.
 
 Examples:
 
