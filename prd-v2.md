@@ -762,8 +762,8 @@ src/
 **Content Processing**: Handles all aspects of ingesting and analyzing community content
 
 - **Workflow Orchestration**: Coordinate reddit-collector → llm-processor → entity-resolver workflow
-- **Score Computation**: Calculate global quality scores after connection metrics are updated
 - **Metric Aggregation**: Update connection metrics when new mentions are processed
+- **Score Computation**: Calculate global quality scores after connection metrics are updated
 - **Background Job Management**: Schedule and manage systematic content processing operations
 
 **Search & Discovery**: Manages query processing and result delivery using pre-computed data
@@ -787,14 +787,14 @@ src/
 
 **Event-Driven Communication**:
 
-- **Asynchronous operations**: Use events for background processing and cross-module notifications
-- **Score update events**: Emit events when process-orchestrator completes mention processing to trigger downstream updates
+- **Asynchronous operations**: If performant, use events for background processing and cross-module notifications
+- **Score update events**: If performant, eit events when process-orchestrator completes mention processing to trigger downstream updates
 - **User activity events**: Track search patterns and bookmark changes for personalization
 - **Decoupled notifications**: Use event bus for sending alerts and updates without tight coupling
 
 **Performance-First Architecture**:
 
-- **Pre-computed rankings**: Calculate all scores during content processing, not query time
+- **Pre-computed rankings**: Calculate all scores right after each content processing cycle, not query time
 - **Strategic caching**: Cache at multiple levels (query results, entity data, computed scores)
 - **Bulk operations**: Process entities and mentions in batches for database efficiency
 - **Background processing**: Move heavy computation (LLM analysis, score calculation) to process-orchestrator

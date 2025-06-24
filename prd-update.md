@@ -50,7 +50,7 @@ _These sections function together as a logical processing flow for the LLM: firs
       "restaurant_attributes": ["string"] | null,
       "dish_or_category": {
         "normalized_name": "string",
-        "original_text": "string",
+        "original_text": "string" | null,
         "temp_id": "string"
       } | null,
       "dish_attributes": [
@@ -98,19 +98,19 @@ _These sections function together as a logical processing flow for the LLM: firs
     "restaurants": [
       {
         "normalized_name": "string",
-        "original_text": "string"
+        "original_text": "string" | null,
       }
     ],
     "dish_or_categories": [
       {
         "normalized_name": "string",
-        "original_text": "string"
+        "original_text": "string" | null,
       }
     ],
     "attributes": [
       {
         "normalized_name": "string",
-        "original_text": "string",
+        "original_text": "string" | null,
         "scope": "restaurant|dish"
       }
     ]
@@ -591,7 +591,7 @@ Each template has well-defined extension points for filters, ordering, and other
 
 **Single List Returns:**
 
-- **Dish-specific queries:** Return only dish list
+- **Dish-specific queries:** Return only dish list from many restaurants
 - **Venue-specific queries:** Return only dish list for that venue
 
 **Dual List Returns:**
