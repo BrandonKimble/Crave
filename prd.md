@@ -747,37 +747,44 @@ The system processes queries through LLM analysis (see llm_guideline.md) to into
 ### 4.4 Standardized Return Formats
 
 #### Return Format Strategy
+
 The system uses a standardized approach to query responses that balances user expectations with implementation efficiency, ensuring consistent UI patterns while optimizing for different query intents.
 
 #### Single List Returns
+
 - **Dish-specific queries:** Return only dish list with parent restaurant context
-  - *Rationale*: Users want specific dish options, restaurant info serves as context
-  - *Example*: "best ramen" → List of ramen dishes with restaurant details
+  - _Rationale_: Users want specific dish options, restaurant info serves as context
+  - _Example_: "best ramen" → List of ramen dishes with restaurant details
 - **Venue-specific queries:** Return only dish list for that venue
-  - *Rationale*: Users already know the restaurant, want to discover their best dishes
-  - *Example*: "best dishes at Franklin BBQ" → List of Franklin's top dishes
+  - _Rationale_: Users already know the restaurant, want to discover their best dishes
+  - _Example_: "best dishes at Franklin BBQ" → List of Franklin's top dishes
 
 #### Dual List Returns
+
 - **Category-specific queries:** Return both dish list (dishes in category) and restaurant list (restaurants ranked by performance of their dishes in that category)
-- **Attribute-specific queries:** Return both dish list (dishes with attribute) and restaurant list (restaurants ranked by performance of their dishes with that attribute)  
+- **Attribute-specific queries:** Return both dish list (dishes with attribute) and restaurant list (restaurants ranked by performance of their dishes with that attribute)
 - **Broad queries:** Return both dish list (top dishes) and restaurant list (restaurants ranked by overall dish performance)
 
-*Rationale*: Users benefit from seeing both specific options and overall venue performance for discovery and decision-making flexibility.
+_Rationale_: Users benefit from seeing both specific options and overall venue performance for discovery and decision-making flexibility.
 
 #### Restaurant Ranking Methodology
+
 - **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant dish quality scores
 - **Contextual relevance**: Only dishes matching the query criteria contribute to restaurant ranking
 - **Category mention boost**: Direct restaurant-category praise enhances aggregated dish scores
 - **Recency weighting**: Recent performance weighted more heavily than historical data
 
 #### Implementation Benefits
+
 - **Consistent UI pattern**: Users see both specific dishes and overall restaurant performance across query types
 - **Predictable responses**: Frontend can handle all queries with the same rendering components
 - **Flexible user flow**: Users can choose between specific dishes or explore restaurants holistically
 - **Performance optimization**: Single database query pattern generates both lists simultaneously
 
 #### Result Structure Consistency
+
 Each result format maintains consistent data structure for seamless UI integration:
+
 - Dish results always include restaurant context and evidence
 - Restaurant results always include relevant dish examples and performance metrics
 - Both formats include location, hours, and availability status
