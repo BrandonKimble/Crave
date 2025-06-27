@@ -964,6 +964,7 @@ Each specialized template includes consistent extension points for:
 - **Query plan caching**: Database maintains optimized execution plans for each template pattern
 
 #### Example Query Flow
+
 **Query: "best vegan ramen downtown"**
 
 1. **LLM Analysis**: Primary intent = Dish-Specific ("ramen"), Filters = attribute ("vegan") + location ("downtown")
