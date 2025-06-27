@@ -2,31 +2,10 @@
 
 ## Overview
 
-This app enables users to make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences.
-
 ## Core System Flow
 
-#### Query Processing Flow:
-
-1. User Query
-2. Cache Check
-   - If cached: Return cached results
-   - If not cached: Continue to step 3
-3. LLM Analysis
-4. Entity/Intent Extraction
-5. Query Builder
-6. Graph-Based Database Query
-7. Database Returns Results Ordered by Global Quality Scores
-8. Cache New Results
-9. Return Results to User
 
 #### Data Collection Flow:
-
-1. Collect Reddit/Review Data
-2. LLM Analysis
-3. Entity/Relationship Extraction
-4. Graph Database Storage & Metric Aggregation
-5. Global Quality Score Computation
 
 ## 1. Query Processing & Understanding
 
@@ -38,32 +17,11 @@ Our search functionality focuses on core value-driving features at launch, with 
 
 ##### These queries represent our core value proposition, offering reliable recommendations backed by community evidence.
 
-_Note: All queries are processed through entity matching and graph traversal, without need for specialized search engines._
-
-- **Dish-specific**: "best ramen", "best chicken caesar wrap"
-- **Category-specific queries**: "best sandwiches in Austin"
-- **Venue-specific**: "best dishes at Franklin BBQ"
-- **Dish-level broad queries**: "best dishes in Austin"
-
 #### Location & Availability
-
-Enabled by Google Maps/Places API integration and attribute-based filtering:
 
 ##### Location Filtering: Map-Based Approach
 
-- **Map-Centric UI**: Users navigate a map interface to define their area of interest
-- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
-- **Implementation**:
-  - Each query includes viewport coordinates (NE and SW bounds)
-  - Database filters restaurants within these coordinates
-  - No text-based location parsing required
-
 ##### Availability Filtering: Toggle + Attribute Approach
-
-- "Open Now" Toggle: Simple binary filter using current time against operating hours
-- Time/Occasion Terms: Processed as attribute entities through natural language
-  - Examples: "brunch", "happy hour", "late night"
-  - System finds restaurants with connections to these attribute entities
 
 ### 1.2 Post-Launch Features ($7.99 Tier)
 
