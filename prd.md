@@ -270,9 +270,32 @@ CREATE TABLE user_events (
 #### Entity Type Definitions
 
 - **restaurant**: Physical dining establishments with location and operational data
-- **dish_or_category**: Food items that can be both specific dishes and categories
-- **dish_attribute**: Connection-scoped descriptors (spicy, vegan, house-made)
-- **restaurant_attribute**: Restaurant-scoped descriptors (patio, romantic, family-friendly)
+- **dish_or_category**: Food items that can be both menu items and general categories
+- **dish_attribute**: Connection-scoped descriptors that apply to dishes(spicy, vegan, house-made)
+- **restaurant_attribute**: Restaurant-scoped descriptors that apply to (patio, romantic, family-friendly)
+
+### 2.3 Data Model Architecture
+
+#### Unified dish_or_category Entity Approach
+
+- **Single entity type serves dual purposes**:
+  - Node entity (when is_menu_item = true)
+  - Connection-scope metadata (stored in categories array)
+- **Same entity ID can represent both menu item and category**
+- **Eliminates redundancy and ambiguity** in food terminology
+
+#### All Connections are Restaurant-to-dish_or_category
+
+- **Restaurant attributes**: Stored as entity IDs in restaurant entity's metadata (restaurant_attributes: uuid[])
+- **Dish attributes**: Connection-scoped entity IDs stored in dish_attributes array
+- **Categories**: Connection-scoped entity IDs stored in categories array
+- **Only restaurant-to-dish_or_category connections** exist in the connections table
+
+#### Categories in Connection Scope Only
+
+- **Categories stored as entity ID references** in restaurant→dish_or_category connections
+- **Restaurant-category mentions boost scores** of all related dish_or_category items
+- **Enables flexible categorization** without entity proliferation
 
 ---
 
@@ -805,11 +828,12 @@ The system processes queries through LLM analysis (see llm_query_processing.md) 
 
 **Primary Query Types** (determine template selection):
 
-1. **Dish-Specific**: "best reuben", "chicken caesar wrap" → Single dish list
-2. **Category-Specific**: "best sandwiches", "Italian food" → Dual lists (dishes + restaurants)
-3. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish list
-4. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
-5. **Broad**: "best food", "best restaurants" → Dual lists
+1. **dish_or_category-Specific**: "best reuben", "best ramen" → Dual lists (specific items or category items + restaurants)
+2. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish_or_category list
+3. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
+4. **Broad**: "best food", "best restaurants" → Dual lists
+
+Note: Dish-Specific and Category-Specific queries have been unified into **dish_or_category-Specific** since both query the same `dish_or_category` entity type. The distinction is handled through query intent and result filtering rather than separate templates.
 
 #### Complex Query Handling
 
@@ -820,11 +844,12 @@ Complex queries work through **primary intent + filter injection**:
 
 ##### Examples:
 
-- **Dish + Attribute**: "best brunch chicken and waffles" (dish-specific + attribute filter)
-- **Category + Attribute**: "best vegan ramen" (category-specific + attribute filter)
-- **Broad + Attribute**: "best vegan Italian food" (broad dish + attribute filter)
-- **Broad + Attribute**: "best patio restaurants" (broad restaurants + attribute filter)
-- **Venue + Attribute**: "best dishes at vegan restaurants" (venue-specific with attribute-filtered venues)
+- **dish_or_category + Dish Attribute**: "best spicy ramen" (dish_or_category-specific + connection-scoped filter)
+- **dish_or_category + Restaurant Attribute**: "best ramen with patio" (dish_or_category-specific + restaurant-scoped filter)
+- **Broad + Dish Attribute**: "best vegan dishes" (broad + connection-scoped filter)
+- **Broad + Restaurant Attribute**: "best patio restaurants" (broad + restaurant-scoped filter)
+- **Venue + Dish Attribute**: "best spicy dishes at Franklin BBQ" (venue-specific + connection-scoped filter)
+- **Venue + Restaurant Attribute**: "best dishes at restaurants with patios" (venue-specific with restaurant-scoped pre-filtering)
 
 #### Query Analysis & Processing
 
@@ -834,7 +859,7 @@ _Important: This process maps queries to existing entities and relationships for
 
 Simplified Processing Tasks (see llm_query_processing.md for more details):
 
-- **Primary intent identification**: Determine which of the 5 query types best matches user intent
+- **Primary intent identification**: Determine which of the 4 query types best matches user intent (with fallback to broad template if confidence < 0.8)
 - **Entity extraction**: Extract all relevant entities (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
 - **Filter classification**: Identify which entities serve as filters vs. primary search targets
 - **Term normalization and entity resolution**: Handle entity variations and standardize references
@@ -870,27 +895,40 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
 
 ```json
 {
-  "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
-  "primary_intent": "dish_specific",
-  "applied_filters": ["vegan", "downtown"],
+  "query_type": "dish_or_category_specific|venue_specific|attribute_specific|broad",
+  "primary_intent": "dish_or_category_specific",
+  "llm_confidence": 0.9,
+  "applied_filters": {
+    "dish_attributes": ["vegan", "spicy"],
+    "restaurant_attributes": ["patio", "romantic"]
+  },
   "entities": {
     "restaurants": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
+        "entity_ids": ["uuid"]
       }
     ],
     "dish_or_categories": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
+        "entity_ids": ["uuid"]
       }
     ],
-    "attributes": [
+    "dish_attributes": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
-        "scope": "restaurant|dish"
+        "entity_id": "uuid"
+      }
+    ],
+    "restaurant_attributes": [
+      {
+        "normalized_name": "string",
+        "original_text": "string" | null,
+        "entity_id": "uuid"
       }
     ]
   },
@@ -905,7 +943,7 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
 
 #### Specialized Template System Design
 
-The system uses **specialized SQL query templates** for each of the 5 primary query types, with **dynamic parameter injection** for filters and constraints:
+The system uses **specialized SQL query templates** for each of the 4 primary query types, with **dynamic parameter injection** for filters and constraints:
 
 **Core Architecture Principles:**
 
@@ -914,28 +952,38 @@ The system uses **specialized SQL query templates** for each of the 5 primary qu
 - **Performance Optimization**: Each template is SQL-optimized for its specific data retrieval pattern
 - **Predictable Execution**: Database can optimize and cache execution plans for each template pattern
 
+**Template Flexibility for Edge Cases:**
+
+- **Multiple primary entities**: Templates support OR logic for multiple entities of same type (`WHERE dish_or_category_id IN (id1, id2, id3)`)
+- **Ambiguous intent fallback**: Use Broad template with all entities as filters when LLM confidence of primary intent is < 0.8
+- **Attribute-specific processing**: Different query patterns for dish_attributes (connection-scoped) vs restaurant_attributes (restaurant-scoped)
+
 #### Template Selection Logic
 
 The LLM-determined primary query type directly maps to template selection:
 
-1. **Dish-Specific queries** → Use Dish-Specific template (optimized for dish-restaurant pair retrieval)
-2. **Category-Specific queries** → Use Category-Specific template (optimized for category-based dual lists)
-3. **Venue-Specific queries** → Use Venue-Specific template (optimized for restaurant-scoped dish retrieval)
-4. **Attribute-Specific queries** → Use Attribute-Specific template (optimized for attribute-filtered dual lists)
-5. **Broad queries** → Use Broad template (optimized for general ranking across all entities)
+1. **dish_or_category-Specific queries** → Use dish_or_category-Specific template (optimized for dish-restaurant pair retrieval and dish_or_category-based dual lists)
+2. **Venue-Specific queries** → Use Venue-Specific template (optimized for restaurant-scoped dish_or_category retrieval)
+3. **Attribute-Specific queries** → Use Attribute-Specific template (optimized for attribute-filtered dual lists)
+4. **Broad queries** → Use Broad template (optimized for general ranking across all entities)
 
 #### Dynamic Parameter Injection Process
 
 Following **step 6** in the query pipeline, the system:
 
-1. **Template Selection**: Choose appropriate template based on LLM-determined primary query type
-2. **Entity ID Injection**: Replace `$dish_id`, `$restaurant_id`, and other primary entity placeholders with resolved entity IDs
-3. **Filter Injection**: Add secondary entities as filters:
-   - `$attribute_filters` for dish attributes and restaurant attributes
-   - `$category_filters` for additional category constraints
-   - `$venue_filters` for restaurant-specific constraints
+1. **Template Selection**: Choose appropriate template based on LLM-determined primary query type (fallback to broad template if confidence < 0.8)
+2. **Primary Entity ID Injection**: Replace `$dish_or_category_ids`, `$restaurant_ids` with resolved entity ID arrays (supporting multiple entities with OR logic)
+3. **Attribute-Specific Filter Injection**:
+   - `$dish_attribute_filters` for connection-scoped attributes (applied to connections table)
+   - `$restaurant_attribute_filters` for restaurant-scoped attributes (applied to restaurants table)
+   - `$dish_or_category_filters` for additional dish_or_category constraints
 4. **Geographic Filtering**: Inject `$geographic_bounds` from map viewport coordinates
 5. **Temporal Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
+
+**Attribute Processing Logic:**
+
+- **Restaurant attributes**: Filter restaurants first, then get their connections: `WHERE restaurant.restaurant_attributes && $restaurant_attribute_filters`
+- **Dish attributes**: Filter connections first, then get restaurants/dishes: `WHERE connection.dish_attributes && $dish_attribute_filters`
 
 #### Template Extension Points
 
@@ -947,6 +995,25 @@ Each specialized template includes consistent extension points for:
 - **Temporal filters**: Operating hours and "open now" functionality
 - **Ranking criteria**: Template-specific `ORDER BY` clauses optimized for each query type
 - **Result pagination**: Configurable `LIMIT` and `OFFSET` parameters
+
+#### Edge Case Handling
+
+**1. Ambiguous Primary Intent**
+
+- **Detection**: LLM confidence score < 0.8
+- **Resolution**: Default to broad template with all entities as filters
+- **Example**: "best vegan restaurants with good ramen" → Broad template filtering by both restaurant attributes (vegan) and dish_or_category (ramen)
+
+**2. Multiple Primary Entities**
+
+- **Implementation**: Use OR logic within single query: `WHERE dish_or_category_id IN (id1, id2, id3)`
+- **Example**: "best pizza or sushi" returns mixed ranked results
+
+**3. Complex Attribute Scenarios**
+
+- **Mixed attribute types**: "best spicy ramen with patio" → Apply dish attributes to connections + restaurant attributes to restaurants
+- **Venue + dish attributes**: "best spicy dishes at Franklin BBQ" → Venue-specific template + connection-scoped filtering
+- **Venue + restaurant attributes**: "best dishes at restaurants with patios" → Pre-filter restaurants by attributes, then venue-specific query
 
 #### Architecture Benefits
 
@@ -965,18 +1032,38 @@ Each specialized template includes consistent extension points for:
 - **Filter order optimization**: Geographic and temporal filters applied **before ranking** to reduce dataset size
 - **Query plan caching**: Database maintains optimized execution plans for each template pattern
 
-#### Example Query Flow
+#### Example Query Flows
 
 **Query: "best vegan ramen downtown"**
 
-1. **LLM Analysis**: Primary intent = Dish-Specific ("ramen"), Filters = attribute ("vegan") + location ("downtown")
-2. **Template Selection**: Dish-Specific template chosen
+1. **LLM Analysis**: Primary intent = dish_or_category-Specific ("ramen"), Dish attribute filter ("vegan") + location ("downtown"), Confidence = 0.92
+2. **Template Selection**: dish_or_category-Specific template chosen
 3. **Parameter Injection**:
-   - `$dish_id` = resolved ID for "ramen"
-   - `$attribute_filters` = vegan attribute constraint
+   - `$dish_or_category_ids` = [resolved ID for "ramen"]
+   - `$dish_attribute_filters` = [resolved ID for "vegan" attribute]
    - `$geographic_bounds` = downtown area coordinates
-4. **SQL Execution**: Dish-Specific template with injected parameters
-5. **Result**: Ranked list of vegan ramen dishes in downtown area
+4. **SQL Execution**: dish_or_category-Specific template filtering connections by dish attributes
+5. **Result**: Ranked dual lists of vegan ramen items and restaurants in downtown area
+
+**Query: "best ramen with patio seating"**
+
+1. **LLM Analysis**: Primary intent = dish_or_category-Specific ("ramen"), Restaurant attribute filter ("patio") + location, Confidence = 0.88
+2. **Template Selection**: dish_or_category-Specific template chosen
+3. **Parameter Injection**:
+   - `$dish_or_category_ids` = [resolved ID for "ramen"]
+   - `$restaurant_attribute_filters` = [resolved ID for "patio" attribute]
+4. **SQL Execution**: Template filters restaurants by attributes first, then gets ramen connections
+5. **Result**: Ranked dual lists of ramen at restaurants with patios
+
+**Query: "best pizza or burgers downtown"**
+
+1. **LLM Analysis**: Primary intent = dish_or_category-Specific (multiple entities), Confidence = 0.85
+2. **Template Selection**: dish_or_category-Specific template chosen
+3. **Parameter Injection**:
+   - `$dish_or_category_ids` = [pizza_id, burger_id] (OR logic)
+   - `$geographic_bounds` = downtown area coordinates
+4. **SQL Execution**: `WHERE dish_or_category_id IN (pizza_id, burger_id)`
+5. **Result**: Mixed ranked lists of pizza and burger items with restaurants
 
 ### 4.6 Standardized Return Formats
 
@@ -986,91 +1073,149 @@ The system uses a standardized approach to query responses that balances user ex
 
 #### Single List Returns
 
-- **Dish-specific queries:** Return only dish list with parent restaurant context
-  - _Rationale_: Users want specific dish options, restaurant info serves as context
-  - _Example_: "best ramen" → List of ramen dishes with restaurant details
-- **Venue-specific queries:** Return only dish list for that venue
-  - _Rationale_: Users already know the restaurant, want to discover their best dishes
-  - _Example_: "best dishes at Franklin BBQ" → List of Franklin's top dishes
+- **Venue-specific queries:** Return only dish_or_category list for that venue
+  - _Rationale_: Users already know the restaurant, want to discover their best dish_or_category items
+  - _Example_: "best dishes at Franklin BBQ" → List of Franklin's top dish_or_category items
 
 #### Dual List Returns
 
-- **Category-specific queries:** Return both dish list (dishes in category) and restaurant list (restaurants ranked by performance of their dishes in that category)
-- **Attribute-specific queries:** Return both dish list (dishes with attribute) and restaurant list (restaurants ranked by performance of their dishes with that attribute)
-- **Broad queries:** Return both dish list (top dishes) and restaurant list (restaurants ranked by overall dish performance)
+- **dish_or_category-specific queries:** Return both dish_or_category list (items matching query) and restaurant list (restaurants ranked by performance in that dish/category)
+- **Attribute-specific queries:** Return both dish_or_category list (items with attribute) and restaurant list (restaurants ranked by performance of their dish_or_category items with that attribute)
+- **Broad queries:** Return both dish_or_category list (top items) and restaurant list (restaurants ranked by overall dish_or_category performance)
 
 _Rationale_: Users benefit from seeing both specific options and overall venue performance for discovery and decision-making flexibility.
 
 #### Restaurant Ranking Methodology
 
-- **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant dish quality scores
-- **Contextual relevance**: Only dishes matching the query criteria contribute to restaurant ranking
-- **Category mention boost**: Direct restaurant-category praise enhances aggregated dish scores
+- **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant dish_or_category quality scores
+- **Contextual relevance**: Only dish_or_category items matching the query criteria contribute to restaurant ranking
+- **dish_or_category mention boost**: Direct restaurant-dish_or_category praise enhances aggregated scores
 - **Recency weighting**: Recent performance weighted more heavily than historical data
 
 #### Implementation Benefits
 
-- **Consistent UI pattern**: Users see both specific dishes and overall restaurant performance across query types
+- **Consistent UI pattern**: Users see both specific dish_or_category items and overall restaurant performance across query types
 - **Predictable responses**: Frontend can handle all queries with the same rendering components
-- **Flexible user flow**: Users can choose between specific dishes or explore restaurants holistically
+- **Flexible user flow**: Users can choose between specific dish_or_category items or explore restaurants holistically
 - **Performance optimization**: Single database query pattern generates both lists simultaneously
 
 #### Result Structure Consistency
 
 Each result format maintains consistent data structure for seamless UI integration:
 
-- Dish results always include restaurant context and evidence
-- Restaurant results always include relevant dish examples and performance metrics
+- dish_or_category results always include restaurant context and evidence
+- Restaurant results always include relevant dish_or_category examples and performance metrics
 - Both formats include location, hours, and availability status
 - Evidence attribution consistent across all result types
 
-### 4.7 Result Structure
+### 4.7 Post-Processing Result Structure
 
 _**Note**: This is only a example. The actual return format may vary._
 
 ```json
 {
-  "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
-  "primary_intent": "dish_specific",
-  "applied_filters": ["string":"vegan", "string":"downtown"],
-  "dish_results": [
+  "query_type": "dish_or_category_specific|venue_specific|attribute_specific|broad",
+  "primary_intent": "dish_or_category_specific",
+  "applied_filters": {
+    "attributes": ["vegan", "spicy"],
+    "location": {
+      "coordinates": { "lat": 30.2672, "lng": -97.7431 }
+    },
+    "temporal": "open_now"
+  },
+  "dish_or_category_results": [
     {
-      "dish_or_category_name": "string": "ramen",
-      "dish_id": "uuid", // For frontend caching/tracking
-      "restaurant_name": "string": "Ramen Tatsu-Ya",
-      "restaurant_id": "uuid", // For location data, menu links
-      "quality_score": number,
+      "dish_or_category_name": "Tonkotsu Ramen",
+      "dish_or_category_id": "uuid",
+      "restaurant_name": "Ramen Tatsu-Ya",
+      "restaurant_id": "uuid",
+      "connection_id": "uuid",
+      "quality_score": 87.5,
       "activity_level": "trending|active|normal",
       "evidence": {
-        "mention_count": number,
-        "total_upvotes": number,
-        "recent_activity": boolean,
-        "top_quote": {
-          "text": "string",
-          "subreddit": "string",
-          "url": "string",
-          "upvotes": number,
-          "created_at": "timestamp"
-        }
+        "mention_count": 23,
+        "total_upvotes": 145,
+        "source_diversity": 8,
+        "recent_mention_count": 5,
+        "last_mentioned_at": "2024-01-15T10:30:00Z",
+        "top_mentions": [
+          {
+            "mention_id": "uuid",
+            "content_excerpt": "Their tonkotsu ramen is incredible - the broth is so rich",
+            "source_url": "https://reddit.com/r/Austin/comments/xyz123",
+            "subreddit": "r/Austin",
+            "upvotes": 67,
+            "created_at": "2024-01-10T14:20:00Z"
+          }
+        ]
       },
-      "restaurant_info": {"location": {}, "hours": {}, "status": "open|closed"}
-    }
-  ],
-  "restaurant_results": [ // Only for dual-list queries
-    {
-      "restaurant_name": "string",
-      "category_performance_score": number, // Aggregated score for relevant dishes
-      "relevant_dishes": [ // Top dishes in queried category/attribute
+      "attributes": [
         {
-          "dish_or_category_name": "string": "ramen",
-          "dish_id": "uuid", // For frontend caching/tracking
-          "quality_score": number,
-          "activity_level": "trending|active|normal"
+          "name": "rich broth",
+          "attribute_id": "uuid",
+          "scope": "dish"
         }
       ],
-      "restaurant_info": {"location": {}, "hours": {}, "status": "open|closed"}
+      "restaurant_info": {
+        "address": "123 Main St, Austin, TX",
+        "coordinates": { "lat": 30.2672, "lng": -97.7431 },
+        "phone": "+1-512-555-0123",
+        "hours": {
+          "monday": "11:00-22:00",
+          "tuesday": "11:00-22:00"
+        },
+        "status": "open|closed",
+        "google_place_id": "ChIJ..."
+      }
     }
-  ]
+  ],
+  "restaurant_results": [
+    {
+      "restaurant_name": "Ramen Tatsu-Ya",
+      "restaurant_id": "uuid",
+      "category_performance_score": 85.2,
+      "relevant_dish_or_categories": [
+        {
+          "dish_or_category_name": "Tonkotsu Ramen",
+          "dish_or_category_id": "uuid",
+          "connection_id": "uuid",
+          "quality_score": 87.5,
+          "activity_level": "trending"
+        },
+        {
+          "dish_or_category_name": "Miso Ramen",
+          "dish_or_category_id": "uuid",
+          "connection_id": "uuid",
+          "quality_score": 82.1,
+          "activity_level": "active"
+        }
+      ],
+      "restaurant_attributes": [
+        {
+          "name": "authentic",
+          "attribute_id": "uuid",
+          "scope": "restaurant"
+        }
+      ],
+      "restaurant_info": {
+        "address": "123 Main St, Austin, TX",
+        "coordinates": { "lat": 30.2672, "lng": -97.7431 },
+        "phone": "+1-512-555-0123",
+        "hours": {
+          "monday": "11:00-22:00",
+          "tuesday": "11:00-22:00"
+        },
+        "status": "open|closed",
+        "google_place_id": "ChIJ..."
+      }
+    }
+  ],
+  "metadata": {
+    "total_results": 25,
+    "query_execution_time_ms": 145,
+    "cache_hit": false,
+    "fallback_used": false
+  }
 }
 ```
 
