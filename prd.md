@@ -866,32 +866,7 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure data for template selection and parameter injection
 
-### 4.3 Location & Availability Filtering
-
-Enabled by Google Maps/Places API integration and attribute-based filtering
-
-#### Map-Based Location Filtering
-
-- **Map-Centric UI**: Users navigate a map interface to define their area of interest
-- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
-- **Implementation**:
-  - Each query includes viewport coordinates (NE and SW bounds)
-  - Applied during **Dynamic Parameter Injection** (step 6) and executed in **Graph Database Query Execution** (step 7)
-  - Database filters restaurants within these coordinates **before ranking** using geographic indexes
-  - No text-based location parsing required - eliminates ambiguity in location interpretation
-
-#### Availability Filtering: Toggle + Attribute Approach
-
-- **"Open Now" Toggle**: Binary filter using current time against stored operating hours
-  - Applied during **Dynamic Parameter Injection** with current timestamp
-  - Executed in database query **before ranking** for performance optimization
-  - Uses structured operating hours data from Google Places API
-- **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
-  - Examples: "brunch", "happy hour", "late night", "weekend specials"
-  - Processed as dish_attribute or restaurant_attribute entities through natural language
-  - Applied using existing attribute query templates
-
-### 4.4 Query Processing Output Structure
+### 4.3 Query Processing Output Structure
 
 ```json
 {
@@ -931,13 +906,34 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
         "entity_id": "uuid"
       }
     ]
-  },
-  "filters": {
-    "location_bounds": "object",
-    "open_now": boolean
   }
 }
 ```
+
+### 4.4 Location & Availability Filtering
+
+Enabled by Google Maps/Places API integration and attribute-based filtering
+
+#### Map-Based Location Filtering
+
+- **Map-Centric UI**: Users navigate a map interface to define their area of interest
+- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
+- **Implementation**:
+  - Each query includes viewport coordinates (NE and SW bounds)
+  - Applied during **Dynamic Parameter Injection** (step 6) and executed in **Graph Database Query Execution** (step 7)
+  - Database filters restaurants within these coordinates **before ranking** using geographic indexes
+  - No text-based location parsing required - eliminates ambiguity in location interpretation
+
+#### Availability Filtering: Toggle + Attribute Approach
+
+- **"Open Now" Toggle**: Binary filter using current time against stored operating hours
+  - Applied during **Dynamic Parameter Injection** with current timestamp
+  - Executed in database query **before ranking** for performance optimization
+  - Uses structured operating hours data from Google Places API
+- **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
+  - Examples: "brunch", "happy hour", "late night", "weekend specials"
+  - Processed as dish_attribute or restaurant_attribute entities through natural language
+  - Applied using existing attribute query templates
 
 ### 4.5 Template-Based Query Architecture
 
@@ -977,13 +973,45 @@ Following **step 6** in the query pipeline, the system:
    - `$dish_attribute_filters` for connection-scoped attributes (applied to connections table)
    - `$restaurant_attribute_filters` for restaurant-scoped attributes (applied to restaurants table)
    - `$dish_or_category_filters` for additional dish_or_category constraints
-4. **Geographic Filtering**: Inject `$geographic_bounds` from map viewport coordinates
-5. **Temporal Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
+4. **Location Filtering**: Inject `$geographic_bounds` from map viewport coordinates
+5. **Availability Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
 
 **Attribute Processing Logic:**
 
 - **Restaurant attributes**: Filter restaurants first, then get their connections: `WHERE restaurant.restaurant_attributes && $restaurant_attribute_filters`
 - **Dish attributes**: Filter connections first, then get restaurants/dishes: `WHERE connection.dish_attributes && $dish_attribute_filters`
+##### Attribute Scope Processing:
+
+**Tier 1: Restaurant-Scoped Filtering (restaurant_attributes)**
+- Filter applied to restaurants table first - affects which restaurants are considered
+- Filter restaurants first, then get their connections: `WHERE restaurant.restaurant_attributes && ARRAY[attribute_ids]`
+- Examples: patio, romantic, family-friendly, authentic
+
+**Tier 2: Connection-Scoped Filtering (dish_attributes)**  
+- Filter applied to connections table - affects which dish-restaurant pairs are returned
+- Find connections that have these attributes in their dish_attributes array first, then get restaurants/dishes: `WHERE connection.dish_attributes && ARRAY[attribute_ids]`
+- Examples: spicy, vegan, house-made, crispy
+
+##### Template-Specific Implementation
+
+**dish_or_category-Specific Template:**
+- Restaurant attributes: Pre-filter restaurants, then find dish_or_category connections
+- Dish attributes: Filter connections directly by dish_attributes array
+
+**Venue-Specific Template:**
+- Restaurant attributes: Changes template behavior (filters restaurants first, ignores venue constraint)
+- Dish attributes: Applied as connection filters within the specified venue
+
+**Attribute-Specific Template:**
+- Designed for single-attribute queries, handles both scopes
+- Restaurant attributes: Primary filter on restaurants
+- Dish attributes: Primary filter on connections
+
+**Broad Template:**
+- Both attribute types applied as filters
+- Restaurant attributes: Filter restaurants first
+- Dish attributes: Filter connections second
+
 
 #### Template Extension Points
 
@@ -991,8 +1019,8 @@ Each specialized template includes consistent extension points for:
 
 - **Primary entity matching**: Core `WHERE` clauses for the template's primary purpose
 - **Attribute filtering**: Dynamic `WHERE` clauses for secondary entity filters
-- **Geographic bounds**: `ST_Contains()` operations for map-based filtering
-- **Temporal filters**: Operating hours and "open now" functionality
+- **Location bounds**: `ST_Contains()` operations for map-based filtering
+- **Availability filters**: Operating hours and "open now" functionality
 - **Ranking criteria**: Template-specific `ORDER BY` clauses optimized for each query type
 - **Result pagination**: Configurable `LIMIT` and `OFFSET` parameters
 
