@@ -40,9 +40,9 @@ Quality Score Computation
 #### Processing Architecture
 
 - **Modular component system**: Independent processors handle different entity combinations from LLM output
-- **Template-based queries**: Specialized, optimized SQL patterns for each of the 5 core query types
+- **Dynamic query system**: Single adaptive SQL query that optimizes based on extracted entities
 - **Background data collection**: Scheduled cycles (weekly new entities, quarterly full refresh) plus on-demand query-driven collection
-- **Real-time query processing**: Entity resolution → template selection → parameter injection → ranking
+- **Real-time query processing**: Entity resolution → dynamic query building → result ranking
 
 #### Performance Strategy
 
@@ -808,75 +808,55 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 ```
 1. User Query Input
 2. Cache Check (Hot Query Cache - 1 hour)
-3. LLM Query Analysis and Entity Extraction (see llm_query_processing.md for processing rules)
+3. LLM Entity Extraction and Analysis (see llm_query_processing.md for processing rules)
 4. Entity Normalization and Resolution
-5. Template Selection Based on Query Type
-6. Dynamic Parameter Injection
-7. Graph Database Query Execution and Result Ranking
-  7.1 If insufficient data is returned, trigger on-demand data collection (see section 3 for details)
+5. Dynamic Query Building Based on Extracted Entities
+6. Graph Database Query Execution and Result Ranking
+  6.1 If insufficient data is returned, trigger on-demand data collection (see section 3 for details)
+7. Return Format Determination Based on Entity Composition
 8. Cache Storage
 9. Response Delivery
 ```
 
 ### 4.2 Query Understanding & Processing via LLM Analysis
 
-#### Query Type Classification
+#### Entity-Based Query Processing
 
-The following query types represent our core value proposition, offering reliable recommendations backed by community evidence.
+The system processes queries through LLM analysis (see llm_query_processing.md) to extract **all relevant mentioned entities**, which are then used to dynamically build optimal database queries that **adapt to the entity combination provided**. The extracted entities determine both the query structure and the return format.
 
-The system processes queries through LLM analysis (see llm_query_processing.md) to classify them and uses **primary query types** to select specialized SQL templates, with **additional entities serving as filters**
+**Entity Types Processed:**
 
-**Primary Query Types** (determine template selection):
+- **restaurants**: Physical dining establishments referenced by name
+- **dish_or_category**: Specific dishes or food categories mentioned
+- **dish_attributes**: Connection-scoped descriptors (spicy, vegan, house-made, crispy)
+- **restaurant_attributes**: Restaurant-scoped descriptors (patio, romantic, family-friendly, authentic)
 
-1. **dish_or_category-Specific**: "best reuben", "best ramen" → Dual lists (specific items or category items + restaurants)
-2. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish_or_category list
-3. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
-4. **Broad**: "best food", "best restaurants" → Dual lists
+##### Examples of Entity-Driven Query Processing:
 
-Note: Dish-Specific and Category-Specific queries have been unified into **dish_or_category-Specific** since both query the same `dish_or_category` entity type. The distinction is handled through query intent and result filtering rather than separate templates.
-
-#### Complex Query Handling
-
-Complex queries work through **primary intent + filter injection**:
-
-- **LLM determines primary intent** → Template selection
-- **Secondary entities become filters** → Parameter injection into chosen template
-
-##### Examples:
-
-- **dish_or_category + Dish Attribute**: "best spicy ramen" (dish_or_category-specific + connection-scoped filter)
-- **dish_or_category + Restaurant Attribute**: "best ramen with patio" (dish_or_category-specific + restaurant-scoped filter)
-- **Broad + Dish Attribute**: "best vegan dishes" (broad + connection-scoped filter)
-- **Broad + Restaurant Attribute**: "best patio restaurants" (broad + restaurant-scoped filter)
-- **Venue + Dish Attribute**: "best spicy dishes at Franklin BBQ" (venue-specific + connection-scoped filter)
-- **Venue + Restaurant Attribute**: "best dishes at restaurants with patios" (venue-specific with restaurant-scoped pre-filtering)
+- **"best ramen"** → dish_or_category: ["ramen"] → Find all ramen connections, return dual lists
+- **"best dishes at Franklin BBQ"** → restaurant: ["Franklin BBQ"] → Find all connections for this restaurant, return single list
+- **"best spicy ramen with patio"** → dish_or_category: ["ramen"], dish_attributes: ["spicy"], restaurant_attributes: ["patio"] → Filter connections by all criteria, return dual lists
+- **"best vegan restaurants"** → restaurant_attributes: ["vegan"] → Find restaurants with vegan attribute, return dual lists
+- **"best Italian food at romantic restaurants"** → dish_or_category: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
 
 #### Query Analysis & Processing
 
-##### Primary Function: Convert natural language queries to structured graph traversal parameters
+##### Primary Function: Convert natural language queries to structured entity parameters for dynamic query building
 
-_Important: This process maps queries to existing entities and relationships for traversal._
+_Important: This process maps queries to existing entities and relationships for graph traversal._
 
 Simplified Processing Tasks (see llm_query_processing.md for more details):
 
-- **Primary intent identification**: Determine which of the 4 query types best matches user intent (with fallback to broad template if confidence < 0.8)
 - **Entity extraction**: Extract all relevant entities (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
-- **Filter classification**: Identify which entities serve as filters vs. primary search targets
 - **Term normalization and entity resolution**: Handle entity variations and standardize references
+- **Attribute scope classification**: Distinguish between dish-scoped and restaurant-scoped attributes
 - **Location and availability requirements**: Identify geographic and temporal constraints
-- **Output standardized format**: Structure data for template selection and parameter injection
+- **Output standardized format**: Structure extracted entities for dynamic query building
 
-### 4.3 Query Processing Output Structure
+### 4.3 LLM Query Processing Output Structure
 
 ```json
 {
-  "query_type": "dish_or_category_specific|venue_specific|attribute_specific|broad",
-  "primary_intent": "dish_or_category_specific",
-  "llm_confidence": 0.9,
-  "applied_filters": {
-    "dish_attributes": ["vegan", "spicy"],
-    "restaurant_attributes": ["patio", "romantic"]
-  },
   "entities": {
     "restaurants": [
       {
@@ -920,232 +900,228 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
 - **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
 - **Implementation**:
   - Each query includes viewport coordinates (NE and SW bounds)
-  - Applied during **Dynamic Parameter Injection** (step 6) and executed in **Graph Database Query Execution** (step 7)
+  - Applied during **Dynamic Query Building** (step 5) and executed in **Graph Database Query Execution** (step 6)
   - Database filters restaurants within these coordinates **before ranking** using geographic indexes
   - No text-based location parsing required - eliminates ambiguity in location interpretation
 
 #### Availability Filtering: Toggle + Attribute Approach
 
 - **"Open Now" Toggle**: Binary filter using current time against stored operating hours
-  - Applied during **Dynamic Parameter Injection** with current timestamp
+  - Applied during **Dynamic Query Building** with current timestamp
   - Executed in database query **before ranking** for performance optimization
   - Uses structured operating hours data from Google Places API
 - **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
   - Examples: "brunch", "happy hour", "late night", "weekend specials"
   - Processed as dish_attribute or restaurant_attribute entities through natural language
-  - Applied using existing attribute query templates
+  - Applied using existing dynamic query filtering
 
-### 4.5 Template-Based Query Architecture
+### 4.5 Dynamic Query Architecture
 
-#### Specialized Template System Design
+#### Entity-Driven Query System Design
 
-The system uses **specialized SQL query templates** for each of the 4 primary query types, with **dynamic parameter injection** for filters and constraints:
+The system uses a **single dynamic query builder** that adapts its SQL structure based on the entities extracted from user queries. This approach eliminates the need for multiple specialized query patterns while maintaining optimal performance.
 
 **Core Architecture Principles:**
 
-- **Template Selection**: Primary query type (determined by LLM) selects the appropriate specialized SQL template
-- **Parameter Injection**: Secondary entities, attributes, and filters are injected into the chosen template
-- **Performance Optimization**: Each template is SQL-optimized for its specific data retrieval pattern
-- **Predictable Execution**: Database can optimize and cache execution plans for each template pattern
+- **Entity-Based Logic**: Query structure determined entirely by which entities are present
+- **Adaptive Filtering**: Dynamic WHERE clauses based on entity types and scopes
+- **Performance Optimization**: Single query pattern optimized for all entity combinations
+- **Scope-Aware Processing**: Automatic handling of restaurant-scoped vs connection-scoped attributes
 
-**Template Flexibility for Edge Cases:**
+**Query Building Flexibility:**
 
-- **Multiple primary entities**: Templates support OR logic for multiple entities of same type (`WHERE dish_or_category_id IN (id1, id2, id3)`)
-- **Ambiguous intent fallback**: Use Broad template with all entities as filters when LLM confidence of primary intent is < 0.8
-- **Attribute-specific processing**: Different query patterns for dish_attributes (connection-scoped) vs restaurant_attributes (restaurant-scoped)
+- **Multiple entities of same type**: Natural OR logic handling (`WHERE dish_or_category_id = ANY($entity_ids)`)
+- **Mixed entity types**: Combines filters across entity scopes seamlessly
+- **Attribute scope processing**: Automatic tier-based filtering for dish_attributes vs restaurant_attributes
+- **Missing entities**: Graceful handling when certain entity types are not provided
 
-#### Template Selection Logic
+#### Dynamic Query Building Logic
 
-The LLM-determined primary query type directly maps to template selection:
+The system constructs queries using conditional SQL blocks based on entity presence:
 
-1. **dish_or_category-Specific queries** → Use dish_or_category-Specific template (optimized for dish-restaurant pair retrieval and dish_or_category-based dual lists)
-2. **Venue-Specific queries** → Use Venue-Specific template (optimized for restaurant-scoped dish_or_category retrieval)
-3. **Attribute-Specific queries** → Use Attribute-Specific template (optimized for attribute-filtered dual lists)
-4. **Broad queries** → Use Broad template (optimized for general ranking across all entities)
+```sql
+-- Core query structure adapts to available entities
+WITH filtered_restaurants AS (
+  SELECT entity_id FROM entities
+  WHERE type = 'restaurant'
+  -- Restaurant entity filtering (when specific restaurants mentioned)
+  AND ($restaurant_ids IS NULL OR entity_id = ANY($restaurant_ids))
+  -- Restaurant attribute filtering (when restaurant attributes mentioned)
+  AND ($restaurant_attribute_ids IS NULL OR restaurant_attributes && $restaurant_attribute_ids)
+  -- Geographic filtering (always applied if provided)
+  AND ($geographic_bounds IS NULL OR ST_Contains($geographic_bounds, point(longitude, latitude)))
+  -- Availability filtering (when open_now toggle used)
+  AND ($open_now IS NULL OR operating_hours_check(restaurant_metadata->>'hours', $current_timestamp))
+),
+filtered_connections AS (
+  SELECT c.* FROM connections c
+  JOIN filtered_restaurants fr ON c.restaurant_id = fr.entity_id
+  -- dish_or_category filtering (when specific dishes/categories mentioned)
+  WHERE ($dish_or_category_ids IS NULL OR c.dish_or_category_id = ANY($dish_or_category_ids))
+  -- Dish attribute filtering (when dish attributes mentioned)
+  AND ($dish_attribute_ids IS NULL OR c.dish_attributes && $dish_attribute_ids)
+)
+SELECT * FROM filtered_connections
+ORDER BY dish_quality_score DESC;
+```
 
-#### Dynamic Parameter Injection Process
+#### Attribute Scope Processing
 
-Following **step 6** in the query pipeline, the system:
+The system automatically applies the correct filtering logic based on attribute scope:
 
-1. **Template Selection**: Choose appropriate template based on LLM-determined primary query type (fallback to broad template if confidence < 0.8)
-2. **Primary Entity ID Injection**: Replace `$dish_or_category_ids`, `$restaurant_ids` with resolved entity ID arrays (supporting multiple entities with OR logic)
-3. **Attribute-Specific Filter Injection**:
-   - `$dish_attribute_filters` for connection-scoped attributes (applied to connections table)
-   - `$restaurant_attribute_filters` for restaurant-scoped attributes (applied to restaurants table)
-   - `$dish_or_category_filters` for additional dish_or_category constraints
-4. **Location Filtering**: Inject `$geographic_bounds` from map viewport coordinates
-5. **Availability Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
+**Restaurant-Scoped Filtering (restaurant_attributes)**
 
-**Attribute Processing Logic:**
-
-- **Restaurant attributes**: Filter restaurants first, then get their connections: `WHERE restaurant.restaurant_attributes && $restaurant_attribute_filters`
-- **Dish attributes**: Filter connections first, then get restaurants/dishes: `WHERE connection.dish_attributes && $dish_attribute_filters`
-##### Attribute Scope Processing:
-
-**Tier 1: Restaurant-Scoped Filtering (restaurant_attributes)**
-- Filter applied to restaurants table first - affects which restaurants are considered
-- Filter restaurants first, then get their connections: `WHERE restaurant.restaurant_attributes && ARRAY[attribute_ids]`
+- Applied to restaurants table in the `filtered_restaurants` CTE
+- Affects which restaurants are considered for the entire query
+- Filter: `WHERE restaurant_attributes && ARRAY[attribute_ids]`
 - Examples: patio, romantic, family-friendly, authentic
 
-**Tier 2: Connection-Scoped Filtering (dish_attributes)**  
-- Filter applied to connections table - affects which dish-restaurant pairs are returned
-- Find connections that have these attributes in their dish_attributes array first, then get restaurants/dishes: `WHERE connection.dish_attributes && ARRAY[attribute_ids]`
+**Connection-Scoped Filtering (dish_attributes)**
+
+- Applied to connections table in the `filtered_connections` CTE
+- Affects which dish-restaurant pairs are returned
+- Filter: `WHERE dish_attributes && ARRAY[attribute_ids]`
 - Examples: spicy, vegan, house-made, crispy
 
-##### Template-Specific Implementation
+#### Query Building Process
 
-**dish_or_category-Specific Template:**
-- Restaurant attributes: Pre-filter restaurants, then find dish_or_category connections
-- Dish attributes: Filter connections directly by dish_attributes array
+Following **step 5** in the query pipeline, the system:
 
-**Venue-Specific Template:**
-- Restaurant attributes: Changes template behavior (filters restaurants first, ignores venue constraint)
-- Dish attributes: Applied as connection filters within the specified venue
+1. **Entity Analysis**: Examine which entity types are present in the processed query
+2. **Dynamic SQL Construction**: Build conditional WHERE clauses based on entity presence
+3. **Parameter Binding**: Inject resolved entity IDs and filter values into query
+4. **Scope-Aware Filtering**: Apply restaurant attributes before connection filtering for optimal performance
+5. **Geographic Integration**: Include map boundaries and availability filters
+6. **Query Optimization**: Leverage database indexes and pre-computed scores for fast execution
 
-**Attribute-Specific Template:**
-- Designed for single-attribute queries, handles both scopes
-- Restaurant attributes: Primary filter on restaurants
-- Dish attributes: Primary filter on connections
+#### Query Execution Examples
 
-**Broad Template:**
-- Both attribute types applied as filters
-- Restaurant attributes: Filter restaurants first
-- Dish attributes: Filter connections second
+**Query: "best spicy ramen with patio seating"**
 
+1. **Entity Extraction**: dish_or_category: ["ramen"], dish_attributes: ["spicy"], restaurant_attributes: ["patio"]
+2. **Dynamic Query Building**:
+   ```sql
+   -- Apply restaurant attribute filter first
+   filtered_restaurants: restaurant_attributes && ARRAY[patio_id]
+   -- Then dish_or_category filter
+   filtered_connections: dish_or_category_id = ramen_id
+   -- Finally dish attribute filter
+   AND dish_attributes && ARRAY[spicy_id]
+   ```
+3. **Result**: Dual lists of spicy ramen at restaurants with patios
 
-#### Template Extension Points
+**Query: "best dishes at Franklin BBQ"**
 
-Each specialized template includes consistent extension points for:
+1. **Entity Extraction**: restaurants: ["Franklin BBQ"]
+2. **Dynamic Query Building**:
+   ```sql
+   -- Filter to specific restaurant only
+   filtered_restaurants: entity_id = franklin_bbq_id
+   -- Get all connections for this restaurant
+   filtered_connections: (no additional dish/attribute filters)
+   ```
+3. **Result**: Single list of all dishes at Franklin BBQ
 
-- **Primary entity matching**: Core `WHERE` clauses for the template's primary purpose
-- **Attribute filtering**: Dynamic `WHERE` clauses for secondary entity filters
-- **Location bounds**: `ST_Contains()` operations for map-based filtering
-- **Availability filters**: Operating hours and "open now" functionality
-- **Ranking criteria**: Template-specific `ORDER BY` clauses optimized for each query type
-- **Result pagination**: Configurable `LIMIT` and `OFFSET` parameters
+**Query: "best vegan Italian food"**
 
-#### Edge Case Handling
+1. **Entity Extraction**: dish_or_category: ["Italian"], dish_attributes: ["vegan"]
+2. **Dynamic Query Building**:
+   ```sql
+   -- No restaurant filtering needed
+   filtered_restaurants: (all restaurants)
+   -- Filter by category and attribute
+   filtered_connections: dish_or_category_id = italian_id AND dish_attributes && ARRAY[vegan_id]
+   ```
+3. **Result**: Dual lists of vegan Italian dishes and top restaurants for vegan Italian food
 
-**1. Ambiguous Primary Intent**
+#### Performance Optimizations
 
-- **Detection**: LLM confidence score < 0.8
-- **Resolution**: Default to broad template with all entities as filters
-- **Example**: "best vegan restaurants with good ramen" → Broad template filtering by both restaurant attributes (vegan) and dish_or_category (ramen)
+**Single Query Pattern Benefits:**
 
-**2. Multiple Primary Entities**
+- **Database optimization**: Query planner optimizes one consistent pattern instead of multiple specialized queries
+- **Index utilization**: Consistent query structure leverages database indexes effectively
+- **Execution plan caching**: Single query pattern enables better plan reuse
+- **Filter ordering**: Restaurant-scoped filters applied first to minimize dataset size before connection filtering
 
-- **Implementation**: Use OR logic within single query: `WHERE dish_or_category_id IN (id1, id2, id3)`
-- **Example**: "best pizza or sushi" returns mixed ranked results
+**Query Performance Features:**
 
-**3. Complex Attribute Scenarios**
+- **Pre-computed rankings**: Leverages stored `dish_quality_score` and `restaurant_quality_score` fields
+- **Geographic index usage**: ST_Contains operations use spatial indexes for fast location filtering
+- **Conditional execution**: NULL checks prevent unnecessary filtering when entities not present
+- **Bulk parameter binding**: Array parameters enable efficient OR logic for multiple entities
 
-- **Mixed attribute types**: "best spicy ramen with patio" → Apply dish attributes to connections + restaurant attributes to restaurants
-- **Venue + dish attributes**: "best spicy dishes at Franklin BBQ" → Venue-specific template + connection-scoped filtering
-- **Venue + restaurant attributes**: "best dishes at restaurants with patios" → Pre-filter restaurants by attributes, then venue-specific query
+### 4.6 Return Format Determination
 
-#### Architecture Benefits
+#### Entity-Based Return Strategy
 
-**System Design Advantages:**
+The system determines return format based on the **entity composition** of the query rather than predefined query types. This approach provides consistent, predictable responses while adapting to user intent naturally.
 
-- **Performance**: Each template optimized for its specific data access pattern
-- **Flexibility**: Parameter injection handles complex query variations without template proliferation
-- **Maintainability**: Clear separation between core query logic and dynamic filtering
-- **Scalability**: Individual templates can be optimized independently as usage patterns emerge
-- **Predictability**: Consistent parameter injection patterns across all query types
+#### Return Format Logic
 
-**Database Performance Optimizations:**
+```typescript
+function determineReturnFormat(entities): 'single_list' | 'dual_list' {
+  // Single list: Only when specific restaurants mentioned with no dish/attribute context
+  const hasOnlyRestaurants =
+    entities.restaurants.length > 0 &&
+    entities.dish_or_categories.length === 0 &&
+    entities.dish_attributes.length === 0 &&
+    entities.restaurant_attributes.length === 0;
 
-- **Pre-computed rankings**: Templates leverage stored `dish_quality_score` and `restaurant_quality_score` fields
-- **Index-aware design**: Each template designed around existing database indexes for optimal performance
-- **Filter order optimization**: Geographic and temporal filters applied **before ranking** to reduce dataset size
-- **Query plan caching**: Database maintains optimized execution plans for each template pattern
+  return hasOnlyRestaurants ? 'single_list' : 'dual_list';
+}
+```
 
-#### Example Query Flows
+#### Return Format Types
 
-**Query: "best vegan ramen downtown"**
+**Single List Returns**
 
-1. **LLM Analysis**: Primary intent = dish_or_category-Specific ("ramen"), Dish attribute filter ("vegan") + location ("downtown"), Confidence = 0.92
-2. **Template Selection**: dish_or_category-Specific template chosen
-3. **Parameter Injection**:
-   - `$dish_or_category_ids` = [resolved ID for "ramen"]
-   - `$dish_attribute_filters` = [resolved ID for "vegan" attribute]
-   - `$geographic_bounds` = downtown area coordinates
-4. **SQL Execution**: dish_or_category-Specific template filtering connections by dish attributes
-5. **Result**: Ranked dual lists of vegan ramen items and restaurants in downtown area
+- **Criteria**: Specific restaurants mentioned without dish or attribute context
+- **Content**: dish_or_category list scoped to the specified restaurant(s)
+- **Rationale**: Users already know the restaurant, want to discover menu items
+- **Examples**:
+  - "best dishes at Franklin BBQ" → Franklin's top dishes
+  - "menu at Ramen Tatsu-Ya" → Tatsu-Ya's dish list
 
-**Query: "best ramen with patio seating"**
+**Dual List Returns**
 
-1. **LLM Analysis**: Primary intent = dish_or_category-Specific ("ramen"), Restaurant attribute filter ("patio") + location, Confidence = 0.88
-2. **Template Selection**: dish_or_category-Specific template chosen
-3. **Parameter Injection**:
-   - `$dish_or_category_ids` = [resolved ID for "ramen"]
-   - `$restaurant_attribute_filters` = [resolved ID for "patio" attribute]
-4. **SQL Execution**: Template filters restaurants by attributes first, then gets ramen connections
-5. **Result**: Ranked dual lists of ramen at restaurants with patios
-
-**Query: "best pizza or burgers downtown"**
-
-1. **LLM Analysis**: Primary intent = dish_or_category-Specific (multiple entities), Confidence = 0.85
-2. **Template Selection**: dish_or_category-Specific template chosen
-3. **Parameter Injection**:
-   - `$dish_or_category_ids` = [pizza_id, burger_id] (OR logic)
-   - `$geographic_bounds` = downtown area coordinates
-4. **SQL Execution**: `WHERE dish_or_category_id IN (pizza_id, burger_id)`
-5. **Result**: Mixed ranked lists of pizza and burger items with restaurants
-
-### 4.6 Standardized Return Formats
-
-#### Return Format Strategy
-
-The system uses a standardized approach to query responses that balances user expectations with implementation efficiency, ensuring consistent UI patterns while optimizing for different query intents.
-
-#### Single List Returns
-
-- **Venue-specific queries:** Return only dish_or_category list for that venue
-  - _Rationale_: Users already know the restaurant, want to discover their best dish_or_category items
-  - _Example_: "best dishes at Franklin BBQ" → List of Franklin's top dish_or_category items
-
-#### Dual List Returns
-
-- **dish_or_category-specific queries:** Return both dish_or_category list (items matching query) and restaurant list (restaurants ranked by performance in that dish/category)
-- **Attribute-specific queries:** Return both dish_or_category list (items with attribute) and restaurant list (restaurants ranked by performance of their dish_or_category items with that attribute)
-- **Broad queries:** Return both dish_or_category list (top items) and restaurant list (restaurants ranked by overall dish_or_category performance)
-
-_Rationale_: Users benefit from seeing both specific options and overall venue performance for discovery and decision-making flexibility.
+- **Criteria**: All other entity combinations
+- **Content**: Both dish_or_category list and restaurant list with contextual rankings
+- **Rationale**: Users benefit from seeing both specific options and venue recommendations
+- **Examples**:
+  - "best ramen" → Top ramen dishes + restaurants known for ramen
+  - "best spicy food with patio" → Spicy dishes + restaurants with patios serving great spicy food
+  - "best vegan restaurants" → Top vegan dishes + restaurants ranked by vegan offerings
 
 #### Restaurant Ranking Methodology
 
+For dual list returns, restaurant rankings are **contextually calculated** based on query entities:
+
 - **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant dish_or_category quality scores
-- **Contextual relevance**: Only dish_or_category items matching the query criteria contribute to restaurant ranking
-- **dish_or_category mention boost**: Direct restaurant-dish_or_category praise enhances aggregated scores
+- **Entity-specific relevance**: Only dish_or_category items matching the query entities contribute to restaurant ranking
+- **Attribute-driven scoring**: Restaurant performance calculated from connections that match specified attributes
 - **Recency weighting**: Recent performance weighted more heavily than historical data
 
 #### Implementation Benefits
 
-- **Consistent UI pattern**: Users see both specific dish_or_category items and overall restaurant performance across query types
-- **Predictable responses**: Frontend can handle all queries with the same rendering components
-- **Flexible user flow**: Users can choose between specific dish_or_category items or explore restaurants holistically
-- **Performance optimization**: Single database query pattern generates both lists simultaneously
-
-#### Result Structure Consistency
-
-Each result format maintains consistent data structure for seamless UI integration:
-
-- dish_or_category results always include restaurant context and evidence
-- Restaurant results always include relevant dish_or_category examples and performance metrics
-- Both formats include location, hours, and availability status
-- Evidence attribution consistent across all result types
+- **Predictable UI patterns**: Frontend handles consistent return format logic
+- **Entity-driven relevance**: Restaurant rankings always contextual to query entities
+- **Natural user flow**: Users get both specific recommendations and venue discovery
+- **Performance consistency**: Single query generates both lists simultaneously
 
 ### 4.7 Post-Processing Result Structure
 
-_**Note**: This is only a example. The actual return format may vary._
+_**Note**: This is only an example. The actual return format may vary._
 
 ```json
 {
-  "query_type": "dish_or_category_specific|venue_specific|attribute_specific|broad",
-  "primary_intent": "dish_or_category_specific",
+  "return_format": "single_list|dual_list",
+  "entity_composition": {
+    "restaurants": ["Franklin BBQ"],
+    "dish_or_categories": ["ramen"],
+    "dish_attributes": ["spicy"],
+    "restaurant_attributes": ["patio"]
+  },
   "applied_filters": {
-    "attributes": ["vegan", "spicy"],
     "location": {
       "coordinates": { "lat": 30.2672, "lng": -97.7431 }
     },
@@ -1201,7 +1177,7 @@ _**Note**: This is only a example. The actual return format may vary._
     {
       "restaurant_name": "Ramen Tatsu-Ya",
       "restaurant_id": "uuid",
-      "category_performance_score": 85.2,
+      "contextual_performance_score": 85.2,
       "relevant_dish_or_categories": [
         {
           "dish_or_category_name": "Tonkotsu Ramen",
@@ -1241,8 +1217,7 @@ _**Note**: This is only a example. The actual return format may vary._
   "metadata": {
     "total_results": 25,
     "query_execution_time_ms": 145,
-    "cache_hit": false,
-    "fallback_used": false
+    "cache_hit": false
   }
 }
 ```
@@ -1426,7 +1401,7 @@ src/
 │   │   └── process-orchestrator/   # Workflow coordination, score computation, metric aggregation
 │   │
 │   ├── search-discovery/           # Domain: Query processing & result delivery
-│   │   ├── query-engine/           # Query analysis, template selection
+│   │   ├── query-engine/           # Entity extraction, dynamic query building
 │   │   ├── result-ranking/         # Pre-computed score retrieval and application
 │   │   ├── discovery-feed/         # Trending analysis, personalized content
 │   │   └── caching-layer/          # Query caching, performance optimization
@@ -1556,17 +1531,17 @@ _Required for any community content_
 - API cost stays under $50/day during testing
 - Job system handles failures and retries appropriately
 
-### Milestone 4: Template-Based Query System (Week 7-8)
+### Milestone 4: Dynamic Query System (Week 7-8)
 
 _Core search architecture - required for MVP_
 
-- **Query templates**: Specialized SQL for all 5 query types (dish, category, venue, attribute, broad)
-- **Parameter injection system**: Dynamic filtering, location bounds, attribute matching
-- **Result standardization**: Single/dual list returns, consistent formatting
+- **Dynamic query builder**: Single adaptive SQL query system that responds to any entity combination
+- **Entity-based filtering**: Automatic scope-aware filtering for restaurant vs dish attributes
+- **Result standardization**: Entity-driven single/dual list returns, consistent formatting
 
 **Success Criteria:**
 
-- All 5 query types return properly formatted results
+- All entity combinations return properly formatted results
 - Query response time <1 second without caching
 - Location filtering works within map boundaries
 
