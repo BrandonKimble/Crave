@@ -30,7 +30,7 @@ Cache Storage → User Response
 #### Data Collection Flow
 
 ```
-Reddit API → Content Retrieval → LLM Processing (see llm_guideline.md) →
+Reddit API → Content Retrieval → LLM Processing (see llm_content_processing.mdline.md) →
 Entity Resolution → Graph Database Storage → Metric Aggregation →
 Quality Score Computation
 ```
@@ -547,7 +547,7 @@ If fuzzy matching becomes a bottleneck, implement these alternatives:
 1. Entity Selection (based on collection cycle or user query when on-demand collection is triggered)
 2. Reddit API Search
 3. Post/Comment Retrieval
-4. LLM Content Processing (see llm_guideline.md)
+4. LLM Content Processing (see llm_content_processing.mdline.md)
 5. Entity Resolution (see section 3.2)
 6. Mention Scoring: upvotes × e^(-days_since / 60)
 7. Activity Level Calculation:
@@ -596,7 +596,7 @@ After LLM processing and entity resolution:
 
 ##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
 
-Simplified Processing Tasks (see llm_guideline.md for more details):
+Simplified Processing Tasks (see llm_content_processing.mdline.md for more details):
 
 - Entity extraction (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
 - Inference-based attribute and dish category identification
@@ -617,7 +617,7 @@ Simplified Processing Tasks (see llm_guideline.md for more details):
 
 A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
 
-- When comments recommend "the French Dip at Bartlett's," an LLM uses the llm_guideline.md to create:
+- When comments recommend "the French Dip at Bartlett's," an LLM uses the llm_content_processing.mdline.md to create:
 
   - A menu item dish_or_category entity (french dip")
   - A category dish_or_category entity ("french dip")
@@ -785,7 +785,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 ```
 1. User Query Input
 2. Cache Check (Hot Query Cache - 1 hour)
-3. LLM Query Analysis and Entity Extraction (see llm_guideline.md for processing rules)
+3. LLM Query Analysis and Entity Extraction (see llm_query_processing.md for processing rules)
 4. Entity Normalization and Resolution
 5. Template Selection Based on Query Type
 6. Dynamic Parameter Injection
@@ -801,32 +801,49 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 
 The following query types represent our core value proposition, offering reliable recommendations backed by community evidence.
 
-The system processes queries through LLM analysis (see llm_guideline.md) to classify them as:
+The system processes queries through LLM analysis (see llm_query_processing.md) to classify them and uses **primary query types** to select specialized SQL templates, with **additional entities serving as filters**
 
-1. **Dish-Specific**: "best ramen", "chicken caesar wrap" → Single dish list
+**Primary Query Types** (determine template selection):
+
+1. **Dish-Specific**: "best reuben", "chicken caesar wrap" → Single dish list
 2. **Category-Specific**: "best sandwiches", "Italian food" → Dual lists (dishes + restaurants)
 3. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish list
 4. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
 5. **Broad**: "best food", "best restaurants" → Dual lists
 
-#### Query Understanding & Processing
+#### Complex Query Handling
+
+Complex queries work through **primary intent + filter injection**:
+
+- **LLM determines primary intent** → Template selection
+- **Secondary entities become filters** → Parameter injection into chosen template
+
+##### Examples:
+
+- **Dish + Attribute**: "best brunch chicken and waffles" (dish-specific + attribute filter)
+- **Category + Attribute**: "best vegan ramen" (category-specific + attribute filter)
+- **Broad + Attribute**: "best vegan Italian food" (broad dish + attribute filter)
+- **Broad + Attribute**: "best patio restaurants" (broad restaurants + attribute filter)
+- **Venue + Attribute**: "best dishes at vegan restaurants" (venue-specific with attribute-filtered venues)
+
+#### Query Analysis & Processing
 
 ##### Primary Function: Convert natural language queries to structured graph traversal parameters
 
 _Important: This process maps queries to existing entities and relationships for traversal._
 
-Simplified Processing Tasks (see llm_guideline.md for more details):
+Simplified Processing Tasks (see llm_query_processing.md for more details):
 
-- Entity extraction (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
-  - Extract search intent and type (dish-specific, venue-specific, etc.)
-  - Identify attribute requests (brunch, dinner, vegan, etc.)
-- Term normalization and entity resolution
-  - Handle entity variations/expansions
-  - Standardize entity references
-- Identify location and availability requirements
-- Output standardized format for template-based graph traversal and filtering
+- **Primary intent identification**: Determine which of the 5 query types best matches user intent
+- **Entity extraction**: Extract all relevant entities (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
+- **Filter classification**: Identify which entities serve as filters vs. primary search targets
+- **Term normalization and entity resolution**: Handle entity variations and standardize references
+- **Location and availability requirements**: Identify geographic and temporal constraints
+- **Output standardized format**: Structure data for template selection and parameter injection
 
 ### 4.3 Location & Availability Filtering
+
+Enabled by Google Maps/Places API integration and attribute-based filtering
 
 #### Map-Based Location Filtering
 
@@ -884,47 +901,79 @@ Simplified Processing Tasks (see llm_guideline.md for more details):
 
 ### 4.5 Template-Based Query Architecture
 
-#### Hybrid Template System Design
+#### Specialized Template System Design
 
-The system uses **specialized SQL query templates** for each of the 5 core query types, combined with **dynamic parameter injection** to balance performance with flexibility:
+The system uses **specialized SQL query templates** for each of the 5 primary query types, with **dynamic parameter injection** for filters and constraints:
 
-- **Optimized core queries**: Each query type has a pre-written, performance-tuned SQL template with proper indexing strategies
-- **Dynamic parameter injection**: Templates include well-defined extension points for filters, attributes, and ranking criteria
-- **Predictable execution plans**: Database can optimize and cache execution plans for each template pattern
-- **Maintainable SQL**: Clear, readable queries that are easier to debug and enhance
+**Core Architecture Principles:**
+
+- **Template Selection**: Primary query type (determined by LLM) selects the appropriate specialized SQL template
+- **Parameter Injection**: Secondary entities, attributes, and filters are injected into the chosen template
+- **Performance Optimization**: Each template is SQL-optimized for its specific data retrieval pattern
+- **Predictable Execution**: Database can optimize and cache execution plans for each template pattern
+
+#### Template Selection Logic
+
+The LLM-determined primary query type directly maps to template selection:
+
+1. **Dish-Specific queries** → Use Dish-Specific template (optimized for dish-restaurant pair retrieval)
+2. **Category-Specific queries** → Use Category-Specific template (optimized for category-based dual lists)
+3. **Venue-Specific queries** → Use Venue-Specific template (optimized for restaurant-scoped dish retrieval)
+4. **Attribute-Specific queries** → Use Attribute-Specific template (optimized for attribute-filtered dual lists)
+5. **Broad queries** → Use Broad template (optimized for general ranking across all entities)
 
 #### Dynamic Parameter Injection Process
 
 Following **step 6** in the query pipeline, the system:
 
-1. **Template Selection**: Choose appropriate template based on LLM-determined query type
-2. **Entity ID Injection**: Replace `$dish_id`, `$restaurant_id`, and other placeholders with resolved entity IDs
-3. **Geographic Filtering**: Inject `$geographic_bounds` from map viewport coordinates
-4. **Temporal Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
-5. **Attribute Filtering**: Add `$attribute_filters` for dish attributes and restaurant attributes
+1. **Template Selection**: Choose appropriate template based on LLM-determined primary query type
+2. **Entity ID Injection**: Replace `$dish_id`, `$restaurant_id`, and other primary entity placeholders with resolved entity IDs
+3. **Filter Injection**: Add secondary entities as filters:
+   - `$attribute_filters` for dish attributes and restaurant attributes
+   - `$category_filters` for additional category constraints
+   - `$venue_filters` for restaurant-specific constraints
+4. **Geographic Filtering**: Inject `$geographic_bounds` from map viewport coordinates
+5. **Temporal Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
 
-Each template includes consistent extension points for:
+#### Template Extension Points
 
+Each specialized template includes consistent extension points for:
+
+- **Primary entity matching**: Core `WHERE` clauses for the template's primary purpose
+- **Attribute filtering**: Dynamic `WHERE` clauses for secondary entity filters
 - **Geographic bounds**: `ST_Contains()` operations for map-based filtering
 - **Temporal filters**: Operating hours and "open now" functionality
-- **Attribute matching**: Dynamic `WHERE` clauses for dish and restaurant attributes
-- **Ranking criteria**: Flexible `ORDER BY` clauses based on query context
+- **Ranking criteria**: Template-specific `ORDER BY` clauses optimized for each query type
 - **Result pagination**: Configurable `LIMIT` and `OFFSET` parameters
 
-#### Performance Optimizations
+#### Architecture Benefits
+
+**System Design Advantages:**
+
+- **Performance**: Each template optimized for its specific data access pattern
+- **Flexibility**: Parameter injection handles complex query variations without template proliferation
+- **Maintainability**: Clear separation between core query logic and dynamic filtering
+- **Scalability**: Individual templates can be optimized independently as usage patterns emerge
+- **Predictability**: Consistent parameter injection patterns across all query types
+
+**Database Performance Optimizations:**
 
 - **Pre-computed rankings**: Templates leverage stored `dish_quality_score` and `restaurant_quality_score` fields
 - **Index-aware design**: Each template designed around existing database indexes for optimal performance
 - **Filter order optimization**: Geographic and temporal filters applied **before ranking** to reduce dataset size
 - **Query plan caching**: Database maintains optimized execution plans for each template pattern
 
-#### Benefits of This Approach
+#### Example Query Flow
+**Query: "best vegan ramen downtown"**
 
-- **Performance**: Query optimization benefits of specialized SQL
-- **Flexibility**: Dynamic parameters handle query variations
-- **Maintainability**: Clear separation between query logic and parameter injection
-- **Scalability**: Templates can be individually optimized as usage patterns emerge
-- **Consistency**: Predictable behavior across all query types with unified parameter handling
+1. **LLM Analysis**: Primary intent = Dish-Specific ("ramen"), Filters = attribute ("vegan") + location ("downtown")
+2. **Template Selection**: Dish-Specific template chosen
+3. **Parameter Injection**:
+   - `$dish_id` = resolved ID for "ramen"
+   - `$attribute_filters` = vegan attribute constraint
+   - `$geographic_bounds` = downtown area coordinates
+4. **SQL Execution**: Dish-Specific template with injected parameters
+5. **Result**: Ranked list of vegan ramen dishes in downtown area
 
 ### 4.6 Standardized Return Formats
 
@@ -1507,7 +1556,7 @@ _Growth infrastructure_
 
 ### A. LLM Processing Guidelines
 
-See `LLM_Guidelines.md` for detailed content processing rules
+See `llm_content_processing.md` for detailed content processing rules
 
 ### B. Database Migrations
 
