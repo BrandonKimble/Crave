@@ -871,6 +871,8 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
 ```json
 {
   "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
+  "primary_intent": "dish_specific",
+  "applied_filters": ["vegan", "downtown"],
   "entities": {
     "restaurants": [
       {
@@ -1029,10 +1031,14 @@ _**Note**: This is only a example. The actual return format may vary._
 ```json
 {
   "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
+  "primary_intent": "dish_specific",
+  "applied_filters": ["string":"vegan", "string":"downtown"],
   "dish_results": [
     {
-      "dish_name": "string",
-      "restaurant_name": "string",
+      "dish_or_category_name": "string": "ramen",
+      "dish_id": "uuid", // For frontend caching/tracking
+      "restaurant_name": "string": "Ramen Tatsu-Ya",
+      "restaurant_id": "uuid", // For location data, menu links
       "quality_score": number,
       "activity_level": "trending|active|normal",
       "evidence": {
@@ -1047,18 +1053,21 @@ _**Note**: This is only a example. The actual return format may vary._
           "created_at": "timestamp"
         }
       },
-      "restaurant_info": {
-        "location": {},
-        "hours": {},
-        "status": "open|closed"
-      }
+      "restaurant_info": {"location": {}, "hours": {}, "status": "open|closed"}
     }
   ],
   "restaurant_results": [ // Only for dual-list queries
     {
       "restaurant_name": "string",
       "category_performance_score": number, // Aggregated score for relevant dishes
-      "relevant_dishes": ["string"], // Top dishes in queried category/attribute
+      "relevant_dishes": [ // Top dishes in queried category/attribute
+        {
+          "dish_or_category_name": "string": "ramen",
+          "dish_id": "uuid", // For frontend caching/tracking
+          "quality_score": number,
+          "activity_level": "trending|active|normal"
+        }
+      ],
       "restaurant_info": {"location": {}, "hours": {}, "status": "open|closed"}
     }
   ]
