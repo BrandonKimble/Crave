@@ -35,19 +35,35 @@ Entity Resolution → Graph Database Storage → Metric Aggregation →
 Quality Score Computation
 ```
 
-### 1.4 System Architecture Principles
+### 1.4 Core System Architecture
 
-- **Graph-based data model**: Entities connected through relationships with metadata
-- **Template-based queries**: Optimized SQL for each query type
-- **Modular processing**: Independent components for different entity combinations
-- **Cache-first performance**: Multi-level caching for sub-second responses
+#### Processing Architecture
 
-### 1.5 Data Collection & Processing Strategy
+- **Modular component system**: Independent processors handle different entity combinations from LLM output
+- **Template-based queries**: Specialized, optimized SQL patterns for each of the 5 core query types
+- **Background data collection**: Scheduled cycles (weekly new entities, quarterly full refresh) plus on-demand query-driven collection
+- **Real-time query processing**: Entity resolution → template selection → parameter injection → ranking
 
-- **Community knowledge synthesis**: Process Reddit discussions to extract dish-restaurant connections and attributes
-- **Quality score computation**: Quality scores updated after each data collection cycle based on mention metrics
-- **Dynamic categorization**: Categories emerge organically from community discussions
-- **Real-time relevance**: Activity indicators show trending discussions and recent mentions
+#### Performance Strategy
+
+- **Pre-computed quality scores**: Rankings calculated during data processing, not query time
+- **Multi-level caching**: Hot queries (1hr), recent results (24hr), static data (7d+)
+- **Batch operations**: Bulk entity resolution, database updates, and mention processing
+- **Geographic optimization**: Map-based filtering applied before ranking for performance
+
+### 1.5 Data Collection & Knowledge Synthesis
+
+#### Community Content Processing
+
+- **Reddit discussion analysis**: Extract dish-restaurant connections, attributes, and sentiment from food community posts/comments
+- **Organic category emergence**: Food categories develop naturally from community language patterns rather than predetermined hierarchies
+- **Multi-source mention aggregation**: Combine mentions across posts, comments, and discussion threads for comprehensive evidence
+
+#### Dynamic Ranking & Relevance
+
+- **Quality score evolution**: Dish and restaurant rankings improve with additional community evidence over time
+- **Activity indicators**: Real-time trending (🔥) and active (🕐) status based on mention recency patterns
+- **Contextual performance scoring**: Restaurant rankings adapt based on query context (category/attribute-specific performance vs. global scores)
 
 ---
 
@@ -243,11 +259,12 @@ CREATE TABLE user_events (
 
 ### 2.2 Data Model Principles
 
-#### Unified Entity Model
+#### Graph-Based Unified Entity Model
 
-- **dish_or_category entities**: Serve dual purposes as specific menu items AND general categories
-- **Connection-scoped metadata**: Categories and dish attributes exist only in restaurant→dish relationships
-- **Restaurant attributes**: Stored directly on restaurant entities in metadata
+- **Unified dish_or_category entities**: Serve dual purposes as specific menu items AND general food categories
+- **Connection-scoped relationships**: Categories and dish attributes exist only within restaurant→dish connections
+- **Restaurant-scoped attributes**: Ambiance, features, and service qualities stored directly on restaurant entities
+- **Evidence-driven connections**: All relationships backed by trackable community mentions with scoring
 - **All connections are restaurant→dish**: No direct category or attribute connections
 
 #### Entity Type Definitions
@@ -263,9 +280,9 @@ CREATE TABLE user_events (
 
 ### 3.1 Data Collection Strategy
 
-The system uses two complementary data collection strategies to build and maintain the knowledge graph: scheduled background collection and on-demand query-driven collection. Both share the same LLM-powered entity extraction pipeline but serve different purposes in the system.
+The system uses two complementary data collection strategies to build and maintain the knowledge graph: scheduled background collection and on-demand query-driven collection. Both share the same LLM-powered entity extraction pipeline but serve different purposes in the system. Implementaion details can be found in section 4
 
-#### Scheduled Background Collection
+#### 3.1.1 Scheduled Background Collection
 
 ##### Purpose
 
@@ -334,7 +351,7 @@ Regardless of cycle type, all background collection follows this process:
 - **Opportunistic Connection Updates**: Any relationships found are updated, even for entities not in the current selection
 - **No Recursive API Calls**: New entities are simply created to be enriched in the next weekly cycle
 
-#### On-Demand Query-Driven Collection
+#### 3.1.2 On-Demand Query-Driven Collection
 
 ##### Purpose
 
@@ -377,7 +394,7 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
 - Triggered by user queries rather than scheduled
 - Narrower initial search focus (query-specific)
 
-#### Data Processing Efficiency
+#### 3.1.3 Data Processing Efficiency
 
 ##### Shared Processing Optimizations
 
@@ -389,7 +406,7 @@ Fill knowledge gaps in real-time when user queries return insufficient data.
   - Cache intermediate processing results
   - Avoid redundant API calls for the same content
 
-#### Knowledge Graph Growth
+#### 3.1.4 Knowledge Graph Growth
 
 - **Organic Expansion**:
 
@@ -522,14 +539,16 @@ If fuzzy matching becomes a bottleneck, implement these alternatives:
 - Run fuzzy matching in background and merge duplicates later
 - Prioritize system responsiveness over perfect deduplication
 
-### 3.2 Reddit Data Collection Flow (background & on-demand collection)
+### 3.3 Data Collection Process
+
+#### 3.3.1 Reddit Data Collection Pipeline (background & on-demand collection)
 
 ```
 1. Entity Selection (based on collection cycle or user query when on-demand collection is triggered)
-2. Reddit API Search (with rate limiting)
+2. Reddit API Search
 3. Post/Comment Retrieval
 4. LLM Content Processing (see llm_guideline.md)
-5. Entity Resolution
+5. Entity Resolution (see section 3.2)
 6. Mention Scoring: upvotes × e^(-days_since / 60)
 7. Activity Level Calculation:
    - "trending" if all top 3-5 mentions within 30 days
@@ -538,7 +557,7 @@ If fuzzy matching becomes a bottleneck, implement these alternatives:
 8. Bulk Database Operations with Updated Metrics
 ```
 
-#### Mention Scoring & Activity Calculation Details
+#### 3.3.2 Mention Scoring & Activity Calculation Details
 
 After LLM processing and entity resolution:
 
@@ -573,7 +592,7 @@ After LLM processing and entity resolution:
    - Insert new mentions into mentions table
    - Single transaction for atomicity and efficiency
 
-#### Content Understanding & Processing via LLM Analysis
+#### 3.3.3 Content Understanding & Processing via LLM Analysis
 
 ##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
 
@@ -594,7 +613,7 @@ Simplified Processing Tasks (see llm_guideline.md for more details):
   - Map to canonical entities
 - Output structured data for graph insertion
 
-#### Natural Category Emergence
+#### 3.3.4 Natural Category Emergence
 
 A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
 
@@ -613,9 +632,49 @@ A key advantage of our graph approach is allowing specific dish categories to em
   - New categories automatically created as they appear in discussions
   - Relationships between categories formed naturally through mentions
 
-### 3.5 Component-Based DB Processing Guide
+#### 3.3.5 Data Collection Output Structure
 
-#### Modular Processing Components
+_**Note**: This is only a example. The actual output structure may vary._
+
+```json
+{
+  "mentions": [
+    {
+      "temp_id": "string",
+      "restaurant": {
+        "normalized_name": "string" | null,
+        "original_text": "string" | null,
+        "temp_id": "string"
+      },
+      "restaurant_attributes": ["string"] | null,
+      "dish_or_category": {
+        "normalized_name": "string" | null,
+        "original_text": "string" | null,
+        "temp_id": "string"
+      } | null,
+      "dish_attributes": [
+        {
+          "attribute": "string",
+          "type": "selective|descriptive"
+        }
+      ] | null,
+      "is_menu_item": boolean,
+      "general_praise": boolean,
+      "source": {
+        "type": "post|comment",
+        "id": "string",
+        "url": "string",
+        "upvotes": number,
+        "created_at": "timestamp"
+      }
+    }
+  ]
+}
+```
+
+#### 3.3.6 Component-Based DB Processing Guide
+
+##### Modular Processing Components
 
 The system processes LLM output through independent components. All applicable components process independently for each mention.
 
@@ -672,11 +731,56 @@ Without Dish Attributes:
 - **All Descriptive:** Skip processing (no target for descriptive attributes)
 - **Mixed:** Find existing dish connections with ANY of the selective attributes; Boost those connections; Ignore descriptive attributes
 
+##### Entity Creation Rules
+
+**Always Create:**
+
+- Restaurant entities: When restaurant is missing from database
+- Specific dish connections: When is_menu_item: true and no matching connection exists
+
+**Never Create (Skip Processing):**
+
+- Category dishes: When category mentioned but no dishes with that category exist
+- Attribute matches: When attribute filtering finds no existing dishes
+- General praise dish connections: When general_praise: true but no dish connections exist
+- Descriptive-only attributes: When no dish_or_category is present
+
+##### Attribute Processing Logic
+
+**Selective Attributes (OR Logic):**
+When finding existing connections with selective attributes, use OR logic (match ANY of the selective attributes):
+
+- "great vegan and gluten-free options" → Boost dishes that are vegan OR gluten-free
+- "spicy reuben is amazing" → Find reuben connections that have spicy OR any other selective attributes
+
+**Descriptive Attributes (AND Logic):**
+When adding descriptive attributes to connections, ALL descriptive attributes are added together:
+
+- "this pasta is very creamy and rich" → Add both "creamy" AND "rich" to the pasta connection
+- Descriptive attributes characterize the specific item, so they all apply simultaneously
+
+**Why This Logic:**
+
+- Selective attributes represent filtering criteria - users want options that satisfy any of their dietary/preference needs
+- Descriptive attributes describe specific characteristics of individual items - they all describe the same dish
+- OR logic for selective maximizes relevant results; AND logic for descriptive ensures complete characterization
+
+##### Core Principles
+
+1. **Modular Processing:** All applicable components process independently
+2. **Additive Logic:** Multiple processing components can apply to the same mention
+3. **Selective = Filtering:** Find existing connections that match any of the selective attributes
+4. **Descriptive = Enhancement:** Add attributes to existing connections
+5. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
+6. **Create Specific Only:** Only create new connections for specific dishes (menu items)
+7. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
+8. **Restaurant Always Created:** Restaurant entities are always created if missing
+
 ---
 
-## 4. Query Processing System (when queries return sufficient data)
+## 4. Query Processing System
 
-### 4.1 Query Processing Pipeline
+### 4.1 Query Processing Pipeline (occurs when queries return sufficient data)
 
 ```
 1. User Query Input
@@ -686,11 +790,24 @@ Without Dish Attributes:
 5. Template Selection Based on Query Type
 6. Dynamic Parameter Injection
 7. Graph Database Query Execution and Result Ranking
+  7.1 If insufficient data is returned, trigger on-demand data collection (see section 3 for details)
 8. Cache Storage
 9. Response Delivery
 ```
 
 ### 4.2 Query Understanding & Processing via LLM Analysis
+
+#### Query Type Classification
+
+The following query types represent our core value proposition, offering reliable recommendations backed by community evidence.
+
+The system processes queries through LLM analysis (see llm_guideline.md) to classify them as:
+
+1. **Dish-Specific**: "best ramen", "chicken caesar wrap" → Single dish list
+2. **Category-Specific**: "best sandwiches", "Italian food" → Dual lists (dishes + restaurants)
+3. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish list
+4. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
+5. **Broad**: "best food", "best restaurants" → Dual lists
 
 #### Query Understanding & Processing
 
@@ -709,19 +826,7 @@ Simplified Processing Tasks (see llm_guideline.md for more details):
 - Identify location and availability requirements
 - Output standardized format for template-based graph traversal and filtering
 
-#### Query Type Classification
-
-The following query types represent our core value proposition, offering reliable recommendations backed by community evidence.
-
-The system processes queries through LLM analysis (see llm_guideline.md) to into:
-
-1. **Dish-Specific**: "best ramen", "chicken caesar wrap" → Single dish list
-2. **Category-Specific**: "best sandwiches", "Italian food" → Dual lists (dishes + restaurants)
-3. **Venue-Specific**: "best dishes at Franklin BBQ" → Single dish list
-4. **Attribute-Specific**: "vegan restaurants", "patio dining" → Dual lists
-5. **Broad**: "best food", "best restaurants" → Dual lists
-
-### 4.5 Location & Availability Filtering
+### 4.3 Location & Availability Filtering
 
 #### Map-Based Location Filtering
 
@@ -744,7 +849,84 @@ The system processes queries through LLM analysis (see llm_guideline.md) to into
   - Processed as dish_attribute or restaurant_attribute entities through natural language
   - Applied using existing attribute query templates
 
-### 4.4 Standardized Return Formats
+### 4.4 Query Processing Output Structure
+
+```json
+{
+  "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
+  "entities": {
+    "restaurants": [
+      {
+        "normalized_name": "string",
+        "original_text": "string" | null,
+      }
+    ],
+    "dish_or_categories": [
+      {
+        "normalized_name": "string",
+        "original_text": "string" | null,
+      }
+    ],
+    "attributes": [
+      {
+        "normalized_name": "string",
+        "original_text": "string" | null,
+        "scope": "restaurant|dish"
+      }
+    ]
+  },
+  "filters": {
+    "location_bounds": "object",
+    "open_now": boolean
+  }
+}
+```
+
+### 4.5 Template-Based Query Architecture
+
+#### Hybrid Template System Design
+
+The system uses **specialized SQL query templates** for each of the 5 core query types, combined with **dynamic parameter injection** to balance performance with flexibility:
+
+- **Optimized core queries**: Each query type has a pre-written, performance-tuned SQL template with proper indexing strategies
+- **Dynamic parameter injection**: Templates include well-defined extension points for filters, attributes, and ranking criteria
+- **Predictable execution plans**: Database can optimize and cache execution plans for each template pattern
+- **Maintainable SQL**: Clear, readable queries that are easier to debug and enhance
+
+#### Dynamic Parameter Injection Process
+
+Following **step 6** in the query pipeline, the system:
+
+1. **Template Selection**: Choose appropriate template based on LLM-determined query type
+2. **Entity ID Injection**: Replace `$dish_id`, `$restaurant_id`, and other placeholders with resolved entity IDs
+3. **Geographic Filtering**: Inject `$geographic_bounds` from map viewport coordinates
+4. **Temporal Filtering**: Apply `$open_now_filter` using current timestamp and stored hours
+5. **Attribute Filtering**: Add `$attribute_filters` for dish attributes and restaurant attributes
+
+Each template includes consistent extension points for:
+
+- **Geographic bounds**: `ST_Contains()` operations for map-based filtering
+- **Temporal filters**: Operating hours and "open now" functionality
+- **Attribute matching**: Dynamic `WHERE` clauses for dish and restaurant attributes
+- **Ranking criteria**: Flexible `ORDER BY` clauses based on query context
+- **Result pagination**: Configurable `LIMIT` and `OFFSET` parameters
+
+#### Performance Optimizations
+
+- **Pre-computed rankings**: Templates leverage stored `dish_quality_score` and `restaurant_quality_score` fields
+- **Index-aware design**: Each template designed around existing database indexes for optimal performance
+- **Filter order optimization**: Geographic and temporal filters applied **before ranking** to reduce dataset size
+- **Query plan caching**: Database maintains optimized execution plans for each template pattern
+
+#### Benefits of This Approach
+
+- **Performance**: Query optimization benefits of specialized SQL
+- **Flexibility**: Dynamic parameters handle query variations
+- **Maintainability**: Clear separation between query logic and parameter injection
+- **Scalability**: Templates can be individually optimized as usage patterns emerge
+- **Consistency**: Predictable behavior across all query types with unified parameter handling
+
+### 4.6 Standardized Return Formats
 
 #### Return Format Strategy
 
@@ -790,13 +972,13 @@ Each result format maintains consistent data structure for seamless UI integrati
 - Both formats include location, hours, and availability status
 - Evidence attribution consistent across all result types
 
-#### Result Structure
+### 4.7 Result Structure
 
-_**Note**: This is only a example for the LLM output format. The actual return format may vary._
+_**Note**: This is only a example. The actual return format may vary._
 
 ```json
 {
-  "query_type": "string",
+  "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
   "dish_results": [
     {
       "dish_name": "string",
@@ -833,7 +1015,7 @@ _**Note**: This is only a example for the LLM output format. The actual return f
 }
 ```
 
-### 4.6 Caching Strategy
+### 4.8 Caching Strategy
 
 #### Cache Levels & Implementation
 
@@ -874,22 +1056,6 @@ Example: Restaurant info, entity metadata, common patterns
 - **Connection pooling**: Establish Redis connection pool at startup
 - **Serialization strategy**: Efficient JSON serialization for complex result sets
 - **Memory management**: LRU eviction with appropriate memory limits
-
-### 4.3 Template-Based Query Architecture
-
-#### Template System Design
-
-- **Specialized SQL templates** for each query type with performance optimizations
-- **Dynamic parameter injection** for filters, attributes, and ranking criteria
-- **Consistent extension points** for map boundaries, open hours, and other filters
-- **Geographic and time filters applied before ranking** for optimal performance
-
-#### LLM Query Processing Output
-
-The system processes natural language queries through LLM analysis to extract ():
-
-- Query type (dish_specific, category_specific, venue_specific, attribute_specific, broad)
-- Entity references (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
 
 ---
 
@@ -1016,7 +1182,7 @@ _**Note**: This is a high-level overview of the technology stack. The actual imp
 
 ## 9. Modular Monolith Architecture
 
-### Core Module Structure
+### 9.1 Core Module Structure
 
 ```
 src/
@@ -1061,7 +1227,7 @@ src/
 └── main.ts                        # Application bootstrap
 ```
 
-### Domain Responsibilities
+### 9.2 Domain Responsibilities
 
 **Content Processing**: Handles all aspects of ingesting and analyzing community content
 
@@ -1080,7 +1246,7 @@ src/
 **External Integrations**: Centralizes third-party service connections
 **Infrastructure**: Provides foundational system services
 
-### Development and Design Principles
+### 9.3 Development and Design Principles
 
 **Dependency Injection & Loose Coupling**:
 
