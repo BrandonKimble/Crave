@@ -4,7 +4,6 @@
 
 ## Core System Flow
 
-
 #### Data Collection Flow:
 
 ## 1. Query Processing & Understanding
