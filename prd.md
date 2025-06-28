@@ -855,14 +855,16 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 
 ### 4.3 LLM Query Processing Output Structure
 
+_**Note**: Structure may evolve during implementation. The key principles are entity organization by type with preserved original text and resolved database identifiers._
+
 ```json
 {
   "entities": {
     "restaurants": [
       {
         "normalized_name": "string",
-        "original_text": "string" | null,
-        "entity_ids": ["uuid"]
+        "original_text": "string" | null, // original user text
+        "entity_ids": ["uuid"] // resolved database IDs
       }
     ],
     "dish_or_categories": [
@@ -937,33 +939,37 @@ The system uses a **single dynamic query builder** that adapts its SQL structure
 
 #### Dynamic Query Building Logic
 
-The system constructs queries using conditional SQL blocks based on entity presence:
+The system constructs adaptive database queries through a multi-stage filtering approach that responds to entity presence. The query architecture uses conditional logic blocks that activate only when corresponding entities are detected, creating an efficient and flexible query execution pattern.
 
-```sql
--- Core query structure adapts to available entities
-WITH filtered_restaurants AS (
-  SELECT entity_id FROM entities
-  WHERE type = 'restaurant'
-  -- Restaurant entity filtering (when specific restaurants mentioned)
-  AND ($restaurant_ids IS NULL OR entity_id = ANY($restaurant_ids))
-  -- Restaurant attribute filtering (when restaurant attributes mentioned)
-  AND ($restaurant_attribute_ids IS NULL OR restaurant_attributes && $restaurant_attribute_ids)
-  -- Geographic filtering (always applied if provided)
-  AND ($geographic_bounds IS NULL OR ST_Contains($geographic_bounds, point(longitude, latitude)))
-  -- Availability filtering (when open_now toggle used)
-  AND ($open_now IS NULL OR operating_hours_check(restaurant_metadata->>'hours', $current_timestamp))
-),
-filtered_connections AS (
-  SELECT c.* FROM connections c
-  JOIN filtered_restaurants fr ON c.restaurant_id = fr.entity_id
-  -- dish_or_category filtering (when specific dishes/categories mentioned)
-  WHERE ($dish_or_category_ids IS NULL OR c.dish_or_category_id = ANY($dish_or_category_ids))
-  -- Dish attribute filtering (when dish attributes mentioned)
-  AND ($dish_attribute_ids IS NULL OR c.dish_attributes && $dish_attribute_ids)
-)
-SELECT * FROM filtered_connections
-ORDER BY dish_quality_score DESC;
-```
+##### Multi-Stage Filtering Approach:
+
+- Conditional logic blocks activate based on entity presence
+- Efficient execution pattern adapts to any entity combination
+- Performance optimized through early dataset reduction
+
+**Stage 1: Restaurant Filtering**
+
+- **Direct entity matching**: When specific restaurants mentioned → filter to those venues
+- **Restaurant attributes**: Array intersection for attributes like "patio" or "romantic"
+- **Geographic bounds**: Spatial operations using map viewport coordinates
+- **Availability**: Operating hours metadata + "open now" toggle evaluation
+
+**Stage 2: Connection Filtering**
+
+- **dish_or_category matching**: Array operations for specific dishes/categories mentioned
+- **Dish attributes**: Array intersection for connection-scoped attributes ("spicy", "vegan")
+- **Applied to**: Eligible restaurant set from Stage 1
+
+**Adaptive Execution Logic:**
+
+- **Entity present** → Corresponding filter activates
+- **Entity absent** → Filter becomes null check (disabled)
+- **Performance benefit**: Avoids unnecessary operations
+- **Flexibility**: Handles any entity combination naturally
+
+**Result Processing:**
+
+- **Ranking**: Leverages pre-computed `dish_quality_score` or `restaurant_quality_score` values, ranked in descending order in real-time
 
 #### Attribute Scope Processing
 
@@ -998,41 +1004,37 @@ Following **step 5** in the query pipeline, the system:
 
 **Query: "best spicy ramen with patio seating"**
 
-1. **Entity Extraction**: dish_or_category: ["ramen"], dish_attributes: ["spicy"], restaurant_attributes: ["patio"]
-2. **Dynamic Query Building**:
-   ```sql
-   -- Apply restaurant attribute filter first
-   filtered_restaurants: restaurant_attributes && ARRAY[patio_id]
-   -- Then dish_or_category filter
-   filtered_connections: dish_or_category_id = ramen_id
-   -- Finally dish attribute filter
-   AND dish_attributes && ARRAY[spicy_id]
-   ```
-3. **Result**: Dual lists of spicy ramen at restaurants with patios
+- **Entities extracted**: dish_or_category ("ramen") + dish_attribute ("spicy") + restaurant_attribute ("patio")
+- **Processing order**:
+  1. Filter restaurants with "patio" attribute
+  2. Find ramen connections at those restaurants
+  3. Filter connections with "spicy" attribute
+- **Result**: Dual lists of spicy ramen dishes at restaurants with patios
 
 **Query: "best dishes at Franklin BBQ"**
 
-1. **Entity Extraction**: restaurants: ["Franklin BBQ"]
-2. **Dynamic Query Building**:
-   ```sql
-   -- Filter to specific restaurant only
-   filtered_restaurants: entity_id = franklin_bbq_id
-   -- Get all connections for this restaurant
-   filtered_connections: (no additional dish/attribute filters)
-   ```
-3. **Result**: Single list of all dishes at Franklin BBQ
+- **Entities extracted**: restaurant ("Franklin BBQ") only
+- **Processing order**:
+  1. Filter to Franklin BBQ specifically
+  2. Retrieve all connections for that restaurant
+  3. No additional dish/attribute filtering
+- **Result**: Single list of all Franklin's menu items (restaurant context known)
 
 **Query: "best vegan Italian food"**
 
-1. **Entity Extraction**: dish_or_category: ["Italian"], dish_attributes: ["vegan"]
-2. **Dynamic Query Building**:
-   ```sql
-   -- No restaurant filtering needed
-   filtered_restaurants: (all restaurants)
-   -- Filter by category and attribute
-   filtered_connections: dish_or_category_id = italian_id AND dish_attributes && ARRAY[vegan_id]
-   ```
-3. **Result**: Dual lists of vegan Italian dishes and top restaurants for vegan Italian food
+- **Entities extracted**: dish_or_category ("Italian") + dish_attribute ("vegan")
+- **Processing order**:
+  1. No restaurant-level filtering (all eligible)
+  2. Filter connections for Italian food AND vegan attribute
+  3. Array intersection logic for both criteria
+- **Result**: Dual lists → vegan Italian dishes + restaurants excelling in this combo
+
+**Processing Adaptation Logic:**
+
+- **Multiple entity types** → Apply in order: restaurant filters first, then connection filters
+- **Missing entity types** → Corresponding filter stages remain dormant
+- **Performance benefit** → Early dataset reduction through restaurant-scoped filtering
+- **Flexibility** → No predefined query categories, pure entity-driven logic
 
 #### Performance Optimizations
 
@@ -1058,18 +1060,45 @@ The system determines return format based on the **entity composition** of the q
 
 #### Return Format Logic
 
-```typescript
-function determineReturnFormat(entities): 'single_list' | 'dual_list' {
-  // Single list: Only when specific restaurants mentioned with no dish/attribute context
-  const hasOnlyRestaurants =
-    entities.restaurants.length > 0 &&
-    entities.dish_or_categories.length === 0 &&
-    entities.dish_attributes.length === 0 &&
-    entities.restaurant_attributes.length === 0;
+##### Format Determination Process:
 
-  return hasOnlyRestaurants ? 'single_list' : 'dual_list';
-}
+- Analyze entity composition → determine user intent → select response format
+- **Deterministic logic**: No scoring or probability, just entity presence patterns
+- **Predictable experience**: Same entity combination = same format
+
+**Single List Criteria:**
+
 ```
+IF restaurants.length > 0
+AND dish_or_categories.length = 0
+AND dish_attributes.length = 0
+AND restaurant_attributes.length = 0
+→ RETURN single_list
+```
+
+**Single List Reasoning:**
+
+- User already knows the restaurant
+- Intent = menu discovery within that establishment
+- Examples: "best dishes at Franklin BBQ", "menu at Tatsu-Ya"
+
+**Dual List Default:**
+
+- **All other entity combinations** → dual_list format
+- **Philosophy**: Users benefit from both specific items + venue discovery
+- **Includes**: dish_or_category only, attributes only, mixed combinations
+
+**Restaurant + Other Entities:**
+
+- **Interpretation**: Restaurant as filter constraint, not venue focus
+- **Example**: "best ramen at patio restaurants" → dual list (not venue-specific)
+- **Maintains discovery value**: Shows both items + venues
+
+**Implementation Benefits:**
+
+- **Consistent UI**: Frontend handles predictable format patterns
+- **Clear logic**: Boolean evaluation, no complex decision trees
+- **User-intuitive**: Format matches natural query interpretation
 
 #### Return Format Types
 
@@ -1110,7 +1139,7 @@ For dual list returns, restaurant rankings are **contextually calculated** based
 
 ### 4.7 Post-Processing Result Structure
 
-_**Note**: This is only an example. The actual return format may vary._
+_**Note**: Structure will evolve during implementation. Key principles are format adaptation, comprehensive evidence, and cross-reference integrity._
 
 ```json
 {
@@ -1185,13 +1214,6 @@ _**Note**: This is only an example. The actual return format may vary._
           "connection_id": "uuid",
           "quality_score": 87.5,
           "activity_level": "trending"
-        },
-        {
-          "dish_or_category_name": "Miso Ramen",
-          "dish_or_category_id": "uuid",
-          "connection_id": "uuid",
-          "quality_score": 82.1,
-          "activity_level": "active"
         }
       ],
       "restaurant_attributes": [
