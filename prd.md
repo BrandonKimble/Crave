@@ -655,9 +655,42 @@ A key advantage of our graph approach is allowing specific dish categories to em
   - New categories automatically created as they appear in discussions
   - Relationships between categories formed naturally through mentions
 
-#### 3.3.5 Data Collection Output Structure
+#### 3.3.5 LLM Data Collection Input/Output Structures
 
-_**Note**: This is only a example. The actual output structure may vary._
+##### LLM Input Structure
+
+_**Note**: Structure may evolve during implementation. Key principles are batch processing efficiency, original context preservation, and hierarchical post-comment relationships._
+
+```json
+{
+  "posts": [
+    {
+      "post_id": "string",
+      "title": "string",
+      "content": "string",
+      "subreddit": "string",
+      "url": "string",
+      "upvotes": number,
+      "created_at": "timestamp",
+      "comments": [
+        {
+          "comment_id": "string",
+          "content": "string",
+          "author": "string",
+          "upvotes": number,
+          "created_at": "timestamp",
+          "parent_id": "string|null",
+          "url": "string"
+        }
+      ]
+    }
+  ]
+}
+```
+
+##### LLM Output Structure
+
+_**Note**: Structure will evolve during implementation. Key principles are entity normalization with original text preservation, attribute classification for processing guidance, and source traceability._
 
 ```json
 {
@@ -853,7 +886,27 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
-### 4.3 LLM Query Processing Output Structure
+### 4.3 LLM Query Processing Input/Output Structures
+
+#### LLM Input Structure
+
+_**Note**: Structure may evolve during implementation. Key principles are query context preservation, geographic constraint integration, and user preference continuity._
+
+```json
+{
+  "query": "string",
+  "location_bounds": {
+    "ne_lat": number,
+    "ne_lng": number,
+    "sw_lat": number,
+    "sw_lng": number
+  },
+  "open_now": boolean,
+  "user_context": "string|null"
+}
+```
+
+#### LLM Output Structure
 
 _**Note**: Structure may evolve during implementation. The key principles are entity organization by type with preserved original text and resolved database identifiers._
 
