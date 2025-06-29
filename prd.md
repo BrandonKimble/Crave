@@ -1020,7 +1020,7 @@ For restaurant ranking in category/attribute queries:
 9. Response Delivery
 ```
 
-### 4.8 Multi-Level Caching Strategy
+### 4.2 Multi-Level Caching Strategy
 
 #### Cache Implementation Levels
 
@@ -1060,7 +1060,7 @@ For restaurant ranking in category/attribute queries:
 - **LRU eviction** with appropriate memory limits
 - **Performance monitoring** of hit rates and response times
 
-### 4.2 Query Processing and LLM Input/Output Structures
+### 4.3 Query Understanding & Processing via LLM Analysis
 
 #### Entity-Based Query Processing
 
@@ -1095,11 +1095,11 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
-#### LLM Input/Output Structures
+### 4.4 LLM Query Processing Input/Output Structures
 
 See llm_query_processing.md for more implementation and processing details.
 
-##### LLM Input Structure
+#### LLM Input Structure
 
 _**Note**: Structure may evolve during implementation. Key principles are query context preservation, geographic constraint integration, and user preference continuity._
 
@@ -1117,7 +1117,7 @@ _**Note**: Structure may evolve during implementation. Key principles are query 
 }
 ```
 
-##### LLM Output Structure
+#### LLM Output Structure
 
 _**Note**: Structure may evolve during implementation. The key principles are entity organization by type with preserved original text and resolved database identifiers._
 
@@ -1155,31 +1155,6 @@ _**Note**: Structure may evolve during implementation. The key principles are en
   }
 }
 ```
-
-### 4.4 Location & Availability Filtering
-
-Enabled by Google Maps/Places API integration and attribute-based filtering
-
-#### Map-Based Location Filtering
-
-- **Map-Centric UI**: Users navigate a map interface to define their area of interest
-- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
-- **Implementation**:
-  - Each query includes viewport coordinates (NE and SW bounds)
-  - Applied during **Dynamic Query Building** (step 5) and executed in **Graph Database Query Execution** (step 6)
-  - Database filters restaurants within these coordinates **before ranking** using geographic indexes
-  - No text-based location parsing required - eliminates ambiguity in location interpretation
-
-#### Availability Filtering: Toggle + Attribute Approach
-
-- **"Open Now" Toggle**: Binary filter using current time against stored operating hours
-  - Applied during **Dynamic Query Building** with current timestamp
-  - Executed in database query **before ranking** for performance optimization
-  - Uses structured operating hours data from Google Places API
-- **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
-  - Examples: "brunch", "happy hour", "late night", "weekend specials"
-  - Processed as dish_attribute or restaurant_attribute entities through natural language
-  - Applied using existing dynamic query filtering
 
 ### 4.5 Dynamic Query Architecture
 
@@ -1316,7 +1291,32 @@ Following **step 5** in the query pipeline, the system:
 - **Conditional execution**: NULL checks prevent unnecessary filtering when entities not present
 - **Bulk parameter binding**: Array parameters enable efficient OR logic for multiple entities
 
-### 4.6 Return Format Determination
+### 4.6 Location & Availability Filtering
+
+Enabled by Google Maps/Places API integration and attribute-based filtering
+
+#### Map-Based Location Filtering
+
+- **Map-Centric UI**: Users navigate a map interface to define their area of interest
+- **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
+- **Implementation**:
+  - Each query includes viewport coordinates (NE and SW bounds)
+  - Applied during **Dynamic Query Building** (step 5) and executed in **Graph Database Query Execution** (step 6)
+  - Database filters restaurants within these coordinates **before ranking** using geographic indexes
+  - No text-based location parsing required - eliminates ambiguity in location interpretation
+
+#### Availability Filtering: Toggle + Attribute Approach
+
+- **"Open Now" Toggle**: Binary filter using current time against stored operating hours
+  - Applied during **Dynamic Query Building** with current timestamp
+  - Executed in database query **before ranking** for performance optimization
+  - Uses structured operating hours data from Google Places API
+- **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
+  - Examples: "brunch", "happy hour", "late night", "weekend specials"
+  - Processed as dish_attribute or restaurant_attribute entities through natural language
+  - Applied using existing dynamic query filtering
+
+### 4.7 Return Format Determination
 
 #### Entity-Based Return Strategy
 
@@ -1409,7 +1409,7 @@ Each result format maintains consistent data structure for seamless UI integrati
 - Restaurant results always include relevant dish examples and performance metrics
 - Evidence attribution present across all result types
 
-### 4.7 Post-Processing Result Structure
+### 4.8 Post-Processing Result Structure
 
 _**Note**: Structure will evolve during implementation. Key principles are format adaptation, comprehensive evidence, and cross-reference integrity._
 
@@ -1516,24 +1516,26 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
 }
 ```
 
-```
-### 4.9 Results Display
+### 4.9 Ranking System
 
-#### List View: Scrollable results with:
+_Important: This system relies on pre-computed global quality scores for ranking with attributes serving as filters._
 
-  - Name of dish-restaurant pair
-  - Global quality score representation
-  - Supporting evidence (top mentions, connection metrics)
-  - Open/closed status
+#### Results Display
 
-#### Detail View: Expanded information on selection
+##### List View: Scrollable results with:
 
-  - Name of dish-restaurant pair
-  - Complete evidence display
-  - All connected entities, top mentions, connection metrics
-  - Operating hours
-  - Order/reservation links
-```
+- Name of dish-restaurant pair
+- Global quality score representation
+- Supporting evidence (top mentions, connection metrics)
+- Open/closed status
+
+##### Detail View: Expanded information on selection
+
+- Name of dish-restaurant pair
+- Complete evidence display
+- All connected entities, top mentions, connection metrics
+- Operating hours
+- Order/reservation links
 
 ---
 
