@@ -73,6 +73,8 @@ Quality Score Computation
 
 #### Graph-Based Model
 
+_**Note**: This design uses a unified entity-relationship model where all entities (restaurants, dishes, categories, attributes) are stored in a single `entities` table differentiated by type, with relationships modeled through the `connections` table. This approach enables flexible many-to-many relationships while maintaining referential integrity and query performance. These schemas may evolve during implementation as requirements are refined._
+
 ##### 1. Entities Table
 
 ```sql
@@ -271,8 +273,10 @@ CREATE TABLE user_events (
 
 - **restaurant**: Physical dining establishments with location and operational data
 - **dish_or_category**: Food items that can be both menu items and general categories
-- **dish_attribute**: Connection-scoped descriptors that apply to dishes(spicy, vegan, house-made)
-- **restaurant_attribute**: Restaurant-scoped descriptors that apply to (patio, romantic, family-friendly)
+- **dish_attribute**: Connection-scoped descriptors that apply to dishes (spicy, vegan, house-made, Italian when describing dishes)
+- **restaurant_attribute**: Restaurant-scoped descriptors that apply to restaurants (patio, romantic, family-friendly, Italian when describing restaurants)
+
+**Context-Dependent Attributes**: Many attributes exist as separate entities based on their contextual scope. For example, "Italian" exists as both a dish_attribute entity (for Italian dishes) and a restaurant_attribute entity (for Italian restaurants), enabling precise query targeting and flexible cross-scope analysis.
 
 ### 2.3 Data Model Architecture
 
@@ -283,6 +287,13 @@ CREATE TABLE user_events (
   - Connection-scope metadata (stored in categories array)
 - **Same entity ID can represent both menu item and category**
 - **Eliminates redundancy and ambiguity** in food terminology
+
+#### Context-Driven Attribute Entity Management
+
+- **Separate entities by scope**: Context-dependent attributes (cuisine, dietary, value, etc.) exist as separate entities based on their scope
+- **Scope-aware entity resolution**: Entity resolution matches by name AND scope to find the correct entity
+- **Flexible query capabilities**: Enables precise filtering by restaurant attributes vs dish attributes
+- **Examples**: "Italian" exists as both dish_attribute and restaurant_attribute entities with different IDs
 
 #### All Connections are Restaurant-to-dish_or_category
 
@@ -460,17 +471,36 @@ During data collection, the LLM:
 
 ##### Phase 2: Database Entity Resolution w/ Batching (Server-Side)
 
+###### Scope-Aware Resolution Process
+
+**Standard Entity Resolution Process**: The system resolves all entity types through name matching with type constraints. Most entities have unambiguous types and resolve directly (restaurants and dish_or_categories). For context-dependent attributes that can exist in both dish and restaurant contexts (cuisine, dietary, value, etc.), the system creates separate entities based on scope and matches by both **name AND entity type** to ensure accurate targeting.
+
+**Standard entity resolution examples:**
+
+- "Franklin BBQ" → Resolves to Franklin BBQ restaurant entity
+- "ramen" → Resolves to ramen dish_or_category entity
+
+**Context-dependent attribute resolution (special case):**
+
+- "Italian pasta" → LLM determines dish context → Resolves to Italian dish_attribute entity (ID: 123)
+- "Italian restaurant" → LLM determines restaurant context → Resolves to Italian restaurant_attribute entity (ID: 456)
+- "vegan burger" → LLM determines dish context → Resolves to vegan dish_attribute entity
+- "vegan restaurant" → LLM determines restaurant context → Resolves to vegan restaurant_attribute entity
+
+This enables precise query targeting while maintaining normal operation for all standard entity types.
+
 ###### Three-Tier Resolution Process
 
-1. **Exact match against canonical names**: Single query `WHERE name IN (...)`
-2. **Alias matching**: Single query with array operations `WHERE aliases && ARRAY[...]`
-3. **Fuzzy matching for remaining entities**: Individual queries, edit distance ≤ 3-4
+1. **Exact match against canonical names**: Single query `WHERE name IN (...) AND type = $entity_type`
+2. **Alias matching**: Single query with array operations `WHERE aliases && ARRAY[...] AND type = $entity_type`
+3. **Fuzzy matching for remaining entities**: Individual queries, edit distance ≤ 3-4, with type constraint
 
-##### Phase 3: ID mapping and bulk operations
+##### Phase 3: Batched Processing Pipeline
 
-- Build temporary ID to database ID mapping
-- Use single transaction with UPSERT operations
-- Batch all insertions and updates for performance
+1. **Batch deduplication**: Consolidate duplicates within batch by normalized name
+2. **In-memory ID mapping**: Build {temp_id → db_id} dictionary from results
+3. **Bulk database operations**: Single transaction with UPSERT statements
+4. **Prepared statement caching**: Cache query execution plans for all resolution and insertion queries
 
 ###### Resolution Decision Logic
 
@@ -484,12 +514,27 @@ During data collection, the LLM:
 
 #### 3.2.2 Entity Resolution Optimization
 
-##### Batched Processing Pipeline
+##### Fuzzy Matching Performance Optimizations
 
-1. **Batch deduplication**: Consolidate duplicates within batch by normalized name
-2. **In-memory ID mapping**: Build {temp_id → db_id} dictionary from results
-3. **Bulk database operations**: Single transaction with UPSERT statements
-4. **Prepared statement caching**: Cache query execution plans for all resolution and insertion queries
+If fuzzy matching becomes a bottleneck, implement these alternatives:
+
+**Efficient Algorithm Alternatives:**
+
+- BK-tree or locality-sensitive hashing for faster string matching
+- Use approximate string matching libraries optimized for this use case
+- Pre-compute common variations/misspellings for high-frequency entities
+
+**Processing Optimizations:**
+
+- Process fuzzy matching in smaller sub-batches to prevent memory issues
+- Set time limits per entity rather than count limits
+- Use parallel processing for the fuzzy matching step specifically
+
+**Async Processing Approach:**
+
+- Do exact/alias matching first, create entities for non-matches
+- Run fuzzy matching in background and merge duplicates later
+- Prioritize system responsiveness over perfect deduplication
 
 ##### Performance Monitoring
 
@@ -500,17 +545,25 @@ During data collection, the LLM:
 
 #### 3.2.3 Query Processing Application
 
-The same entity resolution process applies during user queries, but with key optimizations for real-time performance:
+The same entity resolution process applies during user queries, with scope determination only for context-dependent attributes, and key optimizations for real-time performance:
 
-1. LLM normalizes user query entity terms
-2. System matches against canonical names and aliases
+1. LLM normalizes user query entity terms and determines contextual scope for attributes
+2. System matches against canonical names and aliases with type constraints (standard for all entities)
 3. Query processes using matched entities for database search
 
-Example:
+**Standard entity resolution examples:**
 
-- User searches: "best food at tatsuyas"
-- System identifies "tatsuyas" as alias for "Ramen Tatsu-Ya"
-- Query processes as venue-specific search for this canonical entity
+- User searches: "best food at tatsuyas" → "tatsuyas" resolves to "Ramen Tatsu-Ya" restaurant entity
+- User searches: "best reuben" → "reuben" resolves to reuben dish_or_category entity
+
+**Context-dependent attribute resolution examples:**
+
+- User searches: "crispy chicken" → "crispy" resolves to crispy dish_attribute, "chicken" to chicken dish_or_category
+- User searches: "restaurants with patio" → "patio" resolves to patio restaurant_attribute entity
+- User searches: "spicy ramen" → "spicy" resolves to spicy dish_attribute, "ramen" to ramen dish_or_category
+- User searches: "best Italian food" → "Italian" resolves to Italian dish_attribute entity (context-dependent)
+- User searches: "Italian restaurants" → "Italian" resolves to Italian restaurant_attribute entity (context-dependent)
+- User searches: "vegan ramen" → "vegan" resolves to vegan dish_attribute, "ramen" to ramen dish_or_category (context-dependent)
 
 ##### Key Differences from Data Collection Resolution
 
@@ -540,28 +593,6 @@ Example:
 - **Fallback to broader categories** if specific entities not found
 - **Maintain query intent** even with imperfect entity resolution
 
-#### 3.2.4 Fuzzy Matching Performance Optimizations
-
-If fuzzy matching becomes a bottleneck, implement these alternatives:
-
-**Efficient Algorithm Alternatives:**
-
-- BK-tree or locality-sensitive hashing for faster string matching
-- Use approximate string matching libraries optimized for this use case
-- Pre-compute common variations/misspellings for high-frequency entities
-
-**Processing Optimizations:**
-
-- Process fuzzy matching in smaller sub-batches to prevent memory issues
-- Set time limits per entity rather than count limits
-- Use parallel processing for the fuzzy matching step specifically
-
-**Async Processing Approach:**
-
-- Do exact/alias matching first, create entities for non-matches
-- Run fuzzy matching in background and merge duplicates later
-- Prioritize system responsiveness over perfect deduplication
-
 ### 3.3 Data Collection Process
 
 #### 3.3.1 Reddit Data Collection Pipeline (background & on-demand collection)
@@ -572,15 +603,54 @@ If fuzzy matching becomes a bottleneck, implement these alternatives:
 3. Post/Comment Retrieval
 4. LLM Content Processing (see llm_content_processing.mdline.md)
 5. Entity Resolution (see section 3.2)
-6. Mention Scoring: upvotes × e^(-days_since / 60)
-7. Activity Level Calculation:
-   - "trending" if all top 3-5 mentions within 30 days
-   - "active" if last_mentioned_at within 7 days
-   - "normal" otherwise
-8. Bulk Database Operations with Updated Metrics
+6. Bulk Database Operations and Metric Aggregation
+7. Top Mention Scoring and Comparison
+8. Activity Level Calculation
+9. Quality Score Calculations and Updates
 ```
 
-#### 3.3.2 Mention Scoring & Activity Calculation Details
+#### 3.3.2 Content Understanding & Processing via LLM Analysis
+
+##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
+
+Simplified Processing Tasks (see llm_content_processing.mdline.md for more details):
+
+- **Comprehensive entity extraction**: Extract all entity types (restaurants, dish_or_category, dish_attribute, restaurant_attribute) from content
+- **Context-driven scope determination**: For context-dependent attributes (cuisine, dietary, value, etc.), determine whether they apply to dishes or restaurants based on usage context
+- Inference-based attribute and dish category identification
+  - Create specific and general dish category entities (e.g., "french dip", not just "sandwich")
+  - Allow entities to emerge organically from community mentions
+- Discard negative sentiment content
+- Connection mapping between entities
+  - Link dishes to restaurants in nested comments
+  - Process implicit entity connections
+  - Maintain comment thread context
+- **Entity normalization and resolution**
+  - Handle entity variations/expansions for all entity types
+  - Standardize entity references with appropriate type classification
+  - Map to canonical entities using scope-aware matching for context-dependent attributes
+- Output structured data for graph insertion
+
+#### 3.3.3 Natural Category Emergence
+
+A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
+
+- When comments recommend "the French Dip at Bartlett's," an LLM uses the llm_content_processing.mdline.md to create:
+
+  - A menu item dish_or_category entity (french dip")
+  - A category dish_or_category entity ("french dip")
+  - A broader category dish_or_category entity ("sandwich")
+  - Appropriate connections between these entities
+
+- This enables both specific and general queries:
+  - "Best french dip" finds all dishes connected to the "french dip" category
+  - "Best sandwich" includes all sandwich types, including french dips
+- Categories evolve organically based on how the community discusses food:
+  - No need for predetermined hierarchies
+  - New categories automatically created as they appear in discussions
+  - Relationships between categories formed naturally through mentions
+
+#### 3.3.4 Mention Scoring & Activity Calculation Details
 
 After LLM processing and entity resolution:
 
@@ -615,47 +685,9 @@ After LLM processing and entity resolution:
    - Insert new mentions into mentions table
    - Single transaction for atomicity and efficiency
 
-#### 3.3.3 Content Understanding & Processing via LLM Analysis
-
-##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
-
-Simplified Processing Tasks (see llm_content_processing.mdline.md for more details):
-
-- Entity extraction (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
-- Inference-based attribute and dish category identification
-  - Create specific and general dish category entities (e.g., "french dip", not just "sandwich")
-  - Allow entities to emerge organically from community mentions
-- Discard negative sentiment content
-- Connection mapping between entities
-  - Link dishes to restaurants in nested comments
-  - Process implicit entity connections
-  - Maintain comment thread context
-- Term normalization and entity resolution
-  - Handle entity variations/expansions
-  - Standardize entity references
-  - Map to canonical entities
-- Output structured data for graph insertion
-
-#### 3.3.4 Natural Category Emergence
-
-A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
-
-- When comments recommend "the French Dip at Bartlett's," an LLM uses the llm_content_processing.mdline.md to create:
-
-  - A menu item dish_or_category entity (french dip")
-  - A category dish_or_category entity ("french dip")
-  - A broader category dish_or_category entity ("sandwich")
-  - Appropriate connections between these entities
-
-- This enables both specific and general queries:
-  - "Best french dip" finds all dishes connected to the "french dip" category
-  - "Best sandwich" includes all sandwich types, including french dips
-- Categories evolve organically based on how the community discusses food:
-  - No need for predetermined hierarchies
-  - New categories automatically created as they appear in discussions
-  - Relationships between categories formed naturally through mentions
-
 #### 3.3.5 LLM Data Collection Input/Output Structures
+
+See llm_content_processing.md for more implementation and processing details.
 
 ##### LLM Input Structure
 
@@ -742,7 +774,7 @@ The system processes LLM output through independent components. All applicable c
 **Component 2: Restaurant Attributes Processing**
 
 - Processed when: restaurant_attributes is present
-- Action: Add restaurant_attribute entity IDs to restaurant entity's metadata
+- Action: Add restaurant_attribute entity IDs to restaurant entity's metadata if not already present
 
 **Component 3: General Praise Processing**
 
@@ -757,8 +789,8 @@ The system processes LLM output through independent components. All applicable c
 With Dish Attributes:
 
 - **All Selective:** Find existing restaurant→dish connections for the same dish that have ANY of the selective attributes; If found: boost those connections; If not found: create new connection with all attributes
-- **All Descriptive:** Find ANY existing restaurant→dish connections for the same dish; If found: boost connections + add descriptive attributes; If not found: create new connection with all attributes
-- **Mixed:** Find existing connections for the same dish that have ANY of the selective attributes; If found: boost + add descriptive attributes; If not found: create new connection with all attributes
+- **All Descriptive:** Find ANY existing restaurant→dish connections for the same dish; If found: boost connections + add descriptive attributes if not already present; If not found: create new connection with all attributes
+- **Mixed:** Find existing connections for the same dish that have ANY of the selective attributes; If found: boost + add descriptive attributes if not already present; If not found: create new connection with all attributes
 
 Without Dish Attributes:
 
@@ -771,8 +803,8 @@ Without Dish Attributes:
 With Dish Attributes:
 
 - **All Selective:** Find existing dish connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections; Do not create if no matches found
-- **All Descriptive:** Find existing dish connections with category; Boost all found connections; Add descriptive attributes to those connections; Do not create if no category dishes exist
-- **Mixed:** Find existing dish connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections + add descriptive attributes; Do not create if no matches found
+- **All Descriptive:** Find existing dish connections with category; Boost all found connections; Add descriptive attributes to those connections if not already present; Do not create if no category dishes exist
+- **Mixed:** Find existing dish connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections + add descriptive attributes if not already present; Do not create if no matches found
 
 Without Dish Attributes:
 
@@ -826,11 +858,68 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 1. **Modular Processing:** All applicable components process independently
 2. **Additive Logic:** Multiple processing components can apply to the same mention
 3. **Selective = Filtering:** Find existing connections that match any of the selective attributes
-4. **Descriptive = Enhancement:** Add attributes to existing connections
+4. **Descriptive = Enhancement:** Add attributes to existing connections if not already present
 5. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
 6. **Create Specific Only:** Only create new connections for specific dishes (menu items)
 7. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
 8. **Restaurant Always Created:** Restaurant entities are always created if missing
+
+```
+#### 3.3.7 Metric Aggregation
+
+##### Metric Aggregation
+
+- Raw metrics stored with each connection:
+
+  - Mention count
+  - Total upvotes
+  - Source diversity count
+  - Recent mention count
+  - Timestamp of latest mentions
+
+- Metrics used for:
+
+  - Evidence display to users
+  - Global quality score calculation
+  - Attribute filtering thresholds
+```
+
+#### 3.3.8 Quality Score Computation
+
+##### Dish Quality Score (85-90%)
+
+Primary component based on connection strength:
+
+- Mention count
+- Total upvotes
+- Source diversity (unique threads)
+- Recent activity bonus
+
+Secondary component (10-15%):
+
+- Restaurant context factor from parent restaurant score
+- Serves as effective tiebreaker
+
+##### Restaurant Quality Score (80% + 20%)
+
+Primary component (80%):
+
+- Top 3-5 dish connections by strength
+- Captures standout offerings that define restaurant
+
+Secondary component (20%):
+
+- Average quality across all mentioned dishes
+- Rewards overall menu consistency
+
+##### Category/Attribute Performance Score
+
+For restaurant ranking in category/attribute queries:
+
+- Find all restaurant's dishes in category or with attribute
+- Calculate weighted average of dish-specific quality scores for those relevant dishes
+- Boost with direct category mentions from restaurant-category references
+- Used instead of global restaurant score for contextual relevance
 
 ---
 
@@ -870,7 +959,7 @@ The system processes queries through LLM analysis (see llm_query_processing.md) 
 - **"best dishes at Franklin BBQ"** → restaurant: ["Franklin BBQ"] → Find all connections for this restaurant, return single list
 - **"best spicy ramen with patio"** → dish_or_category: ["ramen"], dish_attributes: ["spicy"], restaurant_attributes: ["patio"] → Filter connections by all criteria, return dual lists
 - **"best vegan restaurants"** → restaurant_attributes: ["vegan"] → Find restaurants with vegan attribute, return dual lists
-- **"best Italian food at romantic restaurants"** → dish_or_category: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
+- **"best Italian food at romantic restaurants"** → dish_attributes: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
 
 #### Query Analysis & Processing
 
@@ -887,6 +976,8 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
 ### 4.3 LLM Query Processing Input/Output Structures
+
+See llm_query_processing.md for more implementation and processing details.
 
 #### LLM Input Structure
 
@@ -1190,6 +1281,14 @@ For dual list returns, restaurant rankings are **contextually calculated** based
 - **Natural user flow**: Users get both specific recommendations and venue discovery
 - **Performance consistency**: Single query generates both lists simultaneously
 
+#### Result Structure Consistency
+
+Each result format maintains consistent data structure for seamless UI integration:
+
+- Dish results always include restaurant context and performance metrics
+- Restaurant results always include relevant dish examples and performance metrics
+- Evidence attribution present across all result types
+
 ### 4.7 Post-Processing Result Structure
 
 _**Note**: Structure will evolve during implementation. Key principles are format adaptation, comprehensive evidence, and cross-reference integrity._
@@ -1338,6 +1437,25 @@ Example: Restaurant info, entity metadata, common patterns
 - **Connection pooling**: Establish Redis connection pool at startup
 - **Serialization strategy**: Efficient JSON serialization for complex result sets
 - **Memory management**: LRU eviction with appropriate memory limits
+
+```
+### 4.9 Results Display
+
+#### List View: Scrollable results with:
+
+  - Name of dish-restaurant pair
+  - Global quality score representation
+  - Supporting evidence (top mentions, connection metrics)
+  - Open/closed status
+
+#### Detail View: Expanded information on selection
+
+  - Name of dish-restaurant pair
+  - Complete evidence display
+  - All connected entities, top mentions, connection metrics
+  - Operating hours
+  - Order/reservation links
+```
 
 ---
 

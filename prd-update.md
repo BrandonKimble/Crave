@@ -168,28 +168,38 @@ Examples:
 - **dish_attribute**: Descriptive terms that apply to dishes (connection-scoped)
 - **restaurant_attribute**: Descriptive terms that apply to restaurants (restaurant-scoped)
 
-#### Strict Type Separation
+#### Context-Driven Attribute Classification
 
 **ONLY dish types can be categories:**
 
-- Nouns that represent types of food items
-- Examples: pizza, taco, burger, sandwich, soup, salad, pasta
+- Nouns representing food items: pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert
 
-**Dish-only attributes (connection-scoped only):**
+**Primarily dish-scoped attributes:**
 
-- Cuisine terms: Italian, Mexican, Thai, Mediterranean
-- Meal periods: breakfast, lunch, dinner, brunch
-- Preparation: grilled, fried, spicy, crispy
-- Flavor descriptors: sweet, savory, tangy, rich
-- Special times: happy hour, daily specials, weekend specials
-- Value/Quality (for dishes): cheap, expensive, best, worth-it
+- **Preparation methods**: grilled, fried, crispy, raw, smoked, house-made, steamed, baked, roasted
+- **Texture/consistency**: tender, juicy, flaky, smooth, chunky, crisp, creamy
+- **Flavor profiles**: sweet, savory, tangy, rich, mild, hot, umami, spicy, tart, bitter
+- **Portion context**: generous portions, shareable, bite-sized
 
-**Restaurant-scoped attributes (stored directly on restaurant entities):**
+**Primarily restaurant-scoped attributes:**
 
-- Ambiance: romantic, casual, family-friendly, quiet
-- Features: patio, rooftop, outdoor, bar seating
-- Service: quick, friendly, attentive
-- Value/Quality (for restaurants): affordable, expensive, budget-friendly
+- **Physical features**: patio, rooftop, outdoor, bar seating, view, fireplace, drive-through
+- **Ambiance**: romantic, quiet, lively, cozy, intimate, upscale, casual
+- **Service model**: counter service, full service, fast casual, fine dining, quick service
+- **Operational**: BYOB, reservations required, walk-ins only, takeout friendly, delivery available
+- **Group dynamics**: family-friendly, date night spot, business lunch venue, large groups, communal seating
+
+**Context-dependent attributes (LLM determines scope based on usage):**
+
+- **Cuisine**: Italian, Mexican, Thai, Chinese, Japanese, Mediterranean, Indian, French, Korean, Vietnamese
+- **Dietary**: vegan, vegetarian, gluten-free, halal, kosher, keto, low-carb, dairy-free, nut-free, shellfish-free
+- **Value**: expensive, cheap, budget-friendly, worth-it, great value, affordable
+- **Quality descriptors**: authentic, fresh, best, amazing, incredible, worth-the-splurge
+- **Meal timing**: breakfast, lunch, dinner, brunch, late night, sunday brunch
+- **Occasion**: comfort food, celebration, special occasion, happy hour, daily specials, weekend specials
+- **Service quality**: friendly, attentive, quick service, great service
+
+**Scope Determination Principle**: The same attribute concept (e.g., "Italian") exists as separate entities based on context - "Italian pasta" creates a dish_attribute entity, while "Italian restaurant" creates a restaurant_attribute entity.
 
 #### Selective vs Descriptive Classification
 
@@ -301,8 +311,9 @@ Use this central guide to extract entities systematically, referencing the appro
 - Extract restaurant mentions (explicit or contextually inferred)
 - For food mentions, apply **Entity Types & Classification Rules** (Section 1.3) to identify:
   - Which terms are dish_or_category entities (food nouns)
-  - Which terms are dish_attributes (preparation, cuisine, meal periods, etc.)
-  - Which terms are restaurant_attributes (ambiance, features, service)
+  - Which terms are dish_attributes based on context (preparation, cuisine when applied to dishes, etc.)
+  - Which terms are restaurant_attributes based on context (ambiance, features, cuisine when applied to restaurants, etc.)
+- **Context-dependent attributes**: Determine scope based on usage - same attribute concept may create separate entities for different scopes
 
 #### Step 3: Food Term Processing
 
@@ -522,6 +533,13 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
   - Connection-scope metadata (stored in categories array)
 - Same entity ID can represent both menu item and category
 - Eliminates redundancy and ambiguity in food terminology
+
+#### Context-Dependent Attribute Entity Management
+
+- **Separate entities by scope**: Context-dependent attributes (cuisine, dietary, value, etc.) exist as separate entities based on their scope
+- **Scope-aware entity resolution**: Entity resolution matches by name AND scope to find the correct entity
+- **Flexible query capabilities**: Enables precise filtering by restaurant attributes vs dish attributes
+- **Examples**: "Italian" exists as both dish_attribute and restaurant_attribute entities with different IDs
 
 #### All Connections are Restaurant-to-Dish
 
