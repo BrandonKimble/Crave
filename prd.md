@@ -609,8 +609,8 @@ The same entity resolution process applies during user queries, with scope deter
 3. LLM Content Processing (outputs structured mentions with temp IDs; see llm_content_processing.md)
 4. Single Consolidated Processing Phase:
    4a. Entity Resolution (with in-memory ID mapping; see section 3.2)
-   4b. Mention Scoring & Activity Calculation (using existing DB data; see section 3.3.7)
-   4c. Component-Based Processing (all 6 components applied in parallel; see section 3.3.5)
+   4b. Mention Scoring & Activity Calculation (using existing DB data; see section 3.3.5)
+   4c. Component-Based Processing (all 6 components applied in parallel; see section 3.3.6)
 5. Single Bulk Database Transaction (all updates atomically committed)
 6. Quality Score Updates (triggered by new connection data)
 ```
@@ -656,105 +656,7 @@ The same entity resolution process applies during user queries, with scope deter
 
 **Output Structure:** Structured mentions with temp IDs (only JSON structure needed in entire pipeline)
 
-#### 3.3.4 Streamlined Processing Architecture
-
-The system uses a **single consolidated processing phase** (step 4 above) that eliminates intermediate JSON structures and performs all operations within one efficient database transaction.
-
-**Key Benefits:**
-
-- **Single database transaction** ensures atomicity and performance
-- **In-memory processing** eliminates serialization overhead
-- **Batch operations** optimize database performance
-- **Simplified error handling** - single phase to retry if needed
-
-**Phase Input:** LLM output structure (the only JSON structure needed)
-**Phase Output:** Direct database updates (no intermediate JSON required)
-
-**Foundation Optimizations:**
-
-- **Connection pooling**: Establish database connection pool at application startup
-- **Prepared statements**: Cache query execution plans for all resolution and insertion queries
-
-Within the single consolidated processing phase, the system performs:
-
-###### Entity Resolution (4a):
-
-- **Batched resolution lookups** - Three-tier resolution with query batching:
-  - **Tier 1**: Single exact match query `WHERE name IN (...) AND type = $entity_type`
-  - **Tier 2**: Single alias match query `WHERE aliases && ARRAY[...] AND type = $entity_type`
-  - **Tier 3**: Individual fuzzy match queries for remaining entities (edit distance ≤3-4)
-- **Simple in-memory ID mapping**: `{temp_id → db_id}` dictionary built from resolution results
-- **Resolution decision logic**: High confidence (>0.85) merge, medium (0.7-0.85) apply heuristics, low (<0.7) create new
-
-###### Mention Scoring & Activity Calculation (4b):
-
-3. **Top mention scoring and comparison**:
-
-   - Re-score ALL existing top mentions using time-weighted formula: `upvotes × e^(-days_since / 60)`
-   - Score new mentions with same formula
-   - Compare all scores and update top 3-5 mentions array
-   - This continuous decay ensures recent mentions naturally rise to top over time
-   - Store mention metadata: `{"mention_id": "uuid", "score": 45.2, "upvotes": 67, ...}`
-
-4. **Update last_mentioned_at**:
-
-   - For each new mention, compare mention timestamp against current `last_mentioned_at` value
-   - Update connection metadata if newer
-
-5. **Calculate activity level**:
-
-   - **"trending" (🔥)**: All top 3-5 mentions are within 30 days
-   - **"active" (🕐)**: `last_mentioned_at` is within 7 days
-   - **"normal"**: Default state
-   - Activity indicators provide real-time relevance signals to users
-
-###### Component-Based Processing (4c):
-
-- All 6 processing components execute in parallel using resolved entity IDs
-- Component logic unchanged (see section 3.3.7 for component details)
-- Results accumulated in memory for single transaction
-
-#### 3.3.5 Database Operations and Performance Optimizations
-
-**Database Operations:**
-
-- **Bulk DB operations with updated metrics, mentions, and activity levels**:
-  - Update connection metrics (mention_count, total_upvotes, source_diversity)
-  - Update top_mentions array with new scored mentions
-  - Update activity_level enum
-  - Insert new mentions into mentions table
-  - Single transaction for atomicity and efficiency
-- **Single transaction with UPSERT**: `ON CONFLICT DO UPDATE/NOTHING` for all operations
-- **Bulk operations**: Multi-row inserts/updatesfor all entity/connection/mention updates (biggest performance gain)
-- **Core indexes**: On entity names, aliases, and normalized fields
-
-**Performance Monitoring:**
-
-- Track resolution time by type and batch size
-- Monitor database operation timing and memory usage
-- Measure fuzzy matching efficiency for optimization opportunities
-
-**Implementation Focus:**
-
-- Start with straightforward sequential processing
-- Use simple batch size tuning (start with 100-500 entities per batch)
-- Add basic instrumentation to measure bottlenecks
-- Focus on getting fundamentals right before advanced optimizations
-
-**Phase 2: Measured Improvements (Only After Testing)**
-
-- Simple LRU cache for frequently accessed entities (track cache hit rates)
-- Basic parallelization by entity type
-- Batch size optimization based on actual performance data
-
-**Phase 3: Scale-Driven Optimizations (Only If Needed)**
-
-- Redis caching
-- Worker pools
-- Bloom filters
-- Temporary tables for very large batches
-
-#### 3.3.6 LLM Data Collection Input/Output Structures
+#### 3.3.4 LLM Data Collection Input/Output Structures
 
 See llm_content_processing.md for more implementation and processing details.
 
@@ -829,7 +731,60 @@ _**Note**: Structure will evolve during implementation. Key principles are entit
 }
 ```
 
-#### 3.3.7 Component-Based DB Processing Guide
+#### 3.3.5 Consolidated Processing Phase
+
+The system uses a **single consolidated processing phase** (step 4 above) that eliminates intermediate JSON structures and performs all operations within one efficient database transaction.
+
+**Phase Input:** LLM output structure (the only JSON structure needed)
+**Phase Output:** Direct database updates (no intermediate JSON required)
+
+**Key Benefits:**
+
+- **Single database transaction** ensures atomicity and performance
+- **In-memory processing** eliminates serialization overhead
+- **Batch operations** optimize database performance
+- **Simplified error handling** - single phase to retry if needed
+
+Within the single consolidated processing phase, the system performs:
+
+###### Entity Resolution (4a):
+
+- **Batched resolution lookups** - Three-tier resolution with query batching:
+  - **Tier 1**: Single exact match query `WHERE name IN (...) AND type = $entity_type`
+  - **Tier 2**: Single alias match query `WHERE aliases && ARRAY[...] AND type = $entity_type`
+  - **Tier 3**: Individual fuzzy match queries for remaining entities (edit distance ≤3-4)
+- **Simple in-memory ID mapping**: `{temp_id → db_id}` dictionary built from resolution results
+- **Resolution decision logic**: High confidence (>0.85) merge, medium (0.7-0.85) apply heuristics, low (<0.7) create new
+
+###### Mention Scoring & Activity Calculation (4b):
+
+**Top mention scoring and comparison**:
+
+- Re-score ALL existing top mentions using time-weighted formula: `upvotes × e^(-days_since / 60)`
+- Score new mentions with same formula
+- Compare all scores and update top 3-5 mentions array
+- This continuous decay ensures recent mentions naturally rise to top over time
+- Store mention metadata: `{"mention_id": "uuid", "score": 45.2, "upvotes": 67, ...}`
+
+**Update last_mentioned_at**:
+
+- For each new mention, compare mention timestamp against current `last_mentioned_at` value
+- Update connection metadata if newer
+
+**Calculate activity level**:
+
+- **"trending" (🔥)**: All top 3-5 mentions are within 30 days
+- **"active" (🕐)**: `last_mentioned_at` is within 7 days
+- **"normal"**: Default state
+- Activity indicators provide real-time relevance signals to users
+
+###### Component-Based Processing (4c):
+
+- All 6 processing components execute in parallel using resolved entity IDs
+- Component logic unchanged (see section 3.3.6 below for component details)
+- Results accumulated in memory for single transaction
+
+#### 3.3.6 Component-Based DB Processing Guide
 
 ##### Modular Processing Components
 
@@ -933,25 +888,80 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 7. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
 8. **Restaurant Always Created:** Restaurant entities are always created if missing
 
-```
-#### 3.3.8 Metric Aggregation
+#### 3.3.7 Database Operations, Metrics, and Performance Optimizations
+
+##### Foundation Infrastructure
+
+**Database Connection Management:**
+
+- **Connection pooling**: Establish database connection pool at application startup
+- **Prepared statements**: Cache query execution plans for all resolution and insertion queries
+- **Core indexes**: Pre-existing indexes on entity names, aliases, and normalized fields for optimal performance
+
+##### Bulk Database Operations
+
+**Transaction Strategy:**
+
+- **Single atomic transaction**: All updates committed together for consistency and performance
+- **UPSERT operations**: `ON CONFLICT DO UPDATE/NOTHING` for efficient entity merging
+- **Bulk operations**: Multi-row inserts/updates minimize database round trips (biggest performance gain)
+
+**Operation Sequence:**
+
+1. **Entity resolution results** → Update existing entities, create new entities, update aliases, add restaurant attributes to metadata, etc.
+2. **Connection updates** → Modify metrics, attributes, categories, activity levels, and other metadata
+3. **Top mention updates** → Replace top mention arrays with newly ranked mentions
 
 ##### Metric Aggregation
 
-- Raw metrics stored with each connection:
+**Connection Metrics Aggregation:**
 
-  - Mention count
-  - Total upvotes
-  - Source diversity count
-  - Recent mention count
-  - Timestamp of latest mentions
+Raw metrics calculated and accumulated with each connection during processing:
 
-- Metrics used for:
+- **Mention count**: Total number of mentions for this connection
+- **Total upvotes**: Sum of upvotes across all mentions
+- **Source diversity**: Count of unique threads/discussions mentioning this connection
+- **Recent mention count**: Mentions within last 30 days
+- **Last mentioned timestamp**: Most recent mention date for activity calculations
 
-  - Evidence display to users
-  - Global quality score calculation
-  - Attribute filtering thresholds
-```
+**Metrics Usage:**
+
+- **Evidence display**: Support user-facing evidence cards and attribution
+- **Quality score computation**: Feed into global ranking algorithms
+- **Query filtering**: Enable attribute-based filtering thresholds
+
+##### Performance Monitoring and Optimization
+
+**Key Performance Metrics:**
+
+- **Resolution timing**: Track entity resolution time by type and batch size
+- **Database operation timing**: Measure insert/update performance across operation types
+- **Batch processing efficiency**: Monitor processing time vs. batch size relationships
+- **Memory usage tracking**: Ensure efficient resource utilization during bulk operations
+- **Fuzzy matching efficiency**: Identify expensive operations for optimization
+
+**Implementation Strategy:**
+
+**Phase 1: Foundation (Start Here)**
+
+- Straightforward sequential processing with robust error handling
+- Simple batch size tuning (start with 100-500 entities per batch)
+- Basic instrumentation to measure bottlenecks and identify optimization opportunities
+- Focus on getting fundamentals right before advanced optimizations
+
+**Phase 2: Measured Improvements (Only After Testing)**
+
+- Simple LRU cache for frequently accessed entities (track cache hit rates)
+- Basic parallelization by entity type based on measured bottlenecks
+- Batch size optimization based on actual performance data
+- Query optimization based on real usage patterns
+
+**Phase 3: Scale-Driven Optimizations (Only If Needed)**
+
+- Redis caching for high-frequency entity lookups
+- Worker pools for parallel processing
+- Bloom filters for efficient duplicate detection
+- Temporary tables for very large batch processing
 
 #### 3.3.9 Quality Score Computation
 
@@ -966,7 +976,8 @@ Primary component based on connection strength:
 
 Secondary component (10-15%):
 
-- Restaurant context factor from parent restaurant score
+- Derived from the parent restaurant's quality score
+- Provides a small boost to dishes from generally excellent restaurants
 - Serves as effective tiebreaker
 
 ##### Restaurant Quality Score (80% + 20%)
@@ -1009,7 +1020,47 @@ For restaurant ranking in category/attribute queries:
 9. Response Delivery
 ```
 
-### 4.2 Query Understanding & Processing via LLM Analysis
+### 4.8 Multi-Level Caching Strategy
+
+#### Cache Implementation Levels
+
+##### 1. Hot Query Cache (1 hour retention)
+
+**Purpose:** Handle high-frequency and trending searches
+**Example:** "best ramen downtown"
+
+- First query: Process and cache results
+- Same query within hour: Instant results
+- **Benefits:** Handles viral/trending searches efficiently
+
+##### 2. Recent Search Results (24 hour retention)
+
+**Purpose:** Optimize follow-up searches with complete result sets
+**Example:** User searches "best tacos", comes back later
+
+- Store complete result sets with quality scores and evidence
+- Update if significant new data becomes available
+
+##### 3. Static Data Cache (7+ days retention)
+
+**Purpose:** Reduce database load for common data
+**Examples:** Restaurant basic info, entity metadata, common patterns
+
+#### Cache Invalidation Strategy
+
+- **Time-based expiration** for different data types based on volatility
+- **Smart invalidation** when entities receive new mentions or updates
+- **Trend-based cache warming** for predicted popular queries
+- **Geographic cache segmentation** for location-based query optimization
+
+#### Redis Implementation
+
+- **Connection pooling** established at application startup
+- **Efficient serialization** for complex result sets
+- **LRU eviction** with appropriate memory limits
+- **Performance monitoring** of hit rates and response times
+
+### 4.2 Query Processing and LLM Input/Output Structures
 
 #### Entity-Based Query Processing
 
@@ -1044,11 +1095,11 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
-### 4.3 LLM Query Processing Input/Output Structures
+#### LLM Input/Output Structures
 
 See llm_query_processing.md for more implementation and processing details.
 
-#### LLM Input Structure
+##### LLM Input Structure
 
 _**Note**: Structure may evolve during implementation. Key principles are query context preservation, geographic constraint integration, and user preference continuity._
 
@@ -1066,7 +1117,7 @@ _**Note**: Structure may evolve during implementation. Key principles are query 
 }
 ```
 
-#### LLM Output Structure
+##### LLM Output Structure
 
 _**Note**: Structure may evolve during implementation. The key principles are entity organization by type with preserved original text and resolved database identifiers._
 
@@ -1464,46 +1515,6 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
   }
 }
 ```
-
-### 4.8 Multi-Level Caching Strategy
-
-#### Cache Implementation Levels
-
-##### 1. Hot Query Cache (1 hour retention)
-
-**Purpose:** Handle high-frequency and trending searches
-**Example:** "best ramen downtown"
-
-- First query: Process and cache results
-- Same query within hour: Instant results
-- **Benefits:** Handles viral/trending searches efficiently
-
-##### 2. Recent Search Results (24 hour retention)
-
-**Purpose:** Optimize follow-up searches with complete result sets
-**Example:** User searches "best tacos", comes back later
-
-- Store complete result sets with quality scores and evidence
-- Update if significant new data becomes available
-
-##### 3. Static Data Cache (7+ days retention)
-
-**Purpose:** Reduce database load for common data
-**Examples:** Restaurant basic info, entity metadata, common patterns
-
-#### Cache Invalidation Strategy
-
-- **Time-based expiration** for different data types based on volatility
-- **Smart invalidation** when entities receive new mentions or updates
-- **Trend-based cache warming** for predicted popular queries
-- **Geographic cache segmentation** for location-based query optimization
-
-#### Redis Implementation
-
-- **Connection pooling** established at application startup
-- **Efficient serialization** for complex result sets
-- **LRU eviction** with appropriate memory limits
-- **Performance monitoring** of hit rates and response times
 
 ```
 ### 4.9 Results Display
