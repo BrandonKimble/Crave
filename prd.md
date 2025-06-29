@@ -719,11 +719,11 @@ Within the single consolidated processing phase, the system performs:
 **Database Operations:**
 
 - **Bulk DB operations with updated metrics, mentions, and activity levels**:
-   - Update connection metrics (mention_count, total_upvotes, source_diversity)
-   - Update top_mentions array with new scored mentions
-   - Update activity_level enum
-   - Insert new mentions into mentions table
-   - Single transaction for atomicity and efficiency
+  - Update connection metrics (mention_count, total_upvotes, source_diversity)
+  - Update top_mentions array with new scored mentions
+  - Update activity_level enum
+  - Insert new mentions into mentions table
+  - Single transaction for atomicity and efficiency
 - **Single transaction with UPSERT**: `ON CONFLICT DO UPDATE/NOTHING` for all operations
 - **Bulk operations**: Multi-row inserts/updatesfor all entity/connection/mention updates (biggest performance gain)
 - **Core indexes**: On entity names, aliases, and normalized fields
