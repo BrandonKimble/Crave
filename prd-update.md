@@ -43,13 +43,13 @@ _These sections function together as a logical processing flow for the LLM: firs
     {
       "temp_id": "string",
       "restaurant": {
-        "normalized_name": "string",
+        "normalized_name": "string" | null,
         "original_text": "string" | null,
         "temp_id": "string"
       },
       "restaurant_attributes": ["string"] | null,
       "dish_or_category": {
-        "normalized_name": "string",
+        "normalized_name": "string" | null,
         "original_text": "string" | null,
         "temp_id": "string"
       } | null,
@@ -93,31 +93,35 @@ _These sections function together as a logical processing flow for the LLM: firs
 
 ```json
 {
-  "query_type": "dish_specific|category_specific|venue_specific|attribute_specific|broad",
   "entities": {
     "restaurants": [
       {
         "normalized_name": "string",
-        "original_text": "string" | null,
+        "original_text": "string" | null, // original user text
+        "entity_ids": ["uuid"] // resolved database IDs
       }
     ],
     "dish_or_categories": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
+        "entity_ids": ["uuid"]
       }
     ],
-    "attributes": [
+    "dish_attributes": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
-        "scope": "restaurant|dish"
+        "entity_id": "uuid"
+      }
+    ],
+    "restaurant_attributes": [
+      {
+        "normalized_name": "string",
+        "original_text": "string" | null,
+        "entity_id": "uuid"
       }
     ]
-  },
-  "filters": {
-    "location_bounds": "object",
-    "open_now": boolean
   }
 }
 ```

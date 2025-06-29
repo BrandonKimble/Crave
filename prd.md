@@ -30,9 +30,9 @@ Cache Storage → User Response
 #### Data Collection Flow
 
 ```
-Reddit API → Content Retrieval → LLM Processing (see llm_content_processing.mdline.md) →
-Entity Resolution → Graph Database Storage → Metric Aggregation →
-Quality Score Computation
+Reddit API → Content Retrieval → LLM Processing →
+Single Consolidated Processing Phase (Entity Resolution + Mention Scoring + Components) →
+Single Database Transaction → Quality Score Computation
 ```
 
 ### 1.4 Core System Architecture
@@ -48,6 +48,7 @@ Quality Score Computation
 
 - **Pre-computed quality scores**: Rankings calculated during data processing, not query time
 - **Multi-level caching**: Hot queries (1hr), recent results (24hr), static data (7d+)
+- **Single-phase processing**: Streamlined architecture eliminating intermediate JSON structures
 - **Batch operations**: Bulk entity resolution, database updates, and mention processing
 - **Geographic optimization**: Map-based filtering applied before ranking for performance
 
@@ -593,70 +594,99 @@ The same entity resolution process applies during user queries, with scope deter
 - **Fallback to broader categories** if specific entities not found
 - **Maintain query intent** even with imperfect entity resolution
 
-### 3.3 Data Collection Process
+### 3.3 Reddit Data Collection Process
 
-#### 3.3.1 Reddit Data Collection Pipeline (background & on-demand collection)
+**Collection Triggers:**
+
+- **Scheduled Background Collection**: Weekly (new entities) + Quarterly (full refresh)
+- **On-Demand Collection**: Triggered by insufficient query results
+
+#### 3.3.1 Processing Pipeline
 
 ```
 1. Entity Selection (based on collection cycle or user query when on-demand collection is triggered)
-2. Reddit API Search
-3. Post/Comment Retrieval
-4. LLM Content Processing (see llm_content_processing.mdline.md)
-5. Entity Resolution (see section 3.2)
-6. Bulk Database Operations and Metric Aggregation
-7. Top Mention Scoring and Comparison
-8. Activity Level Calculation
-9. Quality Score Calculations and Updates
+2. Reddit API Search & Post/Comment Retrieval
+3. LLM Content Processing (outputs structured mentions with temp IDs; see llm_content_processing.md)
+4. Single Consolidated Processing Phase:
+   4a. Entity Resolution (with in-memory ID mapping; see section 3.2)
+   4b. Mention Scoring & Activity Calculation (using existing DB data; see section 3.3.7)
+   4c. Component-Based Processing (all 6 components applied in parallel; see section 3.3.5)
+5. Single Bulk Database Transaction (all updates atomically committed)
+6. Quality Score Updates (triggered by new connection data)
 ```
 
-#### 3.3.2 Content Understanding & Processing via LLM Analysis
+**Step 1 and 2**: Entity Selection & Reddit Data Retrieval
 
-##### Primary Function: Process Reddit/review content into structured data with graph entities, connections, and mentions
+- Select entities based on collection cycle or user query triggers
+- Reddit API search with rate limiting and cost optimization
+- Fetch complete posts and comment threads with URLs
 
-Simplified Processing Tasks (see llm_content_processing.mdline.md for more details):
+**Step 3**: LLM Content Processing (see llm_content_processing.md for more details)
 
-- **Comprehensive entity extraction**: Extract all entity types (restaurants, dish_or_category, dish_attribute, restaurant_attribute) from content
-- **Context-driven scope determination**: For context-dependent attributes (cuisine, dietary, value, etc.), determine whether they apply to dishes or restaurants based on usage context
-- Inference-based attribute and dish category identification
-  - Create specific and general dish category entities (e.g., "french dip", not just "sandwich")
-  - Allow entities to emerge organically from community mentions
-- Discard negative sentiment content
-- Connection mapping between entities
-  - Link dishes to restaurants in nested comments
-  - Process implicit entity connections
-  - Maintain comment thread context
-- **Entity normalization and resolution**
-  - Handle entity variations/expansions for all entity types
-  - Standardize entity references with appropriate type classification
-  - Map to canonical entities using scope-aware matching for context-dependent attributes
-- Output structured data for graph insertion
+- Input: Reddit posts/comments
+- Output: Structured mentions with temp IDs (only JSON structure needed)
+- Processing: Entity extraction, normalization, sentiment filtering
 
-#### 3.3.3 Natural Category Emergence
+**Step 4**: Consolidated Processing Phase (All-in-One)
+4a. Entity Resolution: Three-tier matching with in-memory ID mapping
+4b. Mention Scoring: Time-weighted scoring with activity level calculation
+4c. Component Processing: 6 parallel components handle all entity combinations
 
-A key advantage of our graph approach is allowing specific dish categories to emerge naturally from community discussion:
+**Step 5**: Single Bulk Database Transaction
 
-- When comments recommend "the French Dip at Bartlett's," an LLM uses the llm_content_processing.mdline.md to create:
+- Atomic commit of all entities, connections, mentions, and metrics
+- Leverages connection pooling and prepared statements
 
-  - A menu item dish_or_category entity (french dip")
-  - A category dish_or_category entity ("french dip")
-  - A broader category dish_or_category entity ("sandwich")
-  - Appropriate connections between these entities
+**Step 6**: Quality Score Updates
 
-- This enables both specific and general queries:
-  - "Best french dip" finds all dishes connected to the "french dip" category
-  - "Best sandwich" includes all sandwich types, including french dips
-- Categories evolve organically based on how the community discusses food:
-  - No need for predetermined hierarchies
-  - New categories automatically created as they appear in discussions
-  - Relationships between categories formed naturally through mentions
+- Triggered by new connection data from Step 4
+- Pre-computed scores for fast query performance
 
-#### 3.3.4 Mention Scoring & Activity Calculation Details
+#### 3.3.3 LLM Processing & Entity Extraction
 
-After LLM processing and entity resolution:
+**Primary Function:** Convert Reddit content into structured mentions with normalized entities
 
-1. **LLM processes content → outputs all mentions with URLs**
+**Key Processing Rules** (see `llm_content_processing.md` for full details):
 
-2. **Entity resolution** (as described in Section 3.2)
+- **Entity Extraction**: All 4 entity types (restaurant, dish_or_category, dish_attribute, restaurant_attribute)
+- **Scope Determination**: Context-dependent attributes assigned to correct scope (dish vs restaurant)
+- **Sentiment Filtering**: Only positive mentions processed
+- **Category Hierarchy**: Create specific → general food categories naturally
+- **Entity Normalization**: Handle variations, standardize references
+
+**Output Structure:** Structured mentions with temp IDs (only JSON structure needed in entire pipeline)
+
+#### 3.3.4 Streamlined Processing Architecture
+
+The system uses a **single consolidated processing phase** (step 4 above) that eliminates intermediate JSON structures and performs all operations within one efficient database transaction.
+
+**Key Benefits:**
+
+- **Single database transaction** ensures atomicity and performance
+- **In-memory processing** eliminates serialization overhead
+- **Batch operations** optimize database performance
+- **Simplified error handling** - single phase to retry if needed
+
+**Phase Input:** LLM output structure (the only JSON structure needed)
+**Phase Output:** Direct database updates (no intermediate JSON required)
+
+**Foundation Optimizations:**
+
+- **Connection pooling**: Establish database connection pool at application startup
+- **Prepared statements**: Cache query execution plans for all resolution and insertion queries
+
+Within the single consolidated processing phase, the system performs:
+
+###### Entity Resolution (4a):
+
+- **Batched resolution lookups** - Three-tier resolution with query batching:
+  - **Tier 1**: Single exact match query `WHERE name IN (...) AND type = $entity_type`
+  - **Tier 2**: Single alias match query `WHERE aliases && ARRAY[...] AND type = $entity_type`
+  - **Tier 3**: Individual fuzzy match queries for remaining entities (edit distance ≤3-4)
+- **Simple in-memory ID mapping**: `{temp_id → db_id}` dictionary built from resolution results
+- **Resolution decision logic**: High confidence (>0.85) merge, medium (0.7-0.85) apply heuristics, low (<0.7) create new
+
+###### Mention Scoring & Activity Calculation (4b):
 
 3. **Top mention scoring and comparison**:
 
@@ -678,14 +708,53 @@ After LLM processing and entity resolution:
    - **"normal"**: Default state
    - Activity indicators provide real-time relevance signals to users
 
-6. **Bulk DB operations with updated metrics and activity levels**:
+###### Component-Based Processing (4c):
+
+- All 6 processing components execute in parallel using resolved entity IDs
+- Component logic unchanged (see section 3.3.7 for component details)
+- Results accumulated in memory for single transaction
+
+#### 3.3.5 Database Operations and Performance Optimizations
+
+**Database Operations:**
+
+- **Bulk DB operations with updated metrics, mentions, and activity levels**:
    - Update connection metrics (mention_count, total_upvotes, source_diversity)
    - Update top_mentions array with new scored mentions
    - Update activity_level enum
    - Insert new mentions into mentions table
    - Single transaction for atomicity and efficiency
+- **Single transaction with UPSERT**: `ON CONFLICT DO UPDATE/NOTHING` for all operations
+- **Bulk operations**: Multi-row inserts/updatesfor all entity/connection/mention updates (biggest performance gain)
+- **Core indexes**: On entity names, aliases, and normalized fields
 
-#### 3.3.5 LLM Data Collection Input/Output Structures
+**Performance Monitoring:**
+
+- Track resolution time by type and batch size
+- Monitor database operation timing and memory usage
+- Measure fuzzy matching efficiency for optimization opportunities
+
+**Implementation Focus:**
+
+- Start with straightforward sequential processing
+- Use simple batch size tuning (start with 100-500 entities per batch)
+- Add basic instrumentation to measure bottlenecks
+- Focus on getting fundamentals right before advanced optimizations
+
+**Phase 2: Measured Improvements (Only After Testing)**
+
+- Simple LRU cache for frequently accessed entities (track cache hit rates)
+- Basic parallelization by entity type
+- Batch size optimization based on actual performance data
+
+**Phase 3: Scale-Driven Optimizations (Only If Needed)**
+
+- Redis caching
+- Worker pools
+- Bloom filters
+- Temporary tables for very large batches
+
+#### 3.3.6 LLM Data Collection Input/Output Structures
 
 See llm_content_processing.md for more implementation and processing details.
 
@@ -760,7 +829,7 @@ _**Note**: Structure will evolve during implementation. Key principles are entit
 }
 ```
 
-#### 3.3.6 Component-Based DB Processing Guide
+#### 3.3.7 Component-Based DB Processing Guide
 
 ##### Modular Processing Components
 
@@ -865,7 +934,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 8. **Restaurant Always Created:** Restaurant entities are always created if missing
 
 ```
-#### 3.3.7 Metric Aggregation
+#### 3.3.8 Metric Aggregation
 
 ##### Metric Aggregation
 
@@ -884,7 +953,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
   - Attribute filtering thresholds
 ```
 
-#### 3.3.8 Quality Score Computation
+#### 3.3.9 Quality Score Computation
 
 ##### Dish Quality Score (85-90%)
 
@@ -1396,47 +1465,45 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
 }
 ```
 
-### 4.8 Caching Strategy
+### 4.8 Multi-Level Caching Strategy
 
-#### Cache Levels & Implementation
+#### Cache Implementation Levels
 
 ##### 1. Hot Query Cache (1 hour retention)
 
-Purpose: Provide instant results for high-frequency and trending searches
-
-Example: "best ramen downtown"
+**Purpose:** Handle high-frequency and trending searches
+**Example:** "best ramen downtown"
 
 - First query: Process and cache results
 - Same query within hour: Instant results
-- Benefits: Handles viral/trending searches efficiently
+- **Benefits:** Handles viral/trending searches efficiently
 
 ##### 2. Recent Search Results (24 hour retention)
 
-Purpose: Provide quick result sets for follow-up queries
+**Purpose:** Optimize follow-up searches with complete result sets
+**Example:** User searches "best tacos", comes back later
 
-Example: User searches "best tacos", comes back later
+- Store complete result sets with quality scores and evidence
+- Update if significant new data becomes available
 
-- Store complete result sets
-- Include quality scores and evidence
-- Update if significant new data
+##### 3. Static Data Cache (7+ days retention)
 
-##### 3. Static Data (>7 days retention)
+**Purpose:** Reduce database load for common data
+**Examples:** Restaurant basic info, entity metadata, common patterns
 
-Purpose: Reduce database load for common data
+#### Cache Invalidation Strategy
 
-Example: Restaurant info, entity metadata, common patterns
-
-#### Cache Invalidation
-
-- **Time-based expiration**: Different TTLs based on data volatility
-- **Smart invalidation**: Update caches when entities receive new mentions
-- **Trend-based warming**: Pre-populate cache for predicted popular queries
+- **Time-based expiration** for different data types based on volatility
+- **Smart invalidation** when entities receive new mentions or updates
+- **Trend-based cache warming** for predicted popular queries
+- **Geographic cache segmentation** for location-based query optimization
 
 #### Redis Implementation
 
-- **Connection pooling**: Establish Redis connection pool at startup
-- **Serialization strategy**: Efficient JSON serialization for complex result sets
-- **Memory management**: LRU eviction with appropriate memory limits
+- **Connection pooling** established at application startup
+- **Efficient serialization** for complex result sets
+- **LRU eviction** with appropriate memory limits
+- **Performance monitoring** of hit rates and response times
 
 ```
 ### 4.9 Results Display
