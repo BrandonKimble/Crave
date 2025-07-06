@@ -1,5 +1,14 @@
 # Local Food Discovery App - User Experience Specification
 
+**⚠️ IMPORTANT: This document is outdated and will need extensive updates to align with current system architecture and implementation approach. For current development information, refer to:**
+
+- **prd.md** - Complete system architecture, data model, and implementation roadmap
+- **llm-content-processing.md** - LLM processing guidelines and entity extraction rules
+
+**This BRD will be updated at a later time to reflect the current system design and user experience strategy.**
+
+---
+
 ## 1. Core Value Proposition
 
 Evidence-based food discovery powered by community knowledge, emphasizing social proof and transparent ranking criteria to help users make informed decisions about specific dishes.
@@ -196,3 +205,60 @@ For market-leading establishments:
 - POS systems for real-time data
 - Reservation platforms
 - Additional review platforms
+
+## 6. User Interface & Features
+
+_**Note**: This is pasted from the prd.md file and will need to be updated._
+
+### 6.1 Launch Features (99¢/month Tier)
+
+#### Core Search Experience
+
+- **Smart search bar**: Natural language input with query suggestions
+- **Map-based location**: Interactive map for area selection
+- **"Open Now" toggle**: Filter for currently operating restaurants
+- **Evidence-based results**: Each recommendation shows community quotes and metrics
+
+#### Basic Discovery Feed
+
+- **Recently Discussed**: Dishes trending in past week (23 mentions this week)
+- **Quick Bites**: Most mentioned casual spots for immediate decisions
+- **Hidden Gems**: Dishes gaining traction but not yet mainstream
+- **Community Highlights**: Recent mentions that caught algorithmic attention
+
+#### Result Display
+
+- **List view**: Scrollable results with dish-restaurant pairs, quality indicators, evidence preview
+- **Evidence cards**: Top community quote, upvote count, recency indicator, "Join conversation" link
+- **Quick actions**: Order/reservation links, Google Maps, save to list, share
+
+#### Bookmarking System
+
+- **Dish-centric lists**: Save specific dishes with restaurant context
+- **Personal notes**: Add own thoughts and experiences
+- **List sharing**: Share curated dish collections with others
+- **Examples**: "My Austin Taco Journey", "Date Night Winners", "Business Lunch Spots"
+
+### 6.2 Premium Features ($7.99/month Tier)
+
+#### Advanced Discovery Feed
+
+- **Trending Deep Dives**: Analysis of why spots are gaining attention
+- **Neighborhood Insights**: Area-specific recommendations with context
+- **Time-Based Trends**: What's popular for breakfast, late night, etc.
+- **Category Deep-Dives**: Monthly reports on pizza scene, coffee culture, etc.
+- **Rising Stars**: New dishes gaining serious community praise
+
+#### Smart Alerts & Personalization
+
+- **Craving notifications**: "That ramen you bookmarked is trending again with winter weather"
+- **New spot alerts**: "Your favorite type of dish was spotted at a new location"
+- **Custom alerts**: "Notify me when anyone raves about new pizza spots"
+- **Personal recommendations**: "Based on your love of Little Deli's wrap..."
+
+#### Advanced Search & History
+
+- **Complex attribute queries**: "best vegan brunch with patio seating"
+- **Search history with context**: Remember why you searched and what you found
+- **Personal food maps**: Visual representation of your discovered spots
+- **Early trend access**: See emerging discussions before they hit mainstream

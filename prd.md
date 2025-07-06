@@ -19,7 +19,7 @@ This app enables users to quickly make confident dining decisions by surfacing e
 
 ### 1.3 System Architecture Overview
 
-#### Core System Flow
+#### 1.3.1 Core System Flow
 
 ```
 User Query → Cache Check → LLM Analysis → Entity Resolution →
@@ -27,7 +27,7 @@ Graph Database Query → Ranking Application → Result Formatting →
 Cache Storage → User Response
 ```
 
-#### Data Collection Flow
+#### 1.3.2 Data Collection Flow
 
 ```
 Reddit API → Content Retrieval → LLM Processing →
@@ -37,14 +37,14 @@ Single Database Transaction → Quality Score Computation
 
 ### 1.4 Core System Architecture
 
-#### Processing Architecture
+#### 1.4.1 Processing Architecture
 
 - **Modular component system**: Independent processors handle different entity combinations from LLM output
 - **Dynamic query system**: Single adaptive SQL query that optimizes based on extracted entities
 - **Background data collection**: Scheduled cycles (weekly new entities, quarterly full refresh) plus on-demand query-driven collection
 - **Real-time query processing**: Entity resolution → dynamic query building → result ranking
 
-#### Performance Strategy
+#### 1.4.2 Performance Strategy
 
 - **Pre-computed quality scores**: Rankings calculated during data processing, not query time
 - **Multi-level caching**: Hot queries (1hr), recent results (24hr), static data (7d+)
@@ -54,13 +54,13 @@ Single Database Transaction → Quality Score Computation
 
 ### 1.5 Data Collection & Knowledge Synthesis
 
-#### Community Content Processing
+#### 1.5.1 Community Content Processing
 
 - **Reddit discussion analysis**: Extract dish-restaurant connections, attributes, and sentiment from food community posts/comments
 - **Organic category emergence**: Food categories develop naturally from community language patterns rather than predetermined hierarchies
 - **Multi-source mention aggregation**: Combine mentions across posts, comments, and discussion threads for comprehensive evidence
 
-#### Dynamic Ranking & Relevance
+#### 1.5.2 Dynamic Ranking & Relevance
 
 - **Quality score evolution**: Dish and restaurant rankings improve with additional community evidence over time
 - **Activity indicators**: Real-time trending (🔥) and active (🕐) status based on mention recency patterns
@@ -72,11 +72,11 @@ Single Database Transaction → Quality Score Computation
 
 ### 2.1 Core Database Schema
 
-#### Graph-Based Model
+#### 2.1.1 Graph-Based Model
 
 _**Note**: This design uses a unified entity-relationship model where all entities (restaurants, dishes, categories, attributes) are stored in a single `entities` table differentiated by type, with relationships modeled through the `connections` table. This approach enables flexible many-to-many relationships while maintaining referential integrity and query performance. These schemas may evolve during implementation as requirements are refined._
 
-##### 1. Entities Table
+##### Entities Table
 
 ```sql
 CREATE TABLE entities (
@@ -117,7 +117,7 @@ CREATE TYPE entity_type AS ENUM (
 );
 ```
 
-##### 2. Restaurant Metadata Structure
+##### Restaurant Metadata Structure
 
 ```json
 {
@@ -129,7 +129,7 @@ CREATE TYPE entity_type AS ENUM (
 }
 ```
 
-##### 3. Connections Table
+##### Connections Table
 
 ```sql
 CREATE TABLE connections (
@@ -170,7 +170,7 @@ CREATE TABLE connections (
 CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
 ```
 
-##### 4. Top Mentions Metadata Structure
+##### Top Mentions Metadata Structure
 
 ```json
 [
@@ -186,7 +186,7 @@ CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
 ]
 ```
 
-##### 5. Mentions Table
+##### Mentions Table
 
 ```sql
 CREATE TABLE mentions (
@@ -213,7 +213,7 @@ CREATE TABLE mentions (
 CREATE TYPE mention_source AS ENUM ('post', 'comment');
 ```
 
-##### 6. User & Subscription Tables
+##### User & Subscription Tables
 
 ```sql
 CREATE TABLE users (
@@ -263,7 +263,7 @@ CREATE TABLE user_events (
 
 ### 2.2 Data Model Principles
 
-#### Graph-Based Unified Entity Model
+#### 2.2.1 Graph-Based Unified Entity Model
 
 - **Unified dish_or_category entities**: Serve dual purposes as specific menu items AND general food categories
 - **Connection-scoped relationships**: Categories and dish attributes exist only within restaurant→dish connections
@@ -271,7 +271,7 @@ CREATE TABLE user_events (
 - **Evidence-driven connections**: All relationships backed by trackable community mentions with scoring
 - **All connections are restaurant→dish**: No direct category or attribute connections
 
-#### Entity Type Definitions
+#### 2.2.2 Entity Type Definitions
 
 - **restaurant**: Physical dining establishments with location and operational data
 - **dish_or_category**: Food items that can be both menu items and general categories
@@ -282,7 +282,7 @@ CREATE TABLE user_events (
 
 ### 2.3 Data Model Architecture
 
-#### Unified dish_or_category Entity Approach
+#### 2.3.1 Unified dish_or_category Entity Approach
 
 - **Single entity type serves dual purposes**:
   - Node entity (when is_menu_item = true)
@@ -290,21 +290,21 @@ CREATE TABLE user_events (
 - **Same entity ID can represent both menu item and category**
 - **Eliminates redundancy and ambiguity** in food terminology
 
-#### Context-Driven Attribute Entity Management
+#### 2.3.2 Context-Driven Attribute Entity Management
 
 - **Separate entities by scope**: Context-dependent attributes (cuisine, dietary, value, etc.) exist as separate entities based on their scope
 - **Scope-aware entity resolution**: Entity resolution matches by name AND scope to find the correct entity
 - **Flexible query capabilities**: Enables precise filtering by restaurant attributes vs dish attributes
 - **Examples**: "Italian" exists as both dish_attribute and restaurant_attribute entities with different IDs
 
-#### All Connections are Restaurant-to-dish_or_category
+#### 2.3.3 All Connections are Restaurant-to-dish_or_category
 
 - **Restaurant attributes**: Stored as entity IDs in restaurant entity's metadata (restaurant_attributes: uuid[])
 - **Dish attributes**: Connection-scoped entity IDs stored in dish_attributes array
 - **Categories**: Connection-scoped entity IDs stored in categories array
 - **Only restaurant-to-dish_or_category connections** exist in the connections table
 
-#### Categories in Connection Scope Only
+#### 2.3.4 Categories in Connection Scope Only
 
 - **Categories stored as entity ID references** in restaurant→dish_or_category connections
 - **Restaurant-category mentions boost scores** of all related dish_or_category items
@@ -316,7 +316,7 @@ CREATE TABLE user_events (
 
 ### 3.1 Data Collection Strategy
 
-The system uses two complementary data collection strategies to build and maintain the knowledge graph: scheduled background collection and on-demand query-driven collection. Both share the same LLM-powered entity extraction pipeline but serve different purposes in the system. Implementaion details can be found in section 4
+The system uses two complementary data collection strategies to build and maintain the knowledge graph: scheduled background collection and on-demand query-driven collection. Both share the same LLM-powered entity extraction pipeline but serve different purposes in the system. Implementation details can be found in section 4.
 
 #### 3.1.1 Scheduled Background Collection
 
@@ -328,14 +328,14 @@ Build and maintain a comprehensive knowledge graph by systematically processing 
 
 The system implements two types of background collection cycles:
 
-1. **Weekly New Entity Enrichment**
+**Weekly New Entity Enrichment**
 
 - **Purpose**: Process newly discovered entities from the previous week
 - **Scope**: All entities created but not yet enriched
 - **Schedule**: Weekly during off-peak hours
 - **Focus**: Building initial connections and scoring for new entities
 
-2. **Quarterly Full Refresh**
+**Quarterly Full Refresh**
 
 - **Purpose**: Comprehensive update of all entities in the database
 - **Scope**: All existing entities, prioritizing those with oldest data
@@ -473,7 +473,7 @@ During data collection, the LLM:
 
 ##### Phase 2: Database Entity Resolution w/ Batching (Server-Side)
 
-###### Scope-Aware Resolution Process
+**Scope-Aware Resolution Process**
 
 **Standard Entity Resolution Process**: The system resolves all entity types through name matching with type constraints. Most entities have unambiguous types and resolve directly (restaurants and dish_or_categories). For context-dependent attributes that can exist in both dish and restaurant contexts (cuisine, dietary, value, etc.), the system creates separate entities based on scope and matches by both **name AND entity type** to ensure accurate targeting.
 
@@ -491,7 +491,7 @@ During data collection, the LLM:
 
 This enables precise query targeting while maintaining normal operation for all standard entity types.
 
-###### Three-Tier Resolution Process
+**Three-Tier Resolution Process**
 
 1. **Exact match against canonical names**: Single query `WHERE name IN (...) AND type = $entity_type`
 2. **Alias matching**: Single query with array operations `WHERE aliases && ARRAY[...] AND type = $entity_type`
@@ -504,13 +504,13 @@ This enables precise query targeting while maintaining normal operation for all 
 3. **Bulk database operations**: Single transaction with UPSERT statements
 4. **Prepared statement caching**: Cache query execution plans for all resolution and insertion queries
 
-###### Resolution Decision Logic
+**Resolution Decision Logic**
 
 - **High confidence (>0.85)**: Merge with existing entity, add original text as alias
 - **Medium confidence (0.7-0.85)**: Apply heuristic rules or flag for review
 - **Low confidence (<0.7)**: Create new entity
 
-###### Alias Management
+**Alias Management**
 
 - When merging with existing entity, add raw text as new alias if not exists
 
@@ -569,27 +569,27 @@ The same entity resolution process applies during user queries, with scope deter
 
 ##### Key Differences from Data Collection Resolution
 
-**1. Read-Only Entity Resolution**
+**Read-Only Entity Resolution**
 
 - **Never creates new entities** - only matches existing ones
 - **No alias additions** - database remains unchanged
 - **Unrecognized terms** treated as search filters or ignored
 
-**2. Speed-Optimized Processing**
+**Speed-Optimized Processing**
 
 - **Cached common mappings** for frequent queries ("tatsuyas" → "Ramen Tatsu-Ya")
 - **Faster fuzzy matching** with optimized thresholds
 - **Real-time constraints** - sub-100ms entity resolution target
 - **Parallel processing** of multiple entity types
 
-**3. Search Expansion Strategy**
+**Search Expansion Strategy**
 
 - **Lower confidence threshold** (>0.6 vs >0.7) - better to include than miss
 - **Multi-entity candidates** - include multiple matches when ambiguous
 - **Broader category inclusion** - "ramen" expands to all ramen subtypes
 - **Alias propagation** - all aliases included in database queries
 
-**4. Graceful Degradation**
+**Graceful Degradation**
 
 - **Partial entity matching** - process recognized entities, ignore unrecognized
 - **Fallback to broader categories** if specific entities not found
@@ -597,7 +597,7 @@ The same entity resolution process applies during user queries, with scope deter
 
 ### 3.3 Quality Score Computation
 
-#### Dish Quality Score (85-90%)
+#### 3.3.1 Dish Quality Score (85-90%)
 
 ##### Primary component based on connection strength:
 
@@ -612,7 +612,7 @@ The same entity resolution process applies during user queries, with scope deter
   - Provides a small boost to dishes from generally excellent restaurants
   - Serves as effective tiebreaker
 
-#### Restaurant Quality Score (80% + 20%)
+#### 3.3.2 Restaurant Quality Score (80% + 20%)
 
 ##### Primary component (80%):
 
@@ -624,7 +624,7 @@ The same entity resolution process applies during user queries, with scope deter
 - **Overall menu consistency**: Average quality across all mentioned dishes
   - Rewards restaurants with strong overall performance
 
-#### Category/Attribute Performance Score
+#### 3.3.3 Category/Attribute Performance Score
 
 For restaurant ranking in category/attribute queries:
 
@@ -636,17 +636,25 @@ For restaurant ranking in category/attribute queries:
 
 ## 4. Reddit Data Collection Process
 
+**⚠️ CRITICAL DEPENDENCY NOTE**: This entire section assumes Reddit API access including comments retrieval. If Reddit API does not provide comment access, the system will fallback to archived Pushshift bulk data, which would fundamentally change:
+
+- **Activity indicators**: No real-time trending/active status (historical data only)
+- **Data collection strategy**: Batch processing of archived data instead of real-time collection
+- **On-demand collection**: Not possible with static archived data
+- **Attribution system**: Older data with potentially broken links
+- **Cost model**: Different infrastructure costs for bulk data processing vs API calls
+
 **Collection Triggers:**
 
 - **Scheduled Background Collection**: Weekly (new entities) + Quarterly (full refresh)
-- **On-Demand Collection**: Triggered by insufficient query results
+- **On-Demand Collection**: Triggered by insufficient query results (Reddit API only)
 
 ### 4.1 Processing Pipeline
 
 ```
 1. Entity Selection (based on collection cycle or user query when on-demand collection is triggered)
 2. Reddit API Search & Post/Comment Retrieval
-3. LLM Content Processing (outputs structured mentions with temp IDs; see llm_content_processing.md)
+3. LLM Content Processing (outputs structured mentions with temp IDs; see llm-content-processing.md)
 4. Single Consolidated Processing Phase:
    4a. Entity Resolution (with in-memory ID mapping; see section 3.2)
    4b. Mention Scoring & Activity Calculation (using existing DB data; see section 4.4)
@@ -661,7 +669,7 @@ For restaurant ranking in category/attribute queries:
 - Reddit API search with rate limiting and cost optimization
 - Fetch complete posts and comment threads with URLs
 
-**Step 3**: LLM Content Processing (see llm_content_processing.md for more details)
+**Step 3**: LLM Content Processing (see llm-content-processing.md for more details)
 
 - Input: Reddit posts/comments
 - Output: Structured mentions with temp IDs (only JSON structure needed)
@@ -686,7 +694,7 @@ For restaurant ranking in category/attribute queries:
 
 **Primary Function:** Convert Reddit content into structured mentions with normalized entities
 
-**Key Processing Rules** (see `llm_content_processing.md` for full details):
+**Key Processing Rules** (see `llm-content-processing.md` for full details):
 
 - **Entity Extraction**: All 4 entity types (restaurant, dish_or_category, dish_attribute, restaurant_attribute)
 - **Scope Determination**: Context-dependent attributes assigned to correct scope (dish vs restaurant)
@@ -698,9 +706,9 @@ For restaurant ranking in category/attribute queries:
 
 ### 4.3 LLM Data Collection Input/Output Structures
 
-See llm_content_processing.md for more implementation and processing details.
+See llm-content-processing.md for more implementation and processing details.
 
-#### LLM Input Structure
+#### 4.3.1 LLM Input Structure
 
 _**Note**: Structure may evolve during implementation. Key principles are batch processing efficiency, original context preservation, and hierarchical post-comment relationships._
 
@@ -731,7 +739,7 @@ _**Note**: Structure may evolve during implementation. Key principles are batch 
 }
 ```
 
-#### LLM Output Structure
+#### 4.3.2 LLM Output Structure
 
 _**Note**: Structure will evolve during implementation. Key principles are entity normalization with original text preservation, attribute classification for processing guidance, and source traceability._
 
@@ -787,7 +795,7 @@ The system uses a **single consolidated processing phase** (step 4 above) that e
 
 Within the single consolidated processing phase, the system performs:
 
-#### Entity Resolution (step 4a):
+#### 4.4.1 Entity Resolution (step 4a):
 
 _**Note**: see section 3.2 for detailed implementation_
 
@@ -795,11 +803,13 @@ _**Note**: see section 3.2 for detailed implementation_
 - **In-memory ID mapping**: Build `{temp_id → db_id}` dictionary from resolution results
 - **Batched processing**: All resolution operations performed in batches for optimal performance
 
-#### Mention Scoring & Activity Calculation (step 4b):
+#### 4.4.2 Mention Scoring & Activity Calculation (step 4b):
 
 **Purpose**: Calculate time-weighted mention scores and activity levels to support the attribution system and user experience strategy outlined in section 6.2.
 
-##### 1. Top Mention Scoring and Management
+**⚠️ REDDIT API DEPENDENCY**: Activity level calculations require real-time Reddit data. With Pushshift fallback, activity indicators (trending/active) cannot be determined from static historical data.
+
+##### Top Mention Scoring and Management
 
 ###### Process Overview
 
@@ -814,7 +824,7 @@ _**Note**: see section 3.2 for detailed implementation_
 - **Purpose**: Top mention is used for attribution display (see section 6.2)
 - **Storage format**: Top mentions stored in `connections.top_mentions` JSONB array with mention metadata: `{"mention_id": "uuid", "score": 45.2, "upvotes": 67, ...}`
 
-##### 2. Activity Level Calculation and Management
+##### Activity Level Calculation and Management
 
 ###### Timestamp Tracking
 
@@ -838,7 +848,7 @@ _**Note**: see section 3.2 for detailed implementation_
 - **UI integration**: Simple conditional display based on stored activity_level enum
 - **Performance**: No additional API calls or real-time calculations required
 
-#### Component-Based Processing (step 4c):
+#### 4.4.3 Component-Based Processing (step 4c):
 
 _**Note**: see section 4.5 below for component details_
 
@@ -847,7 +857,7 @@ _**Note**: see section 4.5 below for component details_
 
 ### 4.5 Component-Based DB Processing Guide
 
-##### Modular Processing Components
+#### 4.5.1 Modular Processing Components
 
 The system processes LLM output through independent components. All applicable components process independently for each mention.
 
@@ -904,7 +914,7 @@ Without Dish Attributes:
 - **All Descriptive:** Skip processing (no target for descriptive attributes)
 - **Mixed:** Find existing dish connections with ANY of the selective attributes; Boost those connections; Ignore descriptive attributes
 
-##### Entity Creation Rules
+#### 4.5.2 Entity Creation Rules
 
 **Always Create:**
 
@@ -918,7 +928,7 @@ Without Dish Attributes:
 - General praise dish connections: When general_praise: true but no dish connections exist
 - Descriptive-only attributes: When no dish_or_category is present
 
-##### Attribute Processing Logic
+#### 4.5.3 Attribute Processing Logic
 
 **Selective Attributes (OR Logic):**
 When finding existing connections with selective attributes, use OR logic (match ANY of the selective attributes):
@@ -938,7 +948,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 - Descriptive attributes describe specific characteristics of individual items - they all describe the same dish
 - OR logic for selective maximizes relevant results; AND logic for descriptive ensures complete characterization
 
-##### Core Principles
+#### 4.5.4 Core Principles
 
 1. **Modular Processing:** All applicable components process independently
 2. **Additive Logic:** Multiple processing components can apply to the same mention
@@ -951,7 +961,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 
 ### 4.6 Database Operations, Metrics, and Performance Optimizations
 
-##### Foundation Infrastructure
+#### 4.6.1 Foundation Infrastructure
 
 **Database Connection Management:**
 
@@ -959,7 +969,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 - **Prepared statements**: Cache query execution plans for all resolution and insertion queries
 - **Core indexes**: Pre-existing indexes on entity names, aliases, and normalized fields for optimal performance
 
-##### Bulk Database Operations
+#### 4.6.2 Bulk Database Operations
 
 **Transaction Strategy:**
 
@@ -973,7 +983,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 2. **Connection updates** → Modify metrics, attributes, categories, activity levels, and other metadata
 3. **Top mention updates** → Replace top mention arrays with newly ranked mentions
 
-##### Metric Aggregation
+#### 4.6.3 Metric Aggregation
 
 **Connection Metrics Aggregation:**
 
@@ -991,7 +1001,7 @@ Raw metrics calculated and accumulated with each connection during processing:
 - **Quality score computation**: Feed into global ranking algorithms
 - **Query filtering**: Enable attribute-based filtering thresholds
 
-##### Performance Monitoring and Optimization
+#### 4.6.4 Performance Monitoring and Optimization
 
 **Key Performance Metrics:**
 
@@ -1045,9 +1055,9 @@ Raw metrics calculated and accumulated with each connection during processing:
 
 ### 5.2 Multi-Level Caching Strategy
 
-#### Cache Implementation Levels
+#### 5.2.1 Cache Implementation Levels
 
-##### 1. Hot Query Cache (1 hour retention)
+##### Hot Query Cache (1 hour retention)
 
 **Purpose:** Handle high-frequency and trending searches
 **Example:** "best ramen downtown"
@@ -1056,7 +1066,7 @@ Raw metrics calculated and accumulated with each connection during processing:
 - Same query within hour: Instant results
 - **Benefits:** Handles viral/trending searches efficiently
 
-##### 2. Recent Search Results (24 hour retention)
+##### Recent Search Results (24 hour retention)
 
 **Purpose:** Optimize follow-up searches with complete result sets
 **Example:** User searches "best tacos", comes back later
@@ -1064,19 +1074,19 @@ Raw metrics calculated and accumulated with each connection during processing:
 - Store complete result sets with quality scores and evidence
 - Update if significant new data becomes available
 
-##### 3. Static Data Cache (7+ days retention)
+##### Static Data Cache (7+ days retention)
 
 **Purpose:** Reduce database load for common data
 **Examples:** Restaurant basic info, entity metadata, common patterns
 
-#### Cache Invalidation Strategy
+#### 5.2.2 Cache Invalidation Strategy
 
 - **Time-based expiration** for different data types based on volatility
 - **Smart invalidation** when entities receive new mentions or updates
 - **Trend-based cache warming** for predicted popular queries
 - **Geographic cache segmentation** for location-based query optimization
 
-#### Redis Implementation
+#### 5.2.3 Redis Implementation
 
 - **Connection pooling** established at application startup
 - **Efficient serialization** for complex result sets
@@ -1085,7 +1095,7 @@ Raw metrics calculated and accumulated with each connection during processing:
 
 ### 5.3 Query Understanding & Processing via LLM Analysis
 
-#### Entity-Based Query Processing
+#### 5.3.1 Entity-Based Query Processing
 
 The system processes queries through LLM analysis (see llm_query_processing.md) to extract **all relevant mentioned entities**, which are then used to dynamically build optimal database queries that **adapt to the entity combination provided**. The extracted entities determine both the query structure and the return format.
 
@@ -1104,7 +1114,7 @@ The system processes queries through LLM analysis (see llm_query_processing.md) 
 - **"best vegan restaurants"** → restaurant_attributes: ["vegan"] → Find restaurants with vegan attribute, return dual lists
 - **"best Italian food at romantic restaurants"** → dish_attributes: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
 
-#### Query Analysis & Processing
+#### 5.3.2 Query Analysis & Processing
 
 ##### Primary Function: Convert natural language queries to structured entity parameters for dynamic query building
 
@@ -1122,7 +1132,7 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 
 See llm_query_processing.md for more implementation and processing details.
 
-#### LLM Input Structure
+#### 5.4.1 LLM Input Structure
 
 _**Note**: Structure may evolve during implementation. Key principles are query context preservation, geographic constraint integration, and user preference continuity._
 
@@ -1140,7 +1150,7 @@ _**Note**: Structure may evolve during implementation. Key principles are query 
 }
 ```
 
-#### LLM Output Structure
+#### 5.4.2 LLM Output Structure
 
 _**Note**: Structure may evolve during implementation. The key principles are entity organization by type with preserved original text and resolved database identifiers._
 
@@ -1181,7 +1191,7 @@ _**Note**: Structure may evolve during implementation. The key principles are en
 
 ### 5.5 Dynamic Query Architecture
 
-#### Entity-Driven Query System Design
+#### 5.5.1 Entity-Driven Query System Design
 
 The system uses a **single dynamic query builder** that adapts its SQL structure based on the entities extracted from user queries. This approach eliminates the need for multiple specialized query patterns while maintaining optimal performance.
 
@@ -1199,7 +1209,7 @@ The system uses a **single dynamic query builder** that adapts its SQL structure
 - **Attribute scope processing**: Automatic tier-based filtering for dish_attributes vs restaurant_attributes
 - **Missing entities**: Graceful handling when certain entity types are not provided
 
-#### Dynamic Query Building Logic
+#### 5.5.2 Dynamic Query Building Logic
 
 The system constructs adaptive database queries through a multi-stage filtering approach that responds to entity presence. The query architecture uses conditional logic blocks that activate only when corresponding entities are detected, creating an efficient and flexible query execution pattern.
 
@@ -1233,7 +1243,7 @@ The system constructs adaptive database queries through a multi-stage filtering 
 
 - **Ranking**: Leverages pre-computed `dish_quality_score` or `restaurant_quality_score` values, ranked in descending order in real-time
 
-#### Attribute Scope Processing
+#### 5.5.3 Attribute Scope Processing
 
 The system automatically applies the correct filtering logic based on attribute scope:
 
@@ -1251,7 +1261,7 @@ The system automatically applies the correct filtering logic based on attribute 
 - Filter: `WHERE dish_attributes && ARRAY[attribute_ids]`
 - Examples: spicy, vegan, house-made, crispy
 
-#### Query Building Process
+#### 5.5.4 Query Building Process
 
 Following **step 5** in the query pipeline, the system:
 
@@ -1262,7 +1272,7 @@ Following **step 5** in the query pipeline, the system:
 5. **Geographic Integration**: Include map boundaries and availability filters
 6. **Query Optimization**: Leverage database indexes and pre-computed scores for fast execution
 
-#### Query Execution Examples
+#### 5.5.5 Query Execution Examples
 
 **Query: "best spicy ramen with patio seating"**
 
@@ -1298,7 +1308,7 @@ Following **step 5** in the query pipeline, the system:
 - **Performance benefit** → Early dataset reduction through restaurant-scoped filtering
 - **Flexibility** → No predefined query categories, pure entity-driven logic
 
-#### Performance Optimizations
+#### 5.5.6 Performance Optimizations
 
 **Single Query Pattern Benefits:**
 
@@ -1318,7 +1328,7 @@ Following **step 5** in the query pipeline, the system:
 
 Enabled by Google Maps/Places API integration and attribute-based filtering
 
-#### Map-Based Location Filtering
+#### 5.6.1 Map-Based Location Filtering
 
 - **Map-Centric UI**: Users navigate a map interface to define their area of interest
 - **Implicit Boundary Filtering**: Query uses visible map boundaries as location filter
@@ -1328,7 +1338,7 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
   - Database filters restaurants within these coordinates **before ranking** using geographic indexes
   - No text-based location parsing required - eliminates ambiguity in location interpretation
 
-#### Availability Filtering: Toggle + Attribute Approach
+#### 5.6.2 Availability Filtering: Toggle + Attribute Approach
 
 - **"Open Now" Toggle**: Binary filter using current time against stored operating hours
   - Applied during **Dynamic Query Building** with current timestamp
@@ -1341,11 +1351,11 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
 
 ### 5.7 Return Format Determination
 
-#### Entity-Based Return Strategy
+#### 5.7.1 Entity-Based Return Strategy
 
 The system determines return format based on the **entity composition** of the query rather than predefined query types. This approach provides consistent, predictable responses while adapting to user intent naturally.
 
-#### Return Format Logic
+#### 5.7.2 Return Format Logic
 
 ##### Format Determination Process:
 
@@ -1387,7 +1397,7 @@ AND restaurant_attributes.length = 0
 - **Clear logic**: Boolean evaluation, no complex decision trees
 - **User-intuitive**: Format matches natural query interpretation
 
-#### Return Format Types
+#### 5.7.3 Return Format Types
 
 **Single List Returns**
 
@@ -1408,7 +1418,7 @@ AND restaurant_attributes.length = 0
   - "best spicy food with patio" → Spicy dishes + restaurants with patios serving great spicy food
   - "best vegan restaurants" → Top vegan dishes + restaurants ranked by vegan offerings
 
-#### Restaurant Ranking Methodology
+#### 5.7.4 Restaurant Ranking Methodology
 
 For dual list returns, restaurant rankings are **contextually calculated** based on query entities:
 
@@ -1417,14 +1427,14 @@ For dual list returns, restaurant rankings are **contextually calculated** based
 - **Attribute-driven scoring**: Restaurant performance calculated from connections that match specified attributes
 - **Recency weighting**: Recent performance weighted more heavily than historical data
 
-#### Implementation Benefits
+#### 5.7.5 Implementation Benefits
 
 - **Predictable UI patterns**: Frontend handles consistent return format logic
 - **Entity-driven relevance**: Restaurant rankings always contextual to query entities
 - **Natural user flow**: Users get both specific recommendations and venue discovery
 - **Performance consistency**: Single query generates both lists simultaneously
 
-#### Result Structure Consistency
+#### 5.7.6 Result Structure Consistency
 
 Each result format maintains consistent data structure for seamless UI integration:
 
@@ -1543,7 +1553,7 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
 
 _Important: This system relies on pre-computed global quality scores for ranking with attributes serving as filters._
 
-#### Query Time Ranking
+#### 5.9.1 Query Time Ranking
 
 ##### Core Ranking Philosophy
 
@@ -1611,7 +1621,7 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 - **Score independence**: Activity levels calculated from recency, not incorporated into quality scores
 - **User guidance**: Visual cues help users understand community engagement patterns
 
-#### Results Display
+#### 5.9.2 Results Display
 
 ##### List View: Scrollable results with:
 
@@ -1632,9 +1642,11 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 
 ## 6. Community Engagement & Growth Strategy
 
+**⚠️ REDDIT API DEPENDENCY**: This much of this strategy assumes Reddit API access for real-time attribution and community engagement. With Pushshift fallback, community engagement features are limited to historical data display that may not have active link functionality.
+
 ### 6.1 Enhanced Attribution System (Foundation Feature)
 
-#### UI Implementation
+#### 6.1.1 UI Implementation
 
 The attribution system creates clear, compelling links between dishes and their Reddit community discussions, driving engagement while providing proper attribution.
 
@@ -1656,7 +1668,7 @@ The attribution system creates clear, compelling links between dishes and their 
 - **Subtle branding**: "Powered by Reddit communities" in app footer/settings
 - **Integrated metrics**: Thread count already captured in existing metrics suite
 
-#### Link Strategy
+#### 6.1.2 Link Strategy
 
 **Dual-Access Approach:**
 
@@ -1665,23 +1677,32 @@ The attribution system creates clear, compelling links between dishes and their 
 - **Consistent destination**: Both link to same Reddit thread for focused engagement
 - **Mobile-optimized**: Links open Reddit app when available, web/appstore fallback
 
-#### Attribution Benefits
+#### 6.1.3 Strategic Benefits
 
-**For Users:**
+**User Benefits:**
 
 - **Context preservation**: See exact discussion that led to recommendation
 - **Community discovery**: Find relevant food communities and active discussants
 - **Engagement continuity**: Seamless transition from app to Reddit discussion
 
-**For Reddit:**
+**Reddit Partnership Value:**
 
-- **High-quality traffic**: Users arrive at specific, relevant comment threads
-- **Mobile engagement**: Optimized for mobile Reddit experience
-- **Content context**: Users understand the community discussion context
+- **High-quality mobile traffic**: Users arrive at specific, relevant comment threads
+- **Content creation assistance**: Share features generate new posts for food communities
+- **Community engagement**: Users engage with existing discussions through attribution
+- **Third-party marketing**: Bookmark sharing and attribution drive new users to Reddit
+- **Content licensing**: Proper attribution maintains Reddit as authoritative source
+
+**Business Growth:**
+
+- **Click-through tracking**: Quote clicks vs. CTA button performance
+- **Community expansion**: Geographic scaling through new subreddit engagement
+- **Content virality**: User-generated posts create measurable community traction
+- **API collaboration**: Potential for enhanced Reddit API integration
 
 ### 6.2 Top Mentions & Activity Indicators (User Experience Strategy)
 
-#### Visual Activity Indicators
+#### 6.2.1 Visual Activity Indicators
 
 **Purpose**: Provide immediate signals to users about community engagement levels and discussion recency.
 
@@ -1698,7 +1719,7 @@ The attribution system creates clear, compelling links between dishes and their 
 - **Discovery enhancement**: Trending items surface popular current discussions
 - **Attribution integration**: Activity indicators enhance the attribution system's effectiveness
 
-#### Top Mentions for Attribution
+#### 6.2.2 Top Mentions for Attribution
 
 **Strategy**: Use the highest-scoring recent mentions to drive attribution and Reddit engagement.
 
@@ -1713,7 +1734,7 @@ The attribution system creates clear, compelling links between dishes and their 
 
 ### 6.3 Social Sharing & Contribution Features
 
-#### Bookmark Page Share Extension
+#### 6.3.1 Bookmark Page Share Extension
 
 **Implementation as Extension to Existing Bookmark System:**
 
@@ -1750,7 +1771,7 @@ OR
 - **Draft capability**: Optional local storage for post drafts
 - **Cross-platform**: Optional native sharing on iOS/Android with Reddit app integration
 
-#### Content Generation Strategy
+#### 6.3.2 Content Generation Strategy
 
 **Smart Templates:**
 
@@ -1769,20 +1790,20 @@ OR
 
 _Note: Core database schema defined in section 2.1. This section covers Reddit-specific field usage and implementation._
 
-#### Connection Table Updates
+#### 6.4.1 Connection Table Updates
 
 - **last_mentioned_at**: Timestamp of most recent mention for activity calculation
 - **activity_level**: Pre-computed activity status for UI display optimization
 - **top_mentions**: JSONB array storing mention metadata for attribution display
 
-#### Mentions Table Modifications
+#### 6.4.2 Mentions Table Modifications
 
 - **source_url**: Store full Reddit URLs instead of just post/comment IDs
 - **subreddit**: Extract subreddit from URL during processing OR store separately
 
 ### 6.5 Growth Metrics & Attribution Strategy
 
-#### Trackable Success Metrics
+#### 6.5.1 Trackable Success Metrics
 
 **User Engagement Metrics:**
 
@@ -1797,7 +1818,7 @@ _Note: Core database schema defined in section 2.1. This section covers Reddit-s
 - **Community growth**: New subreddit communities engaged
 - **Content virality**: User-generated posts that gain traction
 
-#### Attribution & Tracking Implementation
+#### 6.5.2 Technical Implementation
 
 **UTM Parameter Strategy:**
 
@@ -1813,135 +1834,169 @@ _Note: Core database schema defined in section 2.1. This section covers Reddit-s
 - **A/B testing framework**: Test different attribution formats and CTA language
 - **Privacy compliance**: Ensure tracking complies with app store and privacy requirements
 
-#### Value Creation for Reddit
-
-- **High-quality mobile traffic**: Users arrive at specific, relevant discussions
-- **Content creation assistance**: Share features generate new posts for food communities
-- **Community engagement**: Users engage with existing discussions through attribution
-- **Third-party marketing**: Bookmark sharing and attribution drive new users to Reddit
-- **Content licensing**: Proper attribution maintains Reddit as authoritative source
-- **API collaboration**: Potential for enhanced Reddit API integration
-
 ---
 
 ## 7. Technology Stack
 
 _**Note**: This is a high-level overview of the technology stack. The actual implementation will be determined by the specific requirements of the project._
 
-### Frontend Layer
+### 7.1 Frontend Layer
 
-- **Core:**
-  - React Native
-  - TypeScript
-  - Nativewind
-- **Essential Libraries:**
-  - React Query for server state & caching
-  - Zustand for client state management
-  - React Navigation
-  - React Hook Form
-  - React Native Maps
-  - React Native MMKV
-  - React Native Reanimated for advanced animations
-  - React Native Placeholder
-  - Expo (for faster development)
-    - expo-location for location services
-    - expo-notifications for push notifications
-    - expo-linking for deep linking
-    - expo-updates for OTA updates
-- **Add When Needed:**
-  - React Native SVG
-  - FlashList
-  - date-fns for complex date operations
-  - Zod for advanced validation
+#### 7.1.1 Core Framework
 
-### Backend Layer
+- **React Native**
+- **TypeScript**
+- **Nativewind**
 
-- **Core:**
-  - NestJS
-  - TypeScript
-  - Fastify
-- **Essential Libraries:**
-  - @nestjs/bull for background jobs
-  - @nestjs/cache-manager with Redis
-  - @nestjs/config for configuration
-  - @nestjs/swagger for API documentation
-  - @nestjs/websockets for real-time features
-  - @nestjs/config (with dotenv-vault)
-  - class-validator & class-transformer
-  - Passport.js for authentication
-  - winston for logging
-  - helmet (security)
-  - express-rate-limit
-  - prom-client for Prometheus metrics
-- **Add When Needed:**
-  - @nestjs/microservices if scaling needs arise
-  - @nestjs/schedule for cron jobs
-  - Node worker_threads for CPU-intensive tasks
+#### 7.1.2 Essential Libraries
 
-### Data Layer
+- **React Query** for server state & caching
+- **Zustand** for client state management
+- **React Navigation**
+- **React Hook Form**
+- **React Native Maps**
+- **React Native MMKV**
+- **React Native Reanimated** for advanced animations
+- **React Native Placeholder**
+- **Expo** (for faster development)
+  - expo-location for location services
+  - expo-notifications for push notifications
+  - expo-linking for deep linking
+  - expo-updates for OTA updates
 
-- **Database:**
-  - PostgreSQL 15
-  - Prisma
-  - node-postgres for raw queries when needed
-- **Cache:**
-  - Redis with ioredis
-  - Bull for job queues
-  - Bull Board for queue monitoring
-- **Migrations:**
-  - Prisma migrations
+#### 7.1.3 Add When Needed
 
-### Infrastructure
+- **React Native SVG**
+- **FlashList**
+- **date-fns** for complex date operations
+- **Zod** for advanced validation
 
-- **AWS Services:**
-  - RDS for PostgreSQL
-  - ElastiCache for Redis
-  - S3 for storage
-  - SNS for push notifications
-- **Deployment**
-  - Railway.app (initial deployment)
-  - Docker
-  - GitHub Actions for CI/CD
-- **Mobile Specific**
-  - Expo Application Services (EAS)
-    - Build automation
-    - OTA updates
-    - Push notifications
-    - App Store and Play Store deployments
-- **Monitoring:**
-  - Prometheus for metrics collection (implement in Phase 2)
-  - Grafana for dashboards and visualization
-  - Docker Compose setup for local Prometheus/Grafana development
-  - Sentry for error and mobile crash reporting
-- **Analytics:**
-  - PostHog (open source) or Amplitude (free tier)
+### 7.2 Backend Layer
 
-### External APIs
+#### 7.2.1 Core Framework
 
-- Reddit API for community data
-- Google Places API for location services
-- Gemini or Deepseek LLM API for content analysis
+- **NestJS**
+- **TypeScript**
+- **Fastify**
 
-### Testing Stack
+#### 7.2.2 Essential Libraries
 
-- **Frontend:**
-  - Jest for unit testing
-  - React Native Testing Library
-  - Maestro for E2E mobile testing
-- **Backend:**
-  - Jest for unit testing
-  - @nestjs/testing for integration tests
-  - Supertest for HTTP testing
-  - k6 for performance testing
+- **@nestjs/bull** for background jobs
+- **@nestjs/cache-manager** with Redis
+- **@nestjs/config** for configuration
+- **@nestjs/swagger** for API documentation
+- **@nestjs/websockets** for real-time features
+- **@nestjs/config** (with dotenv-vault)
+- **class-validator & class-transformer**
+- **Passport.js** for authentication
+- **winston** for logging
+- **helmet** (security)
+- **express-rate-limit**
+- **prom-client** for Prometheus metrics
 
-### Development Tools
+#### 7.2.3 Add When Needed
 
-- **Essential:**
-  - pnpm for package management
-  - Lefthook for commit rules and git hooks
-  - dotenv for environment management
-  - Postman or Insomnia for API testing
-  - Storybook for component development
+- **@nestjs/microservices** if scaling needs arise
+- **@nestjs/schedule** for cron jobs
+- **Node worker_threads** for CPU-intensive tasks
+
+### 7.3 Data Layer
+
+#### 7.3.1 Database
+
+- **PostgreSQL 15**
+- **Prisma**
+- **node-postgres** for raw queries when needed
+
+#### 7.3.2 Cache
+
+- **Redis** with ioredis
+- **Bull** for job queues
+- **Bull Board** for queue monitoring
+
+#### 7.3.3 Migrations
+
+- **Prisma migrations**
+
+### 7.4 Infrastructure
+
+#### 7.4.1 AWS Services
+
+- **RDS** for PostgreSQL
+- **ElastiCache** for Redis
+- **S3** for storage
+- **SNS** for push notifications
+
+#### 7.4.2 Deployment
+
+- **Railway.app** (initial deployment)
+- **Docker**
+- **GitHub Actions** for CI/CD
+
+#### 7.4.3 Mobile Specific
+
+- **Expo Application Services (EAS)**
+  - Build automation
+  - OTA updates
+  - Push notifications
+  - App Store and Play Store deployments
+
+#### 7.4.4 Monitoring
+
+- **Prometheus** for metrics collection (implement in Phase 2)
+- **Grafana** for dashboards and visualization
+- **Docker Compose** setup for local Prometheus/Grafana development
+- **Sentry** for error and mobile crash reporting
+
+#### 7.4.5 Analytics
+
+- **PostHog** (open source) or **Amplitude** (free tier)
+
+### 7.5 External APIs
+
+- **Reddit API** for community data ⚠️ **CONTINGENT ON COMMENT ACCESS**
+  - **Cost**: $0.24/1000 calls, 100 requests/minute rate limit
+  - **Search limitations**: 1000 post limit per search query
+  - **Historical access strategy**: Store post/comment IDs for direct access to bypass search limitations
+  - **Cost management**: Aggressive caching, smart update scheduling, batch processing
+  - **Cost Optimization Strategies:**
+    1. **Build Historical Access Database**: Store all encountered post/comment IDs to enable direct content access and bypass search limitations
+    2. **Optimize Update Cycles**: Track last check timestamps, only fetch new content, batch similar requests
+    3. **Smart Scheduling**: Schedule intensive data collection during off-peak hours to maximize efficiency
+    4. **Result Caching**: Maintain aggressive caching of Reddit API responses to minimize duplicate calls
+    5. **Batch Processing**: Group entity searches and API calls to maximize rate limit utilization
+  - **Fallback Strategy**: If Reddit API doesn't provide comment access, use archived Pushshift bulk data
+    - **Data Source**: Historical Reddit data dumps (static, not real-time)
+    - **Processing Model**: Batch processing of archived JSON files
+    - **Infrastructure**: Different storage and processing requirements
+    - **Limitations**: No real-time data, no activity indicators, no on-demand collection
+- **Google Places API** for location services and restaurant data
+- **Gemini** or **Deepseek LLM API** for content analysis and entity extraction
+
+### 7.6 Testing Stack
+
+#### 7.6.1 Frontend
+
+- **Jest** for unit testing
+- **React Native Testing Library**
+- **Maestro** for E2E mobile testing
+
+#### 7.6.2 Backend
+
+- **Jest** for unit testing
+- **@nestjs/testing** for integration tests
+- **Supertest** for HTTP testing
+- **k6** for performance testing
+
+### 7.7 Development Tools
+
+#### 7.7.1 Essential
+
+- **pnpm** for package management
+- **Lefthook** for commit rules and git hooks
+- **dotenv** for environment management
+- **Postman** or **Insomnia** for API testing
+- **Storybook** for component development
 
 ---
 
@@ -1994,18 +2049,24 @@ src/
 
 ### 8.2 Domain Responsibilities
 
-**Content Processing**: Handles all aspects of ingesting and analyzing community content
+#### 8.2.1 Content Processing
+
+Handles all aspects of ingesting and analyzing community content
 
 - **Workflow Orchestration**: Coordinate reddit-collector → llm-processor → entity-resolver workflow
 - **Metric Aggregation**: Update connection metrics when new mentions are processed
 - **Score Computation**: Calculate global quality scores after connection metrics are updated
 - **Background Job Management**: Schedule and manage systematic content processing operations
 
-**Search & Discovery**: Manages query processing and result delivery using pre-computed data
+#### 8.2.2 Search & Discovery
+
+Manages query processing and result delivery using pre-computed data
 
 - **Result Ranking**: Retrieve and apply stored global quality scores for fast ranking
 - **Query Optimization**: Use pre-computed scores and activity levels for sub-second responses
 - **Discovery Features**: Leverage activity indicators computed during data processing
+
+#### 8.2.3 Supporting Domains
 
 **User Experience**: Focuses on user-facing features and interactions
 **External Integrations**: Centralizes third-party service connections
@@ -2013,28 +2074,28 @@ src/
 
 ### 8.3 Development and Design Principles
 
-**Dependency Injection & Loose Coupling**:
+#### 8.3.1 Dependency Injection & Loose Coupling
 
 - **NestJS DI container**: Use dependency injection for all module interactions
 - **Interface-based design**: Define clear contracts between modules to enable testing and flexibility
 - **Repository pattern**: Abstract database access through repositories for clean separation
 - **Service layer isolation**: Keep business logic separate from framework concerns
 
-**Event-Driven Communication**:
+#### 8.3.2 Event-Driven Communication
 
 - **Asynchronous operations**: If performant, use events for background processing and cross-module notifications
-- **Score update events**: If performant, eit events when process-orchestrator completes mention processing to trigger downstream updates
+- **Score update events**: If performant, emit events when process-orchestrator completes mention processing to trigger downstream updates
 - **User activity events**: Track search patterns and bookmark changes for personalization
 - **Decoupled notifications**: Use event bus for sending alerts and updates without tight coupling
 
-**Performance-First Architecture**:
+#### 8.3.3 Performance-First Architecture
 
 - **Pre-computed rankings**: Calculate all scores right after each content processing cycle, not query time
 - **Strategic caching**: Cache at multiple levels (query results, entity data, computed scores)
 - **Bulk operations**: Process entities and mentions in batches for database efficiency
 - **Background processing**: Move heavy computation (LLM analysis, score calculation) to process-orchestrator
 
-**Code Organization Best Practices**:
+#### 8.3.4 Code Organization Best Practices
 
 - **Domain-driven structure**: Organize code by business domain, not technical layer
 - **Single responsibility**: Each module has clear, focused purpose
@@ -2047,224 +2108,380 @@ src/
 
 _Dependencies-based development order with testable milestones_
 
-### Milestone 1: Database Foundation (Week 1-2)
+_**Note**: This roadmap is a high-level overview of the project. The actual implementation, performance and scalability requirements, milestones, tasks, success criteria, and timelines are subject to change based on the specific requirements and constraints of the project during development._
+
+### 9.1 Performance & Scalability Targets
+
+#### 9.1.1 Response Time Targets
+
+- **Search queries**: <400ms (cached), <3s (uncached with LLM processing)
+- **Discovery feed**: <1s (pre-computed data)
+- **Authentication**: <200ms (JWT validation)
+- **Payment processing**: <3s (Stripe integration)
+- **Reddit API operations**: Constrained by 100 requests/minute rate limit
+
+#### 9.1.2 MVP Scalability Targets
+
+- **Concurrent users**: 1,000-2,000 (scale to 10,000+ post-MVP)
+- **Search throughput**: 50 searches/second (scale to 100+ post-MVP)
+- **Reddit data processing**: 5,000 mentions/hour (API rate limit constraint)
+- **System uptime**: 99.9%
+
+#### 9.1.3 Data Processing Requirements
+
+- **Entity resolution**: <2s for 100 entity batch
+- **Quality score computation**: <10 minutes for full dataset refresh
+- **Cache hit rate**: >85% for popular queries (>90% target post-optimization)
+- **Database connection pool**: 50 connections (MVP), scale to 100+
+- **Reddit API efficiency**: >80% of rate limit utilization during active collection
+
+### 9.2 Milestone 1: Database Foundation (Week 1-2)
 
 _Nothing works without this_
+
+#### 9.2.1 Core Tasks
 
 - **Database schema creation**: Entities, connections, mentions tables with proper indexes
 - **Connection pooling and basic database operations**: CRUD operations, bulk inserts
 - **Database migrations and version control**: Schema evolution capability
 
-**Success Criteria:**
+#### 9.2.2 Success Criteria
 
-- Database handles 1000+ entity inserts in <500ms
+- Database handles 1000+ entity inserts in <500ms (supports MVP scalability target)
+- Connection pool configured for 50 concurrent connections
 - All foreign key relationships properly enforced
 - Migration system functional for schema changes
 
-### Milestone 2: Entity Processing Core (Week 3-4)
+### 9.3 Milestone 2: Entity Processing Core (Week 3-4)
 
 _Required for any content processing_
+
+#### 9.3.1 Core Tasks
 
 - **LLM integration**: API connectivity, structured input/output handling
 - **Basic entity resolution**: Exact name matching, simple deduplication
 - **Bulk operations pipeline**: Multi-row inserts/updates, transaction management
 
-**Success Criteria:**
+#### 9.3.2 Success Criteria
 
-- Process 100 entity batch in <2 seconds
+- Process 100 entity batch in <2 seconds (meets data processing requirement)
 - LLM integration handles malformed input gracefully
-- Entity resolution accuracy >80% on simple test cases
+- Entity resolution accuracy >80% on simple test cases (target 90%+ in advanced milestone)
 
-### Milestone 3: Reddit Data Collection (Week 5-6)
+### 9.4 Milestone 3: Reddit Data Collection (Week 5-6)
 
 _Required for any community content_
+
+**⚠️ IMPLEMENTATION DEPENDENCY**: This milestone assumes Reddit API comment access. If unavailable, pivot to Pushshift bulk data processing with modified tasks and success criteria.
+
+#### 9.4.1 Core Tasks
+
+**Reddit API Path (Preferred):**
 
 - **Reddit API integration**: Authentication, rate limiting, cost management
 - **Content retrieval pipeline**: Post/comment fetching, URL storage
 - **Background job system**: Scheduled collection, error handling, retry logic
 
-**Success Criteria:**
+**Pushshift Fallback Path:**
+
+- **Bulk data processing**: Download and process archived Reddit data dumps
+- **Historical content pipeline**: Parse JSON/CSV files, extract posts/comments
+- **Batch processing system**: Process large datasets, handle storage requirements
+
+#### 9.4.2 Success Criteria
+
+**Reddit API Success Criteria:**
 
 - Successfully collect data from 3+ food subreddits
-- API cost stays under $50/day during testing
+- API cost stays under $50/day during testing (approximately 200,000 API calls/day at $0.24/1000 calls)
+- Rate limiting properly manages 100 requests/minute constraint (meets API efficiency target)
+- Achieve >5,000 mentions/hour processing rate (meets scalability target)
 - Job system handles failures and retries appropriately
+- Historical post/comment ID storage enables efficient direct access
 
-### Milestone 4: Dynamic Query System (Week 7-8)
+**Pushshift Fallback Success Criteria:**
+
+- Successfully process archived data from 3+ food subreddits
+- Infrastructure handles bulk data processing (multi-GB files)
+- Extract >10,000 food-related posts/comments from historical data
+- Processing pipeline handles JSON/CSV parsing and data extraction efficiently
+- Data quality sufficient for entity extraction and ranking
+
+### 9.5 Milestone 4: Dynamic Query System (Week 7-8)
 
 _Core search architecture - required for MVP_
+
+#### 9.5.1 Core Tasks
 
 - **Dynamic query builder**: Single adaptive SQL query system that responds to any entity combination
 - **Entity-based filtering**: Automatic scope-aware filtering for restaurant vs dish attributes
 - **Result standardization**: Entity-driven single/dual list returns, consistent formatting
 
-**Success Criteria:**
+#### 9.5.2 Success Criteria
 
 - All entity combinations return properly formatted results
-- Query response time <1 second without caching
+- Query response time <3s without caching (meets uncached response target)
+- Database queries execute in <1s (supports overall response time target)
 - Location filtering works within map boundaries
 
-### Milestone 5: Basic Ranking & Scoring (Week 9-10)
+### 9.6 Milestone 5: Basic Ranking & Scoring (Week 9-10)
 
 _Required for useful search results_
+
+#### 9.6.1 Core Tasks
 
 - **Global quality score computation**: Dish and restaurant ranking algorithms
 - **Mention scoring system**: Time-weighted formula, activity indicators
 - **Connection metrics aggregation**: Mention count, upvotes, source diversity
 
-**Success Criteria:**
+#### 9.6.2 Success Criteria
 
 - Search results correlate with obvious community consensus
 - Activity indicators (trending/active) reflect recent discussions
 - Score computation completes in <100ms per connection
+- Full dataset refresh completes in <10 minutes (meets data processing requirement)
 
-### Milestone 6: Basic Caching Layer (Week 11-12)
+### 9.7 Milestone 6: Basic Caching Layer (Week 11-12)
 
 _Performance requirement for MVP_
+
+#### 9.7.1 Core Tasks
 
 - **Multi-level cache implementation**: Hot queries (1hr), recent results (24hr), static data (7d)
 - **Redis setup**: Connection pooling, basic key structure, memory management
 - **Cache integration**: Query pipeline integration, hit/miss tracking
 
-**Success Criteria:**
+#### 9.7.2 Success Criteria
 
-- Cache hit rate >85% for repeat queries
-- Cached queries respond in <200ms
+- Cache hit rate >85% for repeat queries (meets performance target)
+- Cached queries respond in <400ms (meets cached response target)
 - Cache memory usage stays under configured limits
+- Cache invalidation works correctly for fresh data
 
-### Milestone 7: Payment Integration (Week 13-14)
+### 9.8 Milestone 7: Payment Integration (Week 13-14)
 
 _Business requirement for launch_
+
+#### 9.8.1 Core Tasks
 
 - **Subscription management**: Stripe integration, trial flow, billing cycles
 - **User authentication**: Account creation, login, session management
 - **Access control**: Feature gating, subscription status checking
 
-**Success Criteria:**
+#### 9.8.2 Success Criteria
 
+- Payment processing completes in <3s (meets response time target)
+- Authentication responds in <200ms (meets performance target)
 - Payment flow conversion rate >60% in testing
 - Trial-to-paid conversion tracking functional
 - No payment processing errors in test transactions
 
-### Milestone 8: Basic Search Interface (Week 15-16)
+### 9.9 Milestone 8: Basic Search Interface (Week 15-16)
 
 _MVP user experience_
+
+#### 9.9.1 Core Tasks
 
 - **Search functionality**: Natural language input, LLM query processing
 - **Result display**: Dish-restaurant pairs, basic evidence cards
 - **Map integration**: Location selection, viewport boundary filtering
 
-**Success Criteria:**
+#### 9.9.2 Success Criteria
 
-- Search responds in <2 seconds end-to-end
+- Search responds in <3s end-to-end uncached (meets response time target)
+- Cached searches respond in <400ms (meets cached target)
+- System supports 50 searches/second (meets throughput target)
 - Users can successfully find specific dishes/restaurants
 - Map filtering produces relevant local results
 
-### Milestone 9: Evidence & Attribution System (Week 17-18)
+### 9.10 Milestone 9: Evidence & Attribution System (Week 17-18)
 
 _Core value proposition_
+
+**⚠️ FEATURE DEPENDENCY**: Activity indicators and real-time attribution require Reddit API access. With Pushshift fallback, features are limited to historical data only.
+
+#### 9.10.1 Core Tasks
+
+**Reddit API Implementation:**
 
 - **Reddit attribution**: Quote display, source links, "Join conversation" CTAs
 - **Evidence cards**: Upvote counts, recency indicators, subreddit attribution
 - **Activity indicators**: Visual cues for trending/active discussions
 
-**Success Criteria:**
+**Pushshift Fallback Implementation:**
+
+- **Historical attribution**: Quote display from archived data (links may be broken)
+- **Static evidence cards**: Historical upvote counts, no recency indicators
+- **No activity indicators**: Cannot determine trending/active status from static data
+
+#### 9.10.2 Success Criteria
+
+**Reddit API Success Criteria:**
 
 - Evidence cards drive measurable Reddit click-through
 - Attribution links work correctly to specific comments
+- Activity indicators reflect recent community engagement
 - Users understand the community-powered value proposition
+- Discovery feed loads in <1s (meets response time target)
 
-### Milestone 10: Bookmarking & Sharing (Week 19-20)
+**Pushshift Fallback Success Criteria:**
+
+- Evidence cards display historical community consensus
+- Attribution shows content source even if links are inactive
+- Users understand historical community-powered recommendations
+- Static evidence sufficient for user decision-making
+- Discovery feed loads in <1s with historical data
+
+### 9.11 Milestone 10: Bookmarking & Sharing (Week 19-20)
 
 _Basic user engagement features_
+
+#### 9.11.1 Core Tasks
 
 - **Dish-centric bookmarking**: Save dishes with restaurant context
 - **List management**: Create, edit, delete personal lists
 - **Basic sharing**: Share lists with friends, simple URLs
 
-**Success Criteria:**
+#### 9.11.2 Success Criteria
 
 - Users save >3 items per session on average
 - Shared lists load correctly for recipients
 - List management is intuitive and error-free
+- Bookmark operations complete in <500ms
+
+### 9.12 MVP Launch Checkpoint
 
 **MVP LAUNCH CHECKPOINT** _(End of Month 5)_
 
-- All core functionality operational
-- Payment processing live
+- All core functionality operational meeting performance targets
+- System supports 1,000-2,000 concurrent users
+- Payment processing live with <3s response times
+- Cache hit rate >85% achieved
 - Basic user acquisition can begin
 
-### Milestone 11: Advanced Entity Resolution (Week 21-22)
+### 9.13 Milestone 11: Advanced Entity Resolution (Week 21-22)
 
 _Performance and accuracy improvements_
+
+#### 9.13.1 Core Tasks
 
 - **Three-tier resolution**: Exact → Alias → Fuzzy matching
 - **Fuzzy matching optimization**: Levenshtein distance, performance tuning
 - **Alias management**: Automatic alias creation, duplicate prevention
 
-**Success Criteria:**
+#### 9.13.2 Success Criteria
 
-- Entity resolution accuracy >90%
+- Entity resolution accuracy >90% (meets advanced target)
 - Fuzzy matching completes in <100ms per entity
 - Duplicate entity creation reduced by >50%
+- 100 entity batch processing maintains <2s target
 
-### Milestone 12: Discovery Features (Week 23-24)
+### 9.14 Milestone 12: Discovery Features (Week 23-24)
 
 _User engagement and retention_
+
+#### 9.14.1 Core Tasks
 
 - **Discovery feed**: Recently discussed, quick bites, hidden gems
 - **Enhanced attribution**: Multiple quotes, source diversity display
 - **"Open now" filtering**: Real-time availability, hours integration
 
-**Success Criteria:**
+#### 9.14.2 Success Criteria
 
+- Discovery feed consistently loads in <1s (maintains performance target)
 - Discovery feed drives >20% of user sessions
 - User retention improves by >15% week-over-week
 - "Open now" filtering produces accurate results
 
-### Milestone 13: Premium Tier Features (Week 25-28)
+### 9.15 Milestone 13: Premium Tier Features (Week 25-28)
 
 _Revenue optimization_
+
+#### 9.15.1 Core Tasks
 
 - **Advanced discovery**: Trending analysis, neighborhood insights, category reports
 - **Smart alerts**: Personalized notifications, custom alert creation
 - **Complex queries**: Multi-attribute search, advanced filtering
 - **Enhanced history**: Personal food maps, pattern analysis
 
-**Success Criteria:**
+#### 9.15.2 Success Criteria
 
 - Premium conversion rate >10%
 - Premium users show >2x engagement vs basic users
 - Advanced features are actively used (>50% of premium users)
+- Complex queries maintain <3s response time (performance consistency)
 
-### Milestone 14: Growth & Viral Features (Week 29-32)
+### 9.16 Milestone 14: Growth & Viral Features (Week 29-32)
 
 _User acquisition optimization_
+
+#### 9.16.1 Core Tasks
 
 - **Share/contribute tools**: Reddit post templates, community integration
 - **Referral system**: Tracking, incentives, viral mechanics
 - **Collaborative features**: Shared lists, friend recommendations
 - **A/B testing framework**: Feature optimization, conversion testing
 
-**Success Criteria:**
+#### 9.16.2 Success Criteria
 
 - Viral coefficient >0.2
 - Referral system drives >20% of new signups
 - User-generated content creates measurable Reddit engagement
+- Sharing features load in <500ms
 
-### Milestone 15: Scale & Advanced Performance (Week 33+)
+### 9.17 Milestone 15: Scale & Advanced Performance (Week 33+)
 
 _Growth infrastructure_
+
+#### 9.17.1 Core Tasks
 
 - **Advanced caching**: Intelligent invalidation, Redis optimization
 - **Database optimization**: Query tuning, advanced indexing, performance monitoring
 - **Multi-city expansion**: Geographic scaling, local community integration
 - **Advanced monitoring**: Performance tracking, user analytics, system health
 
-**Success Criteria:**
+#### 9.17.2 Success Criteria
 
-- System handles 10,000+ concurrent users
-- Database queries maintain <100ms average response time
+- System scales to 10,000+ concurrent users (reaches post-MVP scalability target)
+- Cache hit rate reaches >90% (advanced optimization target)
+- Search throughput scales to 100+ searches/second (post-MVP target)
+- Database queries maintain <1s average response time
 - Multi-city launch successful with local traction
+- 99.9% uptime maintained under increased load
+
+### 9.18 Performance Target Evolution Summary
+
+#### 9.18.1 MVP Targets (Months 1-5)
+
+- **Concurrent Users**: 1,000-2,000
+- **Search Response**: <400ms cached, <3s uncached
+- **Cache Hit Rate**: >85%
+- **Reddit Processing**: 5,000 mentions/hour (API limited)
+- **Database Connections**: 50 connections
+
+#### 9.18.2 Post-MVP Scaling Targets (Month 6+)
+
+- **Concurrent Users**: 10,000+ (5x scale-up)
+- **Search Response**: <400ms cached, <2s uncached (optimization)
+- **Cache Hit Rate**: >90% (advanced optimization)
+- **Search Throughput**: 100+ searches/second (2x scale-up)
+- **Database Connections**: 100+ connections
+
+#### 9.18.3 Reddit Data Source Constraints
+
+**Reddit API Constraints (Preferred Path):**
+
+- **Rate Limit**: 100 requests/minute (hard constraint)
+- **Cost**: $0.24/1000 calls (fixed pricing)
+- **Search Limit**: 1000 posts per query (API limitation)
+- **Processing Cap**: ~6,000 API calls/hour maximum
+
+**Pushshift Fallback Constraints:**
+
+- **Data Freshness**: Historical data only (no real-time updates)
+- **Infrastructure**: Bulk data storage and processing requirements
+- **Processing Speed**: Batch processing of large JSON files
+- **Feature Limitations**: No activity indicators, limited attribution functionality
 
 ---
 
@@ -2272,7 +2489,7 @@ _Growth infrastructure_
 
 ### A. LLM Processing Guidelines
 
-See `llm_content_processing.md` for detailed content processing rules
+See `llm-content-processing.md` for detailed content processing rules
 
 ### B. Database Migrations
 
