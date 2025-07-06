@@ -176,10 +176,11 @@ CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
 [
   {
     "mention_id": "uuid",
-    "source_url": "string",
-    "content_excerpt": "string",
+    "score": 45.2,
     "upvotes": 67,
-    "created_at": "2024-01-15T10:30:00Z"
+    "content_excerpt": "Their tonkotsu ramen is incredible - the broth is so rich",
+    "source_url": "https://reddit.com/r/Austin/comments/xyz123",
+    "created_at": "2024-01-10T14:20:00Z"
   },
   ...
 ]
@@ -499,7 +500,7 @@ This enables precise query targeting while maintaining normal operation for all 
 ##### Phase 3: Batched Processing Pipeline
 
 1. **Batch deduplication**: Consolidate duplicates within batch by normalized name
-2. **In-memory ID mapping**: Build {temp_id → db_id} dictionary from results
+2. **In-memory ID mapping**: Build `{temp_id → db_id}` dictionary from results
 3. **Bulk database operations**: Single transaction with UPSERT statements
 4. **Prepared statement caching**: Cache query execution plans for all resolution and insertion queries
 
@@ -594,14 +595,53 @@ The same entity resolution process applies during user queries, with scope deter
 - **Fallback to broader categories** if specific entities not found
 - **Maintain query intent** even with imperfect entity resolution
 
-### 3.3 Reddit Data Collection Process
+### 3.3 Quality Score Computation
+
+#### Dish Quality Score (85-90%)
+
+##### Primary component based on connection strength:
+
+- **Connection strength metrics**:
+  - Mention count with time decay
+  - Total upvotes with time decay
+  - Source diversity (unique discussion threads)
+
+##### Secondary component (10-15%):
+
+- **Restaurant context factor**: Derived from the parent restaurant's quality score
+  - Provides a small boost to dishes from generally excellent restaurants
+  - Serves as effective tiebreaker
+
+#### Restaurant Quality Score (80% + 20%)
+
+##### Primary component (80%):
+
+- **Top dish connections**: 3-5 highest-scoring dishes at restaurant
+  - Captures standout offerings that define restaurant
+
+##### Secondary component (20%):
+
+- **Overall menu consistency**: Average quality across all mentioned dishes
+  - Rewards restaurants with strong overall performance
+
+#### Category/Attribute Performance Score
+
+For restaurant ranking in category/attribute queries:
+
+- **Find relevant dishes**: All restaurant's dishes in queried category or with attribute
+- **Contextual score**: Calculate weighted average of dish quality scores for those relevant dishes
+- **Replace restaurant score**: Use contextual score instead of restaurant quality score for relevance
+
+---
+
+## 4. Reddit Data Collection Process
 
 **Collection Triggers:**
 
 - **Scheduled Background Collection**: Weekly (new entities) + Quarterly (full refresh)
 - **On-Demand Collection**: Triggered by insufficient query results
 
-#### 3.3.1 Processing Pipeline
+### 4.1 Processing Pipeline
 
 ```
 1. Entity Selection (based on collection cycle or user query when on-demand collection is triggered)
@@ -609,8 +649,8 @@ The same entity resolution process applies during user queries, with scope deter
 3. LLM Content Processing (outputs structured mentions with temp IDs; see llm_content_processing.md)
 4. Single Consolidated Processing Phase:
    4a. Entity Resolution (with in-memory ID mapping; see section 3.2)
-   4b. Mention Scoring & Activity Calculation (using existing DB data; see section 3.3.5)
-   4c. Component-Based Processing (all 6 components applied in parallel; see section 3.3.6)
+   4b. Mention Scoring & Activity Calculation (using existing DB data; see section 4.4)
+   4c. Component-Based Processing (all 6 components applied in parallel; see section 4.5)
 5. Single Bulk Database Transaction (all updates atomically committed)
 6. Quality Score Updates (triggered by new connection data)
 ```
@@ -642,7 +682,7 @@ The same entity resolution process applies during user queries, with scope deter
 - Triggered by new connection data from Step 4
 - Pre-computed scores for fast query performance
 
-#### 3.3.3 LLM Processing & Entity Extraction
+### 4.2 LLM Processing & Entity Extraction
 
 **Primary Function:** Convert Reddit content into structured mentions with normalized entities
 
@@ -656,11 +696,11 @@ The same entity resolution process applies during user queries, with scope deter
 
 **Output Structure:** Structured mentions with temp IDs (only JSON structure needed in entire pipeline)
 
-#### 3.3.4 LLM Data Collection Input/Output Structures
+### 4.3 LLM Data Collection Input/Output Structures
 
 See llm_content_processing.md for more implementation and processing details.
 
-##### LLM Input Structure
+#### LLM Input Structure
 
 _**Note**: Structure may evolve during implementation. Key principles are batch processing efficiency, original context preservation, and hierarchical post-comment relationships._
 
@@ -691,7 +731,7 @@ _**Note**: Structure may evolve during implementation. Key principles are batch 
 }
 ```
 
-##### LLM Output Structure
+#### LLM Output Structure
 
 _**Note**: Structure will evolve during implementation. Key principles are entity normalization with original text preservation, attribute classification for processing guidance, and source traceability._
 
@@ -731,7 +771,7 @@ _**Note**: Structure will evolve during implementation. Key principles are entit
 }
 ```
 
-#### 3.3.5 Consolidated Processing Phase
+### 4.4 Consolidated Processing Phase
 
 The system uses a **single consolidated processing phase** (step 4 above) that eliminates intermediate JSON structures and performs all operations within one efficient database transaction.
 
@@ -747,44 +787,65 @@ The system uses a **single consolidated processing phase** (step 4 above) that e
 
 Within the single consolidated processing phase, the system performs:
 
-###### Entity Resolution (4a):
+#### Entity Resolution (step 4a):
 
-- **Batched resolution lookups** - Three-tier resolution with query batching:
-  - **Tier 1**: Single exact match query `WHERE name IN (...) AND type = $entity_type`
-  - **Tier 2**: Single alias match query `WHERE aliases && ARRAY[...] AND type = $entity_type`
-  - **Tier 3**: Individual fuzzy match queries for remaining entities (edit distance ≤3-4)
-- **Simple in-memory ID mapping**: `{temp_id → db_id}` dictionary built from resolution results
-- **Resolution decision logic**: High confidence (>0.85) merge, medium (0.7-0.85) apply heuristics, low (<0.7) create new
+_**Note**: see section 3.2 for detailed implementation_
 
-###### Mention Scoring & Activity Calculation (4b):
+- **Three-tier resolution process**: Entity matching using exact, alias, and fuzzy matching
+- **In-memory ID mapping**: Build `{temp_id → db_id}` dictionary from resolution results
+- **Batched processing**: All resolution operations performed in batches for optimal performance
 
-**Top mention scoring and comparison**:
+#### Mention Scoring & Activity Calculation (step 4b):
 
-- Re-score ALL existing top mentions using time-weighted formula: `upvotes × e^(-days_since / 60)`
-- Score new mentions with same formula
-- Compare all scores and update top 3-5 mentions array
-- This continuous decay ensures recent mentions naturally rise to top over time
-- Store mention metadata: `{"mention_id": "uuid", "score": 45.2, "upvotes": 67, ...}`
+**Purpose**: Calculate time-weighted mention scores and activity levels to support the attribution system and user experience strategy outlined in section 6.2.
 
-**Update last_mentioned_at**:
+##### 1. Top Mention Scoring and Management
 
-- For each new mention, compare mention timestamp against current `last_mentioned_at` value
-- Update connection metadata if newer
+###### Process Overview
 
-**Calculate activity level**:
+- **Update trigger**: Recalculated each time new mentions are processed
+- **Re-scoring process**: Re-score ALL existing top mentions using time-weighted formula: `upvotes × e^(-days_since / 60)`
+- **New mention scoring**: Score new mentions with same formula
+- **Top mention selection**: Compare all scores and update top 3-5 mentions array
+- **Continuous decay**: This approach ensures recent mentions naturally rise to top over time
+
+###### Attribution Integration
+
+- **Purpose**: Top mention is used for attribution display (see section 6.2)
+- **Storage format**: Top mentions stored in `connections.top_mentions` JSONB array with mention metadata: `{"mention_id": "uuid", "score": 45.2, "upvotes": 67, ...}`
+
+##### 2. Activity Level Calculation and Management
+
+###### Timestamp Tracking
+
+- **Process**: For each new mention, compare mention timestamp against current `last_mentioned_at` value
+- **Update logic**: Update connection metadata if newer mention timestamp found
+- **Usage**: This timestamp drives activity level calculations and user experience features
+
+###### Activity Level Determination
 
 - **"trending" (🔥)**: All top 3-5 mentions are within 30 days
 - **"active" (🕐)**: `last_mentioned_at` is within 7 days
-- **"normal"**: Default state
-- Activity indicators provide real-time relevance signals to users
+- **"normal"**: Default state - no activity indicator displayed
+- **Real-time relevance**: Activity indicators provide immediate signals to users about community engagement (see section 6.2)
 
-###### Component-Based Processing (4c):
+###### Implementation Details
+
+- **Calculation timing**: Activity level determined during this mention processing phase
+- **Data dependency**: Uses existing `last_mentioned_at` and `top_mentions` data
+- **Database storage**: Activity level stored in `connections.activity_level` enum field
+- **Update frequency**: Recalculated when new mentions processed
+- **UI integration**: Simple conditional display based on stored activity_level enum
+- **Performance**: No additional API calls or real-time calculations required
+
+#### Component-Based Processing (step 4c):
+
+_**Note**: see section 4.5 below for component details_
 
 - All 6 processing components execute in parallel using resolved entity IDs
-- Component logic unchanged (see section 3.3.6 below for component details)
 - Results accumulated in memory for single transaction
 
-#### 3.3.6 Component-Based DB Processing Guide
+### 4.5 Component-Based DB Processing Guide
 
 ##### Modular Processing Components
 
@@ -888,7 +949,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 7. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
 8. **Restaurant Always Created:** Restaurant entities are always created if missing
 
-#### 3.3.7 Database Operations, Metrics, and Performance Optimizations
+### 4.6 Database Operations, Metrics, and Performance Optimizations
 
 ##### Foundation Infrastructure
 
@@ -963,49 +1024,11 @@ Raw metrics calculated and accumulated with each connection during processing:
 - Bloom filters for efficient duplicate detection
 - Temporary tables for very large batch processing
 
-#### 3.3.9 Quality Score Computation
-
-##### Dish Quality Score (85-90%)
-
-Primary component based on connection strength:
-
-- Mention count
-- Total upvotes
-- Source diversity (unique threads)
-- Recent activity bonus
-
-Secondary component (10-15%):
-
-- Derived from the parent restaurant's quality score
-- Provides a small boost to dishes from generally excellent restaurants
-- Serves as effective tiebreaker
-
-##### Restaurant Quality Score (80% + 20%)
-
-Primary component (80%):
-
-- Top 3-5 dish connections by strength
-- Captures standout offerings that define restaurant
-
-Secondary component (20%):
-
-- Average quality across all mentioned dishes
-- Rewards overall menu consistency
-
-##### Category/Attribute Performance Score
-
-For restaurant ranking in category/attribute queries:
-
-- Find all restaurant's dishes in category or with attribute
-- Calculate weighted average of dish-specific quality scores for those relevant dishes
-- Boost with direct category mentions from restaurant-category references
-- Used instead of global restaurant score for contextual relevance
-
 ---
 
-## 4. Query Processing System
+## 5. Query Processing System
 
-### 4.1 Query Processing Pipeline (occurs when queries return sufficient data)
+### 5.1 Query Processing Pipeline (occurs when queries return sufficient data)
 
 ```
 1. User Query Input
@@ -1020,7 +1043,7 @@ For restaurant ranking in category/attribute queries:
 9. Response Delivery
 ```
 
-### 4.2 Multi-Level Caching Strategy
+### 5.2 Multi-Level Caching Strategy
 
 #### Cache Implementation Levels
 
@@ -1060,7 +1083,7 @@ For restaurant ranking in category/attribute queries:
 - **LRU eviction** with appropriate memory limits
 - **Performance monitoring** of hit rates and response times
 
-### 4.3 Query Understanding & Processing via LLM Analysis
+### 5.3 Query Understanding & Processing via LLM Analysis
 
 #### Entity-Based Query Processing
 
@@ -1095,7 +1118,7 @@ Simplified Processing Tasks (see llm_query_processing.md for more details):
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
-### 4.4 LLM Query Processing Input/Output Structures
+### 5.4 LLM Query Processing Input/Output Structures
 
 See llm_query_processing.md for more implementation and processing details.
 
@@ -1156,7 +1179,7 @@ _**Note**: Structure may evolve during implementation. The key principles are en
 }
 ```
 
-### 4.5 Dynamic Query Architecture
+### 5.5 Dynamic Query Architecture
 
 #### Entity-Driven Query System Design
 
@@ -1291,7 +1314,7 @@ Following **step 5** in the query pipeline, the system:
 - **Conditional execution**: NULL checks prevent unnecessary filtering when entities not present
 - **Bulk parameter binding**: Array parameters enable efficient OR logic for multiple entities
 
-### 4.6 Location & Availability Filtering
+### 5.6 Location & Availability Filtering
 
 Enabled by Google Maps/Places API integration and attribute-based filtering
 
@@ -1316,7 +1339,7 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
   - Processed as dish_attribute or restaurant_attribute entities through natural language
   - Applied using existing dynamic query filtering
 
-### 4.7 Return Format Determination
+### 5.7 Return Format Determination
 
 #### Entity-Based Return Strategy
 
@@ -1409,7 +1432,7 @@ Each result format maintains consistent data structure for seamless UI integrati
 - Restaurant results always include relevant dish examples and performance metrics
 - Evidence attribution present across all result types
 
-### 4.8 Post-Processing Result Structure
+### 5.8 Post-Processing Result Structure
 
 _**Note**: Structure will evolve during implementation. Key principles are format adaptation, comprehensive evidence, and cross-reference integrity._
 
@@ -1516,9 +1539,77 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
 }
 ```
 
-### 4.9 Ranking System
+### 5.9 Ranking System
 
 _Important: This system relies on pre-computed global quality scores for ranking with attributes serving as filters._
+
+#### Query Time Ranking
+
+##### Core Ranking Philosophy
+
+The system uses **pre-computed global quality scores** for all ranking decisions, with attributes serving as **filters** rather than ranking modifiers. This approach ensures consistent, fast query performance while maintaining ranking quality.
+
+**Key Principles:**
+
+- **Pre-computed scores drive ranking**: All `dish_quality_score` and `restaurant_quality_score` values calculated during data processing
+- **Attributes filter, don't rank**: dish_attributes and restaurant_attributes reduce result sets but don't modify scores
+- **Contextual restaurant scoring**: Restaurant rankings calculated from relevant dish performance, not global restaurant scores
+- **Activity indicators enhance relevance**: trending/active status provides recency signals without affecting core ranking
+
+##### Ranking Application Logic
+
+**Single List Queries (Restaurant-Specific)**
+
+- **Primary ranking**: `dish_quality_score DESC` for all connections at the specified restaurant
+- **No attribute ranking**: Attributes filter eligible dishes but don't modify their pre-computed scores
+- **Result**: Restaurant's top dishes ordered by their individual quality scores
+
+**Dual List Queries (Discovery Format)**
+
+**Dish Rankings:**
+
+- **Primary ranking**: `dish_quality_score DESC` across all eligible connections
+- **Attribute filtering**: dish_attributes reduce eligible connections before ranking
+- **Geographic filtering**: Applied before ranking to eligible restaurant set
+- **Result**: Top dishes globally, filtered by query criteria
+
+**Restaurant Rankings:**
+
+- **Contextual performance calculation**: Weighted average of `dish_quality_score` values for dishes matching query entities
+- **Entity-specific relevance**: Only dishes matching dish_or_category or dish_attributes contribute to restaurant ranking
+- **No global restaurant score**: Restaurant rankings always contextual to query content
+- **Result**: Restaurants ranked by their performance in the queried category/attributes
+
+##### Performance Optimizations
+
+**Score Utilization:**
+
+- **Direct database ordering**: `ORDER BY dish_quality_score DESC` leverages database indexes
+- **No real-time computation**: All ranking values pre-calculated during data processing
+- **Consistent sorting**: Same entity combinations produce identical ranking order
+- **Sub-second response**: Ranking logic optimized for < 100ms execution time
+
+**Contextual Restaurant Scoring:**
+
+- **Query-time calculation**: Restaurant scores calculated from eligible dish scores during query execution
+- **Attribute-specific performance**: Restaurant ranking reflects query-relevant dish performance only
+- **Fallback logic**: Global restaurant score used when no matching dishes exist
+
+##### Ranking Consistency
+
+**Deterministic Results:**
+
+- **Same inputs = same outputs**: Identical queries produce identical rankings
+- **Score stability**: Rankings only change when underlying data changes
+- **Predictable behavior**: Users see consistent results for repeat queries
+- **Cache-friendly**: Stable rankings optimize cache hit rates
+
+**Activity Level Integration:**
+
+- **Visual indicators only**: trending (🔥) and active (🕐) status displayed but don't affect ranking order
+- **Relevance signals**: Activity indicators help users identify recently discussed items
+- **Score independence**: Activity levels calculated from recency, not incorporated into quality scores
+- **User guidance**: Visual cues help users understand community engagement patterns
 
 #### Results Display
 
@@ -1539,7 +1630,201 @@ _Important: This system relies on pre-computed global quality scores for ranking
 
 ---
 
-## 8. Technology Stack
+## 6. Community Engagement & Growth Strategy
+
+### 6.1 Enhanced Attribution System (Foundation Feature)
+
+#### UI Implementation
+
+The attribution system creates clear, compelling links between dishes and their Reddit community discussions, driving engagement while providing proper attribution.
+
+**Display Format:**
+
+```
+🌮 Franklin BBQ Brisket 🔥
+"Worth every minute of the wait, incredible bark"
+- u/bbqfan23 on r/austinfood, 2 days ago, 67↑
+💬 Join conversation
+```
+
+**Technical Implementation:**
+
+- **Clickable quote text**: Links directly to specific Reddit comment thread
+- **"Join conversation" CTA**: Same Reddit link with explicit call-to-action
+- **Fallback strategy**: Use post URL if comment URL unavailable
+- **Subreddit attribution**: Source subreddit links to subreddit homepage
+- **Subtle branding**: "Powered by Reddit communities" in app footer/settings
+- **Integrated metrics**: Thread count already captured in existing metrics suite
+
+#### Link Strategy
+
+**Dual-Access Approach:**
+
+- **Natural interaction**: Users can click quote text intuitively
+- **Explicit CTA**: "Join conversation" button provides clear action
+- **Consistent destination**: Both link to same Reddit thread for focused engagement
+- **Mobile-optimized**: Links open Reddit app when available, web/appstore fallback
+
+#### Attribution Benefits
+
+**For Users:**
+
+- **Context preservation**: See exact discussion that led to recommendation
+- **Community discovery**: Find relevant food communities and active discussants
+- **Engagement continuity**: Seamless transition from app to Reddit discussion
+
+**For Reddit:**
+
+- **High-quality traffic**: Users arrive at specific, relevant comment threads
+- **Mobile engagement**: Optimized for mobile Reddit experience
+- **Content context**: Users understand the community discussion context
+
+### 6.2 Top Mentions & Activity Indicators (User Experience Strategy)
+
+#### Visual Activity Indicators
+
+**Purpose**: Provide immediate signals to users about community engagement levels and discussion recency.
+
+**Display Strategy**:
+
+- **🔥 "Trending"**: Visual indicator for dishes with multiple recent mentions
+- **🕐 "Active"**: Visual indicator for recently discussed dishes
+- **No indicator**: Default state for normal discussion levels
+
+**User Experience Benefits**:
+
+- **Immediate relevance signals**: Users can quickly identify recently discussed items
+- **Community engagement visibility**: Activity levels help users understand discussion patterns
+- **Discovery enhancement**: Trending items surface popular current discussions
+- **Attribution integration**: Activity indicators enhance the attribution system's effectiveness
+
+#### Top Mentions for Attribution
+
+**Strategy**: Use the highest-scoring recent mentions to drive attribution and Reddit engagement.
+
+**Implementation Approach**:
+
+- **Top mention selection**: Automatically select the best recent mention for attribution display
+- **Time-weighted relevance**: Recent mentions with community engagement rise to the top
+- **Attribution quality**: Ensure attribution uses compelling, recent community quotes
+- **Engagement optimization**: Activity indicators guide users toward active discussions
+
+**Technical Implementation**: See section 4.4 (step 4b) for detailed processing logic and database integration.
+
+### 6.3 Social Sharing & Contribution Features
+
+#### Bookmark Page Share Extension
+
+**Implementation as Extension to Existing Bookmark System:**
+
+The share feature extends the existing bookmark functionality to encourage user-generated content and community contribution.
+
+**UI Flow:**
+
+```
+[Existing saved dishes/restaurants list]
+
+[Share/Contribute Your Discovery] (prominent button)
+↓ Opens modal with:
+- Text area with optional template:
+  "Just tried [dish] at [restaurant] - found through community
+   recommendations. [Your experience here]. Thanks r/austinfood!"
+- "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
+
+OR
+
+[Share your Bookmarks] (prominent button)
+↓ Opens modal with:
+- Info graphic of top 10 bookmarked dish-restaurant pairs with subtle branding:
+  [top 5-10 bookmarked dish-restaurant pairs] + "found through reddit community
+   recommendations using the Crave app. Thanks r/austinfood!"
+- "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
+```
+
+**Technical Requirements:**
+
+- **Bookmark integration**: Extend existing bookmark page with share functionality
+- **Template generation**: Dynamic content based on user's saved items
+- **Deep linking**: Direct link to Reddit post creation with subreddit pre-selection
+- **Social media sharing**: Share to other social media platforms
+- **Draft capability**: Optional local storage for post drafts
+- **Cross-platform**: Optional native sharing on iOS/Android with Reddit app integration
+
+#### Content Generation Strategy
+
+**Smart Templates:**
+
+- **Dynamic dish/restaurant insertion**: Pull from user's recently saved items
+- **Community context**: Reference specific subreddit communities
+- **Gratitude expression**: Built-in thanks to community for recommendations
+- **Customization**: User can modify template before posting
+
+**Engagement Optimization:**
+
+- **Subreddit targeting**: Auto-select appropriate food subreddit based on location
+- **Timing suggestions**: Recommend optimal posting times for engagement
+- **Follow-up prompts**: Encourage users to engage with responses to their posts
+
+### 6.4 Database Schema Extensions for Reddit Integration
+
+_Note: Core database schema defined in section 2.1. This section covers Reddit-specific field usage and implementation._
+
+#### Connection Table Updates
+
+- **last_mentioned_at**: Timestamp of most recent mention for activity calculation
+- **activity_level**: Pre-computed activity status for UI display optimization
+- **top_mentions**: JSONB array storing mention metadata for attribution display
+
+#### Mentions Table Modifications
+
+- **source_url**: Store full Reddit URLs instead of just post/comment IDs
+- **subreddit**: Extract subreddit from URL during processing OR store separately
+
+### 6.5 Growth Metrics & Attribution Strategy
+
+#### Trackable Success Metrics
+
+**User Engagement Metrics:**
+
+- **Click-through rate**: Quote clicks vs. CTA button clicks
+- **Community discovery**: Subreddit visits from attribution links
+- **Share completion rate**: Bookmark share feature usage and completion
+
+**Growth & Acquisition Metrics:**
+
+- **Reddit referral traffic**: Inbound traffic from Reddit communities
+- **Geographic expansion**: User requests for new city coverage
+- **Community growth**: New subreddit communities engaged
+- **Content virality**: User-generated posts that gain traction
+
+#### Attribution & Tracking Implementation
+
+**UTM Parameter Strategy:**
+
+- **Source tracking**: `utm_source=crave-app&utm_medium=attribution`
+- **Campaign identification**: `utm_campaign=dish-attribution`
+- **Content tracking**: `utm_content=dish-[dish_id]-restaurant-[restaurant_id]`
+- **Geographic tagging**: Include city/region data for expansion insights
+
+**Technical Implementation:**
+
+- **Link decoration**: Append UTM parameters to all outbound Reddit links
+- **Event tracking**: Log attribution clicks, share completions, community discoveries
+- **A/B testing framework**: Test different attribution formats and CTA language
+- **Privacy compliance**: Ensure tracking complies with app store and privacy requirements
+
+#### Value Creation for Reddit
+
+- **High-quality mobile traffic**: Users arrive at specific, relevant discussions
+- **Content creation assistance**: Share features generate new posts for food communities
+- **Community engagement**: Users engage with existing discussions through attribution
+- **Third-party marketing**: Bookmark sharing and attribution drive new users to Reddit
+- **Content licensing**: Proper attribution maintains Reddit as authoritative source
+- **API collaboration**: Potential for enhanced Reddit API integration
+
+---
+
+## 7. Technology Stack
 
 _**Note**: This is a high-level overview of the technology stack. The actual implementation will be determined by the specific requirements of the project._
 
@@ -1660,9 +1945,9 @@ _**Note**: This is a high-level overview of the technology stack. The actual imp
 
 ---
 
-## 9. Modular Monolith Architecture
+## 8. Modular Monolith Architecture
 
-### 9.1 Core Module Structure
+### 8.1 Core Module Structure
 
 ```
 src/
@@ -1707,7 +1992,7 @@ src/
 └── main.ts                        # Application bootstrap
 ```
 
-### 9.2 Domain Responsibilities
+### 8.2 Domain Responsibilities
 
 **Content Processing**: Handles all aspects of ingesting and analyzing community content
 
@@ -1726,7 +2011,7 @@ src/
 **External Integrations**: Centralizes third-party service connections
 **Infrastructure**: Provides foundational system services
 
-### 9.3 Development and Design Principles
+### 8.3 Development and Design Principles
 
 **Dependency Injection & Loose Coupling**:
 
@@ -1758,7 +2043,7 @@ src/
 
 ---
 
-## 10. Implementation Roadmap
+## 9. Implementation Roadmap
 
 _Dependencies-based development order with testable milestones_
 
@@ -1983,7 +2268,7 @@ _Growth infrastructure_
 
 ---
 
-## 11. Appendices
+## 10. Appendices
 
 ### A. LLM Processing Guidelines
 
