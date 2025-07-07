@@ -262,3 +262,164 @@ _**Note**: This is pasted from the prd.md file and will need to be updated._
 - **Search history with context**: Remember why you searched and what you found
 - **Personal food maps**: Visual representation of your discovered spots
 - **Early trend access**: See emerging discussions before they hit mainstream
+
+## 6. Social Sharing & Community Contribution Features
+
+### 6.1 Bookmark Page Share Extension
+
+**Implementation as Extension to Existing Bookmark System:**
+
+The share feature extends the existing bookmark functionality to encourage user-generated content and community contribution.
+
+**UI Flow:**
+
+```
+[Existing saved dishes/restaurants list]
+
+[Share/Contribute Your Discovery] (prominent button)
+↓ Opens modal with:
+- Text area with optional template:
+  "Just tried [dish] at [restaurant] - found through community
+   recommendations. [Your experience here]. Thanks r/austinfood!"
+- "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
+
+OR
+
+[Share your Bookmarks] (prominent button)
+↓ Opens modal with:
+- Info graphic of top 10 bookmarked dish-restaurant pairs with subtle branding:
+  [top 5-10 bookmarked dish-restaurant pairs] + "found through reddit community
+   recommendations using the Crave app. Thanks r/austinfood!"
+- "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
+```
+
+**Business Value:**
+
+- **User-Generated Marketing**: Organic content creation that drives acquisition
+- **Community Appreciation**: Shows gratitude to Reddit communities that power recommendations
+- **Viral Loop Creation**: Shared content creates discovery opportunities for new users
+- **Content Quality**: Pre-filled templates ensure consistent, high-quality social posts
+
+### 6.2 Content Generation Strategy
+
+**Smart Templates:**
+
+- **Dynamic dish/restaurant insertion**: Pull from user's recently saved items
+- **Community context**: Reference specific subreddit communities
+- **Gratitude expression**: Built-in thanks to community for recommendations
+- **Customization**: User can modify template before posting
+
+**Engagement Optimization:**
+
+- **Subreddit targeting**: Auto-select appropriate food subreddit based on location
+- **Timing suggestions**: Recommend optimal posting times for engagement
+- **Follow-up prompts**: Encourage users to engage with responses to their posts
+
+## 7. Growth Metrics & Viral Strategy
+
+### 7.1 Trackable Success Metrics
+
+**User Engagement Metrics:**
+
+- **Click-through rate**: Quote clicks vs. CTA button clicks to Reddit
+- **Community discovery**: Subreddit visits from attribution links
+- **Share completion rate**: Bookmark share feature usage and completion
+- **Attribution engagement**: Users clicking through to join Reddit discussions
+
+**Growth & Acquisition Metrics:**
+
+- **Reddit referral traffic**: Inbound traffic from Reddit communities via shared content
+- **Geographic expansion**: User requests for new city coverage
+- **Community growth**: New subreddit communities engaged through user shares
+- **Content virality**: User-generated posts that gain traction and drive signups
+
+**Business Impact Metrics:**
+
+- **Viral coefficient**: New users acquired per active user (target >0.2)
+- **Referral system performance**: Share-driven signups and conversions
+- **Attribution value**: Revenue attributed to Reddit community engagement
+- **Premium conversion**: Users upgrading after community discovery features
+
+### 7.2 Viral Loop Strategy
+
+**Content Creation Incentives:**
+
+- **Discovery Recognition**: Highlight users who discover trending dishes first
+- **Community Contribution**: Reward active sharers with premium features
+- **Quality Content**: Promote well-received shares in app discovery feed
+
+**Acquisition Optimization:**
+
+- **Shareable Moments**: Identify high-shareability dish discoveries
+- **Social Proof**: Use community engagement metrics in marketing
+- **Platform Cross-Pollination**: Reddit content drives app usage, app users contribute to Reddit
+
+**Retention Through Community:**
+
+- **Attribution Connection**: Keep users engaged through Reddit discussion links
+- **Community Investment**: Users who contribute content show higher retention
+- **Social Identity**: Users develop identity as local food discoverers
+
+### 7.3 Partnership Expansion Strategy
+
+**Reddit Community Relationships:**
+
+- **Moderator Partnerships**: Collaborate with food subreddit moderators
+- **Community Events**: Sponsor local food meetups organized through Reddit
+- **Content Appreciation**: Regular thanks to contributing communities
+
+**Cross-Platform Growth:**
+
+- **Instagram Integration**: Food photo sharing with attribution
+- **TikTok Potential**: Short-form content about trending dishes
+- **Food Blogger Network**: Connect with local food influencers
+
+**Geographic Scaling:**
+
+- **City-by-City Rollout**: Target cities with active food subreddits first
+- **Local Community Champions**: Identify and support local food discovery leaders
+- **Regional Partnerships**: Collaborate with local food media and bloggers
+
+## 8. Revenue Optimization Through Community Features
+
+### 8.1 Premium Feature Positioning
+
+**Community-Powered Discovery:**
+
+- **Trending Alerts**: "Be the first to know when dishes start gaining buzz"
+- **Attribution History**: "See the community discussions that led to your favorites"
+- **Contribution Recognition**: "Track your impact on the food discovery community"
+
+**Social Status Features:**
+
+- **Discoverer Badges**: Recognition for finding trending dishes early
+- **Community Leaderboards**: Top contributors to local food discussions
+- **Insider Access**: Early access to community trends and insights
+
+### 8.2 Restaurant Partnership Value Props
+
+**Community Engagement Metrics:**
+
+- **Real-Time Buzz Tracking**: "See when your dishes start trending on Reddit"
+- **Attribution Analytics**: "Track which dishes drive the most discussion"
+- **Community Sentiment**: "Understand what diners love most about your menu"
+
+**Marketing Amplification:**
+
+- **User-Generated Content**: "Your customers are already sharing - see how to amplify"
+- **Community Relationships**: "Connect with local food communities authentically"
+- **Viral Moment Identification**: "Capitalize when your dishes go viral"
+
+### 8.3 Long-Term Business Model Evolution
+
+**Data-Driven Insights:**
+
+- **Trend Prediction**: Premium analytics for early trend identification
+- **Community Intelligence**: Deep insights into local food culture
+- **Market Research**: Food preference data for restaurant industry
+
+**Platform Expansion:**
+
+- **Recipe Attribution**: Connect home cooking to restaurant inspiration
+- **Event Discovery**: Community-recommended food events and pop-ups
+- **Travel Integration**: Food discovery for travel destinations
