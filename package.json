@@ -7,7 +7,10 @@
     "build": "turbo run build",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\""
+    "type-check": "turbo run type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
+    "db:migrate": "turbo run db:migrate",
+    "db:generate": "turbo run db:generate"
   },
   "devDependencies": {
     "@commitlint/cli": "^17.6.5",

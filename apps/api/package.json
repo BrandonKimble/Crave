@@ -24,7 +24,10 @@
     "prisma:generate": "npx prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "docker:up": "docker-compose up -d",
-    "docker:down": "docker-compose down"
+    "docker:down": "docker-compose down",
+    "type-check": "tsc --noEmit",
+    "db:migrate": "npx prisma migrate dev",
+    "db:generate": "npx prisma generate"
   },
   "dependencies": {
     "@fastify/helmet": "^13.0.1",

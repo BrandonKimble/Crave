@@ -232,12 +232,47 @@ _**Note**: This is a high-level overview of the technology stack. The actual imp
 
 ---
 
-## 3. Modular Monolith Architecture
+## 3. Hybrid Monorepo & Modular Monolith Architecture
 
-### 3.1 Core Module Structure
+### 3.1 Complete System Architecture
+
+#### 3.1.1 Turborepo Monorepo Structure (Project Root)
 
 ```
-src/
+crave-search/                      # Root monorepo
+├── apps/
+│   ├── api/                       # NestJS backend (modular monolith)
+│   │   ├── src/                   # API application code
+│   │   ├── prisma/                # Database schema and migrations
+│   │   ├── docker-compose.yml     # Local development services
+│   │   ├── package.json           # API dependencies
+│   │   └── tsconfig.json          # API TypeScript config
+│   │
+│   └── mobile/                    # React Native mobile app
+│       ├── src/                   # Mobile application code
+│       ├── package.json           # Mobile dependencies
+│       └── tsconfig.json          # Mobile TypeScript config
+│
+├── packages/                      # Shared packages (future)
+│   └── shared-types/              # Common TypeScript interfaces
+│       ├── src/
+│       │   ├── api/               # API response types
+│       │   ├── entities/          # Database entity types
+│       │   └── common/            # Shared utility types
+│       └── package.json
+│
+├── turbo.json                     # Turborepo build pipeline
+├── package.json                   # Workspace configuration
+├── pnpm-workspace.yaml            # pnpm workspace config
+├── .gitignore                     # Git ignore rules
+├── lefthook.yml                   # Git hooks configuration
+└── prd.md                         # This document
+```
+
+#### 3.1.2 API Modular Monolith Structure (apps/api/src/)
+
+```
+apps/api/src/
 ├── modules/
 │   ├── content-processing/          # Domain: Community content ingestion & analysis
 │   │   ├── reddit-collector/        # Reddit API integration, data retrieval
@@ -270,18 +305,107 @@ src/
 │       ├── security/              # Auth guards, rate limiting, validation
 │       └── configuration/         # Environment config, feature flags
 │
-├── shared/                        # Shared utilities and types
-│   ├── types/                     # Common TypeScript interfaces
+├── shared/                        # API-specific shared utilities
+│   ├── types/                     # API-specific TypeScript interfaces
 │   ├── utils/                     # Helper functions, constants
 │   ├── decorators/                # Custom NestJS decorators
 │   └── exceptions/                # Custom exception classes
 │
+├── app.module.ts                  # Root NestJS module
 └── main.ts                        # Application bootstrap
 ```
 
-### 3.2 Domain Responsibilities
+#### 3.1.3 Mobile App Structure (apps/mobile/src/)
 
-#### 3.2.1 Content Processing
+```
+apps/mobile/src/
+├── components/
+│   ├── cards/                     # Dish and restaurant cards
+│   ├── layout/                    # Layout components
+│   └── ui/                        # Reusable UI components
+│
+├── screens/
+│   ├── Home/                      # Main search and discovery
+│   ├── Search/                    # Search results and filters
+│   ├── Details/                   # Dish/restaurant details
+│   ├── Bookmarks/                 # Saved dishes and lists
+│   └── Profile/                   # User account and settings
+│
+├── services/
+│   └── api.ts                     # API client configuration
+│
+├── store/
+│   └── searchStore.ts             # Zustand state management
+│
+├── navigation/
+│   └── index.ts                   # React Navigation setup
+│
+├── hooks/                         # Custom React hooks
+├── utils/                         # Mobile-specific utilities
+├── types/                         # Mobile-specific types
+└── constants/                     # App constants
+```
+
+### 3.2 Architecture Benefits & Tooling Integration
+
+#### 3.2.1 Hybrid Approach Advantages
+
+**Turborepo Monorepo Benefits:**
+
+- **Build Optimization**: Parallel builds, intelligent caching, dependency orchestration
+- **Code Sharing**: Shared packages in `packages/` for common types and utilities
+- **Developer Experience**: Single repository, unified tooling, consistent development workflow
+- **Scalability**: Easy to add new apps (admin dashboard, analytics, etc.)
+
+**Modular Monolith Benefits:**
+
+- **Business Domain Separation**: Clear boundaries between content processing, search, user experience
+- **Team Autonomy**: Teams can work independently within domain boundaries
+- **Shared Infrastructure**: Common database, caching, monitoring across all domains
+- **Deployment Simplicity**: Single API deployment while maintaining internal modularity
+
+#### 3.2.2 Shared Package Strategy
+
+**`@crave-search/shared`** provides shared types and constants across API and mobile apps.
+
+**Contains:**
+
+- Entity types (graph-based model from Section 4.1)
+- API request/response types
+- Application constants
+
+**Usage:**
+
+```typescript
+import { EntityType, ENTITY_TYPES } from '@crave-search/shared';
+```
+
+#### 3.2.3 Developer Workflows
+
+**Essential Commands:**
+
+```bash
+# Development
+pnpm dev                       # Start all apps
+pnpm --filter api dev         # API only
+
+# Services
+pnpm --filter api docker:up    # PostgreSQL + Redis
+pnpm --filter api prisma:studio # Database browser
+
+# Database
+turbo run db:migrate          # Run migrations
+turbo run db:generate         # Generate Prisma client
+pnpm --filter api db:seed      # Seed test data
+
+# Quality
+turbo run lint                # Lint all
+turbo run type-check         # TypeScript check
+```
+
+### 3.3 Domain Responsibilities
+
+#### 3.3.1 Content Processing
 
 Handles all aspects of ingesting and analyzing community content
 
@@ -290,7 +414,7 @@ Handles all aspects of ingesting and analyzing community content
 - **Score Computation**: Calculate global quality scores after connection metrics are updated
 - **Background Job Management**: Schedule and manage systematic content processing operations
 
-#### 3.2.2 Search & Discovery
+#### 3.3.2 Search & Discovery
 
 Manages query processing and result delivery using pre-computed data
 
@@ -298,41 +422,54 @@ Manages query processing and result delivery using pre-computed data
 - **Query Optimization**: Use pre-computed scores and activity levels for sub-second responses
 - **Discovery Features**: Leverage activity indicators computed during data processing
 
-#### 3.2.3 Supporting Domains
+#### 3.3.3 Supporting Domains
 
 **User Experience**: Focuses on user-facing features and interactions
 **External Integrations**: Centralizes third-party service connections
 **Infrastructure**: Provides foundational system services
 
-### 3.3 Development and Design Principles
+### 3.4 Development and Design Principles
 
-#### 3.3.1 Dependency Injection & Loose Coupling
+#### 3.4.1 Dependency Injection & Loose Coupling
 
 - **NestJS DI container**: Use dependency injection for all module interactions
 - **Interface-based design**: Define clear contracts between modules to enable testing and flexibility
 - **Repository pattern**: Abstract database access through repositories for clean separation
 - **Service layer isolation**: Keep business logic separate from framework concerns
 
-#### 3.3.2 Event-Driven Communication
+#### 3.4.2 Event-Driven Communication
 
 - **Asynchronous operations**: If performant, use events for background processing and cross-module notifications
 - **Score update events**: If performant, emit events when process-orchestrator completes mention processing to trigger downstream updates
 - **User activity events**: Track search patterns and bookmark changes for personalization
 - **Decoupled notifications**: Use event bus for sending alerts and updates without tight coupling
 
-#### 3.3.3 Performance-First Architecture
+#### 3.4.3 Performance-First Architecture
 
 - **Pre-computed rankings**: Calculate all scores right after each content processing cycle, not query time
 - **Strategic caching**: Cache at multiple levels (query results, entity data, computed scores)
 - **Bulk operations**: Process entities and mentions in batches for database efficiency
 - **Background processing**: Move heavy computation (LLM analysis, score calculation) to process-orchestrator
 
-#### 3.3.4 Code Organization Best Practices
+#### 3.4.4 Code Organization Best Practices
 
 - **Domain-driven structure**: Organize code by business domain, not technical layer
 - **Single responsibility**: Each module has clear, focused purpose
 - **Shared infrastructure**: Common concerns (database, caching, monitoring) centralized in infrastructure domain
 - **Testability**: Design for easy unit testing with mocked dependencies and clear interfaces
+
+#### 3.4.5 Monorepo Guidelines
+
+**Dependency Rules:**
+
+- ✅ Apps can import packages (`apps/api` → `@crave-search/shared`)
+- ❌ Packages cannot import apps (maintains package independence)
+- ✅ Packages can import other packages (for composition)
+
+**Code Placement:**
+
+- **Shared package**: Types, constants, utilities used by multiple apps
+- **App-specific**: Framework code, environment config, business logic
 
 ---
 

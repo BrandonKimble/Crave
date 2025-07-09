@@ -1,9 +1,9 @@
 {
-  "": "https://turbo.build/schema.json",
+  "$schema": "https://turbo.build/schema.json",
   "pipeline": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**", "build/**"]
     },
     "dev": {
       "cache": false,
@@ -15,6 +15,15 @@
     },
     "lint": {
       "outputs": []
+    },
+    "type-check": {
+      "outputs": []
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:generate": {
+      "cache": false
     }
   }
 }
