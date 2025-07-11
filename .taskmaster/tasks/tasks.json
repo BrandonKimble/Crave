@@ -24,9 +24,7 @@
             "id": 2,
             "title": "Configure Turborepo setup",
             "description": "Initialize Turborepo configuration with turbo.json for build orchestration and caching",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Install Turborepo, create turbo.json with pipeline definitions for build, test, lint, and dev tasks. Configure task dependencies and caching strategies",
             "status": "pending",
             "testStrategy": ""
@@ -35,9 +33,7 @@
             "id": 3,
             "title": "Setup workspace configuration",
             "description": "Configure package.json workspaces and package manager settings for monorepo",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Update root package.json with workspace patterns, configure npm/yarn/pnpm workspace settings, set up shared dependencies and scripts",
             "status": "pending",
             "testStrategy": ""
@@ -46,10 +42,7 @@
             "id": 4,
             "title": "Create shared packages setup",
             "description": "Implement shared utility packages, UI components, and configuration packages",
-            "dependencies": [
-              2,
-              3
-            ],
+            "dependencies": [2, 3],
             "details": "Create packages for shared utilities, TypeScript configurations, ESLint configs, and UI components. Set up proper package.json exports and build configurations",
             "status": "pending",
             "testStrategy": ""
@@ -58,9 +51,7 @@
             "id": 5,
             "title": "Configure development workflow and git hooks",
             "description": "Set up development commands, git hooks, and CI/CD pipeline integration",
-            "dependencies": [
-              4
-            ],
+            "dependencies": [4],
             "details": "Configure Husky for git hooks, set up pre-commit linting and testing, create npm scripts for common workflows, and integrate with Turborepo for efficient builds",
             "status": "pending",
             "testStrategy": ""
@@ -74,9 +65,7 @@
         "details": "Create PostgreSQL database with entities, connections, mentions, users, and subscriptions tables. Implement graph-based unified entity model with entity_type enum (restaurant, dish_or_category, dish_attribute, restaurant_attribute). Setup all required indexes for performance: GIN indexes for arrays and text search, spatial indexes for location queries, composite indexes for common query patterns. Configure Prisma ORM with schema definition and migration system. Setup connection pooling with 50 connections for MVP. Implement UPSERT operations for bulk processing.",
         "testStrategy": "Verify all tables created correctly with proper constraints, test index performance with sample data, confirm Prisma migrations work, validate bulk operations handle 1000+ entities in <500ms",
         "priority": "high",
-        "dependencies": [
-          1
-        ],
+        "dependencies": [1],
         "status": "pending",
         "subtasks": [
           {
@@ -92,9 +81,7 @@
             "id": 2,
             "title": "Table Schema Design",
             "description": "Design and implement the core table schemas for the graph-based entity model",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Create tables for entities, relationships, attributes, and metadata with proper data types and constraints",
             "status": "pending",
             "testStrategy": ""
@@ -103,9 +90,7 @@
             "id": 3,
             "title": "Index Optimization Strategy",
             "description": "Implement comprehensive indexing strategy for performance optimization",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Create composite indexes, partial indexes, and specialized indexes for graph traversal and search operations",
             "status": "pending",
             "testStrategy": ""
@@ -114,9 +99,7 @@
             "id": 4,
             "title": "Prisma ORM Setup and Configuration",
             "description": "Configure Prisma ORM with the database schema and optimize for graph operations",
-            "dependencies": [
-              3
-            ],
+            "dependencies": [3],
             "details": "Set up Prisma schema, configure database connection, implement custom queries for graph operations",
             "status": "pending",
             "testStrategy": ""
@@ -125,9 +108,7 @@
             "id": 5,
             "title": "Migration System Implementation",
             "description": "Implement robust database migration system with rollback capabilities",
-            "dependencies": [
-              4
-            ],
+            "dependencies": [4],
             "details": "Create migration scripts, implement version control, add rollback mechanisms, and test migration procedures",
             "status": "pending",
             "testStrategy": ""
@@ -136,9 +117,7 @@
             "id": 6,
             "title": "Performance Validation with Bulk Operations",
             "description": "Validate database performance through comprehensive bulk operation testing",
-            "dependencies": [
-              5
-            ],
+            "dependencies": [5],
             "details": "Implement bulk insert/update operations, run performance benchmarks, optimize query performance, and validate scalability",
             "status": "pending",
             "testStrategy": ""
@@ -152,9 +131,7 @@
         "details": "Initialize NestJS application with Fastify adapter for performance. Implement modular monolith structure with domain-separated modules: content-processing, search-discovery, user-experience, external-integrations, and infrastructure. Setup dependency injection container, configuration management with @nestjs/config, logging with winston, security with helmet and rate limiting. Configure Bull queues for background processing, Redis caching layer, and basic health check endpoints. Implement authentication scaffolding with Passport.js and JWT strategy.",
         "testStrategy": "Verify all modules load correctly, test dependency injection works across modules, confirm Redis connection and Bull queues operational, validate authentication endpoints respond correctly",
         "priority": "high",
-        "dependencies": [
-          2
-        ],
+        "dependencies": [2],
         "status": "pending",
         "subtasks": [
           {
@@ -170,9 +147,7 @@
             "id": 2,
             "title": "Module Architecture Setup",
             "description": "Design and implement modular architecture with feature modules, shared modules, and core module structure",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Create feature modules for different domains, establish shared module for common utilities, implement core module for singleton services",
             "status": "pending",
             "testStrategy": ""
@@ -181,9 +156,7 @@
             "id": 3,
             "title": "Infrastructure Services Integration",
             "description": "Set up Redis connection and Bull queue infrastructure for background job processing",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Configure Redis connection with proper connection pooling, implement Bull queue setup for async job processing, create queue management services",
             "status": "pending",
             "testStrategy": ""
@@ -192,9 +165,7 @@
             "id": 4,
             "title": "Configuration Management System",
             "description": "Implement comprehensive configuration management with environment variables, validation, and type safety",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Set up ConfigModule with environment-based configuration, implement configuration validation schemas, create typed configuration interfaces",
             "status": "pending",
             "testStrategy": ""
@@ -203,9 +174,7 @@
             "id": 5,
             "title": "Security Implementation",
             "description": "Implement core security features including CORS, rate limiting, helmet, and request validation",
-            "dependencies": [
-              4
-            ],
+            "dependencies": [4],
             "details": "Configure CORS policies, implement rate limiting middleware, set up helmet for security headers, add global validation pipes",
             "status": "pending",
             "testStrategy": ""
@@ -214,9 +183,7 @@
             "id": 6,
             "title": "Authentication Scaffolding",
             "description": "Set up authentication infrastructure with JWT strategy, guards, and user management foundation",
-            "dependencies": [
-              5
-            ],
+            "dependencies": [5],
             "details": "Implement JWT authentication strategy, create authentication guards, set up user entity and basic user management, configure passport integration",
             "status": "pending",
             "testStrategy": ""
@@ -225,10 +192,7 @@
             "id": 7,
             "title": "Health Monitoring Setup",
             "description": "Implement health check endpoints and monitoring infrastructure for application observability",
-            "dependencies": [
-              3,
-              6
-            ],
+            "dependencies": [3, 6],
             "details": "Set up health check endpoints for database, Redis, and application health, implement logging infrastructure, configure monitoring and metrics collection",
             "status": "pending",
             "testStrategy": ""
@@ -242,9 +206,7 @@
         "details": "Setup Reddit API client with authentication, rate limiting (100 requests/minute), and cost management ($0.24/1000 calls). Implement Google Places API integration for restaurant location data, hours, and metadata. Configure LLM API client (Gemini/Deepseek) for content analysis and entity extraction. Implement proper error handling, retry logic, and circuit breaker patterns. Setup API key management and rotation. Create fallback strategy for Reddit API using Pushshift data if comment access unavailable. Include comprehensive logging and monitoring for all external API calls.",
         "testStrategy": "Test Reddit API can fetch posts and comments from food subreddits, verify Google Places returns restaurant data with coordinates, confirm LLM API processes content and returns structured entities, validate rate limiting prevents API overuse",
         "priority": "high",
-        "dependencies": [
-          3
-        ],
+        "dependencies": [3],
         "status": "pending",
         "subtasks": [
           {
@@ -278,11 +240,7 @@
             "id": 4,
             "title": "Error Handling and Resilience Patterns",
             "description": "Implement comprehensive error handling, retry logic, and resilience patterns for all API clients",
-            "dependencies": [
-              1,
-              2,
-              3
-            ],
+            "dependencies": [1, 2, 3],
             "details": "Add circuit breakers, exponential backoff, timeout handling, graceful degradation, and proper error classification across all API clients",
             "status": "pending",
             "testStrategy": ""
@@ -300,12 +258,7 @@
             "id": 6,
             "title": "API Monitoring and Observability",
             "description": "Implement comprehensive monitoring, logging, and alerting for all API interactions",
-            "dependencies": [
-              1,
-              2,
-              3,
-              4
-            ],
+            "dependencies": [1, 2, 3, 4],
             "details": "Add metrics collection, request/response logging, performance monitoring, cost tracking, rate limit monitoring, and alerting for API failures and quota approaching",
             "status": "pending",
             "testStrategy": ""
@@ -319,9 +272,7 @@
         "details": "Build entity resolution pipeline with three-tier matching: exact name matching, alias array matching, and fuzzy matching with Levenshtein distance. Implement scope-aware resolution for context-dependent attributes (Italian dish vs Italian restaurant). Create in-memory ID mapping for batch processing efficiency. Setup bulk entity creation with UPSERT operations. Implement alias management system that automatically adds variations when entities are merged. Optimize for processing 100 entity batches in <2 seconds. Include duplicate prevention and confidence scoring for merge decisions.",
         "testStrategy": "Test resolution accuracy >80% on sample data, verify scope-aware attribute resolution works correctly, confirm batch processing meets timing requirements, validate alias management prevents duplicates",
         "priority": "medium",
-        "dependencies": [
-          4
-        ],
+        "dependencies": [4],
         "status": "pending",
         "subtasks": [
           {
@@ -337,9 +288,7 @@
             "id": 2,
             "title": "Develop scope-aware resolution logic",
             "description": "Implement context-sensitive matching that considers data scope and domain boundaries",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build resolution logic that understands data context, domain boundaries, and scope limitations. Should prevent cross-domain matches and respect data boundaries while maintaining accuracy.",
             "status": "pending",
             "testStrategy": ""
@@ -348,9 +297,7 @@
             "id": 3,
             "title": "Create in-memory ID mapping system",
             "description": "Build efficient in-memory data structure for fast ID lookups and mapping operations",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Implement high-performance in-memory mapping system using appropriate data structures (hash maps, trees) for fast ID resolution. Include memory management and cache invalidation strategies.",
             "status": "pending",
             "testStrategy": ""
@@ -359,10 +306,7 @@
             "id": 4,
             "title": "Implement bulk processing optimization",
             "description": "Optimize matching system for high-volume batch processing with performance monitoring",
-            "dependencies": [
-              2,
-              3
-            ],
+            "dependencies": [2, 3],
             "details": "Add batch processing capabilities with parallel processing, memory optimization, and performance monitoring. Include progress tracking and error handling for large datasets.",
             "status": "pending",
             "testStrategy": ""
@@ -371,9 +315,7 @@
             "id": 5,
             "title": "Build alias management with merge confidence scoring",
             "description": "Implement alias tracking system with confidence scoring for merge recommendations",
-            "dependencies": [
-              4
-            ],
+            "dependencies": [4],
             "details": "Create alias management system that tracks entity relationships and calculates merge confidence scores. Include manual review workflows for low-confidence matches and automatic merging for high-confidence matches.",
             "status": "pending",
             "testStrategy": ""
@@ -387,9 +329,7 @@
         "details": "Build comprehensive content processing pipeline: Reddit API search and retrieval → LLM entity extraction → entity resolution → component-based processing → database updates. Implement six processing components handling all entity combinations (restaurant creation, attribute assignment, general praise boosting, specific dish processing, category processing, attribute-only processing). Create mention scoring system with time-weighted formulas and activity level calculation. Setup bulk database operations in single atomic transactions. Implement quality score computation for both dishes and restaurants. Include background job orchestration for scheduled processing cycles.",
         "testStrategy": "Process sample Reddit content and verify entities extracted correctly, test all six processing components handle their scenarios, confirm quality scores computed accurately, validate bulk operations maintain atomicity",
         "priority": "medium",
-        "dependencies": [
-          5
-        ],
+        "dependencies": [5],
         "status": "pending",
         "subtasks": [
           {
@@ -405,9 +345,7 @@
             "id": 2,
             "title": "LLM Entity Extraction Service",
             "description": "Create AI-powered entity extraction system to identify companies, products, and brands from Reddit content",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Integrate with LLM APIs (OpenAI, Anthropic, etc.) to extract structured entity data from Reddit posts and comments. Handle batch processing, prompt engineering, and response parsing.",
             "status": "pending",
             "testStrategy": ""
@@ -416,9 +354,7 @@
             "id": 3,
             "title": "Entity Resolution Integration",
             "description": "Implement entity resolution system to match extracted entities with canonical company/product database",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Build fuzzy matching algorithms and integrate with external databases to resolve entity names to standardized identifiers. Handle ambiguous matches and maintain confidence scores.",
             "status": "pending",
             "testStrategy": ""
@@ -427,9 +363,7 @@
             "id": 4,
             "title": "Six Processing Components Implementation",
             "description": "Develop the core processing pipeline components for sentiment analysis, context extraction, relevance scoring, temporal analysis, geographic detection, and thread tracking",
-            "dependencies": [
-              3
-            ],
+            "dependencies": [3],
             "details": "Implement sentiment analysis, context extraction, relevance scoring, temporal pattern analysis, geographic location detection, and conversation thread tracking. Each component should be modular and independently testable.",
             "status": "pending",
             "testStrategy": ""
@@ -438,9 +372,7 @@
             "id": 5,
             "title": "Mention Scoring System",
             "description": "Create comprehensive scoring algorithm that evaluates entity mentions based on sentiment, context, engagement, and other factors",
-            "dependencies": [
-              4
-            ],
+            "dependencies": [4],
             "details": "Develop weighted scoring system that combines sentiment scores, engagement metrics, context relevance, and temporal factors. Include configurable weights and threshold settings.",
             "status": "pending",
             "testStrategy": ""
@@ -449,9 +381,7 @@
             "id": 6,
             "title": "Bulk Database Operations",
             "description": "Implement efficient database operations for storing processed Reddit data, entities, and mention scores with optimized batch processing",
-            "dependencies": [
-              5
-            ],
+            "dependencies": [5],
             "details": "Design database schema and implement bulk insert/update operations for Reddit posts, comments, extracted entities, and calculated scores. Include data deduplication and conflict resolution.",
             "status": "pending",
             "testStrategy": ""
@@ -460,9 +390,7 @@
             "id": 7,
             "title": "Background Job Orchestration",
             "description": "Build job queue system to orchestrate the entire processing pipeline with monitoring, error handling, and scalability features",
-            "dependencies": [
-              6
-            ],
+            "dependencies": [6],
             "details": "Implement job queue with Redis/Celery or similar technology. Include job scheduling, progress tracking, error handling, retry logic, and monitoring dashboard for the complete pipeline.",
             "status": "pending",
             "testStrategy": ""
@@ -480,9 +408,7 @@
             "id": 9,
             "title": "Build entity extraction stage",
             "description": "Develop the entity extraction processing stage that identifies and extracts relevant entities from retrieved content",
-            "dependencies": [
-              8
-            ],
+            "dependencies": [8],
             "details": "Implement entity extraction using NLP libraries or AI models to identify people, places, organizations, dates, and other relevant entities. Include confidence scoring and validation mechanisms.",
             "status": "pending",
             "testStrategy": ""
@@ -491,9 +417,7 @@
             "id": 10,
             "title": "Implement resolution integration stage",
             "description": "Create the resolution integration stage that matches and resolves extracted entities against known databases or external services",
-            "dependencies": [
-              9
-            ],
+            "dependencies": [9],
             "details": "Build entity resolution system that matches extracted entities to canonical forms, handles disambiguation, and integrates with external knowledge bases. Include caching and bulk processing capabilities.",
             "status": "pending",
             "testStrategy": ""
@@ -502,9 +426,7 @@
             "id": 11,
             "title": "Develop component processing stage with six analysis modules",
             "description": "Build the component processing stage containing sentiment analysis, context extraction, relevance scoring, temporal analysis, geographic detection, and thread tracking modules",
-            "dependencies": [
-              10
-            ],
+            "dependencies": [10],
             "details": "Create six independent processing components: 1) Sentiment analysis for emotional tone detection, 2) Context extraction for meaning and relationships, 3) Relevance scoring for importance ranking, 4) Temporal analysis for time-based patterns, 5) Geographic detection for location identification, 6) Thread tracking for conversation continuity. Each component should be independently testable and scalable.",
             "status": "pending",
             "testStrategy": ""
@@ -513,9 +435,7 @@
             "id": 12,
             "title": "Build scoring system stage",
             "description": "Implement the scoring system that aggregates results from all component processing modules and generates final scores",
-            "dependencies": [
-              11
-            ],
+            "dependencies": [11],
             "details": "Create scoring aggregation system that combines outputs from all six processing components into unified scoring metrics. Include configurable weighting, normalization, and ranking algorithms with performance optimization for bulk processing.",
             "status": "pending",
             "testStrategy": ""
@@ -524,9 +444,7 @@
             "id": 13,
             "title": "Create database operations and job orchestration stage",
             "description": "Develop the final stage for database operations and job orchestration that manages the entire pipeline execution",
-            "dependencies": [
-              12
-            ],
+            "dependencies": [12],
             "details": "Build database operations layer for atomic transactions, bulk insertions, and data consistency. Implement job orchestration system for managing pipeline execution, handling failures, monitoring progress, and ensuring scalability across all stages.",
             "status": "pending",
             "testStrategy": ""
@@ -540,9 +458,7 @@
         "details": "Build dynamic query builder that adapts SQL structure based on extracted entities. Implement LLM query processing for natural language to structured entities. Create scope-aware filtering system (restaurant attributes vs dish attributes). Setup return format determination (single list vs dual list) based on entity composition. Implement geographic filtering using map boundaries and 'open now' toggle. Create contextual restaurant ranking system based on relevant dish performance. Optimize for sub-second query execution with proper index utilization.",
         "testStrategy": "Test various query types return correct format and results, verify geographic filtering works within map bounds, confirm contextual ranking reflects query-specific performance, validate response times meet <3s uncached target",
         "priority": "medium",
-        "dependencies": [
-          6
-        ],
+        "dependencies": [6],
         "status": "pending",
         "subtasks": [
           {
@@ -558,9 +474,7 @@
             "id": 2,
             "title": "Develop LLM Query Processing Engine",
             "description": "Build natural language processing system to interpret and process user queries using LLM capabilities",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Implement LLM integration for understanding natural language queries, extracting intent, and converting to structured search parameters.",
             "status": "pending",
             "testStrategy": ""
@@ -569,9 +483,7 @@
             "id": 3,
             "title": "Create Scope-Aware Filtering System",
             "description": "Implement intelligent filtering that adapts based on search scope and user context",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build filtering logic that can understand search scope, apply appropriate filters based on context, and optimize results relevance.",
             "status": "pending",
             "testStrategy": ""
@@ -580,10 +492,7 @@
             "id": 4,
             "title": "Build Return Format Determination Logic",
             "description": "Develop system to determine optimal response format based on query type and user needs",
-            "dependencies": [
-              2,
-              3
-            ],
+            "dependencies": [2, 3],
             "details": "Create adaptive response formatting that can return results in various formats (JSON, structured data, summaries) based on query analysis.",
             "status": "pending",
             "testStrategy": ""
@@ -592,9 +501,7 @@
             "id": 5,
             "title": "Implement Geographic Filtering Capabilities",
             "description": "Add location-based filtering and geographic search functionality",
-            "dependencies": [
-              3
-            ],
+            "dependencies": [3],
             "details": "Build geographic filtering system that can handle location-based queries, distance calculations, and regional result prioritization.",
             "status": "pending",
             "testStrategy": ""
@@ -603,10 +510,7 @@
             "id": 6,
             "title": "Develop Contextual Ranking System",
             "description": "Create intelligent ranking algorithm that considers context, relevance, and user preferences",
-            "dependencies": [
-              4,
-              5
-            ],
+            "dependencies": [4, 5],
             "details": "Implement sophisticated ranking system that weighs multiple factors including relevance, context, user history, and business logic to provide optimal result ordering.",
             "status": "pending",
             "testStrategy": ""
@@ -624,9 +528,7 @@
             "id": 8,
             "title": "Develop query entity extraction system",
             "description": "Extract and normalize entities from natural language queries including locations, cuisines, price ranges, ratings, and other restaurant attributes",
-            "dependencies": [
-              7
-            ],
+            "dependencies": [7],
             "details": "Build entity recognition pipeline to identify and standardize key search parameters from user input, handling variations and synonyms",
             "status": "pending",
             "testStrategy": ""
@@ -635,10 +537,7 @@
             "id": 9,
             "title": "Create structured query generation from extracted entities",
             "description": "Transform extracted entities and detected intent into structured database queries with appropriate filters, joins, and ranking logic",
-            "dependencies": [
-              7,
-              8
-            ],
+            "dependencies": [7, 8],
             "details": "Generate optimized SQL queries or search parameters based on NLU results, incorporating geographic constraints, preference weighting, and relevance scoring",
             "status": "pending",
             "testStrategy": ""
@@ -652,9 +551,7 @@
         "details": "Setup Redis caching infrastructure with connection pooling and memory management. Implement three-tier caching: hot queries (1hr retention), recent results (24hr retention), static data (7+ days retention). Create cache invalidation strategy with time-based expiration and smart invalidation on entity updates. Implement cache hit/miss tracking and performance monitoring. Setup cache warming for predicted popular queries and geographic segmentation. Configure LRU eviction policies and appropriate memory limits. Integrate caching seamlessly into query pipeline.",
         "testStrategy": "Achieve >85% cache hit rate on repeat queries, verify cached queries respond in <400ms, test cache invalidation works correctly, confirm memory usage stays within limits",
         "priority": "medium",
-        "dependencies": [
-          7
-        ],
+        "dependencies": [7],
         "status": "pending",
         "subtasks": [
           {
@@ -670,9 +567,7 @@
             "id": 2,
             "title": "Three-Tier Caching Implementation",
             "description": "Implement L1 (application), L2 (Redis), and L3 (CDN) caching layers with proper data flow and cache hierarchies",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Design and implement application-level caching (L1), Redis distributed caching (L2), and CDN edge caching (L3). Define cache key strategies, TTL policies, and data serialization formats for each tier.",
             "status": "pending",
             "testStrategy": ""
@@ -681,9 +576,7 @@
             "id": 3,
             "title": "Cache Invalidation Strategy",
             "description": "Develop comprehensive cache invalidation patterns including event-driven invalidation, TTL management, and cache coherency mechanisms",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Implement cache invalidation strategies using Redis pub/sub, database triggers, and application-level events. Design cache tagging system for efficient bulk invalidation and ensure data consistency across all cache tiers.",
             "status": "pending",
             "testStrategy": ""
@@ -692,9 +585,7 @@
             "id": 4,
             "title": "Performance Monitoring",
             "description": "Set up comprehensive monitoring for cache hit rates, response times, memory usage, and cache effectiveness metrics",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Implement monitoring dashboards for cache performance metrics, set up alerting for cache misses and high latency, and create automated reporting for cache optimization insights. Include Redis-specific metrics and custom application metrics.",
             "status": "pending",
             "testStrategy": ""
@@ -703,10 +594,7 @@
             "id": 5,
             "title": "Cache Warming with Geographic Segmentation",
             "description": "Implement cache warming strategies with geographic data distribution and regional cache optimization",
-            "dependencies": [
-              3,
-              4
-            ],
+            "dependencies": [3, 4],
             "details": "Design cache warming processes that pre-populate frequently accessed data based on geographic regions. Implement geo-distributed cache strategies, regional failover mechanisms, and optimize cache warming schedules based on usage patterns and time zones.",
             "status": "pending",
             "testStrategy": ""
@@ -720,9 +608,7 @@
         "details": "Setup user authentication system with JWT tokens and secure session management. Implement subscription management with trial periods, billing cycles, and status tracking. Integrate Stripe payment processing with webhooks for subscription events. Create user onboarding flow with trial-to-paid conversion tracking. Implement access control middleware for feature gating based on subscription status. Setup user event tracking for analytics and personalization. Include referral system with tracking and incentives. Configure secure API endpoints with proper validation and rate limiting.",
         "testStrategy": "Test user registration and login flows, verify Stripe payments process correctly in <3s, confirm subscription status controls access properly, validate JWT authentication responds in <200ms",
         "priority": "medium",
-        "dependencies": [
-          3
-        ],
+        "dependencies": [3],
         "status": "pending",
         "subtasks": [
           {
@@ -738,9 +624,7 @@
             "id": 2,
             "title": "Subscription Management",
             "description": "Create subscription plans, pricing tiers, and subscription lifecycle management",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Design subscription models with different pricing tiers, subscription creation, updates, cancellation, and renewal logic. Include subscription status tracking and plan comparison features.",
             "status": "pending",
             "testStrategy": ""
@@ -749,9 +633,7 @@
             "id": 3,
             "title": "Stripe Payment Integration",
             "description": "Integrate Stripe for payment processing, webhooks, and billing management",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Set up Stripe API integration for payment processing, subscription billing, webhook handling for payment events, and secure payment method storage. Include payment failure handling and retry logic.",
             "status": "pending",
             "testStrategy": ""
@@ -760,9 +642,7 @@
             "id": 4,
             "title": "User Onboarding Flow",
             "description": "Design and implement guided user onboarding experience",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Create multi-step onboarding process including account setup, profile completion, feature introduction, and initial subscription selection. Include progress tracking and skip options.",
             "status": "pending",
             "testStrategy": ""
@@ -771,10 +651,7 @@
             "id": 5,
             "title": "Access Control Middleware",
             "description": "Implement authorization middleware for subscription-based feature access",
-            "dependencies": [
-              1,
-              2
-            ],
+            "dependencies": [1, 2],
             "details": "Build middleware to control access to features based on subscription tier, user roles, and permissions. Include route protection, feature flags, and subscription validation.",
             "status": "pending",
             "testStrategy": ""
@@ -783,10 +660,7 @@
             "id": 6,
             "title": "User Event Tracking and Referral System",
             "description": "Implement analytics tracking and referral program with rewards",
-            "dependencies": [
-              1,
-              4
-            ],
+            "dependencies": [1, 4],
             "details": "Set up user event tracking for analytics, referral link generation, referral tracking, and reward system. Include referral analytics dashboard and automated reward distribution.",
             "status": "pending",
             "testStrategy": ""
@@ -800,10 +674,7 @@
         "details": "Initialize React Native app with Expo and TypeScript. Implement search interface with natural language input and LLM processing. Create results display with dish-restaurant pairs, evidence cards, and activity indicators. Build map integration with React Native Maps for location selection and viewport filtering. Implement user authentication screens and subscription management. Create bookmark system for saving dishes and managing personal lists. Setup React Query for server state management and Zustand for client state. Implement attribution system with Reddit links and 'Join conversation' CTAs. Include push notification setup and deep linking capabilities.",
         "testStrategy": "Verify search functionality works end-to-end, test map integration filters results correctly, confirm bookmark system saves and retrieves data, validate authentication flows work properly, test attribution links open Reddit correctly",
         "priority": "medium",
-        "dependencies": [
-          8,
-          9
-        ],
+        "dependencies": [8, 9],
         "status": "pending",
         "subtasks": [
           {
@@ -819,9 +690,7 @@
             "id": 2,
             "title": "Search Interface Implementation",
             "description": "Create the main search interface with input fields and search functionality",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build search screen with text input, filters, search suggestions, and implement search API integration with proper error handling and loading states",
             "status": "pending",
             "testStrategy": ""
@@ -830,9 +699,7 @@
             "id": 3,
             "title": "Results Display with Evidence Cards",
             "description": "Implement search results display with structured evidence cards",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Create reusable evidence card components, implement results list with pagination, add sorting and filtering options, and ensure responsive design across different screen sizes",
             "status": "pending",
             "testStrategy": ""
@@ -841,9 +708,7 @@
             "id": 4,
             "title": "Map Integration",
             "description": "Integrate map functionality with location-based search and results display",
-            "dependencies": [
-              3
-            ],
+            "dependencies": [3],
             "details": "Implement React Native Maps, add location services, create map markers for search results, implement geolocation features, and handle location permissions",
             "status": "pending",
             "testStrategy": ""
@@ -852,9 +717,7 @@
             "id": 5,
             "title": "User Authentication Screens",
             "description": "Create user authentication flow with login, registration, and profile screens",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build authentication screens, implement secure token storage, add biometric authentication support, create user profile management, and handle authentication state management",
             "status": "pending",
             "testStrategy": ""
@@ -863,10 +726,7 @@
             "id": 6,
             "title": "Bookmark System",
             "description": "Implement user bookmark functionality for saving and managing search results",
-            "dependencies": [
-              3,
-              5
-            ],
+            "dependencies": [3, 5],
             "details": "Create bookmark storage system, implement bookmark management screens, add bookmark synchronization with backend, and create bookmark organization features",
             "status": "pending",
             "testStrategy": ""
@@ -875,9 +735,7 @@
             "id": 7,
             "title": "State Management Setup",
             "description": "Configure global state management for app data and user preferences",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Set up Redux/Context API for state management, implement data persistence, create state selectors and actions, and ensure proper state synchronization across components",
             "status": "pending",
             "testStrategy": ""
@@ -886,9 +744,7 @@
             "id": 8,
             "title": "Attribution System with Deep Linking",
             "description": "Implement attribution tracking and deep linking functionality",
-            "dependencies": [
-              7
-            ],
+            "dependencies": [7],
             "details": "Configure deep linking with React Navigation, implement URL scheme handling, add attribution tracking for shared content, create universal links support, and ensure proper navigation flow from external links",
             "status": "pending",
             "testStrategy": ""
@@ -906,9 +762,7 @@
             "id": 10,
             "title": "Search Interface and User Input Components",
             "description": "Develop the search interface with input handling, validation, and mobile-optimized user experience",
-            "dependencies": [
-              9
-            ],
+            "dependencies": [9],
             "details": "Create search input components, implement voice search capabilities, add search suggestions, optimize for mobile keyboards and touch interactions",
             "status": "pending",
             "testStrategy": ""
@@ -917,9 +771,7 @@
             "id": 11,
             "title": "Results Display System with Evidence Cards and Pagination",
             "description": "Implement the complete results display system including evidence cards, list pagination, sorting/filtering, and responsive design",
-            "dependencies": [
-              10
-            ],
+            "dependencies": [10],
             "details": "Develop evidence card components, implement results list with pagination, add sorting and filtering capabilities, ensure responsive design across mobile devices",
             "status": "pending",
             "testStrategy": ""
@@ -933,10 +785,7 @@
         "details": "Build comprehensive community engagement system with Reddit attribution display showing original usernames, timestamps, and subreddit sources. Implement time-weighted activity scoring algorithm that calculates trending (🔥) and active (🕐) indicators based on recent mention frequency and engagement metrics. Create top mentions scoring system that ranks Reddit comments by relevance, upvotes, and recency. Design 'Join conversation' CTAs that deep-link users to original Reddit threads with proper URL formatting. Implement quote cards with truncated content, full attribution metadata, and responsive design for mobile and web. Setup activity calculation service that processes mention timestamps and calculates rolling activity scores over 24h/7d windows. Create engagement tracking to monitor CTA click-through rates and user interaction patterns. Implement proper Reddit content licensing compliance and attribution requirements. Setup caching for activity scores and mention rankings to optimize performance. Configure background jobs to refresh activity indicators every 30 minutes.",
         "testStrategy": "Verify Reddit quotes display with complete attribution (username, subreddit, timestamp), test activity indicators update correctly based on time-weighted scoring algorithm, confirm 'Join conversation' CTAs generate valid Reddit URLs that open to correct threads, validate top mentions ranking reflects engagement metrics accurately, test quote truncation works properly with read-more functionality, verify activity scores calculate correctly over different time windows, confirm system handles deleted/removed Reddit content gracefully",
         "status": "pending",
-        "dependencies": [
-          6,
-          8
-        ],
+        "dependencies": [6, 8],
         "priority": "high",
         "subtasks": [
           {
@@ -961,9 +810,7 @@
             "id": 3,
             "title": "Top Mentions Ranking System",
             "description": "Build system to rank and filter top Reddit mentions using the activity scoring algorithm",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Implement ranking logic that uses activity scores to sort mentions, with configurable time windows and filtering options. Include pagination and real-time updates.",
             "status": "pending",
             "testStrategy": ""
@@ -972,9 +819,7 @@
             "id": 4,
             "title": "Conversation CTA Functionality",
             "description": "Create call-to-action components and handlers for engaging with Reddit conversations from the app",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build CTA buttons and modals for actions like 'Join Conversation', 'View on Reddit', and 'Share'. Include tracking and analytics for CTA engagement.",
             "status": "pending",
             "testStrategy": ""
@@ -983,9 +828,7 @@
             "id": 5,
             "title": "Quote Card UI Components",
             "description": "Design and implement quote card components for displaying Reddit content excerpts with attribution",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Create visually appealing quote cards that showcase Reddit post/comment text with proper attribution, voting indicators, and engagement metrics. Support different card sizes and layouts.",
             "status": "pending",
             "testStrategy": ""
@@ -994,10 +837,7 @@
             "id": 6,
             "title": "Background Activity Calculation Service with Caching",
             "description": "Implement background service for calculating activity scores with Redis caching optimization",
-            "dependencies": [
-              2,
-              3
-            ],
+            "dependencies": [2, 3],
             "details": "Build a background job system that periodically recalculates activity scores for all tracked mentions. Implement Redis caching strategy with TTL and cache invalidation to optimize performance and reduce API calls.",
             "status": "pending",
             "testStrategy": ""
@@ -1009,11 +849,7 @@
         "title": "Discovery Features System",
         "description": "Implement comprehensive discovery features including discovery feed, trending analysis engine, recently discussed content, and hidden gems algorithm to provide curated content discovery and recommendations based on community patterns.",
         "status": "pending",
-        "dependencies": [
-          6,
-          7,
-          8
-        ],
+        "dependencies": [6, 7, 8],
         "priority": "low",
         "details": "Build discovery feed system with personalized content recommendations based on user preferences and community activity. Implement trending analysis engine that analyzes mention frequency, engagement velocity, and time-weighted scoring to identify trending dishes and restaurants. Create recently discussed content system that surfaces active conversations and fresh mentions within configurable time windows (24hr, 3-day, weekly). Develop hidden gems algorithm that identifies under-discovered but high-quality restaurants using criteria like low mention count but high average scores, new establishments with promising early indicators, and community consensus on quality despite limited exposure. Implement content curation pipeline with LLM-powered categorization, quality filtering, and diversity algorithms. Create recommendation engine with collaborative filtering, content-based filtering, and hybrid approaches. Setup real-time trending detection with sliding window analysis and anomaly detection for viral content identification. Implement geographic discovery with location-aware recommendations and regional trending analysis. Create discovery API endpoints with pagination, filtering, and sorting capabilities. Design discovery metrics dashboard for monitoring algorithm performance and user engagement patterns.",
         "testStrategy": "Verify discovery feed generates diverse, relevant recommendations based on user activity and preferences. Test trending analysis correctly identifies viral content with time-weighted scoring accuracy >85%. Confirm recently discussed content surfaces active conversations within specified time windows. Validate hidden gems algorithm discovers quality establishments with low mention counts but high scores. Test recommendation engine provides personalized results with >70% user satisfaction metrics. Verify geographic discovery filters content appropriately by location and distance. Confirm all discovery APIs respond within <2s for cached content and <5s for fresh analysis.",
@@ -1050,9 +886,7 @@
             "title": "Hidden Gems Discovery Algorithm",
             "description": "Create algorithm to identify underappreciated but high-quality content for discovery",
             "status": "pending",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Develop system to find content with high quality indicators but low visibility. Include quality scoring, engagement prediction, and niche content identification mechanisms.",
             "testStrategy": ""
           },
@@ -1061,10 +895,7 @@
             "title": "Content Curation Pipeline",
             "description": "Build automated pipeline for content scoring, filtering, and quality assessment",
             "status": "pending",
-            "dependencies": [
-              2,
-              3
-            ],
+            "dependencies": [2, 3],
             "details": "Create comprehensive curation system with content quality scoring, spam detection, relevance filtering, and automated moderation. Include ML-based content classification.",
             "testStrategy": ""
           },
@@ -1073,9 +904,7 @@
             "title": "Geographic Discovery Features",
             "description": "Implement location-based content discovery and regional trending systems",
             "status": "pending",
-            "dependencies": [
-              2
-            ],
+            "dependencies": [2],
             "details": "Build geolocation-aware discovery features including local trending, nearby content, regional preferences, and location-based content filtering with privacy considerations.",
             "testStrategy": ""
           },
@@ -1084,12 +913,7 @@
             "title": "API Endpoints with Filtering",
             "description": "Create comprehensive API endpoints for discovery features with advanced filtering options",
             "status": "pending",
-            "dependencies": [
-              1,
-              4,
-              5,
-              6
-            ],
+            "dependencies": [1, 4, 5, 6],
             "details": "Develop RESTful API endpoints for all discovery features including pagination, filtering by category/location/time, sorting options, and search integration with proper caching and rate limiting.",
             "testStrategy": ""
           },
@@ -1098,9 +922,7 @@
             "title": "Discovery Metrics Dashboard Implementation",
             "description": "Build analytics dashboard for monitoring discovery system performance and user engagement",
             "status": "pending",
-            "dependencies": [
-              7
-            ],
+            "dependencies": [7],
             "details": "Create comprehensive metrics dashboard tracking recommendation effectiveness, user engagement with discovery features, algorithm performance, and content distribution analytics with real-time updates.",
             "testStrategy": ""
           }
@@ -1113,11 +935,7 @@
         "details": "Build social sharing system with bookmark sharing functionality that allows users to share individual dishes or restaurant collections with friends via links, social media, or direct messaging. Implement Reddit post template generator that creates formatted posts with proper attribution, context, and engagement hooks for users to share discoveries in food subreddits. Create social media integration for major platforms (Twitter/X, Instagram, TikTok) with auto-generated captions, hashtags, and rich preview cards. Develop viral mechanics including referral tracking, social proof badges, discovery streaks, and community leaderboards. Implement share analytics to track which content performs best and optimize templates accordingly. Setup deep linking system for shared content that maintains context and attribution. Create social CTA system that suggests optimal sharing opportunities based on user behavior and content quality. Include privacy controls for users to manage what can be shared and by whom. Setup A/B testing framework for share templates and viral mechanics optimization.",
         "testStrategy": "Verify bookmark sharing generates proper links that maintain attribution and context when accessed. Test Reddit post templates include all required elements (attribution, context, formatting) and generate engaging content. Confirm social media integrations post successfully with rich previews and appropriate hashtags. Validate viral mechanics track referrals correctly and update leaderboards in real-time. Test deep links resolve to correct content with proper context preservation. Verify share analytics capture engagement metrics and optimize template performance over time.",
         "status": "pending",
-        "dependencies": [
-          9,
-          10,
-          11
-        ],
+        "dependencies": [9, 10, 11],
         "priority": "medium",
         "subtasks": []
       },
@@ -1126,11 +944,7 @@
         "title": "Advanced Search and Premium Features System",
         "description": "Build comprehensive advanced search capabilities and premium features including complex multi-attribute queries, smart alerts, personal food maps, and neighborhood insights for premium users. This is a nice-to-have feature set that should be implemented after core application functionality is complete.",
         "status": "pending",
-        "dependencies": [
-          7,
-          9,
-          10
-        ],
+        "dependencies": [7, 9, 10],
         "priority": "low",
         "details": "Implement advanced search engine with complex multi-attribute query support allowing users to combine multiple criteria (cuisine type + price range + dietary restrictions + ambiance). Build smart alerts system that monitors user-defined criteria and sends notifications when new content matches their interests. Create personal food maps feature that allows users to save and organize discoveries geographically with custom tags and notes. Develop neighborhood insights analytics that provides demographic data, trending cuisines, price analysis, and discovery patterns for specific areas. Implement premium feature gating with subscription tier validation. Create advanced query builder UI with natural language processing for complex searches like 'romantic Italian restaurants under $50 with outdoor seating near downtown'. Build alert management dashboard where users can create, edit, and manage multiple alert configurations. Implement map visualization with clustering, heat maps, and custom markers for personal collections. Add neighborhood analytics dashboard with charts showing cuisine diversity, price distributions, popularity trends, and user activity patterns. Include export functionality for personal maps and search results. Setup caching layer for complex analytical queries and real-time alert processing pipeline. These features represent enhancement opportunities once the core application is stable and feature-complete.",
         "testStrategy": "Verify complex multi-attribute queries return accurate results with proper filtering and ranking. Test smart alerts trigger correctly when new content matches user criteria within 5 minutes of content processing. Confirm personal food maps save locations with custom metadata and display correctly on interactive maps. Validate neighborhood insights generate accurate analytics from aggregated data with proper privacy protection. Test premium feature access controls properly restrict functionality based on subscription status. Verify alert management interface allows full CRUD operations on alert configurations. Confirm map visualizations render efficiently with 1000+ locations and clustering works properly. Test analytics dashboards load within 3 seconds and display accurate trend data.",
@@ -1149,9 +963,7 @@
             "title": "Develop Smart Alerts Monitoring System",
             "description": "Create an intelligent alert system that monitors user-defined criteria and sends notifications when matching restaurants or events are found",
             "status": "pending",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Build background monitoring service, user preference management, notification delivery system (push, email, SMS), alert customization interface, and frequency controls.",
             "testStrategy": ""
           },
@@ -1160,9 +972,7 @@
             "title": "Build Personal Food Maps with Geospatial Features",
             "description": "Implement personalized mapping functionality with geospatial data processing for location-based food discovery and user journey tracking",
             "status": "pending",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Integrate mapping APIs, implement geospatial queries, user location tracking, custom map layers, saved locations, route planning, and distance calculations.",
             "testStrategy": ""
           },
@@ -1171,10 +981,7 @@
             "title": "Create Neighborhood Insights Analytics",
             "description": "Develop analytics system that provides insights about food scenes, trends, and patterns within specific geographic areas",
             "status": "pending",
-            "dependencies": [
-              1,
-              3
-            ],
+            "dependencies": [1, 3],
             "details": "Build data aggregation pipelines, statistical analysis engines, trend detection algorithms, demographic insights, and interactive analytics dashboards.",
             "testStrategy": ""
           },
@@ -1192,9 +999,7 @@
             "title": "Integrate Natural Language Query Processing",
             "description": "Add NLP capabilities to allow users to search using natural language instead of traditional filters",
             "status": "pending",
-            "dependencies": [
-              1
-            ],
+            "dependencies": [1],
             "details": "Implement NLP models for intent recognition, entity extraction, query translation to structured search parameters, and conversational search interface.",
             "testStrategy": ""
           },
@@ -1203,10 +1008,7 @@
             "title": "Develop Map Visualization with Clustering",
             "description": "Create advanced map visualization system with intelligent clustering, heatmaps, and interactive data overlays",
             "status": "pending",
-            "dependencies": [
-              3,
-              4
-            ],
+            "dependencies": [3, 4],
             "details": "Build clustering algorithms for map markers, density visualization, interactive zoom levels, custom map styles, data overlays, and performance optimization for large datasets.",
             "testStrategy": ""
           }
@@ -1219,11 +1021,7 @@
         "details": "Setup Prometheus metrics collection with custom application metrics for API response times, database query performance, cache hit rates, and business metrics (searches/minute, entity processing rates). Configure Grafana dashboards for real-time monitoring with alerting rules for performance degradation, error rates, and resource utilization. Implement OpenTelemetry instrumentation for distributed tracing across all services. Setup E2E testing suite using Playwright/Cypress covering critical user journeys: search flows, discovery features, and social sharing. Implement load testing with Artillery/k6 to simulate realistic traffic patterns and validate performance under stress. Create performance budgets with automated CI/CD integration that fails builds on regression. Setup log aggregation with structured logging for debugging and analytics. Configure health checks and readiness probes for all services. Implement automated performance regression detection and alerting.",
         "testStrategy": "Verify Prometheus collects all defined metrics with 99.9% reliability, confirm Grafana dashboards display real-time data with <5s refresh rates, test alerting rules trigger correctly for threshold breaches, validate E2E tests cover >90% of critical user paths with <10min execution time, confirm load tests can simulate 1000+ concurrent users with realistic patterns, verify performance budgets prevent regressions in CI/CD pipeline, test distributed tracing provides complete request visibility across all services",
         "status": "pending",
-        "dependencies": [
-          2,
-          4,
-          8
-        ],
+        "dependencies": [2, 4, 8],
         "priority": "low",
         "subtasks": []
       }

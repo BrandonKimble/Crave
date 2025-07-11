@@ -5,6 +5,7 @@ Evidence-based food discovery powered by community knowledge.
 ## Project Structure
 
 This is a monorepo containing:
+
 - `apps/api`: NestJS backend
 - `apps/mobile`: React Native mobile app
 - `packages/shared`: Shared types and utilities
@@ -12,6 +13,7 @@ This is a monorepo containing:
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
 - PNPM 8+
 - Docker and Docker Compose
@@ -27,6 +29,7 @@ This is a monorepo containing:
 ### Environment Variables
 
 Copy the example environment files for each project:
+
 - `apps/api/.env.example` → `apps/api/.env`
 - `apps/mobile/.env.example` → `apps/mobile/.env`
 
@@ -54,6 +57,7 @@ Copy the example environment files for each project:
 - API documentation is available at `http://localhost:3000/api/docs` when the backend is running
 
 <!-- TASKMASTER_EXPORT_START -->
+
 > 🎯 **Taskmaster Export** - 2025-07-10 02:08:42 UTC
 > 📋 Export: with subtasks • Status filter: none
 > 🔗 Powered by [Task Master](https://task-master.dev?utm_source=github-readme&utm_medium=readme-export&utm_campaign=crave-search&utm_content=task-export-link)
@@ -226,36 +230,36 @@ Copy the example environment files for each project:
 ```
 
 ╭────────────────────────────────────────────── ⚡ RECOMMENDED NEXT TASK ⚡ ──────────────────────────────────────────────╮
-│                                                                                                                         │
-│  🔥 Next Task to Work On: #1 - Setup Turborepo Monorepo Structure                                  │
-│                                                                                                                         │
-│  Priority: high   Status: ○ pending                                                                                     │
-│  Dependencies: None                                                                                                     │
-│                                                                                                                         │
-│  Description: Initialize the hybrid monorepo architecture with Turborepo, establishing the foundation for API and mobile applications     │
-│                                                                                                                         │
-│  Subtasks:                                                                                              │
-│  1.1 [pending] Create monorepo directory structure                                         │
-│  1.2 [pending] Configure Turborepo setup                                         │
-│  1.3 [pending] Setup workspace configuration                                         │
-│  1.4 [pending] Create shared packages setup                                         │
-│  1.5 [pending] Configure development workflow and git hooks                                         │
-│                                                                                                                         │
-│  Start working: task-master set-status --id=1 --status=in-progress                                                     │
-│  View details: task-master show 1                                                                      │
-│                                                                                                                         │
+│ │
+│ 🔥 Next Task to Work On: #1 - Setup Turborepo Monorepo Structure │
+│ │
+│ Priority: high Status: ○ pending │
+│ Dependencies: None │
+│ │
+│ Description: Initialize the hybrid monorepo architecture with Turborepo, establishing the foundation for API and mobile applications │
+│ │
+│ Subtasks: │
+│ 1.1 [pending] Create monorepo directory structure │
+│ 1.2 [pending] Configure Turborepo setup │
+│ 1.3 [pending] Setup workspace configuration │
+│ 1.4 [pending] Create shared packages setup │
+│ 1.5 [pending] Configure development workflow and git hooks │
+│ │
+│ Start working: task-master set-status --id=1 --status=in-progress │
+│ View details: task-master show 1 │
+│ │
 ╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-
 ╭──────────────────────────────────────────────────────────────────────────────────────╮
-│                                                                                      │
-│   Suggested Next Steps:                                                              │
-│                                                                                      │
-│   1. Run task-master next to see what to work on next                                │
-│   2. Run task-master expand --id=<id> to break down a task into subtasks             │
-│   3. Run task-master set-status --id=<id> --status=done to mark a task as complete   │
-│                                                                                      │
+│ │
+│ Suggested Next Steps: │
+│ │
+│ 1. Run task-master next to see what to work on next │
+│ 2. Run task-master expand --id=<id> to break down a task into subtasks │
+│ 3. Run task-master set-status --id=<id> --status=done to mark a task as complete │
+│ │
 ╰──────────────────────────────────────────────────────────────────────────────────────╯
 
 > 📋 **End of Taskmaster Export** - Tasks are synced from your project using the `sync-readme` command.
+
 <!-- TASKMASTER_EXPORT_END -->

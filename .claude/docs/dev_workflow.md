@@ -3,6 +3,7 @@
 ## Daily Development Ritual
 
 ### Morning Startup
+
 ```bash
 # 1. Check current status
 task-master list
@@ -18,6 +19,7 @@ task-master show <task-id>
 ```
 
 ### Active Development Loop
+
 ```bash
 # 1. Plan implementation
 task-master update-subtask --id=<task-id> --prompt="Implementation plan: [detailed approach]"
@@ -33,6 +35,7 @@ task-master set-status --id=<task-id> --status=done
 ```
 
 ### End of Day Cleanup
+
 ```bash
 # 1. Update any incomplete tasks
 task-master update-subtask --id=<task-id> --prompt="End of day status: [current state, next steps]"
@@ -47,6 +50,7 @@ task-master generate
 ## Task Management Patterns
 
 ### Breaking Down Complex Tasks
+
 ```bash
 # 1. Analyze complexity
 task-master analyze-complexity --research --threshold=5
@@ -59,6 +63,7 @@ task-master validate-dependencies
 ```
 
 ### Handling Blockers
+
 ```bash
 # 1. Mark as blocked
 task-master set-status --id=<task-id> --status=blocked
@@ -71,6 +76,7 @@ task-master next
 ```
 
 ### Research and Learning
+
 ```bash
 # 1. Research technical questions
 task-master research "specific technical question" --save-file=research-notes.md
@@ -82,17 +88,21 @@ task-master update-subtask --id=<task-id> --prompt="Research findings: [insights
 ## Claude Code Integration
 
 ### Context Management
+
 - Use `/clear` between major context switches
 - Keep CLAUDE.md updated with project insights
 - Use task-master show to pull specific context
 
 ### Custom Commands
+
 Create `.claude/commands/` directory with workflow shortcuts:
+
 - `tm-next.md` - Get and show next task
 - `tm-complete.md` - Complete current task
 - `tm-research.md` - Research technical questions
 
 ### Quality Assurance
+
 ```bash
 # Before marking tasks complete
 turbo run lint          # Code quality
@@ -103,11 +113,13 @@ turbo run test          # Test coverage
 ## Performance Optimization
 
 ### Efficient Task Updates
+
 - Use descriptive, searchable task update prompts
 - Include code snippets and error messages in updates
 - Reference file paths and line numbers
 
 ### Batch Operations
+
 ```bash
 # Update multiple related tasks
 task-master update --from=<task-id> --prompt="Global change: [description]"
@@ -117,6 +129,7 @@ task-master expand --all --research
 ```
 
 ### Monitoring Progress
+
 ```bash
 # Weekly progress review
 task-master list --status=done --with-subtasks
@@ -125,4 +138,4 @@ task-master complexity-report
 
 ---
 
-*This workflow optimizes development velocity using Task Master's project management capabilities with Claude Code's AI-powered development assistance.*
+_This workflow optimizes development velocity using Task Master's project management capabilities with Claude Code's AI-powered development assistance._
