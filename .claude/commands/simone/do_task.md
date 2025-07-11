@@ -52,9 +52,9 @@ Read the task description. If anything is unclear, ask clarifying questions befo
   4. Append a log entry to **## Output Log** using the format `[YYYY-MM-DD HH:MM]: <message>`.
   5. Repeat until all subtasks are complete.
 
-## 6 · Placeholder
+## 6 · Quality checks via Code Review
 
-Placeholder - just move on to the next step
+Quality checks are now integrated into the Code Review step below
 
 ## 7 · Execute Code Review
 
@@ -62,6 +62,7 @@ Follow these steps for a Code Review (in order)
 
 - include @.claude/commands/simone/code_review.md and use the Task ID as Scope.
 - Follow the instructions in the file to run a code review in **PARALLEL SUBAGENTS**
+- Note: This now includes automated linting and type-checking as part of the review process
 - When done continue acting on the results accordingly
 - Understand and think about the results
 - on **FAIL**

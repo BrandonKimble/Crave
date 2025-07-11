@@ -35,8 +35,7 @@ Use PARALLEL SUBAGENTS to READ and UNDERSTAND the project's context:
 - READ `.simone/00_PROJECT_MANIFEST.md` for project context
 - READ sprint meta file completely to understand goals and deliverables
 - READ parent milestone requirements from `.simone/02_REQUIREMENTS/`
-- READ `.simone/01_PROJECT_DOCS/ARCHITECTURE.md` for technical context
-- READ `.simone/01_PROJECT_DOCS/LONG_TERM_VISION.md` to understand architectural decisions
+- READ `.simone/01_PROJECT_DOCS/ARCHITECTURE.md` for technical context and decisions
 
 **IMPORTANT:** Sprint tasks must align with documented sprint goals, not expand scope.
 
