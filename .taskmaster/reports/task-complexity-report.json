@@ -1,0 +1,133 @@
+{
+	"meta": {
+		"generatedAt": "2025-07-10T03:06:11.620Z",
+		"tasksAnalyzed": 5,
+		"totalTasks": 15,
+		"analysisCount": 15,
+		"thresholdScore": 5,
+		"projectName": "Crave Search",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Setup Turborepo Monorepo Structure",
+			"complexityScore": 4,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the monorepo setup into specific tasks: directory structure creation, Turborepo configuration, workspace setup, shared packages implementation, and development workflow configuration. Focus on each component's specific requirements and dependencies.",
+			"reasoning": "Already well-structured with 5 subtasks. Moderate complexity due to tooling setup but follows standard patterns. Each subtask is focused and actionable."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Database Schema Implementation",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Separate database implementation into distinct phases: initial database setup, schema design, index strategy, ORM configuration, migration system, and performance validation. Each phase should have clear deliverables and success criteria.",
+			"reasoning": "High complexity due to graph-based schema design, performance requirements, and bulk operations. Already has 6 well-defined subtasks covering all major aspects from setup to validation."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "NestJS Backend Foundation",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Structure NestJS setup into progressive layers: core application initialization, modular architecture, infrastructure services, configuration management, security implementation, authentication scaffolding, and health monitoring. Each layer builds upon the previous.",
+			"reasoning": "Moderate-high complexity due to multiple integrations (Redis, Bull, authentication) and modular architecture requirements. Current 7 subtasks appropriately cover all components with proper dependencies."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "External API Integrations",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Organize API integrations by provider and cross-cutting concerns: individual API client implementations (Reddit, Google Places, LLM), error handling patterns, security management, and comprehensive monitoring. Include fallback strategies for each integration.",
+			"reasoning": "High complexity due to multiple API providers, rate limiting, cost management, and reliability requirements. Current 6 subtasks appropriately separate concerns and include proper error handling and monitoring."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "Entity Resolution System",
+			"complexityScore": 8,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break entity resolution into algorithmic components: three-tier matching implementation, scope-aware resolution logic, performance optimization with in-memory mapping, batch processing capabilities, and alias management with confidence scoring.",
+			"reasoning": "High complexity due to sophisticated matching algorithms, performance requirements, and accuracy demands. Current 5 subtasks appropriately address the technical challenges while maintaining clear boundaries."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "Content Processing Pipeline",
+			"complexityScore": 9,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Organize the pipeline into sequential processing stages: content retrieval, entity extraction, resolution integration, component processing, scoring system, database operations, and job orchestration. Each stage should be independently testable and scalable.",
+			"reasoning": "Very high complexity due to multi-stage pipeline, AI integration, bulk processing requirements, and atomicity constraints. Current 7 subtasks appropriately break down the complex pipeline into manageable components."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "Dynamic Query System",
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Structure query system into processing layers: dynamic query building, LLM integration for natural language processing, scope-aware filtering, adaptive response formatting, geographic capabilities, and contextual ranking algorithms.",
+			"reasoning": "High complexity due to dynamic SQL generation, LLM integration, and adaptive response formatting. Current 6 subtasks appropriately cover all aspects from query construction to result optimization."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Multi-Level Caching System",
+			"complexityScore": 6,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Implement caching in progressive layers: Redis infrastructure setup, multi-tier caching architecture, intelligent invalidation strategies, performance monitoring systems, and geographic cache optimization with warming strategies.",
+			"reasoning": "Moderate-high complexity due to multi-tier architecture and geographic distribution requirements. Current 5 subtasks appropriately address infrastructure, implementation, and optimization concerns."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "User Management and Payment System",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Structure user system into functional areas: authentication implementation, subscription management, payment processing integration, user onboarding experience, access control systems, and analytics with referral tracking.",
+			"reasoning": "High complexity due to payment integration, subscription management, and security requirements. Current 6 subtasks appropriately separate authentication, payments, and user experience concerns."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "React Native Mobile Application",
+			"complexityScore": 8,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Organize mobile development into feature-based modules: app initialization, search interface, results display, map integration, authentication screens, bookmark functionality, state management, and attribution with deep linking systems.",
+			"reasoning": "High complexity due to mobile-specific challenges, multiple integrations, and cross-platform requirements. Current 8 subtasks appropriately address all major mobile app components with proper dependencies."
+		},
+		{
+			"taskId": 11,
+			"taskTitle": "Community Engagement System with Reddit Attribution",
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break down the community engagement system into: Reddit attribution display components, activity scoring algorithm implementation, top mentions ranking system, conversation CTA functionality, quote card UI components, and background activity calculation service with caching optimization.",
+			"reasoning": "High complexity due to multiple interconnected systems: Reddit API integration, real-time activity scoring, complex ranking algorithms, UI components, background processing, and caching. Requires careful coordination between frontend display, backend scoring, and data processing."
+		},
+		{
+			"taskId": 12,
+			"taskTitle": "Discovery Features System",
+			"complexityScore": 9,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Divide into: discovery feed recommendation engine, trending analysis algorithm, recently discussed content system, hidden gems discovery algorithm, content curation pipeline, geographic discovery features, API endpoints with filtering, and discovery metrics dashboard implementation.",
+			"reasoning": "Very high complexity involving multiple ML/recommendation algorithms, real-time data processing, geographic analysis, API design, and analytics. Each component requires sophisticated logic and careful performance optimization."
+		},
+		{
+			"taskId": 13,
+			"taskTitle": "Social Sharing and Growth Features System",
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Split into: bookmark sharing functionality, Reddit post template generator, social media platform integrations, viral mechanics and gamification features, and share analytics with A/B testing framework.",
+			"reasoning": "Moderate-high complexity with multiple external integrations, template generation logic, viral mechanics implementation, and analytics tracking. Requires coordination with various social platforms and user engagement systems."
+		},
+		{
+			"taskId": 14,
+			"taskTitle": "Advanced Search and Premium Features System",
+			"complexityScore": 8,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down into: advanced search engine with multi-attribute queries, smart alerts monitoring system, personal food maps with geospatial features, neighborhood insights analytics, premium feature gating and subscription management, natural language query processing, and map visualization with clustering.",
+			"reasoning": "High complexity involving advanced search algorithms, real-time monitoring, geospatial processing, premium subscription logic, NLP integration, and complex UI visualizations. Multiple sophisticated subsystems requiring careful integration."
+		},
+		{
+			"taskId": 15,
+			"taskTitle": "Performance Monitoring and Testing Infrastructure",
+			"complexityScore": 7,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Organize into: Prometheus metrics collection setup, Grafana dashboards and alerting configuration, OpenTelemetry distributed tracing implementation, E2E testing suite with Playwright/Cypress, load testing infrastructure with Artillery/k6, and automated performance regression detection with CI/CD integration.",
+			"reasoning": "Moderate-high complexity requiring infrastructure setup, monitoring configuration, comprehensive testing strategies, and CI/CD pipeline integration. While technically demanding, tasks are more independent and follow established patterns."
+		}
+	]
+}
