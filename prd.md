@@ -2285,13 +2285,14 @@ _Nothing works without this_
 
 #### 9.1.2 Success Criteria
 
-- Database handles 1000+ entity inserts in <500ms (supports MVP scalability target)
-- Connection pool configured for 50 concurrent connections
-- All foreign key relationships properly enforced
-- Migration system functional for schema changes
+- Database schema created and all foreign key relationships properly enforced
+- Basic CRUD operations functional for all entity types
+- Migration system successfully creates and applies schema changes
 - Test suite runs successfully with >80% code coverage for database operations
-- Local development environment functional with manual setup
+- Local development environment setup documented and reproducible
 - Basic logging captures database operations and errors
+- Connection pooling configured and functional
+- Database supports bulk insert operations (performance validation in later milestones)
 
 **🚀 POST-MVP DEFERRED:**
 
@@ -2317,14 +2318,14 @@ _Required for any content processing and location services_
 
 #### 9.2.2 Success Criteria
 
-- Process 100 entity batch in <2 seconds (meets data processing requirement)
-- LLM integration handles malformed input gracefully
-- Entity resolution accuracy >90% across all entity types (exact, alias, and fuzzy matching)
+- LLM integration successfully processes test content and extracts entities
+- Entity resolution system correctly handles exact matches, aliases, and fuzzy matching
 - Context-dependent attributes (Italian, vegan, etc.) resolve to correct scope
-- Duplicate entity creation reduced by >50%
-- Google Places API successfully enriches restaurant entities with location data
-- External integrations module provides centralized API management and basic rate limiting
-- Basic security prevents common API vulnerabilities
+- Bulk operations successfully process batches of entities without data corruption
+- Google Places API integration enriches restaurant entities with location and hours data
+- External integrations module handles API errors gracefully with proper retry logic
+- Basic security validation prevents common injection attacks and malformed requests
+- System processes sample data end-to-end without critical errors
 
 ### 9.3 Milestone 3: Reddit Data Collection (Week 5-6)
 
@@ -2350,20 +2351,20 @@ _Required for any community content_
 
 **Reddit API Success Criteria:**
 
-- Successfully collect data from 3+ food subreddits
-- API cost stays under $50/day during testing (approximately 200,000 API calls/day at $0.24/1000 calls)
-- Rate limiting properly manages 100 requests/minute constraint (meets API efficiency target)
-- Achieve >5,000 mentions/hour processing rate (meets scalability target)
-- Job system handles failures and retries appropriately
-- Historical post/comment ID storage enables efficient direct access
+- Successfully authenticate and connect to Reddit API
+- Collect sample data from 3+ food subreddits
+- Rate limiting properly respects API constraints without errors
+- Job system handles API failures and implements exponential backoff
+- Content retrieval pipeline successfully stores post/comment data
+- LLM processing pipeline extracts entities from collected content
 
 **Pushshift Fallback Success Criteria:**
 
-- Successfully process archived data from 3+ food subreddits
-- Infrastructure handles bulk data processing (multi-GB files)
-- Extract >10,000 food-related posts/comments from historical data
-- Processing pipeline handles JSON/CSV parsing and data extraction efficiently
-- Data quality sufficient for entity extraction and ranking
+- Successfully download and parse archived Reddit data files
+- Bulk processing pipeline handles large JSON/CSV files without memory issues
+- Extract food-related posts/comments with reasonable precision (manual validation)
+- Data processing pipeline creates entities, connections, and mentions
+- Extracted data sufficient for search functionality testing
 
 ### 9.4 Milestone 4: Dynamic Query System (Week 7-8)
 
@@ -2475,28 +2476,25 @@ _MVP user experience with essential filtering_
 
 **Backend Success Criteria:**
 
-- Search API handles 100+ concurrent requests without performance degradation
-- Search responds in <3s end-to-end uncached (meets response time target)
-- System supports 50 searches/second (meets throughput target)
-- "Open now" filtering accurate based on business hours data
-- Map filtering produces relevant local results
-- Distance filtering works correctly with GPS coordinates
-- API responses maintain <500ms response time for simple queries
-- Error handling provides clear, actionable responses
-- Health checks provide accurate system status
+- Search API successfully processes natural language queries and returns relevant results
+- "Open now" filtering correctly shows only currently open restaurants
+- Location-based filtering returns restaurants within specified area
+- Error handling provides clear feedback for common error scenarios
+- API gracefully handles malformed requests and invalid input
+- Health check endpoints accurately reflect system status
+- Search functionality works end-to-end with sample data
 
 **Mobile App Success Criteria:**
 
-- Search interface is intuitive and responsive
-- Search interface loads in <2 seconds on average devices
-- Map interactions work smoothly on mobile devices
-- Location services obtain accurate GPS coordinates
-- API integration successfully retrieves and displays search results
-- Search results display correctly on various screen sizes
-- User can apply filters and see results update appropriately
-- State management maintains search context across navigation
-- Basic navigation between search and results works smoothly
-- Error states guide users through network issues and failures
+- Search interface loads and is responsive on target devices
+- Location services successfully obtain user coordinates when permitted
+- Search results display properly formatted with evidence cards
+- Map interactions work smoothly without crashes or lag
+- Filtering controls (open now, distance) function as expected
+- Users can complete basic search tasks without critical errors
+- Navigation between screens works smoothly without crashes
+- Error states provide helpful guidance to users
+- State management maintains search context during normal usage
 
 **🚀 POST-MVP DEFERRED:**
 
