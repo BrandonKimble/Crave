@@ -1,0 +1,67 @@
+# Task ID: 7
+# Title: Dynamic Query System
+# Status: pending
+# Dependencies: 6
+# Priority: medium
+# Description: Implement the entity-driven dynamic query system with adaptive SQL generation and result formatting
+# Details:
+Build dynamic query builder that adapts SQL structure based on extracted entities. Implement LLM query processing for natural language to structured entities. Create scope-aware filtering system (restaurant attributes vs dish attributes). Setup return format determination (single list vs dual list) based on entity composition. Implement geographic filtering using map boundaries and 'open now' toggle. Create contextual restaurant ranking system based on relevant dish performance. Optimize for sub-second query execution with proper index utilization.
+
+# Test Strategy:
+Test various query types return correct format and results, verify geographic filtering works within map bounds, confirm contextual ranking reflects query-specific performance, validate response times meet <3s uncached target
+
+# Subtasks:
+## 1. Implement Dynamic Query Builder [pending]
+### Dependencies: None
+### Description: Create a flexible query builder system that can construct search queries dynamically based on user input and context
+### Details:
+Build a query builder that can handle various search parameters, filters, and criteria dynamically. Should support chaining operations and parameter validation.
+
+## 2. Develop LLM Query Processing Engine [pending]
+### Dependencies: 7.1
+### Description: Build natural language processing system to interpret and process user queries using LLM capabilities
+### Details:
+Implement LLM integration for understanding natural language queries, extracting intent, and converting to structured search parameters.
+
+## 3. Create Scope-Aware Filtering System [pending]
+### Dependencies: 7.1
+### Description: Implement intelligent filtering that adapts based on search scope and user context
+### Details:
+Build filtering logic that can understand search scope, apply appropriate filters based on context, and optimize results relevance.
+
+## 4. Build Return Format Determination Logic [pending]
+### Dependencies: 7.2, 7.3
+### Description: Develop system to determine optimal response format based on query type and user needs
+### Details:
+Create adaptive response formatting that can return results in various formats (JSON, structured data, summaries) based on query analysis.
+
+## 5. Implement Geographic Filtering Capabilities [pending]
+### Dependencies: 7.3
+### Description: Add location-based filtering and geographic search functionality
+### Details:
+Build geographic filtering system that can handle location-based queries, distance calculations, and regional result prioritization.
+
+## 6. Develop Contextual Ranking System [pending]
+### Dependencies: 7.4, 7.5
+### Description: Create intelligent ranking algorithm that considers context, relevance, and user preferences
+### Details:
+Implement sophisticated ranking system that weighs multiple factors including relevance, context, user history, and business logic to provide optimal result ordering.
+
+## 7. Implement natural language understanding for intent detection [pending]
+### Dependencies: None
+### Description: Build NLU pipeline to analyze user queries and detect search intent patterns, categorizing queries by type (location-based, cuisine-specific, rating-focused, etc.)
+### Details:
+Create intent classification system using NLP techniques to understand user search goals and map them to appropriate query strategies
+
+## 8. Develop query entity extraction system [pending]
+### Dependencies: 7.7
+### Description: Extract and normalize entities from natural language queries including locations, cuisines, price ranges, ratings, and other restaurant attributes
+### Details:
+Build entity recognition pipeline to identify and standardize key search parameters from user input, handling variations and synonyms
+
+## 9. Create structured query generation from extracted entities [pending]
+### Dependencies: 7.7, 7.8
+### Description: Transform extracted entities and detected intent into structured database queries with appropriate filters, joins, and ranking logic
+### Details:
+Generate optimized SQL queries or search parameters based on NLU results, incorporating geographic constraints, preference weighting, and relevance scoring
+

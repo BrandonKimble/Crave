@@ -1,0 +1,49 @@
+# Task ID: 4
+# Title: External API Integrations
+# Status: pending
+# Dependencies: 3
+# Priority: high
+# Description: Implement Reddit API, Google Places API, and LLM API integrations with proper error handling and rate limiting
+# Details:
+Setup Reddit API client with authentication, rate limiting (100 requests/minute), and cost management ($0.24/1000 calls). Implement Google Places API integration for restaurant location data, hours, and metadata. Configure LLM API client (Gemini/Deepseek) for content analysis and entity extraction. Implement proper error handling, retry logic, and circuit breaker patterns. Setup API key management and rotation. Create fallback strategy for Reddit API using Pushshift data if comment access unavailable. Include comprehensive logging and monitoring for all external API calls.
+
+# Test Strategy:
+Test Reddit API can fetch posts and comments from food subreddits, verify Google Places returns restaurant data with coordinates, confirm LLM API processes content and returns structured entities, validate rate limiting prevents API overuse
+
+# Subtasks:
+## 1. Reddit API Client Implementation [pending]
+### Dependencies: None
+### Description: Build a robust Reddit API client with authentication, rate limiting, and data fetching capabilities
+### Details:
+Implement Reddit API client with OAuth2 authentication, rate limiting handling, subreddit data fetching, post retrieval, and proper error handling for Reddit-specific responses
+
+## 2. Google Places API Integration [pending]
+### Dependencies: None
+### Description: Integrate Google Places API for location-based search and venue information retrieval
+### Details:
+Implement Google Places API client with place search, place details retrieval, geocoding capabilities, and proper handling of quota limits and API responses
+
+## 3. LLM API Client Development [pending]
+### Dependencies: None
+### Description: Create a unified LLM API client supporting multiple providers with cost optimization
+### Details:
+Build LLM API client supporting OpenAI, Anthropic, and other providers with token counting, cost tracking, response streaming, and model selection logic
+
+## 4. Error Handling and Resilience Patterns [pending]
+### Dependencies: 4.1, 4.2, 4.3
+### Description: Implement comprehensive error handling, retry logic, and resilience patterns for all API clients
+### Details:
+Add circuit breakers, exponential backoff, timeout handling, graceful degradation, and proper error classification across all API clients
+
+## 5. API Key Management System [pending]
+### Dependencies: None
+### Description: Implement secure API key management with rotation, validation, and environment-based configuration
+### Details:
+Create secure API key storage, validation mechanisms, key rotation capabilities, environment-specific configurations, and audit logging for key usage
+
+## 6. API Monitoring and Observability [pending]
+### Dependencies: 4.1, 4.2, 4.3, 4.4
+### Description: Implement comprehensive monitoring, logging, and alerting for all API interactions
+### Details:
+Add metrics collection, request/response logging, performance monitoring, cost tracking, rate limit monitoring, and alerting for API failures and quota approaching
+

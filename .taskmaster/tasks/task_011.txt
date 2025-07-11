@@ -1,0 +1,49 @@
+# Task ID: 11
+# Title: Community Engagement System with Reddit Attribution
+# Status: pending
+# Dependencies: 6, 8
+# Priority: high
+# Description: Implement community engagement system with Reddit attribution, activity indicators, top mentions scoring, and conversation CTAs to display Reddit quotes with proper attribution and seamless links back to original discussions.
+# Details:
+Build comprehensive community engagement system with Reddit attribution display showing original usernames, timestamps, and subreddit sources. Implement time-weighted activity scoring algorithm that calculates trending (🔥) and active (🕐) indicators based on recent mention frequency and engagement metrics. Create top mentions scoring system that ranks Reddit comments by relevance, upvotes, and recency. Design 'Join conversation' CTAs that deep-link users to original Reddit threads with proper URL formatting. Implement quote cards with truncated content, full attribution metadata, and responsive design for mobile and web. Setup activity calculation service that processes mention timestamps and calculates rolling activity scores over 24h/7d windows. Create engagement tracking to monitor CTA click-through rates and user interaction patterns. Implement proper Reddit content licensing compliance and attribution requirements. Setup caching for activity scores and mention rankings to optimize performance. Configure background jobs to refresh activity indicators every 30 minutes.
+
+# Test Strategy:
+Verify Reddit quotes display with complete attribution (username, subreddit, timestamp), test activity indicators update correctly based on time-weighted scoring algorithm, confirm 'Join conversation' CTAs generate valid Reddit URLs that open to correct threads, validate top mentions ranking reflects engagement metrics accurately, test quote truncation works properly with read-more functionality, verify activity scores calculate correctly over different time windows, confirm system handles deleted/removed Reddit content gracefully
+
+# Subtasks:
+## 1. Reddit Attribution Display Components [pending]
+### Dependencies: None
+### Description: Create UI components to display Reddit post/comment attribution information including author, subreddit, timestamp, and source links
+### Details:
+Build reusable React components for showing Reddit attribution data with proper styling and responsive design. Include components for author cards, subreddit badges, and source link buttons.
+
+## 2. Activity Scoring Algorithm Implementation [pending]
+### Dependencies: None
+### Description: Implement the core algorithm for calculating activity scores based on Reddit engagement metrics like upvotes, comments, and recency
+### Details:
+Create scoring functions that weight different engagement factors (upvotes, comment count, post age, subreddit popularity) to generate meaningful activity scores for ranking purposes.
+
+## 3. Top Mentions Ranking System [pending]
+### Dependencies: 11.2
+### Description: Build system to rank and filter top Reddit mentions using the activity scoring algorithm
+### Details:
+Implement ranking logic that uses activity scores to sort mentions, with configurable time windows and filtering options. Include pagination and real-time updates.
+
+## 4. Conversation CTA Functionality [pending]
+### Dependencies: 11.1
+### Description: Create call-to-action components and handlers for engaging with Reddit conversations from the app
+### Details:
+Build CTA buttons and modals for actions like 'Join Conversation', 'View on Reddit', and 'Share'. Include tracking and analytics for CTA engagement.
+
+## 5. Quote Card UI Components [pending]
+### Dependencies: 11.1
+### Description: Design and implement quote card components for displaying Reddit content excerpts with attribution
+### Details:
+Create visually appealing quote cards that showcase Reddit post/comment text with proper attribution, voting indicators, and engagement metrics. Support different card sizes and layouts.
+
+## 6. Background Activity Calculation Service with Caching [pending]
+### Dependencies: 11.2, 11.3
+### Description: Implement background service for calculating activity scores with Redis caching optimization
+### Details:
+Build a background job system that periodically recalculates activity scores for all tracked mentions. Implement Redis caching strategy with TTL and cache invalidation to optimize performance and reduce API calls.
+

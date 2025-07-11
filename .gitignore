@@ -25,6 +25,11 @@ pnpm-debug.log*
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+.cursor/
+.windsurf/
+.roo/
+.clinerules/
+.trae/
 *.suo
 *.ntvs*
 *.njsproj
@@ -47,3 +52,18 @@ web-build/
 
 # macOS
 .DS_Store
+
+logs
+dev-debug.log
+# Dependency directories
+.idea
+.vscode
+# OS specific
+
+# Task files
+# tasks.json
+# tasks/ 
+
+# Simone task management system (moved to separate worktree)
+.simone/
+.claude/commands/simone/

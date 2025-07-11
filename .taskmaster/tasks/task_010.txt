@@ -1,0 +1,79 @@
+# Task ID: 10
+# Title: React Native Mobile Application
+# Status: pending
+# Dependencies: 8, 9
+# Priority: medium
+# Description: Build the mobile application with search interface, results display, and core user features
+# Details:
+Initialize React Native app with Expo and TypeScript. Implement search interface with natural language input and LLM processing. Create results display with dish-restaurant pairs, evidence cards, and activity indicators. Build map integration with React Native Maps for location selection and viewport filtering. Implement user authentication screens and subscription management. Create bookmark system for saving dishes and managing personal lists. Setup React Query for server state management and Zustand for client state. Implement attribution system with Reddit links and 'Join conversation' CTAs. Include push notification setup and deep linking capabilities.
+
+# Test Strategy:
+Verify search functionality works end-to-end, test map integration filters results correctly, confirm bookmark system saves and retrieves data, validate authentication flows work properly, test attribution links open Reddit correctly
+
+# Subtasks:
+## 1. React Native App Initialization [pending]
+### Dependencies: None
+### Description: Set up the React Native project structure with necessary dependencies and configuration
+### Details:
+Initialize React Native project, configure Metro bundler, set up development environment, install core dependencies like React Navigation, and configure platform-specific settings for iOS and Android
+
+## 2. Search Interface Implementation [pending]
+### Dependencies: 10.1
+### Description: Create the main search interface with input fields and search functionality
+### Details:
+Build search screen with text input, filters, search suggestions, and implement search API integration with proper error handling and loading states
+
+## 3. Results Display with Evidence Cards [pending]
+### Dependencies: 10.2
+### Description: Implement search results display with structured evidence cards
+### Details:
+Create reusable evidence card components, implement results list with pagination, add sorting and filtering options, and ensure responsive design across different screen sizes
+
+## 4. Map Integration [pending]
+### Dependencies: 10.3
+### Description: Integrate map functionality with location-based search and results display
+### Details:
+Implement React Native Maps, add location services, create map markers for search results, implement geolocation features, and handle location permissions
+
+## 5. User Authentication Screens [pending]
+### Dependencies: 10.1
+### Description: Create user authentication flow with login, registration, and profile screens
+### Details:
+Build authentication screens, implement secure token storage, add biometric authentication support, create user profile management, and handle authentication state management
+
+## 6. Bookmark System [pending]
+### Dependencies: 10.3, 10.5
+### Description: Implement user bookmark functionality for saving and managing search results
+### Details:
+Create bookmark storage system, implement bookmark management screens, add bookmark synchronization with backend, and create bookmark organization features
+
+## 7. State Management Setup [pending]
+### Dependencies: 10.1
+### Description: Configure global state management for app data and user preferences
+### Details:
+Set up Redux/Context API for state management, implement data persistence, create state selectors and actions, and ensure proper state synchronization across components
+
+## 8. Attribution System with Deep Linking [pending]
+### Dependencies: 10.7
+### Description: Implement attribution tracking and deep linking functionality
+### Details:
+Configure deep linking with React Navigation, implement URL scheme handling, add attribution tracking for shared content, create universal links support, and ensure proper navigation flow from external links
+
+## 9. Mobile App Initialization and Core Architecture [pending]
+### Dependencies: None
+### Description: Set up the foundational mobile app structure including navigation, routing, and core configuration for cross-platform development
+### Details:
+Implement app initialization, configure navigation system, set up cross-platform compatibility, establish project structure and build configuration
+
+## 10. Search Interface and User Input Components [pending]
+### Dependencies: 10.9
+### Description: Develop the search interface with input handling, validation, and mobile-optimized user experience
+### Details:
+Create search input components, implement voice search capabilities, add search suggestions, optimize for mobile keyboards and touch interactions
+
+## 11. Results Display System with Evidence Cards and Pagination [pending]
+### Dependencies: 10.10
+### Description: Implement the complete results display system including evidence cards, list pagination, sorting/filtering, and responsive design
+### Details:
+Develop evidence card components, implement results list with pagination, add sorting and filtering capabilities, ensure responsive design across mobile devices
+
