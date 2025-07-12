@@ -2327,10 +2327,10 @@ _Required for any content processing and location services_
 
 #### 9.2.1 Core Tasks
 
-- **LLM integration**: API connectivity, structured input/output handling
+- **LLM integration**: API connectivity, structured input/output handling (see llm-content-processing.md for LLM details)
 - **Complete entity resolution system**: Three-phase system with LLM normalization, database matching (exact, alias, fuzzy), and batched processing pipeline
 - **Alias management**: Automatic alias creation, duplicate prevention, scope-aware resolution
-- **Context-dependent attribute handling**: Separate entities by scope (dish vs restaurant attributes)
+- **Context-dependent attribute handling**: Separate entities by scope (dish vs restaurant attributes), referencing section 4.2.2's entity type definitions
 - **Bulk operations pipeline**: Multi-row inserts/updates, transaction management
 - **Google Places API integration**: Restaurant data enrichment, location services setup
 - **External integrations module**: Centralized API management, basic rate limiting for google-places, reddit-api, llm-api
@@ -2359,7 +2359,7 @@ _Community content foundation - Path determined by PoC results_
 
 - **Reddit API integration**: Authentication, rate limiting, cost management
 - **Content retrieval pipeline**: Post/comment fetching, URL storage
-- **Background job system**: Scheduled collection, error handling, retry logic
+- **Background job system**: Scheduled collection (weekly new entity enrichment and quarterly full refresh, referencing section 5.1.1), error handling, retry logic (see llm-content-processing.md for LLM processing details)
 
 **Pushshift Fallback Path:**
 
@@ -2459,7 +2459,7 @@ _MVP user experience with essential filtering_
 
 **Backend Implementation:**
 
-- **Search functionality**: Natural language input, LLM query processing
+- **Search functionality**: Natural language input, LLM query processing, with explicit trigger for on-demand data collection if query results are insufficient (referencing section 5.1.2)
 - **Result display**: Dish-restaurant pairs, basic evidence cards
 - **Map integration**: Location selection, viewport boundary filtering
 - **Open now filtering**: Real-time availability toggle using Google Places hours
@@ -2874,7 +2874,7 @@ _Multi-level caching system (Deferred from Milestone 7)_
 #### 10.4.1 Core Tasks
 
 - **Multi-level cache implementation**: Hot queries (1hr), recent results (24hr), static data (7d)
-- **Redis setup**: Connection pooling, basic key structure, memory management
+- **Redis setup**: Connection pooling, basic key structure, memory management (referencing section 7.2.3 for Redis implementation details)
 - **Cache integration**: Query pipeline integration, hit/miss tracking
 - **Basic performance testing**: k6 load testing setup, critical path testing
 - **Performance monitoring foundation**: Response time tracking, cache hit rate monitoring
