@@ -2949,7 +2949,7 @@ _Advanced recommendation engine (lowest priority)_
 
 ### 10.8 Performance Target Evolution Summary
 
-#### 10.8.1 MVP Targets (Weeks 1-28)
+#### 10.8.1 MVP Targets (Weeks 1-31)
 
 - **Concurrent Users**: 1,000-2,000
 - **Search Response**: <400ms cached, <3s uncached
@@ -2957,7 +2957,7 @@ _Advanced recommendation engine (lowest priority)_
 - **Reddit Processing**: 5,000 mentions/hour (API limited)
 - **Database Connections**: 50 connections
 
-#### 10.8.2 Post-MVP Scaling Targets (Week 29+)
+#### 10.8.2 Post-MVP Scaling Targets (Week 32+)
 
 - **Concurrent Users**: 10,000+ (5x scale-up)
 - **Search Response**: <400ms cached, <2s uncached (optimization)
@@ -2983,7 +2983,7 @@ _Advanced recommendation engine (lowest priority)_
 
 #### 10.8.4 Final Roadmap Summary
 
-**MVP Phase (Weeks 1-25):**
+**MVP Phase (Weeks 1-31):**
 
 - Core search functionality with community-powered results
 - Basic mobile app with essential features
@@ -2991,7 +2991,7 @@ _Advanced recommendation engine (lowest priority)_
 - UI polish for user experience
 - Ready for user validation and feedback
 
-**Post-MVP Phase (Weeks 26+):**
+**Post-MVP Phase (Weeks 32+):**
 
 - Advanced infrastructure and monitoring
 - Performance optimizations and caching
