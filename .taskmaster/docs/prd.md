@@ -2239,15 +2239,15 @@ _Note: Core database schema defined in section 4.1. This section covers Reddit-s
 - **A/B testing framework**: Test different attribution formats and CTA language
 - **Privacy compliance**: Ensure tracking complies with app store and privacy requirements
 
-## 9. Implementation Roadmap
+## 9. PRE-MVP IMPLEMENTATION ROADMAP
 
 _Dependencies-based development order with testable milestones_
 
-_**Note**: This roadmap is a high-level overview of the project. The actual implementation, performance and scalability requirements, milestones, tasks, success criteria, and timelines are subject to change based on the specific requirements and constraints of the project during development._
+_**Note**: This roadmap is a high-level overview of the project. The actual implementation, performance and scalability requirements, milestones, tasks, success criteria, and timelines are subject to change based on the specific requirements, constraints, and evolution of the project during development._
 
-### 9.1 Performance & Scalability Targets
+### Performance & Scalability Targets
 
-#### 9.1.1 Response Time Targets
+#### Response Time Targets
 
 - **Search queries**: <400ms (cached), <3s (uncached with LLM processing)
 - **Discovery feed**: <1s (pre-computed data)
@@ -2255,14 +2255,14 @@ _**Note**: This roadmap is a high-level overview of the project. The actual impl
 - **Payment processing**: <3s (Stripe integration)
 - **Reddit API operations**: Constrained by 100 requests/minute rate limit
 
-#### 9.1.2 MVP Scalability Targets
+#### MVP Scalability Targets
 
 - **Concurrent users**: 1,000-2,000 (scale to 10,000+ post-MVP)
 - **Search throughput**: 50 searches/second (scale to 100+ post-MVP)
 - **Reddit data processing**: 5,000 mentions/hour (API rate limit constraint)
 - **System uptime**: 99.9%
 
-#### 9.1.3 Data Processing Requirements
+#### Data Processing Requirements
 
 - **Entity resolution**: <2s for 100 entity batch
 - **Quality score computation**: <10 minutes for full dataset refresh
@@ -2270,67 +2270,90 @@ _**Note**: This roadmap is a high-level overview of the project. The actual impl
 - **Database connection pool**: 50 connections (MVP), scale to 100+
 - **Reddit API efficiency**: >80% of rate limit utilization during active collection
 
-### 9.2 Milestone 1: Database Foundation & Testing Infrastructure (Week 1-2)
+### 9.0 Proof of Concept: Reddit API Validation (Week 0 - 3 days)
+
+_Critical risk validation before full development_
+
+#### 9.0.1 Core Tasks
+
+- **Reddit API access validation**: Test authentication, rate limits, and comment access
+- **Sample data collection**: Collect 100+ comments from r/food, r/FoodPorn, r/AskCulinary
+- **Basic LLM processing test**: Extract entities from sample comments using chosen LLM
+- **Data quality assessment**: Manual review of extracted entities and relevance
+- **API cost estimation**: Calculate realistic costs based on actual API responses
+
+#### 9.0.2 Success Criteria
+
+- Reddit API successfully authenticates and returns comment data
+- Sample data contains food-related discussions with extractable entities
+- LLM successfully identifies restaurants, dishes, and attributes from sample
+- Manual review confirms >70% of extracted entities are food-related and accurate
+- API costs are within acceptable range for MVP development
+
+#### 9.0.3 Decision Point
+
+**IF SUCCESS:** Proceed with Reddit API path in Milestone 3
+**IF FAILURE:** Immediately pivot to Pushshift fallback approach
+
+---
+
+### 9.1 Milestone 1: Database Foundation & Basic Setup (Week 1-2)
 
 _Nothing works without this_
 
-#### 9.2.1 Core Tasks
+#### 9.1.1 Core Tasks
 
 - **Database schema creation**: Entities, connections, mentions tables with proper indexes
 - **Connection pooling and basic database operations**: CRUD operations, bulk inserts
 - **Database migrations and version control**: Schema evolution capability
 - **Testing infrastructure setup**: Jest, @nestjs/testing, test database configuration
-- **CI/CD pipeline**: GitHub Actions setup for automated testing
-- **Docker containerization**: Local development setup with PostgreSQL + Redis
-- **Basic deployment infrastructure**: Railway.app deployment configuration
 - **Environment configuration**: dotenv management, config validation
-- **Basic logging**: Winston logging setup with structured output
+- **Basic logging**: Simple console logging for development
 
-#### 9.2.2 Success Criteria
+#### 9.1.2 Success Criteria
 
-- Database handles 1000+ entity inserts in <500ms (supports MVP scalability target)
-- Connection pool configured for 50 concurrent connections
-- All foreign key relationships properly enforced
-- Migration system functional for schema changes
+- Database schema created and all foreign key relationships properly enforced
+- Basic CRUD operations functional for all entity types
+- Migration system successfully creates and applies schema changes
 - Test suite runs successfully with >80% code coverage for database operations
-- CI/CD pipeline automatically runs tests on pull requests
-- Docker setup enables one-command local development environment
-- Basic deployment to Railway.app functional with environment management
-- Structured logging captures database operations and errors
+- Local development environment setup documented and reproducible
+- Basic logging captures database operations and errors
+- Connection pooling configured and functional
+- Database supports bulk insert operations (performance validation in later milestones)
 
-### 9.3 Milestone 2: Entity Processing Core & External Integrations (Week 3-4)
+### 9.2 Milestone 2: Entity Processing Core & External Integrations (Week 3-4)
 
 _Required for any content processing and location services_
 
-#### 9.3.1 Core Tasks
+#### 9.2.1 Core Tasks
 
 - **LLM integration**: API connectivity, structured input/output handling
-- **Basic entity resolution**: Exact name matching, simple deduplication
+- **Complete entity resolution system**: Three-phase system with LLM normalization, database matching (exact, alias, fuzzy), and batched processing pipeline
+- **Alias management**: Automatic alias creation, duplicate prevention, scope-aware resolution
+- **Context-dependent attribute handling**: Separate entities by scope (dish vs restaurant attributes)
 - **Bulk operations pipeline**: Multi-row inserts/updates, transaction management
 - **Google Places API integration**: Restaurant data enrichment, location services setup
-- **External integrations module**: Centralized API management, rate limiting for google-places, reddit-api, llm-api
-- **Security middleware**: Helmet security headers, express-rate-limit, input validation setup
-- **Shared packages foundation**: @crave-search/shared package with common types and constants
-- **API documentation foundation**: @nestjs/swagger setup for endpoint documentation
+- **External integrations module**: Centralized API management, basic rate limiting for google-places, reddit-api, llm-api
+- **Basic security essentials**: Input validation, basic rate limiting, essential API security
 
-#### 9.3.2 Success Criteria
+#### 9.2.2 Success Criteria
 
-- Process 100 entity batch in <2 seconds (meets data processing requirement)
-- LLM integration handles malformed input gracefully
-- Entity resolution accuracy >80% on simple test cases (target 90%+ in advanced milestone)
-- Google Places API successfully enriches restaurant entities with location data
-- External integrations module provides centralized API management and rate limiting
-- API security headers properly configured, rate limiting active
-- Shared package consumable by both API and mobile apps
-- Basic API documentation auto-generated from NestJS decorators
+- LLM integration successfully processes test content and extracts entities
+- Entity resolution system correctly handles exact matches, aliases, and fuzzy matching
+- Context-dependent attributes (Italian, vegan, etc.) resolve to correct scope
+- Bulk operations successfully process batches of entities without data corruption
+- Google Places API integration enriches restaurant entities with location and hours data
+- External integrations module handles API errors gracefully with proper retry logic
+- Basic security validation prevents common injection attacks and malformed requests
+- System processes sample data end-to-end without critical errors
 
-### 9.4 Milestone 3: Reddit Data Collection (Week 5-6)
+### 9.3 Milestone 3: Data Collection Implementation (Week 5-6)
 
-_Required for any community content_
+_Community content foundation - Path determined by PoC results_
 
-**⚠️ IMPLEMENTATION DEPENDENCY**: This milestone assumes Reddit API comment access. If unavailable, pivot to Pushshift bulk data processing with modified tasks and success criteria.
+**⚠️ IMPLEMENTATION DEPENDENCY**: This milestone depends on Reddit API comment access determined by PoC results in Week 0. If unavailable, pivot to Pushshift bulk data processing with modified tasks and success criteria.
 
-#### 9.4.1 Core Tasks
+#### 9.3.1 Core Tasks
 
 **Reddit API Path (Preferred):**
 
@@ -2344,126 +2367,95 @@ _Required for any community content_
 - **Historical content pipeline**: Parse JSON/CSV files, extract posts/comments
 - **Batch processing system**: Process large datasets, handle storage requirements
 
-#### 9.4.2 Success Criteria
+#### 9.3.2 Success Criteria
 
 **Reddit API Success Criteria:**
 
-- Successfully collect data from 3+ food subreddits
-- API cost stays under $50/day during testing (approximately 200,000 API calls/day at $0.24/1000 calls)
-- Rate limiting properly manages 100 requests/minute constraint (meets API efficiency target)
-- Achieve >5,000 mentions/hour processing rate (meets scalability target)
-- Job system handles failures and retries appropriately
-- Historical post/comment ID storage enables efficient direct access
+- Successfully authenticate and connect to Reddit API
+- Collect sample data from 3+ food subreddits
+- Rate limiting properly respects API constraints without errors
+- Job system handles API failures and implements exponential backoff
+- Content retrieval pipeline successfully stores post/comment data
+- LLM processing pipeline extracts entities from collected content
 
 **Pushshift Fallback Success Criteria:**
 
-- Successfully process archived data from 3+ food subreddits
-- Infrastructure handles bulk data processing (multi-GB files)
-- Extract >10,000 food-related posts/comments from historical data
-- Processing pipeline handles JSON/CSV parsing and data extraction efficiently
-- Data quality sufficient for entity extraction and ranking
+- Successfully download and parse archived Reddit data files
+- Bulk processing pipeline handles large JSON/CSV files without memory issues
+- Extract food-related posts/comments with reasonable precision (manual validation)
+- Data processing pipeline creates entities, connections, and mentions
+- Extracted data sufficient for search functionality testing
 
-### 9.5 Milestone 4: Dynamic Query System (Week 7-8)
+### 9.4 Milestone 4: Dynamic Query System (Week 7-8)
 
 _Core search architecture - required for MVP_
 
-#### 9.5.1 Core Tasks
+#### 9.4.1 Core Tasks
 
+- **LLM query processing**: Natural language query analysis, entity extraction, and intent understanding
 - **Dynamic query builder**: Single adaptive SQL query system that responds to any entity combination
 - **Entity-based filtering**: Automatic scope-aware filtering for restaurant vs dish attributes
 - **Result standardization**: Entity-driven single/dual list returns, consistent formatting
+- **Query pipeline integration**: Cache check → LLM analysis → entity resolution → SQL generation
 
-#### 9.5.2 Success Criteria
+#### 9.4.2 Success Criteria
 
+- LLM query processing extracts entities with >90% accuracy
 - All entity combinations return properly formatted results
 - Query response time <3s without caching (meets uncached response target)
 - Database queries execute in <1s (supports overall response time target)
 - Location filtering works within map boundaries
+- Query pipeline handles malformed input gracefully
 
-### 9.6 Milestone 5: Advanced Entity Resolution (Week 9-10)
-
-_Critical for search quality and accuracy_
-
-#### 9.6.1 Core Tasks
-
-- **Three-tier resolution system**: Exact → Alias → Fuzzy matching implementation
-- **Fuzzy matching optimization**: Levenshtein distance, performance tuning, confidence thresholds
-- **Alias management**: Automatic alias creation, duplicate prevention, scope-aware resolution
-- **Context-dependent attribute handling**: Separate entities by scope (dish vs restaurant attributes)
-
-#### 9.6.2 Success Criteria
-
-- Entity resolution accuracy >90% (meets advanced target from PRD)
-- Fuzzy matching completes in <100ms per entity batch
-- Duplicate entity creation reduced by >50%
-- Context-dependent attributes (Italian, vegan, etc.) resolve to correct scope
-- 100 entity batch processing maintains <2s target
-
-### 9.7 Milestone 6: Basic Ranking & Scoring (Week 11-12)
+### 9.5 Milestone 5: Basic Ranking & Scoring (Week 9-10)
 
 _Required for useful search results_
 
-#### 9.7.1 Core Tasks
+#### 9.5.1 Core Tasks
 
-- **Global quality score computation**: Dish and restaurant ranking algorithms
-- **Mention scoring system**: Time-weighted formula, activity indicators
-- **Connection metrics aggregation**: Mention count, upvotes, source diversity
-- **Data seeding pipeline**: Initial entity bootstrapping, test data generation
-- **Basic entity management**: Tools for manual entity creation and management
+- **Dish quality score computation**: Connection strength-based algorithm (85-90% weighting)
+- **Restaurant quality score computation**: Combined dish performance + direct mentions (80% + 20% formula)
+- **Category/attribute performance scoring**: Restaurant ranking for category/attribute queries
+- **Mention scoring system**: Time-weighted formula, activity indicators (trending/active status)
+- **Connection metrics aggregation**: Mention count, upvotes, source diversity, recency weighting
+- **Basic performance optimization**: Essential performance tuning for entity resolution
+- **Performance benchmarking**: Basic load testing for scoring algorithms, response time validation
 
-#### 9.7.2 Success Criteria
+#### 9.5.2 Success Criteria
 
-- Search results correlate with obvious community consensus
-- Activity indicators (trending/active) reflect recent discussions
-- Score computation completes in <100ms per connection
+- Quality scores accurately reflect community consensus (dish rankings align with popular mentions)
+- Activity indicators (trending 🔥, active 🕐) correctly identify recent discussion patterns
+- Score computation completes in <100ms per connection (meets performance target)
 - Full dataset refresh completes in <10 minutes (meets data processing requirement)
-- Data seeding pipeline creates representative test entities for development
-- Basic entity management tools functional for initial content creation
+- Restaurant rankings contextually adjust based on query entities (category/attribute performance)
+- System handles 500+ concurrent scoring operations without performance degradation
+- Entity resolution performance adequate for user testing (>90% accuracy, <2s for 100 entities)
 
-### 9.8 Milestone 7: Complex Multi-Attribute Queries (Week 13-14)
+### 9.6 Milestone 6: Complex Multi-Attribute Queries (Week 11-12)
 
 _Core search functionality enhancement_
 
-#### 9.8.1 Core Tasks
+#### 9.6.1 Core Tasks
 
 - **Multi-attribute search**: "spicy vegan ramen with patio" query support
-- **Advanced filtering UI**: Attribute selection, multiple criteria combination
+- **Advanced filtering logic**: Attribute selection, multiple criteria combination
 - **Query optimization**: Efficient handling of complex entity combinations
 - **Result relevance**: Improved ranking for multi-attribute queries
+- **Basic caching**: Simple in-memory caching for query performance
 
-#### 9.8.2 Success Criteria
+#### 9.6.2 Success Criteria
 
-- Complex queries maintain <3s response time (performance consistency)
-- Multi-attribute filtering works across all entity types
-- UI supports intuitive attribute selection and combination
+- Multi-attribute queries successfully parse and execute
+- Query results accurately reflect all specified criteria
+- System handles attribute combinations across different entity types
 - Search results accurately reflect multi-criteria requests
+- Basic caching improves response times for repeated queries
 
-### 9.9 Milestone 8: Basic Caching Layer (Week 15-16)
-
-_Performance requirement for MVP_
-
-#### 9.8.1 Core Tasks
-
-- **Multi-level cache implementation**: Hot queries (1hr), recent results (24hr), static data (7d)
-- **Redis setup**: Connection pooling, basic key structure, memory management
-- **Cache integration**: Query pipeline integration, hit/miss tracking
-- **Basic performance testing**: k6 load testing setup, critical path testing
-- **Performance monitoring foundation**: Response time tracking, cache hit rate monitoring
-
-#### 9.8.2 Success Criteria
-
-- Cache hit rate >85% for repeat queries (meets performance target)
-- Cached queries respond in <400ms (meets cached response target)
-- Cache memory usage stays under configured limits
-- Cache invalidation works correctly for fresh data
-- Load testing validates system handles 50 concurrent users
-- Performance monitoring captures response times and bottlenecks
-
-### 9.10 Milestone 9: Basic Search Interface + Open Now Filtering (Week 17-18)
+### 9.7 Milestone 7: Basic Search Interface + Open Now Filtering (Week 13-15)
 
 _MVP user experience with essential filtering_
 
-#### 9.10.1 Core Tasks
+#### 9.7.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2471,7 +2463,7 @@ _MVP user experience with essential filtering_
 - **Result display**: Dish-restaurant pairs, basic evidence cards
 - **Map integration**: Location selection, viewport boundary filtering
 - **Open now filtering**: Real-time availability toggle using Google Places hours
-- **API documentation**: Complete Swagger documentation for all endpoints
+- **Basic user analytics**: Search query tracking, result interaction logging
 - **Error handling middleware**: Structured error responses, graceful degradation
 - **Health checks**: Basic system health monitoring endpoints
 
@@ -2481,36 +2473,40 @@ _MVP user experience with essential filtering_
 - **Map integration**: React Native Maps, location services, boundary filtering
 - **UI components**: Search results cards, evidence display, filtering controls
 - **State management**: Zustand store for search state, results caching
+- **Basic error tracking**: Client-side error logging for debugging
 - **Error handling**: User-friendly error states, network failure handling
 
-#### 9.10.2 Success Criteria
+#### 9.7.2 Success Criteria
 
 **Backend Success Criteria:**
 
-- Search responds in <3s end-to-end uncached (meets response time target)
-- Cached searches respond in <400ms (meets cached target)
-- System supports 50 searches/second (meets throughput target)
-- Map filtering produces relevant local results
-- "Open now" filtering produces accurate results
-- API documentation covers all endpoints with examples
-- Error handling provides clear, actionable responses
-- Health check endpoints report system status accurately
+- Search API successfully processes natural language queries and returns relevant results
+- "Open now" filtering correctly shows only currently open restaurants
+- Location-based filtering returns restaurants within specified area
+- Error handling provides clear feedback for common error scenarios
+- API gracefully handles malformed requests and invalid input
+- Health check endpoints accurately reflect system status
+- Search functionality works end-to-end with sample data
 
 **Mobile App Success Criteria:**
 
-- Search interface is intuitive and responsive
-- Map interactions work smoothly on mobile devices
-- Results display correctly on various screen sizes
-- State management maintains search context across navigation
-- Error states guide users through network issues and failures
+- Search interface loads and is responsive on target devices
+- Location services successfully obtain user coordinates when permitted
+- Search results display properly formatted with evidence cards
+- Map interactions work smoothly without crashes or lag
+- Filtering controls (open now, distance) function as expected
+- Users can complete basic search tasks without critical errors
+- Navigation between screens works smoothly without crashes
+- Error states provide helpful guidance to users
+- State management maintains search context during normal usage
 
-### 9.11 Milestone 10: Evidence & Attribution System (Week 19-20)
+### 9.8 Milestone 8: Evidence & Attribution System (Week 16-17)
 
 _Core value proposition_
 
 **⚠️ FEATURE DEPENDENCY**: Activity indicators and real-time attribution require Reddit API access. With Pushshift fallback, features are limited to historical data only.
 
-#### 9.11.1 Core Tasks
+#### 9.8.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2533,7 +2529,7 @@ _Core value proposition_
 - **Link handling**: Deep linking to Reddit app/web, fallback handling
 - **Evidence expansion**: Expandable evidence cards, full context display
 
-#### 9.11.2 Success Criteria
+#### 9.8.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2558,11 +2554,11 @@ _Core value proposition_
 - Activity indicators are clearly visible and understood by users
 - Evidence expansion works smoothly without performance issues
 
-### 9.12 Milestone 11: User Management & Authentication (Week 21-22)
+### 9.9 Milestone 9: User Management & Authentication (Week 18-19)
 
 _Foundation for user engagement features_
 
-#### 9.12.1 Core Tasks
+#### 9.9.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2581,7 +2577,7 @@ _Foundation for user engagement features_
 - **Access control UI**: Premium feature gates, subscription status
 - **Analytics integration**: User event tracking, search behavior analytics
 
-#### 9.12.2 Success Criteria
+#### 9.9.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2601,11 +2597,11 @@ _Foundation for user engagement features_
 - Premium features are clearly differentiated and accessible
 - Analytics events fire correctly for user actions and search behavior
 
-### 9.13 Milestone 12: Bookmarking System (Week 23-24)
+### 9.10 Milestone 10: Bookmarking System (Week 20-21)
 
 _Core user engagement foundation_
 
-#### 9.13.1 Core Tasks
+#### 9.10.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2620,7 +2616,7 @@ _Core user engagement foundation_
 - **Bookmark screens**: Saved items display, categories, search functionality
 - **Offline capability**: Local storage for bookmarks, sync on reconnection
 
-#### 9.13.2 Success Criteria
+#### 9.10.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2635,11 +2631,11 @@ _Core user engagement foundation_
 - Users actively organize and revisit saved items
 - Bookmark interface is easily accessible from search results
 
-### 9.14 Milestone 13: Share/Contribute Tools (Week 25-26)
+### 9.11 Milestone 11: Share/Contribute Tools (Week 22-23)
 
 _User acquisition and community engagement_
 
-#### 9.14.1 Core Tasks
+#### 9.11.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2655,7 +2651,7 @@ _User acquisition and community engagement_
 - **Bookmark sharing UI**: Share lists, social media posting
 - **Viral mechanics**: Referral tracking, sharing incentives UI
 
-#### 9.14.2 Success Criteria
+#### 9.11.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2670,11 +2666,11 @@ _User acquisition and community engagement_
 - Viral coefficient shows positive growth
 - Sharing interface is intuitive and encourages user participation
 
-### 9.15 Milestone 14: Enhanced History & Food Maps (Week 27-28)
+### 9.12 Milestone 12: Enhanced History & Food Maps (Week 24-25)
 
 _Personal food journey tracking_
 
-#### 9.15.1 Core Tasks
+#### 9.12.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2688,7 +2684,7 @@ _Personal food journey tracking_
 - **Personal insights**: User dining patterns, preference analytics
 - **Data visualization**: Charts, maps, and insights presentation
 
-#### 9.15.2 Success Criteria
+#### 9.12.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2703,11 +2699,11 @@ _Personal food journey tracking_
 - Personal insights provide meaningful user value
 - Data visualizations are intuitive and engaging
 
-### 9.16 Milestone 15: Payment Integration (Week 29-30)
+### 9.13 Milestone 13: Payment Integration (Week 26-27)
 
 _Business monetization foundation_
 
-#### 9.16.1 Core Tasks
+#### 9.13.1 Core Tasks
 
 **Backend Implementation:**
 
@@ -2723,7 +2719,7 @@ _Business monetization foundation_
 - **Payment flow**: Stripe integration, payment processing, confirmations
 - **Billing interface**: Invoice display, payment history, subscription management
 
-#### 9.16.2 Success Criteria
+#### 9.13.2 Success Criteria
 
 **Backend Success Criteria:**
 
@@ -2738,101 +2734,222 @@ _Business monetization foundation_
 - No payment processing errors in test transactions
 - Payment interface is intuitive and trustworthy
 
-### 9.17 Milestone 16: UI Polish & Mobile Optimization (Week 31-32)
+### 9.14 Milestone 14: UI Polish & Mobile Optimization (Week 28-29)
 
 _Pre-MVP UI/UX refinement and mobile experience optimization_
 
-#### 9.17.1 Core Tasks
+#### 9.14.1 Core Tasks
 
 - **UI/UX refinement**: Visual design consistency, interaction improvements, accessibility
 - **Mobile optimization**: Touch interactions, navigation flow, responsive design
 - **Performance optimization**: Animation smoothness, loading states, error handling
 - **User testing**: Usability testing, A/B testing of key flows, feedback integration
 - **E2E testing**: Maestro mobile testing, critical user journey validation
+- **Production monitoring setup**: Crash reporting, basic performance metrics for MVP launch
 - **Component development**: Storybook setup for component development and documentation
 
-#### 9.17.2 Success Criteria
+#### 9.14.2 Success Criteria
 
 - All screens meet accessibility standards (WCAG 2.1)
 - Mobile interactions feel native and responsive
 - App performance maintains 60fps during interactions
 - User testing shows >80% task completion rate
 - E2E test suite covers all critical user journeys
+- Production monitoring ready for MVP launch (crash reporting, basic analytics)
 - Component library documented and testable in Storybook
 
-### 9.18 MVP Launch Checkpoint (Week 33-34)
+### 9.15 Milestone 15: **MVP LAUNCH CHECKPOINT** (Week 30-31)
 
-**MVP LAUNCH CHECKPOINT** _(Business Validation Phase)_
+_Final preparation and launch_
 
+#### 9.15.1 Core Tasks
+
+- **Final testing**: End-to-end user testing, bug fixes, performance validation
+- **Launch preparation**: App store submission, basic deployment infrastructure
+- **User feedback systems**: Basic analytics, feedback collection mechanisms
+- **Documentation**: User guides, basic API documentation
+- **Launch execution**: Coordinated launch across platforms
+
+#### 9.15.2 Success Criteria
+
+- MVP ready for user acquisition and feedback
 - All core functionality operational meeting performance targets
 - System supports 1,000-2,000 concurrent users
 - Search quality satisfies user needs with complex multi-attribute queries
 - Evidence attribution drives community engagement
 - User management enables bookmarking and sharing
+- Basic infrastructure supports initial user load
 - Payment system operational for premium features
+- Feedback collection systems operational
+- Launch executed successfully
+
 - **Ready for user acquisition and revenue generation**
 
-### 9.19 Milestone 17: Smart Alerts (Week 35-36)
+---
+
+## 10. POST-MVP ROADMAP (Week 32+)
+
+_Advanced features and optimizations deferred until after MVP validation_
+
+### 10.1 Milestone 1: Advanced Infrastructure & Monitoring (Week 32-33)
+
+_Production-ready infrastructure (Deferred from Milestones 1-2)_
+
+#### 10.1.1 Core Tasks
+
+**CI/CD & Deployment (Deferred from Milestone 1):**
+
+- **GitHub Actions CI/CD pipeline**: Automated testing, building, and deployment
+- **Docker containerization**: Production-ready containerized deployment
+- **Railway.app deployment**: Full production deployment with environment management
+- **Environment management**: Comprehensive config validation and secrets management
+
+**Advanced Monitoring (Deferred from Milestone 2):**
+
+- **Prometheus metrics collection**: Comprehensive application metrics
+- **Grafana dashboards**: Real-time monitoring and alerting
+- **Error tracking**: Sentry integration for error monitoring and alerting
+- **Performance monitoring**: Response time tracking, error rate monitoring, health checks
+- **Log aggregation**: Winston structured logging with centralized log management
+
+**Security & Documentation (Deferred from Milestone 2):**
+
+- **Security middleware**: Helmet security headers, express-rate-limit comprehensive setup
+- **API documentation**: @nestjs/swagger comprehensive API documentation
+- **Shared packages**: @crave-search/shared package with common types and constants
+
+#### 10.1.2 Success Criteria
+
+- CI/CD pipeline automatically deploys on successful tests
+- Docker containers run efficiently in production environment
+- Monitoring captures all critical application metrics
+- Error tracking provides actionable insights for debugging
+- Security middleware protects against common vulnerabilities
+- API documentation comprehensive and auto-generated
+- Shared packages reduce code duplication across services
+
+### 10.2 Milestone 2: Basic Caching Layer (Week 34-35)
+
+_Essential caching for improved performance with real user patterns_
+
+#### 10.2.1 Core Tasks
+
+- **In-memory caching**: Simple cache for frequent queries
+- **Query result caching**: Cache search results for common queries
+- **Entity resolution caching**: Cache entity lookups to reduce database load
+- **Cache invalidation strategy**: Basic TTL-based cache management
+- **Performance monitoring**: Cache hit/miss tracking and optimization
+
+#### 10.2.2 Success Criteria
+
+- Caching system successfully stores and retrieves query results
+- Cache invalidation properly updates when underlying data changes
+- Cache improves response times for repeated queries (measurable improvement)
+- Memory usage remains stable during extended operation
+- Cache gracefully handles errors and high load scenarios
+
+### 10.3 Milestone 3: Entity Resolution Performance Optimization (Week 33-34)
+
+_Advanced entity resolution optimization (Deferred from Milestone 5)_
+
+#### 10.3.1 Core Tasks
+
+- **Performance optimization**: Query caching, prepared statements, connection pooling for resolution queries
+- **Advanced fuzzy matching**: Optimized algorithms, confidence scoring, performance tuning
+- **LRU caching**: Frequently accessed entities, cache hit rate optimization
+- **Batch processing optimization**: Size tuning, parallel processing by entity type
+
+#### 10.3.2 Success Criteria
+
+- Entity resolution accuracy >95% (improved from basic 90%)
+- Fuzzy matching completes in <50ms per entity batch (improved from basic 100ms)
+- Cache hit rate >70% for frequently accessed entities
+- Batch processing maintains <1s target for 100 entities (improved from basic 2s)
+- Duplicate entity creation reduced by >80%
+
+### 10.4 Milestone 4: Advanced Caching Infrastructure (Week 35-36)
+
+_Multi-level caching system (Deferred from Milestone 7)_
+
+#### 10.4.1 Core Tasks
+
+- **Multi-level cache implementation**: Hot queries (1hr), recent results (24hr), static data (7d)
+- **Redis setup**: Connection pooling, basic key structure, memory management
+- **Cache integration**: Query pipeline integration, hit/miss tracking
+- **Basic performance testing**: k6 load testing setup, critical path testing
+- **Performance monitoring foundation**: Response time tracking, cache hit rate monitoring
+
+#### 10.4.2 Success Criteria
+
+- Cache hit rate >85% for repeat queries (meets performance target)
+- Cached queries respond in <400ms (meets cached response target)
+- Cache memory usage stays under configured limits
+- Cache invalidation works correctly for fresh data
+- Load testing validates system handles 50 concurrent users
+- Performance monitoring captures response times and bottlenecks
+
+### 10.5 Milestone 5: Smart Alerts (Week 37-38)
 
 _Personalized notification system (Post-MVP)_
 
-#### 9.19.1 Core Tasks
+#### 10.5.1 Core Tasks
 
 - **Smart alerts**: Personalized notifications, custom alert creation
 - **Trending notifications**: Alert users to trending dishes in their area
 - **Personal recommendations**: AI-driven suggestions based on history
 - **Alert management**: User control over notification frequency and types
 
-#### 9.19.2 Success Criteria
+#### 10.5.2 Success Criteria
 
 - Alert system has >40% user opt-in rate
 - Notifications drive >15% user re-engagement
 - Users actively customize and manage alert preferences
 - Alert delivery completes in <1s
 
-### 9.20 Milestone 18: Advanced Performance Monitoring & Scale Infrastructure (Week 37-38)
+### 10.6 Milestone 6: Advanced Performance Monitoring & Scale Infrastructure (Week 39-40)
 
-_System reliability and growth infrastructure for scale_
+_Post-MVP scaling infrastructure for real user load_
 
-#### 9.20.1 Core Tasks
+#### 10.6.1 Core Tasks
 
-- **Advanced monitoring**: Prometheus metrics collection, Grafana dashboards, comprehensive system health
-- **Database optimization**: Query tuning, advanced indexing, performance monitoring, connection pool scaling
-- **Advanced caching**: Intelligent invalidation, Redis optimization, distributed caching strategies
-- **Comprehensive load testing**: E2E testing infrastructure, stress testing, capacity planning
+- **Real user monitoring**: Performance tracking based on actual user behavior patterns, optional Prometheus metrics collection, Grafana dashboards, comprehensive system health
+- **Database optimization**: Query tuning based on real usage patterns, advanced indexing, performance monitoring, connection pool scaling
+- **Advanced caching**: Intelligent invalidation based on real usage data, Redis optimization, optional distributed caching strategies
+- **Load testing with real patterns**: Stress testing based on actual user behavior, not simulated; E2E testing infrastructure, stress testing, capacity planning
+- **Advanced analytics**: User behavior analysis, conversion funnels, retention metrics
 - **Observability**: Distributed tracing, performance profiling, bottleneck identification
 
-#### 9.20.2 Success Criteria
+#### 10.6.2 Success Criteria
 
 - System scales to 10,000+ concurrent users (reaches post-MVP scalability target)
-- Cache hit rate reaches >90% (advanced optimization target)
+- Cache hit rate reaches >90% based on real usage patterns
 - Search throughput scales to 100+ searches/second (post-MVP target)
-- Database queries maintain <1s average response time
-- 99.9% uptime maintained under increased load
-- Comprehensive monitoring provides detailed system insights and alerting
+- Database queries maintain <1s average response time under real load
+- 99.9% uptime maintained under increased real user load
+- Analytics and comprehensive monitoring provide actionable insights and alerting for product development
 - Performance optimization reduces response times by 25% from MVP baseline
 
-### 9.21 Milestone 19: Discovery Features (Week 39+)
+### 10.7 Milestone 7: Discovery Features (Week 41+)
 
 _Advanced recommendation engine (lowest priority)_
 
-#### 9.21.1 Core Tasks
+#### 10.7.1 Core Tasks
 
 - **Discovery feed**: Recently discussed, quick bites, hidden gems
 - **Advanced discovery**: Trending analysis, neighborhood insights, category reports
 - **Recommendation engine**: AI-driven dish discovery algorithms
 - **Personalized feeds**: Custom discovery based on user preferences
 
-#### 9.21.2 Success Criteria
+#### 10.7.2 Success Criteria
 
 - Discovery feed consistently loads in <1s (maintains performance target)
 - Discovery feed drives >20% of user sessions
 - User retention improves by >15% week-over-week
 - Advanced recommendation algorithms show measurable user engagement
 
-### 9.22 Performance Target Evolution Summary
+### 10.8 Performance Target Evolution Summary
 
-#### 9.22.1 MVP Targets (Weeks 1-34)
+#### 10.8.1 MVP Targets (Weeks 1-28)
 
 - **Concurrent Users**: 1,000-2,000
 - **Search Response**: <400ms cached, <3s uncached
@@ -2840,7 +2957,7 @@ _Advanced recommendation engine (lowest priority)_
 - **Reddit Processing**: 5,000 mentions/hour (API limited)
 - **Database Connections**: 50 connections
 
-#### 9.22.2 Post-MVP Scaling Targets (Week 35+)
+#### 10.8.2 Post-MVP Scaling Targets (Week 29+)
 
 - **Concurrent Users**: 10,000+ (5x scale-up)
 - **Search Response**: <400ms cached, <2s uncached (optimization)
@@ -2848,7 +2965,7 @@ _Advanced recommendation engine (lowest priority)_
 - **Search Throughput**: 100+ searches/second (2x scale-up)
 - **Database Connections**: 100+ connections
 
-#### 9.22.3 Reddit Data Source Constraints
+#### 10.8.3 Reddit Data Source Constraints
 
 **Reddit API Constraints (Preferred Path):**
 
@@ -2864,29 +2981,27 @@ _Advanced recommendation engine (lowest priority)_
 - **Processing Speed**: Batch processing of large JSON files
 - **Feature Limitations**: No activity indicators, limited attribution functionality
 
-#### 9.22.4 Final Roadmap Priority Summary
+#### 10.8.4 Final Roadmap Summary
 
-**High Priority (Core MVP - Weeks 1-34):**
+**MVP Phase (Weeks 1-25):**
 
-- **Infrastructure Foundation**: Database + Testing + Docker + Security (Weeks 1-4)
-- **Data Processing Core**: Entity Processing + External Integrations + Reddit Collection (Weeks 3-6)
-- **Search Architecture**: Dynamic Queries + Advanced Entity Resolution + Basic Ranking (Weeks 7-12)
-- **Performance & Usability**: Complex Multi-Attribute Search + Caching + Basic Analytics (Weeks 13-18)
-- **User Features**: Evidence/Attribution + User Management + Analytics Integration (Weeks 19-22)
-- **Engagement**: Bookmarking + Share/Contribute Tools + Enhanced History (Weeks 23-28)
-- **Business Model**: Payment Integration + **UI Polish & Mobile Optimization** + **MVP Launch** (Weeks 29-34)
+- Core search functionality with community-powered results
+- Basic mobile app with essential features
+- User management and bookmarking
+- UI polish for user experience
+- Ready for user validation and feedback
 
-**Medium Priority (Growth Features - Weeks 35-38):**
+**Post-MVP Phase (Weeks 26+):**
 
-- Smart Alerts → Advanced Performance Monitoring & Scale Infrastructure
-
-**Low Priority (Advanced Features - Week 39+):**
-
-- Discovery Features (complex recommendation engine)
+- Advanced infrastructure and monitoring
+- Performance optimizations and caching
+- Discovery and recommendation features
+- Enhanced user features (smart alerts, restaurant profiles, etc.)
+- Scaling infrastructure for growth
 
 ---
 
-## 10. Appendices
+## 11. Appendices
 
 ### A. LLM Processing Guidelines
 
