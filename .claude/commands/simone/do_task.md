@@ -31,7 +31,7 @@ Read the task description. If anything is unclear, ask clarifying questions befo
 1. **Sprint Context:** Confirm task belongs to current sprint scope
 2. **Dependencies:** Check if any dependent tasks need to be completed first
 3. **Requirements:** Read relevant requirements docs in `.simone/02_REQUIREMENTS/`
-4. **Scope Verification:** Ensure task aligns with current sprint objectives
+4. **Scope Verification:** Ensure task aligns with current sprint objectives and `PRD.md` requirements
 
 **IMPORTANT:** If task references functionality from future sprints or has unmet dependencies, pause and ask for clarification.
 
@@ -47,7 +47,7 @@ Read the task description. If anything is unclear, ask clarifying questions befo
 - Consult supporting docs in .simone/01_PROJECT_DOCS/ and .simone/02_REQUIREMENTS/.
 - Iterate over subtasks:
   1. Pick the next incomplete subtask.
-  2. Implement the required changes, consulting docs as needed.
+  2. Implement the required changes, consulting `PRD.md` and supporting docs as needed.
   3. Mark the subtask done.
   4. Append a log entry to **## Output Log** using the format `[YYYY-MM-DD HH:MM]: <message>`.
   5. Repeat until all subtasks are complete.

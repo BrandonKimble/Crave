@@ -22,6 +22,7 @@ Creates a new milestone with proper structure, documentation, and project integr
 **USE PARALLEL SUBAGENTS** to do these tasks:
 
 - Parse arguments for suggested milestone name/focus (defaults to interactive creation)
+- **READ `PRD.md`** as the authoritative source for project requirements, vision, and roadmap priorities
 - Read `.simone/00_PROJECT_MANIFEST.md` to understand current project state
 - Scan `.simone/02_REQUIREMENTS/` to identify existing milestones and numbering
 - Read `.simone/01_PROJECT_DOCS/ARCHITECTURE.md` to understand project scope
@@ -80,6 +81,15 @@ If no arguments:
   - **Key Documents**: Placeholder for PRD and SPECS files
   - **Definition of Done**: Specific, measurable criteria from user input
   - **Notes/Context**: Additional context from user discussion
+
+**Map PRD requirements to milestone:**
+- EXTRACT specific requirements from relevant PRD sections that this milestone addresses
+- ADD **PRD Alignment** section to milestone meta with:
+  - `primary_requirements`: List of specific PRD requirements this milestone fulfills
+  - `prd_sections`: Relevant PRD section references (with line numbers if possible)
+  - `success_metrics`: PRD-defined measures of success for this milestone
+  - `implementation_approach`: Key PRD guidance for technical implementation
+- VALIDATE that milestone goals directly trace to PRD requirements
 
 ## 5 · Guide supporting documentation creation
 

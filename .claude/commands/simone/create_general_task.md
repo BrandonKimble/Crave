@@ -35,7 +35,7 @@ Use PARALLEL SUBAGENTS to READ and UNDERSTAND the project's context:
 - READ `.simone/01_PROJECT_DOCS/ARCHITECTURE.md` - Understand system constraints
 - READ latest files in `.simone/10_STATE_OF_PROJECT/` - Review current state
 - SCAN `.simone/05_ARCHITECTURE_DECISIONS/` for relevant ADRs
-- **IMPORTANT:** General tasks must align with documented architecture
+- **IMPORTANT:** General tasks must align with documented architecture and `PRD.md` requirements if relevant
 
 ### 3. Verify task doesn't duplicate existing work
 

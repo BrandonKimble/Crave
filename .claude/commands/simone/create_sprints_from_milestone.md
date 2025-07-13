@@ -31,10 +31,10 @@ Follow these instructions to sprint the scope of a Milestone into Sprints
 
 - Read milestone meta file from `.simone/02_REQUIREMENTS/$MILESTONE_ID/`
 - **CRITICAL:** Follow and read ALL linked documents in the milestone meta:
-  - Product Requirements (PRD.md)
-  - Database Specifications (SPECS_DB.md)
-  - API Specifications (SPECS_API.md)
-  - Tool Specifications (SPECS_TOOLS.md)
+  - Product Requirements (`PRD.md`) - authoritative source for all project requirements and implementation guidance
+  - Database Specifications (`SPECS_DB.md`)
+  - API Specifications (`SPECS_API.md`)
+  - Tool Specifications (`SPECS_TOOLS.md`)
   - Any other linked specifications
 - Study the milestone's Definition of Done (DoD) carefully and **think deeply** about what each DoD criterion actually requires in terms of specific deliverables
 - For each existing sprint, analyze what deliverables have been completed by reading sprint meta and task files
@@ -71,6 +71,15 @@ Follow these instructions to sprint the scope of a Milestone into Sprints
     - Key deliverables (bullet points, not detailed tasks)
     - Clear Definition of Done for the sprint
     - Status: "planned"
+
+**Map PRD requirements to each sprint:**
+- For each sprint, ADD **PRD Requirements** section with:
+  - `prd_requirements`: Specific PRD requirements this sprint addresses
+  - `implementation_guidance`: Relevant PRD technical approach for this sprint
+  - `prd_success_criteria`: PRD-defined measures this sprint must achieve
+  - `prd_references`: Specific PRD sections (with line numbers) relevant to sprint scope
+- ENSURE sprint deliverables directly trace to PRD requirements
+- VALIDATE that all PRD requirements for the milestone are covered across sprints
 
 ## 6 · Update PROJECT_MANIFEST with sprint roadmap
 

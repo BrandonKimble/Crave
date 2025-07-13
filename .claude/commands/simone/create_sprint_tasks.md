@@ -32,6 +32,7 @@ Check: <$ARGUMENTS>
 
 Use PARALLEL SUBAGENTS to READ and UNDERSTAND the project's context:
 
+- **READ `PRD.md`** as the authoritative source for all project requirements and implementation guidance
 - READ `.simone/00_PROJECT_MANIFEST.md` for project context
 - READ sprint meta file completely to understand goals and deliverables
 - READ parent milestone requirements from `.simone/02_REQUIREMENTS/`
@@ -109,6 +110,14 @@ Based on sprint goals and deliverables (execute in Parallel Subagents):
     - Testing approach based on existing test patterns
     - Performance considerations if relevant
 
+    **PRD Requirements Mapping section:**
+
+    - `prd_requirements`: Specific PRD requirements this task fulfills
+    - `prd_sections`: Relevant PRD sections with line numbers/references
+    - `implementation_alignment`: How task approach aligns with PRD technical guidance
+    - `acceptance_criteria_mapping`: Map each acceptance criterion to specific PRD requirement
+    - `prd_success_validation`: How to verify task completion satisfies PRD requirements
+
     **IMPORTANT:** Do NOT include code examples. Provide structural guidance and references only.
 
     #### 4. Validate task completeness
@@ -133,7 +142,21 @@ Based on sprint goals and deliverables (execute in Parallel Subagents):
 - ORGANIZE tasks by logical grouping or dependency order
 - ADD brief description for each task
 
-### 8. Check quality of your work
+### 8. Validate PRD Requirements Coverage
+
+**PRD Traceability Check:**
+- VERIFY each task's PRD Requirements Mapping section is complete
+- ENSURE all PRD requirements relevant to the sprint are covered across tasks
+- CHECK that task acceptance criteria directly validate PRD requirements
+- VALIDATE that PRD implementation guidance is reflected in task approach
+- CONFIRM no PRD requirements are left unaddressed by task breakdown
+
+**Cross-Reference Validation:**
+- CREATE traceability matrix: PRD Requirement → Sprint → Task(s)
+- IDENTIFY any gaps where PRD requirements lack corresponding tasks
+- ENSURE PRD success criteria can be validated through task completion
+
+### 9. Check quality of your work
 
 Review all created tasks for complexity and split any High complexity tasks:
 
@@ -157,9 +180,10 @@ Review all created tasks for complexity and split any High complexity tasks:
 
 - VERIFY all tasks are Low or Medium complexity only
 - CHECK task numbering is sequential (T01, T02, T03...)
-- UPDATE sprint meta file with final task list
+- VALIDATE PRD requirements coverage is complete across all tasks
+- UPDATE sprint meta file with final task list AND PRD requirements mapping
 - UPDATE project manifest sprint section to reflect actual tasks created
-- GENERATE completion report
+- GENERATE completion report with PRD traceability summary
 
 **Output format:**
 
@@ -178,11 +202,17 @@ Review all created tasks for complexity and split any High complexity tasks:
     - [No other splits needed]
 
     **Final Task List:**
-    1. T01_S02 - [Title] (Complexity: [Level])
-    2. T02_S02 - [Title] (Complexity: [Level])
+    1. T01_S02 - [Title] (Complexity: [Level]) - PRD Req: [Requirements covered]
+    2. T02_S02 - [Title] (Complexity: [Level]) - PRD Req: [Requirements covered]
     [Continue for all tasks]
 
+    **PRD Requirements Traceability:**
+    - [PRD Requirement 1] → [Task IDs that address it]
+    - [PRD Requirement 2] → [Task IDs that address it]
+    - [Continue for all relevant PRD requirements]
+
     **Next Steps:**
-    - Review tasks for completeness
+    - Review tasks for completeness and PRD alignment
+    - Validate PRD requirements coverage
     - Run `/do_task [FIRST_TASK_IN_SPRINT]` to begin implementation
     ```

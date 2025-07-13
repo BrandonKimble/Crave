@@ -26,6 +26,15 @@ A checklist of smaller steps to complete this task.
 - [ ] Subtask 1
 - [ ] Subtask 2
 
+## PRD Requirements Mapping
+*(This section links task to authoritative PRD requirements)*
+
+**PRD Requirements**: [Specific PRD requirements this task fulfills]
+**PRD Sections**: [Relevant PRD sections with line numbers/references]  
+**Implementation Alignment**: [How task approach aligns with PRD technical guidance]
+**Acceptance Criteria Mapping**: [Map each acceptance criterion to specific PRD requirement]
+**PRD Success Validation**: [How to verify task completion satisfies PRD requirements]
+
 ## Output Log
 *(This section is populated as work progresses on the task)*
 

@@ -19,5 +19,13 @@ last_updated: YYYY-MM-DDTHH:MM:SSZ
 ## Definition of Done (for the Sprint) (Optional)
 - What conditions must be met for the sprint itself to be considered successfully completed?
 
+## PRD Requirements
+*(This section maps sprint to authoritative PRD requirements)*
+
+**PRD Requirements**: [Specific PRD requirements this sprint addresses]
+**Implementation Guidance**: [Relevant PRD technical approach for this sprint]
+**PRD Success Criteria**: [PRD-defined measures this sprint must achieve]
+**PRD References**: [Specific PRD sections with line numbers relevant to sprint scope]
+
 ## Notes / Retrospective Points (Optional)
 - Any specific notes for this sprint.
