@@ -1,0 +1,4 @@
+# Ignore files that cause Jest compilation warnings
+**/node_modules/**
+**/.cursor/**
+**/buildHook/**
