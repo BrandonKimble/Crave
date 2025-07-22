@@ -31,8 +31,8 @@ import { ThrottlerGuard } from '@nestjs/throttler';
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         redis: {
-          host: configService.get('REDIS_HOST'),
-          port: configService.get('REDIS_PORT'),
+          host: configService.get('redis.host'),
+          port: configService.get('redis.port'),
         },
       }),
     }),
