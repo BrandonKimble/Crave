@@ -2,7 +2,7 @@
 
 Create detailed tasks for an existing sprint with integrated implementation guidance.
 
-## Create a TODO with EXACTLY these 8 Items
+## Create a TODO with EXACTLY these 9 Items
 
 1. Identify target sprint and verify it exists
 2. Load sprint context and related documentation
@@ -10,8 +10,9 @@ Create detailed tasks for an existing sprint with integrated implementation guid
 4. Analyze sprint deliverables for task breakdown
 5. Create individual task files with implementation guidance
 6. Link `PRD.md` sections to relevant tasks
-7. Update sprint meta with task references
-8. Check quality of your work
+7. Audit tasks against PRD roadmap for milestone alignment
+8. Update sprint meta with task references
+9. Check quality of your work
 
 Follow step by step and adhere closely to the following instructions for each step.
 
@@ -139,13 +140,47 @@ Based on sprint goals and deliverables:
   - MAP success criteria from PRD to task acceptance criteria
 - VERIFY all PRD requirements for the sprint are covered by tasks
 
-### 7. Update sprint meta with task references
+### 7. Audit tasks against PRD roadmap for milestone alignment
+
+**CRITICAL ROADMAP VERIFICATION:** Now that tasks are fully detailed, audit each task against the PRD roadmap to ensure proper milestone alignment.
+
+**READ PRD roadmap section (typically section 9) to:**
+
+- IDENTIFY what belongs in the current milestone vs later milestones
+- UNDERSTAND the intended scope and dependencies for the current milestone
+- CHECK the progression from basic setup to advanced features across milestones
+
+**AUDIT EACH CREATED TASK:**
+
+- **Milestone Alignment Check**: Does this task's scope belong in the current milestone according to the PRD roadmap?
+- **Implementation Complexity**: Is this task appropriate for the current phase (foundation vs features vs optimization)?
+- **Dependency Analysis**: Are the required prerequisites from earlier milestones actually complete?
+- **Scope Appropriateness**: Is this foundational work or premature feature development?
+
+**TASK AUDIT DECISIONS:**
+
+- **Keep As-Is**: Tasks that properly belong in current milestone
+- **Defer to Later Milestones**: Tasks to remove with target milestone identified
+- **Reduce Scope**: Tasks that need simplified to fit current milestone (remove advanced features)
+- **Merge Tasks**: Tasks that can be combined for better logical flow
+- **Reorder Tasks**: Adjust sequence for proper dependencies
+
+**IMPLEMENTATION:**
+
+- **Remove tasks** that belong in later milestones (DELETE task files)
+- **Reduce scope** of tasks that are partially appropriate (EDIT task files to remove advanced features)
+- **Renumber tasks** sequentially (T01, T02, T03...) after removals
+- **Update task IDs** in task file frontmatter and content to match new numbering
+- **Update dependencies** between remaining tasks
+
+### 8. Update sprint meta with task references
 
 - EDIT sprint meta file to add/update task list
 - ORGANIZE tasks by logical grouping or dependency order
 - ADD brief description for each task
+- **Include roadmap audit summary** showing what was deferred/modified
 
-### 8. Check quality of your work
+### 9. Check quality of your work
 
 Review all created tasks for complexity and split any High complexity tasks:
 
@@ -169,6 +204,7 @@ Review all created tasks for complexity and split any High complexity tasks:
 
 - VERIFY all tasks are Low or Medium complexity only
 - CHECK task numbering is sequential (T01, T02, T03...)
+- CONFIRM all remaining tasks passed roadmap audit in step 7
 - UPDATE sprint meta file with final task list
 - UPDATE project manifest sprint section to reflect actual tasks created
 - GENERATE completion report
@@ -189,6 +225,11 @@ Review all created tasks for complexity and split any High complexity tasks:
     **Task Splitting Summary:**
     - [Original T03 split into T03 and T04 due to scope]
     - [No other splits needed]
+
+    **Roadmap Audit Summary:**
+    - [Deferred X tasks to Milestone Y due to scope misalignment]
+    - [Reduced scope on Y tasks to fit current milestone]
+    - [Tasks properly aligned with milestone objectives]
 
     **Final Task List:**
     1. T01_S02 - [Title] (Complexity: [Level])
