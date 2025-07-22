@@ -9,8 +9,8 @@ Create detailed tasks for an existing sprint with integrated implementation guid
 3. Extract `PRD.md` requirements and technical constraints
 4. Analyze sprint deliverables for task breakdown
 5. Create individual task files with implementation guidance
-6. Link `PRD.md` sections to relevant tasks
-7. Audit tasks against PRD roadmap for milestone alignment
+6. Audit tasks against PRD roadmap for milestone alignment
+7. Link `PRD.md` sections to relevant tasks
 8. Update sprint meta with task references
 9. Check quality of your work
 
@@ -131,20 +131,11 @@ Based on sprint goals and deliverables:
 
     **REPEAT** `### 5. Create individual task files with implementation guidance` for every Task
 
-### 6. Link PRD sections to relevant tasks
-
-- FOR each task created:
-  - IDENTIFY which PRD requirements it implements
-  - ADD specific PRD section references to the task's PRD References section
-  - ENSURE each reference includes the specific requirement being addressed
-  - MAP success criteria from PRD to task acceptance criteria
-- VERIFY all PRD requirements for the sprint are covered by tasks
-
-### 7. Audit tasks against PRD roadmap for milestone alignment
+### 6. Audit tasks against PRD roadmap for milestone alignment
 
 **CRITICAL ROADMAP VERIFICATION:** Now that tasks are fully detailed, audit each task against the PRD roadmap to ensure proper milestone alignment.
 
-**READ PRD roadmap section (typically section 9) to:**
+**READ `PRD.md` roadmap section (section 9 and 10) to:**
 
 - IDENTIFY what belongs in the current milestone vs later milestones
 - UNDERSTAND the intended scope and dependencies for the current milestone
@@ -172,6 +163,18 @@ Based on sprint goals and deliverables:
 - **Renumber tasks** sequentially (T01, T02, T03...) after removals
 - **Update task IDs** in task file frontmatter and content to match new numbering
 - **Update dependencies** between remaining tasks
+
+### 7. Link `PRD.md` sections to relevant tasks
+
+**PRD MAPPING FOR FINAL TASKS:** Now that tasks have been audited and finalized, link them to specific PRD requirements.
+
+- FOR each remaining task:
+  - IDENTIFY which PRD requirements it implements
+  - ADD specific PRD section references to the task's PRD References section
+  - ENSURE each reference includes the specific requirement being addressed
+  - INCLUDE any other tangentially relevant PRD sections with task implications
+  - MAP success criteria from PRD to task acceptance criteria
+- VERIFY all PRD requirements for the sprint are covered by final tasks
 
 ### 8. Update sprint meta with task references
 
@@ -204,7 +207,7 @@ Review all created tasks for complexity and split any High complexity tasks:
 
 - VERIFY all tasks are Low or Medium complexity only
 - CHECK task numbering is sequential (T01, T02, T03...)
-- CONFIRM all remaining tasks passed roadmap audit in step 7
+- CONFIRM all remaining tasks passed roadmap audit in step 6
 - UPDATE sprint meta file with final task list
 - UPDATE project manifest sprint section to reflect actual tasks created
 - GENERATE completion report
