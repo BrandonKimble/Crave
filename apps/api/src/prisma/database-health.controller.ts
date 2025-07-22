@@ -1,9 +1,17 @@
 import { Controller, Get, HttpStatus, HttpException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { LoggerService, CorrelationUtils } from '../shared';
 
 @Controller('health')
 export class DatabaseHealthController {
-  constructor(private readonly prismaService: PrismaService) {}
+  private readonly logger: LoggerService;
+
+  constructor(
+    private readonly prismaService: PrismaService,
+    loggerService: LoggerService,
+  ) {
+    this.logger = loggerService.setContext('DatabaseHealthController');
+  }
 
   /**
    * Basic database health check endpoint
@@ -11,6 +19,14 @@ export class DatabaseHealthController {
    */
   @Get('database')
   async checkDatabaseHealth() {
+    const startTime = Date.now();
+    const correlationId = CorrelationUtils.getCorrelationId();
+
+    this.logger.debug('Database health check started', {
+      correlationId,
+      operation: 'health_check',
+    });
+
     try {
       const isHealthy = await this.prismaService.performHealthCheck();
 
@@ -25,12 +41,28 @@ export class DatabaseHealthController {
         );
       }
 
+      const duration = Date.now() - startTime;
+      this.logger.info('Database health check completed successfully', {
+        correlationId,
+        operation: 'health_check',
+        duration,
+        healthy: true,
+      });
+
       return {
         status: 'healthy',
         message: 'Database is accessible',
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Database health check failed', error, {
+        correlationId,
+        operation: 'health_check',
+        duration,
+        healthy: false,
+      });
+
       throw new HttpException(
         {
           status: 'unhealthy',

@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseConfig } from '../config/database-config.interface';
+import { LoggerService } from '../shared';
 
 export interface DatabaseMetricsSample {
   timestamp: Date;
@@ -25,7 +26,7 @@ export interface PerformanceAlert {
 
 @Injectable()
 export class DatabaseMetricsService {
-  private readonly logger = new Logger(DatabaseMetricsService.name);
+  private readonly logger: LoggerService;
   private readonly dbConfig: DatabaseConfig;
   private metricsHistory: DatabaseMetricsSample[] = [];
   private readonly maxHistorySize = 1000; // Keep last 1000 samples
@@ -33,7 +34,11 @@ export class DatabaseMetricsService {
   private lastAlert: Map<string, Date> = new Map();
   private readonly alertCooldown = 300000; // 5 minutes in milliseconds
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    loggerService: LoggerService,
+  ) {
+    this.logger = loggerService.setContext('DatabaseMetricsService');
     const dbConfig = configService.get<DatabaseConfig>('database');
     if (!dbConfig) {
       throw new Error(
@@ -342,8 +347,11 @@ export class DatabaseMetricsService {
   private startMetricsCollection(): void {
     // This would be implemented to collect metrics from the actual PrismaService
     // For now, it's a placeholder for the architecture
-    this.logger.log(
+    this.logger.info(
       'Database metrics collection started for production environment',
+      {
+        operation: 'start_metrics_collection',
+      },
     );
   }
 
@@ -363,6 +371,9 @@ export class DatabaseMetricsService {
     ) as Record<string, number>;
 
     this.alertThresholds = { ...this.alertThresholds, ...filteredThresholds };
-    this.logger.log('Alert thresholds updated', filteredThresholds);
+    this.logger.info('Alert thresholds updated', {
+      operation: 'update_alert_thresholds',
+      thresholds: filteredThresholds,
+    });
   }
 }

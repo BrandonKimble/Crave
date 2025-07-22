@@ -1,13 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import type { AxiosError } from 'axios';
-// Logging imports available but not currently used
-// import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   RedditApiError,
   RedditAuthenticationError,
@@ -135,7 +134,7 @@ export interface StreamingMetrics {
 
 @Injectable()
 export class RedditService implements OnModuleInit {
-  private readonly logger = new Logger(RedditService.name);
+  private readonly logger: LoggerService;
   private accessToken: string | null = null;
   private tokenExpiresAt: Date | null = null;
   private readonly redditConfig: RedditConfig;
@@ -157,7 +156,9 @@ export class RedditService implements OnModuleInit {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    loggerService: LoggerService,
   ) {
+    this.logger = loggerService.setContext('RedditService');
     this.redditConfig = {
       clientId: this.configService.get<string>('reddit.clientId') || '',
       clientSecret: this.configService.get<string>('reddit.clientSecret') || '',
@@ -172,7 +173,10 @@ export class RedditService implements OnModuleInit {
   }
 
   onModuleInit() {
-    this.logger.log('Reddit service initialized');
+    this.logger.info('Reddit service initialized', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'module_init',
+    });
   }
 
   private validateConfig(): void {
