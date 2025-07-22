@@ -7,7 +7,7 @@ import { AppException } from '../../shared/exceptions/app-exception.base';
 export abstract class RepositoryException extends AppException {
   abstract readonly errorCode: string;
   readonly isOperational = true;
-  
+
   constructor(
     message: string,
     status: HttpStatus = HttpStatus.INTERNAL_SERVER_ERROR,
@@ -23,7 +23,7 @@ export abstract class RepositoryException extends AppException {
  */
 export class EntityNotFoundException extends RepositoryException {
   readonly errorCode = 'ENTITY_NOT_FOUND';
-  
+
   constructor(entityType: string, identifier: string | object) {
     const id =
       typeof identifier === 'string' ? identifier : JSON.stringify(identifier);
@@ -40,7 +40,7 @@ export class EntityNotFoundException extends RepositoryException {
  */
 export class EntityAlreadyExistsException extends RepositoryException {
   readonly errorCode = 'ENTITY_ALREADY_EXISTS';
-  
+
   constructor(entityType: string, identifier: string | object) {
     const id =
       typeof identifier === 'string' ? identifier : JSON.stringify(identifier);
@@ -57,7 +57,7 @@ export class EntityAlreadyExistsException extends RepositoryException {
  */
 export class DatabaseOperationException extends RepositoryException {
   readonly errorCode = 'DATABASE_OPERATION_ERROR';
-  
+
   constructor(operation: string, entityType: string, originalError: Error) {
     super(
       `Database ${operation} operation failed for ${entityType}: ${originalError.message}`,
@@ -72,7 +72,7 @@ export class DatabaseOperationException extends RepositoryException {
  */
 export class ValidationException extends RepositoryException {
   readonly errorCode = 'REPOSITORY_VALIDATION_ERROR';
-  
+
   constructor(entityType: string, validationErrors: string[]) {
     super(
       `Validation failed for ${entityType}: ${validationErrors.join(', ')}`,
@@ -87,7 +87,7 @@ export class ValidationException extends RepositoryException {
  */
 export class ForeignKeyConstraintException extends RepositoryException {
   readonly errorCode = 'FOREIGN_KEY_CONSTRAINT_ERROR';
-  
+
   constructor(
     entityType: string,
     foreignKey: string,
@@ -106,7 +106,7 @@ export class ForeignKeyConstraintException extends RepositoryException {
  */
 export class UniqueConstraintException extends RepositoryException {
   readonly errorCode = 'UNIQUE_CONSTRAINT_ERROR';
-  
+
   constructor(entityType: string, fields: string[]) {
     super(
       `Unique constraint violated for ${entityType} on fields: ${fields.join(', ')}`,

@@ -1,4 +1,3 @@
-import { HttpStatus } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   DatabaseException,
@@ -7,7 +6,6 @@ import {
 } from '../exceptions';
 import {
   EntityNotFoundException,
-  EntityAlreadyExistsException,
   ForeignKeyConstraintException,
   UniqueConstraintException,
 } from '../../repositories/base/repository.exceptions';
@@ -55,10 +53,15 @@ export class PrismaErrorMapper {
     }
 
     // Fallback for unknown Prisma errors
-    return new DatabaseException(operation || 'unknown', entityType, error, {
-      type: error.constructor.name,
-      prismaError: error.message,
-    });
+    return new DatabaseException(
+      operation || 'unknown',
+      entityType,
+      error as Error,
+      {
+        type: (error as Error).constructor.name,
+        prismaError: (error as Error).message,
+      },
+    );
   }
 
   /**
@@ -72,26 +75,33 @@ export class PrismaErrorMapper {
     const { code, meta } = error;
 
     switch (code) {
-      case 'P2002': // Unique constraint violation
+      case 'P2002': {
+        // Unique constraint violation
         const fields = (meta?.target as string[]) || ['unknown field'];
         return new UniqueConstraintException(entityType || 'Entity', fields);
+      }
 
-      case 'P2003': // Foreign key constraint violation
+      case 'P2003': {
+        // Foreign key constraint violation
         const fieldName = meta?.field_name as string;
         return new ForeignKeyConstraintException(
           entityType || 'Entity',
           fieldName || 'unknown field',
           'referenced entity',
         );
+      }
 
-      case 'P2025': // Record not found
+      case 'P2025': {
+        // Record not found
         const cause = meta?.cause as string;
         return new EntityNotFoundException(
           entityType || 'Entity',
           cause || 'unknown identifier',
         );
+      }
 
-      case 'P2006': // Invalid value for field
+      case 'P2006': {
+        // Invalid value for field
         return new ValidationException(
           `Invalid value provided for ${entityType || 'entity'} field`,
           {
@@ -100,16 +110,20 @@ export class PrismaErrorMapper {
             operation,
           },
         );
+      }
 
-      case 'P2007': // Data validation error
+      case 'P2007': {
+        // Data validation error
         return new ValidationException('Data validation failed', {
           code,
           details: meta,
           entityType,
           operation,
         });
+      }
 
-      case 'P2011': // Null constraint violation
+      case 'P2011': {
+        // Null constraint violation
         const nullField = meta?.constraint as string;
         return new ValidationException(
           `Required field '${nullField}' cannot be null`,
@@ -120,8 +134,10 @@ export class PrismaErrorMapper {
             operation,
           },
         );
+      }
 
-      case 'P2012': // Missing required value
+      case 'P2012': {
+        // Missing required value
         const missingField = meta?.path as string;
         return new ValidationException(
           `Missing required value for '${missingField}'`,
@@ -132,8 +148,10 @@ export class PrismaErrorMapper {
             operation,
           },
         );
+      }
 
-      case 'P2014': // Invalid ID
+      case 'P2014': {
+        // Invalid ID
         const invalidId = meta?.details as string;
         return new ValidationException(`Invalid ID provided: ${invalidId}`, {
           code,
@@ -141,52 +159,66 @@ export class PrismaErrorMapper {
           entityType,
           operation,
         });
+      }
 
-      case 'P2015': // Related record not found
+      case 'P2015': {
+        // Related record not found
         return new EntityNotFoundException(
           'Related entity',
           (meta?.details as string) || 'unknown',
         );
+      }
 
-      case 'P2016': // Query interpretation error
+      case 'P2016': {
+        // Query interpretation error
         return new ValidationException('Query could not be interpreted', {
           code,
           details: meta,
           entityType,
           operation,
         });
+      }
 
-      case 'P2017': // Records not connected
+      case 'P2017': {
+        // Records not connected
         return new ValidationException('Records are not properly connected', {
           code,
           relation: meta?.relation_name,
           entityType,
           operation,
         });
+      }
 
-      case 'P2018': // Required connected records not found
+      case 'P2018': {
+        // Required connected records not found
         return new EntityNotFoundException(
           'Required connected entity',
           (meta?.details as string) || 'unknown',
         );
+      }
 
-      case 'P2021': // Table does not exist
+      case 'P2021': {
+        // Table does not exist
         const table = meta?.table as string;
         return new DatabaseException(operation || 'query', entityType, error, {
           code,
           table,
           message: `Table '${table}' does not exist`,
         });
+      }
 
-      case 'P2022': // Column does not exist
+      case 'P2022': {
+        // Column does not exist
         const column = meta?.column as string;
         return new DatabaseException(operation || 'query', entityType, error, {
           code,
           column,
           message: `Column '${column}' does not exist`,
         });
+      }
 
-      case 'P2024': // Connection timeout
+      case 'P2024': {
+        // Connection timeout
         return new DatabaseException(
           operation || 'connection',
           entityType,
@@ -197,8 +229,10 @@ export class PrismaErrorMapper {
             timeout: meta?.timeout,
           },
         );
+      }
 
-      case 'P2034': // Transaction failed
+      case 'P2034': {
+        // Transaction failed
         return new DatabaseException(
           operation || 'transaction',
           entityType,
@@ -208,6 +242,7 @@ export class PrismaErrorMapper {
             message: 'Transaction failed due to write conflict or deadlock',
           },
         );
+      }
 
       default:
         // Fallback for unhandled Prisma error codes
@@ -259,16 +294,16 @@ export class PrismaErrorMapper {
   ) {
     if (!this.isPrismaError(error)) {
       return {
-        type: error.constructor.name,
-        message: error.message,
+        type: (error as Error).constructor.name,
+        message: (error as Error).message,
         operation,
         entityType,
       };
     }
 
     const context: any = {
-      type: error.constructor.name,
-      message: error.message,
+      type: (error as Error).constructor.name,
+      message: (error as Error).message,
       operation,
       entityType,
     };
@@ -281,6 +316,6 @@ export class PrismaErrorMapper {
       context.meta = error.meta;
     }
 
-    return context;
+    return context as Error;
   }
 }

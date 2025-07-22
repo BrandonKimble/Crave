@@ -78,7 +78,7 @@ export class DatabaseValidationService {
         throw error;
       }
       throw new DatabaseConfigurationError('Invalid database URL format', {
-        originalError: error.message,
+        originalError: (error as Error).message,
       });
     }
   }

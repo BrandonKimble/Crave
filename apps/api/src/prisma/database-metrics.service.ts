@@ -359,7 +359,7 @@ export class DatabaseMetricsService {
    */
   updateAlertThresholds(newThresholds: Partial<Record<string, number>>): void {
     const filteredThresholds = Object.fromEntries(
-      Object.entries(newThresholds).filter(([_, value]) => value !== undefined),
+      Object.entries(newThresholds).filter(([, value]) => value !== undefined),
     ) as Record<string, number>;
 
     this.alertThresholds = { ...this.alertThresholds, ...filteredThresholds };

@@ -27,7 +27,8 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter(configService));
 
   // Register Fastify helmet
-  await app.register(import('@fastify/helmet'), {
+  const helmetPlugin = await import('@fastify/helmet');
+  await app.register(helmetPlugin.default as any, {
     // Configure settings for Swagger UI compatibility
     contentSecurityPolicy: {
       directives: {

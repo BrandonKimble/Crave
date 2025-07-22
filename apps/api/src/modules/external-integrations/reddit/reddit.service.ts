@@ -6,6 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import type { AxiosError } from 'axios';
+// Logging imports available but not currently used
+// import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   RedditApiError,
   RedditAuthenticationError,

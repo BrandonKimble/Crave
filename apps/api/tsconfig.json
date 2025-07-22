@@ -17,5 +17,6 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false /* Enable error reporting in type-checked JavaScript files. */
-  }
+  },
+  "exclude": ["scripts/**/*"]
 }

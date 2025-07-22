@@ -35,7 +35,7 @@ export class DatabaseHealthController {
         {
           status: 'unhealthy',
           message: 'Database connection failed',
-          error: error.message,
+          error: (error as Error).message,
           timestamp: new Date().toISOString(),
         },
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -48,7 +48,7 @@ export class DatabaseHealthController {
    * Returns connection pool metrics and performance data
    */
   @Get('database/metrics')
-  async getDatabaseMetrics() {
+  getDatabaseMetrics() {
     try {
       const metrics = this.prismaService.getConnectionMetrics();
 
@@ -89,7 +89,7 @@ export class DatabaseHealthController {
         {
           status: 'error',
           message: 'Failed to retrieve database metrics',
-          error: error.message,
+          error: (error as Error).message,
           timestamp: new Date().toISOString(),
         },
         HttpStatus.INTERNAL_SERVER_ERROR,
@@ -137,7 +137,7 @@ export class DatabaseHealthController {
       return {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
-        error: error.message,
+        error: (error as Error).message,
         checks: {
           connectivity: 'unhealthy',
           connectionPool: 'unknown',
