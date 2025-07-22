@@ -9,6 +9,7 @@ import { RedditModule } from './modules/external-integrations/reddit/reddit.modu
 import { AppController } from './app.controller';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
+import { SharedModule } from './shared/shared.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
       isGlobal: true,
       load: [configuration],
     }),
+    SharedModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

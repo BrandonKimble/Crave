@@ -1,13 +1,14 @@
 // src/main.ts
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
+import { createValidationPipeConfig, GlobalExceptionFilter } from './shared';
 
 async function bootstrap() {
   // Create with Fastify adapter
@@ -17,6 +18,13 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
+  const isProd = configService.get<string>('NODE_ENV') === 'production';
+
+  // Use Winston logger for NestJS
+  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
+
+  // Global exception filter (already configured in SharedModule, but adding here for completeness)
+  app.useGlobalFilters(new GlobalExceptionFilter(configService));
 
   // Register Fastify helmet
   await app.register(import('@fastify/helmet'), {
@@ -34,14 +42,8 @@ async function bootstrap() {
   // Security middleware
   app.enableCors();
 
-  // Validation
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
+  // Enhanced validation with security settings
+  app.useGlobalPipes(createValidationPipeConfig(isProd));
 
   // API docs
   const config = new DocumentBuilder()

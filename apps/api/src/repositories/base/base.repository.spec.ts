@@ -9,8 +9,8 @@ import {
 
 // Test implementation of BaseRepository
 class TestRepository extends BaseRepository<any, any, any, any> {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'TestEntity');
+  constructor(prisma: PrismaService, entityName: string) {
+    super(prisma, entityName);
   }
 
   protected getDelegate() {
@@ -25,6 +25,7 @@ class TestRepository extends BaseRepository<any, any, any, any> {
 describe('BaseRepository', () => {
   let repository: TestRepository;
   let prismaService: PrismaService;
+  let module: TestingModule;
 
   const mockPrismaService = {
     entity: {
@@ -43,9 +44,13 @@ describe('BaseRepository', () => {
   };
 
   beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
+    module = await Test.createTestingModule({
       providers: [
-        TestRepository,
+        {
+          provide: TestRepository,
+          useFactory: (prisma: PrismaService) => new TestRepository(prisma, 'TestEntity'),
+          inject: [PrismaService],
+        },
         {
           provide: PrismaService,
           useValue: mockPrismaService,
@@ -57,8 +62,9 @@ describe('BaseRepository', () => {
     prismaService = module.get<PrismaService>(PrismaService);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     jest.clearAllMocks();
+    await module.close();
   });
 
   describe('create', () => {
