@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Subscription, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class SubscriptionRepository extends BaseRepository<
   Prisma.SubscriptionCreateInput,
   Prisma.SubscriptionUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'Subscription');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'Subscription');
   }
 
   protected getDelegate() {
@@ -58,7 +59,7 @@ export class SubscriptionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find subscriptions by user completed`, {
-        duration: `${duration}ms`,
+        duration,
         userId,
         count: result.length,
       });
@@ -67,7 +68,7 @@ export class SubscriptionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find subscriptions by user`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         userId,
         params,
@@ -95,7 +96,7 @@ export class SubscriptionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find active subscription by user completed`, {
-        duration: `${duration}ms`,
+        duration,
         userId,
         found: !!result,
       });
@@ -104,7 +105,7 @@ export class SubscriptionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find active subscription by user`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         userId,
       });
@@ -131,7 +132,7 @@ export class SubscriptionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find subscription by Stripe ID completed`, {
-        duration: `${duration}ms`,
+        duration,
         found: !!result,
       });
 
@@ -139,7 +140,7 @@ export class SubscriptionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find subscription by Stripe ID`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         stripeSubscriptionId,
       });
@@ -189,7 +190,7 @@ export class SubscriptionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find expiring subscriptions completed`, {
-        duration: `${duration}ms`,
+        duration,
         daysBefore,
         count: result.length,
       });
@@ -198,7 +199,7 @@ export class SubscriptionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find expiring subscriptions`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         daysBefore,
         params,

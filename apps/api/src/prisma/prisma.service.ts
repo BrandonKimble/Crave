@@ -1,21 +1,16 @@
-import {
-  Injectable,
-  OnModuleInit,
-  OnModuleDestroy,
-  Logger,
-  OnModuleDestroy as INestOnModuleDestroy,
-} from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
+import { LoggerService } from '../shared';
 
 @Injectable()
 export class PrismaService
   extends PrismaClient
-  implements OnModuleInit, INestOnModuleDestroy
+  implements OnModuleInit, OnModuleDestroy
 {
-  private readonly logger = new Logger(PrismaService.name);
+  private readonly logger: LoggerService;
   private readonly dbConfig: DatabaseConfig;
   private healthCheckInterval?: NodeJS.Timeout;
   private connectionMetrics = {
@@ -30,6 +25,7 @@ export class PrismaService
   constructor(
     private readonly configService: ConfigService,
     private readonly validationService: DatabaseValidationService,
+    loggerService: LoggerService,
   ) {
     const dbConfig = configService.get<DatabaseConfig>('database');
 
@@ -66,6 +62,9 @@ export class PrismaService
           ],
     });
 
+    // Initialize logger with context
+    this.logger = loggerService.setContext('PrismaService');
+
     // Validate configuration after super() call
     this.validationService.validateDatabaseConfiguration(configService);
     this.validationService.validateEnvironmentConsistency(configService);
@@ -77,15 +76,16 @@ export class PrismaService
   async onModuleInit() {
     await this.connectWithRetry();
     this.startHealthChecks();
-    this.logger.log(
+    this.logger.info(
       `Database connection pool initialized with max ${this.dbConfig.connectionPool.max} connections`,
+      { maxConnections: this.dbConfig.connectionPool.max },
     );
   }
 
   async onModuleDestroy() {
     this.stopHealthChecks();
     await this.gracefulDisconnect();
-    this.logger.log('Database connections closed gracefully');
+    this.logger.info('Database connections closed gracefully');
   }
 
   /**
@@ -99,8 +99,12 @@ export class PrismaService
       try {
         await this.$connect();
         this.connectionMetrics.totalConnections++;
-        this.logger.log(
+        this.logger.info(
           `Database connected successfully on attempt ${attempt}`,
+          {
+            attempt,
+            totalConnections: this.connectionMetrics.totalConnections,
+          },
         );
         return;
       } catch (error) {
@@ -167,7 +171,7 @@ export class PrismaService
     });
 
     (this.$on as any)('info', (event: any) => {
-      this.logger.log('Database info:', event.message);
+      this.logger.info('Database info', { message: event.message });
     });
   }
 

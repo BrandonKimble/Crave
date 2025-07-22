@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { User, Prisma, SubscriptionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class UserRepository extends BaseRepository<
   Prisma.UserCreateInput,
   Prisma.UserUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'User');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'User');
   }
 
   protected getDelegate() {
@@ -40,7 +41,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find user by email completed`, {
-        duration: `${duration}ms`,
+        duration,
         found: !!result,
       });
 
@@ -48,7 +49,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find user by email`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         email,
       });
@@ -71,7 +72,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find user by referral code completed`, {
-        duration: `${duration}ms`,
+        duration,
         found: !!result,
       });
 
@@ -79,7 +80,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find user by referral code`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         referralCode,
       });
@@ -123,7 +124,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find users by subscription status completed`, {
-        duration: `${duration}ms`,
+        duration,
         status,
         count: result.length,
       });
@@ -132,7 +133,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find users by subscription status`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         status,
         params,
@@ -182,7 +183,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find users with expiring trials completed`, {
-        duration: `${duration}ms`,
+        duration,
         daysBefore,
         count: result.length,
       });
@@ -191,7 +192,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find users with expiring trials`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         daysBefore,
         params,
@@ -230,7 +231,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find referrals for user completed`, {
-        duration: `${duration}ms`,
+        duration,
         userId,
         count: result.length,
       });
@@ -239,7 +240,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find referrals for user`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         userId,
         params,
@@ -281,7 +282,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Updated user subscription status successfully`, {
-        duration: `${duration}ms`,
+        duration,
         userId,
         status,
       });
@@ -290,7 +291,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update user subscription status`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         userId,
         status,
@@ -351,7 +352,7 @@ export class UserRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Get user statistics completed`, {
-        duration: `${duration}ms`,
+        duration,
         statistics,
       });
 
@@ -359,7 +360,7 @@ export class UserRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to get user statistics`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
       });
 

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../prisma/prisma.module';
+import { SharedModule } from '../shared/shared.module';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
 import { MentionRepository } from './mention.repository';
@@ -12,7 +13,7 @@ import { UserEventRepository } from './user-event.repository';
  * Exports all repository classes for dependency injection
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, SharedModule],
   providers: [
     EntityRepository,
     ConnectionRepository,

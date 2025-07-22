@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Entity, Prisma, EntityType } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class EntityRepository extends BaseRepository<
   Prisma.EntityCreateInput,
   Prisma.EntityUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'Entity');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'Entity');
   }
 
   protected getDelegate() {
@@ -58,7 +59,7 @@ export class EntityRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find entities by type completed`, {
-        duration: `${duration}ms`,
+        duration,
         type,
         count: result.length,
       });
@@ -67,7 +68,7 @@ export class EntityRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by type`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         type,
         params,
@@ -126,7 +127,7 @@ export class EntityRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find restaurants by location completed`, {
-        duration: `${duration}ms`,
+        duration,
         latitude,
         longitude,
         radiusKm,
@@ -137,7 +138,7 @@ export class EntityRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find restaurants by location`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         latitude,
         longitude,
@@ -198,7 +199,7 @@ export class EntityRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find entities by name or alias completed`, {
-        duration: `${duration}ms`,
+        duration,
         searchTerm,
         type,
         count: result.length,
@@ -208,7 +209,7 @@ export class EntityRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by name or alias`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         searchTerm,
         type,
@@ -255,7 +256,7 @@ export class EntityRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find entities by restaurant attributes completed`, {
-        duration: `${duration}ms`,
+        duration,
         attributeIds,
         count: result.length,
       });
@@ -264,7 +265,7 @@ export class EntityRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by restaurant attributes`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         attributeIds,
         params,
@@ -298,7 +299,7 @@ export class EntityRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Updated restaurant quality score successfully`, {
-        duration: `${duration}ms`,
+        duration,
         entityId,
         qualityScore,
       });
@@ -307,7 +308,7 @@ export class EntityRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update restaurant quality score`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         entityId,
         qualityScore,

@@ -1,0 +1,259 @@
+import { Injectable, Inject } from '@nestjs/common';
+import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
+import { Logger as WinstonLogger } from 'winston';
+
+/**
+ * Structured logging metadata interface
+ */
+export interface LogMetadata {
+  correlationId?: string;
+  userId?: string;
+  operation?: string;
+  duration?: number;
+  entityId?: string;
+  entityType?: string;
+  method?: string;
+  url?: string;
+  statusCode?: number;
+  error?: {
+    message: string;
+    stack?: string;
+    code?: string | number;
+    name?: string;
+    cause?: string;
+  };
+  [key: string]: any;
+}
+
+/**
+ * Enhanced logger service providing structured logging with Winston integration
+ */
+@Injectable()
+export class LoggerService {
+  constructor(
+    @Inject(WINSTON_MODULE_PROVIDER)
+    private readonly logger: WinstonLogger,
+  ) {}
+
+  /**
+   * Set context for all subsequent log entries from this service instance
+   */
+  setContext(context: string): LoggerService {
+    const contextualLogger = new LoggerService(this.logger.child({ context }));
+    return contextualLogger;
+  }
+
+  /**
+   * Log debug level messages with structured metadata
+   */
+  debug(message: string, metadata?: LogMetadata): void {
+    this.logger.debug(message, this.sanitizeMetadata(metadata));
+  }
+
+  /**
+   * Log info level messages with structured metadata
+   */
+  info(message: string, metadata?: LogMetadata): void {
+    this.logger.info(message, this.sanitizeMetadata(metadata));
+  }
+
+  /**
+   * Log warning level messages with structured metadata
+   */
+  warn(message: string, metadata?: LogMetadata): void {
+    this.logger.warn(message, this.sanitizeMetadata(metadata));
+  }
+
+  /**
+   * Log error level messages with structured metadata
+   */
+  error(message: string, error?: Error | any, metadata?: LogMetadata): void {
+    const errorMetadata = this.buildErrorMetadata(error, metadata);
+    this.logger.error(message, errorMetadata);
+  }
+
+  /**
+   * Log HTTP request/response information
+   */
+  http(
+    message: string,
+    method: string,
+    url: string,
+    statusCode?: number,
+    duration?: number,
+    metadata?: LogMetadata,
+  ): void {
+    const httpMetadata: LogMetadata = {
+      ...metadata,
+      method,
+      url,
+      statusCode,
+      duration,
+    };
+    this.logger.http(message, this.sanitizeMetadata(httpMetadata));
+  }
+
+  /**
+   * Log database operation with timing and context
+   */
+  database(
+    operation: string,
+    entityType: string,
+    duration: number,
+    success: boolean,
+    metadata?: LogMetadata,
+  ): void {
+    const dbMetadata: LogMetadata = {
+      ...metadata,
+      operation,
+      entityType,
+      duration,
+      success,
+    };
+
+    const level = success ? 'debug' : 'error';
+    const message = `Database ${operation} on ${entityType} ${success ? 'completed' : 'failed'} (${duration}ms)`;
+
+    this.logger.log(level, message, this.sanitizeMetadata(dbMetadata));
+  }
+
+  /**
+   * Log performance metrics for operations
+   */
+  performance(
+    operation: string,
+    duration: number,
+    success: boolean,
+    metadata?: LogMetadata,
+  ): void {
+    const perfMetadata: LogMetadata = {
+      ...metadata,
+      operation,
+      duration,
+      success,
+    };
+
+    const level = duration > 1000 ? 'warn' : 'info'; // Warn for operations > 1 second
+    const message = `Performance: ${operation} took ${duration}ms`;
+
+    this.logger.log(level, message, this.sanitizeMetadata(perfMetadata));
+  }
+
+  /**
+   * Log audit trail events (user actions, security events)
+   */
+  audit(
+    action: string,
+    userId?: string,
+    entityType?: string,
+    entityId?: string,
+    metadata?: LogMetadata,
+  ): void {
+    const auditMetadata: LogMetadata = {
+      ...metadata,
+      action,
+      userId,
+      entityType,
+      entityId,
+      auditLog: true,
+    };
+
+    this.logger.info(`Audit: ${action}`, this.sanitizeMetadata(auditMetadata));
+  }
+
+  /**
+   * Create a child logger with additional context
+   */
+  child(context: Partial<LogMetadata>): LoggerService {
+    const sanitized = this.sanitizeMetadata(context);
+    const childLogger = this.logger.child(sanitized || {});
+    return new LoggerService(childLogger);
+  }
+
+  /**
+   * Build error metadata from error object
+   */
+  private buildErrorMetadata(
+    error?: Error | any,
+    metadata?: LogMetadata,
+  ): LogMetadata {
+    const errorMetadata: LogMetadata = { ...metadata };
+
+    if (error) {
+      errorMetadata.error = {
+        message: error.message || String(error),
+        stack: error.stack,
+        code: error.code || error.statusCode || error.status,
+      };
+
+      // Include additional error properties if they exist
+      if (error.name) errorMetadata.error.name = error.name;
+      if (error.cause) errorMetadata.error.cause = String(error.cause);
+    }
+
+    return errorMetadata;
+  }
+
+  /**
+   * Sanitize metadata to prevent logging sensitive information
+   */
+  private sanitizeMetadata(metadata?: LogMetadata): LogMetadata | undefined {
+    if (!metadata) return undefined;
+
+    const sanitized = { ...metadata };
+
+    // Remove or mask sensitive fields
+    const sensitiveFields = [
+      'password',
+      'token',
+      'secret',
+      'key',
+      'authorization',
+      'cookie',
+      'session',
+    ];
+
+    sensitiveFields.forEach((field) => {
+      if (sanitized[field]) {
+        sanitized[field] = '[REDACTED]';
+      }
+    });
+
+    // Sanitize nested objects
+    Object.keys(sanitized).forEach((key) => {
+      if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
+        sanitized[key] = this.sanitizeNestedObject(sanitized[key]);
+      }
+    });
+
+    return sanitized;
+  }
+
+  /**
+   * Recursively sanitize nested objects
+   */
+  private sanitizeNestedObject(obj: any): any {
+    if (Array.isArray(obj)) {
+      return obj.map((item) =>
+        typeof item === 'object' ? this.sanitizeNestedObject(item) : item,
+      );
+    }
+
+    const sanitized = { ...obj };
+    const sensitiveFields = [
+      'password',
+      'token',
+      'secret',
+      'key',
+      'authorization',
+    ];
+
+    sensitiveFields.forEach((field) => {
+      if (sanitized[field]) {
+        sanitized[field] = '[REDACTED]';
+      }
+    });
+
+    return sanitized;
+  }
+}

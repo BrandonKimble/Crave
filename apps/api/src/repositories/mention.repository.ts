@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Mention, Prisma, MentionSource } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class MentionRepository extends BaseRepository<
   Prisma.MentionCreateInput,
   Prisma.MentionUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'Mention');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'Mention');
   }
 
   protected getDelegate() {
@@ -61,7 +62,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find mentions by connection completed`, {
-        duration: `${duration}ms`,
+        duration,
         connectionId,
         count: result.length,
       });
@@ -70,7 +71,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by connection`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         connectionId,
         params,
@@ -115,7 +116,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find mentions by subreddit completed`, {
-        duration: `${duration}ms`,
+        duration,
         subreddit,
         count: result.length,
       });
@@ -124,7 +125,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by subreddit`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         subreddit,
         params,
@@ -172,7 +173,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find mentions by source completed`, {
-        duration: `${duration}ms`,
+        duration,
         sourceType,
         sourceId,
         count: result.length,
@@ -182,7 +183,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by source`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         sourceType,
         sourceId,
@@ -240,7 +241,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find top mentions completed`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.length,
       });
 
@@ -248,7 +249,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find top mentions`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         params,
       });
@@ -303,7 +304,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find recent mentions completed`, {
-        duration: `${duration}ms`,
+        duration,
         daysSince,
         count: result.length,
       });
@@ -312,7 +313,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find recent mentions`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         daysSince,
         params,
@@ -354,7 +355,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find mentions by author completed`, {
-        duration: `${duration}ms`,
+        duration,
         author,
         count: result.length,
       });
@@ -363,7 +364,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by author`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         author,
         params,
@@ -417,7 +418,7 @@ export class MentionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Get connection statistics completed`, {
-        duration: `${duration}ms`,
+        duration,
         connectionId,
         statistics,
       });
@@ -426,7 +427,7 @@ export class MentionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to get connection statistics`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         connectionId,
       });

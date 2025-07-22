@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { UserEvent, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class UserEventRepository extends BaseRepository<
   Prisma.UserEventCreateInput,
   Prisma.UserEventUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'UserEvent');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'UserEvent');
   }
 
   protected getDelegate() {
@@ -65,7 +66,7 @@ export class UserEventRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find events by user completed`, {
-        duration: `${duration}ms`,
+        duration,
         userId,
         count: result.length,
       });
@@ -74,7 +75,7 @@ export class UserEventRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find events by user`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         userId,
         params,
@@ -117,7 +118,7 @@ export class UserEventRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find events by type completed`, {
-        duration: `${duration}ms`,
+        duration,
         eventType,
         count: result.length,
       });
@@ -126,7 +127,7 @@ export class UserEventRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find events by type`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         eventType,
         params,

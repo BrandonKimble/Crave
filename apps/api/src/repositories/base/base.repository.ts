@@ -1,6 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoggerService, CorrelationUtils } from '../../shared';
 import { IBaseRepository } from './base-repository.interface';
 import {
   EntityNotFoundException,
@@ -17,13 +18,14 @@ import {
 export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
   implements IBaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 {
-  protected readonly logger: Logger;
+  protected readonly logger: LoggerService;
 
   constructor(
     protected readonly prisma: PrismaService,
+    loggerService: LoggerService,
     protected readonly entityName: string,
   ) {
-    this.logger = new Logger(`${entityName}Repository`);
+    this.logger = loggerService.setContext(`${this.entityName}Repository`);
   }
 
   /**
@@ -39,23 +41,32 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
   async create(data: TCreateInput): Promise<T> {
     const startTime = Date.now();
     try {
-      this.logger.debug(`Creating ${this.entityName}`, { data });
+      this.logger.debug(`Creating ${this.entityName}`, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'create',
+        entityType: this.entityName,
+      });
 
       const result = await this.getDelegate().create({ data });
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Created ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
-        id: result[this.getPrimaryKeyField()],
+      this.logger.database('create', this.entityName, duration, true, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        entityId: result[this.getPrimaryKeyField()],
       });
 
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error(`Failed to create ${this.entityName}`, {
-        duration: `${duration}ms`,
-        error: error.message,
-        data,
+      this.logger.database('create', this.entityName, duration, false, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+      });
+
+      this.logger.error(`Failed to create ${this.entityName}`, error, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'create',
+        entityType: this.entityName,
+        duration,
       });
 
       throw this.handlePrismaError(error, 'create');
@@ -65,25 +76,38 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
   async findById(id: string): Promise<T | null> {
     const startTime = Date.now();
     try {
-      this.logger.debug(`Finding ${this.entityName} by ID`, { id });
+      this.logger.debug(`Finding ${this.entityName} by ID`, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'findById',
+        entityType: this.entityName,
+        entityId: id,
+      });
 
       const result = await this.getDelegate().findUnique({
         where: { [this.getPrimaryKeyField()]: id },
       });
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Find ${this.entityName} by ID completed`, {
-        duration: `${duration}ms`,
+      this.logger.database('findById', this.entityName, duration, true, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        entityId: id,
         found: !!result,
       });
 
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error(`Failed to find ${this.entityName} by ID`, {
-        duration: `${duration}ms`,
-        error: error.message,
-        id,
+      this.logger.database('findById', this.entityName, duration, false, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        entityId: id,
+      });
+
+      this.logger.error(`Failed to find ${this.entityName} by ID`, error, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'findById',
+        entityType: this.entityName,
+        entityId: id,
+        duration,
       });
 
       throw this.handlePrismaError(error, 'findById');
@@ -99,7 +123,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find unique ${this.entityName} completed`, {
-        duration: `${duration}ms`,
+        duration,
         found: !!result,
       });
 
@@ -107,7 +131,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find unique ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         where,
       });
@@ -125,7 +149,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find first ${this.entityName} completed`, {
-        duration: `${duration}ms`,
+        duration,
         found: !!result,
       });
 
@@ -133,7 +157,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find first ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         where,
       });
@@ -157,7 +181,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find many ${this.entityName} completed`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.length,
       });
 
@@ -165,7 +189,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find many ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         params,
       });
@@ -177,7 +201,12 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
   async update(id: string, data: TUpdateInput): Promise<T> {
     const startTime = Date.now();
     try {
-      this.logger.debug(`Updating ${this.entityName}`, { id, data });
+      this.logger.debug(`Updating ${this.entityName}`, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'update',
+        entityType: this.entityName,
+        entityId: id,
+      });
 
       const result = await this.getDelegate().update({
         where: { [this.getPrimaryKeyField()]: id },
@@ -185,19 +214,25 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
       });
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Updated ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
-        id,
+      this.logger.database('update', this.entityName, duration, true, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        entityId: id,
       });
 
       return result;
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error(`Failed to update ${this.entityName}`, {
-        duration: `${duration}ms`,
-        error: error.message,
-        id,
-        data,
+      this.logger.database('update', this.entityName, duration, false, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        entityId: id,
+      });
+
+      this.logger.error(`Failed to update ${this.entityName}`, error, {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'update',
+        entityType: this.entityName,
+        entityId: id,
+        duration,
       });
 
       if (error.code === 'P2025') {
@@ -220,7 +255,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Updated many ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.count,
       });
 
@@ -228,7 +263,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update many ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         params,
       });
@@ -248,7 +283,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Deleted ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
+        duration,
         id,
       });
 
@@ -256,7 +291,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to delete ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         id,
       });
@@ -278,7 +313,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Deleted many ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.count,
       });
 
@@ -286,7 +321,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to delete many ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         where,
       });
@@ -304,7 +339,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Count ${this.entityName} completed`, {
-        duration: `${duration}ms`,
+        duration,
         count: result,
       });
 
@@ -312,7 +347,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to count ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         where,
       });
@@ -337,7 +372,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Created many ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.count,
       });
 
@@ -345,7 +380,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to create many ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         count: data.length,
       });
@@ -367,7 +402,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Upserted ${this.entityName} successfully`, {
-        duration: `${duration}ms`,
+        duration,
         id: result[this.getPrimaryKeyField()],
       });
 
@@ -375,7 +410,7 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to upsert ${this.entityName}`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         params,
       });

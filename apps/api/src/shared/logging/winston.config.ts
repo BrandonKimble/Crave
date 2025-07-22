@@ -8,9 +8,12 @@ const logFormat = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
   winston.format.printf(({ timestamp, level, message, metadata }) => {
-    const metaString = metadata && typeof metadata === 'object' && Object.keys(metadata).length > 0 
-      ? ` ${JSON.stringify(metadata)}` 
-      : '';
+    const metaString =
+      metadata &&
+      typeof metadata === 'object' &&
+      Object.keys(metadata).length > 0
+        ? ` ${JSON.stringify(metadata)}`
+        : '';
     return `${timestamp} [${level.toUpperCase()}] ${message}${metaString}`;
   }),
 );

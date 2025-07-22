@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { LoggerService } from '../../shared';
 import { BaseRepository } from './base.repository';
 import {
   EntityNotFoundException,
@@ -9,8 +9,12 @@ import {
 
 // Test implementation of BaseRepository
 class TestRepository extends BaseRepository<any, any, any, any> {
-  constructor(prisma: PrismaService, entityName: string) {
-    super(prisma, entityName);
+  constructor(
+    prisma: PrismaService,
+    loggerService: LoggerService,
+    entityName: string,
+  ) {
+    super(prisma, loggerService, entityName);
   }
 
   protected getDelegate() {
@@ -24,7 +28,6 @@ class TestRepository extends BaseRepository<any, any, any, any> {
 
 describe('BaseRepository', () => {
   let repository: TestRepository;
-  let prismaService: PrismaService;
   let module: TestingModule;
 
   const mockPrismaService = {
@@ -43,23 +46,37 @@ describe('BaseRepository', () => {
     },
   };
 
+  const mockLoggerService = {
+    setContext: jest.fn().mockReturnThis(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    database: jest.fn(),
+  };
+
   beforeEach(async () => {
     module = await Test.createTestingModule({
       providers: [
         {
           provide: TestRepository,
-          useFactory: (prisma: PrismaService) => new TestRepository(prisma, 'TestEntity'),
-          inject: [PrismaService],
+          useFactory: (prisma: PrismaService, logger: LoggerService) =>
+            new TestRepository(prisma, logger, 'TestEntity'),
+          inject: [PrismaService, LoggerService],
         },
         {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: LoggerService,
+          useValue: mockLoggerService,
+        },
       ],
     }).compile();
 
     repository = module.get<TestRepository>(TestRepository);
-    prismaService = module.get<PrismaService>(PrismaService);
+    // prismaService = module.get<PrismaService>(PrismaService);
   });
 
   afterEach(async () => {

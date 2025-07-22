@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Connection, Prisma, ActivityLevel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 
 /**
@@ -14,8 +15,8 @@ export class ConnectionRepository extends BaseRepository<
   Prisma.ConnectionCreateInput,
   Prisma.ConnectionUpdateInput
 > {
-  constructor(prisma: PrismaService) {
-    super(prisma, 'Connection');
+  constructor(prisma: PrismaService, loggerService: LoggerService) {
+    super(prisma, loggerService, 'Connection');
   }
 
   protected getDelegate() {
@@ -61,7 +62,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find connections by restaurant completed`, {
-        duration: `${duration}ms`,
+        duration,
         restaurantId,
         count: result.length,
       });
@@ -70,7 +71,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find connections by restaurant`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         restaurantId,
         params,
@@ -115,7 +116,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find connections by dish completed`, {
-        duration: `${duration}ms`,
+        duration,
         dishOrCategoryId,
         count: result.length,
       });
@@ -124,7 +125,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find connections by dish`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         dishOrCategoryId,
         params,
@@ -171,7 +172,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find connections by categories completed`, {
-        duration: `${duration}ms`,
+        duration,
         categoryIds,
         count: result.length,
       });
@@ -180,7 +181,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find connections by categories`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         categoryIds,
         params,
@@ -227,7 +228,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find connections by dish attributes completed`, {
-        duration: `${duration}ms`,
+        duration,
         attributeIds,
         count: result.length,
       });
@@ -236,7 +237,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find connections by dish attributes`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         attributeIds,
         params,
@@ -281,7 +282,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find trending connections completed`, {
-        duration: `${duration}ms`,
+        duration,
         count: result.length,
       });
 
@@ -289,7 +290,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find trending connections`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         params,
       });
@@ -332,7 +333,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Updated connection quality metrics successfully`, {
-        duration: `${duration}ms`,
+        duration,
         connectionId,
         metrics,
       });
@@ -341,7 +342,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update connection quality metrics`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         connectionId,
         metrics,
@@ -407,7 +408,7 @@ export class ConnectionRepository extends BaseRepository<
 
       const duration = Date.now() - startTime;
       this.logger.debug(`Find top restaurants for dish completed`, {
-        duration: `${duration}ms`,
+        duration,
         dishOrCategoryId,
         count: result.length,
       });
@@ -416,7 +417,7 @@ export class ConnectionRepository extends BaseRepository<
     } catch (error) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find top restaurants for dish`, {
-        duration: `${duration}ms`,
+        duration,
         error: error.message,
         dishOrCategoryId,
         params,
