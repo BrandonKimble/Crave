@@ -46,7 +46,7 @@ Read the task description. If anything is unclear, ask clarifying questions befo
 - Read `PRD.md` sections that are referenced by or prerequisite to the target PRD milestone as well as any other relevant or tangentially related section for implementation guidance, context, requirement details and constraints
 - Follow Description, Goal and Acceptance Criteria
 - Consult supporting docs in .simone/01_PROJECT_DOCS/ and .simone/02_REQUIREMENTS/
-- **SCOPE DISCIPLINE**: Implement ONLY what's in the acceptance criteria and the `PRD.md` sections - resist feature creep
+- **SCOPE DISCIPLINE**: Implement ONLY what's in the acceptance criteria - resist feature creep
 - **PROACTIVE INSTALLATION POLICY:**: You should proactively install any required dependencies, tools, or services needed to complete tasks as long as they align with our overall implementation goals
 - Iterate over subtasks:
   1. Pick the next incomplete subtask

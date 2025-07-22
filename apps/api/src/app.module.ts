@@ -4,6 +4,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bull';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
+import { RepositoryModule } from './repositories/repository.module';
 import { RedditModule } from './modules/external-integrations/reddit/reddit.module';
 import { AppController } from './app.controller';
 import { APP_GUARD } from '@nestjs/core';
@@ -36,6 +37,7 @@ import { ThrottlerGuard } from '@nestjs/throttler';
       }),
     }),
     PrismaModule,
+    RepositoryModule,
     RedditModule,
   ],
   controllers: [AppController],

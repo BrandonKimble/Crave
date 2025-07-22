@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(*)",
+      "ls(*)",
+      "mkdir(*)",
+      "pnpm(*)"
+    ],
+    "deny": [],
+    "defaultMode": "acceptEdits"
+  }
+}
