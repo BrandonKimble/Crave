@@ -9,7 +9,7 @@
 3. Analyse the task
 4. Set status to in_progress
 5. Execute task work
-6. Placeholder
+6. Infrastructure Integration Check
 7. Execute Code review
 8. Finalize Task status
 
@@ -56,9 +56,37 @@ Read the task description. If anything is unclear, ask clarifying questions befo
   5. Append a log entry to **## Output Log** using the format `[YYYY-MM-DD HH:MM]: <message>`
   6. Repeat until all subtasks are complete
 
-## 6 · Quality checks via Code Review
+## 6 · Infrastructure Integration Check
 
-Quality checks are now integrated into the Code Review step below
+**CRITICAL:** Before moving to code review, perform an infrastructure integration audit:
+
+**Parallel Subagent Task:** Launch a subagent to analyze existing infrastructure that could be leveraged:
+
+1. **Identify Existing Infrastructure:**
+   - Search for unused/underutilized services, repositories, validators, utilities
+   - Look for "dead code" that's actually valuable infrastructure waiting to be integrated
+   - Check for established patterns not being followed consistently
+
+2. **Integration Opportunities:**
+   - **Repository Pattern**: Are services using repositories or accessing Prisma directly?
+   - **Validation Layer**: Are custom validators being used in DTOs?
+   - **Error Handling**: Are custom exceptions being used consistently?
+   - **Logging**: Is structured logging being used throughout?
+   - **Monitoring**: Are metrics and health checks connected?
+
+3. **Architecture Consistency:**
+   - Are new features following established architectural patterns?
+   - Is the new code properly integrated with existing infrastructure?
+   - Are there opportunities to enhance existing infrastructure rather than bypass it?
+
+4. **Technical Debt Assessment:**
+   - What existing infrastructure needs updating to support new features?
+   - Are there incomplete implementations that should be finished?
+   - What "temporary" solutions have become permanent and need proper integration?
+
+**ACTION REQUIRED:** If gaps are found, add integration subtasks to the current task before proceeding to code review and continue with the task.
+
+**PHILOSOPHY:** Every task should leave the codebase more integrated and consistent, not just functionally complete.
 
 ## 7 · Execute Code Review
 
