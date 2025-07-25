@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EntitiesService } from './entities.service';
 import { EntityRepository } from '../../repositories/entity.repository';
+import { EntityResolutionService } from '../../repositories/entity-resolution.service';
 import { LoggerService } from '../../shared';
 import { Entity, EntityType, Prisma } from '@prisma/client';
 
@@ -39,15 +40,23 @@ describe('EntitiesService', () => {
     };
 
     const mockLogger = {
-      setContext: jest.fn(),
+      setContext: jest.fn().mockReturnThis(),
       debug: jest.fn(),
       error: jest.fn(),
+      warn: jest.fn(),
+      info: jest.fn(),
+    };
+
+    const mockEntityResolutionService = {
+      resolveEntity: jest.fn(),
+      resolveEntityWithValidation: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EntitiesService,
         { provide: EntityRepository, useValue: mockEntityRepository },
+        { provide: EntityResolutionService, useValue: mockEntityResolutionService },
         { provide: LoggerService, useValue: mockLogger },
       ],
     }).compile();
