@@ -47,7 +47,7 @@ Read the task description. If anything is unclear, ask clarifying questions befo
 - Follow Description, Goal and Acceptance Criteria
 - Consult supporting docs in .simone/01_PROJECT_DOCS/ and .simone/02_REQUIREMENTS/
 - **SCOPE DISCIPLINE**: Implement ONLY what's in the acceptance criteria - resist feature creep
-- **PROACTIVE INSTALLATION POLICY:**: You should proactively install any helpful or required dependencies, tools, or services needed to complete tasks as long as they align with our overall implementation goals
+- **PROACTIVE INSTALLATION POLICY:**: You should proactively install any helpful or required dependencies, tools, packages, libraries, or services needed to complete tasks as long as they align with our overall implementation goals
 - Iterate over subtasks:
   1. Pick the next incomplete subtask
   2. Implement the required changes, consulting the `PRD.md` and other docs as needed
@@ -63,26 +63,27 @@ Read the task description. If anything is unclear, ask clarifying questions befo
 **Parallel Subagent Task:** Launch a subagent to analyze existing infrastructure that could be leveraged:
 
 1. **Identify Existing Infrastructure:**
-   - Search for unused/underutilized services, repositories, validators, utilities
-   - Look for "dead code" that's actually valuable infrastructure waiting to be integrated
-   - Check for established patterns not being followed consistently
+  - Search for unused/underutilized services, repositories, validators, utilities
+  - Look for "dead code" that's actually valuable infrastructure waiting to be integrated
+  - Check for established patterns not being followed consistently
 
 2. **Integration Opportunities:**
-   - **Repository Pattern**: Are services using repositories or accessing Prisma directly?
-   - **Validation Layer**: Are custom validators being used in DTOs?
-   - **Error Handling**: Are custom exceptions being used consistently?
-   - **Logging**: Is structured logging being used throughout?
-   - **Monitoring**: Are metrics and health checks connected?
+  Systematically identify and leverage ALL existing infrastructure, patterns, and tooling across every domain - ensuring new implementations build upon rather than bypass existing capabilities.
+  - **Data & Business Logic**: Repository patterns, service layers, validation DTOs, custom exceptions
+  - **UI & Frontend**: Component libraries, styling systems, navigation patterns, state management
+  - **External Services**: API clients (Reddit, payments, etc.), authentication flows, rate limiting
+  - **Infrastructure**: Structured logging, monitoring, caching, security middleware, health checks
+  - **Development Patterns**: Testing utilities, configuration management, build processes, deployment hooks
 
 3. **Architecture Consistency:**
-   - Are new features following established architectural patterns?
-   - Is the new code properly integrated with existing infrastructure?
-   - Are there opportunities to enhance existing infrastructure rather than bypass it?
+  - Are new features following established architectural patterns?
+  - Is the new code properly integrated with existing infrastructure?
+  - Are there opportunities to enhance existing infrastructure rather than bypass it?
 
 4. **Technical Debt Assessment:**
-   - What existing infrastructure needs updating to support new features?
-   - Are there incomplete implementations that should be finished?
-   - What "temporary" solutions have become permanent and need proper integration?
+  - What existing infrastructure needs updating to support new features?
+  - Are there incomplete implementations that should be finished?
+  - What "temporary" solutions have become permanent and need proper integration?
 
 **ACTION REQUIRED:** If gaps are found, add integration subtasks to the current task before proceeding to code review and continue with the task.
 
