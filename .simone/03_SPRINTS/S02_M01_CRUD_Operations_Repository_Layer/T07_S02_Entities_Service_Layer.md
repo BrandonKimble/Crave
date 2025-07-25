@@ -44,6 +44,7 @@ Create a basic service layer for the entities table that provides essential CRUD
 
 ## PRD References
 
+- Section 4.2.4.3: Unified Entity Model Implementation - Entity resolution service implementation
 - Section 3.4: Development Principles - Repository pattern implementation
 - Section 2.7: Development Tools - Database architecture patterns
 
