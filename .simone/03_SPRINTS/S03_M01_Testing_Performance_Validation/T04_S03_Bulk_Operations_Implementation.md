@@ -38,10 +38,10 @@ Deliver production-ready bulk operations that meet performance requirements and 
 ## PRD References
 
 **Primary PRD Sections:**
-- **1** Product Vision - Unified Entity Model Implementation
-- **2** Essential Libraries - Database architecture patterns
-- **3** Development Principles - Repository pattern implementation
-- **4** Unified Entity Model Implementation - Entity resolution service implementation
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections) 
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 - **9.1.2 Success Criteria**: "Database supports bulk insert operations (performance validation in later milestones)"
 - **9.1.1 Core Tasks**: "Connection pooling and basic database operations: CRUD operations, bulk inserts"
 - **4.1 Core Database Schema**: Unified entity-relationship model requiring efficient bulk processing

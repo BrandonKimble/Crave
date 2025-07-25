@@ -56,7 +56,10 @@ describe('EntitiesService', () => {
       providers: [
         EntitiesService,
         { provide: EntityRepository, useValue: mockEntityRepository },
-        { provide: EntityResolutionService, useValue: mockEntityResolutionService },
+        {
+          provide: EntityResolutionService,
+          useValue: mockEntityResolutionService,
+        },
         { provide: LoggerService, useValue: mockLogger },
       ],
     }).compile();

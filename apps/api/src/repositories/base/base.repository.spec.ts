@@ -327,7 +327,9 @@ describe('BaseRepository', () => {
 
       const result = await repository.findMany(mockParams);
 
-      expect(mockPrismaService.entity.findMany).toHaveBeenCalledWith(mockParams);
+      expect(mockPrismaService.entity.findMany).toHaveBeenCalledWith(
+        mockParams,
+      );
       expect(result).toEqual(mockResult);
     });
 

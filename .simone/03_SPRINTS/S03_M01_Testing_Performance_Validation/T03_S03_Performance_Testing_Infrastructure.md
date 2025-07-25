@@ -36,10 +36,10 @@ Specific, measurable conditions that must be met for this task to be considered 
 ## PRD References
 
 _(Include when task directly implements PRD requirements)_
-- **1** Product Vision - Unified Entity Model Implementation
-- **2** Essential Libraries - Database architecture patterns
-- **3** Development Principles - Repository pattern implementation
-- **4** Unified Entity Model Implementation - Entity resolution service implementation
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections) 
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 - **9.1.2** M01 Success Criteria - Database supports bulk insert operations (performance validation in later milestones)
 - **9.1.1** M01 Core Tasks - Connection pooling and basic database operations
 - **2.3** Data Layer - Database infrastructure foundation

@@ -463,8 +463,10 @@ describe('Cross-Service Integration Tests', () => {
         const serviceDishEntity = serviceDish as any;
         const repoRestaurantEntity = repoRestaurant as any;
         const repoDishEntity = repoDish as any;
-        
-        expect(serviceRestaurantEntity?.entityId).toBe(repoRestaurantEntity?.entityId);
+
+        expect(serviceRestaurantEntity?.entityId).toBe(
+          repoRestaurantEntity?.entityId,
+        );
         expect(serviceDishEntity?.entityId).toBe(repoDishEntity?.entityId);
         expect(serviceRestaurantEntity?.name).toBe(repoRestaurantEntity?.name);
         expect(serviceDishEntity?.name).toBe(repoDishEntity?.name);

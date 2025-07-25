@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { DatabaseValidationService } from '../src/config/database-validation.service';
+// DatabaseValidationService not needed for integration tests
 import { LoggerService } from '../src/shared';
 import configuration from '../src/config/configuration';
 
@@ -98,12 +98,7 @@ export class IntegrationTestSetup {
       // Cast to PrismaService to maintain type compatibility
       const prismaProxy = transactionPrisma as PrismaService;
 
-      try {
-        return await fn(prismaProxy);
-      } catch (error) {
-        // Transaction will automatically rollback on error
-        throw error;
-      }
+      return await fn(prismaProxy);
     });
   }
 

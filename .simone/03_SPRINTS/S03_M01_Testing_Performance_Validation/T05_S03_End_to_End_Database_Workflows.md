@@ -40,10 +40,10 @@ The current codebase has basic E2E tests (`/Users/brandonkimble/crave-search/app
 ## PRD References
 
 **Primary PRD Sections:**
-- **1** Product Vision - Unified Entity Model Implementation
-- **2** Essential Libraries - Database architecture patterns
-- **3** Development Principles - Repository pattern implementation
-- **4** Unified Entity Model Implementation - Entity resolution service implementation
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections) 
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 - **9.1.2 Success Criteria**: "Database schema created and all foreign key relationships properly enforced" - validated through complete workflows
 - **4.1 Core Database Schema**: Graph-based entity model requiring end-to-end workflow validation
 - **2.3 Data Layer**: Database operations and transaction handling tested in complete scenarios

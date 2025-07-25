@@ -328,9 +328,12 @@ describe('MentionRepository Integration Tests', () => {
 
         expect(connectionMentions).toBeDefined();
         expect(connectionMentions.length).toBe(3);
-        
+
         // Verify total upvotes
-        const totalUpvotes = connectionMentions.reduce((sum, m) => sum + m.upvotes, 0);
+        const totalUpvotes = connectionMentions.reduce(
+          (sum, m) => sum + m.upvotes,
+          0,
+        );
         expect(totalUpvotes).toBe(175); // 100 + 50 + 25
       });
     });
@@ -398,7 +401,9 @@ describe('MentionRepository Integration Tests', () => {
           where: {
             connectionId: connection.connectionId,
             upvotes: { gte: 50 },
-            createdAt: { gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+            createdAt: {
+              gte: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
+            },
           },
         });
 

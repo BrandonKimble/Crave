@@ -1,17 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { TestingModule } from '@nestjs/testing';
 import { EntitiesService } from './entities.service';
 import { EntityRepository } from '../../repositories/entity.repository';
 import { EntityResolutionService } from '../../repositories/entity-resolution.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LoggerService } from '../../shared';
 import { IntegrationTestSetup } from '../../../test/integration-test.setup';
-import { Entity, EntityType } from '@prisma/client';
 
 describe('EntitiesService Integration Tests', () => {
   let service: EntitiesService;
-  let entityRepository: EntityRepository;
-  let entityResolutionService: EntityResolutionService;
-  let prismaService: PrismaService;
+  // Repository dependencies managed by TestingModule
   let testSetup: IntegrationTestSetup;
   let module: TestingModule;
 
@@ -26,11 +22,7 @@ describe('EntitiesService Integration Tests', () => {
     ]);
 
     service = module.get<EntitiesService>(EntitiesService);
-    entityRepository = module.get<EntityRepository>(EntityRepository);
-    entityResolutionService = module.get<EntityResolutionService>(
-      EntityResolutionService,
-    );
-    prismaService = testSetup.getPrismaService();
+    // Repository dependencies are injected automatically via TestingModule
   });
 
   afterAll(async () => {
