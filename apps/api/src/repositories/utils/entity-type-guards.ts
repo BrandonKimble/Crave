@@ -18,7 +18,7 @@ export function isValidRestaurantData(
       return false; // Empty name is invalid
     }
   }
-  
+
   // For restaurant type, basic validation passes
   if ('type' in data && data.type === 'restaurant') {
     return true; // Location fields are optional

@@ -50,7 +50,8 @@ describe('EntityResolutionService', () => {
 
     service = module.get<EntityResolutionService>(EntityResolutionService);
     entityRepository = module.get<EntityRepository>(EntityRepository);
-    connectionRepository = module.get<ConnectionRepository>(ConnectionRepository);
+    connectionRepository =
+      module.get<ConnectionRepository>(ConnectionRepository);
   });
 
   afterEach(() => {
@@ -75,7 +76,10 @@ describe('EntityResolutionService', () => {
       mockConnectionRepository.findMany.mockResolvedValue([mockConnection]);
       mockEntityRepository.findById.mockResolvedValue(mockEntity);
 
-      const result = await service.getEntityInMenuContext('dish-123', 'restaurant-123');
+      const result = await service.getEntityInMenuContext(
+        'dish-123',
+        'restaurant-123',
+      );
 
       expect(result).toEqual({
         entity: mockEntity,
@@ -98,7 +102,10 @@ describe('EntityResolutionService', () => {
     it('should return null when no menu connection exists', async () => {
       mockConnectionRepository.findMany.mockResolvedValue([]);
 
-      const result = await service.getEntityInMenuContext('dish-123', 'restaurant-123');
+      const result = await service.getEntityInMenuContext(
+        'dish-123',
+        'restaurant-123',
+      );
 
       expect(result).toBeNull();
     });
@@ -173,7 +180,10 @@ describe('EntityResolutionService', () => {
     it('should resolve dish attributes by name and scope', async () => {
       mockEntityRepository.findMany.mockResolvedValue([mockDishAttribute]);
 
-      const result = await service.resolveContextualAttributes('Italian', 'dish');
+      const result = await service.resolveContextualAttributes(
+        'Italian',
+        'dish',
+      );
 
       expect(result).toEqual([mockDishAttribute]);
       expect(mockEntityRepository.findMany).toHaveBeenCalledWith({
@@ -188,9 +198,14 @@ describe('EntityResolutionService', () => {
     });
 
     it('should resolve restaurant attributes by name and scope', async () => {
-      mockEntityRepository.findMany.mockResolvedValue([mockRestaurantAttribute]);
+      mockEntityRepository.findMany.mockResolvedValue([
+        mockRestaurantAttribute,
+      ]);
 
-      const result = await service.resolveContextualAttributes('Italian', 'restaurant');
+      const result = await service.resolveContextualAttributes(
+        'Italian',
+        'restaurant',
+      );
 
       expect(result).toEqual([mockRestaurantAttribute]);
       expect(mockEntityRepository.findMany).toHaveBeenCalledWith({
@@ -215,7 +230,10 @@ describe('EntityResolutionService', () => {
     it('should return existing attribute if found', async () => {
       mockEntityRepository.findMany.mockResolvedValue([mockDishAttribute]);
 
-      const result = await service.createOrResolveContextualAttribute('Spicy', 'dish');
+      const result = await service.createOrResolveContextualAttribute(
+        'Spicy',
+        'dish',
+      );
 
       expect(result).toEqual(mockDishAttribute);
       expect(mockEntityRepository.createDishAttribute).not.toHaveBeenCalled();
@@ -223,7 +241,9 @@ describe('EntityResolutionService', () => {
 
     it('should create new dish attribute if not found', async () => {
       mockEntityRepository.findMany.mockResolvedValue([]);
-      mockEntityRepository.createDishAttribute.mockResolvedValue(mockDishAttribute);
+      mockEntityRepository.createDishAttribute.mockResolvedValue(
+        mockDishAttribute,
+      );
 
       const result = await service.createOrResolveContextualAttribute(
         'Spicy',
@@ -246,7 +266,9 @@ describe('EntityResolutionService', () => {
       };
 
       mockEntityRepository.findMany.mockResolvedValue([]);
-      mockEntityRepository.createRestaurantAttribute.mockResolvedValue(mockRestaurantAttribute);
+      mockEntityRepository.createRestaurantAttribute.mockResolvedValue(
+        mockRestaurantAttribute,
+      );
 
       const result = await service.createOrResolveContextualAttribute(
         'Casual',
@@ -255,7 +277,9 @@ describe('EntityResolutionService', () => {
       );
 
       expect(result).toEqual(mockRestaurantAttribute);
-      expect(mockEntityRepository.createRestaurantAttribute).toHaveBeenCalledWith({
+      expect(
+        mockEntityRepository.createRestaurantAttribute,
+      ).toHaveBeenCalledWith({
         name: 'Casual',
         aliases: ['Relaxed'],
       });
@@ -278,7 +302,7 @@ describe('EntityResolutionService', () => {
 
     it('should find entities used in both menu and category contexts', async () => {
       mockEntityRepository.findByType.mockResolvedValue(mockDishEntities);
-      
+
       // Mock menu item usage counts
       mockConnectionRepository.count
         .mockResolvedValueOnce(3) // dish-1 menu usage

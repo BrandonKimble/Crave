@@ -611,7 +611,7 @@ export class EntityRepository extends BaseRepository<
   /**
    * Validate restaurant attributes consistency
    * Ensures all restaurant_attributes references point to valid restaurant_attribute entities
-   * 
+   *
    * @param restaurantId - Restaurant entity ID to validate
    * @throws ValidationException - When restaurant attributes are invalid
    */
@@ -625,7 +625,7 @@ export class EntityRepository extends BaseRepository<
       });
 
       const restaurant = await this.findById(restaurantId);
-      
+
       if (!restaurant) {
         throw new ValidationException('Restaurant', [
           `Restaurant entity with ID ${restaurantId} does not exist`,
@@ -639,10 +639,13 @@ export class EntityRepository extends BaseRepository<
       }
 
       // Validate each restaurant attribute reference
-      if (restaurant.restaurantAttributes && restaurant.restaurantAttributes.length > 0) {
+      if (
+        restaurant.restaurantAttributes &&
+        restaurant.restaurantAttributes.length > 0
+      ) {
         for (const attributeId of restaurant.restaurantAttributes) {
           const attribute = await this.findById(attributeId);
-          
+
           if (!attribute) {
             throw new ValidationException('Restaurant', [
               `Restaurant attribute entity with ID ${attributeId} does not exist`,
@@ -658,18 +661,24 @@ export class EntityRepository extends BaseRepository<
       }
 
       const duration = Date.now() - startTime;
-      this.logger.debug(`Restaurant attributes consistency validated successfully`, {
-        duration,
-        restaurantId,
-        attributeCount: restaurant.restaurantAttributes?.length || 0,
-      });
+      this.logger.debug(
+        `Restaurant attributes consistency validated successfully`,
+        {
+          duration,
+          restaurantId,
+          attributeCount: restaurant.restaurantAttributes?.length || 0,
+        },
+      );
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error(`Failed to validate restaurant attributes consistency`, {
-        duration,
-        error: error.message,
-        restaurantId,
-      });
+      this.logger.error(
+        `Failed to validate restaurant attributes consistency`,
+        {
+          duration,
+          error: error.message,
+          restaurantId,
+        },
+      );
 
       throw error;
     }
@@ -678,7 +687,7 @@ export class EntityRepository extends BaseRepository<
   /**
    * Add restaurant attributes to a restaurant entity with validation
    * Ensures only restaurant_attribute entities are added to restaurant entities
-   * 
+   *
    * @param restaurantId - Restaurant entity ID
    * @param attributeIds - Array of restaurant attribute entity IDs to add
    * @throws ValidationException - When attributes are invalid
@@ -696,7 +705,7 @@ export class EntityRepository extends BaseRepository<
 
       // Validate restaurant exists and is correct type
       const restaurant = await this.findById(restaurantId);
-      
+
       if (!restaurant) {
         throw new ValidationException('Restaurant', [
           `Restaurant entity with ID ${restaurantId} does not exist`,
@@ -712,7 +721,7 @@ export class EntityRepository extends BaseRepository<
       // Validate each attribute exists and is correct type
       for (const attributeId of attributeIds) {
         const attribute = await this.findById(attributeId);
-        
+
         if (!attribute) {
           throw new ValidationException('Restaurant', [
             `Restaurant attribute entity with ID ${attributeId} does not exist`,
@@ -728,7 +737,9 @@ export class EntityRepository extends BaseRepository<
 
       // Merge with existing attributes (avoid duplicates)
       const existingAttributes = restaurant.restaurantAttributes || [];
-      const newAttributes = [...new Set([...existingAttributes, ...attributeIds])];
+      const newAttributes = [
+        ...new Set([...existingAttributes, ...attributeIds]),
+      ];
 
       const result = await this.update(restaurantId, {
         restaurantAttributes: newAttributes,
@@ -762,7 +773,7 @@ export class EntityRepository extends BaseRepository<
   /**
    * Find dish_or_category entities by their usage context
    * Supports PRD 4.3.1 - entities that serve dual purposes as menu items AND categories
-   * 
+   *
    * @param usageType - Filter by how the entity is used: 'menu_item', 'category', or 'both'
    * @param restaurantId - Optional filter for menu item context
    */
@@ -779,7 +790,7 @@ export class EntityRepository extends BaseRepository<
 
       // First get all dish_or_category entities
       const dishEntities = await this.findByType('dish_or_category');
-      
+
       if (usageType === 'menu_item' && restaurantId) {
         // Find entities used as menu items in specific restaurant
         const menuConnections = await this.prisma.connection.findMany({
@@ -791,11 +802,15 @@ export class EntityRepository extends BaseRepository<
             dishOrCategoryId: true,
           },
         });
-        
-        const menuItemIds = new Set(menuConnections.map(c => c.dishOrCategoryId));
-        return dishEntities.filter(entity => menuItemIds.has(entity.entityId));
+
+        const menuItemIds = new Set(
+          menuConnections.map((c) => c.dishOrCategoryId),
+        );
+        return dishEntities.filter((entity) =>
+          menuItemIds.has(entity.entityId),
+        );
       }
-      
+
       if (usageType === 'category') {
         // Find entities used as categories (in categories arrays)
         const categoryConnections = await this.prisma.connection.findMany({
@@ -808,17 +823,19 @@ export class EntityRepository extends BaseRepository<
             categories: true,
           },
         });
-        
+
         const categoryIds = new Set(
-          categoryConnections.flatMap(c => c.categories)
+          categoryConnections.flatMap((c) => c.categories),
         );
-        return dishEntities.filter(entity => categoryIds.has(entity.entityId));
+        return dishEntities.filter((entity) =>
+          categoryIds.has(entity.entityId),
+        );
       }
-      
+
       if (usageType === 'both') {
         // Find entities used in both contexts (dual-purpose)
         const results: Entity[] = [];
-        
+
         for (const entity of dishEntities) {
           const [menuUsage, categoryUsage] = await Promise.all([
             this.prisma.connection.count({
@@ -835,12 +852,12 @@ export class EntityRepository extends BaseRepository<
               },
             }),
           ]);
-          
+
           if (menuUsage > 0 && categoryUsage > 0) {
             results.push(entity);
           }
         }
-        
+
         return results;
       }
 
@@ -867,9 +884,9 @@ export class EntityRepository extends BaseRepository<
   }
 
   /**
-   * Find entities by name across multiple types with context awareness  
+   * Find entities by name across multiple types with context awareness
    * Supports PRD 4.3.2 - context-dependent attributes that exist in multiple scopes
-   * 
+   *
    * @param searchTerm - Name to search for
    * @param entityTypes - Types to search in (supports context-dependent resolution)
    */

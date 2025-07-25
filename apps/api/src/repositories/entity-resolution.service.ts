@@ -23,7 +23,7 @@ export class EntityResolutionService {
   /**
    * Get dish_or_category entity in menu item context
    * When is_menu_item = true in connections, the entity represents a specific dish
-   * 
+   *
    * PRD 4.3.1: "Node entity (when is_menu_item = true)"
    */
   async getEntityInMenuContext(
@@ -95,7 +95,7 @@ export class EntityResolutionService {
   /**
    * Get dish_or_category entity in category context
    * When stored in categories array, the entity represents a food category
-   * 
+   *
    * PRD 4.3.1: "Connection-scope metadata (stored in categories array)"
    */
   async getEntityInCategoryContext(entityId: string): Promise<{
@@ -146,7 +146,7 @@ export class EntityResolutionService {
   /**
    * Resolve context-dependent attributes
    * Handles attributes that exist in both dish and restaurant scopes
-   * 
+   *
    * PRD 4.3.2: "Separate entities by scope" - same name, different entities by scope
    */
   async resolveContextualAttributes(
@@ -198,21 +198,22 @@ export class EntityResolutionService {
   /**
    * Find dish_or_category entities that serve dual purposes
    * Returns entities that are used both as menu items AND categories
-   * 
+   *
    * PRD 4.3.1: "Same entity ID can represent both menu item and category"
    */
-  async findDualPurposeEntities(): Promise<Array<{
-    entity: Entity;
-    menuItemUsage: number;
-    categoryUsage: number;
-  }>> {
+  async findDualPurposeEntities(): Promise<
+    Array<{
+      entity: Entity;
+      menuItemUsage: number;
+      categoryUsage: number;
+    }>
+  > {
     const startTime = Date.now();
     try {
       this.logger.debug('Finding dual-purpose entities');
 
-      const dishEntities = await this.entityRepository.findByType(
-        'dish_or_category',
-      );
+      const dishEntities =
+        await this.entityRepository.findByType('dish_or_category');
 
       const dualPurposeEntities: Array<{
         entity: Entity;
@@ -264,7 +265,7 @@ export class EntityResolutionService {
   /**
    * Create or resolve context-dependent attribute entity
    * Ensures attributes exist in the correct scope (dish vs restaurant)
-   * 
+   *
    * PRD 4.3.2: Example - "Italian" exists as both dish_attribute and restaurant_attribute
    */
   async createOrResolveContextualAttribute(
