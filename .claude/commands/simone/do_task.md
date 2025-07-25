@@ -56,6 +56,8 @@ Read the task description. If anything is unclear, ask clarifying questions befo
   5. Append a log entry to **## Output Log** using the format `[YYYY-MM-DD HH:MM]: <message>`
   6. Repeat until all subtasks are complete
 
+**ACTION REQUIRED:** If implementation exceeds scope, either simplify to meet basic requirements or document rationale for expanded scope in Output Log.
+
 ## 6 · Infrastructure Integration Check
 
 **CRITICAL:** Before moving to code review, perform an infrastructure integration audit:
