@@ -2,7 +2,7 @@
 milestone_id: M01
 title: Database Foundation & Basic Setup
 status: pending # pending | active | completed | blocked | on_hold
-prd_sections: [4.1, 2.3, 3.4, 2.7, 9.1] # Reference specific PRD sections
+prd_sections: [4, 2, 3, 2, 9] # Reference specific PRD sections
 last_updated: 2025-07-20 12:45
 ---
 
