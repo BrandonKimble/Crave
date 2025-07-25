@@ -2333,10 +2333,10 @@ _Nothing works without this_
 
 **Reference Sections:**
 
-- **4.1** Core Database Schema
-- **2.3** Data Layer (Database, Cache, Migrations)
-- **3.4** Development and Design Principles
-- **2.7** Development Tools
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections) 
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 
 #### 9.1.1 Core Tasks
 
@@ -2364,11 +2364,12 @@ _Required for any content processing and location services_
 
 **Reference Sections:**
 
-- **5.2** Shared Entity Resolution System
-- **4.2** Data Model Principles (entity types)
-- **2.5** External APIs (Reddit API, Google Places API, LLM API)
-- **3.1.2** API Modular Monolith Structure (external-integrations domain)
-- **6.6** Database Operations, Metrics, and Performance Optimizations
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
 
 #### 9.2.1 Core Tasks
 
@@ -2398,9 +2399,12 @@ _Community content foundation using hybrid Pushshift + Reddit API approach_
 
 **Reference Sections:**
 
-- **5.1** Data Collection Strategy (all subsections)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
 - **6** Reddit Data Collection Process (all subsections)
-- **3.1.2** API Modular Monolith Structure (content-processing domain)
 
 #### 9.3.1 Core Tasks
 
@@ -2441,9 +2445,12 @@ _Core search architecture - required for MVP_
 
 **Reference Sections:**
 
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
 - **7** Query Processing System (all subsections)
-- **5.2.3** Query Processing Application
-- **3.1.2** API Modular Monolith Structure (search-discovery domain)
 
 #### 9.4.1 Core Tasks
 
@@ -2468,11 +2475,13 @@ _Required for useful search results_
 
 **Reference Sections:**
 
-- **5.3** Quality Score Computation
-- **6.4.2** Mention Scoring & Activity Calculation
-- **7.9** Ranking System
-- **6.6.3** Metric Aggregation
-- **3.3.1** Content Processing Domain (score computation)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 9.5.1 Core Tasks
 
@@ -2500,11 +2509,13 @@ _Core search functionality enhancement_
 
 **Reference Sections:**
 
-- **7.3** Query Understanding & Processing via LLM Analysis
-- **7.5** Dynamic Query Architecture (especially 7.5.2 and 7.5.3)
-- **7.2** Multi-Level Caching Strategy
-- **6.5.3** Attribute Processing Logic
-- **7.7** Return Format Determination
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 9.6.1 Core Tasks
 
@@ -2528,13 +2539,12 @@ _MVP user experience with essential filtering_
 
 **Reference Sections:**
 
-- **7.1** Query Processing Pipeline
-- **7.6** Location & Availability Filtering
-- **7.7** Return Format Determination
-- **7.8** Post-Processing Result Structure
-- **3.1.3** Mobile App Structure
-- **2.1** Frontend Layer
-- **5.1.3** On-Demand Query-Driven Collection
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 9.7.1 Core Tasks
 
@@ -2587,10 +2597,13 @@ _Core value proposition with hybrid data foundation_
 
 **Reference Sections:**
 
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
+- **7** Query Processing System (all subsections)
 - **8** Community Engagement & Growth Strategy (all subsections)
-- **6.4.2** Mention Scoring & Activity Calculation (for activity indicators)
-- **7.8** Post-Processing Result Structure
-- **4.1.1** Top Mentions Metadata Structure
 
 #### 9.8.1 Core Tasks
 
@@ -2642,11 +2655,10 @@ _Foundation for user engagement features_
 
 **Reference Sections:**
 
-- **4.1.1** User & Subscription Tables
-- **3.1.2** API Modular Monolith Structure (user-experience domain)
-- **2.4.5** Analytics
-- **2.2.2** Essential Libraries (authentication)
-- **3.4.1** Dependency Injection & Loose Coupling
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 
 #### 9.9.1 Core Tasks
 
@@ -2693,10 +2705,10 @@ _Core user engagement foundation_
 
 **Reference Sections:**
 
-- **3.1.2** API Modular Monolith Structure (user-experience domain, bookmark-system)
-- **3.1.3** Mobile App Structure (screens/Bookmarks)
-- **2.1.2** Essential Libraries (React Native MMKV for offline storage)
-- **3.4.2** Event-Driven Communication (user activity events)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 
 #### 9.10.1 Core Tasks
 
@@ -2734,11 +2746,12 @@ _User acquisition and community engagement_
 
 **Reference Sections:**
 
-- **8.3** Social Sharing & Contribution Features
-- **8.5** Growth Metrics & Attribution Strategy
-- **3.1.2** API Modular Monolith Structure (reddit-community)
-- **4.1.1** User & Subscription Tables (referral tracking)
-- **2.1.2** Essential Libraries (expo-linking for deep linking)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **8** Community Engagement & Growth Strategy (all subsections)
 
 #### 9.11.1 Core Tasks
 
@@ -2777,11 +2790,11 @@ _Personal food journey tracking_
 
 **Reference Sections:**
 
-- **7.6.1** Map-Based Location Filtering
-- **3.1.2** API Modular Monolith Structure (user-experience domain)
-- **2.1.2** Essential Libraries (React Native Maps)
-- **4.1.1** Restaurant Metadata Structure (location data)
-- **3.4.2** Event-Driven Communication (user activity tracking)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 9.12.1 Core Tasks
 
@@ -2818,11 +2831,10 @@ _Business monetization foundation_
 
 **Reference Sections:**
 
-- **4.1.1** User & Subscription Tables
-- **2.4** Infrastructure (AWS Services for payments)
-- **3.1.2** API Modular Monolith Structure (user-management)
-- **Performance & Scalability Targets** (payment processing <3s)
-- **2.2.2** Essential Libraries (authentication and validation)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 
 #### 9.13.1 Core Tasks
 
@@ -2861,12 +2873,11 @@ _Pre-MVP UI/UX refinement and mobile experience optimization_
 
 **Reference Sections:**
 
-- **2.1** Frontend Layer (React Native, essential libraries)
-- **2.6** Testing Stack (mobile testing)
-- **2.7** Development Tools (Storybook)
-- **2.4.4** Monitoring (Sentry for crash reporting)
-- **Performance & Scalability Targets** (all user experience metrics)
-- **3.1.3** Mobile App Structure
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 9.14.1 Core Tasks
 
@@ -2894,12 +2905,14 @@ _Final preparation and launch_
 
 **Reference Sections:**
 
-- **1** Overview & Core System Architecture (system validation)
-- **2.4** Infrastructure (deployment)
-- **2.4.3** Mobile Specific (EAS deployment)
-- **Performance & Scalability Targets** (all MVP targets)
-- **2.4.5** Analytics (feedback collection)
-- **2.6** Testing Stack (final validation)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
+- **7** Query Processing System (all subsections)
+- **8** Community Engagement & Growth Strategy (all subsections)
 
 #### 9.15.1 Core Tasks
 
@@ -2936,10 +2949,10 @@ _Production-ready infrastructure (Deferred from Milestones 1-2)_
 
 **Reference Sections:**
 
-- **2.4** Infrastructure (deployment, containerization, monitoring)
-- **2.2.2** Essential Libraries (security)
-- **3.2.2** Shared Package Strategy
-- **2.7** Development Tools (CI/CD)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
 
 #### 10.1.1 Core Tasks
 
@@ -2980,10 +2993,12 @@ _Essential caching for improved performance with real user patterns_
 
 **Reference Sections:**
 
-- **7.2** Multi-Level Caching Strategy
-- **2.3.2** Cache (Redis with ioredis)
-- **5.2.2** Entity Resolution Optimization
-- **1.4.2** Performance Strategy (caching)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 10.2.1 Core Tasks
 
@@ -3007,10 +3022,12 @@ _Advanced entity resolution optimization (Deferred from Milestone 5)_
 
 **Reference Sections:**
 
-- **5.2.2** Entity Resolution Optimization
-- **6.6.4** Performance Monitoring and Optimization
-- **6.6.1** Foundation Infrastructure
-- **5.2.1** Resolution Process Flow
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
 
 #### 10.3.1 Core Tasks
 
@@ -3033,11 +3050,12 @@ _Multi-level caching system (Deferred from Milestone 7)_
 
 **Reference Sections:**
 
-- **7.2** Multi-Level Caching Strategy (complete implementation)
-- **7.2.3** Redis Implementation
-- **2.3.2** Cache (Redis with ioredis, Bull)
-- **2.6.2** Backend Testing (k6 for performance testing)
-- **Performance & Scalability Targets** (cache hit rate >85%)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 10.4.1 Core Tasks
 
@@ -3062,11 +3080,11 @@ _Personalized notification system (Post-MVP)_
 
 **Reference Sections:**
 
-- **2.4.1** AWS Services (SNS for push notifications)
-- **2.1.2** Essential Libraries (expo-notifications)
-- **3.1.2** API Modular Monolith Structure (notification-services)
-- **3.4.2** Event-Driven Communication
-- **1.5.2** Dynamic Ranking & Relevance (activity indicators)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
 
 #### 10.5.1 Core Tasks
 
@@ -3088,12 +3106,12 @@ _Post-MVP scaling infrastructure for real user load_
 
 **Reference Sections:**
 
-- **Performance & Scalability Targets** (post-MVP scaling targets)
-- **2.4.4** Monitoring (Prometheus, Grafana comprehensive)
-- **2.3.1** Database (PostgreSQL optimization)
-- **2.6.2** Backend Testing (k6 for advanced load testing)
-- **2.4.5** Analytics (advanced user behavior analysis)
-- **7.2** Multi-Level Caching Strategy (advanced optimization)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **7** Query Processing System (all subsections)
 
 #### 10.6.1 Core Tasks
 
@@ -3120,11 +3138,14 @@ _Advanced recommendation engine (lowest priority)_
 
 **Reference Sections:**
 
-- **3.1.2** API Modular Monolith Structure (discovery-feed)
-- **1.5.2** Dynamic Ranking & Relevance
-- **8.2** Top Mentions & Activity Indicators
-- **2.5** External APIs (LLM API for AI-driven recommendations)
-- **5.3** Quality Score Computation (for recommendation algorithms)
+- **1** Overview & Core System Architecture (all subsections)
+- **2** Technology Stack (all subsections)
+- **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
+- **4** Data Model & Database Architecture (all subsections)
+- **5** Data Collection Strategy & Architecture (all subsections)
+- **6** Reddit Data Collection Process (all subsections)
+- **7** Query Processing System (all subsections)
+- **8** Community Engagement & Growth Strategy (all subsections)
 
 #### 10.7.1 Core Tasks
 
