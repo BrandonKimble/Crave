@@ -7,10 +7,11 @@ import { MentionRepository } from './mention.repository';
 import { UserRepository } from './user.repository';
 import { SubscriptionRepository } from './subscription.repository';
 import { UserEventRepository } from './user-event.repository';
+import { EntityResolutionService } from './entity-resolution.service';
 
 /**
  * Repository module providing data access layer
- * Exports all repository classes for dependency injection
+ * Exports all repository classes and services for dependency injection
  */
 @Module({
   imports: [PrismaModule, SharedModule],
@@ -21,6 +22,7 @@ import { UserEventRepository } from './user-event.repository';
     UserRepository,
     SubscriptionRepository,
     UserEventRepository,
+    EntityResolutionService,
   ],
   exports: [
     EntityRepository,
@@ -29,6 +31,7 @@ import { UserEventRepository } from './user-event.repository';
     UserRepository,
     SubscriptionRepository,
     UserEventRepository,
+    EntityResolutionService,
   ],
 })
 export class RepositoryModule {}

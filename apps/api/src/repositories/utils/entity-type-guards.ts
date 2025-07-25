@@ -11,10 +11,17 @@ import { EntityType, Prisma } from '@prisma/client';
 export function isValidRestaurantData(
   data: Prisma.EntityCreateInput | Prisma.EntityUpdateInput,
 ): boolean {
-  // Restaurant entities should have location data if creating new
+  // Restaurant entities should have a valid name
+  if ('name' in data) {
+    const name = data.name;
+    if (typeof name === 'string' && name.trim().length === 0) {
+      return false; // Empty name is invalid
+    }
+  }
+  
+  // For restaurant type, basic validation passes
   if ('type' in data && data.type === 'restaurant') {
-    // For create operations, some location fields are recommended
-    return true; // Basic validation - location fields are optional
+    return true; // Location fields are optional
   }
   return true;
 }
