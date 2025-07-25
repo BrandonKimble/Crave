@@ -1,10 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EntityRepository } from './entity.repository';
 import { PrismaService } from '../prisma/prisma.service';
-import { LoggerService } from '../shared';
 import { IntegrationTestSetup } from '../../test/integration-test.setup';
-import { Entity, EntityType, Prisma } from '@prisma/client';
-import { ValidationException } from './base/repository.exceptions';
+import { Entity, Prisma } from '@prisma/client';
 
 describe('EntityRepository Integration Tests', () => {
   let repository: EntityRepository;

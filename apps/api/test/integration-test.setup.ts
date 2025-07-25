@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
-import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LoggerService } from '../src/shared';
 import { DatabaseValidationService } from '../src/config/database-validation.service';
@@ -25,23 +24,92 @@ export class IntegrationTestSetup {
   private prismaService: PrismaService | null = null;
 
   /**
+   * Set comprehensive test environment defaults
+   */
+  private setTestEnvironmentDefaults(): void {
+    // Database configuration with fallbacks
+    if (!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL) {
+      process.env.TEST_DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/crave_search_test';
+    }
+    
+    // Connection pool settings optimized for testing
+    process.env.DATABASE_CONNECTION_POOL_MAX = process.env.DATABASE_CONNECTION_POOL_MAX || '5';
+    process.env.DATABASE_CONNECTION_POOL_MIN = process.env.DATABASE_CONNECTION_POOL_MIN || '1';
+    process.env.DATABASE_CONNECTION_ACQUIRE_TIMEOUT = process.env.DATABASE_CONNECTION_ACQUIRE_TIMEOUT || '30000';
+    process.env.DATABASE_CONNECTION_IDLE_TIMEOUT = process.env.DATABASE_CONNECTION_IDLE_TIMEOUT || '5000';
+    process.env.DATABASE_RETRY_ATTEMPTS = process.env.DATABASE_RETRY_ATTEMPTS || '2';
+    process.env.DATABASE_RETRY_DELAY = process.env.DATABASE_RETRY_DELAY || '500';
+    
+    // Redis configuration for testing
+    process.env.REDIS_HOST = process.env.REDIS_HOST || 'localhost';
+    process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
+    
+    // API configuration
+    process.env.PORT = process.env.PORT || '3001'; // Different port for testing
+    
+    // Reddit API test configuration
+    process.env.REDDIT_CLIENT_ID = process.env.REDDIT_CLIENT_ID || 'test_client_id';
+    process.env.REDDIT_CLIENT_SECRET = process.env.REDDIT_CLIENT_SECRET || 'test_client_secret';
+    process.env.REDDIT_USERNAME = process.env.REDDIT_USERNAME || 'test_username';
+    process.env.REDDIT_PASSWORD = process.env.REDDIT_PASSWORD || 'test_password';
+    process.env.REDDIT_USER_AGENT = process.env.REDDIT_USER_AGENT || 'CraveSearch/1.0.0-test';
+    
+    // LLM configuration for testing
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY || 'test_llm_key';
+    process.env.LLM_MODEL = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+    
+    // JWT configuration for testing
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'test_jwt_secret_key_not_for_production';
+    process.env.JWT_EXPIRATION = process.env.JWT_EXPIRATION || '1h';
+    
+    // Disable logging in tests unless explicitly enabled
+    if (process.env.DATABASE_LOGGING !== 'true') {
+      process.env.DATABASE_LOGGING = 'false';
+    }
+  }
+
+  /**
+   * Validate that database configuration is available and accessible
+   */
+  private async validateDatabaseConfiguration(): Promise<void> {
+    const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+    
+    if (!databaseUrl) {
+      throw new Error(
+        'No database URL found. Please set TEST_DATABASE_URL or DATABASE_URL environment variable.\n' +
+        'For testing, you can use: TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/crave_search_test"\n' +
+        'Make sure PostgreSQL is running and the test database exists.'
+      );
+    }
+
+    // Parse the database URL to provide helpful error messages
+    try {
+      const url = new URL(databaseUrl);
+      if (!url.hostname || !url.port || !url.pathname) {
+        throw new Error('Invalid database URL format');
+      }
+    } catch (error) {
+      throw new Error(
+        `Invalid database URL format: ${databaseUrl}\n` +
+        'Expected format: postgresql://username:password@host:port/database'
+      );
+    }
+  }
+
+  /**
    * Create a TestingModule for integration tests with real database connections
    */
   async createTestingModule(
-    additionalProviders: any[] = [],
+    additionalProviders: unknown[] = [],
   ): Promise<TestingModule> {
-    // Set test environment variables
+    // Set test environment variables with comprehensive fallbacks
     process.env.NODE_ENV = 'test';
-    process.env.DATABASE_URL =
-      process.env.TEST_DATABASE_URL || 
-      process.env.DATABASE_URL || 
-      'postgresql://postgres:password@localhost:5432/crave_search_test';
+    
+    // Set all required environment variables with test defaults
+    this.setTestEnvironmentDefaults();
 
-    if (!process.env.DATABASE_URL) {
-      throw new Error(
-        'DATABASE_URL or TEST_DATABASE_URL environment variable is required for integration tests',
-      );
-    }
+    // Validate database configuration
+    await this.validateDatabaseConfiguration();
 
     // Create testing module with real database configuration
     this.module = await Test.createTestingModule({
@@ -59,7 +127,7 @@ export class IntegrationTestSetup {
         EntityResolutionService,
         EntitiesService,
         DatabaseValidationService,
-        ...additionalProviders,
+        ...additionalProviders as any[],
         {
           provide: LoggerService,
           useValue: {
@@ -228,6 +296,7 @@ export const setupIntegrationTest = () => {
 
   beforeAll(async () => {
     testSetup = new IntegrationTestSetup();
+    await testSetup.createTestingModule();
   });
 
   afterAll(async () => {

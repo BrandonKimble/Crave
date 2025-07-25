@@ -9,8 +9,9 @@ function getDatabasePoolSize(): string {
     case 'development':
       return '10'; // Smaller pool for development with detailed logging
     case 'staging':
+      return '25'; // Mid-size pool for staging
     case 'test':
-      return '25'; // Mid-size pool for staging/testing
+      return '5'; // Smaller pool for testing to avoid connection conflicts
     case 'production':
       return '50'; // MVP production pool size (can scale to 100+)
     default:
@@ -18,10 +19,31 @@ function getDatabasePoolSize(): string {
   }
 }
 
+/**
+ * Gets the appropriate database URL based on environment
+ * Uses TEST_DATABASE_URL for test environment to ensure isolation
+ */
+function getDatabaseUrl(): string {
+  const env = process.env.NODE_ENV || 'development';
+  
+  if (env === 'test') {
+    return (
+      process.env.TEST_DATABASE_URL ||
+      process.env.DATABASE_URL ||
+      'postgresql://postgres:postgres@localhost:5432/crave_search_test'
+    );
+  }
+  
+  return (
+    process.env.DATABASE_URL ||
+    'postgresql://postgres:postgres@localhost:5432/crave_search'
+  );
+}
+
 export default () => ({
   port: parseInt(process.env.PORT || '3000', 10),
   database: {
-    url: process.env.DATABASE_URL,
+    url: getDatabaseUrl(),
     connectionPool: {
       max: parseInt(
         process.env.DATABASE_CONNECTION_POOL_MAX || getDatabasePoolSize(),

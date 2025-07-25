@@ -6,7 +6,7 @@ import { ConnectionRepository } from '../src/repositories/connection.repository'
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LoggerService } from '../src/shared';
 import { IntegrationTestSetup } from './integration-test.setup';
-import { Entity, Connection } from '@prisma/client';
+import { Entity } from '@prisma/client';
 
 describe('Cross-Service Integration Tests', () => {
   let entitiesService: EntitiesService;
@@ -459,10 +459,10 @@ describe('Cross-Service Integration Tests', () => {
 
         // Verify data consistency between service and repository layers
         // Type assertion since we know these are single entities, not arrays
-        const serviceRestaurantEntity = serviceRestaurant as any;
-        const serviceDishEntity = serviceDish as any;
-        const repoRestaurantEntity = repoRestaurant as any;
-        const repoDishEntity = repoDish as any;
+        const serviceRestaurantEntity = serviceRestaurant as Entity;
+        const serviceDishEntity = serviceDish as Entity;
+        const repoRestaurantEntity = repoRestaurant as Entity;
+        const repoDishEntity = repoDish as Entity;
 
         expect(serviceRestaurantEntity?.entityId).toBe(
           repoRestaurantEntity?.entityId,
