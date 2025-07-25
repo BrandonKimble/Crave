@@ -3,9 +3,9 @@ project_name: Crave Search
 current_milestone_id: M01
 highest_milestone: M01
 highest_sprint_in_milestone: S03
-current_sprint_id: S02
+current_sprint_id: S03
 status: active
-last_updated: 2025-07-25T00:38:34Z
+last_updated: 2025-07-25T15:10:00Z
 ---
 
 # Project Manifest: Crave Search
@@ -51,7 +51,7 @@ Building the foundational database layer with PostgreSQL and Prisma ORM. This in
   - Focus: Business logic and data access implementation
   - [Sprint Details](./03_SPRINTS/S02_M01_CRUD_Operations_Repository_Layer/S02_M01_sprint_meta.md)
 
-- [ ] **S03: Testing & Performance Validation** - Status: Planned
+- [ ] **S03: Testing & Performance Validation** - Status: In Progress (T01_S03 🔄)
   - Focus: Quality assurance and performance optimization
   - [Sprint Details](./03_SPRINTS/S03_M01_Testing_Performance_Validation/S03_M01_sprint_meta.md)
 
@@ -66,7 +66,7 @@ Building the foundational database layer with PostgreSQL and Prisma ORM. This in
 
 ## 5. Quick Links
 
-- **Current Sprint:** [S01 Sprint Folder](./03_SPRINTS/S01_M01_Database_Schema_Foundation/)
+- **Current Sprint:** [S03 Sprint Folder](./03_SPRINTS/S03_M01_Testing_Performance_Validation/)
 - **PRD & Roadmap:** [Complete PRD](../../PRD.md)
 - **Project Setup:** [CLAUDE.md](../CLAUDE.md)
 - **Technical Architecture:** [API Documentation](../../apps/api/README.md)
