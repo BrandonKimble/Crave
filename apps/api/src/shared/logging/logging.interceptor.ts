@@ -222,7 +222,7 @@ export class LoggingInterceptor implements NestInterceptor {
     ];
 
     sensitiveFields.forEach((field) => {
-      if (sanitized[field]) {
+      if (field in sanitized && sanitized[field]) {
         sanitized[field] = '[REDACTED]';
       }
     });

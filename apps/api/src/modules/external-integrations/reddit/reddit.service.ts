@@ -196,7 +196,10 @@ export class RedditService implements OnModuleInit {
   }
 
   async authenticate(): Promise<void> {
-    this.logger.log('Authenticating with Reddit API');
+    this.logger.info('Authenticating with Reddit API', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'authenticate',
+    });
 
     try {
       const credentials = `${this.redditConfig.clientId}:${this.redditConfig.clientSecret}`;
@@ -224,7 +227,11 @@ export class RedditService implements OnModuleInit {
       this.accessToken = tokenData.access_token;
       this.tokenExpiresAt = new Date(Date.now() + tokenData.expires_in * 1000);
 
-      this.logger.log('Authentication successful');
+      this.logger.info('Authentication successful', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'authenticate',
+        tokenType: tokenData.token_type,
+      });
     } catch (error) {
       this.accessToken = null;
       this.tokenExpiresAt = null;
@@ -283,7 +290,11 @@ export class RedditService implements OnModuleInit {
       const userData = response.data as Record<string, unknown>;
       const username =
         typeof userData.name === 'string' ? userData.name : 'unknown';
-      this.logger.log(`Authentication validated for user: ${username}`);
+      this.logger.info('Authentication validated for user', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'validate_authentication',
+        username,
+      });
       return true;
     } catch (error) {
       const axiosError = error as AxiosError;
@@ -451,9 +462,12 @@ export class RedditService implements OnModuleInit {
   async getHistoricalPosts(
     timeDepth: '1w' | '1m' | '3m' | '1y',
   ): Promise<HistoricalDataResult> {
-    this.logger.log(
-      `Fetching historical posts for r/austinfood (${timeDepth})`,
-    );
+    this.logger.info('Fetching historical posts for subreddit', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'fetch_historical_posts',
+      subreddit: 'austinfood',
+      timeDepth,
+    });
 
     const startTime = Date.now();
     const timeParam = this.mapTimeDepthToRedditParam(timeDepth);
@@ -588,7 +602,11 @@ export class RedditService implements OnModuleInit {
     threadDepth: any;
     comments: any[];
   }> {
-    this.logger.log(`Fetching historical comments for post ${postId}`);
+    this.logger.info('Fetching historical comments for post', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'fetch_historical_comments',
+      postId,
+    });
 
     const url = `https://oauth.reddit.com/r/austinfood/comments/${postId}`;
     const response = await this.makeRequest<any[]>('GET', url);
@@ -722,9 +740,12 @@ export class RedditService implements OnModuleInit {
   }> {
     const { limit = 100, maxPages = 10, after: initialAfter } = options;
 
-    this.logger.log(
-      `Streaming subreddit comments with limit=${limit}, maxPages=${maxPages}`,
-    );
+    this.logger.info('Streaming subreddit comments', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'stream_subreddit_comments',
+      limit,
+      maxPages,
+    });
 
     const startTime = Date.now();
     const allComments: RedditStreamComment[] = [];

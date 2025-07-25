@@ -308,11 +308,11 @@ export class PrismaErrorMapper {
       entityType,
     };
 
-    if ('code' in error) {
+    if ('code' in error && typeof error.code === 'string') {
       context.code = error.code;
     }
 
-    if ('meta' in error) {
+    if ('meta' in error && typeof error.meta === 'object') {
       context.meta = error.meta;
     }
 

@@ -4,20 +4,24 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
-  Logger,
 } from '@nestjs/common';
 // TODO: Import proper Fastify types when available
 // Using any types for now to resolve compilation issues
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '../exceptions/app-exception.base';
 import { ErrorResponseDto } from '../dto/error-response.dto';
+import { LoggerService, CorrelationUtils } from '../../shared';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(GlobalExceptionFilter.name);
+  private readonly logger: LoggerService;
   private readonly isProd: boolean;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    loggerService: LoggerService,
+  ) {
+    this.logger = loggerService.setContext('GlobalExceptionFilter');
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
 
@@ -26,8 +30,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<any>();
     const response = ctx.getResponse<any>();
 
-    // Generate correlation ID for request tracing
-    const correlationId = this.generateCorrelationId(request);
+    // Get or generate correlation ID for request tracing
+    const correlationId =
+      CorrelationUtils.getCorrelationId() ||
+      this.generateCorrelationId(request);
 
     // Determine error details
     const errorDetails = this.extractErrorDetails(exception, correlationId);
@@ -178,17 +184,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     } else {
       // Log unexpected errors at error level with full stack trace
-      this.logger.error('Unhandled exception occurred', {
-        ...logContext,
-        error:
-          exception instanceof Error
-            ? {
-                name: exception.name,
-                message: exception.message,
-                stack: exception.stack,
-              }
-            : exception,
-      });
+      this.logger.error(
+        'Unhandled exception occurred',
+        exception instanceof Error ? exception : new Error(String(exception)),
+        {
+          ...logContext,
+        },
+      );
     }
   }
 }

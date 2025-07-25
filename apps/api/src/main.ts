@@ -8,7 +8,7 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
-import { createValidationPipeConfig, GlobalExceptionFilter } from './shared';
+import { createValidationPipeConfig } from './shared';
 
 async function bootstrap() {
   // Create with Fastify adapter
@@ -23,8 +23,7 @@ async function bootstrap() {
   // Use Winston logger for NestJS
   app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 
-  // Global exception filter (already configured in SharedModule, but adding here for completeness)
-  app.useGlobalFilters(new GlobalExceptionFilter(configService));
+  // Note: Global exception filter is already configured in SharedModule
 
   // Register Fastify helmet
   const helmetPlugin = await import('@fastify/helmet');

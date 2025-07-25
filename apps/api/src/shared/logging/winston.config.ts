@@ -14,7 +14,7 @@ const logFormat = winston.format.combine(
       Object.keys(metadata).length > 0
         ? ` ${JSON.stringify(metadata)}`
         : '';
-    return `${timestamp} [${level.toUpperCase()}] ${message}${metaString}`;
+    return `${String(timestamp)} [${String(level).toUpperCase()}] ${String(message)}${metaString}`;
   }),
 );
 
@@ -134,17 +134,24 @@ export const requestLoggingConfig = {
   expressFormat: true,
   colorize: false,
   // Skip logging for health check endpoints
-  skip: (req: any) => {
+  skip: (req: { url?: string }) => {
     return req.url?.includes('/health') || req.url?.includes('/metrics');
   },
   // Custom request/response logging
   requestWhitelist: ['url', 'method', 'httpVersion', 'originalUrl', 'query'],
   responseWhitelist: ['statusCode'],
-  dynamicMeta: (req: any, res: any) => ({
+  dynamicMeta: (
+    req: {
+      ip?: string;
+      get?: (header: string) => string;
+      headers?: Record<string, string>;
+    },
+    res: { responseTime?: number; get?: (header: string) => string },
+  ) => ({
     ip: req.ip,
-    userAgent: req.get('User-Agent'),
+    userAgent: req.get?.('User-Agent'),
     responseTime: res.responseTime,
     correlationId:
-      req.headers['x-correlation-id'] || res.get('x-correlation-id'),
+      req.headers?.['x-correlation-id'] || res.get?.('x-correlation-id'),
   }),
 };

@@ -5,6 +5,7 @@ import { HttpService } from '@nestjs/axios';
 import { of, throwError } from 'rxjs';
 import type { AxiosResponse } from 'axios';
 import { RedditService } from './reddit.service';
+import { LoggerService } from '../../../shared';
 import {
   RedditAuthenticationError,
   RedditConfigurationError,
@@ -67,6 +68,16 @@ describe('RedditService', () => {
             ),
           },
         },
+        {
+          provide: LoggerService,
+          useValue: {
+            setContext: jest.fn().mockReturnThis(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
@@ -91,6 +102,13 @@ describe('RedditService', () => {
         new RedditService(
           httpService,
           incompleteConfigService as unknown as ConfigService,
+          {
+            setContext: jest.fn().mockReturnThis(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          } as unknown as LoggerService,
         );
       }).toThrow(RedditConfigurationError);
     });

@@ -15,7 +15,7 @@ export function IsSafeString(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           if (typeof value !== 'string') return false;
 
           // Check for common SQL injection patterns
@@ -54,7 +54,7 @@ export function IsEntityType(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           return typeof value === 'string' && validTypes.includes(value);
         },
         defaultMessage(args: ValidationArguments) {
@@ -78,7 +78,7 @@ export function IsConnectionQuality(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           return typeof value === 'string' && validQualities.includes(value);
         },
         defaultMessage(args: ValidationArguments) {
@@ -100,7 +100,7 @@ export function IsNonEmptyArray(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           return Array.isArray(value) && value.length > 0;
         },
         defaultMessage(args: ValidationArguments) {
@@ -122,7 +122,7 @@ export function IsPositiveNumber(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           return (
             typeof value === 'number' &&
             value > 0 &&
@@ -149,7 +149,7 @@ export function IsScore(validationOptions?: ValidationOptions) {
       propertyName: propertyName,
       options: validationOptions,
       validator: {
-        validate(value: any, _args: ValidationArguments) {
+        validate(value: any) {
           return (
             typeof value === 'number' &&
             value >= 0 &&

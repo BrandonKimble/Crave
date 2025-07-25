@@ -94,6 +94,13 @@ describe('Reddit Integration (e2e)', () => {
       const testService = new RedditService(
         httpService,
         invalidConfigService as unknown as ConfigService,
+        {
+          setContext: jest.fn().mockReturnThis(),
+          info: jest.fn(),
+          debug: jest.fn(),
+          warn: jest.fn(),
+          error: jest.fn(),
+        } as any,
       );
 
       // The service should handle network errors appropriately
@@ -116,6 +123,13 @@ describe('Reddit Integration (e2e)', () => {
         new RedditService(
           httpService,
           incompleteConfigService as unknown as ConfigService,
+          {
+            setContext: jest.fn().mockReturnThis(),
+            info: jest.fn(),
+            debug: jest.fn(),
+            warn: jest.fn(),
+            error: jest.fn(),
+          } as any,
         );
       }).toThrow(RedditConfigurationError);
     });

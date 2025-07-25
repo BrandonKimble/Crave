@@ -2,6 +2,17 @@ import { Controller, Get, HttpStatus, HttpException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { LoggerService, CorrelationUtils } from '../shared';
 
+interface DatabaseMetrics {
+  activeConnections: number;
+  poolConfig: {
+    maxConnections: number;
+  };
+  totalQueries: number;
+  connectionErrors: number;
+  slowQueries: number;
+  totalConnections: number;
+}
+
 @Controller('health')
 export class DatabaseHealthController {
   private readonly logger: LoggerService;
@@ -182,7 +193,10 @@ export class DatabaseHealthController {
   /**
    * Determine overall system health status
    */
-  private determineOverallStatus(healthCheck: boolean, metrics: any): string {
+  private determineOverallStatus(
+    healthCheck: boolean,
+    metrics: DatabaseMetrics,
+  ): string {
     if (!healthCheck) return 'unhealthy';
 
     const poolUtilization =
@@ -204,7 +218,7 @@ export class DatabaseHealthController {
   /**
    * Assess connection pool health
    */
-  private assessConnectionPoolHealth(metrics: any): string {
+  private assessConnectionPoolHealth(metrics: DatabaseMetrics): string {
     const utilization =
       metrics.activeConnections / metrics.poolConfig.maxConnections;
 
@@ -218,7 +232,7 @@ export class DatabaseHealthController {
   /**
    * Assess query performance health
    */
-  private assessQueryPerformance(metrics: any): string {
+  private assessQueryPerformance(metrics: DatabaseMetrics): string {
     if (metrics.totalQueries === 0) return 'healthy'; // No queries yet
 
     const slowQueryRate = metrics.slowQueries / metrics.totalQueries;
