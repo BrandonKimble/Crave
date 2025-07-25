@@ -42,7 +42,7 @@ Creates a new milestone with proper structure, documentation, and project integr
 
 **Generate milestone proposal from PRD:**
 
-- Target section(s): [X.X, Y.Y.Y, etc.] from PRD
+- Target section(s): [X, Y.Y, or Z.Z.Z] from PRD
 - Suggested name: Derived from PRD section titles
 - Key deliverables: Extracted from PRD requirements
 - Success criteria: From PRD "Success Criteria" or "Definition of Done"
@@ -117,7 +117,7 @@ If user requests changes:
   - `milestone_id: M##`
   - `title: [Milestone Name]`
   - `status: pending`
-  - `prd_sections: [X.X, Y.Y.Y, etc.]` (from analysis below)
+  - `prd_sections: [X, Y.Y, or Z.Z.Z]` (from analysis below)
   - `last_updated: [current timestamp YYYY-MM-DD HH:MM]`
 - Auto-populate sections from PRD:
   - **Goals and Key Deliverables**: READ all PRD sections that are referenced by or prerequisite to the target milestone as well as any other relevant or tangentially related sections to populate goals anddeliverables for the meta file as well as fill in the `prd_sections` field in the meta file YAML frontmatter
@@ -171,7 +171,7 @@ If user requests changes:
 - ID: M##
 - Title: [Milestone Name]
 - Status: Planning
-- PRD Sections: [X.X, Y.Y.Y, etc.]
+- PRD Sections: [X, Y.Y, or Z.Z.Z]
 - Focus: [One-line summary of main goal]
 
 📚 **Created Documents**:
