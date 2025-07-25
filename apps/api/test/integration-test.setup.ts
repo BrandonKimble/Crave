@@ -2,8 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigModule } from '@nestjs/config';
 import { PrismaModule } from '../src/prisma/prisma.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-// DatabaseValidationService not needed for integration tests
 import { LoggerService } from '../src/shared';
+import { DatabaseValidationService } from '../src/config/database-validation.service';
+import { EntityRepository } from '../src/repositories/entity.repository';
+import { ConnectionRepository } from '../src/repositories/connection.repository';
+import { MentionRepository } from '../src/repositories/mention.repository';
+import { EntityResolutionService } from '../src/repositories/entity-resolution.service';
+import { EntitiesService } from '../src/modules/entities/entities.service';
 import configuration from '../src/config/configuration';
 
 /**
@@ -28,7 +33,9 @@ export class IntegrationTestSetup {
     // Set test environment variables
     process.env.NODE_ENV = 'test';
     process.env.DATABASE_URL =
-      process.env.DATABASE_URL || process.env.TEST_DATABASE_URL;
+      process.env.TEST_DATABASE_URL || 
+      process.env.DATABASE_URL || 
+      'postgresql://postgres:password@localhost:5432/crave_search_test';
 
     if (!process.env.DATABASE_URL) {
       throw new Error(
@@ -43,9 +50,15 @@ export class IntegrationTestSetup {
           load: [configuration],
           isGlobal: true,
         }),
-        PrismaModule,
       ],
       providers: [
+        PrismaService,
+        EntityRepository,
+        ConnectionRepository,
+        MentionRepository,
+        EntityResolutionService,
+        EntitiesService,
+        DatabaseValidationService,
         ...additionalProviders,
         {
           provide: LoggerService,
