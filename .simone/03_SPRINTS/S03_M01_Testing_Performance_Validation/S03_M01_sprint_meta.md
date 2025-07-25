@@ -2,7 +2,7 @@
 sprint_folder_name: S03_M01_Testing_Performance_Validation
 sprint_sequence_id: S03
 milestone_id: M01
-prd_references: [9.1] # Milestone 1 Success Criteria and Performance Targets
+prd_references: [1, 2, 3, 4, 9] # Milestone 1 Success Criteria and Performance Targets
 title: Testing & Performance Validation - Quality Assurance & Optimization
 status: planned # pending | active | completed | aborted
 goal: Achieve comprehensive test coverage (>80%) and implement performance validation including bulk operations to complete the milestone.
