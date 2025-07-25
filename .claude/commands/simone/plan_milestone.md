@@ -35,7 +35,7 @@ Creates a new milestone with proper structure, documentation, and project integr
 1. MAP completed milestones to their `PRD sections from PROJECT_MANIFEST
 2. READ the PRD overview (section 1) and both roadmap sections (9 and 10) completely
 3. IDENTIFY next unimplemented or partially implemented PRD milestone in sequence
-4. READ all PRD sections that are referenced by or prerequisite to the target PRDmilestone as well as any other relevant or tangentially related sections to understand dependencies, prerequisites, and scope
+4. READ all PRD sections that are referenced by or prerequisite to the target PRD milestone as well as any other relevant or tangentially related sections to understand dependencies, prerequisites, and scope
 5. ANALYZE section dependencies and prerequisites
 6. CALCULATE scope (estimated effort, complexity, deliverables count)
 7. DETERMINE if this milestone should be split (>1 week = split into smaller milestones)

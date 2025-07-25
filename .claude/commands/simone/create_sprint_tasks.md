@@ -44,7 +44,7 @@ Use PARALLEL SUBAGENTS to READ and UNDERSTAND the project's context:
 
 **FIND referenced `PRD.md` sections:**
 
-- CHECK sprint meta for `prd_references` field; if found, proceed to step 3 before reading those PRD sections
+- CHECK sprint meta for `prd_references` field; if found, skip to rest of step 3 and before reading those PRD sections
 - IF no sprint PRD references: Check parent milestone for `prd_sections` and READ those
 
 **READ each `PRD.md` section to EXTRACT and document these elements:**
