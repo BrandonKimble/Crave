@@ -44,7 +44,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Complete Entity Resolution Workflow Integration', () => {
     it('should execute full entity creation and resolution workflow', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // 1. Create restaurant through EntitiesService
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -140,7 +140,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should handle complex attribute resolution across services', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Create test entities through different services
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
@@ -189,7 +189,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Service Layer Orchestration Integration', () => {
     it('should coordinate updates across multiple repository layers', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -244,7 +244,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should maintain transactional consistency across service boundaries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Test that operations across multiple services are transactionally consistent
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -310,7 +310,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Error Propagation Across Service Layers', () => {
     it('should propagate validation errors from repository to service layers', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         // Test invalid restaurant creation (missing location)
         const invalidRestaurantData = {
           entityType: 'restaurant' as const,
@@ -325,7 +325,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should handle database constraint violations across service boundaries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Try to create connection with non-existent entity IDs
@@ -363,7 +363,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Performance Integration Across Services', () => {
     it('should maintain performance standards for cross-service operations', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -414,7 +414,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Data Consistency Across Service Layers', () => {
     it('should maintain data consistency during concurrent cross-service operations', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Perform concurrent operations across different services
@@ -474,7 +474,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should handle complex dual-purpose entity workflows', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Create dual-purpose entity (both menu item and category)
         const dualPurposeEntity = await entitiesService.create({
           entityType: 'dish_or_category',
@@ -563,7 +563,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Integration Test Coverage Validation', () => {
     it('should validate all acceptance criteria through cross-service testing', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // This test validates that all acceptance criteria are met
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
@@ -580,7 +580,7 @@ describe('Cross-Service Integration Tests', () => {
         expect(entityRepository).toBeDefined();
         expect(connectionRepository).toBeDefined();
 
-        // ✅ Database transaction testing (implicit through withTransaction)
+        // ✅ Database transaction testing (implicit through withCleanup)
         // ✅ Error propagation testing (covered in other tests)
         // ✅ Dependency injection testing (module creation validates this)
 
