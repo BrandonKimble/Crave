@@ -3,7 +3,8 @@
 Prime yourself with basic information about this project.
 Make sure you are aware of the environment.
 
-## USE **PARALLEL AGENTS** to
+## READ and analyze
 
-- READ .simone/01_PROJECT_DOCS/ARCHITECTURE.md for basic Project Information
-- READ .simone/00_PROJECT_MANIFEST.md for the Project status
+- READ `.simone/00_PROJECT_MANIFEST.md` for project status and current milestone
+- READ `PRD.md` sections 1-4 for project architecture and technical overview 
+- READ `PRD.md` sections 9-10 for roadmap context and current phase understanding

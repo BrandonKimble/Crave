@@ -75,7 +75,8 @@ If empty, perform full project review. Otherwise interpret <$ARGUMENTS> to ident
 
 **USE PARALLEL AGENTS** to follow these steps:
 
-- READ all core documents in `.simone/01_PROJECT_DOCS/` especially ARCHITECTURE.md
+- READ `PRD.md` sections 1-4 for project architecture and technical overview 
+- READ `PRD.md` sections 9-10 for roadmap context and current phase understanding
 - READ current milestone requirements in `.simone/02_REQUIREMENTS/`
 - IDENTIFY any gaps between documentation and current implementation
 - CHECK if the project is still following the documented architecture vision
