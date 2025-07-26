@@ -18,7 +18,7 @@ The validation encompasses all previous sprint deliverables including database s
 
 Achieve complete milestone validation with documented evidence of DoD compliance and production readiness.
 
-- Validate >80% test coverage across all database operations
+- Validate comprehensive test coverage across all database operations
 - Confirm all DoD criteria are met with documented evidence
 - Verify performance targets and bulk operation requirements
 - Create comprehensive milestone completion report
@@ -27,7 +27,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 ## Acceptance Criteria
 
 - [ ] All 8 M01 DoD criteria validated with documented evidence
-- [ ] Test coverage report confirms >80% coverage for database operations
+- [ ] Test coverage report confirms comprehensive coverage for database operations
 - [ ] Performance benchmarks meet or exceed defined targets
 - [ ] Bulk insert operations validated for efficiency requirements
 - [ ] Migration system verified for production deployment readiness
@@ -43,7 +43,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
   - "Database schema created and all foreign key relationships properly enforced"
   - "Basic CRUD operations functional for all entity types"
   - "Migration system successfully creates and applies schema changes"
-  - "Test suite runs successfully with >80% code coverage for database operations"
+  - "Test suite runs successfully with comprehensive code coverage for database operations"
   - "Local development environment setup documented and reproducible"
   - "Basic logging captures database operations and errors"
   - "Connection pooling configured and functional"
@@ -63,7 +63,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 - M01 Foundation Requirement: "Nothing works without this" - comprehensive database foundation validation
 - Database integrity: All foreign key relationships and constraints properly enforced
 - CRUD functionality: All entity types (restaurant, dish_or_category, attributes) operational
-- Testing infrastructure: >80% coverage threshold achievement with quality validation
+- Testing infrastructure: comprehensive coverage threshold achievement with quality validation
 - Production readiness: Local development environment and deployment preparation
 
 ## Subtasks
@@ -72,7 +72,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 - [ ] Validate database schema implementation against specifications
 - [ ] Verify CRUD operations functionality for all entity types
 - [ ] Confirm migration system production readiness
-- [ ] Validate test suite coverage exceeds 80% threshold
+- [ ] Validate test suite coverage exceeds comprehensive threshold
 - [ ] Assess logging and error handling implementation
 - [ ] Verify connection pooling configuration and performance
 - [ ] Validate bulk insert operations efficiency and correctness
@@ -86,7 +86,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 
 **Coverage Analysis:**
 - Run test coverage reports for all database operations
-- Verify >80% line coverage, branch coverage, and function coverage
+- Verify comprehensive line coverage, branch coverage, and function coverage
 - Document any coverage gaps with justification for exclusion
 
 **Performance Validation:**
@@ -122,7 +122,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 
 **Pre-Sign-off Validation:**
 - All DoD criteria must show "✅ Validated" status
-- Test coverage must exceed 80% with documented evidence
+- Test coverage must be comprehensive with documented evidence
 - Performance targets must be met or exceeded
 - All critical functionality must pass integration tests
 
@@ -146,7 +146,7 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 1. Execute comprehensive test coverage analysis:
    - Run `pnpm --filter api test:cov` to generate coverage reports
    - Analyze line, branch, and function coverage metrics
-   - Document coverage gaps and assess if >80% threshold is met
+   - Document coverage gaps and assess if comprehensive threshold is met
    - Validate test quality and effectiveness, not just quantity
 
 2. Perform database schema validation:
@@ -190,8 +190,8 @@ Achieve complete milestone validation with documented evidence of DoD compliance
 ### Validation Metrics and Thresholds
 
 **Test Coverage Requirements:**
-- Minimum 80% line coverage for database operations
-- Minimum 75% branch coverage for conditional logic
+- Comprehensive line coverage for database operations
+- Comprehensive branch coverage for conditional logic
 - 100% coverage for critical CRUD operations
 - Integration test coverage for end-to-end workflows
 

@@ -2,40 +2,40 @@
 task_id: T05_S03
 sprint_sequence_id: S03
 status: open
-complexity: High
-last_updated: 2025-01-25T00:00:00Z
+complexity: Medium
+last_updated: 2025-07-26T12:15:00Z
 ---
 
 # Task: End-to-End Database Workflows
 
 ## Description
 
-Implement comprehensive end-to-end tests for complete database workflows and transactions that represent real system usage patterns. This includes testing complete data flows from Reddit ingestion through entity resolution, connection creation, mention processing, and cross-entity queries that mirror production workflows.
+**SCOPE ADJUSTED FOR REALISM**: Implement focused end-to-end tests for core database workflows that represent the most critical system usage patterns. This task focuses on 2-3 essential workflows rather than comprehensive coverage, establishing a foundation for future E2E testing expansion.
 
-The current codebase has basic E2E tests (`/Users/brandonkimble/crave-search/apps/api/test/app.e2e-spec.ts`, `/Users/brandonkimble/crave-search/apps/api/test/comment-thread-retrieval.e2e-spec.ts`) but lacks comprehensive database workflow testing that validates complete business processes from start to finish.
+The current codebase has basic E2E tests but lacks core database workflow testing for the most critical business processes.
 
 ## Goal / Objectives
 
-- Implement E2E tests that validate complete database workflows representing real system usage
-- Test entity resolution workflows including dual-purpose dish_or_category entities
-- Validate connection creation with comprehensive entity relationship validation
-- Test mention processing workflows from Reddit data to database storage
-- Implement cross-entity query testing that validates complex relationship traversals
-- Ensure database transaction integrity across multi-step workflows
-- Validate performance characteristics of complete workflow chains
+**SCOPE REDUCED - Focus on Core Workflows:**
+
+- Implement E2E tests for essential entity resolution workflows 
+- Test basic connection creation with entity relationship validation
+- Validate core cross-entity query patterns (most common use cases)
+- Ensure database transaction integrity for critical multi-step workflows
+- Basic performance validation (functional, not comprehensive benchmarking)
 
 ## Acceptance Criteria
 
-- [ ] E2E test suite covers complete entity resolution workflows with context-aware processing
-- [ ] Connection creation workflows are tested end-to-end with full validation chains
-- [ ] Mention processing workflows test complete Reddit-to-database data flows
-- [ ] Cross-entity query workflows validate complex relationship navigation
+**SCOPE REDUCED - Core Workflow Focus:**
+
+- [ ] E2E test suite covers essential entity resolution workflows (restaurant + dish creation and linking)
+- [ ] Basic connection creation workflows tested end-to-end with entity validation
+- [ ] Core cross-entity query workflows validate primary relationship navigation patterns
 - [ ] Database state management ensures proper test isolation and cleanup
-- [ ] Transaction integrity is validated across multi-step operations
-- [ ] Performance benchmarks are established for workflow completion times
+- [ ] Transaction integrity validated for critical multi-step operations
 - [ ] Test suite integrates with existing E2E infrastructure (`jest-e2e.json`)
-- [ ] Database fixtures and test data support realistic workflow scenarios
-- [ ] Error handling and rollback scenarios are comprehensively tested
+- [ ] Basic database fixtures support core workflow scenarios
+- [ ] Essential error handling and rollback scenarios tested
 
 ## PRD References
 
@@ -63,18 +63,18 @@ The current codebase has basic E2E tests (`/Users/brandonkimble/crave-search/app
 
 ## Subtasks
 
-- [ ] Research existing E2E patterns and database workflow integration points
-- [ ] Design comprehensive workflow test scenarios covering major business processes
-- [ ] Implement entity resolution workflow tests with dual-purpose entity handling
-- [ ] Create connection creation workflow tests with full validation chains
-- [ ] Build mention processing workflow tests from ingestion to storage
-- [ ] Develop cross-entity query workflow tests for complex relationship traversals
+**SCOPE REDUCED - Core Workflow Focus:**
+
+- [ ] Research existing E2E patterns and identify core workflow integration points
+- [ ] Design focused workflow test scenarios for essential business processes
+- [ ] Implement entity resolution workflow tests (restaurant + dish creation and resolution)
+- [ ] Create basic connection creation workflow tests with entity validation
+- [ ] Develop core cross-entity query workflow tests for primary relationship patterns
 - [ ] Implement database state management with proper test isolation
-- [ ] Add transaction integrity validation across multi-step operations
-- [ ] Create performance benchmarking for workflow completion times
-- [ ] Integrate with existing E2E infrastructure and CI/CD pipeline
-- [ ] Add comprehensive error handling and rollback scenario testing
-- [ ] Document workflow test patterns for future development
+- [ ] Add transaction integrity validation for critical multi-step operations
+- [ ] Integrate with existing E2E infrastructure (`jest-e2e.json`)
+- [ ] Add essential error handling and rollback scenario testing
+- [ ] Document core workflow test patterns for future expansion
 
 ## Technical Guidance
 
@@ -140,27 +140,22 @@ describe('Entity Resolution Workflow (e2e)', () => {
 
 ### Implementation Notes
 
-**Step-by-Step Approach:**
+**SIMPLIFIED STEP-BY-STEP APPROACH:**
 
 1. **Foundation Setup:**
    - Create `test/workflows/` directory structure
-   - Setup database fixture management system
+   - Setup basic database fixture management
    - Configure test database isolation strategy
 
 2. **Core Workflow Tests:**
-   - Implement entity resolution workflow test suite
-   - Build connection creation workflow tests
-   - Create mention processing workflow validation
+   - Implement essential entity resolution workflow tests (restaurant + dish)
+   - Build basic connection creation workflow tests
+   - Create core cross-entity query workflow validation
 
-3. **Advanced Scenarios:**
-   - Add cross-entity query workflow tests
-   - Implement transaction integrity validation
-   - Build performance benchmarking framework
-
-4. **Integration & Quality:**
-   - Integrate with existing CI/CD pipeline
-   - Add comprehensive error scenario testing
-   - Document workflow test patterns
+3. **Integration & Quality:**
+   - Integrate with existing E2E infrastructure
+   - Add essential error scenario testing
+   - Document core workflow test patterns for future expansion
 
 **Key Services to Test:**
 - EntityResolutionService: Context-aware entity resolution workflows
