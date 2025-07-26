@@ -27,6 +27,7 @@ async function bootstrap() {
 
   // Register Fastify helmet
   const helmetPlugin = await import('@fastify/helmet');
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   await app.register(helmetPlugin.default as any, {
     // Configure settings for Swagger UI compatibility
     contentSecurityPolicy: {

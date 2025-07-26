@@ -25,7 +25,7 @@ function getDatabasePoolSize(): string {
  */
 function getDatabaseUrl(): string {
   const env = process.env.NODE_ENV || 'development';
-  
+
   if (env === 'test') {
     return (
       process.env.TEST_DATABASE_URL ||
@@ -33,7 +33,7 @@ function getDatabaseUrl(): string {
       'postgresql://postgres:postgres@localhost:5432/crave_search_test'
     );
   }
-  
+
   return (
     process.env.DATABASE_URL ||
     'postgresql://postgres:postgres@localhost:5432/crave_search'
