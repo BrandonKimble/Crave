@@ -28,10 +28,16 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 ## PRD References
 
-_(Include when task directly implements PRD requirements)_
+**IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section X.X.X: Specific requirement details
-- Section Y.Y.Y: Related specifications
+- Section X.X.X: [Specific requirement this task addresses]
+- Section Y.Y.Y: [Related specifications and constraints]
+- **Roadmap validation**: Task belongs in current milestone per PRD sections 9-10
+
+**SCOPE BOUNDARIES FROM PRD:**
+
+- **NOT implementing**: [Features deferred to later milestones]
+- **NOT implementing**: [Optimizations beyond PRD requirements]
 
 ## Subtasks
 

@@ -28,7 +28,6 @@ This project follows a milestone-based development approach.
 
 ## 4. Key Documentation
 
-- [Architecture Documentation](./01_PROJECT_DOCS/ARCHITECTURE.md)
 - [Current Milestone Requirements](./02_REQUIREMENTS/{{current_milestone_id}}_{{current_milestone_slug}}/)
 - [General Tasks](./04_GENERAL_TASKS/)
 

@@ -10,28 +10,34 @@ last_updated: YYYY-MM-DD HH:MM
 
 ### Goals and Key Deliverables
 
-- Clearly define the primary objectives of this milestone.
-- What are the key deliverables of this milestone?
-- What should be achieved by the end of this milestone?
+**EXTRACTED FROM PRD SECTIONS:** {{ prd_sections }}
+
+- [List deliverables directly from PRD requirements]
+- [Map each deliverable to specific PRD success criteria]
+- [Ensure alignment with PRD milestone phase and dependencies]
 
 ### Key Documents
 
-List the main requirement documents associated with this milestone.
-
-- `PRD.md` - Full Product Requirements Document
-- `PRD.md` sections: X.X, X.X.X, etc. - Relevant PRD sections for this milestone
-- `PRD_<Milestone_Name>.md` - Milestone-specific PRD (if created)
+**PRD Requirements Source:**
+- `PRD.md` sections: {{ prd_sections }} - Authoritative requirements for this milestone
+- `PRD.md` sections 9 and 10 - Roadmap context and milestone boundaries
 
 ### Definition of Done (DoD)
 
-- Specific, measurable criteria that must be met for this milestone to be considered complete.
+**COPIED FROM PRD SUCCESS CRITERIA:**
+
+- [Copy success criteria directly from referenced PRD sections]
+- [Ensure measurable conditions aligned with PRD requirements]
+- [No additional requirements beyond PRD scope]
 
 ### Scope Boundaries
 
-- What is explicitly NOT included in this milestone
-- Features or optimizations to be deferred to future milestones
-- Clear boundaries to prevent scope creep
+**ENFORCED FROM PRD ROADMAP:**
 
-### Notes / Context (Optional)
+- **NOT included**: [List features deferred to later PRD milestones - reference specific sections]
+- **NOT included**: [Optimizations or enhancements beyond PRD requirements]
+- **Boundary enforcement**: Tasks must implement ONLY requirements in {{ prd_sections }}
 
-- Any additional context, high-level strategy, or important notes related to this milestone for Claude.
+### Notes / Context
+
+**PRD Alignment:** This milestone implements PRD sections {{ prd_sections }} and must not exceed scope defined in these sections. Reference PRD roadmap sections 9-10 for milestone phase appropriateness.

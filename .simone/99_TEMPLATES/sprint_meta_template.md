@@ -13,16 +13,28 @@ last_updated: YYYY-MM-DDTHH:MM:SSZ
 
 ## Sprint Goal
 
-{{ goal }}
+**PRD-ALIGNED OBJECTIVE:** {{ goal }}
 
-## Scope & Key Deliverables (Optional)
+## Scope & Key Deliverables
 
-- What specific features, fixes, or outcomes are targeted in this sprint for Claude to work on?
+**IMPLEMENTS PRD SECTIONS:** {{ prd_references }}
 
-## Definition of Done (for the Sprint) (Optional)
+- [List specific deliverables required by referenced PRD sections]
+- [Ensure all deliverables contribute to parent milestone DoD]
+- [No features beyond PRD requirements]
 
-- What conditions must be met for the sprint itself to be considered successfully completed?
+## Definition of Done (for the Sprint)
 
-## Notes / Retrospective Points (Optional)
+**DERIVED FROM PRD SUCCESS CRITERIA:**
 
-- Any specific notes for this sprint.
+- [Map sprint completion to specific PRD success criteria]
+- [Ensure sprint advances milestone toward PRD-defined success]
+- [No acceptance criteria beyond PRD scope]
+
+## Scope Boundaries
+
+**ENFORCED FROM PRD ROADMAP:**
+
+- **NOT included**: [Features from future milestones per PRD sections 9-10]
+- **NOT included**: [Optimizations not required by PRD]
+- **Boundary**: Tasks implement ONLY {{ prd_references }} requirements

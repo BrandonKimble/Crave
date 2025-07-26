@@ -14,7 +14,6 @@ Projects begin with well-documented requirements and specifications:
 
 **In `01_PROJECT_DOCS/`:**
 
-- Architecture specifications (ARCHITECTURE.md is required)
 - Technical design documents
 - API specifications
 - Database schemas
