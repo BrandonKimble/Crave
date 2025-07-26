@@ -1,123 +1,104 @@
-# Plan Sprints from a given Milestone. Execute from Top to Bottom
+# Plan Sprints from Milestone with PRD Scope Enforcement
 
-Follow these instructions to sprint the scope of a Milestone into Sprints
+Creates sprints that strictly adhere to milestone's PRD requirements without scope expansion.
 
-## Create a TODO with EXACTLY these 8 items
+## Create a TODO with EXACTLY these 6 items
 
-1. Analyze current milestone state
-2. Assess completed work vs milestone requirements
-3. Identify remaining work and dependencies
-4. Design logical sprint boundaries
-5. Create sprint directories and meta files
-6. Update PROJECT_MANIFEST with sprint roadmap
-7. Validate sprint coherence and dependencies
-8. Report milestone plan
+1. Analyze milestone context and PRD requirements comprehensively
+2. Identify remaining work within PRD scope boundaries
+3. Design PRD-aligned sprint boundaries
+4. Create sprint directories and meta files
+5. Update PROJECT_MANIFEST with sprint roadmap
+6. Report sprint plan with scope validation
 
 ---
 
-## 1 · Analyze current milestone state
+## 1 · Analyze milestone context and PRD requirements comprehensively
 
 **CRITICAL:** You are given additional Arguments: <$ARGUMENTS>
 
-Do these tasks:
+**Read and analyze in single context:**
 
 - Parse arguments for milestone ID (defaults to current milestone from PROJECT_MANIFEST)
-- Read `.simone/00_PROJECT_MANIFEST.md` to understand current progress
-- Scan `.simone/03_SPRINTS/` to identify existing sprints for the target milestone
-- For each existing sprint, read its sprint meta file to determine status from YAML frontmatter
-- Analyze the Tasks in Sprints to understand that work that has been done (from Subtasks)
+- Read milestone meta file from `.simone/02_REQUIREMENTS/$MILESTONE_ID/` including ALL PRD section references
+- Read ALL PRD sections referenced in milestone meta AND sections 9 and 10 for roadmap context
+- Read `.simone/00_PROJECT_MANIFEST.md` for current progress and milestone status
+- Scan existing sprints in `.simone/03_SPRINTS/` for target milestone and analyze completed work
+- **CRITICAL:** Map milestone's PRD requirements to understand EXACT scope boundaries
 
-## 2 · Assess completed work vs milestone requirements
+## 2 · Identify remaining work within PRD scope boundaries
 
-- Read milestone meta file from `.simone/02_REQUIREMENTS/$MILESTONE_ID/`
-- **CRITICAL:** Follow and read ALL linked documents in the milestone meta:
-  - Product Requirements (`PRD.md`)
-  - **Specifically review PRD sections:** Check `prd_sections` from milestone YAML frontmatter
-  - Milestone-specific PRD (`PRD_<Milestone_Name>.md`)
-  - Any other linked specifications
-- Study the milestone's Definition of Done (DoD) carefully and **think deeply** about what each DoD criterion actually requires in terms of specific deliverables
-- For each existing sprint, analyze what deliverables have been completed by reading sprint meta and task files
-- **Think more carefully** about the gap analysis: map each completed deliverable against specific DoD requirements and identify what's genuinely missing vs what might already be covered
-- Create clear picture: "What's done vs what's required for milestone completion" with specific justification for each gap identified
+**PRD scope enforcement analysis:**
 
-## 3 · Identify remaining work and dependencies
+- Map milestone's Definition of Done against PRD success criteria to identify exact requirements
+- Analyze completed sprints/tasks to determine what's genuinely complete vs remaining
+- **CRITICAL SCOPE CHECK:** For each potential deliverable, verify it's explicitly required in milestone's PRD sections
+- **ROADMAP VALIDATION:** Cross-check against PRD sections 9 and 10 to ensure deliverables belong in current milestone, not future ones
+- Identify remaining deliverables that are ONLY those required for milestone DoD completion
+- **REJECT any scope expansion:** Features, optimizations, or "nice-to-haves" not in PRD requirements
 
-- Based on gap analysis, identify remaining deliverables for milestone completion
-- **For PRD-referenced milestones**: Read the specific `PRD.md` sections to understand technical requirements and constraints
-- Group related deliverables that have natural dependencies
-- **CRITICAL:** Each deliverable group should be:
-  - **Independently valuable** (shippable increment)
-  - **Completable in ~1 week** by one person
-  - **Has clear validation criteria**
-  - **Not over-engineered**: Focus on meeting PRD requirements, not exceeding them
-- Consider technical dependencies (e.g., auth before UI, LLM integration before tools)
+**Remaining work must be:**
+- Explicitly mentioned in milestone's PRD sections
+- Required for milestone DoD completion
+- Appropriate for milestone phase (foundation vs features vs optimization per PRD)
+- Not deferred to later milestones in PRD roadmap
 
-## 4 · Design logical sprint boundaries
+## 3 · Design PRD-aligned sprint boundaries
 
-- Design sprint structure to complete the milestone
-- Each sprint should have:
-  - **Clear focus**: One main deliverable theme
-  - **Natural boundaries**: Minimal dependencies between sprints
-  - **Incremental value**: Each sprint advances toward milestone DoD
+**Design sprint structure for remaining PRD requirements only:**
+
+- Group remaining deliverables into logical sprints (1-2 week completable chunks)
+- Each sprint focuses on specific PRD requirements from milestone scope
 - Sprint naming: `S<nn>_$milestone_id_$focus_slug`
-- **IMPORTANT:** Don't create sprints for work that's already completed
+- **PRD boundary enforcement:** No sprint includes work not in milestone's PRD sections
+- **IMPORTANT:** Don't create sprints for completed work or future milestone features
 
-## 5 · Create sprint directories and meta files
+## 4 · Create sprint directories and meta files
 
-- For each planned sprint that doesn't exist:
-  - Create directory `.simone/03_SPRINTS/$FULL_SPRINT_NAME/` (using complete sprint name like "S02_M01_LLM_Integration")
-  - Use template from `.simone/99_TEMPLATES/sprint_meta_template.md`
-  - Fill in sprint meta with:
-    - **PRD references**: If milestone has `prd_sections`, identify which specific subsections this sprint will implement and add them to the `prd_references` field in YAML frontmatter
-    - High-level goal and scope
-    - Key deliverables (bullet points, not detailed tasks)
-    - Clear Definition of Done for the sprint
-    - Status: "planned"
+**For each planned sprint:**
 
-## 6 · Update PROJECT_MANIFEST with sprint roadmap
+- Create directory `.simone/03_SPRINTS/$FULL_SPRINT_NAME/`
+- Use template from `.simone/99_TEMPLATES/sprint_meta_template.md`
+- Fill sprint meta with PRD-driven content:
+  - **PRD references**: Inherit ALL milestone's prd_sections PLUS any specific subsections this sprint focuses on
+  - **Goal**: Clear objective aligned with PRD requirements
+  - **Key deliverables**: Only items required by PRD for milestone DoD
+  - **Definition of Done**: Specific to sprint's PRD scope
+  - **Status**: "pending"
 
-- Update `.simone/00_PROJECT_MANIFEST.md`:
-  - Set `highest_sprint_in_milestone` to the highest planned sprint
-  - Update sprint summary section with overview of remaining sprints
-  - Mark completed sprints as ✅ COMPLETED
-  - Show planned sprints with their focus areas
-  - Update `last_updated` timestamp
+## 5 · Update PROJECT_MANIFEST with sprint roadmap
 
-## 7 · Validate sprint coherence and dependencies
+**Update `.simone/00_PROJECT_MANIFEST.md`:**
 
-- Review the planned sprint sequence for logical flow
-- Ensure each sprint builds naturally on previous work
-- Verify no sprint has impossible dependencies
-- Check that sprint sequence leads to milestone DoD completion
-- **Think about** whether each sprint is independently testable and valuable
+- Set `highest_sprint_in_milestone` to highest planned sprint number
+- Update sprint summary with focus areas and PRD sections
+- Mark completed sprints as ✅ and planned sprints with their scope
+- Update `last_updated` timestamp
 
-## 8 · Report milestone plan
+## 6 · Report sprint plan with scope validation
 
-Provide comprehensive summary:
+**Report format:**
 
-**Milestone Status:**
+```markdown
+✅ **Sprint Plan for M##**: [Milestone_Name]
 
-- Target milestone: $milestone_id
-- Sprints completed: $count
-- Sprints planned: $count
-- Estimated completion: $sprint_sequence
+**PRD Scope Validation**: ✅ All sprints align with milestone PRD sections [X, Y]
+**Sprints Created**: [count] (only for remaining PRD requirements)
 
-**Sprint Roadmap:**
+**Sprint Roadmap**:
+- **S##**: [Focus] - PRD sections [X] - Status: [pending/planned]
+- **S##**: [Focus] - PRD sections [Y] - Status: [pending/planned]
 
-For each sprint (existing and planned):
+**Scope Boundaries Enforced**:
+- ❌ Excluded: [features deferred to later milestones per PRD]
+- ✅ Included: [only milestone DoD requirements]
 
-- **$Sprint_ID**: $status - $focus_description
-- Key deliverables: $bullet_list
-- Dependencies: $if_any
+**Next Steps**:
+- Create tasks: `/project:simone:create_sprint_tasks S##`
+```
 
-**Next Steps:**
-
-- Immediate next sprint to detail: $sprint_id
-
-**Validation:**
-
-Summarize your validation analysis covering:
-
-- All milestone DoD items are covered by sprint plan
-- Sprint dependencies are logical and minimal
-- Each sprint delivers independent value
+**CRITICAL VALIDATION COMPLETED**:
+- All sprint deliverables are explicitly required in milestone's PRD sections
+- No scope expansion beyond PRD requirements
+- No features from future milestones included
+- Sprint sequence completes milestone DoD exactly

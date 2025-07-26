@@ -1,127 +1,121 @@
-# Process Simone Task based on $Argument
+# Execute Simone Task with PRD Scope Enforcement
 
-**IMPORTANT:** Follow from Top to Bottom - don't skip anything!
+Implements task requirements strictly within PRD boundaries while maximizing integration with existing codebase infrastructure.
 
-**CREATE A TODO LIST** with exactly these 8 items
+**CREATE A TODO LIST** with exactly these 6 items
 
-1. Analyse scope from argument
-2. Identify task file
-3. Analyse the task
-4. Set status to in_progress
-5. Execute task work
-6. Infrastructure Integration Check
-7. Execute Code review
-8. Finalize Task status
+1. Load task context and PRD requirements comprehensively
+2. Validate task scope against PRD boundaries  
+3. Execute PRD-scoped implementation with infrastructure integration
+4. Perform comprehensive code review and validation
+5. Finalize task completion
+6. Report results
 
-## 1 · Analyse scope from argument
+## 1 · Load task context and PRD requirements comprehensively
 
-<$ARGUMENTS> ⇒ Task ID, Sprint ID, or empty (select next open task in current sprint).
+**Parse arguments and identify task:**
+- <$ARGUMENTS> ⇒ Task ID, Sprint ID, or empty (select next open task in current sprint)
+- Search `.simone/03_SPRINTS/` and `.simone/04_GENERAL_TASKS/` for target task
+- If no open task matches, pause and ask user how to proceed
 
-## 2 · Identify task file
+**Read and analyze in single context:**
+- Read task file completely including description, goals, acceptance criteria, PRD references
+- Read ALL PRD sections referenced in task AND parent sprint/milestone
+- Read PRD sections 9 and 10 for roadmap context and scope boundaries
+- Verify task dependencies are met and belongs to current sprint/milestone scope
 
-Search .simone/03_SPRINTS/ and .simone/04_GENERAL_TASKS/.
-If no open task matches, pause and ask the user how to proceed.
+## 2 · Validate task scope against PRD boundaries
 
-## 3 · Analyse the task
+**Critical scope validation:**
+- Verify task implements ONLY requirements from referenced PRD sections
+- Check task belongs in current milestone phase per PRD roadmap (sections 9-10)
+- Identify what is NOT included (future milestone features, optimizations beyond PRD)
+- If task references functionality from future milestones, pause for clarification
 
-Read the task description. If anything is unclear, ask clarifying questions before continuing.
+- Find current timestamp (YYYY-MM-DD HH:MM)
+- Update task frontmatter: **status: in_progress** and timestamp
+- Update `.simone/00_PROJECT_MANIFEST.md` with task progress
 
-**CRITICAL CONTEXT VALIDATION:** Before executing any task spin up Parallel Subagents for these tasks:
+## 3 · Execute PRD-scoped implementation with infrastructure integration
 
-1. **Sprint Context:** Confirm task belongs to current sprint scope
-2. **Dependencies:** Check if any dependent tasks need to be completed first
-3. **Requirements:** Read relevant requirements docs in `.simone/02_REQUIREMENTS/`
-4. **Scope Verification:** Ensure task aligns with current sprint objectives
+**Phase 1: Infrastructure Analysis & Integration**
 
-**IMPORTANT:** If task references functionality from future sprints or has unmet dependencies, pause and ask for clarification.
+**CRITICAL**: Before implementing ANY new code, perform comprehensive infrastructure integration:
 
-## 4 · Set status to in_progress
+**Existing Infrastructure Discovery:**
+- **Comprehensively search codebase** for ALL existing infrastructure, tools, and capabilities
+- **Core Infrastructure**: Repository patterns, service layers, validation systems, DTOs, custom exceptions, database utilities
+- **Frontend Infrastructure**: UI components, styling systems, navigation patterns, state management, hooks, contexts
+- **External Integrations**: API clients, authentication flows, middleware, health checks, monitoring, caching systems
+- **Development Infrastructure**: Testing utilities, configuration management, build processes, deployment tools, scripts
+- **Domain-Specific Tools**: Any specialized utilities, helpers, or services unique to this project
+- **Third-Party Integrations**: External service wrappers, SDK implementations, specialized libraries
+- **Automation & Tooling**: Custom scripts, generators, validators, formatters, or workflow tools
+- **Performance & Optimization**: Caching layers, optimization utilities, performance monitoring tools
+- **Security Infrastructure**: Authentication helpers, authorization middleware, security utilities
+- **Data Processing**: Transformation utilities, parsing tools, serialization helpers, batch processing systems
+- **Communication**: Event systems, notification services, messaging utilities, webhook handlers
 
-- Find out the current local timestamp (YYYY-MM-DD HH:MM).
-- Update front-matter to **status: in_progress** and set Updated time.
-- Update ./simone/00_PROJECT_MANIFEST.md to set task in progress, updated time and current Sprint Status.
+**Integration Strategy:**
+- **Discover First, Create Last**: Always exhaustively search for existing solutions before building new
+- **Extend vs Create**: Prefer extending/enhancing existing infrastructure over creating duplicate functionality
+- **Pattern Consistency**: Follow ALL established architectural patterns throughout codebase
+- **Maximum Reuse**: Leverage any and all existing utilities, components, services, and tools
+- **Infrastructure Enhancement**: Look for opportunities to improve existing infrastructure during implementation
 
-## 5 · Execute task work
+**Phase 2: PRD-Scoped Implementation**
 
-- Read `PRD.md` sections that are referenced by or prerequisite to the target PRD milestone as well as any other relevant or tangentially related section for implementation guidance, context, requirement details and constraints
-- Follow Description, Goal and Acceptance Criteria
-- Consult supporting docs in .simone/01_PROJECT_DOCS/ and .simone/02_REQUIREMENTS/
-- **PROACTIVE INSTALLATION POLICY:**: You should proactively install any helpful or required dependencies, tools, packages, libraries, or services needed to complete tasks as long as they align with our overall implementation goals
-- Iterate over subtasks:
-  1. Pick the next incomplete subtask
-  2. Implement the required changes, consulting the `PRD.md` and other docs as needed
-  3. Verify implementation doesn't exceed specified scope
-  4. Mark the subtask done
-  5. Append a log entry to **## Output Log** using the format `[YYYY-MM-DD HH:MM]: <message>`
-  6. Repeat until all subtasks are complete
+- Follow task Description, Goals, and Acceptance Criteria exactly as specified
+- Implement ONLY requirements from referenced PRD sections (no scope expansion)
+- **PROACTIVE INSTALLATION**: Install required or beneficial dependencies/tools aligned with implementation goals
+- Leverage discovered infrastructure to minimize code duplication and maintain consistency
 
-**ACTION REQUIRED:** If implementation exceeds scope, either simplify to meet basic requirements or document rationale for expanded scope in Output Log.
+**Subtask Execution:**
+1. Pick next incomplete subtask
+2. Implement using existing infrastructure wherever possible
+3. Verify implementation stays within PRD scope boundaries  
+4. Mark subtask complete
+5. Log progress: `[YYYY-MM-DD HH:MM]: <message>` in **Output Log**
+6. Repeat until all subtasks complete
 
-## 6 · Infrastructure Integration Check
+**Critical Boundaries:**
+- No features beyond current milestone's PRD requirements
+- No optimizations not explicitly required by PRD
+- Simplify implementation if it exceeds PRD scope
 
-**CRITICAL:** Before moving to code review, perform an infrastructure integration audit:
+## 4 · Perform comprehensive code review and validation
 
-**Parallel Subagent Task:** Launch a subagent to analyze existing infrastructure that could be leveraged:
+**Execute code review using optimized process:**
 
-1. **Identify Existing Infrastructure:**
-  - Search for unused/underutilized services, repositories, validators, utilities
-  - Look for "dead code" that's actually valuable infrastructure waiting to be integrated
-  - Check for established patterns not being followed consistently
+- Use `/simone:code_review` with Task ID as scope  
+- Follow automated linting, type-checking, and quality validation
+- Review infrastructure integration and pattern consistency
 
-2. **Integration Opportunities:**
-  Systematically identify and leverage ALL existing infrastructure, patterns, and tooling across every domain - ensuring new implementations build upon rather than bypass existing capabilities.
-  - **Data & Business Logic**: Repository patterns, service layers, validation DTOs, custom exceptions
-  - **UI & Frontend**: Component libraries, styling systems, navigation patterns, state management
-  - **External Services**: API clients (Reddit, payments, etc.), authentication flows, rate limiting
-  - **Infrastructure**: Structured logging, monitoring, caching, security middleware, health checks
-  - **Development Patterns**: Testing utilities, configuration management, build processes, deployment hooks
+**Handle review results:**
+- **FAIL**: Add identified issues as subtasks, return to implementation phase
+- **PASS**: Proceed to task finalization
 
-3. **Architecture Consistency:**
-  - Are new features following established architectural patterns?
-  - Is the new code properly integrated with existing infrastructure?
-  - Are there opportunities to enhance existing infrastructure rather than bypass it?
+## 5 · Finalize task completion
 
-4. **Technical Debt Assessment:**
-  - What existing infrastructure needs updating to support new features?
-  - Are there incomplete implementations that should be finished?
-  - What "temporary" solutions have become permanent and need proper integration?
+- Set task status to **completed**
+- Rename task file to TX[TASK_ID]... format for completed recognition
+- Update `.simone/00_PROJECT_MANIFEST.md` with completion status
 
-**ACTION REQUIRED:** If gaps are found, add integration subtasks to the current task before proceeding to code review and continue with the task.
+## 6 · Report results
 
-**PHILOSOPHY:** Every task should leave the codebase more integrated and consistent, not just functionally complete.
+**Report format:**
 
-## 7 · Execute Code Review
+```markdown
+✅ **Task T## Completed**: [Task_Name]
 
-Follow these steps for a Code Review (in order)
+**PRD Compliance**: ✅ Implementation within [PRD sections] scope
+**Infrastructure Integration**: ✅ Leveraged existing [patterns/utilities/components]
+**Scope Boundaries**: Maintained - no features beyond PRD requirements
 
-- include @.claude/commands/simone/code_review.md and use the Task ID as Scope
-- Follow the instructions in the file to run a code review in **PARALLEL SUBAGENTS**
-- Note: This now includes automated linting and type-checking as part of the review process
-- When done continue acting on the results accordingly
-- Understand and think about the results
-- on **FAIL**
-  - thoroughly understand the problem
-  - extend the Current Task with the Subtasks identified by the review
-  - go back to "5 · Execute task work"
-- on **PASS**
-  - move on to next step
+**Work Completed**: [brief summary]
+**Integration Points**: [existing infrastructure leveraged]
 
-## 8 · Finalize task status
-
-- set the Task status to **completed**
-- Rename the Task file accordingly to enable proper Completed recognition from the filename (TX[TASK_ID]...)
-- Update .simone/00_PROJECT_MANIFEST.md to reflect the new status
-- **Report** the result to the user
-
-  ✅ **Result**: Quick statement of success
-
-  🔎 **Scope**: Identified task or reason none was processed
-
-  💬 **Summary**: One-paragraph recap of what was done or why blocked
-
-  ⏭️ **Next steps**: Recommended follow-up actions
-
-- **Suggestions** for the User:
-
-  - 🛠️ Use /project:simone:commit `TASK_ID` to commit the changes to git
-  - 🧹 Use /clear to clear the context before starting the next Task
+**Next Steps**: 
+- Commit changes: `/simone:commit T##`
+- Clear context before next task
+```
