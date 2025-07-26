@@ -93,7 +93,7 @@ Follow these steps for a Code Review (in order)
 - Follow the instructions in the file to run a code review
 - on **FAIL**
   - Thoroughly understand the problems
-  - Add identified issues as subtasks
+  - extend the current task with identified issues as subtasks
   - return to implementation phase, step "3 · Execute PRD-scoped implementation with infrastructure integration"
 - on **PASS**
   - move on to next step
