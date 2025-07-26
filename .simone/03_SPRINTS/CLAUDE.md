@@ -12,11 +12,11 @@
 
 Sprints are organized by milestone and sequence:
 
-- Folders follow pattern: `S<NN>_M<NN>_<Focus_Area>/` where:
-  - `S<NN>` is the sprint sequence number
-  - `M<NN>` directly references the milestone ID this sprint belongs to
+- Folders follow pattern: `M<NN>_S<NN>_<Focus_Area>/` where:
+  - `M<NN>` is the milestone ID this sprint belongs to (for natural sorting by milestone)
+  - `S<NN>` is the sprint sequence number within the milestone
   - `<Focus_Area>` describes the sprint's main focus
-- Each sprint has a meta file: `S<NN>_sprint_meta.md`
+- Each sprint has a meta file: `M<NN>_S<NN>_sprint_meta.md`
 - Tasks use pattern: `T<NN>_S<NN>_<Description>.md`
 
 ## Sprint Meta Files
@@ -30,6 +30,8 @@ milestone_id: M01
 status: in_progress # planning | in_progress | review | complete
 ---
 ```
+
+**Note**: Sprint folders use `M<NN>_S<NN>_` naming for natural milestone-first sorting.
 
 Update status as progress occurs:
 

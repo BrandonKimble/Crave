@@ -129,13 +129,15 @@ For the approved commit:
 - **Create the commit** with the approved message
 - Verify commit was created successfully
 - **IMPORTANT:** If there are more commits remaining, return to step 3 for the next commit
-- Only proceed to step 6 when all commits are completed
+- **After ALL commits are completed:** Push commits to remote with `git push`
+- Only proceed to step 6 when all commits are completed AND pushed
 
 ## 6 · Report commit results
 
 Provide summary:
 
 - **Commits Created**: List each commit with SHA and message
-- **Files Committed**: Total count of files committed
+- **Files Committed**: Total count of files committed  
+- **Push Status**: Confirm commits were successfully pushed to remote
 - **Remaining Changes**: Any uncommitted changes still pending
-- **Repository Status**: Current git status after commits
+- **Repository Status**: Current git status after commits and push

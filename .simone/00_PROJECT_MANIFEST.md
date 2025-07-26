@@ -2,10 +2,10 @@
 project_name: Crave Search
 current_milestone_id: M02
 highest_milestone: M02
-highest_sprint_in_milestone: S04
-current_sprint_id: S04
+highest_sprint_in_milestone: S02
+current_sprint_id: S01
 status: active
-last_updated: 2025-07-26T17:12:34Z
+last_updated: 2025-07-26T17:45:00Z
 ---
 
 # Project Manifest: Crave Search
@@ -43,42 +43,55 @@ Building the core entity processing pipeline with LLM integration for content an
 
 ### Active Milestones
 
-- [ ] **M02: Entity Processing Core & External Integrations** - Status: Ready for Planning
+- [ ] **M02: Entity Processing Core & External Integrations** - Status: Planned
   - PRD Sections: 1, 2, 3, 4, 5, 6, 9.2, 10
+  - [Milestone Details](./02_REQUIREMENTS/M02_Entity_Processing_Core_External_Integrations/M02_milestone_meta.md)
   - Foundation: M01 database layer complete and validated
 
 ### Sprint Roadmap for M01
 
 - ✅ **S01: Database Schema Foundation** - Status: COMPLETED
   - Focus: Complete schema implementation and migrations
-  - [Sprint Details](./03_SPRINTS/S01_M01_Database_Schema_Foundation/S01_M01_sprint_meta.md)
+  - [Sprint Details](./03_SPRINTS/M01_S01_Database_Schema_Foundation/M01_S01_sprint_meta.md)
 
 - ✅ **S02: CRUD Operations & Repository Layer** - Status: COMPLETED
   - Focus: Business logic and data access implementation
-  - [Sprint Details](./03_SPRINTS/S02_M01_CRUD_Operations_Repository_Layer/S02_M01_sprint_meta.md)
+  - [Sprint Details](./03_SPRINTS/M01_S02_CRUD_Operations_Repository_Layer/M01_S02_sprint_meta.md)
 
 - ✅ **S03: Testing & Performance Validation** - Status: COMPLETED
   - Focus: Quality assurance and comprehensive test coverage
-  - [Sprint Details](./03_SPRINTS/S03_M01_Testing_Performance_Validation/S03_M01_sprint_meta.md)
+  - [Sprint Details](./03_SPRINTS/M01_S03_Testing_Performance_Validation/M01_S03_sprint_meta.md)
 
 - ✅ **S04: Final M01 Validation & Code Quality Cleanup** - Status: COMPLETED
   - Focus: Code quality cleanup, bulk operations validation, and final M01 completion
   - Tasks: T01_S04 (Code Quality - COMPLETED), T02_S04 (Bulk Operations - COMPLETED), T03_S04 (Final Validation - COMPLETED)
-  - [Sprint Details](./03_SPRINTS/S04_M01_Final_Validation_Cleanup/S04_M01_sprint_meta.md)
+  - [Sprint Details](./03_SPRINTS/M01_S04_Final_Validation_Cleanup/M01_S04_sprint_meta.md)
   - Completed: 2025-07-26T17:12:34Z
+
+### Sprint Roadmap for M02
+
+- [ ] **S01: LLM Integration & Entity Resolution Foundation** - Status: PENDING
+  - Focus: LLM integration, entity resolution system, alias management, context-dependent attribute handling
+  - PRD Sections: 1, 2, 3, 4, 5, 6, 9.2, 10
+  - [Sprint Details](./03_SPRINTS/M02_S01_LLM_Entity_Resolution_Foundation/M02_S01_sprint_meta.md)
+
+- [ ] **S02: External Integrations, Security & Bulk Operations** - Status: PENDING
+  - Focus: Google Places API integration, external integrations module, security essentials, bulk operations
+  - PRD Sections: 1, 2, 3, 4, 5, 6, 9.2, 10
+  - [Sprint Details](./03_SPRINTS/M02_S02_External_Integrations_Security/M02_S02_sprint_meta.md)
 
 ## 4. Key Documentation
 
 - [Architecture Documentation (CLAUDE.md)](../CLAUDE.md)
 - [Complete PRD with Roadmap](../../PRD.md)
-- [Current Milestone Requirements](./02_REQUIREMENTS/M01_Database_Foundation_Basic_Setup/)
+- [Current Milestone Requirements](./02_REQUIREMENTS/M02_Entity_Processing_Core_External_Integrations/)
 - [General Tasks](./04_GENERAL_TASKS/)
 
 ## Upcoming Milestones
 
 ## 5. Quick Links
 
-- **Current Sprint:** [S04 Sprint Folder](./03_SPRINTS/S04_M01_Final_Validation_Cleanup/)
+- **Current Sprint:** [S01 Sprint Folder](./03_SPRINTS/M02_S01_LLM_Entity_Resolution_Foundation/)
 - **PRD & Roadmap:** [Complete PRD](../../PRD.md)
 - **Project Setup:** [CLAUDE.md](../CLAUDE.md)
 - **Technical Architecture:** [API Documentation](../../apps/api/README.md)
