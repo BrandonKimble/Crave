@@ -18,7 +18,8 @@ DROP INDEX IF EXISTS "idx_entities_restaurant_attributes";
 CREATE INDEX "idx_entities_name_gin" ON "entities" USING gin("name" gin_trgm_ops);
 
 -- Entity aliases fuzzy search index (all entity types)
-CREATE INDEX "idx_entities_aliases_gin" ON "entities" USING gin("aliases" gin_trgm_ops);
+-- Note: Using regular GIN index for text arrays, not gin_trgm_ops
+CREATE INDEX "idx_entities_aliases_gin" ON "entities" USING gin("aliases");
 
 -- Restaurant address fuzzy search index (restaurant entities only)
 CREATE INDEX "idx_entities_address_gin" ON "entities" USING gin("address" gin_trgm_ops) WHERE "type" = 'restaurant';

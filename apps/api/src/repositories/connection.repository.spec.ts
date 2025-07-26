@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { Test, TestingModule } from '@nestjs/testing';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../shared';
@@ -7,7 +8,7 @@ import { ValidationException } from './base/repository.exceptions';
 
 describe('ConnectionRepository', () => {
   let repository: ConnectionRepository;
-  let entityRepository: EntityRepository;
+  let entityRepository: EntityRepository; // eslint-disable-line @typescript-eslint/no-unused-vars
   let module: TestingModule;
 
   const mockPrismaService = {

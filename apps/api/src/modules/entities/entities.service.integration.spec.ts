@@ -31,10 +31,10 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Restaurant Entity Creation Integration', () => {
     it('should create restaurant entity with real database persistence', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const createData = {
           entityType: 'restaurant' as const,
-          name: 'Integration Test Restaurant',
+          name: `Integration Test Restaurant ${Date.now()}`,
           location: {
             coordinates: { lat: 40.7128, lng: -74.006 },
             address: '123 Integration St',
@@ -52,8 +52,12 @@ describe('EntitiesService Integration Tests', () => {
         expect(result.name).toBe(createData.name);
         expect(result.type).toBe('restaurant');
         expect(result.address).toBe(createData.location.address);
-        expect(result.latitude).toEqual(createData.location.coordinates.lat);
-        expect(result.longitude).toEqual(createData.location.coordinates.lng);
+        expect(Number(result.latitude)).toEqual(
+          createData.location.coordinates.lat,
+        );
+        expect(Number(result.longitude)).toEqual(
+          createData.location.coordinates.lng,
+        );
 
         // Verify database persistence by querying directly
         const dbEntity = await prisma.entity.findUnique({
@@ -72,10 +76,10 @@ describe('EntitiesService Integration Tests', () => {
     });
 
     it('should enforce restaurant location requirement with database constraints', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         const createData = {
           entityType: 'restaurant' as const,
-          name: 'Restaurant Without Location',
+          name: `Restaurant Without Location ${Date.now()}`,
         };
 
         // Test that service layer validation prevents database constraint violations
@@ -86,10 +90,10 @@ describe('EntitiesService Integration Tests', () => {
     });
 
     it('should handle duplicate restaurant name constraints at database level', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         const restaurantData = {
           entityType: 'restaurant' as const,
-          name: 'Duplicate Restaurant Test',
+          name: `Duplicate Restaurant Test ${Date.now()}`,
           location: {
             coordinates: { lat: 40.7128, lng: -74.006 },
             address: '123 Test St',
@@ -117,10 +121,10 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Dish/Category Entity Creation Integration', () => {
     it('should create dish_or_category entity with database persistence', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const createData = {
           entityType: 'dish_or_category' as const,
-          name: 'Integration Test Pizza',
+          name: `Integration Test Pizza ${Date.now()}`,
         };
 
         const result = await service.create(createData);
@@ -143,7 +147,7 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Entity Querying Integration', () => {
     it('should find entities by ID with real database queries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Seed test data
         const testData = await testSetup.seedTestData(prisma);
 
@@ -160,7 +164,7 @@ describe('EntitiesService Integration Tests', () => {
     });
 
     it('should return null for non-existent entities', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         const nonExistentId = '00000000-0000-0000-0000-000000000000';
         const result = await service.findById(nonExistentId);
         expect(result).toBeNull();
@@ -168,7 +172,7 @@ describe('EntitiesService Integration Tests', () => {
     });
 
     it('should find multiple entities with pagination', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Seed multiple entities
         const testData = await testSetup.seedTestData(prisma);
 
@@ -184,7 +188,7 @@ describe('EntitiesService Integration Tests', () => {
 
         // Verify at least our test restaurant is included
         const testRestaurant = results.find(
-          (r: Entity) => r.entityId === (testData.restaurant as Entity).entityId,
+          (r: Entity) => r.entityId === testData.restaurant.entityId,
         );
         expect(testRestaurant).toBeDefined();
       });
@@ -193,10 +197,10 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Entity Updates Integration', () => {
     it('should update entities with database persistence and validation', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Create test entity
         const testData = await testSetup.seedTestData(prisma);
-        const entityId = (testData.restaurant as Entity).entityId;
+        const entityId = testData.restaurant.entityId;
 
         const updateData = {
           name: 'Updated Restaurant Name Integration',
@@ -224,19 +228,19 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Entity Validation Integration', () => {
     it('should validate entity existence with database queries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test validation with existing entity
         const existsResult = await service.validateEntityExists(
-          (testData.restaurant as Entity).entityId,
+          testData.restaurant.entityId,
           'restaurant',
         );
         expect(existsResult).toBe(true);
 
         // Test validation with wrong type
         const wrongTypeResult = await service.validateEntityExists(
-          (testData.restaurant as Entity).entityId,
+          testData.restaurant.entityId,
           'dish_or_category',
         );
         expect(wrongTypeResult).toBe(false);
@@ -252,7 +256,7 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Restaurant Location Queries Integration', () => {
     it('should find nearby restaurants with geospatial database queries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const location = {
@@ -268,7 +272,7 @@ describe('EntitiesService Integration Tests', () => {
 
         // Verify test restaurant is included in results
         const testRestaurant = nearbyRestaurants.find(
-          (r: Entity) => r.entityId === (testData.restaurant as Entity).entityId,
+          (r: Entity) => r.entityId === testData.restaurant.entityId,
         );
         expect(testRestaurant).toBeDefined();
       });
@@ -277,7 +281,7 @@ describe('EntitiesService Integration Tests', () => {
 
   describe('Service-Repository Error Propagation Integration', () => {
     it('should properly propagate database constraint violations through layers', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         // Test invalid entity type constraint
         const invalidData = {
           entityType: 'invalid_type' as 'restaurant',
@@ -289,23 +293,25 @@ describe('EntitiesService Integration Tests', () => {
     });
 
     it('should handle database connection errors gracefully', async () => {
-      await testSetup.withTransaction(async () => {
-        // This test would require temporarily disrupting database connection
-        // Implementation would depend on specific error handling requirements
-        expect(true).toBe(true); // Placeholder for complex error scenarios
-      });
+      await testSetup.withCleanup(() =>
+        Promise.resolve({
+          // This test would require temporarily disrupting database connection
+          // Implementation would depend on specific error handling requirements
+          result: expect(true).toBe(true), // Placeholder for complex error scenarios
+        }),
+      );
     });
   });
 
   describe('Cross-Service Integration Dependencies', () => {
     it('should integrate with EntityResolutionService for complex operations', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test that service layer properly integrates with resolution service
         // This would test scenarios where EntitiesService uses EntityResolutionService
         const validationResult = await service.validateEntityExists(
-          (testData.restaurant as Entity).entityId,
+          testData.restaurant.entityId,
           'restaurant',
         );
 

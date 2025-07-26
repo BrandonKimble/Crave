@@ -1,17 +1,15 @@
-import { Test, TestingModule } from '@nestjs/testing';
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import { TestingModule } from '@nestjs/testing';
 import { EntityResolutionService } from './entity-resolution.service';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
-import { PrismaService } from '../prisma/prisma.service';
-import { LoggerService } from '../shared';
 import { IntegrationTestSetup } from '../../test/integration-test.setup';
-import { Entity, Connection } from '@prisma/client';
 
 describe('EntityResolutionService Integration Tests', () => {
   let service: EntityResolutionService;
   let entityRepository: EntityRepository;
   let connectionRepository: ConnectionRepository;
-  let prismaService: PrismaService;
   let testSetup: IntegrationTestSetup;
   let module: TestingModule;
 
@@ -29,7 +27,7 @@ describe('EntityResolutionService Integration Tests', () => {
     entityRepository = module.get<EntityRepository>(EntityRepository);
     connectionRepository =
       module.get<ConnectionRepository>(ConnectionRepository);
-    prismaService = testSetup.getPrismaService();
+    // prismaService accessed via testSetup.getPrismaService() when needed
   });
 
   afterAll(async () => {
@@ -38,10 +36,10 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Entity Context Resolution Integration', () => {
     it('should resolve entity in menu context with real database queries', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Seed test data with restaurant-dish connection
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -62,7 +60,7 @@ describe('EntityResolutionService Integration Tests', () => {
     });
 
     it('should handle non-existent context gracefully', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const nonExistentRestaurantId = '00000000-0000-0000-0000-000000000001';
 
@@ -79,7 +77,7 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Contextual Attribute Resolution Integration', () => {
     it('should resolve dish attributes with database validation', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test contextual attribute resolution
@@ -100,7 +98,7 @@ describe('EntityResolutionService Integration Tests', () => {
     });
 
     it('should resolve restaurant attributes with scope validation', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test restaurant attribute resolution
@@ -121,7 +119,7 @@ describe('EntityResolutionService Integration Tests', () => {
     });
 
     it('should return empty results for invalid scope', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test with invalid scope parameter
@@ -139,11 +137,11 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Dual-Purpose Entity Resolution Integration', () => {
     it('should identify dual-purpose entities with usage statistics', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Create additional connections to establish dual-purpose usage
-        const connection1 = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -167,9 +165,9 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Cross-Repository Integration Testing', () => {
     it('should coordinate between EntityRepository and ConnectionRepository', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -185,14 +183,19 @@ describe('EntityResolutionService Integration Tests', () => {
         expect(entityResult!.entity.entityId).toBe(
           testData.dishOrCategory.entityId,
         );
-        expect(entityResult!.connection.connectionId).toBe(
-          connection.connectionId,
+
+        // Verify connection exists and has proper restaurant-dish relationship
+        expect(entityResult!.connection.restaurantId).toBe(
+          testData.restaurant.entityId,
+        );
+        expect(entityResult!.connection.dishOrCategoryId).toBe(
+          testData.dishOrCategory.entityId,
         );
       });
     });
 
     it('should handle repository layer errors consistently', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         // Test error propagation from repository layer
         const invalidEntityId = 'invalid-uuid-format';
         const validRestaurantId = '00000000-0000-0000-0000-000000000001';
@@ -213,7 +216,7 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Entity Relationship Validation Integration', () => {
     it('should validate restaurant-dish relationships through database constraints', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Create connection with specific attributes
@@ -248,9 +251,9 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Quality Score Integration Testing', () => {
     it('should calculate quality scores through database operations', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -271,7 +274,7 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Performance Integration Testing', () => {
     it('should handle large result sets efficiently', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const startTime = Date.now();
@@ -292,7 +295,7 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Transaction Boundary Integration', () => {
     it('should maintain consistency across multiple repository operations', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test that resolution service operations are transactionally consistent
@@ -315,7 +318,7 @@ describe('EntityResolutionService Integration Tests', () => {
           });
 
           if (dbConnection) {
-            expect(result.connection.connectionId).toBe(
+            expect(result.connection?.connectionId).toBe(
               dbConnection.connectionId,
             );
           }
@@ -326,7 +329,7 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Error Handling Integration', () => {
     it('should handle database connection issues gracefully', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async (): Promise<void> => {
         // Test graceful degradation on database issues
         // This would require more complex setup to simulate connection failures
         expect(true).toBe(true); // Placeholder for complex error scenarios
@@ -334,9 +337,9 @@ describe('EntityResolutionService Integration Tests', () => {
     });
 
     it('should propagate validation errors from repository layer', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         // Test validation error propagation
-        const invalidScope = 'invalid_scope' as any;
+        const invalidScope = 'invalid_scope' as 'restaurant' | 'dish';
 
         const result = await service.resolveContextualAttributes(
           'Test Attribute',

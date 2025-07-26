@@ -7,8 +7,22 @@ import { ValidationException } from './base/repository.exceptions';
 
 /**
  * Service for context-aware entity resolution
+ *
+ * IMPLEMENTATION NOTE: This service provides static entity query methods for M01 database foundation.
+ * These methods will be complemented (not replaced) by the dynamic component-based processing
+ * system described in PRD Section 6.5 which will be implemented in M02.
+ *
+ * Current Methods (M01 - Database Foundation):
+ * - Static entity queries for API endpoints
+ * - Context-aware entity resolution
+ * - Dual-purpose entity management
+ *
+ * Future M02 Methods (Component-Based Processing):
+ * - Dynamic LLM output processing via 6 processing components
+ * - Bulk entity resolution and creation
+ * - Connection boosting and quality score updates
+ *
  * Implements PRD Section 4.3.1 - Unified dish_or_category Entity Approach
- * Handles dual-purpose entities that serve as both menu items AND categories
  */
 @Injectable()
 export class EntityResolutionService {
@@ -23,6 +37,9 @@ export class EntityResolutionService {
   /**
    * Get dish_or_category entity in menu item context
    * When is_menu_item = true in connections, the entity represents a specific dish
+   *
+   * USAGE: API endpoints for restaurant detail pages showing specific menu items
+   * M02 COMPONENT PROCESSING: Dynamic processing will use bulk operations instead
    *
    * PRD 4.3.1: "Node entity (when is_menu_item = true)"
    */
@@ -84,7 +101,7 @@ export class EntityResolutionService {
       const duration = Date.now() - startTime;
       this.logger.error('Failed to get entity in menu context', {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         entityId,
         restaurantId,
       });
@@ -95,6 +112,9 @@ export class EntityResolutionService {
   /**
    * Get dish_or_category entity in category context
    * When stored in categories array, the entity represents a food category
+   *
+   * USAGE: API endpoints for category browsing and usage statistics
+   * M02 COMPONENT PROCESSING: Dynamic processing will handle category assignment in bulk
    *
    * PRD 4.3.1: "Connection-scope metadata (stored in categories array)"
    */
@@ -136,7 +156,7 @@ export class EntityResolutionService {
       const duration = Date.now() - startTime;
       this.logger.error('Failed to get entity in category context', {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         entityId,
       });
       throw error;
@@ -146,6 +166,9 @@ export class EntityResolutionService {
   /**
    * Resolve context-dependent attributes
    * Handles attributes that exist in both dish and restaurant scopes
+   *
+   * USAGE: API endpoints for attribute filtering and search
+   * M02 COMPONENT PROCESSING: Bulk attribute resolution will use different patterns
    *
    * PRD 4.3.2: "Separate entities by scope" - same name, different entities by scope
    */
@@ -187,7 +210,7 @@ export class EntityResolutionService {
       const duration = Date.now() - startTime;
       this.logger.error('Failed to resolve contextual attributes', {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         attributeName,
         scope,
       });
@@ -198,6 +221,9 @@ export class EntityResolutionService {
   /**
    * Find dish_or_category entities that serve dual purposes
    * Returns entities that are used both as menu items AND categories
+   *
+   * USAGE: Analytics and admin interfaces for data quality analysis
+   * M02 COMPONENT PROCESSING: Dynamic processing will handle dual-purpose detection automatically
    *
    * PRD 4.3.1: "Same entity ID can represent both menu item and category"
    */
@@ -256,7 +282,7 @@ export class EntityResolutionService {
       const duration = Date.now() - startTime;
       this.logger.error('Failed to find dual-purpose entities', {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
       throw error;
     }
@@ -265,6 +291,9 @@ export class EntityResolutionService {
   /**
    * Create or resolve context-dependent attribute entity
    * Ensures attributes exist in the correct scope (dish vs restaurant)
+   *
+   * USAGE: Manual entity creation via admin interfaces or API endpoints
+   * M02 COMPONENT PROCESSING: Bulk attribute creation will use different patterns from PRD 6.5
    *
    * PRD 4.3.2: Example - "Italian" exists as both dish_attribute and restaurant_attribute
    */
@@ -324,7 +353,7 @@ export class EntityResolutionService {
       const duration = Date.now() - startTime;
       this.logger.error('Failed to create or resolve contextual attribute', {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : 'Unknown error',
         attributeName,
         scope,
       });

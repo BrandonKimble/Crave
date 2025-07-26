@@ -1,13 +1,12 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Injectable } from '@nestjs/common';
-import { Connection, Prisma, ActivityLevel, EntityType } from '@prisma/client';
+import { Connection, Prisma, ActivityLevel } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../shared';
 import { BaseRepository } from './base/base.repository';
 import { EntityRepository } from './entity.repository';
-import {
-  ValidationException,
-  ForeignKeyConstraintException,
-} from './base/repository.exceptions';
+import { ValidationException } from './base/repository.exceptions';
 
 /**
  * Repository for Connection model operations

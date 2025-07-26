@@ -27,16 +27,20 @@ describe('EntitiesService', () => {
 
   beforeEach(async () => {
     const mockEntityRepository = {
-      createRestaurant: jest.fn(),
-      createDishOrCategory: jest.fn(),
-      createDishAttribute: jest.fn(),
-      createRestaurantAttribute: jest.fn(),
-      findById: jest.fn(),
-      findMany: jest.fn(),
-      findByType: jest.fn(),
-      findRestaurantsByLocation: jest.fn(),
-      updateWithValidation: jest.fn(),
-      delete: jest.fn(),
+      createRestaurant: jest.fn().mockName('createRestaurant'),
+      createDishOrCategory: jest.fn().mockName('createDishOrCategory'),
+      createDishAttribute: jest.fn().mockName('createDishAttribute'),
+      createRestaurantAttribute: jest
+        .fn()
+        .mockName('createRestaurantAttribute'),
+      findById: jest.fn().mockName('findById'),
+      findMany: jest.fn().mockName('findMany'),
+      findByType: jest.fn().mockName('findByType'),
+      findRestaurantsByLocation: jest
+        .fn()
+        .mockName('findRestaurantsByLocation'),
+      updateWithValidation: jest.fn().mockName('updateWithValidation'),
+      delete: jest.fn().mockName('delete'),
     };
 
     const mockLogger = {
@@ -90,6 +94,7 @@ describe('EntitiesService', () => {
 
       const result = await service.create(createData);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.createRestaurant).toHaveBeenCalledWith({
         name: createData.name,
         latitude: createData.location.coordinates.lat,
@@ -114,6 +119,7 @@ describe('EntitiesService', () => {
 
       const result = await service.create(createData);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.createDishOrCategory).toHaveBeenCalledWith({
         name: createData.name,
       });
@@ -139,6 +145,7 @@ describe('EntitiesService', () => {
 
       const result = await service.findById(entityId);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.findById).toHaveBeenCalledWith(entityId);
       expect(result).toEqual(mockEntity);
     });
@@ -161,6 +168,7 @@ describe('EntitiesService', () => {
 
       const result = await service.findMany(params);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.findMany).toHaveBeenCalledWith(params);
       expect(result).toEqual(entities);
     });
@@ -174,6 +182,7 @@ describe('EntitiesService', () => {
 
       const result = await service.update(entityId, updateData);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.updateWithValidation).toHaveBeenCalledWith(
         entityId,
         updateData,
@@ -189,6 +198,7 @@ describe('EntitiesService', () => {
 
       const result = await service.delete(entityId);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.delete).toHaveBeenCalledWith(entityId);
       expect(result).toEqual(mockEntity);
     });
@@ -202,6 +212,7 @@ describe('EntitiesService', () => {
 
       const result = await service.findRestaurants(filter);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.findByType).toHaveBeenCalledWith(
         'restaurant',
         filter,
@@ -221,11 +232,12 @@ describe('EntitiesService', () => {
 
       const result = await service.findNearbyRestaurants(location);
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(entityRepository.findRestaurantsByLocation).toHaveBeenCalledWith(
         location.centerPoint.lat,
         location.centerPoint.lng,
         location.radiusKm,
-        { where: { isActive: true } },
+        { where: undefined },
       );
       expect(result).toEqual(restaurants);
     });

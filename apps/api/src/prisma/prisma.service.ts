@@ -142,7 +142,8 @@ export class PrismaService
    * Setup event listeners for logging and monitoring
    */
   private setupEventListeners(): void {
-    (this.$on as any)('query', (event: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    (this.$on as any)('query', (event: { duration: number; query: string }) => {
       this.connectionMetrics.totalQueries++;
 
       if (this.dbConfig.performance.logging.enabled) {
@@ -161,16 +162,19 @@ export class PrismaService
       }
     });
 
-    (this.$on as any)('error', (event: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    (this.$on as any)('error', (event: Error) => {
       this.connectionMetrics.connectionErrors++;
       this.logger.error('Database error:', event);
     });
 
-    (this.$on as any)('warn', (event: any) => {
-      this.logger.warn('Database warning:', event.message);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    (this.$on as any)('warn', (event: { message: string }) => {
+      this.logger.warn('Database warning:', { message: event.message });
     });
 
-    (this.$on as any)('info', (event: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    (this.$on as any)('info', (event: { message: string }) => {
       this.logger.info('Database info', { message: event.message });
     });
   }
@@ -183,13 +187,15 @@ export class PrismaService
       return; // Skip health checks in non-production environments
     }
 
-    this.healthCheckInterval = setInterval(async () => {
-      try {
-        await this.performHealthCheck();
-        this.connectionMetrics.lastHealthCheck = new Date();
-      } catch (error) {
-        this.logger.error('Health check failed', error);
-      }
+    this.healthCheckInterval = setInterval(() => {
+      void (async () => {
+        try {
+          await this.performHealthCheck();
+          this.connectionMetrics.lastHealthCheck = new Date();
+        } catch (error) {
+          this.logger.error('Health check failed', error);
+        }
+      })();
     }, 30000); // Check every 30 seconds
   }
 

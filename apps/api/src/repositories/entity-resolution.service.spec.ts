@@ -7,8 +7,8 @@ import { ValidationException } from './base/repository.exceptions';
 
 describe('EntityResolutionService', () => {
   let service: EntityResolutionService;
-  let entityRepository: EntityRepository;
-  let connectionRepository: ConnectionRepository;
+  let entityRepository: EntityRepository; // eslint-disable-line @typescript-eslint/no-unused-vars
+  let connectionRepository: ConnectionRepository; // eslint-disable-line @typescript-eslint/no-unused-vars
 
   const mockEntityRepository = {
     findById: jest.fn(),

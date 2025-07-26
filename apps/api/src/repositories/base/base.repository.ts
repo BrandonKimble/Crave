@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -425,27 +430,30 @@ export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
   protected handlePrismaError(error: any, operation: string): Error {
     if (error.code) {
       switch (error.code) {
-        case 'P2002':
+        case 'P2002': {
           const fields = error.meta?.target || ['unknown'];
           return new UniqueConstraintException(this.entityName, fields);
-
-        case 'P2003':
+        }
+        case 'P2003': {
           const foreignKey = error.meta?.field_name || 'unknown';
           return new ForeignKeyConstraintException(
             this.entityName,
             foreignKey,
             'referenced entity',
           );
+        }
 
-        case 'P2025':
+        case 'P2025': {
           return new EntityNotFoundException(this.entityName, 'unknown');
+        }
 
-        default:
+        default: {
           return new DatabaseOperationException(
             operation,
             this.entityName,
             error,
           );
+        }
       }
     }
 

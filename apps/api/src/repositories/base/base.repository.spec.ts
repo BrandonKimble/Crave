@@ -93,7 +93,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.create.mockResolvedValue(mockResult);
 
-      const result = await repository.create(mockData);
+      const result: unknown = await repository.create(mockData);
 
       expect(mockPrismaService.entity.create).toHaveBeenCalledWith({
         data: mockData,
@@ -120,7 +120,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findUnique.mockResolvedValue(mockResult);
 
-      const result = await repository.findById(mockId);
+      const result: unknown = await repository.findById(mockId);
 
       expect(mockPrismaService.entity.findUnique).toHaveBeenCalledWith({
         where: { entityId: mockId },
@@ -133,7 +133,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findUnique.mockResolvedValue(null);
 
-      const result = await repository.findById(mockId);
+      const result: unknown = await repository.findById(mockId);
 
       expect(result).toBeNull();
     });
@@ -147,7 +147,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.update.mockResolvedValue(mockResult);
 
-      const result = await repository.update(mockId, mockData);
+      const result: unknown = await repository.update(mockId, mockData);
 
       expect(mockPrismaService.entity.update).toHaveBeenCalledWith({
         where: { entityId: mockId },
@@ -176,7 +176,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.delete.mockResolvedValue(mockResult);
 
-      const result = await repository.delete(mockId);
+      const result: unknown = await repository.delete(mockId);
 
       expect(mockPrismaService.entity.delete).toHaveBeenCalledWith({
         where: { entityId: mockId },
@@ -241,7 +241,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findUnique.mockResolvedValue(mockResult);
 
-      const result = await repository.findUnique(mockWhere);
+      const result: unknown = await repository.findUnique(mockWhere);
 
       expect(mockPrismaService.entity.findUnique).toHaveBeenCalledWith({
         where: mockWhere,
@@ -254,7 +254,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findUnique.mockResolvedValue(null);
 
-      const result = await repository.findUnique(mockWhere);
+      const result: unknown = await repository.findUnique(mockWhere);
 
       expect(result).toBeNull();
     });
@@ -278,7 +278,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findFirst.mockResolvedValue(mockResult);
 
-      const result = await repository.findFirst(mockWhere);
+      const result: unknown = await repository.findFirst(mockWhere);
 
       expect(mockPrismaService.entity.findFirst).toHaveBeenCalledWith({
         where: mockWhere,
@@ -291,7 +291,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.findFirst.mockResolvedValue(mockResult);
 
-      const result = await repository.findFirst();
+      const result: unknown = await repository.findFirst();
 
       expect(mockPrismaService.entity.findFirst).toHaveBeenCalledWith({
         where: undefined,
@@ -457,7 +457,7 @@ describe('BaseRepository', () => {
 
       mockPrismaService.entity.upsert.mockResolvedValue(mockResult);
 
-      const result = await repository.upsert(mockParams);
+      const result: unknown = await repository.upsert(mockParams);
 
       expect(mockPrismaService.entity.upsert).toHaveBeenCalledWith(mockParams);
       expect(result).toEqual(mockResult);

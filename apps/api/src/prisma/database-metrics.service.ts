@@ -331,6 +331,7 @@ export class DatabaseMetricsService {
           ? 'warn'
           : 'log';
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     this.logger[logMethod](
       `Database Performance Alert [${alert.severity}]: ${alert.message}`,
       {
