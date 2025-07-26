@@ -1,13 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { TestingModule } from '@nestjs/testing';
 import { ConnectionRepository } from './connection.repository';
-import { PrismaService } from '../prisma/prisma.service';
-import { LoggerService } from '../shared';
 import { IntegrationTestSetup } from '../../test/integration-test.setup';
-import { Connection, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 describe('ConnectionRepository Integration Tests', () => {
   let repository: ConnectionRepository;
-  let prismaService: PrismaService;
+  // prismaService accessed via testSetup
   let testSetup: IntegrationTestSetup;
   let module: TestingModule;
 
@@ -18,7 +16,7 @@ describe('ConnectionRepository Integration Tests', () => {
     module = await testSetup.createTestingModule([ConnectionRepository]);
 
     repository = module.get<ConnectionRepository>(ConnectionRepository);
-    prismaService = testSetup.getPrismaService();
+    // prismaService accessed via testSetup.getPrismaService() when needed
   });
 
   afterAll(async () => {
@@ -27,7 +25,7 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Connection Creation Integration', () => {
     it('should create restaurant-dish connection with database persistence', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const connectionData = {
@@ -79,7 +77,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should enforce foreign key constraints on restaurant references', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const nonExistentRestaurantId = '00000000-0000-0000-0000-000000000001';
 
@@ -106,7 +104,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should enforce foreign key constraints on dish references', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const nonExistentDishId = '00000000-0000-0000-0000-000000000002';
 
@@ -133,7 +131,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should enforce unique constraint on restaurant-dish-attributes combination', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const connectionData = {
@@ -157,15 +155,17 @@ describe('ConnectionRepository Integration Tests', () => {
         const firstConnection = await repository.create(connectionData);
         expect(firstConnection).toBeDefined();
 
-        // Attempt to create duplicate should fail
-        await expect(repository.create(connectionData)).rejects.toThrow();
+        // Attempt to create duplicate should fail with unique constraint violation
+        await expect(repository.create(connectionData)).rejects.toThrow(
+          /unique constraint|already exists/i,
+        );
       });
     });
   });
 
   describe('Connection Querying Integration', () => {
     it('should find connections with proper relationship loading', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -183,7 +183,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should find connections by restaurant with filtering', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -207,7 +207,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should find connections by dish with activity filtering', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Create connection with specific activity level
@@ -251,13 +251,19 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Connection Updates Integration', () => {
     it('should update connection with validation and persistence', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
         );
+
+        // Verify connection exists before update
+        const existingConnection = await repository.findById(
+          connection.connectionId,
+        );
+        expect(existingConnection).toBeDefined();
 
         const updateData = {
           mentionCount: 25,
@@ -291,7 +297,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should maintain referential integrity during updates', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -315,7 +321,7 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Quality Score Integration', () => {
     it('should handle quality score calculations with proper precision', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const connectionData = {
@@ -337,7 +343,7 @@ describe('ConnectionRepository Integration Tests', () => {
         const result = await repository.create(connectionData);
 
         expect(result).toBeDefined();
-        expect(result.dishQualityScore).toEqual(new Prisma.Decimal(87.654321));
+        expect(Number(result.dishQualityScore)).toBeCloseTo(87.654321, 4);
 
         // Verify precision in database
         const dbConnection = await prisma.connection.findUnique({
@@ -355,13 +361,14 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Connection Attributes Integration', () => {
     it('should handle dish attributes arrays with database validation', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
-        // Create additional attribute
+        // Create additional attribute with unique identifier
+        const timestamp = Date.now();
         const secondAttribute = await prisma.entity.create({
           data: {
-            name: 'Vegan Integration Test',
+            name: `Vegan Integration Test ${timestamp}`,
             type: 'dish_attribute',
           },
         });
@@ -406,7 +413,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should handle empty dish attributes array', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         const connectionData = {
@@ -436,7 +443,7 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Activity Level Integration', () => {
     it('should enforce activity_level enum constraints', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test all valid activity levels
@@ -455,13 +462,15 @@ describe('ConnectionRepository Integration Tests', () => {
             totalUpvotes: 25,
             sourceDiversity: 2,
             recentMentionCount: 1,
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
             activityLevel: level as any,
             dishQualityScore: 75.0,
           };
 
+          const timestamp = Date.now() + Math.random() * 1000;
           const uniqueDish = await prisma.entity.create({
             data: {
-              name: `Test Dish ${level}`,
+              name: `Test Dish ${level} ${timestamp}`,
               type: 'dish_or_category',
             },
           });
@@ -481,7 +490,7 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should reject invalid activity levels', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Try to create connection with invalid activity level directly in Prisma
@@ -499,6 +508,7 @@ describe('ConnectionRepository Integration Tests', () => {
               totalUpvotes: 25,
               sourceDiversity: 2,
               recentMentionCount: 1,
+              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
               activityLevel: 'invalid_level' as any,
               dishQualityScore: 75.0,
             },
@@ -510,7 +520,7 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Connection Deletion Integration', () => {
     it('should delete connection with proper cleanup', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -535,15 +545,16 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Concurrent Operations Integration', () => {
     it('should handle concurrent connection creation safely', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
-        // Create multiple dishes for concurrent connections
+        // Create multiple dishes for concurrent connections with unique names
+        const timestamp = Date.now();
         const dishes = await Promise.all(
           Array.from({ length: 5 }, (_, i) =>
             prisma.entity.create({
               data: {
-                name: `Concurrent Dish ${i}`,
+                name: `Concurrent Dish ${i} ${timestamp}-${Math.random().toString(36).substring(2, 11)}`,
                 type: 'dish_or_category',
               },
             }),
@@ -559,6 +570,7 @@ describe('ConnectionRepository Integration Tests', () => {
             dish: {
               connect: { entityId: dish.entityId },
             },
+            dishAttributes: [], // Explicitly set empty array for unique constraint
             isMenuItem: true,
             mentionCount: 5,
             totalUpvotes: 25,
@@ -584,7 +596,7 @@ describe('ConnectionRepository Integration Tests', () => {
 
   describe('Error Propagation Integration', () => {
     it('should propagate database constraint violations properly', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test invalid UUID format

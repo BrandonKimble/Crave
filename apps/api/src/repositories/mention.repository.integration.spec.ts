@@ -27,7 +27,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Mention Creation Integration', () => {
     it('should create mention with database persistence and foreign key validation', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         // Setup test data with connection
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
@@ -36,13 +36,15 @@ describe('MentionRepository Integration Tests', () => {
           testData.dishOrCategory.entityId,
         );
 
+        const timestamp = Date.now();
+        const uniqueId = Math.random().toString(36).substring(2, 9);
         const mentionData = {
           connection: {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'post' as const,
-          sourceId: 'test_post_12345',
-          sourceUrl: 'https://reddit.com/r/food/comments/test_post_12345',
+          sourceId: `test_post_${timestamp}_${uniqueId}`,
+          sourceUrl: `https://reddit.com/r/food/comments/test_post_${timestamp}`,
           subreddit: 'food',
           contentExcerpt:
             'This pizza at Integration Test Restaurant is absolutely amazing! Best spicy pizza in NYC.',
@@ -56,9 +58,9 @@ describe('MentionRepository Integration Tests', () => {
         expect(result).toBeDefined();
         expect(result.connectionId).toBe(connection.connectionId);
         expect(result.sourceType).toBe('post');
-        expect(result.sourceId).toBe('test_post_12345');
+        expect(result.sourceId).toBe(`test_post_${timestamp}_${uniqueId}`);
         expect(result.sourceUrl).toBe(
-          'https://reddit.com/r/food/comments/test_post_12345',
+          `https://reddit.com/r/food/comments/test_post_${timestamp}`,
         );
         expect(result.subreddit).toBe('food');
         expect(result.contentExcerpt).toBe(mentionData.contentExcerpt);
@@ -78,7 +80,7 @@ describe('MentionRepository Integration Tests', () => {
     });
 
     it('should enforce foreign key constraint on connection references', async () => {
-      await testSetup.withTransaction(async () => {
+      await testSetup.withCleanup(async () => {
         const nonExistentConnectionId = '00000000-0000-0000-0000-000000000001';
 
         const invalidMentionData = {
@@ -86,8 +88,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: nonExistentConnectionId },
           },
           sourceType: 'comment' as const,
-          sourceId: 'invalid_comment_123',
-          sourceUrl: 'https://reddit.com/r/food/comments/invalid',
+          sourceId: `invalid_comment_${Date.now()}`,
+          sourceUrl: `https://reddit.com/r/food/comments/invalid_${Date.now()}`,
           subreddit: 'food',
           contentExcerpt: 'Invalid mention test',
           author: 'test_user',
@@ -100,7 +102,7 @@ describe('MentionRepository Integration Tests', () => {
     });
 
     it('should handle both post and comment source types', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -114,8 +116,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'post',
-          sourceId: 'post_123',
-          sourceUrl: 'https://reddit.com/r/food/comments/post_123',
+          sourceId: `post_${Date.now()}_1`,
+          sourceUrl: `https://reddit.com/r/food/comments/post_${Date.now()}_1`,
           subreddit: 'food',
           contentExcerpt: 'Great restaurant post',
           author: 'post_author',
@@ -129,8 +131,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'comment',
-          sourceId: 'comment_456',
-          sourceUrl: 'https://reddit.com/r/food/comments/comment_456',
+          sourceId: `comment_${Date.now()}_2`,
+          sourceUrl: `https://reddit.com/r/food/comments/comment_${Date.now()}_2`,
           subreddit: 'food',
           contentExcerpt: 'Agree with this recommendation',
           author: 'comment_author',
@@ -146,7 +148,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Mention Querying Integration', () => {
     it('should find mentions by connection with proper filtering', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -160,8 +162,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'post',
-          sourceId: 'query_test_1',
-          sourceUrl: 'https://reddit.com/r/food/comments/query_test_1',
+          sourceId: `query_test_${Date.now()}_1`,
+          sourceUrl: `https://reddit.com/r/food/comments/query_test_${Date.now()}_1`,
           subreddit: 'food',
           contentExcerpt: 'First test mention',
           author: 'user1',
@@ -174,8 +176,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'comment',
-          sourceId: 'query_test_2',
-          sourceUrl: 'https://reddit.com/r/food/comments/query_test_2',
+          sourceId: `query_test_${Date.now() + 1}_2`,
+          sourceUrl: `https://reddit.com/r/food/comments/query_test_${Date.now() + 1}_2`,
           subreddit: 'nyc',
           contentExcerpt: 'Second test mention',
           author: 'user2',
@@ -209,7 +211,7 @@ describe('MentionRepository Integration Tests', () => {
     });
 
     it('should support pagination and ordering for large mention sets', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -217,20 +219,27 @@ describe('MentionRepository Integration Tests', () => {
           testData.dishOrCategory.entityId,
         );
 
+        // Verify connection exists before creating mentions
+        const existingConnection = await prisma.connection.findUnique({
+          where: { connectionId: connection.connectionId },
+        });
+        expect(existingConnection).toBeDefined();
+
         // Create multiple mentions with different upvote counts
+        const baseTime = Date.now() - 86400000; // Start from 24 hours ago
         const mentionPromises = Array.from({ length: 5 }, (_, i) =>
           repository.create({
             connection: {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'post',
-            sourceId: `pagination_test_${i}`,
-            sourceUrl: `https://reddit.com/r/food/comments/pagination_test_${i}`,
+            sourceId: `pagination_test_${Date.now()}_${i}`,
+            sourceUrl: `https://reddit.com/r/food/comments/pagination_test_${Date.now()}_${i}`,
             subreddit: 'food',
             contentExcerpt: `Pagination test mention ${i}`,
             author: `user${i}`,
             upvotes: (i + 1) * 10, // 10, 20, 30, 40, 50
-            createdAt: new Date(Date.now() + i * 1000), // Different timestamps
+            createdAt: new Date(baseTime + i * 1000), // Different timestamps in the past
           }),
         );
 
@@ -270,7 +279,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Mention Analytics Integration', () => {
     it('should aggregate mention statistics by connection', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -285,8 +294,8 @@ describe('MentionRepository Integration Tests', () => {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'post',
-            sourceId: 'analytics_1',
-            sourceUrl: 'https://reddit.com/r/food/comments/analytics_1',
+            sourceId: `analytics_${Date.now()}_1`,
+            sourceUrl: `https://reddit.com/r/food/comments/analytics_${Date.now()}_1`,
             subreddit: 'food',
             contentExcerpt: 'Analytics test 1',
             author: 'user1',
@@ -298,8 +307,8 @@ describe('MentionRepository Integration Tests', () => {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'comment',
-            sourceId: 'analytics_2',
-            sourceUrl: 'https://reddit.com/r/food/comments/analytics_2',
+            sourceId: `analytics_${Date.now() + 1}_2`,
+            sourceUrl: `https://reddit.com/r/food/comments/analytics_${Date.now() + 1}_2`,
             subreddit: 'nyc',
             contentExcerpt: 'Analytics test 2',
             author: 'user2',
@@ -311,8 +320,8 @@ describe('MentionRepository Integration Tests', () => {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'post',
-            sourceId: 'analytics_3',
-            sourceUrl: 'https://reddit.com/r/food/comments/analytics_3',
+            sourceId: `analytics_${Date.now() + 2}_3`,
+            sourceUrl: `https://reddit.com/r/food/comments/analytics_${Date.now() + 2}_3`,
             subreddit: 'food',
             contentExcerpt: 'Analytics test 3',
             author: 'user3',
@@ -339,7 +348,7 @@ describe('MentionRepository Integration Tests', () => {
     });
 
     it('should identify trending mentions by recency and upvotes', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -350,30 +359,31 @@ describe('MentionRepository Integration Tests', () => {
         const now = new Date();
         const recentDate = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 1 day ago
         const oldDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+        const trendingSourceId = `trending_${Date.now()}_1`;
+
+        const trendingMention = await repository.create({
+          connection: {
+            connect: { connectionId: connection.connectionId },
+          },
+          sourceType: 'post',
+          sourceId: trendingSourceId,
+          sourceUrl: `https://reddit.com/r/food/comments/trending_${Date.now()}_1`,
+          subreddit: 'food',
+          contentExcerpt: 'Recent trending mention',
+          author: 'trending_user',
+          upvotes: 200,
+          createdAt: recentDate,
+        });
 
         await Promise.all([
-          // Recent high-upvote mention (trending)
-          repository.create({
-            connection: {
-              connect: { connectionId: connection.connectionId },
-            },
-            sourceType: 'post',
-            sourceId: 'trending_1',
-            sourceUrl: 'https://reddit.com/r/food/comments/trending_1',
-            subreddit: 'food',
-            contentExcerpt: 'Recent trending mention',
-            author: 'trending_user',
-            upvotes: 200,
-            createdAt: recentDate,
-          }),
           // Old high-upvote mention (not trending)
           repository.create({
             connection: {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'post',
-            sourceId: 'old_1',
-            sourceUrl: 'https://reddit.com/r/food/comments/old_1',
+            sourceId: `old_${Date.now()}_1`,
+            sourceUrl: `https://reddit.com/r/food/comments/old_${Date.now()}_1`,
             subreddit: 'food',
             contentExcerpt: 'Old high upvote mention',
             author: 'old_user',
@@ -386,8 +396,8 @@ describe('MentionRepository Integration Tests', () => {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'comment',
-            sourceId: 'recent_low',
-            sourceUrl: 'https://reddit.com/r/food/comments/recent_low',
+            sourceId: `recent_low_${Date.now()}`,
+            sourceUrl: `https://reddit.com/r/food/comments/recent_low_${Date.now()}`,
             subreddit: 'food',
             contentExcerpt: 'Recent low upvote mention',
             author: 'recent_user',
@@ -409,7 +419,7 @@ describe('MentionRepository Integration Tests', () => {
 
         expect(recentMentions).toBeDefined();
         expect(recentMentions.length).toBe(1);
-        expect(recentMentions[0].sourceId).toBe('trending_1');
+        expect(recentMentions[0].sourceId).toBe(trendingSourceId);
         expect(recentMentions[0].upvotes).toBe(200);
       });
     });
@@ -417,7 +427,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Mention Updates Integration', () => {
     it('should update mention with validation and persistence', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -430,8 +440,8 @@ describe('MentionRepository Integration Tests', () => {
             connect: { connectionId: connection.connectionId },
           },
           sourceType: 'post',
-          sourceId: 'update_test',
-          sourceUrl: 'https://reddit.com/r/food/comments/update_test',
+          sourceId: `update_test_${Date.now()}`,
+          sourceUrl: `https://reddit.com/r/food/comments/update_test_${Date.now()}`,
           subreddit: 'food',
           contentExcerpt: 'Original content',
           author: 'original_author',
@@ -464,7 +474,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Error Propagation Integration', () => {
     it('should propagate database constraint violations properly', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -480,8 +490,8 @@ describe('MentionRepository Integration Tests', () => {
                 connect: { connectionId: connection.connectionId },
               },
               sourceType: 'invalid_type' as any,
-              sourceId: 'test_123',
-              sourceUrl: 'https://reddit.com/test',
+              sourceId: `test_${Date.now()}`,
+              sourceUrl: `https://reddit.com/test_${Date.now()}`,
               subreddit: 'test',
               contentExcerpt: 'Test content',
               author: 'test_author',
@@ -501,7 +511,7 @@ describe('MentionRepository Integration Tests', () => {
 
   describe('Concurrent Operations Integration', () => {
     it('should handle concurrent mention creation safely', async () => {
-      await testSetup.withTransaction(async (prisma) => {
+      await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
         const connection = await testSetup.createTestConnection(
           prisma,
@@ -516,8 +526,8 @@ describe('MentionRepository Integration Tests', () => {
               connect: { connectionId: connection.connectionId },
             },
             sourceType: 'post',
-            sourceId: `concurrent_${i}`,
-            sourceUrl: `https://reddit.com/r/food/comments/concurrent_${i}`,
+            sourceId: `concurrent_${Date.now()}_${i}`,
+            sourceUrl: `https://reddit.com/r/food/comments/concurrent_${Date.now()}_${i}`,
             subreddit: 'food',
             contentExcerpt: `Concurrent mention ${i}`,
             author: `user${i}`,
