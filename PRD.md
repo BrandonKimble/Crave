@@ -2337,6 +2337,8 @@ _Nothing works without this_
 - **2** Technology Stack (all subsections) 
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.1.1 Core Tasks
 
@@ -2370,6 +2372,8 @@ _Required for any content processing and location services_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **6** Reddit Data Collection Process (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.2.1 Core Tasks
 
@@ -2405,6 +2409,8 @@ _Community content foundation using hybrid Pushshift + Reddit API approach_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **6** Reddit Data Collection Process (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.3.1 Core Tasks
 
@@ -2516,6 +2522,8 @@ _Core search functionality enhancement_
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **6** Reddit Data Collection Process (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.6.1 Core Tasks
 
@@ -2545,6 +2553,8 @@ _MVP user experience with essential filtering_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.7.1 Core Tasks
 
@@ -2604,6 +2614,8 @@ _Core value proposition with hybrid data foundation_
 - **6** Reddit Data Collection Process (all subsections)
 - **7** Query Processing System (all subsections)
 - **8** Community Engagement & Growth Strategy (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.8.1 Core Tasks
 
@@ -2659,6 +2671,8 @@ _Foundation for user engagement features_
 - **2** Technology Stack (all subsections)
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.9.1 Core Tasks
 
@@ -2709,6 +2723,8 @@ _Core user engagement foundation_
 - **2** Technology Stack (all subsections)
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.10.1 Core Tasks
 
@@ -2752,6 +2768,8 @@ _User acquisition and community engagement_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **8** Community Engagement & Growth Strategy (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.11.1 Core Tasks
 
@@ -2795,6 +2813,8 @@ _Personal food journey tracking_
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.12.1 Core Tasks
 
@@ -2835,6 +2855,8 @@ _Business monetization foundation_
 - **2** Technology Stack (all subsections)
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.13.1 Core Tasks
 
@@ -2878,6 +2900,8 @@ _Pre-MVP UI/UX refinement and mobile experience optimization_
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.14.1 Core Tasks
 
@@ -2913,6 +2937,8 @@ _Final preparation and launch_
 - **6** Reddit Data Collection Process (all subsections)
 - **7** Query Processing System (all subsections)
 - **8** Community Engagement & Growth Strategy (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 9.15.1 Core Tasks
 
@@ -2953,6 +2979,8 @@ _Production-ready infrastructure (Deferred from Milestones 1-2)_
 - **2** Technology Stack (all subsections)
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.1.1 Core Tasks
 
@@ -2999,6 +3027,8 @@ _Essential caching for improved performance with real user patterns_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.2.1 Core Tasks
 
@@ -3028,6 +3058,8 @@ _Advanced entity resolution optimization (Deferred from Milestone 5)_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **6** Reddit Data Collection Process (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.3.1 Core Tasks
 
@@ -3056,6 +3088,8 @@ _Multi-level caching system (Deferred from Milestone 7)_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.4.1 Core Tasks
 
@@ -3085,6 +3119,8 @@ _Personalized notification system (Post-MVP)_
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.5.1 Core Tasks
 
@@ -3112,6 +3148,8 @@ _Post-MVP scaling infrastructure for real user load_
 - **4** Data Model & Database Architecture (all subsections)
 - **5** Data Collection Strategy & Architecture (all subsections)
 - **7** Query Processing System (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.6.1 Core Tasks
 
@@ -3146,6 +3184,8 @@ _Advanced recommendation engine (lowest priority)_
 - **6** Reddit Data Collection Process (all subsections)
 - **7** Query Processing System (all subsections)
 - **8** Community Engagement & Growth Strategy (all subsections)
+- **9** PRE-MVP Implementation Roadmap (all subsections)
+- **10** POST-MVP Roadmap (all subsections)
 
 #### 10.7.1 Core Tasks
 
