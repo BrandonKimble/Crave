@@ -87,15 +87,16 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 ## 4 · Perform comprehensive code review and validation
 
-**Execute code review using optimized process:**
+Follow these steps for a Code Review (in order)
 
-- Use @.claude/commands/simone/code_review.md with Task ID as scope  
-- Follow automated linting, type-checking, and quality validation
-- Review infrastructure integration and pattern consistency
-
-**Handle review results:**
-- **FAIL**: Add identified issues as subtasks, return to implementation phase
-- **PASS**: Proceed to task finalization
+- include @.claude/commands/simone/code_review.md and use the Task ID as Scope
+- Follow the instructions in the file to run a code review
+- on **FAIL**
+  - Thoroughly understand the problems
+  - Add identified issues as subtasks
+  - return to implementation phase, step "3 · Execute PRD-scoped implementation with infrastructure integration"
+- on **PASS**
+  - move on to next step
 
 ## 5 · Finalize task completion
 

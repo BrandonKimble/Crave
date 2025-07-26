@@ -215,6 +215,263 @@ Environment-specific config through `@nestjs/config` with validation.
 - Integration tests in `test/` directory
 - Use NestJS testing utilities for DI container testing
 
+## TypeScript Strict Typing Guidelines
+
+### Safe `any` Usage Policy
+
+The codebase follows a **graduated tolerance approach** for TypeScript `any` usage:
+
+#### **🟢 Tier 1: Acceptable (Framework Integration)**
+These patterns are acceptable with proper documentation:
+
+```typescript
+// BaseRepository and core infrastructure - explicitly disabled
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+// Reason: Prisma generic operations require any for delegate pattern
+
+abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput> {
+  protected abstract getDelegate(): any; // Framework necessity
+}
+```
+
+#### **🟡 Tier 2: Improve Gradually (Error Handling)**
+Create proper interfaces for external data that comes as `any`:
+
+```typescript
+// Instead of: error.code (any access)
+interface PrismaError {
+  code?: string;
+  meta?: Record<string, unknown>;
+  message: string;
+}
+
+interface HttpError {
+  status?: number;
+  statusCode?: number;
+  message: string;
+  stack?: string;
+}
+
+// Use type guards for safe checking
+function isPrismaError(error: unknown): error is PrismaError {
+  return typeof error === 'object' && error !== null && 'code' in error;
+}
+
+function isHttpError(error: unknown): error is HttpError {
+  return typeof error === 'object' && error !== null && 
+         ('status' in error || 'statusCode' in error);
+}
+
+// Safe usage in error handlers
+protected handleError(error: unknown): Error {
+  if (isPrismaError(error)) {
+    return new DatabaseException(error.code, error.message);
+  }
+  if (isHttpError(error)) {
+    return new HttpException(error.status || error.statusCode);
+  }
+  return new Error('Unknown error');
+}
+```
+
+#### **🔴 Tier 3: Fix Immediately (Test Patterns)**
+Always use proper typing for test utilities and return types:
+
+```typescript
+// ❌ Bad: Test generators using any
+declare global {
+  var testGenerators: any; // Unsafe
+}
+
+// ✅ Good: Proper test interface
+interface TestGenerators {
+  generateBulkEntityData: (
+    count: number,
+    type: EntityType,
+    baseName: string,
+  ) => Prisma.EntityCreateInput[];
+  generateBulkConnectionData: (
+    count: number,
+    restaurantIds: string[],
+    dishIds: string[],
+  ) => Prisma.ConnectionCreateInput[];
+}
+
+declare global {
+  var testGenerators: TestGenerators | undefined;
+}
+
+// ❌ Bad: Service return types using any
+async getEntityInMenuContext(): Promise<{
+  entity: Entity;
+  connection: any; // Unsafe
+}> 
+
+// ✅ Good: Import proper types
+import { Connection } from '@prisma/client';
+
+async getEntityInMenuContext(): Promise<{
+  entity: Entity;
+  connection: Connection; // Type-safe
+}>
+```
+
+### Error Handling Best Practices
+
+#### **For Database Operations**
+```typescript
+import { Prisma } from '@prisma/client';
+
+// Create specific error types
+class DatabaseOperationError extends Error {
+  constructor(
+    public operation: string,
+    public entityType: string,
+    public originalError: unknown,
+  ) {
+    super(`${operation} failed for ${entityType}`);
+  }
+}
+
+// Safe error handling without any
+protected handlePrismaError(error: unknown, operation: string): Error {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    switch (error.code) {
+      case 'P2002':
+        return new UniqueConstraintException(this.entityName, error.meta?.target);
+      case 'P2003':
+        return new ForeignKeyConstraintException(this.entityName, error.meta?.field_name);
+      default:
+        return new DatabaseOperationError(operation, this.entityName, error);
+    }
+  }
+  return new DatabaseOperationError(operation, this.entityName, error);
+}
+```
+
+#### **For External API Responses**
+```typescript
+// Define expected response shapes
+interface RedditApiResponse {
+  data?: {
+    children?: Array<{
+      data: Record<string, unknown>;
+    }>;
+  };
+  error?: string;
+}
+
+// Safe parsing with validation
+function parseRedditResponse(response: unknown): RedditApiResponse | null {
+  if (typeof response !== 'object' || response === null) {
+    return null;
+  }
+  
+  const obj = response as Record<string, unknown>;
+  return {
+    data: obj.data as RedditApiResponse['data'],
+    error: typeof obj.error === 'string' ? obj.error : undefined,
+  };
+}
+```
+
+### Test-Specific Patterns
+
+#### **Global Test Utilities**
+```typescript
+// Create typed test interfaces
+interface IntegrationTestContext {
+  prisma: PrismaService;
+  entityRepository: EntityRepository;
+  connectionRepository: ConnectionRepository;
+}
+
+// Use proper typing for test setup
+declare global {
+  var integrationTestContext: IntegrationTestContext | undefined;
+}
+
+// Safe access patterns
+const testContext = globalThis.integrationTestContext;
+if (!testContext) {
+  throw new Error('Test context not available');
+}
+```
+
+#### **Test Data Factories**
+```typescript
+// Instead of any, use proper factory interfaces
+interface EntityTestFactory {
+  restaurant: (overrides?: Partial<Prisma.EntityCreateInput>) => Prisma.EntityCreateInput;
+  dish: (overrides?: Partial<Prisma.EntityCreateInput>) => Prisma.EntityCreateInput;
+}
+
+const testDataFactory: EntityTestFactory = {
+  restaurant: (overrides = {}) => ({
+    name: 'Test Restaurant',
+    type: 'restaurant',
+    latitude: 40.7128,
+    longitude: -74.006,
+    ...overrides,
+  }),
+  dish: (overrides = {}) => ({
+    name: 'Test Dish',
+    type: 'dish_or_category',
+    ...overrides,
+  }),
+};
+```
+
+### Progressive Migration Strategy
+
+#### **For New Code**
+- Always use strict typing from the start
+- Create proper interfaces for external data
+- Use type guards for runtime validation
+- Never introduce new `any` usage without explicit justification
+
+#### **For Existing Code**
+1. **High Priority**: Fix test patterns and return types
+2. **Medium Priority**: Add interfaces for error handling
+3. **Low Priority**: Document framework necessities with ESLint disables
+
+#### **ESLint Configuration**
+```typescript
+// For legitimate framework integration
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+// Reason: [Specific explanation of why any is required]
+```
+
+#### **Code Review Checklist**
+- [ ] No new `any` usage without proper justification
+- [ ] Error handling uses type guards instead of `any` access
+- [ ] Test utilities have proper interface definitions
+- [ ] Return types are fully specified
+- [ ] External API responses are validated and typed
+
+### When to Use `unknown` vs `any`
+
+```typescript
+// ✅ Use unknown for external data
+function processExternalData(data: unknown): ProcessedData | null {
+  if (typeof data === 'object' && data !== null) {
+    // Type narrowing required - safer than any
+    return processKnownShape(data);
+  }
+  return null;
+}
+
+// ❌ Only use any for framework necessities
+abstract class BaseClass {
+  protected abstract getDelegate(): any; // Framework requirement
+}
+```
+
 ## Project Folders and Locations
 
 - Simone sprints and tasks are located @.simone/03_SPRINTS
