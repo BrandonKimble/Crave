@@ -2,7 +2,7 @@
 milestone_id: M01
 title: Database Foundation & Basic Setup
 status: pending # pending | active | completed | blocked | on_hold
-prd_sections: [4, 2, 3, 2, 9] # Reference specific PRD sections
+prd_sections: [4, 2, 3, 1, 9, 10] # Reference specific PRD sections
 last_updated: 2025-07-20 12:45
 ---
 
@@ -13,14 +13,14 @@ last_updated: 2025-07-20 12:45
 - Create comprehensive database schema with all core tables (entities, connections, mentions)
 - Implement basic CRUD operations for all entity types (restaurant, dish_or_category, attributes)
 - Set up database migration system and version control using Prisma
-- Establish testing infrastructure with >80% code coverage for database operations
+- Establish testing infrastructure with comprehensive code coverage for database operations
 - Configure development environment with proper connection pooling and error handling
 - Implement bulk insert capabilities for efficient data processing
 
 ### Key Documents
 
 - `PRD.md` - Full Product Requirements Document
-- `PRD.md` sections: 4.1 (Core Database Schema), 2.3 (Data Layer), 3.4 (Development Principles), 2.7 (Development Tools), 9.1 (Milestone Details)
+- `PRD.md` sections: 4, 2, 3, 1, 9, 10
 - `CLAUDE.md` - Project architecture and development guide
 
 ### Definition of Done (DoD)
@@ -28,7 +28,7 @@ last_updated: 2025-07-20 12:45
 - ✅ Database schema created with all foreign key relationships properly enforced
 - ✅ Basic CRUD operations functional for all entity types
 - ✅ Migration system successfully creates and applies schema changes
-- ✅ Test suite runs successfully with >80% code coverage for database operations
+- ✅ Test suite runs successfully with comprehensive code coverage for database operations
 - ✅ Local development environment setup documented and reproducible
 - ✅ Basic logging captures database operations and errors
 - ✅ Connection pooling configured and functional

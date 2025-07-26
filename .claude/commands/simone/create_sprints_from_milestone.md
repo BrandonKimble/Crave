@@ -19,7 +19,7 @@ Follow these instructions to sprint the scope of a Milestone into Sprints
 
 **CRITICAL:** You are given additional Arguments: <$ARGUMENTS>
 
-**USE PARALLEL SUBAGENTS** to do these tasks:
+Do these tasks:
 
 - Parse arguments for milestone ID (defaults to current milestone from PROJECT_MANIFEST)
 - Read `.simone/00_PROJECT_MANIFEST.md` to understand current progress
