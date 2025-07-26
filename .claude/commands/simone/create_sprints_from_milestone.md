@@ -22,6 +22,7 @@ Creates sprints that strictly adhere to milestone's PRD requirements without sco
 - Parse arguments for milestone ID (defaults to current milestone from PROJECT_MANIFEST)
 - Read milestone meta file from `.simone/02_REQUIREMENTS/$MILESTONE_ID/` including ALL PRD section references
 - Read ALL PRD sections referenced in milestone meta AND sections 9 and 10 for roadmap context
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
 - Read `.simone/00_PROJECT_MANIFEST.md` for current progress and milestone status
 - Scan existing sprints in `.simone/03_SPRINTS/` for target milestone and analyze completed work
 - **CRITICAL:** Map milestone's PRD requirements to understand EXACT scope boundaries

@@ -22,6 +22,7 @@ Creates a new milestone with proper structure, documentation, and project integr
 - Parse arguments for suggested milestone ID/focus (defaults to next sequential milestone)
 - Read `.simone/00_PROJECT_MANIFEST.md` for current project state and milestone progression
 - Read `PRD.md` sections 9 and 10 completely to understand full roadmap structure and dependencies
+  - **CRITICAL:** Read ALL subsections within sections 9 and 10 (e.g., 9.1, 9.2, 9.3, etc. and 10.1, 10.2, etc.)
 - Scan `.simone/02_REQUIREMENTS/` to identify existing milestones and numbering
 - Read existing milestone meta files to understand implemented vs remaining PRD requirements
 - **CRITICAL:** Map completed milestones to their PRD sections from PROJECT_MANIFEST
@@ -32,6 +33,7 @@ Creates a new milestone with proper structure, documentation, and project integr
 
 - Identify next unimplemented PRD milestone in sections 9/10 sequence based on completed work
 - Read all PRD sections referenced by target milestone AND all related/tangentially relevant sections for comprehensive context
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
 - Extract specific deliverables, success criteria, and dependencies from PRD
 - Determine milestone number (M##) by scanning existing milestones
 - Derive milestone name from PRD section title (convert to snake_case format: `M##_Milestone_Name`)

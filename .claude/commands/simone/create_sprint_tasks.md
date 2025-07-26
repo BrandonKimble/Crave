@@ -22,7 +22,9 @@ Create tasks that strictly implement sprint's PRD requirements without scope exp
 - Read sprint meta file completely including prd_references and deliverables
 - Read parent milestone meta from `.simone/02_REQUIREMENTS/` to understand milestone scope
 - Read ALL PRD sections referenced in sprint meta AND parent milestone
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
 - Read PRD sections 9 and 10 for roadmap context and milestone boundaries
+  - **CRITICAL:** Read ALL subsections within sections 9 and 10 completely
 - **CRITICAL:** Map sprint deliverables to specific PRD requirements for exact scope
 
 ## 2 · Extract exact PRD deliverables and constraints

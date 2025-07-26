@@ -21,7 +21,9 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 **Read and analyze in single context:**
 - Read task file completely including description, goals, acceptance criteria, PRD references
 - Read ALL PRD sections referenced in task AND parent sprint/milestone
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
 - Read PRD sections 9 and 10 for roadmap context and scope boundaries
+  - **CRITICAL:** Read ALL subsections within sections 9 and 10 completely
 - Verify task dependencies are met and belongs to current sprint/milestone scope
 
 ## 2 · Validate task scope against PRD boundaries

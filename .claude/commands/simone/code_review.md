@@ -50,9 +50,11 @@ Follow step by step and adhere closely to the following instructions for each st
 
 **Load comprehensive requirements context:**
 - Read task file for PRD references and acceptance criteria
-- Read ALL referenced PRD sections for implementation requirements  
+- Read ALL referenced PRD sections for implementation requirements
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
 - Read parent sprint and milestone meta files for scope boundaries
 - Read PRD sections 9-10 for roadmap validation
+  - **CRITICAL:** Read ALL subsections within sections 9 and 10 completely
 
 **Validate implementation compliance:**
 - **Data models/schemas**: Fields, types, constraints, relationships match PRD
