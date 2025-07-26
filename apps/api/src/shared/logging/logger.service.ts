@@ -1,6 +1,11 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger as WinstonLogger } from 'winston';
+import {
+  isHttpError,
+  getErrorMessage,
+  getErrorCode,
+} from '../types/error-interfaces';
 
 /**
  * Structured logging metadata interface
@@ -22,7 +27,7 @@ export interface LogMetadata {
     name?: string;
     cause?: string;
   };
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 /**
@@ -67,7 +72,7 @@ export class LoggerService {
   /**
    * Log error level messages with structured metadata
    */
-  error(message: string, error?: Error | any, metadata?: LogMetadata): void {
+  error(message: string, error?: unknown, metadata?: LogMetadata): void {
     const errorMetadata = this.buildErrorMetadata(error, metadata);
     this.logger.error(message, errorMetadata);
   }
@@ -174,21 +179,43 @@ export class LoggerService {
    * Build error metadata from error object
    */
   private buildErrorMetadata(
-    error?: Error | any,
+    error?: unknown,
     metadata?: LogMetadata,
   ): LogMetadata {
     const errorMetadata: LogMetadata = { ...metadata };
 
     if (error) {
+      const message = getErrorMessage(error);
+      const code = getErrorCode(error);
+
       errorMetadata.error = {
-        message: error.message || String(error),
-        stack: error.stack,
-        code: error.code || error.statusCode || error.status,
+        message,
+        code,
       };
 
-      // Include additional error properties if they exist
-      if (error.name) errorMetadata.error.name = error.name;
-      if (error.cause) errorMetadata.error.cause = String(error.cause);
+      // Add stack trace if it's an Error object
+      if (error instanceof Error) {
+        errorMetadata.error.stack = error.stack;
+        errorMetadata.error.name = error.name;
+        if (error.cause) {
+          if (typeof error.cause === 'string') {
+            errorMetadata.error.cause = error.cause;
+          } else if (error.cause instanceof Error) {
+            errorMetadata.error.cause = error.cause.message;
+          } else {
+            errorMetadata.error.cause = '[Complex cause object - see details]';
+          }
+        }
+      }
+
+      // Add HTTP-specific properties if available
+      if (isHttpError(error)) {
+        if (!errorMetadata.error.code) {
+          errorMetadata.error.code = String(
+            error.status || error.statusCode || 500,
+          );
+        }
+      }
     }
 
     return errorMetadata;
@@ -232,14 +259,20 @@ export class LoggerService {
   /**
    * Recursively sanitize nested objects
    */
-  private sanitizeNestedObject(obj: any): any {
+  private sanitizeNestedObject(obj: unknown): unknown {
     if (Array.isArray(obj)) {
-      return obj.map((item) =>
-        typeof item === 'object' ? this.sanitizeNestedObject(item) : item,
+      return obj.map((item): unknown =>
+        typeof item === 'object' && item !== null
+          ? this.sanitizeNestedObject(item)
+          : item,
       );
     }
 
-    const sanitized = { ...obj };
+    if (typeof obj !== 'object' || obj === null) {
+      return obj;
+    }
+
+    const sanitized = { ...(obj as Record<string, unknown>) };
     const sensitiveFields = [
       'password',
       'token',
@@ -249,11 +282,11 @@ export class LoggerService {
     ];
 
     sensitiveFields.forEach((field) => {
-      if (sanitized[field]) {
+      if (field in sanitized) {
         sanitized[field] = '[REDACTED]';
       }
     });
 
-    return sanitized;
+    return sanitized as Record<string, unknown>;
   }
 }

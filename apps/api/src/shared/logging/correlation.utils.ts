@@ -120,10 +120,20 @@ export class CorrelationUtils {
       // Extract JWT payload (this is a simplified version)
       // In production, you'd use proper JWT verification
       const token = authorization.substring(7);
-      const payload = JSON.parse(
-        Buffer.from(token.split('.')[1], 'base64').toString(),
-      );
-      return payload.sub || payload.userId;
+      const payloadStr = Buffer.from(token.split('.')[1], 'base64').toString();
+      const payload = JSON.parse(payloadStr) as Record<string, unknown>;
+
+      const sub = payload.sub;
+      const userId = payload.userId;
+
+      if (typeof sub === 'string') {
+        return sub;
+      }
+      if (typeof userId === 'string') {
+        return userId;
+      }
+
+      return undefined;
     } catch {
       return undefined;
     }

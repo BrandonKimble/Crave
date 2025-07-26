@@ -9,6 +9,7 @@ import {
   ForeignKeyConstraintException,
   UniqueConstraintException,
 } from '../../repositories/base/repository.exceptions';
+import { isPrismaError } from '../types/error-interfaces';
 
 /**
  * Maps Prisma errors to appropriate application exceptions
@@ -301,21 +302,27 @@ export class PrismaErrorMapper {
       };
     }
 
-    const context: any = {
+    interface ErrorContext {
+      type: string;
+      message: string;
+      operation?: string;
+      entityType?: string;
+      code?: string;
+      meta?: Record<string, unknown>;
+    }
+
+    const context: ErrorContext = {
       type: (error as Error).constructor.name,
       message: (error as Error).message,
       operation,
       entityType,
     };
 
-    if ('code' in error && typeof error.code === 'string') {
+    if (isPrismaError(error)) {
       context.code = error.code;
-    }
-
-    if ('meta' in error && typeof error.meta === 'object') {
       context.meta = error.meta;
     }
 
-    return context as Error;
+    return context as unknown as Error;
   }
 }

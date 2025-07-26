@@ -40,7 +40,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Complete Entity Resolution Workflow Integration', () => {
     it('should execute full entity creation and resolution workflow', async () => {
-      await testSetup.withCleanup(async (_prisma) => {
+      await testSetup.withCleanup(async () => {
         // 1. Create restaurant through EntitiesService
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -240,7 +240,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should maintain transactional consistency across service boundaries', async () => {
-      await testSetup.withCleanup(async (_prisma) => {
+      await testSetup.withCleanup(async () => {
         // Test that operations across multiple services are transactionally consistent
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -470,7 +470,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should handle complex dual-purpose entity workflows', async () => {
-      await testSetup.withCleanup(async (_prisma) => {
+      await testSetup.withCleanup(async () => {
         // Create dual-purpose entity (both menu item and category)
         const dualPurposeEntity = await entitiesService.create({
           entityType: 'dish_or_category',

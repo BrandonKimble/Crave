@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { TestingModule } from '@nestjs/testing';
 import { EntityResolutionService } from './entity-resolution.service';

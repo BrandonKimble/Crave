@@ -10,12 +10,18 @@ import { FastifyRequest, FastifyReply } from 'fastify';
 import { AppException } from '../exceptions/app-exception.base';
 import { ErrorResponseDto } from '../dto/error-response.dto';
 import { LoggerService, CorrelationUtils } from '../../shared';
+import {
+  PrismaError,
+  isPrismaError,
+  getErrorMessage,
+  getErrorCode,
+} from '../types/error-interfaces';
 
 interface ErrorDetails {
   status: number;
   errorCode: string;
   message: string;
-  details?: any;
+  details?: Record<string, unknown>;
 }
 
 @Catch()
@@ -42,7 +48,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.generateCorrelationId(request);
 
     // Determine error details
-    const errorDetails = this.extractErrorDetails(exception, correlationId);
+    const errorDetails = this.extractErrorDetails(exception);
 
     // Log the error with full context
     this.logError(exception, request, correlationId, errorDetails);
@@ -63,10 +69,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     response.status(errorDetails.status).send(errorResponse);
   }
 
-  private extractErrorDetails(
-    exception: unknown,
-    correlationId: string,
-  ): ErrorDetails {
+  private extractErrorDetails(exception: unknown): ErrorDetails {
     if (exception instanceof AppException) {
       return {
         status: exception.getStatus(),
@@ -78,44 +81,47 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof HttpException) {
       const response = exception.getResponse();
-      const message =
-        typeof response === 'string'
-          ? response
-          : (response as any)?.message || exception.message;
+      let message: string;
+      let details: Record<string, unknown> | undefined;
+
+      if (typeof response === 'string') {
+        message = response;
+      } else if (typeof response === 'object' && response !== null) {
+        const responseObj = response as Record<string, unknown>;
+        message = Array.isArray(responseObj.message)
+          ? responseObj.message.join(', ')
+          : (responseObj.message as string) || exception.message;
+        details = this.isProd ? undefined : responseObj;
+      } else {
+        message = exception.message;
+      }
 
       return {
         status: exception.getStatus(),
         errorCode: 'HTTP_EXCEPTION',
-        message: Array.isArray(message) ? message.join(', ') : message,
-        details: this.isProd
-          ? undefined
-          : typeof response === 'object'
-            ? response
-            : undefined,
+        message,
+        details,
       };
     }
 
     // Handle Prisma errors
-    if (this.isPrismaError(exception)) {
-      return this.handlePrismaError(exception as any);
+    if (isPrismaError(exception)) {
+      return this.handlePrismaError(exception);
     }
 
     // Handle unexpected errors
+    const message = getErrorMessage(exception);
+    const errorCode = getErrorCode(exception);
+
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
-      errorCode: 'INTERNAL_ERROR',
-      message: this.isProd
-        ? 'An internal error occurred'
-        : (exception as Error)?.message || 'Unknown error',
+      errorCode: errorCode || 'INTERNAL_ERROR',
+      message: this.isProd ? 'An internal error occurred' : message,
       details: this.isProd ? undefined : { type: typeof exception },
     };
   }
 
-  private isPrismaError(exception: unknown): boolean {
-    return exception instanceof Error && exception.name?.includes('Prisma');
-  }
-
-  private handlePrismaError(error: any) {
+  private handlePrismaError(error: PrismaError): ErrorDetails {
     const code = error.code;
 
     // Map common Prisma error codes

@@ -206,10 +206,10 @@ export class LoggingInterceptor implements NestInterceptor {
   /**
    * Sanitize request body for logging (remove sensitive fields)
    */
-  private sanitizeBody(body: any): any {
+  private sanitizeBody(body: unknown): unknown {
     if (!body || typeof body !== 'object') return body;
 
-    const sanitized = { ...body };
+    const sanitized = { ...(body as Record<string, unknown>) };
     const sensitiveFields = [
       'password',
       'token',

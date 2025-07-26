@@ -7,6 +7,7 @@ import {
   RedditAuthenticationError,
   RedditConfigurationError,
 } from '../src/modules/external-integrations/reddit/reddit.exceptions';
+import { LoggerService } from '../src/shared/logging/logger.service';
 
 describe('Reddit Integration (e2e)', () => {
   let app: TestingModule;
@@ -100,7 +101,7 @@ describe('Reddit Integration (e2e)', () => {
           debug: jest.fn(),
           warn: jest.fn(),
           error: jest.fn(),
-        } as any,
+        } as unknown as LoggerService,
       );
 
       // The service should handle network errors appropriately
@@ -129,7 +130,7 @@ describe('Reddit Integration (e2e)', () => {
             debug: jest.fn(),
             warn: jest.fn(),
             error: jest.fn(),
-          } as any,
+          } as unknown as LoggerService,
         );
       }).toThrow(RedditConfigurationError);
     });

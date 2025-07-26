@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Entity, EntityType, Prisma } from '@prisma/client';
+import { Entity, EntityType, Prisma, Connection } from '@prisma/client';
 import { EntityRepository } from '../../repositories/entity.repository';
 import { EntityResolutionService } from '../../repositories/entity-resolution.service';
 import { LoggerService } from '../../shared';
@@ -426,7 +426,7 @@ export class EntitiesService {
     restaurantId: string,
   ): Promise<{
     entity: Entity;
-    connection: any;
+    connection: Connection;
     isMenuItem: boolean;
   } | null> {
     try {
