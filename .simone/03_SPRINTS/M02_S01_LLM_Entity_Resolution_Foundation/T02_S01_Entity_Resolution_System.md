@@ -36,9 +36,13 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 **IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section 9.2.1: Complete entity resolution system - Three-phase system with LLM normalization, database matching, batched processing
-- Section 5.2.1: Resolution Process Flow - Phase 2 Database Entity Resolution
-- Section 5.2.2: Entity Resolution Optimization - Three-tier resolution process
+- **Sprint Context**: Sections 1, 2, 3, 4, 5, 6, 9.2, 10 - Complete M02 milestone context
+- **Specific Focus**: Section 9.2.1 - Complete entity resolution system: Three-phase system with LLM normalization, database matching, batched processing
+- **Process Flow**: Section 5.2.1 - Resolution Process Flow (Phase 2 Database Entity Resolution)
+- **Optimization**: Section 5.2.2 - Entity Resolution Optimization (Three-tier resolution process)
+- **Data Model**: Section 4.1 - Core Database Schema (entities table structure and relationships)
+- **Architecture**: Section 3.1.2 - API Modular Monolith Structure (content-processing domain)
+- **Technology**: Section 2.3 - Data Layer (Prisma ORM integration)
 - **Roadmap validation**: Task belongs in M02 foundation phase per PRD sections 9.2
 
 **SCOPE BOUNDARIES FROM PRD:**

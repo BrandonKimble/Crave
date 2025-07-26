@@ -36,9 +36,13 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 **IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section 9.2.1: Context-dependent attribute handling - Separate entities by scope (dish vs restaurant attributes)
-- Section 4.2.2: Entity Type Definitions - Context-dependent attributes exist as separate entities based on scope
-- Section 5.2.1: Resolution Process Flow - Scope-aware resolution process
+- **Sprint Context**: Sections 1, 2, 3, 4, 5, 6, 9.2, 10 - Complete M02 milestone context
+- **Specific Focus**: Section 9.2.1 - Context-dependent attribute handling: Separate entities by scope (dish vs restaurant attributes)
+- **Entity Design**: Section 4.2.2 - Entity Type Definitions (Context-dependent attributes exist as separate entities based on scope)
+- **Resolution Process**: Section 5.2.1 - Resolution Process Flow (Scope-aware resolution process)
+- **Data Model**: Section 4.1 - Core Database Schema (dish_attribute vs restaurant_attribute entity types)
+- **Processing Flow**: Section 6.3.2 - LLM Output Structure (attribute classification and context determination)
+- **Architecture**: Section 3.1.2 - API Modular Monolith Structure (context determination service in content-processing)
 - **Roadmap validation**: Task belongs in M02 foundation phase per PRD sections 9.2
 
 **SCOPE BOUNDARIES FROM PRD:**

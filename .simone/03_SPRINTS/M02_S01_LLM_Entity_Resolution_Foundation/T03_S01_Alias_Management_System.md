@@ -36,9 +36,13 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 **IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section 9.2.1: Alias management - Automatic alias creation, duplicate prevention, scope-aware resolution
-- Section 5.2.1: Resolution Process Flow - Phase 3 Batched Processing Pipeline
-- Section 4.2.2: Entity Type Definitions - Context-dependent attribute scope handling
+- **Sprint Context**: Sections 1, 2, 3, 4, 5, 6, 9.2, 10 - Complete M02 milestone context
+- **Specific Focus**: Section 9.2.1 - Alias management: Automatic alias creation, duplicate prevention, scope-aware resolution
+- **Process Integration**: Section 5.2.1 - Resolution Process Flow (Phase 3 Batched Processing Pipeline)
+- **Entity Types**: Section 4.2.2 - Entity Type Definitions (Context-dependent attribute scope handling)
+- **Data Model**: Section 4.1 - Core Database Schema (aliases array structure in entities table)
+- **Architecture**: Section 3.1.2 - API Modular Monolith Structure (entity-resolver module in content-processing)
+- **Technology**: Section 2.3 - Data Layer (PostgreSQL array operations)
 - **Roadmap validation**: Task belongs in M02 foundation phase per PRD sections 9.2
 
 **SCOPE BOUNDARIES FROM PRD:**

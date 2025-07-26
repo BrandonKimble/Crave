@@ -55,7 +55,10 @@ Create tasks that strictly implement sprint's PRD requirements without scope exp
 
 - **Description**: Clear objective aligned with PRD requirements
 - **Goal/Objectives**: Specific outcomes required by PRD
-- **PRD References**: Link to exact PRD sections implemented by this task
+- **PRD References**: Include ALL relevant PRD sections - both specific sections implemented by this task AND broader parent sections for necessary context and tangentially relevant information
+  - **ALWAYS include**: All sprint's PRD sections (from sprint meta prd_references field)
+  - **ADDITIONALLY include**: Any specific subsections most relevant to this particular task  
+  - **PURPOSE**: Provide comprehensive context and prevent missing beneficial related information
 - **Acceptance Criteria**: Derived from PRD success criteria
 - **Subtasks**: Minimal steps to achieve PRD requirements
 - **Scope boundaries**: Explicitly state what is NOT included (future milestone features)

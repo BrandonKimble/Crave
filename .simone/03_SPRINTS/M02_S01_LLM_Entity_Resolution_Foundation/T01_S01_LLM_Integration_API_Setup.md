@@ -35,9 +35,13 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 **IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section 9.2.1: LLM integration - API connectivity, structured input/output handling
-- Section 6.3.1: LLM Input Structure - Batch processing for posts/comments
-- Section 6.3.2: LLM Output Structure - Structured mentions with temp IDs
+- **Sprint Context**: Sections 1, 2, 3, 4, 5, 6, 9.2, 10 - Complete M02 milestone context
+- **Specific Focus**: Section 9.2.1 - LLM integration: API connectivity, structured input/output handling
+- **Technical Details**: Section 6.3.1 - LLM Input Structure (batch processing for posts/comments)
+- **Technical Details**: Section 6.3.2 - LLM Output Structure (structured mentions with temp IDs)
+- **Architecture Context**: Section 1.3 - Core System Architecture (LLM processing flow)
+- **Technology Stack**: Section 2.2 - Backend Layer (NestJS integration patterns)
+- **Module Organization**: Section 3.1.2 - API Modular Monolith Structure (external-integrations domain)
 - **Roadmap validation**: Task belongs in M02 foundation phase per PRD sections 9.2
 
 **SCOPE BOUNDARIES FROM PRD:**
