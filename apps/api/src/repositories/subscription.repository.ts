@@ -65,11 +65,11 @@ export class SubscriptionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find subscriptions by user`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         userId,
         params,
       });
@@ -102,11 +102,11 @@ export class SubscriptionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find active subscription by user`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         userId,
       });
 
@@ -137,11 +137,11 @@ export class SubscriptionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find subscription by Stripe ID`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         stripeSubscriptionId,
       });
 
@@ -196,11 +196,11 @@ export class SubscriptionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find expiring subscriptions`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         daysBefore,
         params,
       });

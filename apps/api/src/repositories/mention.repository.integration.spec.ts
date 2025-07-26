@@ -1,13 +1,9 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { TestingModule } from '@nestjs/testing';
 import { MentionRepository } from './mention.repository';
-import { PrismaService } from '../prisma/prisma.service';
-import { LoggerService } from '../shared';
 import { IntegrationTestSetup } from '../../test/integration-test.setup';
-import { Mention, Prisma } from '@prisma/client';
 
 describe('MentionRepository Integration Tests', () => {
   let repository: MentionRepository;
-  let prismaService: PrismaService;
   let testSetup: IntegrationTestSetup;
   let module: TestingModule;
 
@@ -18,7 +14,6 @@ describe('MentionRepository Integration Tests', () => {
     module = await testSetup.createTestingModule([MentionRepository]);
 
     repository = module.get<MentionRepository>(MentionRepository);
-    prismaService = testSetup.getPrismaService();
   });
 
   afterAll(async () => {
@@ -243,7 +238,7 @@ describe('MentionRepository Integration Tests', () => {
           }),
         );
 
-        const mentions = await Promise.all(mentionPromises);
+        await Promise.all(mentionPromises);
 
         // Test pagination
         const firstPage = await repository.findMany({
@@ -361,7 +356,7 @@ describe('MentionRepository Integration Tests', () => {
         const oldDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
         const trendingSourceId = `trending_${Date.now()}_1`;
 
-        const trendingMention = await repository.create({
+        await repository.create({
           connection: {
             connect: { connectionId: connection.connectionId },
           },
@@ -489,7 +484,7 @@ describe('MentionRepository Integration Tests', () => {
               connection: {
                 connect: { connectionId: connection.connectionId },
               },
-              sourceType: 'invalid_type' as any,
+              sourceType: 'invalid_type' as any, // eslint-disable-line @typescript-eslint/no-unsafe-assignment
               sourceId: `test_${Date.now()}`,
               sourceUrl: `https://reddit.com/test_${Date.now()}`,
               subreddit: 'test',

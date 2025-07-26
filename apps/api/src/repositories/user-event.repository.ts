@@ -72,11 +72,11 @@ export class UserEventRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find events by user`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         userId,
         params,
       });
@@ -124,11 +124,11 @@ export class UserEventRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find events by type`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         eventType,
         params,
       });

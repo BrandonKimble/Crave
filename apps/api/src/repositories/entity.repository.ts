@@ -7,7 +7,6 @@ import { ValidationException } from './base/repository.exceptions';
 import {
   validateEntityTypeData,
   validateEssentialEntityFields,
-  isValidEntityType,
 } from './utils/entity-type-guards';
 
 /**
@@ -71,11 +70,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by type`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         type,
         params,
       });
@@ -141,11 +140,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find restaurants by location`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         latitude,
         longitude,
         radiusKm,
@@ -212,11 +211,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by name or alias`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         searchTerm,
         type,
         params,
@@ -275,11 +274,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by restaurant attributes`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         attributeIds,
         matchType,
         params,
@@ -319,11 +318,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update restaurant quality score`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         entityId,
         qualityScore,
       });
@@ -381,11 +380,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to create restaurant entity`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         name: data.name,
       });
 
@@ -434,11 +433,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to create dish/category entity`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         name: data.name,
       });
 
@@ -487,11 +486,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to create dish attribute entity`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         name: data.name,
       });
 
@@ -542,11 +541,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to create restaurant attribute entity`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         name: data.name,
       });
 
@@ -593,11 +592,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update entity with validation`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         entityId,
         expectedType,
       });
@@ -669,13 +668,13 @@ export class EntityRepository extends BaseRepository<
           attributeCount: restaurant.restaurantAttributes?.length || 0,
         },
       );
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(
         `Failed to validate restaurant attributes consistency`,
         {
           duration,
-          error: error.message,
+          error: error instanceof Error ? error.message : String(error),
           restaurantId,
         },
       );
@@ -755,11 +754,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to add restaurant attributes`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         restaurantId,
         attributeIds,
       });
@@ -870,11 +869,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return dishEntities;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find dish entities by usage`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         usageType,
         restaurantId,
       });
@@ -960,11 +959,11 @@ export class EntityRepository extends BaseRepository<
       });
 
       return results;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find entities by name across types`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         searchTerm,
         entityTypes,
         params,
@@ -1016,11 +1015,11 @@ export class EntityRepository extends BaseRepository<
         restaurant_attribute: restaurantAttributeCount,
         total: totalCount,
       };
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to get entity health metrics`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
 
       throw this.handlePrismaError(error, 'getHealthMetrics');

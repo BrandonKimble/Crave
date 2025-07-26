@@ -158,10 +158,11 @@ export function validateEssentialEntityFields(
 
   // Type-specific validation
   switch (type) {
-    case 'restaurant':
+    case 'restaurant': {
       const restaurantValidation = validateRestaurantRequiredFields(data);
       missingFields.push(...restaurantValidation.missingFields);
       break;
+    }
     case 'dish_or_category':
     case 'dish_attribute':
     case 'restaurant_attribute':

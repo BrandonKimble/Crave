@@ -5,12 +5,18 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-// TODO: Import proper Fastify types when available
-// Using any types for now to resolve compilation issues
 import { ConfigService } from '@nestjs/config';
+import { FastifyRequest, FastifyReply } from 'fastify';
 import { AppException } from '../exceptions/app-exception.base';
 import { ErrorResponseDto } from '../dto/error-response.dto';
 import { LoggerService, CorrelationUtils } from '../../shared';
+
+interface ErrorDetails {
+  status: number;
+  errorCode: string;
+  message: string;
+  details?: any;
+}
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -27,8 +33,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
-    const request = ctx.getRequest<any>();
-    const response = ctx.getResponse<any>();
+    const request = ctx.getRequest<FastifyRequest>();
+    const response = ctx.getResponse<FastifyReply>();
 
     // Get or generate correlation ID for request tracing
     const correlationId =
@@ -57,7 +63,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     response.status(errorDetails.status).send(errorResponse);
   }
 
-  private extractErrorDetails(exception: unknown, correlationId: string) {
+  private extractErrorDetails(
+    exception: unknown,
+    correlationId: string,
+  ): ErrorDetails {
     if (exception instanceof AppException) {
       return {
         status: exception.getStatus(),
@@ -145,7 +154,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
   }
 
-  private generateCorrelationId(request: any): string {
+  private generateCorrelationId(request: FastifyRequest): string {
     // Check if correlation ID already exists in headers
     const existingId = request.headers['x-correlation-id'] as string;
     if (existingId) return existingId;
@@ -156,9 +165,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
   private logError(
     exception: unknown,
-    request: any,
+    request: FastifyRequest,
     correlationId: string,
-    errorDetails: any,
+    errorDetails: ErrorDetails,
   ) {
     const logContext = {
       correlationId,

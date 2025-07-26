@@ -118,10 +118,17 @@ When creating new API modules, follow the domain-driven structure:
 
 ### Entity Types
 
-- `restaurant`: Physical dining establishments
-- `dish_or_category`: Food items (can be specific dishes or categories)
-- `dish_attribute`: Connection-scoped descriptors (spicy, vegan, etc.)
-- `restaurant_attribute`: Restaurant-scoped descriptors (patio, romantic, etc.)
+- **`restaurant`**: Physical dining establishments with location and operational data
+- **`dish_or_category`**: Food items serving dual purposes as specific dishes OR general categories
+  - Same entity can be both menu item (`is_menu_item = true`) and category (in `categories` array)
+  - Eliminates redundancy in food terminology (e.g., "ramen" works as both dish and category)
+- **`dish_attribute`**: Connection-scoped descriptors (spicy, vegan, house-made)
+- **`restaurant_attribute`**: Restaurant-scoped descriptors (patio, romantic, family-friendly)
+
+**Context-Dependent Attributes**: Many attributes exist as separate entities based on scope:
+- "Italian" → `dish_attribute` entity (for Italian dishes) + `restaurant_attribute` entity (for Italian restaurants)
+- "vegan" → `dish_attribute` entity + `restaurant_attribute` entity
+- Enables precise query targeting and flexible cross-scope analysis
 
 ## Development Workflow
 

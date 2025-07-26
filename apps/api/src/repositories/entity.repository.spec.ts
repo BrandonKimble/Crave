@@ -388,7 +388,9 @@ describe('EntityRepository', () => {
       const expectedEntity = { ...mockEntity, name: updateData.name };
 
       // Mock the update method from BaseRepository
-      repository.update = jest.fn().mockResolvedValue(expectedEntity);
+      const updateSpy = jest
+        .spyOn(repository, 'update')
+        .mockResolvedValue(expectedEntity);
 
       // Act
       const result = await repository.updateWithValidation(
@@ -398,7 +400,7 @@ describe('EntityRepository', () => {
       );
 
       // Assert
-      expect(repository.update).toHaveBeenCalledWith(entityId, {
+      expect(updateSpy).toHaveBeenCalledWith(entityId, {
         ...updateData,
         lastUpdated: expect.any(Date),
       });

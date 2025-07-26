@@ -89,7 +89,7 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **Execute code review using optimized process:**
 
-- Use `/simone:code_review` with Task ID as scope  
+- Use @.claude/commands/simone/code_review.md with Task ID as scope  
 - Follow automated linting, type-checking, and quality validation
 - Review infrastructure integration and pattern consistency
 

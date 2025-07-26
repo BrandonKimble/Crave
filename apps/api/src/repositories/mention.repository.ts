@@ -68,11 +68,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by connection`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         connectionId,
         params,
       });
@@ -122,11 +122,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by subreddit`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         subreddit,
         params,
       });
@@ -180,11 +180,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by source`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         sourceType,
         sourceId,
         params,
@@ -246,11 +246,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find top mentions`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         params,
       });
 
@@ -310,11 +310,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find recent mentions`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         daysSince,
         params,
       });
@@ -361,11 +361,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find mentions by author`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         author,
         params,
       });
@@ -424,11 +424,11 @@ export class MentionRepository extends BaseRepository<
       });
 
       return statistics;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to get connection statistics`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         connectionId,
       });
 

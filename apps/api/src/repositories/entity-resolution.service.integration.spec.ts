@@ -125,7 +125,7 @@ describe('EntityResolutionService Integration Tests', () => {
         // Test with invalid scope parameter
         const result = await service.resolveContextualAttributes(
           testData.dishAttribute.name,
-          'invalid' as any,
+          'invalid' as any, // eslint-disable-line @typescript-eslint/no-unsafe-argument
         );
 
         expect(result).toBeDefined();
@@ -329,10 +329,11 @@ describe('EntityResolutionService Integration Tests', () => {
 
   describe('Error Handling Integration', () => {
     it('should handle database connection issues gracefully', async () => {
-      await testSetup.withCleanup(async (): Promise<void> => {
+      await testSetup.withCleanup((): Promise<void> => {
         // Test graceful degradation on database issues
         // This would require more complex setup to simulate connection failures
         expect(true).toBe(true); // Placeholder for complex error scenarios
+        return Promise.resolve();
       });
     });
 

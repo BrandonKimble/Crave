@@ -1,10 +1,8 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { TestingModule } from '@nestjs/testing';
 import { EntitiesService } from '../src/modules/entities/entities.service';
 import { EntityResolutionService } from '../src/repositories/entity-resolution.service';
 import { EntityRepository } from '../src/repositories/entity.repository';
 import { ConnectionRepository } from '../src/repositories/connection.repository';
-import { PrismaService } from '../src/prisma/prisma.service';
-import { LoggerService } from '../src/shared';
 import { IntegrationTestSetup } from './integration-test.setup';
 import { Entity } from '@prisma/client';
 
@@ -13,7 +11,6 @@ describe('Cross-Service Integration Tests', () => {
   let entityResolutionService: EntityResolutionService;
   let entityRepository: EntityRepository;
   let connectionRepository: ConnectionRepository;
-  let prismaService: PrismaService;
   let testSetup: IntegrationTestSetup;
   let module: TestingModule;
 
@@ -35,7 +32,6 @@ describe('Cross-Service Integration Tests', () => {
     entityRepository = module.get<EntityRepository>(EntityRepository);
     connectionRepository =
       module.get<ConnectionRepository>(ConnectionRepository);
-    prismaService = testSetup.getPrismaService();
   });
 
   afterAll(async () => {
@@ -44,7 +40,7 @@ describe('Cross-Service Integration Tests', () => {
 
   describe('Complete Entity Resolution Workflow Integration', () => {
     it('should execute full entity creation and resolution workflow', async () => {
-      await testSetup.withCleanup(async (prisma) => {
+      await testSetup.withCleanup(async (_prisma) => {
         // 1. Create restaurant through EntitiesService
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -143,7 +139,7 @@ describe('Cross-Service Integration Tests', () => {
       await testSetup.withCleanup(async (prisma) => {
         // Create test entities through different services
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -244,7 +240,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should maintain transactional consistency across service boundaries', async () => {
-      await testSetup.withCleanup(async (prisma) => {
+      await testSetup.withCleanup(async (_prisma) => {
         // Test that operations across multiple services are transactionally consistent
         const restaurantData = {
           entityType: 'restaurant' as const,
@@ -365,7 +361,7 @@ describe('Cross-Service Integration Tests', () => {
     it('should maintain performance standards for cross-service operations', async () => {
       await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,
@@ -474,7 +470,7 @@ describe('Cross-Service Integration Tests', () => {
     });
 
     it('should handle complex dual-purpose entity workflows', async () => {
-      await testSetup.withCleanup(async (prisma) => {
+      await testSetup.withCleanup(async (_prisma) => {
         // Create dual-purpose entity (both menu item and category)
         const dualPurposeEntity = await entitiesService.create({
           entityType: 'dish_or_category',
@@ -506,7 +502,7 @@ describe('Cross-Service Integration Tests', () => {
         });
 
         // Create connections showing dual usage
-        const menuItemConnection = await connectionRepository.create({
+        await connectionRepository.create({
           restaurant: {
             connect: { entityId: restaurant1.entityId },
           },
@@ -522,7 +518,7 @@ describe('Cross-Service Integration Tests', () => {
           dishQualityScore: 88.0,
         });
 
-        const categoryConnection = await connectionRepository.create({
+        await connectionRepository.create({
           restaurant: {
             connect: { entityId: restaurant2.entityId },
           },
@@ -566,7 +562,7 @@ describe('Cross-Service Integration Tests', () => {
       await testSetup.withCleanup(async (prisma) => {
         // This test validates that all acceptance criteria are met
         const testData = await testSetup.seedTestData(prisma);
-        const connection = await testSetup.createTestConnection(
+        await testSetup.createTestConnection(
           prisma,
           testData.restaurant.entityId,
           testData.dishOrCategory.entityId,

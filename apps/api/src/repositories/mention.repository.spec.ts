@@ -1,10 +1,11 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { MentionRepository } from './mention.repository';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService } from '../shared';
 import { Mention, MentionSource } from '@prisma/client';
 import {
-  ValidationException,
   EntityNotFoundException,
   DatabaseOperationException,
 } from './base/repository.exceptions';
@@ -104,6 +105,7 @@ describe('MentionRepository', () => {
     });
 
     it('should set correct primary key field', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call
       expect((repository as any).getPrimaryKeyField()).toBe('mentionId');
     });
   });

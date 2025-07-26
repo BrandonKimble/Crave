@@ -46,11 +46,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find user by email`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         email,
       });
 
@@ -77,11 +77,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find user by referral code`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         referralCode,
       });
 
@@ -130,11 +130,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find users by subscription status`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         status,
         params,
       });
@@ -189,11 +189,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find users with expiring trials`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         daysBefore,
         params,
       });
@@ -237,11 +237,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to find referrals for user`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         userId,
         params,
       });
@@ -288,11 +288,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return result;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to update user subscription status`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         userId,
         status,
         metadata,
@@ -357,11 +357,11 @@ export class UserRepository extends BaseRepository<
       });
 
       return statistics;
-    } catch (error) {
+    } catch (error: unknown) {
       const duration = Date.now() - startTime;
       this.logger.error(`Failed to get user statistics`, {
         duration,
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
       });
 
       throw this.handlePrismaError(error, 'getUserStatistics');
