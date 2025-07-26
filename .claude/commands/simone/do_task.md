@@ -34,9 +34,13 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - Identify what is NOT included (future milestone features, optimizations beyond PRD)
 - If task references functionality from future milestones, pause for clarification
 
-- Find current timestamp (YYYY-MM-DD HH:MM)
-- Update task frontmatter: **status: in_progress** and timestamp
-- Update `.simone/00_PROJECT_MANIFEST.md` with task progress
+**Status Updates:**
+- Find current timestamp (YYYY-MM-DD HH:MM:SS)
+- Update task frontmatter: **status: active** and timestamp
+- Check if this is first task in sprint:
+  - If sprint status is "pending": Update sprint status to "active"
+  - Update sprint meta file with current timestamp
+- Update `.simone/00_PROJECT_MANIFEST.md` with task and sprint progress
 
 ## 3 · Execute PRD-scoped implementation with infrastructure integration
 
@@ -100,9 +104,23 @@ Follow these steps for a Code Review (in order)
 
 ## 5 · Finalize task completion
 
+**Task Completion:**
 - Set task status to **completed**
+- Update task `last_updated` timestamp
 - Rename task file to TX[TASK_ID]... format for completed recognition
-- Update `.simone/00_PROJECT_MANIFEST.md` with completion status
+
+**Sprint & Milestone Status Updates (CRITICAL):**
+- Check if ALL tasks in current sprint are complete:
+  - If YES: Update sprint status to "completed" in sprint meta file
+  - Update sprint `last_updated` timestamp
+- Check if ALL sprints in milestone are complete:
+  - If YES: Update milestone status to "completed" in milestone meta file
+  - Update milestone `last_updated` timestamp
+  
+**Project Manifest Updates (CRITICAL):**
+- Update `.simone/00_PROJECT_MANIFEST.md` with task completion status
+- Update manifest `last_updated` timestamp in frontmatter
+- If milestone complete: Update `current_milestone_id` to next milestone if available
 
 ## 6 · Report results
 
@@ -117,6 +135,13 @@ Follow these steps for a Code Review (in order)
 
 **Work Completed**: [brief summary]
 **Integration Points**: [existing infrastructure leveraged]
+
+**Project Status Updates**: 
+✅ Task status set to completed
+✅ Task file renamed to TX## format
+[✅/❌] Sprint S## status updated to "completed" (if all tasks complete)
+[✅/❌] Milestone M## status updated to "completed" (if all sprints complete)
+✅ Project manifest updated with completion status
 
 **Next Steps**: 
 - Commit changes: `/simone:commit T##`

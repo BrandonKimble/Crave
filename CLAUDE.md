@@ -475,4 +475,4 @@ abstract class BaseClass {
 ## Project Folders and Locations
 
 - Simone sprints and tasks are located @.simone/03_SPRINTS
-- Simone commands are located @.claude/commands/simone
+- Simone commands are located @.claude/commands/simone/
