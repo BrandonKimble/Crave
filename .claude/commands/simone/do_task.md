@@ -49,18 +49,18 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 **CRITICAL**: Before implementing ANY new code, perform comprehensive infrastructure integration:
 
 **Existing Infrastructure Discovery:**
-- **Comprehensively search codebase** for ALL existing infrastructure, tools, and capabilities
-- **Core Infrastructure**: Repository patterns, service layers, validation systems, DTOs, custom exceptions, database utilities
-- **Frontend Infrastructure**: UI components, styling systems, navigation patterns, state management, hooks, contexts
-- **External Integrations**: API clients, authentication flows, middleware, health checks, monitoring, caching systems
-- **Development Infrastructure**: Testing utilities, configuration management, build processes, deployment tools, scripts
-- **Domain-Specific Tools**: Any specialized utilities, helpers, or services unique to this project
-- **Third-Party Integrations**: External service wrappers, SDK implementations, specialized libraries
-- **Automation & Tooling**: Custom scripts, generators, validators, formatters, or workflow tools
-- **Performance & Optimization**: Caching layers, optimization utilities, performance monitoring tools
-- **Security Infrastructure**: Authentication helpers, authorization middleware, security utilities
-- **Data Processing**: Transformation utilities, parsing tools, serialization helpers, batch processing systems
-- **Communication**: Event systems, notification services, messaging utilities, webhook handlers
+- **Systematic Codebase Analysis**: Use search tools (Grep, Glob, LS) to comprehensively map existing patterns, abstractions, and capabilities
+- **Core Patterns**: Look for base classes, interfaces, abstract patterns, service layers, repository patterns, validation frameworks, error handling systems
+- **Integration Layers**: Search for external service clients, API wrappers, authentication flows, middleware, health checks, caching abstractions
+- **Development Utilities**: Find testing frameworks, configuration systems, build tools, environment management, deployment scripts
+- **Domain Logic**: Identify business-specific services, utilities, helpers, processing pipelines, and domain models unique to the project
+- **Quality & Monitoring**: Locate logging systems, metrics collection, performance monitoring, security utilities, audit trails
+- **Data Management**: Discover database patterns, ORM abstractions, migration tools, backup systems, data transformation utilities
+- **Communication Systems**: Find event systems, messaging patterns, notification services, webhook handlers, queue systems
+- **Cross-Cutting Concerns**: Search for shared utilities, common helpers, constants, types, and reusable components across domains
+- **Extension Points**: Identify plugin systems, configuration-driven behaviors, factory patterns, and other extensibility mechanisms
+- **Dependencies & Libraries**: Examine package.json, requirements files, and import statements to map available libraries, frameworks, and tools already integrated
+- **Project Standards & Infrastructure**: Locate documentation patterns, coding standards, CI/CD configurations, deployment infrastructure, and API design conventions
 
 **Integration Strategy:**
 - **Discover First, Create Last**: Always exhaustively search for existing solutions before building new
@@ -69,12 +69,31 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - **Maximum Reuse**: Leverage any and all existing utilities, components, services, and tools
 - **Infrastructure Enhancement**: Look for opportunities to improve existing infrastructure during implementation
 
-**Phase 2: PRD-Scoped Implementation**
+**Phase 2: Implementation Planning**
+
+**CRITICAL**: After completing infrastructure discovery, create an implementation plan:
+- **Re-read PRD sections** referenced in task AND parent sprint/milestone for implementation details
+  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
+  - Look for implementation nuances, constraints, integration requirements, and technical specifications
+- Synthesize infrastructure findings with task requirements
+- Map existing capabilities to task subtasks
+- Identify what can be extended vs what needs to be created new
+- Plan integration points and dependencies
+- Design a thoughtful implementation approach considering maintainability, extensibility, and user experience
+- Plan elegant solutions that anticipate future needs while solving current requirements
+- Consider implementation sequencing that enables safe iteration and early validation
+- Design comprehensive validation strategy that builds confidence in each component
+- Anticipate potential challenges and design resilient solutions from the start
+- Plan implementation in meaningful increments that deliver value and enable feedback
+- Use ExitPlanMode tool to present plan and get approval before proceeding
+
+**Phase 3: PRD-Scoped Implementation**
 
 - Follow task Description, Goals, and Acceptance Criteria exactly as specified
 - Implement ONLY requirements from referenced PRD sections (no scope expansion)
 - **PROACTIVE INSTALLATION**: Install required or beneficial dependencies/tools aligned with implementation goals
 - Leverage discovered infrastructure to minimize code duplication and maintain consistency
+- **PRD GUIDANCE**: When encountering implementation nuances, edge cases, or technical decisions, search through PRD subsections for additional guidance and specifications
 
 **Subtask Execution:**
 1. Pick next incomplete subtask
@@ -91,16 +110,27 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 ## 4 · Perform comprehensive code review and validation
 
-Follow these steps for a Code Review (in order)
+**ITERATIVE CODE REVIEW LOOP - Continue until PASS**
 
-- include @.claude/commands/simone/code_review.md and use the Task ID as Scope
-- Follow the instructions in the file to run a code review
-- on **FAIL**
-  - Thoroughly understand the problems
-  - extend the current task with identified issues as subtasks
-  - return to implementation phase, step "3 · Execute PRD-scoped implementation with infrastructure integration"
-- on **PASS**
-  - move on to next step
+Follow these steps for a Code Review (in order):
+
+1. **Run Code Review**: include @.claude/commands/simone/code_review.md and use the Task ID as Scope
+2. **Evaluate Result**:
+   - On **PASS**: Move to step 5 (Finalize task completion)
+   - On **FAIL**: Continue to step 3 below
+
+3. **Fix Issues and Re-validate** (FAIL path):
+   - Thoroughly understand all identified problems
+   - Extend current task with identified issues as subtasks
+   - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
+   - **CRITICAL**: After completing fixes, return to step 1 of this section to re-run code review
+   - **Continue this loop until code review PASSES**
+
+**Loop Requirements**:
+- **Never proceed to step 5 without a PASS result**
+- **Always re-run code review after fixing issues**
+- **Track iterations in task Output Log with timestamps**
+- **Each iteration should show measurable progress toward resolution**
 
 ## 5 · Finalize task completion
 
