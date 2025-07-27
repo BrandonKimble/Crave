@@ -77,7 +77,7 @@ Implements task requirements strictly within PRD boundaries while maximizing int
   - Look for implementation nuances, constraints, integration requirements, and technical specifications
 - Synthesize infrastructure findings with task requirements
 - Map existing capabilities to task subtasks
-- Identify what can be extended vs what needs to be created new
+- Identify what can be extended vs changed or enhanced vs what needs to be created new
 - Plan integration points and dependencies
 - Design a thoughtful implementation approach considering maintainability, extensibility, and user experience
 - Plan elegant solutions that anticipate future needs while solving current requirements

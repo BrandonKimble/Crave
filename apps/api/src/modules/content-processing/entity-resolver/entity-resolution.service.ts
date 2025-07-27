@@ -4,6 +4,7 @@ import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { AliasManagementService } from './alias-management.service';
 import {
   EntityResolutionInput,
   EntityResolutionResult,
@@ -29,6 +30,7 @@ export class EntityResolutionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
+    private readonly aliasManagementService: AliasManagementService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('EntityResolutionService');
@@ -483,30 +485,51 @@ export class EntityResolutionService {
       try {
         let newEntity: Entity;
 
+        // Prepare aliases using alias management service
+        const aliasResult = this.aliasManagementService.addOriginalTextAsAlias(
+          entity.aliases || [],
+          entity.originalText,
+        );
+
+        // Validate scope constraints for attribute entities
+        const scopeValidation =
+          this.aliasManagementService.validateScopeConstraints(
+            entityType,
+            aliasResult.updatedAliases,
+          );
+
+        if (scopeValidation.violations.length > 0) {
+          this.logger.warn('Scope violations detected during entity creation', {
+            entityType,
+            entityName: entity.normalizedName,
+            violations: scopeValidation.violations,
+          });
+        }
+
         // Create entity based on type using existing repository methods
         switch (entityType) {
           case 'restaurant':
             newEntity = await this.entityRepository.createRestaurant({
               name: entity.normalizedName,
-              aliases: entity.aliases || [entity.originalText],
+              aliases: scopeValidation.validAliases,
             });
             break;
           case 'dish_or_category':
             newEntity = await this.entityRepository.createDishOrCategory({
               name: entity.normalizedName,
-              aliases: entity.aliases || [entity.originalText],
+              aliases: scopeValidation.validAliases,
             });
             break;
           case 'dish_attribute':
             newEntity = await this.entityRepository.createDishAttribute({
               name: entity.normalizedName,
-              aliases: entity.aliases || [entity.originalText],
+              aliases: scopeValidation.validAliases,
             });
             break;
           case 'restaurant_attribute':
             newEntity = await this.entityRepository.createRestaurantAttribute({
               name: entity.normalizedName,
-              aliases: entity.aliases || [entity.originalText],
+              aliases: scopeValidation.validAliases,
             });
             break;
           default:
@@ -626,6 +649,186 @@ export class EntityResolutionService {
       processingTimeMs: Math.max(processingTimeMs, 1), // Ensure minimum 1ms for testing
       averageConfidence: Math.round(averageConfidence * 100) / 100,
     };
+  }
+
+  /**
+   * Merge two entities by consolidating their aliases and updating the target entity
+   * Implements PRD Section 9.2.1 - Alias management integrates seamlessly with entity resolution system
+   */
+  async mergeEntities(
+    sourceEntityId: string,
+    targetEntityId: string,
+    entityType: EntityType,
+  ): Promise<{
+    mergedEntity: Entity;
+    aliasesAdded: number;
+    duplicatesRemoved: number;
+    violations: string[];
+  }> {
+    this.logger.info('Starting entity merge operation', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'merge_entities',
+      sourceEntityId,
+      targetEntityId,
+      entityType,
+    });
+
+    try {
+      // Fetch both entities
+      const [sourceEntity, targetEntity] = await Promise.all([
+        this.prisma.entity.findUnique({
+          where: { entityId: sourceEntityId },
+          select: { entityId: true, name: true, aliases: true, type: true },
+        }),
+        this.prisma.entity.findUnique({
+          where: { entityId: targetEntityId },
+          select: { entityId: true, name: true, aliases: true, type: true },
+        }),
+      ]);
+
+      if (!sourceEntity || !targetEntity) {
+        throw new Error(
+          `Entity not found: source=${!sourceEntity}, target=${!targetEntity}`,
+        );
+      }
+
+      if (sourceEntity.type !== targetEntity.type) {
+        throw new Error(
+          `Entity type mismatch: source=${sourceEntity.type}, target=${targetEntity.type}`,
+        );
+      }
+
+      // Prepare alias merge using alias management service
+      const mergeResult = this.aliasManagementService.prepareAliasesForMerge({
+        sourceEntityId,
+        targetEntityId,
+        sourceAliases: sourceEntity.aliases,
+        targetAliases: targetEntity.aliases,
+        entityType,
+      });
+
+      // Update target entity with merged aliases
+      const updatedEntity = await this.prisma.entity.update({
+        where: { entityId: targetEntityId },
+        data: {
+          aliases: mergeResult.mergedAliases,
+          lastUpdated: new Date(),
+        },
+      });
+
+      // Log the merge operation
+      this.logger.info('Entity merge completed successfully', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'merge_entities',
+        sourceEntityId,
+        targetEntityId,
+        finalAliasCount: mergeResult.mergedAliases.length,
+        duplicatesRemoved: mergeResult.duplicatesRemoved,
+        violations: mergeResult.crossScopeViolations.length,
+      });
+
+      return {
+        mergedEntity: updatedEntity,
+        aliasesAdded:
+          mergeResult.mergedAliases.length - targetEntity.aliases.length,
+        duplicatesRemoved: mergeResult.duplicatesRemoved,
+        violations: mergeResult.crossScopeViolations,
+      };
+    } catch (error) {
+      this.logger.error('Entity merge operation failed', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'merge_entities',
+        error: error instanceof Error ? error.message : String(error),
+        sourceEntityId,
+        targetEntityId,
+        entityType,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Add alias to existing entity with duplicate prevention and scope validation
+   * Implements PRD Section 9.2.1 - Automatic alias creation, duplicate prevention
+   */
+  async addAliasToEntity(
+    entityId: string,
+    newAlias: string,
+  ): Promise<{
+    updated: boolean;
+    aliasAdded: boolean;
+    violations: string[];
+  }> {
+    this.logger.debug('Adding alias to entity', {
+      entityId,
+      newAlias,
+    });
+
+    try {
+      // Fetch current entity
+      const entity = await this.prisma.entity.findUnique({
+        where: { entityId },
+        select: { entityId: true, name: true, aliases: true, type: true },
+      });
+
+      if (!entity) {
+        throw new Error(`Entity not found: ${entityId}`);
+      }
+
+      // Use alias management service to add alias
+      const aliasResult = this.aliasManagementService.addOriginalTextAsAlias(
+        entity.aliases,
+        newAlias,
+      );
+
+      // Validate scope constraints
+      const scopeValidation =
+        this.aliasManagementService.validateScopeConstraints(
+          entity.type,
+          aliasResult.updatedAliases,
+        );
+
+      if (!aliasResult.aliasAdded) {
+        this.logger.debug('Alias already exists, no update needed', {
+          entityId,
+          newAlias,
+        });
+        return {
+          updated: false,
+          aliasAdded: false,
+          violations: scopeValidation.violations,
+        };
+      }
+
+      // Update entity with new aliases
+      await this.prisma.entity.update({
+        where: { entityId },
+        data: {
+          aliases: scopeValidation.validAliases,
+          lastUpdated: new Date(),
+        },
+      });
+
+      this.logger.debug('Alias added to entity successfully', {
+        entityId,
+        newAlias,
+        finalAliasCount: scopeValidation.validAliases.length,
+        violations: scopeValidation.violations.length,
+      });
+
+      return {
+        updated: true,
+        aliasAdded: true,
+        violations: scopeValidation.violations,
+      };
+    } catch (error) {
+      this.logger.error('Failed to add alias to entity', {
+        error: error instanceof Error ? error.message : String(error),
+        entityId,
+        newAlias,
+      });
+      throw error;
+    }
   }
 
   /**
