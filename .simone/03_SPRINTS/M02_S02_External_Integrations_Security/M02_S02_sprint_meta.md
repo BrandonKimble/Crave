@@ -6,7 +6,8 @@ prd_references: [1, 2, 3, 4, 5, 6, 9.2, 10] # Reference specific PRD sections
 title: External Integrations, Security & Bulk Operations
 status: pending # pending | active | completed | aborted
 goal: Implement Google Places API integration, external integrations module, security essentials, and bulk operations pipeline to complete M02 entity processing foundation.
-last_updated: 2025-07-26T17:45:00Z
+last_updated: 2025-07-27T00:00:00Z
+tasks_created: 4
 ---
 
 # Sprint: External Integrations, Security & Bulk Operations (S02)
@@ -45,3 +46,29 @@ last_updated: 2025-07-26T17:45:00Z
 - **NOT included**: Mobile app implementation (deferred to M07 - PRD section 9.7)
 - **NOT included**: Advanced caching beyond basic implementation (deferred to Post-MVP milestones)
 - **Boundary**: Tasks implement ONLY external integrations, security, and bulk operations requirements from PRD sections 1, 2, 3, 4, 5, 6, 9.2, 10
+
+## Sprint Tasks
+
+**CREATED TASKS (PRD-Aligned):**
+
+1. **T01_S02_Google_Places_API_Integration** (Medium) - PRD sections 9.2.1, 9.2.2, 2.5, 4.1.1
+   - Google Places API integration for restaurant data enrichment
+   - Location services setup with latitude, longitude, address, hours data
+
+2. **T02_S02_External_Integrations_Module** (Medium) - PRD sections 9.2.1, 9.2.2, 3.1.2, 2.5  
+   - Centralized API management for google-places, reddit-api, llm-api
+   - Basic rate limiting and graceful error handling with retry logic
+
+3. **T03_S02_Basic_Security_Essentials** (Medium) - PRD sections 9.2.1, 9.2.2, 2.2.2, 3.1.2
+   - Input validation, basic rate limiting, essential API security
+   - Protection against common injection attacks and malformed requests
+
+4. **T04_S02_Bulk_Operations_Pipeline** (Medium) - PRD sections 9.2.1, 9.2.2, 6.6.2, 5.2.1
+   - Multi-row inserts/updates with transaction management
+   - Batch processing optimization for database efficiency
+
+**ROADMAP AUDIT SUMMARY:**
+- ❌ Deferred: 0 tasks to later milestones per PRD roadmap
+- ✅ Included: 4 tasks required for M02 milestone DoD
+- All tasks implement ONLY current milestone requirements
+- No advanced features from future milestones included
