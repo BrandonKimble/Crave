@@ -48,6 +48,7 @@
     "@nestjs/throttler": "^6.4.0",
     "@nestjs/websockets": "^11.0.11",
     "@prisma/client": "^6.4.1",
+    "@types/string-similarity": "^4.0.2",
     "@types/uuid": "^10.0.0",
     "axios": "^1.8.1",
     "bull": "^4.16.5",
@@ -64,6 +65,7 @@
     "redis": "^4.7.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "string-similarity": "^4.0.4",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^5.0.0"
@@ -119,7 +121,9 @@
     "testEnvironment": "node",
     "maxWorkers": 2,
     "testTimeout": 30000,
-    "setupFilesAfterEnv": ["<rootDir>/../test/jest.setup.ts"],
+    "setupFilesAfterEnv": [
+      "<rootDir>/../test/jest.setup.ts"
+    ],
     "globalSetup": "<rootDir>/../test/jest.global-setup.ts",
     "globalTeardown": "<rootDir>/../test/jest.global-teardown.ts"
   }

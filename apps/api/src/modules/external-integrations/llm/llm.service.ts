@@ -5,6 +5,8 @@ import { firstValueFrom } from 'rxjs';
 import type { AxiosError } from 'axios';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   LLMConfig,
@@ -28,6 +30,7 @@ import {
 export class LLMService implements OnModuleInit {
   private readonly logger: LoggerService;
   private readonly llmConfig: LLMConfig;
+  private readonly systemPrompt: string;
   private performanceMetrics: LLMPerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -63,6 +66,8 @@ export class LLMService implements OnModuleInit {
       },
     };
 
+    // Load system prompt from llm-content-processing.md
+    this.systemPrompt = this.loadSystemPrompt();
     this.validateConfig();
   }
 
@@ -73,6 +78,41 @@ export class LLMService implements OnModuleInit {
       model: this.llmConfig.model,
       provider: 'google-gemini',
     });
+  }
+
+  private loadSystemPrompt(): string {
+    try {
+      // Path to llm-content-processing.md in project root (relative from apps/api when running)
+      const promptPath = join(
+        process.cwd(),
+        '..',
+        '..',
+        'llm-content-processing.md',
+      );
+      return readFileSync(promptPath, 'utf-8');
+    } catch (error) {
+      this.logger.error(
+        'Failed to load system prompt from llm-content-processing.md',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'load_system_prompt',
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+
+      // Fallback to basic prompt if file cannot be loaded
+      return `You are an expert entity extraction system for a food discovery app. Your task is to extract structured information about restaurants, dishes, and attributes from Reddit food community content.
+
+EXTRACTION GUIDELINES:
+1. Only process content with positive sentiment about food/restaurant quality
+2. Extract entities: restaurants, dishes/categories, dish attributes, restaurant attributes
+3. Apply context-dependent attribute scoping (dish vs restaurant)
+4. Use hierarchical category decomposition for food terms
+5. Set is_menu_item based on specificity and context
+6. Mark general_praise for holistic restaurant praise
+
+OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
+    }
   }
 
   private validateConfig(): void {
@@ -139,24 +179,12 @@ export class LLMService implements OnModuleInit {
   }
 
   /**
-   * Build the processing prompt using the llm-content-processing.md guidelines
+   * Build the processing prompt using the complete llm-content-processing.md system prompt
    */
   private buildProcessingPrompt(input: LLMInputStructure): string {
-    const systemPrompt = `You are an expert entity extraction system for a food discovery app. Your task is to extract structured information about restaurants, dishes, and attributes from Reddit food community content.
-
-EXTRACTION GUIDELINES:
-1. Only process content with positive sentiment about food/restaurant quality
-2. Extract entities: restaurants, dishes/categories, dish attributes, restaurant attributes
-3. Apply context-dependent attribute scoping (dish vs restaurant)
-4. Use hierarchical category decomposition for food terms
-5. Set is_menu_item based on specificity and context
-6. Mark general_praise for holistic restaurant praise
-
-OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
-
     const userPrompt = `Extract entities from this Reddit content:\n\n${JSON.stringify(input, null, 2)}`;
 
-    return `${systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: `;
+    return `${this.systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: `;
   }
 
   /**
