@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EntityType, Entity } from '@prisma/client';
 import { EntityResolutionService } from './entity-resolution.service';
+import { AliasManagementService } from './alias-management.service';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService } from '../../../shared';
@@ -32,6 +33,20 @@ describe('EntityResolutionService', () => {
     error: jest.fn(),
   };
 
+  const mockAliasManagementService = {
+    processAliases: jest.fn(),
+    findByAlias: jest.fn(),
+    addOriginalTextAsAlias: jest.fn().mockImplementation((aliases, originalText) => ({
+      updatedAliases: [...(aliases || []), originalText],
+      aliasAdded: true,
+    })),
+    validateScopeConstraints: jest.fn().mockImplementation((entityType, aliases) => ({
+      validAliases: aliases,
+      violations: [],
+    })),
+    prepareAliasesForMerge: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -43,6 +58,10 @@ describe('EntityResolutionService', () => {
         {
           provide: EntityRepository,
           useValue: mockEntityRepository,
+        },
+        {
+          provide: AliasManagementService,
+          useValue: mockAliasManagementService,
         },
         {
           provide: LoggerService,

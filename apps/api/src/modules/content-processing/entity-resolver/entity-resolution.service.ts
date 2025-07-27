@@ -222,15 +222,39 @@ export class EntityResolutionService {
       entityType,
     );
 
-    // Combine results from all tiers - only include matched results from exact matches
-    const allResults = [
-      ...exactMatchResults.filter((r) => r.entityId), // Only matched exact results
-      ...aliasMatchResults.filter((r) => r.entityId), // Only matched alias results
-      ...fuzzyMatchResults.filter((r) => r.entityId), // Only matched fuzzy results
-      ...newEntityResults, // New entity results
-    ];
+    // Combine results from all tiers
+    // Each entity should appear exactly once in the final results
+    const entityResultMap = new Map<string, EntityResolutionResult>();
+    
+    // Add exact match results (highest priority)
+    exactMatchResults.forEach(result => {
+      if (result.entityId) {
+        entityResultMap.set(result.tempId, result);
+      }
+    });
+    
+    // Add alias match results (only for entities not already matched)
+    aliasMatchResults.forEach(result => {
+      if (result.entityId && !entityResultMap.has(result.tempId)) {
+        entityResultMap.set(result.tempId, result);
+      }
+    });
+    
+    // Add fuzzy match results (only for entities not already matched) 
+    fuzzyMatchResults.forEach(result => {
+      if (result.entityId && !entityResultMap.has(result.tempId)) {
+        entityResultMap.set(result.tempId, result);
+      }
+    });
+    
+    // Add new entity results (only for entities not already matched)
+    newEntityResults.forEach(result => {
+      if (!entityResultMap.has(result.tempId)) {
+        entityResultMap.set(result.tempId, result);
+      }
+    });
 
-    return allResults;
+    return Array.from(entityResultMap.values());
   }
 
   /**
@@ -279,7 +303,7 @@ export class EntityResolutionService {
           tempId: entity.tempId,
           entityId: entityId || null,
           confidence: entityId ? 1.0 : 0.0,
-          resolutionTier: entityId ? 'exact' : 'exact',
+          resolutionTier: entityId ? 'exact' : 'unmatched',
           matchedName: entityId ? entity.normalizedName : undefined,
           originalInput: entity,
         };
@@ -318,7 +342,7 @@ export class EntityResolutionService {
         tempId: entity.tempId,
         entityId: null,
         confidence: 0.0,
-        resolutionTier: 'alias' as const,
+        resolutionTier: 'unmatched' as const,
         originalInput: entity,
       }));
     }
@@ -360,7 +384,7 @@ export class EntityResolutionService {
           tempId: entity.tempId,
           entityId: matchedEntity?.entityId || null,
           confidence: matchedEntity ? 0.95 : 0.0,
-          resolutionTier: 'alias' as const,
+          resolutionTier: matchedEntity ? 'alias' : 'unmatched',
           matchedName: matchedEntity?.name,
           originalInput: entity,
         };
@@ -409,7 +433,7 @@ export class EntityResolutionService {
         tempId: entity.tempId,
         entityId: fuzzyResult?.entityId || null,
         confidence: fuzzyResult?.confidence || 0.0,
-        resolutionTier: 'fuzzy',
+        resolutionTier: fuzzyResult ? 'fuzzy' : 'unmatched',
         matchedName: fuzzyResult?.matchedText,
         originalInput: entity,
       });

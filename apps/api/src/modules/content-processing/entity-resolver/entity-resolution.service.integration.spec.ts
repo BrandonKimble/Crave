@@ -4,6 +4,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { DatabaseValidationService } from '../../../config/database-validation.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { EntityResolutionService } from './entity-resolution.service';
+import { AliasManagementService } from './alias-management.service';
 import { LoggerService } from '../../../shared';
 import {
   EntityResolutionInput,
@@ -33,6 +34,7 @@ describe('EntityResolutionService Integration', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         EntityResolutionService,
+        AliasManagementService,
         PrismaService,
         EntityRepository,
         {

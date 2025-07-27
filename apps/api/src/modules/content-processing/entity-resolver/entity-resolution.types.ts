@@ -24,7 +24,7 @@ export interface EntityResolutionResult {
   tempId: string;
   entityId: string | null;
   confidence: number;
-  resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'new';
+  resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'new' | 'unmatched';
   matchedName?: string;
   originalInput: EntityResolutionInput;
 }
