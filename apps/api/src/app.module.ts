@@ -6,6 +6,7 @@ import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
 import { RedditModule } from './modules/external-integrations/reddit/reddit.module';
+import { LLMModule } from './modules/external-integrations/llm/llm.module';
 import { AppController } from './app.controller';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -41,6 +42,7 @@ import { SharedModule } from './shared/shared.module';
     PrismaModule,
     RepositoryModule,
     RedditModule,
+    LLMModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
