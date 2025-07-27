@@ -77,6 +77,9 @@ importers:
       '@prisma/client':
         specifier: ^6.4.1
         version: 6.11.1(prisma@6.11.1(typescript@5.8.2))(typescript@5.8.2)
+      '@types/string-similarity':
+        specifier: ^4.0.2
+        version: 4.0.2
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
@@ -125,6 +128,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      string-similarity:
+        specifier: ^4.0.4
+        version: 4.0.4
       uuid:
         specifier: ^11.1.0
         version: 11.1.0
@@ -2947,6 +2953,9 @@ packages:
 
   '@types/stack-utils@2.0.3':
     resolution: {integrity: sha512-9aEbYZ3TbYMznPdcdr3SmIrLXwC/AKZXQeCf9Pgao5CKb8CyHuEX5jzWPTkvregvhRJHcpRO6BFoGW9ycaOkYw==}
+
+  '@types/string-similarity@4.0.2':
+    resolution: {integrity: sha512-LkJQ/jsXtCVMK+sKYAmX/8zEq+/46f1PTQw7YtmQwb74jemS1SlNLmARM2Zml9DgdDTWKAtc5L13WorpHPDjDA==}
 
   '@types/superagent@8.1.9':
     resolution: {integrity: sha512-pTVjI73witn+9ILmoJdajHGW2jkSaOzhiFYF1Rd3EQ94kymLqB9PjD9ISg7WaALC7+dCHT0FGe9T2LktLq/3GQ==}
@@ -8517,6 +8526,10 @@ packages:
     resolution: {integrity: sha512-9Ep08KAMUn0OadnVaBuRdE2l615CQ508kr0XMadjClfYpdCyvrbFp6Taebo8yyxokQ4viUd/xPPUA4FGgUa0ow==}
     engines: {node: '>=12.20'}
 
+  string-similarity@4.0.4:
+    resolution: {integrity: sha512-/q/8Q4Bl4ZKAPjj8WerIBJWALKkaPRfrvhfF8k/B23i4nzrlRj2/go1m90In7nG/3XDSbOo0+pu6RvCTM9RGMQ==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
+
   string-width@4.2.3:
     resolution: {integrity: sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==}
     engines: {node: '>=8'}
@@ -12905,6 +12918,8 @@ snapshots:
       '@types/node': 22.16.2
 
   '@types/stack-utils@2.0.3': {}
+
+  '@types/string-similarity@4.0.2': {}
 
   '@types/superagent@8.1.9':
     dependencies:
@@ -19732,6 +19747,8 @@ snapshots:
     dependencies:
       char-regex: 2.0.2
       strip-ansi: 7.1.0
+
+  string-similarity@4.0.4: {}
 
   string-width@4.2.3:
     dependencies:
