@@ -98,11 +98,20 @@ export default () => ({
   },
   llm: {
     apiKey: process.env.LLM_API_KEY,
-    model: process.env.LLM_MODEL || 'gpt-3.5-turbo',
-    baseUrl: process.env.LLM_BASE_URL || 'https://api.openai.com/v1',
+    model: process.env.LLM_MODEL || 'gemini-2.5-flash',
+    baseUrl:
+      process.env.LLM_BASE_URL ||
+      'https://generativelanguage.googleapis.com/v1beta',
     timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
     maxTokens: parseInt(process.env.LLM_MAX_TOKENS || '4000', 10),
     temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
+    topP: parseFloat(process.env.LLM_TOP_P || '0.95'),
+    topK: parseInt(process.env.LLM_TOP_K || '40', 10),
+    candidateCount: parseInt(process.env.LLM_CANDIDATE_COUNT || '1', 10),
+    thinking: {
+      enabled: process.env.LLM_THINKING_ENABLED !== 'false',
+      budget: parseInt(process.env.LLM_THINKING_BUDGET || '0', 10),
+    },
   },
   jwt: {
     secret: process.env.JWT_SECRET,

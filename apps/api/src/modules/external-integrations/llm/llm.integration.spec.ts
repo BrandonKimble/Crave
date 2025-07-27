@@ -6,7 +6,7 @@ import { LLMService } from './llm.service';
 import { LLMInputStructure } from './llm.types';
 import configuration from '../../../config/configuration';
 
-describe('LLM Integration Test', () => {
+describe('Gemini Integration Test', () => {
   let service: LLMService;
   let module: TestingModule;
 
@@ -14,7 +14,7 @@ describe('LLM Integration Test', () => {
     // Set test environment variables following integration-test.setup.ts pattern
     process.env.NODE_ENV = 'test';
     process.env.LLM_API_KEY = process.env.LLM_API_KEY || 'test_llm_key';
-    process.env.LLM_MODEL = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+    process.env.LLM_MODEL = process.env.LLM_MODEL || 'gemini-2.5-flash';
 
     module = await Test.createTestingModule({
       imports: [
@@ -88,7 +88,7 @@ describe('LLM Integration Test', () => {
 
       // Skip this test if no API key is configured (for CI/CD environments)
       if (!process.env.LLM_API_KEY) {
-        console.log('Skipping LLM integration test - no API key configured');
+        console.log('Skipping Gemini integration test - no API key configured');
         return;
       }
 
@@ -115,7 +115,7 @@ describe('LLM Integration Test', () => {
           expect(typeof mention.general_praise).toBe('boolean');
         }
 
-        console.log('LLM Integration Test Results:');
+        console.log('Gemini Integration Test Results:');
         console.log(`- Posts processed: ${sampleInput.posts.length}`);
         console.log(
           `- Total comments: ${sampleInput.posts.reduce((sum, post) => sum + post.comments.length, 0)}`,
@@ -132,7 +132,7 @@ describe('LLM Integration Test', () => {
         }
       } catch (error) {
         // Log error details for debugging but don't fail the test in development
-        console.error('LLM Integration test error:', error);
+        console.error('Gemini Integration test error:', error);
 
         // Only fail if this is a critical error (authentication, configuration)
         if (
@@ -147,7 +147,7 @@ describe('LLM Integration Test', () => {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
         console.warn(
-          'LLM integration test encountered non-critical error:',
+          'Gemini integration test encountered non-critical error:',
           errorMessage,
         );
       }
@@ -160,7 +160,7 @@ describe('LLM Integration Test', () => {
       expect(connectionResult).toHaveProperty('status');
       expect(connectionResult).toHaveProperty('message');
 
-      console.log('LLM Connection Test Result:', connectionResult.status);
+      console.log('Gemini Connection Test Result:', connectionResult.status);
     });
 
     it('should provide performance metrics', () => {
@@ -172,7 +172,7 @@ describe('LLM Integration Test', () => {
       expect(metrics).toHaveProperty('totalTokensUsed');
       expect(metrics).toHaveProperty('successRate');
 
-      console.log('LLM Performance Metrics:', {
+      console.log('Gemini Performance Metrics:', {
         requests: metrics.requestCount,
         avgResponseTime: metrics.averageResponseTime,
         tokensUsed: metrics.totalTokensUsed,

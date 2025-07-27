@@ -40,11 +40,16 @@ describe('LLMService', () => {
     mockConfigService.get.mockImplementation((key: string): string => {
       const config: Record<string, any> = {
         'llm.apiKey': 'test-api-key',
-        'llm.model': 'gpt-3.5-turbo',
-        'llm.baseUrl': 'https://api.openai.com/v1',
+        'llm.model': 'gemini-2.5-flash',
+        'llm.baseUrl': 'https://generativelanguage.googleapis.com/v1beta',
         'llm.timeout': 30000,
         'llm.maxTokens': 4000,
         'llm.temperature': 0.1,
+        'llm.topP': 0.95,
+        'llm.topK': 40,
+        'llm.candidateCount': 1,
+        'llm.thinking.enabled': true,
+        'llm.thinking.budget': 0,
       };
       return config[key];
     });
@@ -108,11 +113,18 @@ describe('LLMService', () => {
       const config = service.getLLMConfig();
 
       expect(config).toEqual({
-        model: 'gpt-3.5-turbo',
-        baseUrl: 'https://api.openai.com/v1',
+        model: 'gemini-2.5-flash',
+        baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
         timeout: 30000,
         maxTokens: 4000,
         temperature: 0.1,
+        topP: 0.95,
+        topK: 40,
+        candidateCount: 1,
+        thinking: {
+          enabled: true,
+          budget: 0,
+        },
       });
       expect(config).not.toHaveProperty('apiKey');
     });
@@ -181,17 +193,21 @@ describe('LLMService', () => {
     it('should successfully process content', async () => {
       const mockResponse: AxiosResponse = {
         data: {
-          choices: [
+          candidates: [
             {
-              message: {
-                content: JSON.stringify(mockOutput),
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify(mockOutput),
+                  },
+                ],
               },
             },
           ],
-          usage: {
-            prompt_tokens: 100,
-            completion_tokens: 50,
-            total_tokens: 150,
+          usageMetadata: {
+            promptTokenCount: 100,
+            candidatesTokenCount: 50,
+            totalTokenCount: 150,
           },
         },
         status: 200,
@@ -212,20 +228,29 @@ describe('LLMService', () => {
       expect(result).toEqual(mockOutput);
       /* eslint-disable @typescript-eslint/no-unsafe-assignment */
       expect(mockHttpService.post).toHaveBeenCalledWith(
-        'https://api.openai.com/v1/chat/completions',
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-api-key',
         expect.objectContaining({
-          model: 'gpt-3.5-turbo',
-          messages: expect.arrayContaining([
+          contents: expect.arrayContaining([
             expect.objectContaining({
               role: 'user',
+              parts: expect.arrayContaining([
+                expect.objectContaining({
+                  text: expect.any(String),
+                }),
+              ]),
             }),
           ]),
-          max_tokens: 4000,
-          temperature: 0.1,
+          generationConfig: expect.objectContaining({
+            temperature: 0.1,
+            maxOutputTokens: 4000,
+            topP: 0.95,
+            topK: 40,
+            candidateCount: 1,
+          }),
         }),
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer test-api-key',
+            'Content-Type': 'application/json',
           }),
         }),
       );
@@ -292,7 +317,7 @@ describe('LLMService', () => {
     it('should handle invalid response format', async () => {
       const mockResponse: AxiosResponse = {
         data: {
-          choices: [],
+          candidates: [],
         },
         status: 200,
         statusText: 'OK',
@@ -315,10 +340,14 @@ describe('LLMService', () => {
     it('should handle malformed JSON response', async () => {
       const mockResponse: AxiosResponse = {
         data: {
-          choices: [
+          candidates: [
             {
-              message: {
-                content: 'invalid json content',
+              content: {
+                parts: [
+                  {
+                    text: 'invalid json content',
+                  },
+                ],
               },
             },
           ],
@@ -346,10 +375,14 @@ describe('LLMService', () => {
     it('should pass connection test when LLM is accessible', async () => {
       const mockResponse: AxiosResponse = {
         data: {
-          choices: [
+          candidates: [
             {
-              message: {
-                content: JSON.stringify({ mentions: [] }),
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({ mentions: [] }),
+                  },
+                ],
               },
             },
           ],
@@ -370,7 +403,7 @@ describe('LLMService', () => {
       const result = await service.testConnection();
 
       expect(result.status).toBe('connected');
-      expect(result.message).toBe('LLM connection test passed');
+      expect(result.message).toBe('Gemini connection test passed');
     });
 
     it('should fail connection test when LLM is not accessible', async () => {
@@ -392,7 +425,7 @@ describe('LLMService', () => {
       const result = await service.testConnection();
 
       expect(result.status).toBe('failed');
-      expect(result.message).toBe('LLM connection test failed');
+      expect(result.message).toBe('Gemini connection test failed');
     });
   });
 

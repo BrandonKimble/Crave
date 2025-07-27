@@ -1,5 +1,5 @@
 /**
- * LLM configuration interface
+ * LLM configuration interface for Gemini API
  */
 export interface LLMConfig {
   apiKey: string;
@@ -8,6 +8,13 @@ export interface LLMConfig {
   timeout?: number;
   maxTokens?: number;
   temperature?: number;
+  topP?: number;
+  topK?: number;
+  candidateCount?: number;
+  thinking?: {
+    enabled: boolean;
+    budget: number;
+  };
 }
 
 /**
@@ -76,18 +83,70 @@ export interface LLMSource {
 }
 
 /**
- * LLM API response wrapper
+ * Gemini API response structure
  */
 export interface LLMApiResponse {
-  choices: Array<{
-    message: {
-      content: string;
+  candidates: Array<{
+    content: {
+      parts: Array<{
+        text: string;
+      }>;
+      role?: string;
+    };
+    finishReason?: string;
+    safetyRatings?: Array<{
+      category: string;
+      probability: string;
+    }>;
+    citationMetadata?: {
+      citationSources: Array<{
+        startIndex: number;
+        endIndex: number;
+        uri: string;
+        license: string;
+      }>;
     };
   }>;
-  usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+  usageMetadata?: {
+    promptTokenCount: number;
+    candidatesTokenCount: number;
+    totalTokenCount: number;
+    thoughtsTokenCount?: number;
+  };
+  modelVersion?: string;
+}
+
+/**
+ * Gemini API request structure
+ */
+export interface GeminiApiRequest {
+  contents: Array<{
+    role?: string;
+    parts: Array<{
+      text: string;
+    }>;
+  }>;
+  generationConfig?: {
+    temperature?: number;
+    maxOutputTokens?: number;
+    topP?: number;
+    topK?: number;
+    candidateCount?: number;
+    stopSequences?: string[];
+    responseMimeType?: string;
+    responseSchema?: object;
+    thinkingConfig?: {
+      thinkingBudget?: number;
+    };
+  };
+  safetySettings?: Array<{
+    category: string;
+    threshold: string;
+  }>;
+  systemInstruction?: {
+    parts: Array<{
+      text: string;
+    }>;
   };
 }
 

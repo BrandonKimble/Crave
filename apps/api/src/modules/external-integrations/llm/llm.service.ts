@@ -12,6 +12,7 @@ import {
   LLMOutputStructure,
   LLMApiResponse,
   LLMPerformanceMetrics,
+  GeminiApiRequest,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
 import {
@@ -45,23 +46,32 @@ export class LLMService implements OnModuleInit {
     this.logger = loggerService.setContext('LLMService');
     this.llmConfig = {
       apiKey: this.configService.get<string>('llm.apiKey') || '',
-      model: this.configService.get<string>('llm.model') || 'gpt-3.5-turbo',
+      model: this.configService.get<string>('llm.model') || 'gemini-2.5-flash',
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
-        'https://api.openai.com/v1',
+        'https://generativelanguage.googleapis.com/v1beta',
       timeout: this.configService.get<number>('llm.timeout') || 30000,
       maxTokens: this.configService.get<number>('llm.maxTokens') || 4000,
       temperature: this.configService.get<number>('llm.temperature') || 0.1,
+      topP: this.configService.get<number>('llm.topP') || 0.95,
+      topK: this.configService.get<number>('llm.topK') || 40,
+      candidateCount: this.configService.get<number>('llm.candidateCount') || 1,
+      thinking: {
+        enabled:
+          this.configService.get<boolean>('llm.thinking.enabled') !== false,
+        budget: this.configService.get<number>('llm.thinking.budget') || 0,
+      },
     };
 
     this.validateConfig();
   }
 
   onModuleInit() {
-    this.logger.info('LLM service initialized', {
+    this.logger.info('Gemini LLM service initialized', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'module_init',
       model: this.llmConfig.model,
+      provider: 'google-gemini',
     });
   }
 
@@ -78,11 +88,11 @@ export class LLMService implements OnModuleInit {
   }
 
   /**
-   * Process Reddit content through LLM for entity extraction
+   * Process Reddit content through Gemini LLM for entity extraction
    * Implements PRD Section 6.3 LLM Data Collection Input/Output Structures
    */
   async processContent(input: LLMInputStructure): Promise<LLMOutputStructure> {
-    this.logger.info('Processing content through LLM', {
+    this.logger.info('Processing content through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'process_content',
       postCount: input.posts.length,
@@ -102,7 +112,7 @@ export class LLMService implements OnModuleInit {
       const responseTime = Date.now() - startTime;
       this.recordSuccessMetrics(
         responseTime,
-        response.usage?.total_tokens || 0,
+        response.usageMetadata?.totalTokenCount || 0,
       );
 
       this.logger.info('Content processing completed', {
@@ -150,30 +160,46 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   }
 
   /**
-   * Make authenticated API call to LLM service
+   * Make authenticated API call to Gemini service
    */
   private async callLLMApi(prompt: string): Promise<LLMApiResponse> {
     const headers = {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.llmConfig.apiKey}`,
     };
 
-    const payload = {
-      model: this.llmConfig.model,
-      messages: [
+    const generationConfig: GeminiApiRequest['generationConfig'] = {
+      temperature: this.llmConfig.temperature,
+      maxOutputTokens: this.llmConfig.maxTokens,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: this.llmConfig.candidateCount,
+    };
+
+    // Add thinking configuration if enabled
+    if (this.llmConfig.thinking?.enabled) {
+      generationConfig.thinkingConfig = {
+        thinkingBudget: this.llmConfig.thinking.budget,
+      };
+    }
+
+    const payload: GeminiApiRequest = {
+      contents: [
         {
           role: 'user',
-          content: prompt,
+          parts: [
+            {
+              text: prompt,
+            },
+          ],
         },
       ],
-      max_tokens: this.llmConfig.maxTokens,
-      temperature: this.llmConfig.temperature,
+      generationConfig,
     };
 
     try {
       const response = await firstValueFrom(
         this.httpService.post(
-          `${this.llmConfig.baseUrl}/chat/completions`,
+          `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`,
           payload,
           {
             headers,
@@ -186,9 +212,12 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     } catch (error) {
       const axiosError = error as AxiosError;
 
-      if (axiosError.response?.status === 401) {
+      if (
+        axiosError.response?.status === 401 ||
+        axiosError.response?.status === 403
+      ) {
         throw new LLMAuthenticationError(
-          'Invalid LLM API key',
+          'Invalid Gemini API key',
           JSON.stringify(axiosError.response.data),
         );
       } else if (axiosError.response?.status === 429) {
@@ -203,12 +232,12 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         axiosError.code === 'ETIMEDOUT'
       ) {
         throw new LLMNetworkError(
-          'Network error during LLM API request',
+          'Network error during Gemini API request',
           error as Error,
         );
       } else {
         throw new LLMApiError(
-          'LLM API request failed',
+          'Gemini API request failed',
           axiosError.response?.status,
           JSON.stringify(axiosError.response?.data),
         );
@@ -217,20 +246,32 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   }
 
   /**
-   * Parse and validate LLM response
+   * Parse and validate Gemini response
    */
   private parseResponse(response: LLMApiResponse): LLMOutputStructure {
-    if (!response.choices || response.choices.length === 0) {
+    if (!response.candidates || response.candidates.length === 0) {
       throw new LLMResponseParsingError(
-        'No choices in LLM response',
+        'No candidates in Gemini response',
         JSON.stringify(response),
       );
     }
 
-    const content = response.choices[0].message.content;
+    const candidate = response.candidates[0];
+    if (
+      !candidate.content ||
+      !candidate.content.parts ||
+      candidate.content.parts.length === 0
+    ) {
+      throw new LLMResponseParsingError(
+        'No content parts in Gemini response',
+        JSON.stringify(response),
+      );
+    }
+
+    const content = candidate.content.parts[0].text;
     if (!content) {
       throw new LLMResponseParsingError(
-        'Empty content in LLM response',
+        'Empty text content in Gemini response',
         JSON.stringify(response),
       );
     }
@@ -241,7 +282,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       // Basic validation
       if (!parsed.mentions || !Array.isArray(parsed.mentions)) {
         throw new LLMResponseParsingError(
-          'Invalid mentions structure in LLM response',
+          'Invalid mentions structure in Gemini response',
           content,
         );
       }
@@ -249,14 +290,14 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       return parsed;
     } catch {
       throw new LLMResponseParsingError(
-        'Failed to parse JSON from LLM response',
+        'Failed to parse JSON from Gemini response',
         content,
       );
     }
   }
 
   /**
-   * Test LLM connectivity and authentication
+   * Test Gemini connectivity and authentication
    */
   async testConnection(): Promise<{
     status: string;
@@ -283,20 +324,20 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
       return {
         status: 'connected',
-        message: 'LLM connection test passed',
+        message: 'Gemini connection test passed',
         details: this.performanceMetrics,
       };
     } catch (error) {
       return {
         status: 'failed',
-        message: 'LLM connection test failed',
+        message: 'Gemini connection test failed',
         details: error instanceof Error ? error.message : String(error),
       };
     }
   }
 
   /**
-   * Get LLM configuration (excluding sensitive data)
+   * Get Gemini configuration (excluding sensitive data)
    */
   getLLMConfig(): Omit<LLMConfig, 'apiKey'> {
     return {
@@ -305,6 +346,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       timeout: this.llmConfig.timeout,
       maxTokens: this.llmConfig.maxTokens,
       temperature: this.llmConfig.temperature,
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: this.llmConfig.candidateCount,
+      thinking: this.llmConfig.thinking,
     };
   }
 
