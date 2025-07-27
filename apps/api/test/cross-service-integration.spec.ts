@@ -1,6 +1,6 @@
 import { TestingModule } from '@nestjs/testing';
 import { EntitiesService } from '../src/modules/entities/entities.service';
-import { EntityResolutionService } from '../src/repositories/entity-resolution.service';
+import { EntityContextService } from '../src/repositories/entity-context.service';
 import { EntityRepository } from '../src/repositories/entity.repository';
 import { ConnectionRepository } from '../src/repositories/connection.repository';
 import { IntegrationTestSetup } from './integration-test.setup';
@@ -8,7 +8,7 @@ import { Entity } from '@prisma/client';
 
 describe('Cross-Service Integration Tests', () => {
   let entitiesService: EntitiesService;
-  let entityResolutionService: EntityResolutionService;
+  let entityContextService: EntityContextService;
   let entityRepository: EntityRepository;
   let connectionRepository: ConnectionRepository;
   let testSetup: IntegrationTestSetup;
@@ -20,15 +20,14 @@ describe('Cross-Service Integration Tests', () => {
     // Create testing module with all services and repositories
     module = await testSetup.createTestingModule([
       EntitiesService,
-      EntityResolutionService,
+      EntityContextService,
       EntityRepository,
       ConnectionRepository,
     ]);
 
     entitiesService = module.get<EntitiesService>(EntitiesService);
-    entityResolutionService = module.get<EntityResolutionService>(
-      EntityResolutionService,
-    );
+    entityContextService =
+      module.get<EntityContextService>(EntityContextService);
     entityRepository = module.get<EntityRepository>(EntityRepository);
     connectionRepository =
       module.get<ConnectionRepository>(ConnectionRepository);
@@ -106,9 +105,9 @@ describe('Cross-Service Integration Tests', () => {
         expect(connection.restaurantId).toBe(restaurant.entityId);
         expect(connection.dishOrCategoryId).toBe(dish.entityId);
 
-        // 5. Validate through EntityResolutionService
+        // 5. Validate through EntityContextService
         const resolvedEntity =
-          await entityResolutionService.getEntityInMenuContext(
+          await entityContextService.getEntityInMenuContext(
             dish.entityId,
             restaurant.entityId,
           );
@@ -145,15 +144,15 @@ describe('Cross-Service Integration Tests', () => {
           testData.dishOrCategory.entityId,
         );
 
-        // Test attribute resolution through EntityResolutionService
+        // Test attribute resolution through EntityContextService
         const dishAttributes =
-          await entityResolutionService.resolveContextualAttributes(
+          await entityContextService.resolveContextualAttributes(
             testData.dishAttribute.name,
             'dish',
           );
 
         const restaurantAttributes =
-          await entityResolutionService.resolveContextualAttributes(
+          await entityContextService.resolveContextualAttributes(
             testData.restaurantAttribute.name,
             'restaurant',
           );
@@ -217,9 +216,9 @@ describe('Cross-Service Integration Tests', () => {
         expect(updatedConnection.mentionCount).toBe(25);
         expect(updatedConnection.activityLevel).toBe('trending');
 
-        // 3. Verify consistency through EntityResolutionService
+        // 3. Verify consistency through EntityContextService
         const resolvedEntity =
-          await entityResolutionService.getEntityInMenuContext(
+          await entityContextService.getEntityInMenuContext(
             testData.dishOrCategory.entityId,
             testData.restaurant.entityId,
           );
@@ -291,7 +290,7 @@ describe('Cross-Service Integration Tests', () => {
 
         // Verify connection exists through resolution service
         const resolvedEntity =
-          await entityResolutionService.getEntityInMenuContext(
+          await entityContextService.getEntityInMenuContext(
             dish.entityId,
             restaurant.entityId,
           );
@@ -347,7 +346,7 @@ describe('Cross-Service Integration Tests', () => {
 
         // Verify that resolution service handles this gracefully
         const resolvedEntity =
-          await entityResolutionService.getEntityInMenuContext(
+          await entityContextService.getEntityInMenuContext(
             testData.dishOrCategory.entityId,
             '00000000-0000-0000-0000-000000000001',
           );
@@ -384,7 +383,7 @@ describe('Cross-Service Integration Tests', () => {
             testData.dishOrCategory.entityId,
             'dish_or_category',
           ),
-          entityResolutionService.getEntityInMenuContext(
+          entityContextService.getEntityInMenuContext(
             testData.dishOrCategory.entityId,
             testData.restaurant.entityId,
           ),
@@ -424,11 +423,11 @@ describe('Cross-Service Integration Tests', () => {
           entityRepository.findById(testData.dishOrCategory.entityId),
 
           // Resolution service operations
-          entityResolutionService.resolveContextualAttributes(
+          entityContextService.resolveContextualAttributes(
             testData.dishAttribute.name,
             'dish',
           ),
-          entityResolutionService.resolveContextualAttributes(
+          entityContextService.resolveContextualAttributes(
             testData.restaurantAttribute.name,
             'restaurant',
           ),
@@ -534,9 +533,9 @@ describe('Cross-Service Integration Tests', () => {
           dishQualityScore: 75.0,
         });
 
-        // Test dual-purpose resolution through EntityResolutionService
+        // Test dual-purpose resolution through EntityContextService
         const dualPurposeEntities =
-          await entityResolutionService.findDualPurposeEntities();
+          await entityContextService.findDualPurposeEntities();
 
         expect(dualPurposeEntities).toBeDefined();
         expect(Array.isArray(dualPurposeEntities)).toBe(true);
@@ -570,7 +569,7 @@ describe('Cross-Service Integration Tests', () => {
 
         // ✅ Integration tests created for all major service classes
         expect(entitiesService).toBeDefined();
-        expect(entityResolutionService).toBeDefined();
+        expect(entityContextService).toBeDefined();
 
         // ✅ Integration tests created for all repository classes
         expect(entityRepository).toBeDefined();
@@ -582,7 +581,7 @@ describe('Cross-Service Integration Tests', () => {
 
         // ✅ Cross-service integration patterns tested
         const crossServiceResult =
-          await entityResolutionService.getEntityInMenuContext(
+          await entityContextService.getEntityInMenuContext(
             testData.dishOrCategory.entityId,
             testData.restaurant.entityId,
           );

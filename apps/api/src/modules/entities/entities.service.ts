@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Entity, EntityType, Prisma, Connection } from '@prisma/client';
 import { EntityRepository } from '../../repositories/entity.repository';
-import { EntityResolutionService } from '../../repositories/entity-resolution.service';
+import { EntityContextService } from '../../repositories/entity-context.service';
 import { LoggerService } from '../../shared';
 import { ValidationException } from '../../repositories/base/repository.exceptions';
 import { CorrelationUtils } from '../../shared/logging/correlation.utils';
@@ -15,7 +15,7 @@ import { PrismaErrorMapper } from '../../shared/utils/prisma-error-mapper';
 export class EntitiesService {
   constructor(
     private readonly entityRepository: EntityRepository,
-    private readonly entityResolutionService: EntityResolutionService,
+    private readonly entityContextService: EntityContextService,
     private readonly logger: LoggerService,
   ) {
     this.logger.setContext(EntitiesService.name);
@@ -434,7 +434,7 @@ export class EntitiesService {
         entityId,
         restaurantId,
       });
-      return await this.entityResolutionService.getEntityInMenuContext(
+      return await this.entityContextService.getEntityInMenuContext(
         entityId,
         restaurantId,
       );
@@ -459,7 +459,7 @@ export class EntitiesService {
   } | null> {
     try {
       this.logger.debug('Getting entity in category context', { entityId });
-      return await this.entityResolutionService.getEntityInCategoryContext(
+      return await this.entityContextService.getEntityInCategoryContext(
         entityId,
       );
     } catch (error) {
@@ -484,7 +484,7 @@ export class EntitiesService {
   > {
     try {
       this.logger.debug('Finding dual-purpose entities');
-      return await this.entityResolutionService.findDualPurposeEntities();
+      return await this.entityContextService.findDualPurposeEntities();
     } catch (error) {
       this.logger.error('Failed to find dual-purpose entities', {
         error: error instanceof Error ? error.message : String(error),
@@ -508,7 +508,7 @@ export class EntitiesService {
         attributeName,
         scope,
       });
-      return await this.entityResolutionService.resolveContextualAttributes(
+      return await this.entityContextService.resolveContextualAttributes(
         attributeName,
         scope,
       );
@@ -536,7 +536,7 @@ export class EntitiesService {
         attributeName,
         scope,
       });
-      return await this.entityResolutionService.createOrResolveContextualAttribute(
+      return await this.entityContextService.createOrResolveContextualAttribute(
         attributeName,
         scope,
         aliases,

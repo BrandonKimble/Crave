@@ -1,12 +1,12 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { TestingModule } from '@nestjs/testing';
-import { EntityResolutionService } from './entity-resolution.service';
+import { EntityContextService } from './entity-context.service';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
 import { IntegrationTestSetup } from '../../test/integration-test.setup';
 
-describe('EntityResolutionService Integration Tests', () => {
-  let service: EntityResolutionService;
+describe('EntityContextService Integration Tests', () => {
+  let service: EntityContextService;
   let entityRepository: EntityRepository;
   let connectionRepository: ConnectionRepository;
   let testSetup: IntegrationTestSetup;
@@ -17,12 +17,12 @@ describe('EntityResolutionService Integration Tests', () => {
 
     // Create testing module with real database connections
     module = await testSetup.createTestingModule([
-      EntityResolutionService,
+      EntityContextService,
       EntityRepository,
       ConnectionRepository,
     ]);
 
-    service = module.get<EntityResolutionService>(EntityResolutionService);
+    service = module.get<EntityContextService>(EntityContextService);
     entityRepository = module.get<EntityRepository>(EntityRepository);
     connectionRepository =
       module.get<ConnectionRepository>(ConnectionRepository);

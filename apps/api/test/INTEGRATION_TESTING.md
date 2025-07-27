@@ -12,7 +12,7 @@ Integration tests validate complete workflows from service layer through reposit
 
 1. **`integration-test.setup.ts`** - Core testing infrastructure
 2. **`entities.service.integration.spec.ts`** - EntitiesService integration tests
-3. **`entity-resolution.service.integration.spec.ts`** - EntityResolutionService integration tests
+3. **`entity-context.service.integration.spec.ts`** - EntityContextService integration tests
 4. **`entity.repository.integration.spec.ts`** - EntityRepository integration tests
 5. **`connection.repository.integration.spec.ts`** - ConnectionRepository integration tests
 6. **`cross-service-integration.spec.ts`** - Cross-service workflow tests
@@ -53,7 +53,7 @@ const testData = await testSetup.seedTestData(prisma);
 ### Service Layer Integration
 
 - **EntitiesService**: CRUD operations, validation, error handling
-- **EntityResolutionService**: Context resolution, attribute resolution, dual-purpose entities
+- **EntityContextService**: Entity context lookups, contextual attribute resolution, dual-purpose entities
 - Complete service-repository-database interaction chains
 - Business logic validation with real database constraints
 

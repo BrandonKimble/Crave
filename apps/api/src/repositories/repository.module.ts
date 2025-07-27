@@ -7,7 +7,7 @@ import { MentionRepository } from './mention.repository';
 import { UserRepository } from './user.repository';
 import { SubscriptionRepository } from './subscription.repository';
 import { UserEventRepository } from './user-event.repository';
-import { EntityResolutionService } from './entity-resolution.service';
+import { EntityContextService } from './entity-context.service';
 
 /**
  * Repository module providing data access layer
@@ -22,7 +22,7 @@ import { EntityResolutionService } from './entity-resolution.service';
     UserRepository,
     SubscriptionRepository,
     UserEventRepository,
-    EntityResolutionService,
+    EntityContextService,
   ],
   exports: [
     EntityRepository,
@@ -31,7 +31,7 @@ import { EntityResolutionService } from './entity-resolution.service';
     UserRepository,
     SubscriptionRepository,
     UserEventRepository,
-    EntityResolutionService,
+    EntityContextService,
   ],
 })
 export class RepositoryModule {}

@@ -1,7 +1,7 @@
 import { TestingModule } from '@nestjs/testing';
 import { EntitiesService } from './entities.service';
 import { EntityRepository } from '../../repositories/entity.repository';
-import { EntityResolutionService } from '../../repositories/entity-resolution.service';
+import { EntityContextService } from '../../repositories/entity-context.service';
 import { IntegrationTestSetup } from '../../../test/integration-test.setup';
 import { Entity } from '@prisma/client';
 
@@ -18,7 +18,7 @@ describe('EntitiesService Integration Tests', () => {
     module = await testSetup.createTestingModule([
       EntitiesService,
       EntityRepository,
-      EntityResolutionService,
+      EntityContextService,
     ]);
 
     service = module.get<EntitiesService>(EntitiesService);
@@ -304,12 +304,12 @@ describe('EntitiesService Integration Tests', () => {
   });
 
   describe('Cross-Service Integration Dependencies', () => {
-    it('should integrate with EntityResolutionService for complex operations', async () => {
+    it('should integrate with EntityContextService for complex operations', async () => {
       await testSetup.withCleanup(async (prisma) => {
         const testData = await testSetup.seedTestData(prisma);
 
         // Test that service layer properly integrates with resolution service
-        // This would test scenarios where EntitiesService uses EntityResolutionService
+        // This would test scenarios where EntitiesService uses EntityContextService
         const validationResult = await service.validateEntityExists(
           testData.restaurant.entityId,
           'restaurant',

@@ -6,7 +6,7 @@ import { LoggerService } from '../shared';
 import { ValidationException } from './base/repository.exceptions';
 
 /**
- * Service for context-aware entity resolution
+ * Service for entity context lookups and contextual attribute resolution
  *
  * IMPLEMENTATION NOTE: This service provides static entity query methods for M01 database foundation.
  * These methods will be complemented (not replaced) by the dynamic component-based processing
@@ -14,7 +14,8 @@ import { ValidationException } from './base/repository.exceptions';
  *
  * Current Methods (M01 - Database Foundation):
  * - Static entity queries for API endpoints
- * - Context-aware entity resolution
+ * - Context-aware entity lookups (menu vs category context)
+ * - Contextual attribute resolution
  * - Dual-purpose entity management
  *
  * Future M02 Methods (Component-Based Processing):
@@ -25,13 +26,13 @@ import { ValidationException } from './base/repository.exceptions';
  * Implements PRD Section 4.3.1 - Unified dish_or_category Entity Approach
  */
 @Injectable()
-export class EntityResolutionService {
+export class EntityContextService {
   constructor(
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
     private readonly logger: LoggerService,
   ) {
-    this.logger.setContext('EntityResolutionService');
+    this.logger.setContext('EntityContextService');
   }
 
   /**
@@ -79,7 +80,7 @@ export class EntityResolutionService {
       const entity = await this.entityRepository.findById(entityId);
 
       if (!entity || entity.type !== 'dish_or_category') {
-        throw new ValidationException('EntityResolution', [
+        throw new ValidationException('EntityContext', [
           `Entity ${entityId} is not a valid dish_or_category entity`,
         ]);
       }

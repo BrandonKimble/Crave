@@ -5,7 +5,7 @@ import { EntitiesService } from './entities.service';
 
 /**
  * Entities module providing service layer for entity management
- * Includes EntityResolutionService for PRD 4.2-4.3 compliance
+ * Includes EntityContextService for PRD 4.2-4.3 compliance
  * Exports EntitiesService for use in other modules
  */
 @Module({

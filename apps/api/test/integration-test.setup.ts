@@ -7,7 +7,7 @@ import { DatabaseValidationService } from '../src/config/database-validation.ser
 import { EntityRepository } from '../src/repositories/entity.repository';
 import { ConnectionRepository } from '../src/repositories/connection.repository';
 import { MentionRepository } from '../src/repositories/mention.repository';
-import { EntityResolutionService } from '../src/repositories/entity-resolution.service';
+import { EntityContextService } from '../src/repositories/entity-context.service';
 import { EntitiesService } from '../src/modules/entities/entities.service';
 import { Entity, Connection } from '@prisma/client';
 import configuration from '../src/config/configuration';
@@ -68,9 +68,9 @@ export class IntegrationTestSetup {
     process.env.REDDIT_USER_AGENT =
       process.env.REDDIT_USER_AGENT || 'CraveSearch/1.0.0-test';
 
-    // LLM configuration for testing
-    process.env.LLM_API_KEY = process.env.LLM_API_KEY || 'test_llm_key';
-    process.env.LLM_MODEL = process.env.LLM_MODEL || 'gpt-3.5-turbo';
+    // Gemini LLM configuration for testing
+    process.env.LLM_API_KEY = process.env.LLM_API_KEY || 'test_gemini_key';
+    process.env.LLM_MODEL = process.env.LLM_MODEL || 'gemini-2.5-flash';
 
     // JWT configuration for testing
     process.env.JWT_SECRET =
@@ -140,7 +140,7 @@ export class IntegrationTestSetup {
         EntityRepository,
         ConnectionRepository,
         MentionRepository,
-        EntityResolutionService,
+        EntityContextService,
         EntitiesService,
         DatabaseValidationService,
         ...additionalProviders,

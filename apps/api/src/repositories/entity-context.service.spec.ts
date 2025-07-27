@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { EntityResolutionService } from './entity-resolution.service';
+import { EntityContextService } from './entity-context.service';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
 import { LoggerService } from '../shared';
 import { ValidationException } from './base/repository.exceptions';
 
-describe('EntityResolutionService', () => {
-  let service: EntityResolutionService;
+describe('EntityContextService', () => {
+  let service: EntityContextService;
   let entityRepository: EntityRepository; // eslint-disable-line @typescript-eslint/no-unused-vars
   let connectionRepository: ConnectionRepository; // eslint-disable-line @typescript-eslint/no-unused-vars
 
@@ -32,7 +32,7 @@ describe('EntityResolutionService', () => {
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        EntityResolutionService,
+        EntityContextService,
         {
           provide: EntityRepository,
           useValue: mockEntityRepository,
@@ -48,7 +48,7 @@ describe('EntityResolutionService', () => {
       ],
     }).compile();
 
-    service = module.get<EntityResolutionService>(EntityResolutionService);
+    service = module.get<EntityContextService>(EntityContextService);
     entityRepository = module.get<EntityRepository>(EntityRepository);
     connectionRepository =
       module.get<ConnectionRepository>(ConnectionRepository);
