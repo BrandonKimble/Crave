@@ -225,30 +225,30 @@ export class EntityResolutionService {
     // Combine results from all tiers
     // Each entity should appear exactly once in the final results
     const entityResultMap = new Map<string, EntityResolutionResult>();
-    
+
     // Add exact match results (highest priority)
-    exactMatchResults.forEach(result => {
+    exactMatchResults.forEach((result) => {
       if (result.entityId) {
         entityResultMap.set(result.tempId, result);
       }
     });
-    
+
     // Add alias match results (only for entities not already matched)
-    aliasMatchResults.forEach(result => {
+    aliasMatchResults.forEach((result) => {
       if (result.entityId && !entityResultMap.has(result.tempId)) {
         entityResultMap.set(result.tempId, result);
       }
     });
-    
-    // Add fuzzy match results (only for entities not already matched) 
-    fuzzyMatchResults.forEach(result => {
+
+    // Add fuzzy match results (only for entities not already matched)
+    fuzzyMatchResults.forEach((result) => {
       if (result.entityId && !entityResultMap.has(result.tempId)) {
         entityResultMap.set(result.tempId, result);
       }
     });
-    
+
     // Add new entity results (only for entities not already matched)
-    newEntityResults.forEach(result => {
+    newEntityResults.forEach((result) => {
       if (!entityResultMap.has(result.tempId)) {
         entityResultMap.set(result.tempId, result);
       }

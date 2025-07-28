@@ -36,14 +36,18 @@ describe('EntityResolutionService', () => {
   const mockAliasManagementService = {
     processAliases: jest.fn(),
     findByAlias: jest.fn(),
-    addOriginalTextAsAlias: jest.fn().mockImplementation((aliases, originalText) => ({
-      updatedAliases: [...(aliases || []), originalText],
-      aliasAdded: true,
-    })),
-    validateScopeConstraints: jest.fn().mockImplementation((entityType, aliases) => ({
-      validAliases: aliases,
-      violations: [],
-    })),
+    addOriginalTextAsAlias: jest
+      .fn()
+      .mockImplementation((aliases, originalText) => ({
+        updatedAliases: [...((aliases as string[]) || []), originalText],
+        aliasAdded: true,
+      })),
+    validateScopeConstraints: jest
+      .fn()
+      .mockImplementation((entityType, aliases) => ({
+        validAliases: aliases as string[],
+        violations: [],
+      })),
     prepareAliasesForMerge: jest.fn(),
   };
 

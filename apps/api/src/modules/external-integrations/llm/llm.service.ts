@@ -305,7 +305,30 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
 
     try {
-      const parsed = JSON.parse(content) as LLMOutputStructure;
+      // Remove markdown code block formatting if present
+      let cleanContent = content.trim();
+      if (cleanContent.startsWith('```json')) {
+        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+      } else if (cleanContent.startsWith('```')) {
+        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+      }
+      
+      // Check for truncated JSON and attempt to fix simple cases
+      if (!cleanContent.endsWith('}') && !cleanContent.endsWith(']')) {
+        // Try to find the last complete object/array and truncate there
+        const lastCompleteObjectIndex = cleanContent.lastIndexOf('},');
+        if (lastCompleteObjectIndex > 0) {
+          // Look for the closing of the mentions array
+          const afterLastObject = cleanContent.substring(lastCompleteObjectIndex + 2);
+          const mentionsArrayClose = afterLastObject.indexOf(']');
+          if (mentionsArrayClose === -1 || afterLastObject.indexOf('"') < mentionsArrayClose) {
+            // Close the mentions array and root object
+            cleanContent = cleanContent.substring(0, lastCompleteObjectIndex + 1) + '\n  ]\n}';
+          }
+        }
+      }
+      
+      const parsed = JSON.parse(cleanContent) as LLMOutputStructure;
 
       // Basic validation
       if (!parsed.mentions || !Array.isArray(parsed.mentions)) {
@@ -316,9 +339,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       }
 
       return parsed;
-    } catch {
+    } catch (error) {
       throw new LLMResponseParsingError(
-        'Failed to parse JSON from Gemini response',
+        `Failed to parse JSON from Gemini response: ${error instanceof Error ? error.message : String(error)}`,
         content,
       );
     }

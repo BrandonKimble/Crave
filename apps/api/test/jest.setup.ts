@@ -3,6 +3,13 @@
  * Handles test environment configuration for parallel execution
  */
 
+// Load environment variables from .env file
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load .env file from the api directory
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
 // Set test environment variables
 process.env.NODE_ENV = 'test';
 
