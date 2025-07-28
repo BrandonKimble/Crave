@@ -30,9 +30,16 @@ Specific, measurable conditions that must be met for this task to be considered 
 
 **IMPLEMENTS PRD REQUIREMENTS:**
 
-- Section X.X.X: [Specific requirement this task addresses]
-- Section Y.Y.Y: [Related specifications and constraints]
+- Section X.X.X: [Specific subsection requirement this task addresses]
+- Section Y.Y.Y: [Additional specific subsection requirements]
 - **Roadmap validation**: Task belongs in current milestone per PRD sections 9-10
+
+**BROADER CONTEXT:**
+
+- Section X: [Parent section] (all subsections) - [Architectural context, constraints, dependencies]
+- Section Y: [Parent section] (all subsections) - [Integration requirements, framework context]
+- Section 9: PRE-MVP Implementation Roadmap (all subsections) - Milestone context and boundaries
+- Section 10: POST-MVP Roadmap (all subsections) - Future roadmap and scaling considerations
 
 **SCOPE BOUNDARIES FROM PRD:**
 

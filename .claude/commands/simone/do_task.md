@@ -20,13 +20,22 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **Read and analyze in single context:**
 - Read task file completely including description, goals, acceptance criteria, PRD references
-- **CRITICAL PRD READING REQUIREMENTS:**
-  - **IMPLEMENTS PRD REQUIREMENTS sections**: Read ALL PRD sections listed under "IMPLEMENTS PRD REQUIREMENTS" in the task
-  - **BROADER CONTEXT sections**: Read ALL PRD sections listed under "BROADER CONTEXT" in the task 
-  - **Complete Subsection Coverage**: For each section (e.g., section 4), read ALL subsections within it (4.1, 4.2, 4.3, etc.) and ALL sub-subsections (4.1.1, 4.1.2, 4.2.1, etc.)
-- Read PRD sections 9 and 10 for roadmap context and scope boundaries
-  - **CRITICAL:** Read ALL subsections within sections 9 and 10 completely
-- Verify task dependencies are met and belongs to current sprint/milestone scope
+
+**Read PRD sections systematically in this order:**
+
+1. **Read TASK PRD SECTIONS**: Locate and read ALL sections listed under "IMPLEMENTS PRD REQUIREMENTS" in the task
+   - Extract: Specific requirements, acceptance criteria, technical specifications
+   - Read ALL subsections completely (e.g., section 4 = read 4.1, 4.2, 4.3, 4.1.1, 4.1.2, etc.)
+
+2. **Read CONTEXT PRD SECTIONS**: Locate and read ALL sections listed under "BROADER CONTEXT" in the task  
+   - Extract: Constraints, integration requirements, architectural context, dependencies
+   - Read ALL subsections completely for full understanding
+
+3. **Read ROADMAP SECTIONS**: Read PRD sections 9 and 10 completely
+   - Extract: Scope boundaries, milestone context, what NOT to implement
+   - Read ALL subsections within 9 and 10
+
+5. **Verify scope alignment**: Confirm task belongs in current sprint/milestone scope and task dependencies are met
 
 ## 2 · Validate task scope against PRD boundaries
 
@@ -74,11 +83,7 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 **Phase 2: Implementation Planning**
 
 **CRITICAL**: After completing infrastructure discovery, create an implementation plan:
-- **Re-read PRD sections** for comprehensive implementation context:
-  - **IMPLEMENTS PRD REQUIREMENTS sections**: Re-read ALL sections listed under "IMPLEMENTS PRD REQUIREMENTS" 
-  - **BROADER CONTEXT sections**: Re-read ALL sections listed under "BROADER CONTEXT" for full context and constraints
-  - **Complete Subsection Coverage**: For each section, read ALL subsections and sub-subsections completely
-  - Look for implementation nuances, constraints, integration requirements, and technical specifications
+- **Reference PRD sections for technical details**: As needed, quickly scan previously read sections for implementation nuances, constraints, integration requirements, and technical specifications
 - Synthesize infrastructure findings with task requirements
 - Map existing capabilities to task subtasks
 - Identify what can be extended vs changed or enhanced vs what needs to be created new
