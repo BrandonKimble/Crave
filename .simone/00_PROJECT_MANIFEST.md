@@ -1,11 +1,11 @@
 ---
 project_name: Crave Search
-current_milestone_id: M02
-highest_milestone: M02
+current_milestone_id: M03
+highest_milestone: M03
 highest_sprint_in_milestone: S02
 current_sprint_id: S02
 status: active
-last_updated: 2025-07-28T14:31:53Z
+last_updated: 2025-07-28T14:33:00Z
 ---
 
 # Project Manifest: Crave Search
@@ -27,9 +27,9 @@ This project follows a milestone-based development approach with a comprehensive
 
 ## 2. Current Focus
 
-**Milestone M02: Entity Processing Core & External Integrations** (Week 3-4)
+**Milestone M03: Hybrid Data Collection Implementation** (Week 5-6)
 
-Building the core entity processing pipeline with LLM integration for content analysis, comprehensive entity resolution system, and external API integrations (Google Places, Reddit API). This milestone establishes the foundation for content processing and location services.
+Implementing the hybrid data collection system using both Pushshift archives for comprehensive historical coverage and Reddit API for real-time updates. This milestone establishes the community content foundation through stream processing of large historical datasets and scheduled real-time collection with proper gap tracking and data continuity monitoring.
 
 ## 3. Current Milestone Progress
 
@@ -41,12 +41,18 @@ Building the core entity processing pipeline with LLM integration for content an
   - [Completion Report](./03_SPRINTS/S04_M01_Final_Validation_Cleanup/M01_COMPLETION_REPORT.md)
   - Completed: 2025-07-26T17:12:34Z
 
-### Active Milestones
-
-- [ ] **M02: Entity Processing Core & External Integrations** - Status: Planned
+- [x] **M02: Entity Processing Core & External Integrations** - Status: ✅ COMPLETED
   - PRD Sections: 1, 2, 3, 4, 5, 6, 9.2, 10
   - [Milestone Details](./02_REQUIREMENTS/M02_Entity_Processing_Core_External_Integrations/M02_milestone_meta.md)
-  - Foundation: M01 database layer complete and validated
+  - Foundation: LLM integration, entity resolution system, external API integrations, security essentials
+  - Completed: 2025-07-28T14:31:53Z
+
+### Active Milestones
+
+- [ ] **M03: Hybrid Data Collection Implementation** - Status: Planned
+  - PRD Sections: 1, 2, 3, 4, 5, 6, 9.3, 10
+  - [Milestone Details](./02_REQUIREMENTS/M03_Hybrid_Data_Collection_Implementation/M03_milestone_meta.md)
+  - Foundation: M01 database layer and M02 entity processing core complete
 
 ### Sprint Roadmap for M01
 
@@ -85,18 +91,30 @@ Building the core entity processing pipeline with LLM integration for content an
   - [Sprint Details](./03_SPRINTS/M02_S02_External_Integrations_Security/M02_S02_sprint_meta.md)
   - Completed: 2025-07-28T14:31:53Z
 
+### Sprint Roadmap for M03
+
+- [ ] **S01: Historical Data Foundation (Pushshift Archives)** - Status: Planned
+  - Focus: Pushshift archive processing, stream processing implementation, historical content pipeline, batch processing system
+  - PRD Sections: 1, 2, 3, 4, 5.1.1, 6.1, 9.3, 10
+  - [Sprint Details](./03_SPRINTS/M03_S01_Historical_Data_Foundation/M03_S01_sprint_meta.md)
+
+- [ ] **S02: Real-Time Collection & Unified Pipeline** - Status: Planned
+  - Focus: Reddit API integration, dual collection strategy, unified processing pipeline, gap tracking system
+  - PRD Sections: 1, 2, 3, 4, 5.1.2, 6.1, 9.3, 10
+  - [Sprint Details](./03_SPRINTS/M03_S02_Real_Time_Collection_Unified_Pipeline/M03_S02_sprint_meta.md)
+
 ## 4. Key Documentation
 
 - [Architecture Documentation (CLAUDE.md)](../CLAUDE.md)
 - [Complete PRD with Roadmap](../../PRD.md)
-- [Current Milestone Requirements](./02_REQUIREMENTS/M02_Entity_Processing_Core_External_Integrations/)
+- [Current Milestone Requirements](./02_REQUIREMENTS/M03_Hybrid_Data_Collection_Implementation/)
 - [General Tasks](./04_GENERAL_TASKS/)
 
 ## Upcoming Milestones
 
 ## 5. Quick Links
 
-- **Current Sprint:** [S01 Sprint Folder](./03_SPRINTS/M02_S01_LLM_Entity_Resolution_Foundation/)
+- **Current Sprint:** [M03 Milestone Folder](./02_REQUIREMENTS/M03_Hybrid_Data_Collection_Implementation/)
 - **PRD & Roadmap:** [Complete PRD](../../PRD.md)
 - **Project Setup:** [CLAUDE.md](../CLAUDE.md)
 - **Technical Architecture:** [API Documentation](../../apps/api/README.md)
