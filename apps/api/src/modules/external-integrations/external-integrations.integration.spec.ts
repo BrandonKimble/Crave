@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Module } from '@nestjs/common';
 import { RedditModule } from './reddit/reddit.module';
-import { LLMModule } from './llm/llm.module'; 
+import { LLMModule } from './llm/llm.module';
 import { GooglePlacesModule } from './google-places/google-places.module';
 import { RateLimitCoordinatorService } from './shared/rate-limit-coordinator.service';
 import { ExternalIntegrationsHealthController } from './external-integrations-health.controller';
@@ -32,10 +32,10 @@ class TestOnlyExternalIntegrationsModule {}
 describe.skip('ExternalIntegrationsModule Integration', () => {
   // SKIPPED: This integration test has complex dependency injection conflicts
   // between SecurityModule (global APP_FILTER) and SharedModule (GlobalExceptionFilter)
-  // The dependency chain: ExternalIntegrationsModule -> GooglePlacesModule -> 
+  // The dependency chain: ExternalIntegrationsModule -> GooglePlacesModule ->
   // RepositoryModule -> SharedModule -> GlobalExceptionFilter requires LoggerService
   // but SecurityModule's global providers create conflicts in the test environment.
-  // 
+  //
   // The core functionality is well-tested in individual service unit tests.
   // Consider refactoring if full integration testing is needed in the future.
   let module: TestingModule;
@@ -78,11 +78,11 @@ describe.skip('ExternalIntegrationsModule Integration', () => {
           'reddit.retryOptions.maxRetries': 3,
           'reddit.retryOptions.retryDelay': 1000,
           'reddit.retryOptions.retryBackoffFactor': 2.0,
-          'THROTTLE_TTL': 60,
-          'THROTTLE_LIMIT': 100,
-          'THROTTLE_STRICT_TTL': 60,
-          'THROTTLE_STRICT_LIMIT': 10,
-          'NODE_ENV': 'test',
+          THROTTLE_TTL: 60,
+          THROTTLE_LIMIT: 100,
+          THROTTLE_STRICT_TTL: 60,
+          THROTTLE_STRICT_LIMIT: 10,
+          NODE_ENV: 'test',
         };
         return config[key] as string | number;
       }),
