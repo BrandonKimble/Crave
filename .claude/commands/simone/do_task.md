@@ -112,6 +112,8 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **ITERATIVE CODE REVIEW LOOP - Continue until PASS**
 
+**MANDATORY LOOP - NO SHORTCUTS ALLOWED**
+
 Follow these steps for a Code Review (in order):
 
 1. **Run Code Review**: include @.claude/commands/simone/code_review.md and use the Task ID as Scope
@@ -123,14 +125,16 @@ Follow these steps for a Code Review (in order):
    - Thoroughly understand all identified problems
    - Extend current task with identified issues as subtasks
    - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
-   - **CRITICAL**: After completing fixes, return to step 1 of this section to re-run code review
+   - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run code review
    - **Continue this loop until code review PASSES**
 
-**Loop Requirements**:
+**LOOP REQUIREMENTS (NON-NEGOTIABLE)**:
 - **Never proceed to step 5 without a PASS result**
 - **Always re-run code review after fixing issues**
 - **Track iterations in task Output Log with timestamps**
 - **Each iteration should show measurable progress toward resolution**
+
+**MEMORY AID**: After fixing issues, ask yourself: "Have I re-run the code review yet?" If no, go back to step 1.
 
 ## 5 · Finalize task completion
 
