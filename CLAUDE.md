@@ -38,7 +38,7 @@ turbo run lint && turbo run type-check
 - **Config**: `@nestjs/config` with validation
 
 ## Database Schema (Key Tables)
-- **entities**: Restaurants, dishes, categories, attributes (unified with `entity_type`)
+- **entities**: Restaurants, dishes_or_categories, attributes (unified with `entity_type`)
 - **connections**: Entity relationships with quality scores  
 - **mentions**: Reddit community evidence with attribution
 

@@ -9,6 +9,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
+import { SecurityService } from './modules/infrastructure/security';
 
 async function bootstrap() {
   // Create with Fastify adapter
@@ -18,6 +19,7 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
+  const securityService = app.get(SecurityService);
   const isProd = configService.get<string>('NODE_ENV') === 'production';
 
   // Use Winston logger for NestJS
@@ -25,23 +27,38 @@ async function bootstrap() {
 
   // Note: Global exception filter is already configured in SharedModule
 
-  // Register Fastify helmet
+  // Register Fastify helmet with enhanced security
   const helmetPlugin = await import('@fastify/helmet');
   // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
   await app.register(helmetPlugin.default as any, {
-    // Configure settings for Swagger UI compatibility
+    // Enhanced CSP for production security
     contentSecurityPolicy: {
       directives: {
         defaultSrc: [`'self'`],
-        styleSrc: [`'self'`, `'unsafe-inline'`],
+        styleSrc: [`'self'`, `'unsafe-inline'`], // Swagger needs inline styles
         imgSrc: [`'self'`, 'data:', 'validator.swagger.io'],
-        scriptSrc: [`'self'`, `https: 'unsafe-inline'`],
+        scriptSrc: [
+          `'self'`,
+          ...(isProd ? [] : [`'unsafe-inline'`, `'unsafe-eval'`]),
+        ], // Stricter in prod
+        objectSrc: [`'none'`],
+        baseUri: [`'self'`],
+        formAction: [`'self'`],
+        frameAncestors: [`'none'`],
+        upgradeInsecureRequests: isProd ? [] : undefined,
       },
     },
+    // Additional security headers
+    hsts: isProd
+      ? { maxAge: 31536000, includeSubDomains: true, preload: true }
+      : false,
+    noSniff: true,
+    xssFilter: true,
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
   });
 
-  // Security middleware
-  app.enableCors();
+  // Enhanced CORS configuration
+  app.enableCors(securityService.getCorsConfiguration());
 
   // Enhanced validation with security settings
   app.useGlobalPipes(createValidationPipeConfig(isProd));
