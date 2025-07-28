@@ -136,4 +136,35 @@ export default () => ({
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRATION || '7d',
   },
+  pushshift: {
+    baseDirectory: process.env.PUSHSHIFT_BASE_DIR || 'data/pushshift/archives',
+    targetSubreddits: (
+      process.env.PUSHSHIFT_SUBREDDITS || 'austinfood,FoodNYC'
+    ).split(','),
+    fileTypes: ['comments', 'submissions'],
+    batchSize: parseInt(process.env.PUSHSHIFT_BATCH_SIZE || '1000', 10),
+    processingTimeout: parseInt(
+      process.env.PUSHSHIFT_PROCESSING_TIMEOUT || '300000',
+      10,
+    ), // 5 minutes
+    validation: {
+      enabled: process.env.PUSHSHIFT_VALIDATION_ENABLED !== 'false',
+      sampleLines: parseInt(
+        process.env.PUSHSHIFT_VALIDATION_SAMPLE_LINES || '10',
+        10,
+      ),
+    },
+    storage: {
+      local: {
+        basePath: process.env.PUSHSHIFT_LOCAL_BASE_PATH || 'data/pushshift',
+        archivePath:
+          process.env.PUSHSHIFT_LOCAL_ARCHIVE_PATH || 'data/pushshift/archives',
+      },
+      s3: {
+        bucket: process.env.PUSHSHIFT_S3_BUCKET,
+        region: process.env.PUSHSHIFT_S3_REGION || 'us-east-1',
+        keyPrefix: process.env.PUSHSHIFT_S3_KEY_PREFIX || 'pushshift-archives/',
+      },
+    },
+  },
 });
