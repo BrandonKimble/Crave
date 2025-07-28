@@ -373,6 +373,34 @@ export class GooglePlacesService implements OnModuleInit {
     };
   }
 
+  /**
+   * Get service health status
+   * Compatible with BaseExternalApiService interface
+   */
+  getHealthStatus() {
+    const status: 'healthy' | 'degraded' | 'unhealthy' =
+      this.performanceMetrics.successRate > 80 ? 'healthy' : 'degraded';
+
+    return {
+      service: 'google-places',
+      status,
+      uptime: Date.now() - this.performanceMetrics.lastReset.getTime(),
+      metrics: {
+        requestCount: this.performanceMetrics.requestCount,
+        totalResponseTime: this.performanceMetrics.totalResponseTime,
+        averageResponseTime: this.performanceMetrics.averageResponseTime,
+        lastReset: this.performanceMetrics.lastReset,
+        errorCount: this.performanceMetrics.errorCount,
+        successRate: this.performanceMetrics.successRate,
+        rateLimitHits: this.performanceMetrics.rateLimitHits,
+      },
+      configuration: {
+        timeout: this.googlePlacesConfig.timeout || 10000,
+        retryOptions: this.googlePlacesConfig.retryOptions,
+      },
+    };
+  }
+
   private mapPlaceDetailsToEnrichedData(
     placeDetails: GooglePlaceDetails,
     apiCallsUsed: number,

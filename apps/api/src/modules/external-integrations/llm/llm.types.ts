@@ -1,3 +1,5 @@
+import { RetryOptions } from '../shared/external-integrations.types';
+
 /**
  * LLM configuration interface for Gemini API
  */
@@ -15,6 +17,7 @@ export interface LLMConfig {
     enabled: boolean;
     budget: number;
   };
+  retryOptions: RetryOptions;
 }
 
 /**

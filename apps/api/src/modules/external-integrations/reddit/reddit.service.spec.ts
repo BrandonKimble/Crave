@@ -290,6 +290,12 @@ describe('RedditService', () => {
         clientId: 'test-client-id',
         username: 'test-username',
         userAgent: 'CraveSearch/1.0.0',
+        timeout: 10000,
+        retryOptions: {
+          maxRetries: 3,
+          retryDelay: 1000,
+          retryBackoffFactor: 2,
+        },
       });
       expect(config).not.toHaveProperty('clientSecret');
       expect(config).not.toHaveProperty('password');

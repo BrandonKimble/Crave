@@ -15,12 +15,16 @@ import {
   RedditNetworkError,
 } from './reddit.exceptions';
 
+import { RetryOptions } from '../shared/external-integrations.types';
+
 export interface RedditConfig {
   clientId: string;
   clientSecret: string;
   username: string;
   password: string;
   userAgent: string;
+  timeout: number;
+  retryOptions: RetryOptions;
 }
 
 export interface RedditTokenResponse {
@@ -167,6 +171,18 @@ export class RedditService implements OnModuleInit {
       userAgent:
         this.configService.get<string>('reddit.userAgent') ||
         'CraveSearch/1.0.0',
+      timeout: this.configService.get<number>('reddit.timeout') || 10000,
+      retryOptions: {
+        maxRetries:
+          this.configService.get<number>('reddit.retryOptions.maxRetries') || 3,
+        retryDelay:
+          this.configService.get<number>('reddit.retryOptions.retryDelay') ||
+          1000,
+        retryBackoffFactor:
+          this.configService.get<number>(
+            'reddit.retryOptions.retryBackoffFactor',
+          ) || 2.0,
+      },
     };
 
     this.validateConfig();
@@ -337,6 +353,8 @@ export class RedditService implements OnModuleInit {
       clientId: this.redditConfig.clientId,
       username: this.redditConfig.username,
       userAgent: this.redditConfig.userAgent,
+      timeout: this.redditConfig.timeout,
+      retryOptions: this.redditConfig.retryOptions,
     };
   }
 
@@ -396,6 +414,43 @@ export class RedditService implements OnModuleInit {
       totalResponseTime: 0,
       averageResponseTime: 0,
       lastReset: new Date(),
+    };
+  }
+
+  /**
+   * Get service health status
+   * Compatible with BaseExternalApiService interface
+   */
+  getHealthStatus() {
+    const successRate =
+      this.performanceMetrics.requestCount > 0
+        ? Math.round(
+            ((this.performanceMetrics.requestCount - 0) /
+              this.performanceMetrics.requestCount) *
+              100,
+          )
+        : 100;
+
+    const status: 'healthy' | 'degraded' | 'unhealthy' =
+      successRate > 80 ? 'healthy' : 'degraded';
+
+    return {
+      service: 'reddit',
+      status,
+      uptime: Date.now() - this.performanceMetrics.lastReset.getTime(),
+      metrics: {
+        requestCount: this.performanceMetrics.requestCount,
+        totalResponseTime: this.performanceMetrics.totalResponseTime,
+        averageResponseTime: this.performanceMetrics.averageResponseTime,
+        lastReset: this.performanceMetrics.lastReset,
+        errorCount: 0, // Reddit service doesn't track this separately
+        successRate: successRate,
+        rateLimitHits: 0, // Reddit service doesn't track this separately
+      },
+      configuration: {
+        timeout: this.redditConfig.timeout,
+        retryOptions: this.redditConfig.retryOptions,
+      },
     };
   }
 

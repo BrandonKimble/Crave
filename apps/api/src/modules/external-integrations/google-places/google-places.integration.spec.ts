@@ -254,7 +254,9 @@ describe('GooglePlacesService Integration Tests', () => {
       };
 
       // Mock the GooglePlacesService
-      jest.spyOn(googlePlacesService, 'enrichRestaurant').mockResolvedValue(mockEnrichedData);
+      jest
+        .spyOn(googlePlacesService, 'enrichRestaurant')
+        .mockResolvedValue(mockEnrichedData);
       entityRepository.createRestaurant.mockResolvedValue(mockEnrichedEntity);
 
       const result = await restaurantEnrichmentService.createEnrichedRestaurant(
@@ -311,7 +313,9 @@ describe('GooglePlacesService Integration Tests', () => {
       };
 
       // Mock the GooglePlacesService
-      jest.spyOn(googlePlacesService, 'enrichRestaurant').mockResolvedValue(mockEnrichedData);
+      jest
+        .spyOn(googlePlacesService, 'enrichRestaurant')
+        .mockResolvedValue(mockEnrichedData);
       entityRepository.update.mockResolvedValue(mockUpdatedEntity);
 
       const result =

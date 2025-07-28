@@ -64,6 +64,16 @@ export class LLMService implements OnModuleInit {
           this.configService.get<boolean>('llm.thinking.enabled') !== false,
         budget: this.configService.get<number>('llm.thinking.budget') || 0,
       },
+      retryOptions: {
+        maxRetries:
+          this.configService.get<number>('llm.retryOptions.maxRetries') || 3,
+        retryDelay:
+          this.configService.get<number>('llm.retryOptions.retryDelay') || 1000,
+        retryBackoffFactor:
+          this.configService.get<number>(
+            'llm.retryOptions.retryBackoffFactor',
+          ) || 2.0,
+      },
     };
 
     // Load system prompt from llm-content-processing.md
@@ -308,26 +318,37 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       // Remove markdown code block formatting if present
       let cleanContent = content.trim();
       if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        cleanContent = cleanContent
+          .replace(/^```json\s*/, '')
+          .replace(/\s*```$/, '');
       } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        cleanContent = cleanContent
+          .replace(/^```\s*/, '')
+          .replace(/\s*```$/, '');
       }
-      
+
       // Check for truncated JSON and attempt to fix simple cases
       if (!cleanContent.endsWith('}') && !cleanContent.endsWith(']')) {
         // Try to find the last complete object/array and truncate there
         const lastCompleteObjectIndex = cleanContent.lastIndexOf('},');
         if (lastCompleteObjectIndex > 0) {
           // Look for the closing of the mentions array
-          const afterLastObject = cleanContent.substring(lastCompleteObjectIndex + 2);
+          const afterLastObject = cleanContent.substring(
+            lastCompleteObjectIndex + 2,
+          );
           const mentionsArrayClose = afterLastObject.indexOf(']');
-          if (mentionsArrayClose === -1 || afterLastObject.indexOf('"') < mentionsArrayClose) {
+          if (
+            mentionsArrayClose === -1 ||
+            afterLastObject.indexOf('"') < mentionsArrayClose
+          ) {
             // Close the mentions array and root object
-            cleanContent = cleanContent.substring(0, lastCompleteObjectIndex + 1) + '\n  ]\n}';
+            cleanContent =
+              cleanContent.substring(0, lastCompleteObjectIndex + 1) +
+              '\n  ]\n}';
           }
         }
       }
-      
+
       const parsed = JSON.parse(cleanContent) as LLMOutputStructure;
 
       // Basic validation
@@ -401,6 +422,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
       thinking: this.llmConfig.thinking,
+      retryOptions: this.llmConfig.retryOptions,
     };
   }
 
@@ -423,6 +445,34 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       lastReset: new Date(),
       errorCount: 0,
       successRate: 100,
+    };
+  }
+
+  /**
+   * Get service health status
+   * Compatible with BaseExternalApiService interface
+   */
+  getHealthStatus() {
+    const status: 'healthy' | 'degraded' | 'unhealthy' =
+      this.performanceMetrics.successRate > 80 ? 'healthy' : 'degraded';
+
+    return {
+      service: 'llm',
+      status,
+      uptime: Date.now() - this.performanceMetrics.lastReset.getTime(),
+      metrics: {
+        requestCount: this.performanceMetrics.requestCount,
+        totalResponseTime: this.performanceMetrics.totalResponseTime,
+        averageResponseTime: this.performanceMetrics.averageResponseTime,
+        lastReset: this.performanceMetrics.lastReset,
+        errorCount: this.performanceMetrics.errorCount,
+        successRate: this.performanceMetrics.successRate,
+        rateLimitHits: 0, // LLM service doesn't track this separately
+      },
+      configuration: {
+        timeout: this.llmConfig.timeout || 30000,
+        retryOptions: this.llmConfig.retryOptions,
+      },
     };
   }
 

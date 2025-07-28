@@ -125,6 +125,11 @@ describe('LLMService', () => {
           enabled: true,
           budget: 0,
         },
+        retryOptions: {
+          maxRetries: 3,
+          retryDelay: 1000,
+          retryBackoffFactor: 2,
+        },
       });
       expect(config).not.toHaveProperty('apiKey');
     });
