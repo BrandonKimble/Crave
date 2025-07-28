@@ -542,10 +542,10 @@ export class BulkOperationsService {
           where: entityUpsert.where,
           createData: entityUpsert.create,
         });
-        
+
         const result = await tx.entity.upsert(entityUpsert);
         successCount++;
-        
+
         this.logger.debug('UPSERT success', {
           correlationId: CorrelationUtils.getCorrelationId(),
           entityId: result.entityId,
