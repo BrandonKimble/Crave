@@ -24,8 +24,8 @@ yarn-error.log*
 pnpm-debug.log*
 
 # Winston daily rotate file audit logs
-logs/*.json
-logs/.*.json
+**/logs/*.json
+**/logs/.*-audit.json
 
 # Editor directories and files
 .idea/
