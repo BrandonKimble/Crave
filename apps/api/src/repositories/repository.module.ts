@@ -8,6 +8,7 @@ import { UserRepository } from './user.repository';
 import { SubscriptionRepository } from './subscription.repository';
 import { UserEventRepository } from './user-event.repository';
 import { EntityContextService } from './entity-context.service';
+import { BulkOperationsService } from './bulk-operations.service';
 
 /**
  * Repository module providing data access layer
@@ -23,6 +24,7 @@ import { EntityContextService } from './entity-context.service';
     SubscriptionRepository,
     UserEventRepository,
     EntityContextService,
+    BulkOperationsService,
   ],
   exports: [
     EntityRepository,
@@ -32,6 +34,7 @@ import { EntityContextService } from './entity-context.service';
     SubscriptionRepository,
     UserEventRepository,
     EntityContextService,
+    BulkOperationsService,
   ],
 })
 export class RepositoryModule {}
