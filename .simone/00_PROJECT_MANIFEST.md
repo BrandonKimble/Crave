@@ -3,9 +3,9 @@ project_name: Crave Search
 current_milestone_id: M02
 highest_milestone: M02
 highest_sprint_in_milestone: S02
-current_sprint_id: S01
+current_sprint_id: S02
 status: active
-last_updated: 2025-07-27T14:23:09Z
+last_updated: 2025-07-27T14:50:42Z
 ---
 
 # Project Manifest: Crave Search
@@ -77,9 +77,10 @@ Building the core entity processing pipeline with LLM integration for content an
   - [Sprint Details](./03_SPRINTS/M02_S01_LLM_Entity_Resolution_Foundation/M02_S01_sprint_meta.md)
   - Completed: 2025-07-27T14:23:09Z
 
-- [ ] **S02: External Integrations, Security & Bulk Operations** - Status: PENDING
-  - Focus: Google Places API integration, external integrations module, security essentials, bulk operations
+- [ ] **S02: External Integrations, Security & Bulk Operations** - Status: ACTIVE
+  - Focus: Google Places API integration, external integrations module, security essentials, bulk operations  
   - PRD Sections: 1, 2, 3, 4, 5, 6, 9.2, 10
+  - Active Task: T01_S02 (Google Places API Integration - IN PROGRESS)
   - [Sprint Details](./03_SPRINTS/M02_S02_External_Integrations_Security/M02_S02_sprint_meta.md)
 
 ## 4. Key Documentation
