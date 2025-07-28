@@ -20,8 +20,10 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **Read and analyze in single context:**
 - Read task file completely including description, goals, acceptance criteria, PRD references
-- Read ALL PRD sections referenced in task AND parent sprint/milestone
-  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
+- **CRITICAL PRD READING REQUIREMENTS:**
+  - **IMPLEMENTS PRD REQUIREMENTS sections**: Read ALL PRD sections listed under "IMPLEMENTS PRD REQUIREMENTS" in the task
+  - **BROADER CONTEXT sections**: Read ALL PRD sections listed under "BROADER CONTEXT" in the task 
+  - **Complete Subsection Coverage**: For each section (e.g., section 4), read ALL subsections within it (4.1, 4.2, 4.3, etc.) and ALL sub-subsections (4.1.1, 4.1.2, 4.2.1, etc.)
 - Read PRD sections 9 and 10 for roadmap context and scope boundaries
   - **CRITICAL:** Read ALL subsections within sections 9 and 10 completely
 - Verify task dependencies are met and belongs to current sprint/milestone scope
@@ -72,8 +74,10 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 **Phase 2: Implementation Planning**
 
 **CRITICAL**: After completing infrastructure discovery, create an implementation plan:
-- **Re-read PRD sections** referenced in task AND parent sprint/milestone for implementation details
-  - **CRITICAL:** When reading each PRD section, read ALL subsections within it (e.g., for section 4, read 4.1, 4.2, 4.3, etc. and ALL sub-subsections like 4.1.1, 4.1.2, 4.2.1, etc.)
+- **Re-read PRD sections** for comprehensive implementation context:
+  - **IMPLEMENTS PRD REQUIREMENTS sections**: Re-read ALL sections listed under "IMPLEMENTS PRD REQUIREMENTS" 
+  - **BROADER CONTEXT sections**: Re-read ALL sections listed under "BROADER CONTEXT" for full context and constraints
+  - **Complete Subsection Coverage**: For each section, read ALL subsections and sub-subsections completely
   - Look for implementation nuances, constraints, integration requirements, and technical specifications
 - Synthesize infrastructure findings with task requirements
 - Map existing capabilities to task subtasks
