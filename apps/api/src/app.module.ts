@@ -5,8 +5,7 @@ import { BullModule } from '@nestjs/bull';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
-import { RedditModule } from './modules/external-integrations/reddit/reddit.module';
-import { LLMModule } from './modules/external-integrations/llm/llm.module';
+import { ExternalIntegrationsModule } from './modules/external-integrations/external-integrations.module';
 import { AppController } from './app.controller';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -41,8 +40,7 @@ import { SharedModule } from './shared/shared.module';
     }),
     PrismaModule,
     RepositoryModule,
-    RedditModule,
-    LLMModule,
+    ExternalIntegrationsModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

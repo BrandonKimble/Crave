@@ -113,6 +113,25 @@ export default () => ({
       budget: parseInt(process.env.LLM_THINKING_BUDGET || '0', 10),
     },
   },
+  googlePlaces: {
+    apiKey: process.env.GOOGLE_PLACES_API_KEY,
+    timeout: parseInt(process.env.GOOGLE_PLACES_TIMEOUT || '10000', 10),
+    requestsPerSecond: parseInt(
+      process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '50',
+      10,
+    ),
+    defaultRadius: parseInt(
+      process.env.GOOGLE_PLACES_DEFAULT_RADIUS || '5000',
+      10,
+    ),
+    retryOptions: {
+      maxRetries: parseInt(process.env.GOOGLE_PLACES_MAX_RETRIES || '3', 10),
+      retryDelay: parseInt(process.env.GOOGLE_PLACES_RETRY_DELAY || '1000', 10),
+      retryBackoffFactor: parseFloat(
+        process.env.GOOGLE_PLACES_RETRY_BACKOFF_FACTOR || '2.0',
+      ),
+    },
+  },
   jwt: {
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRATION || '7d',
