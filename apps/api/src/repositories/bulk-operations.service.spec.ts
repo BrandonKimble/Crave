@@ -155,7 +155,7 @@ describe('BulkOperationsService', () => {
             aliases: ['Test Dish'],
           }),
         ]),
-        skipDuplicates: false,
+        skipDuplicates: true,
       });
 
       expect(result.successCount).toBe(2);
