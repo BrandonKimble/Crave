@@ -1,5 +1,12 @@
 # CLAUDE.md - Project Memory & Context
 
+## Process Memory Bank
+
+### Common Mistakes to Avoid
+- **Code Review Loop**: Always re-run code review after fixes (don't skip to completion)
+- **Project Manifest**: Update `.simone/00_PROJECT_MANIFEST.md` along with sprint/milestone status in step 5 of do_task.md command
+- **Task Renaming**: Rename completed tasks to `TX##_` format for recognition
+
 ## Project Overview
 
 **Crave Search**: Food discovery app providing evidence-based restaurant/dish recommendations from Reddit community knowledge.
@@ -72,13 +79,3 @@ turbo run lint && turbo run type-check
 - **Main Config**: `apps/api/src/app.module.ts`
 - **Database**: `apps/api/prisma/schema.prisma`
 - **Environment**: `.env` files in each app folder
-
-## Process Memory Bank
-
-### Common Mistakes to Avoid
-- **Code Review Loop**: Always re-run code review after fixes (don't skip to completion)
-- **Project Manifest**: Update sprint/milestone status and manifest file in step 5
-- **Task Renaming**: Rename completed tasks to `TX##_` format for recognition
-
-## Data Storage Locations
-- Zstandard compressed ndjson Pushshift archive files are located at `@apps/api/data/pushshift/` and will likely be massive when uncompressed

@@ -5,7 +5,7 @@ highest_milestone: M03
 highest_sprint_in_milestone: S02
 current_sprint_id: S02
 status: active
-last_updated: 2025-07-28T16:10:47Z
+last_updated: 2025-07-28T16:43:30Z
 ---
 
 # Project Manifest: Crave Search
