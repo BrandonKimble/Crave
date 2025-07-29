@@ -122,15 +122,18 @@ export class StreamProcessorService {
       // For now, we'll implement a basic version that works with small files
       // Large production files need streaming decompression which requires external tools
       // This implementation serves as a foundation and can be enhanced later
-      
-      this.logger.warn('Processing large zstd files - this is memory intensive', {
-        filePath,
-      });
-      
+
+      this.logger.warn(
+        'Processing large zstd files - this is memory intensive',
+        {
+          filePath,
+        },
+      );
+
       // Check file size first
       const stats = await fs.stat(filePath);
       const fileSizeMB = stats.size / (1024 * 1024);
-      
+
       if (fileSizeMB > 100) {
         throw new StreamProcessorException(
           'FILE_TOO_LARGE',
@@ -141,7 +144,7 @@ export class StreamProcessorService {
 
       // Read and decompress the file
       const compressedData = await fs.readFile(filePath);
-      
+
       // Handle empty files
       if (compressedData.length === 0) {
         throw new StreamProcessorException(
@@ -150,9 +153,9 @@ export class StreamProcessorService {
           { filePath },
         );
       }
-      
+
       const decompressedData = await zstdDecompress(compressedData);
-      
+
       this.logger.debug('Zstd decompression completed', {
         filePath,
         decompressedSize: decompressedData.length,
@@ -162,20 +165,20 @@ export class StreamProcessorService {
       // Split the decompressed data into lines for processing
       const lines = decompressedData.toString('utf8').split('\n');
       let lineIndex = 0;
-      
+
       const decompressedStream = new Readable({
         read() {
           if (lineIndex >= lines.length) {
             this.push(null); // End of stream
             return;
           }
-          
+
           // Push each line with newline character
           const line = lines[lineIndex++];
           this.push(line + '\n');
-        }
+        },
       });
-      
+
       // Create readline interface for line-by-line processing
       const readline = createInterface({
         input: decompressedStream,
@@ -346,7 +349,6 @@ export class StreamProcessorService {
       );
     }
   }
-
 
   /**
    * Process a batch of items efficiently

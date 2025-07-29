@@ -30,7 +30,9 @@ export class EnhancedStreamProcessorService {
     processor: (item: T, lineNumber: number) => Promise<void> | void,
     validator?: (data: unknown) => data is T,
   ): Promise<ProcessingResult> {
-    this.logger.info('Starting system-based zstd streaming processing', { filePath });
+    this.logger.info('Starting system-based zstd streaming processing', {
+      filePath,
+    });
 
     try {
       // Get file size for logging
@@ -46,7 +48,9 @@ export class EnhancedStreamProcessorService {
 
       return await this.processWithSystemZstd(filePath, processor, validator);
     } catch (error) {
-      this.logger.error('System zstd stream processing failed', error, { filePath });
+      this.logger.error('System zstd stream processing failed', error, {
+        filePath,
+      });
       throw error;
     }
   }
@@ -60,7 +64,8 @@ export class EnhancedStreamProcessorService {
     validator?: (data: unknown) => data is T,
   ): Promise<ProcessingResult> {
     // First validate system zstd is available
-    const systemValidation = await this.systemZstdDecompressor.validateSystemZstd();
+    const systemValidation =
+      await this.systemZstdDecompressor.validateSystemZstd();
     if (!systemValidation.available) {
       throw new StreamProcessorException(
         'SYSTEM_ZSTD_UNAVAILABLE',
@@ -75,15 +80,14 @@ export class EnhancedStreamProcessorService {
     });
 
     const errors: Array<{ line: number; error: string; content?: string }> = [];
-    let processedItems = 0;
 
-    // Wrap processor to count processed items and collect errors
+    // Wrap processor to collect errors
     const wrappedProcessor = async (item: T, lineNumber: number) => {
       try {
         await processor(item, lineNumber);
-        processedItems++;
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         errors.push({
           line: lineNumber,
           error: errorMessage,
@@ -92,7 +96,10 @@ export class EnhancedStreamProcessorService {
           lineNumber,
           error: {
             message: errorMessage,
-            ...(error instanceof Error && { stack: error.stack, name: error.name }),
+            ...(error instanceof Error && {
+              stack: error.stack,
+              name: error.name,
+            }),
           },
         });
       }
@@ -117,9 +124,8 @@ export class EnhancedStreamProcessorService {
         errorLines: result.errorLines,
         processingTime: result.processingTime,
         memoryUsage: result.memoryUsage,
-        averageLineProcessingTime: result.totalLines > 0 
-          ? result.processingTime / result.totalLines 
-          : 0,
+        averageLineProcessingTime:
+          result.totalLines > 0 ? result.processingTime / result.totalLines : 0,
       },
       errors,
     };
@@ -130,7 +136,9 @@ export class EnhancedStreamProcessorService {
       validLines: result.validLines,
       errorLines: result.errorLines,
       processingTime: result.processingTime,
-      throughputLinesPerSecond: Math.round(result.totalLines / (result.processingTime / 1000)),
+      throughputLinesPerSecond: Math.round(
+        result.totalLines / (result.processingTime / 1000),
+      ),
       memoryEfficiency: `${Math.round(result.memoryUsage.peak / 1024 / 1024)}MB peak`,
     });
 
@@ -144,7 +152,8 @@ export class EnhancedStreamProcessorService {
     const issues: string[] = [];
 
     // Check system zstd availability
-    const systemValidation = await this.systemZstdDecompressor.validateSystemZstd();
+    const systemValidation =
+      await this.systemZstdDecompressor.validateSystemZstd();
     if (!systemValidation.available) {
       issues.push(`System zstd not available: ${systemValidation.error}`);
     } else {
@@ -170,7 +179,8 @@ export class EnhancedStreamProcessorService {
     const stats = await fs.stat(filePath);
     const fileSizeBytes = stats.size;
     const fileSizeMB = fileSizeBytes / (1024 * 1024);
-    const systemValidation = await this.systemZstdDecompressor.validateSystemZstd();
+    const systemValidation =
+      await this.systemZstdDecompressor.validateSystemZstd();
 
     return {
       fileSize: { bytes: fileSizeBytes, mb: fileSizeMB },

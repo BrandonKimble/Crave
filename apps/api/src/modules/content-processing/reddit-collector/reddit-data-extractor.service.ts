@@ -14,7 +14,7 @@ export interface CraveRedditComment {
   created_utc: number;
   score: number;
   link_id: string;
-  
+
   // Optional fields (if present and useful)
   parent_id?: string;
   permalink?: string;
@@ -23,7 +23,7 @@ export interface CraveRedditComment {
 
 /**
  * Reddit data extraction service optimized for Crave Search
- * 
+ *
  * Filters Reddit comment data to extract only essential fields,
  * providing 59% memory reduction while maintaining all required functionality
  */
@@ -37,7 +37,7 @@ export class RedditDataExtractorService {
 
   /**
    * Extract only the data needed for Crave Search from raw Reddit comment
-   * 
+   *
    * @param rawComment Raw Reddit comment from Pushshift archive
    * @returns Optimized comment data for Crave Search processing
    */
@@ -46,9 +46,10 @@ export class RedditDataExtractorService {
       // Validate required fields are present
       if (!this.hasRequiredFields(rawComment)) {
         this.logger.debug('Comment missing required fields', {
-          available: rawComment && typeof rawComment === 'object' 
-            ? Object.keys(rawComment as object) 
-            : 'invalid',
+          available:
+            rawComment && typeof rawComment === 'object'
+              ? Object.keys(rawComment)
+              : 'invalid',
         });
         return null;
       }
@@ -64,19 +65,23 @@ export class RedditDataExtractorService {
         created_utc: this.normalizeTimestamp(comment.created_utc),
         score: comment.score,
         link_id: comment.link_id,
-        
+
         // Optional fields - only include if present and valid
         ...(comment.parent_id && { parent_id: comment.parent_id }),
         ...(comment.permalink && { permalink: comment.permalink }),
-        ...(comment.edited !== undefined && comment.edited !== false && { 
-          edited: typeof comment.edited === 'number' ? comment.edited : true 
-        }),
+        ...(comment.edited !== undefined &&
+          comment.edited !== false && {
+            edited: typeof comment.edited === 'number' ? comment.edited : true,
+          }),
       };
     } catch (error) {
       this.logger.debug('Data extraction failed', {
         error: {
           message: error instanceof Error ? error.message : String(error),
-          ...(error instanceof Error && { stack: error.stack, name: error.name }),
+          ...(error instanceof Error && {
+            stack: error.stack,
+            name: error.name,
+          }),
         },
       });
       return null;
@@ -91,14 +96,14 @@ export class RedditDataExtractorService {
     if (typeof timestamp === 'number') {
       return timestamp;
     }
-    
+
     if (typeof timestamp === 'string') {
       const parsed = parseInt(timestamp, 10);
       if (!isNaN(parsed)) {
         return parsed;
       }
     }
-    
+
     throw new Error(`Invalid timestamp format: ${timestamp}`);
   }
 
@@ -111,21 +116,29 @@ export class RedditDataExtractorService {
     }
 
     const comment = rawComment as Record<string, unknown>;
-    const requiredFields = ['id', 'body', 'author', 'subreddit', 'created_utc', 'score', 'link_id'];
-    
-    return requiredFields.every(field => {
+    const requiredFields = [
+      'id',
+      'body',
+      'author',
+      'subreddit',
+      'created_utc',
+      'score',
+      'link_id',
+    ];
+
+    return requiredFields.every((field) => {
       const value = comment[field];
-      
+
       // Check field exists and has valid content
       if (value === undefined || value === null) {
         return false;
       }
-      
+
       // String fields must not be empty
       if (typeof value === 'string' && value.trim() === '') {
         return false;
       }
-      
+
       return true;
     });
   }
@@ -168,19 +181,19 @@ export class RedditDataExtractorService {
     if (!data.id || data.id.trim() === '') {
       issues.push('Missing or empty id');
     }
-    
+
     if (!data.body || data.body.trim() === '') {
       issues.push('Missing or empty body text');
     }
-    
+
     if (!data.author || data.author.trim() === '') {
       issues.push('Missing or empty author');
     }
-    
+
     if (!data.subreddit || data.subreddit.trim() === '') {
       issues.push('Missing or empty subreddit');
     }
-    
+
     if (!data.link_id || data.link_id.trim() === '') {
       issues.push('Missing or empty link_id');
     }
@@ -189,7 +202,7 @@ export class RedditDataExtractorService {
     if (typeof data.created_utc !== 'number' || data.created_utc <= 0) {
       issues.push('Invalid created_utc timestamp');
     }
-    
+
     if (typeof data.score !== 'number') {
       issues.push('Invalid score (must be number)');
     }
@@ -197,8 +210,11 @@ export class RedditDataExtractorService {
     // Validate timestamp is reasonable (after Reddit's creation in 2005)
     const redditFoundingTimestamp = 1118880000; // June 2005
     const currentTimestamp = Math.floor(Date.now() / 1000);
-    
-    if (data.created_utc < redditFoundingTimestamp || data.created_utc > currentTimestamp) {
+
+    if (
+      data.created_utc < redditFoundingTimestamp ||
+      data.created_utc > currentTimestamp
+    ) {
       issues.push(`Timestamp out of reasonable range: ${data.created_utc}`);
     }
 

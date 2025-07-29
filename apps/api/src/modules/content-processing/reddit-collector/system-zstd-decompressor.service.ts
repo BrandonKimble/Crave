@@ -6,7 +6,7 @@ import { StreamProcessorException } from './stream-processor.exceptions';
 
 /**
  * System-based zstd decompression service for large file streaming
- * 
+ *
  * This implementation uses the system zstd binary via child processes to achieve:
  * - True streaming decompression (no memory limits)
  * - Efficient processing of multi-GB files
@@ -23,7 +23,7 @@ export class SystemZstdDecompressor {
 
   /**
    * Stream decompress a zstd file and process line by line
-   * 
+   *
    * @param filePath Path to zstd compressed file
    * @param processor Function to process each line
    * @param options Processing options
@@ -35,7 +35,7 @@ export class SystemZstdDecompressor {
       validator?: (data: unknown) => data is T;
       timeout?: number;
       maxLines?: number;
-    } = {}
+    } = {},
   ): Promise<{
     totalLines: number;
     validLines: number;
@@ -65,17 +65,19 @@ export class SystemZstdDecompressor {
       // Handle process errors
       zstdProcess.on('error', (error) => {
         this.logger.error('Zstd process error', error, { filePath });
-        reject(new StreamProcessorException(
-          'ZSTD_PROCESS_ERROR',
-          `Failed to start zstd process: ${error.message}`,
-          { filePath, error: error.message }
-        ));
+        reject(
+          new StreamProcessorException(
+            'ZSTD_PROCESS_ERROR',
+            `Failed to start zstd process: ${error.message}`,
+            { filePath, error: error.message },
+          ),
+        );
       });
 
       zstdProcess.stderr.on('data', (data) => {
-        this.logger.warn('Zstd stderr', { 
-          filePath, 
-          stderr: data.toString().trim() 
+        this.logger.warn('Zstd stderr', {
+          filePath,
+          stderr: data.toString().trim(),
         });
       });
 
@@ -87,14 +89,19 @@ export class SystemZstdDecompressor {
 
       // Set up timeout
       const timeout = setTimeout(() => {
-        this.logger.error('Processing timeout', { filePath, timeout: options.timeout });
+        this.logger.error('Processing timeout', {
+          filePath,
+          timeout: options.timeout,
+        });
         zstdProcess.kill('SIGTERM');
         readline.close();
-        reject(new StreamProcessorException(
-          'PROCESSING_TIMEOUT',
-          `Processing timeout after ${options.timeout || 60000}ms`,
-          { filePath, timeout: options.timeout }
-        ));
+        reject(
+          new StreamProcessorException(
+            'PROCESSING_TIMEOUT',
+            `Processing timeout after ${options.timeout || 60000}ms`,
+            { filePath, timeout: options.timeout },
+          ),
+        );
       }, options.timeout || 60000);
 
       // Process each line
@@ -147,7 +154,10 @@ export class SystemZstdDecompressor {
             lineNumber: totalLines,
             error: {
               message: error instanceof Error ? error.message : String(error),
-              ...(error instanceof Error && { stack: error.stack, name: error.name }),
+              ...(error instanceof Error && {
+                stack: error.stack,
+                name: error.name,
+              }),
             },
             line: line.substring(0, 100),
           });
@@ -191,11 +201,13 @@ export class SystemZstdDecompressor {
         clearTimeout(timeout);
         this.logger.error('Readline error', error, { filePath });
         zstdProcess.kill('SIGTERM');
-        reject(new StreamProcessorException(
-          'READLINE_ERROR',
-          `Readline error: ${error.message}`,
-          { filePath, error: error.message }
-        ));
+        reject(
+          new StreamProcessorException(
+            'READLINE_ERROR',
+            `Readline error: ${error.message}`,
+            { filePath, error: error.message },
+          ),
+        );
       });
 
       // Handle process exit
@@ -207,11 +219,13 @@ export class SystemZstdDecompressor {
             signal,
           });
           clearTimeout(timeout);
-          reject(new StreamProcessorException(
-            'ZSTD_PROCESS_EXIT_ERROR',
-            `Zstd process exited with code ${code}, signal ${signal}`,
-            { filePath, code, signal }
-          ));
+          reject(
+            new StreamProcessorException(
+              'ZSTD_PROCESS_EXIT_ERROR',
+              `Zstd process exited with code ${code}, signal ${signal}`,
+              { filePath, code, signal },
+            ),
+          );
         }
       });
     });
@@ -220,7 +234,11 @@ export class SystemZstdDecompressor {
   /**
    * Validate that system zstd is available
    */
-  async validateSystemZstd(): Promise<{ available: boolean; version?: string; error?: string }> {
+  async validateSystemZstd(): Promise<{
+    available: boolean;
+    version?: string;
+    error?: string;
+  }> {
     return new Promise((resolve) => {
       const testProcess = spawn('zstd', ['--version'], { stdio: 'pipe' });
 

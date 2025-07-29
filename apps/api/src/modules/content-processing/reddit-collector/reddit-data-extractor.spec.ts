@@ -1,4 +1,7 @@
-import { RedditDataExtractorService, CraveRedditComment } from './reddit-data-extractor.service';
+import {
+  RedditDataExtractorService,
+  CraveRedditComment,
+} from './reddit-data-extractor.service';
 import { LoggerService } from '../../../shared';
 import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import * as path from 'path';
@@ -90,9 +93,15 @@ describe('RedditDataExtractorService', () => {
         edited: false,
       };
 
-      expect(extractor.extractCraveSearchData(commentWithEditTime)?.edited).toBe(1351175000);
-      expect(extractor.extractCraveSearchData(commentWithEditFlag)?.edited).toBe(true);
-      expect(extractor.extractCraveSearchData(commentNotEdited)?.edited).toBeUndefined();
+      expect(
+        extractor.extractCraveSearchData(commentWithEditTime)?.edited,
+      ).toBe(1351175000);
+      expect(
+        extractor.extractCraveSearchData(commentWithEditFlag)?.edited,
+      ).toBe(true);
+      expect(
+        extractor.extractCraveSearchData(commentNotEdited)?.edited,
+      ).toBeUndefined();
     });
 
     it('should return null for missing required fields', () => {
@@ -149,7 +158,7 @@ describe('RedditDataExtractorService', () => {
     it('should detect missing required fields', () => {
       const invalidComment = { ...validComment, id: '' };
       const result = extractor.validateExtractedData(invalidComment);
-      
+
       expect(result.valid).toBe(false);
       expect(result.issues).toContain('Missing or empty id');
     });
@@ -157,7 +166,7 @@ describe('RedditDataExtractorService', () => {
     it('should detect invalid timestamp', () => {
       const invalidComment = { ...validComment, created_utc: -1 };
       const result = extractor.validateExtractedData(invalidComment);
-      
+
       expect(result.valid).toBe(false);
       expect(result.issues).toContain('Invalid created_utc timestamp');
     });
@@ -165,16 +174,20 @@ describe('RedditDataExtractorService', () => {
     it('should detect unreasonable timestamp', () => {
       const futureComment = { ...validComment, created_utc: 9999999999 }; // Far future
       const result = extractor.validateExtractedData(futureComment);
-      
+
       expect(result.valid).toBe(false);
-      expect(result.issues.some(issue => issue.includes('Timestamp out of reasonable range'))).toBe(true);
+      expect(
+        result.issues.some((issue) =>
+          issue.includes('Timestamp out of reasonable range'),
+        ),
+      ).toBe(true);
     });
   });
 
   describe('getOptimizationStats', () => {
     it('should return correct optimization statistics', () => {
       const stats = extractor.getOptimizationStats();
-      
+
       expect(stats).toEqual({
         totalFields: 22,
         requiredFields: 7,
@@ -193,21 +206,26 @@ describe('RedditDataExtractorService', () => {
     });
 
     it('should extract data from actual Reddit archive file', async () => {
-      const testFilePath = path.resolve(__dirname, '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst');
-      
+      const testFilePath = path.resolve(
+        __dirname,
+        '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst',
+      );
+
       const extractedComments: CraveRedditComment[] = [];
       const extractionErrors: string[] = [];
       const maxTestItems = 50;
-      
+
       const processor = async (rawComment: any, lineNumber: number) => {
         const extracted = extractor.extractCraveSearchData(rawComment);
-        
+
         if (extracted) {
           const validation = extractor.validateExtractedData(extracted);
           if (validation.valid) {
             extractedComments.push(extracted);
           } else {
-            extractionErrors.push(`Line ${lineNumber}: ${validation.issues.join(', ')}`);
+            extractionErrors.push(
+              `Line ${lineNumber}: ${validation.issues.join(', ')}`,
+            );
           }
         } else {
           extractionErrors.push(`Line ${lineNumber}: Failed to extract data`);
@@ -215,22 +233,24 @@ describe('RedditDataExtractorService', () => {
       };
 
       console.log('🔧 Testing data extraction with real Reddit archive...');
-      
+
       const result = await decompressor.streamDecompressFile(
         testFilePath,
         processor,
         {
           maxLines: maxTestItems,
           timeout: 30000,
-        }
+        },
       );
 
       console.log('\n📊 EXTRACTION RESULTS:');
       console.log(`   Raw comments processed: ${result.totalLines}`);
       console.log(`   Successfully extracted: ${extractedComments.length}`);
       console.log(`   Extraction errors: ${extractionErrors.length}`);
-      console.log(`   Success rate: ${Math.round((extractedComments.length / result.totalLines) * 100)}%`);
-      
+      console.log(
+        `   Success rate: ${Math.round((extractedComments.length / result.totalLines) * 100)}%`,
+      );
+
       if (extractedComments.length > 0) {
         console.log('\n📝 Sample extracted comment:');
         const sample = extractedComments[0];
@@ -239,27 +259,37 @@ describe('RedditDataExtractorService', () => {
         console.log('   Subreddit:', sample.subreddit);
         console.log('   Score:', sample.score);
         console.log('   Body preview:', sample.body.substring(0, 80) + '...');
-        console.log('   Timestamp:', sample.created_utc, '(', new Date(sample.created_utc * 1000).toISOString(), ')');
-        
+        console.log(
+          '   Timestamp:',
+          sample.created_utc,
+          '(',
+          new Date(sample.created_utc * 1000).toISOString(),
+          ')',
+        );
+
         // Show optimization stats
         const stats = extractor.getOptimizationStats();
         console.log('\n💾 Memory optimization:');
-        console.log(`   Fields filtered out: ${stats.filteredFields}/${stats.totalFields}`);
+        console.log(
+          `   Fields filtered out: ${stats.filteredFields}/${stats.totalFields}`,
+        );
         console.log(`   Memory reduction: ${stats.memoryReduction}%`);
       }
-      
+
       if (extractionErrors.length > 0 && extractionErrors.length <= 5) {
         console.log('\n❌ Sample extraction errors:');
-        extractionErrors.slice(0, 5).forEach(error => console.log(`   ${error}`));
+        extractionErrors
+          .slice(0, 5)
+          .forEach((error) => console.log(`   ${error}`));
       }
 
       // Assertions
       expect(result.totalLines).toBeGreaterThan(0);
       expect(extractedComments.length).toBeGreaterThan(0);
       expect(extractedComments.length / result.totalLines).toBeGreaterThan(0.8); // 80%+ success rate
-      
+
       // Validate structure of extracted comments
-      extractedComments.forEach(comment => {
+      extractedComments.forEach((comment) => {
         expect(comment.id).toBeDefined();
         expect(comment.body).toBeDefined();
         expect(comment.author).toBeDefined();
@@ -268,7 +298,6 @@ describe('RedditDataExtractorService', () => {
         expect(typeof comment.score).toBe('number');
         expect(comment.link_id).toBeDefined();
       });
-      
     }, 60000); // 1 minute timeout
   });
 });

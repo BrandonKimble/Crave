@@ -474,14 +474,14 @@ describe('BulkOperationsService Integration Tests', () => {
       await testSetup.withCleanup(async () => {
         // Use a truly unique name with timestamp and random number
         const uniqueName = `Upsert Entity ${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         const upsertData = [
           {
-            where: { 
+            where: {
               name_type: {
                 name: uniqueName,
                 type: 'dish_or_category' as EntityType,
-              }
+              },
             },
             create: {
               name: uniqueName,
@@ -607,11 +607,11 @@ describe('BulkOperationsService Integration Tests', () => {
 
         // Verify entities were created
         const createdCount = await entityRepository.count({
-          name: { 
+          name: {
             in: [
-              `Data Integrity Restaurant ${timestamp}`, 
-              `Data Integrity Dish ${timestamp}`
-            ] 
+              `Data Integrity Restaurant ${timestamp}`,
+              `Data Integrity Dish ${timestamp}`,
+            ],
           },
         });
         expect(createdCount).toBe(2);

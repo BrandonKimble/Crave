@@ -107,186 +107,200 @@ describe('Stream Processing Integration Tests', () => {
   });
 
   describe('Real Archive Processing', () => {
-    (SKIP_LARGE_FILE_TESTS ? it.skip : it)('should process a small sample from austinfood comments', async () => {
-      // Check if archive files exist
-      const archives = await pushshiftService.getAvailableArchives();
-      const commentsArchive = archives.find(
-        (a) =>
-          a.subreddit === 'austinfood' && a.fileType === 'comments' && a.exists,
-      );
-
-      if (!commentsArchive) {
-        console.warn(
-          'austinfood comments archive not available, skipping test',
+    (SKIP_LARGE_FILE_TESTS ? it.skip : it)(
+      'should process a small sample from austinfood comments',
+      async () => {
+        // Check if archive files exist
+        const archives = await pushshiftService.getAvailableArchives();
+        const commentsArchive = archives.find(
+          (a) =>
+            a.subreddit === 'austinfood' &&
+            a.fileType === 'comments' &&
+            a.exists,
         );
-        return;
-      }
 
-      const processedItems: Array<{
-        item: RedditComment | RedditSubmission;
-        lineNumber: number;
-        fileType: string;
-      }> = [];
-
-      // Process with early termination for testing
-      let processedCount = 0;
-      const maxTestItems = 50; // Limit for testing
-
-      const processor = async (
-        item: RedditComment | RedditSubmission,
-        lineNumber: number,
-        fileType: 'comments' | 'submissions',
-      ) => {
-        if (processedCount >= maxTestItems) {
+        if (!commentsArchive) {
+          console.warn(
+            'austinfood comments archive not available, skipping test',
+          );
           return;
         }
 
-        processedItems.push({ item, lineNumber, fileType });
-        processedCount++;
+        const processedItems: Array<{
+          item: RedditComment | RedditSubmission;
+          lineNumber: number;
+          fileType: string;
+        }> = [];
 
-        // Basic validation of Reddit comment structure
-        if (fileType === 'comments') {
-          const comment = item as RedditComment;
-          expect(typeof comment.id).toBe('string');
-          expect(typeof comment.body).toBe('string');
-          expect(typeof comment.author).toBe('string');
-          expect(typeof comment.created_utc).toBe('number');
-          expect(comment.subreddit).toBe('austinfood');
-        }
-      };
+        // Process with early termination for testing
+        let processedCount = 0;
+        const maxTestItems = 50; // Limit for testing
 
-      const result = await pushshiftService.processSubredditFile(
-        'austinfood',
-        'comments',
-        processor,
-      );
+        const processor = async (
+          item: RedditComment | RedditSubmission,
+          lineNumber: number,
+          fileType: 'comments' | 'submissions',
+        ) => {
+          if (processedCount >= maxTestItems) {
+            return;
+          }
 
-      expect(result.result.success).toBe(true);
-      expect(result.subreddit).toBe('austinfood');
-      expect(result.fileType).toBe('comments');
-      expect(result.result.metrics.totalLines).toBeGreaterThan(0);
-      expect(result.result.metrics.validLines).toBeGreaterThan(0);
-      expect(processedItems.length).toBeGreaterThan(0);
-      expect(processedItems.length).toBeLessThanOrEqual(maxTestItems);
+          processedItems.push({ item, lineNumber, fileType });
+          processedCount++;
 
-      // Verify processing metrics
-      expect(result.result.metrics.processingTime).toBeGreaterThan(0);
-      expect(result.result.metrics.memoryUsage.initial).toBeGreaterThan(0);
-      expect(result.result.metrics.memoryUsage.peak).toBeGreaterThanOrEqual(
-        result.result.metrics.memoryUsage.initial,
-      );
-    }, 30000);
+          // Basic validation of Reddit comment structure
+          if (fileType === 'comments') {
+            const comment = item as RedditComment;
+            expect(typeof comment.id).toBe('string');
+            expect(typeof comment.body).toBe('string');
+            expect(typeof comment.author).toBe('string');
+            expect(typeof comment.created_utc).toBe('number');
+            expect(comment.subreddit).toBe('austinfood');
+          }
+        };
 
-    (SKIP_LARGE_FILE_TESTS ? it.skip : it)('should handle memory efficiently during processing', async () => {
-      const archives = await pushshiftService.getAvailableArchives();
-      const smallestArchive = archives
-        .filter((a) => a.exists && a.size)
-        .sort((a, b) => (a.size || 0) - (b.size || 0))[0];
-
-      if (!smallestArchive) {
-        console.warn('No archives available for memory test, skipping');
-        return;
-      }
-
-      const initialMemory = process.memoryUsage().heapUsed;
-      let peakMemory = initialMemory;
-      let processedCount = 0;
-
-      const processor = async (
-        item: RedditComment | RedditSubmission,
-        lineNumber: number,
-        fileType: 'comments' | 'submissions',
-      ) => {
-        processedCount++;
-
-        // Track memory usage during processing
-        const currentMemory = process.memoryUsage().heapUsed;
-        if (currentMemory > peakMemory) {
-          peakMemory = currentMemory;
-        }
-
-        // Stop after processing a reasonable amount for testing
-        if (processedCount >= 100) {
-          return;
-        }
-      };
-
-      const result = await pushshiftService.processSubredditFile(
-        smallestArchive.subreddit,
-        smallestArchive.fileType as 'comments' | 'submissions',
-        processor,
-      );
-
-      const finalMemory = process.memoryUsage().heapUsed;
-      const memoryGrowth = peakMemory - initialMemory;
-      const memoryGrowthMB = memoryGrowth / 1024 / 1024;
-
-      expect(result.result.success).toBe(true);
-      expect(processedCount).toBeGreaterThan(0);
-
-      // Memory growth should be reasonable (less than 100MB for test processing)
-      expect(memoryGrowthMB).toBeLessThan(100);
-
-      console.log(
-        `Memory usage - Initial: ${Math.round(initialMemory / 1024 / 1024)}MB, Peak: ${Math.round(peakMemory / 1024 / 1024)}MB, Final: ${Math.round(finalMemory / 1024 / 1024)}MB`,
-      );
-    }, 30000);
-
-    (SKIP_LARGE_FILE_TESTS ? it.skip : it)('should process both comments and submissions for a subreddit', async () => {
-      const archives = await pushshiftService.getAvailableArchives();
-      const availableSubreddits = [
-        ...new Set(archives.filter((a) => a.exists).map((a) => a.subreddit)),
-      ];
-
-      if (availableSubreddits.length === 0) {
-        console.warn('No subreddit archives available, skipping test');
-        return;
-      }
-
-      const testSubreddit = availableSubreddits[0];
-      const processedItems: any[] = [];
-      const maxItemsPerType = 10; // Limit for testing
-
-      const processor = async (
-        item: RedditComment | RedditSubmission,
-        lineNumber: number,
-        fileType: 'comments' | 'submissions',
-      ) => {
-        const itemsOfThisType = processedItems.filter(
-          (p) => p.fileType === fileType,
+        const result = await pushshiftService.processSubredditFile(
+          'austinfood',
+          'comments',
+          processor,
         );
-        if (itemsOfThisType.length >= maxItemsPerType) {
-          return;
-        }
 
-        processedItems.push({ item, lineNumber, fileType });
-      };
-
-      metricsService.reset(); // Clear any previous metrics
-
-      const results = await pushshiftService.processSingleSubreddit(
-        testSubreddit,
-        processor,
-      );
-
-      expect(results.length).toBeGreaterThan(0);
-      expect(results.length).toBeLessThanOrEqual(2); // comments and/or submissions
-
-      // Verify all results are successful
-      results.forEach((result) => {
         expect(result.result.success).toBe(true);
-        expect(result.subreddit).toBe(testSubreddit);
-        expect(['comments', 'submissions']).toContain(result.fileType);
-      });
+        expect(result.subreddit).toBe('austinfood');
+        expect(result.fileType).toBe('comments');
+        expect(result.result.metrics.totalLines).toBeGreaterThan(0);
+        expect(result.result.metrics.validLines).toBeGreaterThan(0);
+        expect(processedItems.length).toBeGreaterThan(0);
+        expect(processedItems.length).toBeLessThanOrEqual(maxTestItems);
 
-      // Check that items from both file types were processed if both archives exist
-      const fileTypes = [...new Set(processedItems.map((p) => p.fileType))];
-      expect(fileTypes.length).toBeGreaterThan(0);
+        // Verify processing metrics
+        expect(result.result.metrics.processingTime).toBeGreaterThan(0);
+        expect(result.result.metrics.memoryUsage.initial).toBeGreaterThan(0);
+        expect(result.result.metrics.memoryUsage.peak).toBeGreaterThanOrEqual(
+          result.result.metrics.memoryUsage.initial,
+        );
+      },
+      30000,
+    );
 
-      console.log(
-        `Processed ${processedItems.length} items from ${fileTypes.length} file types for ${testSubreddit}`,
-      );
-    }, 45000);
+    (SKIP_LARGE_FILE_TESTS ? it.skip : it)(
+      'should handle memory efficiently during processing',
+      async () => {
+        const archives = await pushshiftService.getAvailableArchives();
+        const smallestArchive = archives
+          .filter((a) => a.exists && a.size)
+          .sort((a, b) => (a.size || 0) - (b.size || 0))[0];
+
+        if (!smallestArchive) {
+          console.warn('No archives available for memory test, skipping');
+          return;
+        }
+
+        const initialMemory = process.memoryUsage().heapUsed;
+        let peakMemory = initialMemory;
+        let processedCount = 0;
+
+        const processor = async (
+          item: RedditComment | RedditSubmission,
+          lineNumber: number,
+          fileType: 'comments' | 'submissions',
+        ) => {
+          processedCount++;
+
+          // Track memory usage during processing
+          const currentMemory = process.memoryUsage().heapUsed;
+          if (currentMemory > peakMemory) {
+            peakMemory = currentMemory;
+          }
+
+          // Stop after processing a reasonable amount for testing
+          if (processedCount >= 100) {
+            return;
+          }
+        };
+
+        const result = await pushshiftService.processSubredditFile(
+          smallestArchive.subreddit,
+          smallestArchive.fileType as 'comments' | 'submissions',
+          processor,
+        );
+
+        const finalMemory = process.memoryUsage().heapUsed;
+        const memoryGrowth = peakMemory - initialMemory;
+        const memoryGrowthMB = memoryGrowth / 1024 / 1024;
+
+        expect(result.result.success).toBe(true);
+        expect(processedCount).toBeGreaterThan(0);
+
+        // Memory growth should be reasonable (less than 100MB for test processing)
+        expect(memoryGrowthMB).toBeLessThan(100);
+
+        console.log(
+          `Memory usage - Initial: ${Math.round(initialMemory / 1024 / 1024)}MB, Peak: ${Math.round(peakMemory / 1024 / 1024)}MB, Final: ${Math.round(finalMemory / 1024 / 1024)}MB`,
+        );
+      },
+      30000,
+    );
+
+    (SKIP_LARGE_FILE_TESTS ? it.skip : it)(
+      'should process both comments and submissions for a subreddit',
+      async () => {
+        const archives = await pushshiftService.getAvailableArchives();
+        const availableSubreddits = [
+          ...new Set(archives.filter((a) => a.exists).map((a) => a.subreddit)),
+        ];
+
+        if (availableSubreddits.length === 0) {
+          console.warn('No subreddit archives available, skipping test');
+          return;
+        }
+
+        const testSubreddit = availableSubreddits[0];
+        const processedItems: any[] = [];
+        const maxItemsPerType = 10; // Limit for testing
+
+        const processor = async (
+          item: RedditComment | RedditSubmission,
+          lineNumber: number,
+          fileType: 'comments' | 'submissions',
+        ) => {
+          const itemsOfThisType = processedItems.filter(
+            (p) => p.fileType === fileType,
+          );
+          if (itemsOfThisType.length >= maxItemsPerType) {
+            return;
+          }
+
+          processedItems.push({ item, lineNumber, fileType });
+        };
+
+        metricsService.reset(); // Clear any previous metrics
+
+        const results = await pushshiftService.processSingleSubreddit(
+          testSubreddit,
+          processor,
+        );
+
+        expect(results.length).toBeGreaterThan(0);
+        expect(results.length).toBeLessThanOrEqual(2); // comments and/or submissions
+
+        // Verify all results are successful
+        results.forEach((result) => {
+          expect(result.result.success).toBe(true);
+          expect(result.subreddit).toBe(testSubreddit);
+          expect(['comments', 'submissions']).toContain(result.fileType);
+        });
+
+        // Check that items from both file types were processed if both archives exist
+        const fileTypes = [...new Set(processedItems.map((p) => p.fileType))];
+        expect(fileTypes.length).toBeGreaterThan(0);
+
+        console.log(
+          `Processed ${processedItems.length} items from ${fileTypes.length} file types for ${testSubreddit}`,
+        );
+      },
+      45000,
+    );
   });
 
   describe('Error Handling', () => {
@@ -313,7 +327,10 @@ describe('Stream Processing Integration Tests', () => {
 
       // Test with a non-existent file path to trigger file access error
       await expect(
-        streamService.processZstdNdjsonFile('/nonexistent/path/file.zst', processor),
+        streamService.processZstdNdjsonFile(
+          '/nonexistent/path/file.zst',
+          processor,
+        ),
       ).rejects.toThrow();
     });
   });

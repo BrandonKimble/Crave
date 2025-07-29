@@ -14,13 +14,19 @@ import configuration from '../../../config/configuration';
 
 // Mock logger for script
 const mockLogger = {
+  logger: {} as any,
   setContext: () => mockLogger,
   info: (msg: string, meta?: any) => console.log(`[INFO] ${msg}`, meta || ''),
   debug: (msg: string, meta?: any) => console.log(`[DEBUG] ${msg}`, meta || ''),
   warn: (msg: string, meta?: any) => console.warn(`[WARN] ${msg}`, meta || ''),
   error: (msg: string, error?: any, meta?: any) =>
     console.error(`[ERROR] ${msg}`, error, meta || ''),
-} as LoggerService;
+  http: () => {},
+  database: () => {},
+  performance: () => {},
+  audit: () => {},
+  child: () => ({}) as any,
+} as unknown as LoggerService;
 
 async function validateStreamProcessing(): Promise<void> {
   console.log('🔍 Validating stream processing implementation...\n');

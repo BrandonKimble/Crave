@@ -3,7 +3,7 @@
  *
  * Based on the actual Reddit API data format as stored in Pushshift archives
  * These interfaces ensure type safety while processing Reddit comments and submissions
- * 
+ *
  * NOTE: For production use, consider using CraveRedditComment from reddit-data-extractor.service.ts
  * which provides 59% memory reduction by filtering unnecessary fields
  */
@@ -123,8 +123,9 @@ export function isRedditComment(data: unknown): data is RedditComment {
     typeof (data as RedditComment).id === 'string' &&
     typeof (data as RedditComment).body === 'string' &&
     typeof (data as RedditComment).author === 'string' &&
-    (typeof (data as RedditComment).created_utc === 'number' || 
-     (typeof (data as RedditComment).created_utc === 'string' && !isNaN(Number((data as RedditComment).created_utc)))) &&
+    (typeof (data as RedditComment).created_utc === 'number' ||
+      (typeof (data as RedditComment).created_utc === 'string' &&
+        !isNaN(Number((data as RedditComment).created_utc)))) &&
     typeof (data as RedditComment).subreddit === 'string'
   );
 }
