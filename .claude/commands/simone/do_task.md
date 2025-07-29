@@ -18,6 +18,12 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - Search `.simone/03_SPRINTS/` and `.simone/04_GENERAL_TASKS/` for target task
 - If no open task matches, pause and ask user how to proceed
 
+**Review completed work context:**
+- Read the most recent 2-3 completed tasks (TX## files) in current sprint
+- If first task in sprint, read final completed task from previous sprint
+- Extract: Implementation patterns, architectural decisions, current system state, existing infrastructure
+- Identify: What's already built, what patterns to follow, integration points, lessons learned
+
 **Read and analyze in single context:**
 - Read task file completely including description, goals, acceptance criteria, PRD references
 
@@ -35,7 +41,7 @@ Implements task requirements strictly within PRD boundaries while maximizing int
    - Extract: Scope boundaries, milestone context, what NOT to implement
    - Read ALL subsections within 9 and 10
 
-5. **Verify scope alignment**: Confirm task belongs in current sprint/milestone scope and task dependencies are met
+4. **Verify scope alignment**: Confirm task belongs in current sprint/milestone scope and task dependencies are met
 
 ## 2 · Validate task scope against PRD boundaries
 

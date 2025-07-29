@@ -15,3 +15,6 @@ Make sure you are aware of the environment.
 3. **READ ROADMAP CONTEXT (PRD sections 9-10)**: Implementation context  
    - Read ALL subsections within sections 9 and 10 completely
    - Extract: Current milestone scope, what's been completed, what's next, performance targets
+
+4. **READ RECENT PROGRESS**: Read the most recent completed task in current sprint
+   - Extract: Latest system state, recent architectural decisions, current capabilities

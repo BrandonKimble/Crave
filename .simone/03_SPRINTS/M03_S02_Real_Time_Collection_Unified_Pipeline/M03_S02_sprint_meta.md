@@ -84,3 +84,39 @@ last_updated: 2025-07-28T14:33:00Z
 - Requires M01 Database Foundation (✅ COMPLETED)
 - Requires M02 Entity Processing Core & External Integrations (✅ COMPLETED - provides LLM integration and entity resolution)
 - Completes M03 milestone DoD enabling M04 Dynamic Query System
+
+## Sprint Tasks
+
+**TASK BREAKDOWN (9 tasks total):**
+
+1. **T01_S02 - Reddit API Integration** (Medium complexity)
+   - PRD Sections: 5.1.2, 2.5 - Authentication, rate limiting, cost management
+
+2. **T02_S02 - Dual Collection Strategy** (Medium complexity)
+   - PRD Sections: 5.1.2 - Chronological collection cycles with dynamic scheduling
+
+3. **T03_S02 - Content Retrieval Pipeline** (Medium complexity)
+   - PRD Sections: 5.1.2, 6.1 - Post/comment fetching, URL storage, thread retrieval
+
+4. **T04_S02 - Scheduled Collection Jobs** (Medium complexity)
+   - PRD Sections: 5.1.2 - Reliable scheduling with error handling and retry logic
+
+5. **T05_S02 - Gap Tracking System** (Medium complexity)
+   - PRD Sections: 5.1.2, 9.3.2 - Monitor data continuity between sources
+
+6. **T06_S02 - Data Merge Logic** (Medium complexity)
+   - PRD Sections: 5.1.2, 6.1 - Combine historical and real-time data by timestamp
+
+7. **T07_S02 - Duplicate Detection** (Medium complexity)
+   - PRD Sections: 5.1.2, 6.1 - Prevent duplicate processing between sources
+
+8. **T08_S02 - Unified Processing Integration** (Medium complexity)
+   - PRD Sections: 5.1.2, 6.1 - Integrate with existing M02 LLM pipeline
+
+9. **T09_S02 - Keyword Entity Search** (Medium complexity)
+   - PRD Sections: 5.1.2 - Priority scoring algorithm for monthly entity enrichment
+
+**ROADMAP AUDIT SUMMARY:**
+- ✅ All 9 tasks implement only M03 requirements per PRD sections [1, 2, 3, 4, 5.1.2, 6.1, 9.3, 10]
+- ❌ No tasks deferred - all align with current milestone scope
+- ✅ Scope boundaries enforced - no M04+ features included
