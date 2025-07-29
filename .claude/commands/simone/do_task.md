@@ -8,7 +8,7 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 2. Validate task scope against PRD boundaries  
 3. Execute PRD-scoped implementation with infrastructure integration
 4. Perform comprehensive code review and validation
-5. Finalize task completion
+5. Finalize task completion and update sprint and manifest files
 6. Report results
 
 ## 1 · Load task context and PRD requirements comprehensively
@@ -152,7 +152,7 @@ Follow these steps for a Code Review (in order):
 
 **MEMORY AID**: After fixing issues, ask yourself: "Have I re-run the code review yet?" If no, go back to step 1.
 
-## 5 · Finalize task completion
+## 5 · Finalize task completion and update sprint and manifest files
 
 **Task Completion:**
 - Set task status to **completed**
