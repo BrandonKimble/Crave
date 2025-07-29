@@ -4,3 +4,7 @@ export * from './processing-metrics.service';
 export * from './stream-processor.exceptions';
 export * from './reddit-data.types';
 export * from './reddit-collector.module';
+export * from './historical-content-pipeline.service';
+export * from './historical-content-pipeline.types';
+export * from './historical-content-pipeline.exceptions';
+export * from './reddit-data-extractor.service';

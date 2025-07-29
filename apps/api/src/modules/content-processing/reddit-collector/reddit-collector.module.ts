@@ -4,6 +4,8 @@ import { SharedModule } from '../../../shared/shared.module';
 import { StreamProcessorService } from './stream-processor.service';
 import { PushshiftProcessorService } from './pushshift-processor.service';
 import { ProcessingMetricsService } from './processing-metrics.service';
+import { RedditDataExtractorService } from './reddit-data-extractor.service';
+import { HistoricalContentPipelineService } from './historical-content-pipeline.service';
 
 /**
  * Reddit Collector Module
@@ -21,11 +23,15 @@ import { ProcessingMetricsService } from './processing-metrics.service';
     StreamProcessorService,
     PushshiftProcessorService,
     ProcessingMetricsService,
+    RedditDataExtractorService,
+    HistoricalContentPipelineService,
   ],
   exports: [
     StreamProcessorService,
     PushshiftProcessorService,
     ProcessingMetricsService,
+    RedditDataExtractorService,
+    HistoricalContentPipelineService,
   ],
 })
 export class RedditCollectorModule {}
