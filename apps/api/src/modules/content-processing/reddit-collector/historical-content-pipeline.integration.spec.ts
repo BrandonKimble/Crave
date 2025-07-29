@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/await-thenable */
+// Reason: Integration test with service method calls that may or may not return Promises
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { HistoricalContentPipelineService } from './historical-content-pipeline.service';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';

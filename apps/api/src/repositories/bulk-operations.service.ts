@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../shared';
 import { EntityRepository } from './entity.repository';
@@ -543,7 +543,10 @@ export class BulkOperationsService {
           createData: entityUpsert.create,
         });
 
-        const result = await tx.entity.upsert(entityUpsert);
+        /* eslint-disable @typescript-eslint/no-unsafe-assignment */
+        // Reason: Prisma transaction methods return any for delegate pattern
+        const result: Entity = await tx.entity.upsert(entityUpsert);
+        /* eslint-enable @typescript-eslint/no-unsafe-assignment */
         successCount++;
 
         this.logger.debug('UPSERT success', {

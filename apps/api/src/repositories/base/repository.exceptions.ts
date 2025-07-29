@@ -109,7 +109,9 @@ export class UniqueConstraintException extends RepositoryException {
 
   constructor(entityType: string, fields: string[]) {
     super(
-      `Unique constraint violated for ${entityType} on fields: ${fields.join(', ')}`,
+      `Unique constraint violated for ${entityType} on fields: ${fields.join(
+        ', ',
+      )}`,
       HttpStatus.CONFLICT,
       { entityType, fields },
     );

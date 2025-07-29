@@ -88,7 +88,9 @@ export class GooglePlacesService implements OnModuleInit {
 
     if (missingFields.length > 0) {
       throw new GooglePlacesConfigurationError(
-        `Missing required Google Places configuration: ${missingFields.join(', ')}`,
+        `Missing required Google Places configuration: ${missingFields.join(
+          ', ',
+        )}`,
       );
     }
   }

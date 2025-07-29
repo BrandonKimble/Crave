@@ -2,6 +2,12 @@ import { RedditDataExtractorService } from './reddit-data-extractor.service';
 import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { LoggerService } from '../../../shared';
 import * as path from 'path';
+import {
+  RedditComment,
+  OptimizedRedditComment,
+  TestLoggerService,
+  CommentProcessor,
+} from './reddit-data.types';
 
 describe('Reddit Data Optimization Comparison', () => {
   let extractor: RedditDataExtractorService;
@@ -27,11 +33,11 @@ describe('Reddit Data Optimization Comparison', () => {
       '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst',
     );
 
-    const fullDataComments: any[] = [];
-    const optimizedComments: any[] = [];
+    const fullDataComments: RedditComment[] = [];
+    const optimizedComments: OptimizedRedditComment[] = [];
     const maxTestItems = 100;
 
-    const processor = async (rawComment: any, lineNumber: number) => {
+    const processor: CommentProcessor = (rawComment: RedditComment) => {
       // Store full raw comment
       fullDataComments.push(rawComment);
 
@@ -67,7 +73,9 @@ describe('Reddit Data Optimization Comparison', () => {
     console.log(`   Full data size: ${Math.round(fullDataSize / 1024)} KB`);
     console.log(`   Optimized size: ${Math.round(optimizedSize / 1024)} KB`);
     console.log(
-      `   Size reduction: ${Math.round(sizeDifference / 1024)} KB (${memoryReduction}%)`,
+      `   Size reduction: ${Math.round(
+        sizeDifference / 1024,
+      )} KB (${memoryReduction}%)`,
     );
 
     console.log('\n📋 FIELD COMPARISON:');
@@ -79,14 +87,18 @@ describe('Reddit Data Optimization Comparison', () => {
         `   Original fields (${fullFields.length}): ${fullFields.join(', ')}`,
       );
       console.log(
-        `   Optimized fields (${optimizedFields.length}): ${optimizedFields.join(', ')}`,
+        `   Optimized fields (${
+          optimizedFields.length
+        }): ${optimizedFields.join(', ')}`,
       );
 
       const removedFields = fullFields.filter(
         (field) => !optimizedFields.includes(field),
       );
       console.log(
-        `   Removed fields (${removedFields.length}): ${removedFields.join(', ')}`,
+        `   Removed fields (${removedFields.length}): ${removedFields.join(
+          ', ',
+        )}`,
       );
     }
 
@@ -145,11 +157,11 @@ describe('Reddit Data Optimization Comparison', () => {
       '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst',
     );
 
-    const extractedComments: any[] = [];
+    const extractedComments: OptimizedRedditComment[] = [];
     const fieldPresence: Record<string, number> = {};
     const maxTestItems = 200;
 
-    const processor = async (rawComment: any, lineNumber: number) => {
+    const processor: CommentProcessor = (rawComment: RedditComment) => {
       const optimized = extractor.extractCraveSearchData(rawComment);
       if (optimized) {
         extractedComments.push(optimized);
@@ -191,7 +203,9 @@ describe('Reddit Data Optimization Comparison', () => {
       const count = fieldPresence[field] || 0;
       const percentage = Math.round((count / extractedComments.length) * 100);
       console.log(
-        `   ${field.padEnd(15)}: ${count}/${extractedComments.length} (${percentage}%)`,
+        `   ${field.padEnd(15)}: ${count}/${
+          extractedComments.length
+        } (${percentage}%)`,
       );
       expect(percentage).toBe(100); // All required fields must be present
     });
@@ -201,7 +215,9 @@ describe('Reddit Data Optimization Comparison', () => {
       const count = fieldPresence[field] || 0;
       const percentage = Math.round((count / extractedComments.length) * 100);
       console.log(
-        `   ${field.padEnd(15)}: ${count}/${extractedComments.length} (${percentage}%)`,
+        `   ${field.padEnd(15)}: ${count}/${
+          extractedComments.length
+        } (${percentage}%)`,
       );
     });
 

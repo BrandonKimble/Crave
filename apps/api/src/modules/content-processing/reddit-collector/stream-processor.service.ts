@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createReadStream } from 'fs';
 import * as fs from 'fs/promises';
 import { createInterface } from 'readline';
-import { pipeline } from 'stream/promises';
-import { Transform, Readable } from 'stream';
+import { Readable } from 'stream';
 import { decompress as zstdDecompress } from '@mongodb-js/zstd';
 import { LoggerService } from '../../../shared';
 import { StreamProcessorException } from './stream-processor.exceptions';
@@ -137,7 +135,9 @@ export class StreamProcessorService {
       if (fileSizeMB > 100) {
         throw new StreamProcessorException(
           'FILE_TOO_LARGE',
-          `File too large for memory-based processing: ${Math.round(fileSizeMB)}MB. Use external streaming tools for production files.`,
+          `File too large for memory-based processing: ${Math.round(
+            fileSizeMB,
+          )}MB. Use external streaming tools for production files.`,
           { filePath, fileSizeMB },
         );
       }
@@ -213,6 +213,8 @@ export class StreamProcessorService {
 
           try {
             // Parse JSON
+            // Reason: JSON.parse returns unknown, type validation handled by validator function
+            /* eslint-disable @typescript-eslint/no-unsafe-assignment */
             const data = JSON.parse(line);
 
             // Validate if validator provided
@@ -239,6 +241,7 @@ export class StreamProcessorService {
                 content: line.substring(0, 100),
               });
             }
+            /* eslint-enable @typescript-eslint/no-unsafe-assignment */
 
             // Track memory usage
             const currentMemory = process.memoryUsage().heapUsed;
@@ -289,24 +292,29 @@ export class StreamProcessorService {
           }
         });
 
-        readline.on('close', async () => {
-          try {
-            // Process remaining batch
-            if (currentBatch.length > 0) {
-              await this.processBatch(currentBatch, processor);
-            }
+        readline.on('close', () => {
+          // Process remaining batch
+          if (currentBatch.length > 0) {
+            this.processBatch(currentBatch, processor)
+              .then(() => resolve())
+              .catch((error) =>
+                reject(
+                  error instanceof Error ? error : new Error(String(error)),
+                ),
+              );
+          } else {
             resolve();
-          } catch (error) {
-            reject(error);
           }
         });
 
         readline.on('error', (error) => {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
           reject(
             new StreamProcessorException(
               'READLINE_ERROR',
               'Readline interface error',
-              { filePath, error: error.message },
+              { filePath, error: errorMessage },
             ),
           );
         });

@@ -8,14 +8,26 @@ import {
 import { StreamProcessorService } from './stream-processor.service';
 import { ProcessingMetricsService } from './processing-metrics.service';
 import { LoggerService } from '../../../shared';
+import { TestLoggerService } from './reddit-data.types';
 import * as path from 'path';
-import * as fs from 'fs/promises';
+
+/* eslint-disable @typescript-eslint/no-unused-vars, @typescript-eslint/require-await, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+// Reason: Integration test with complex mock patterns and unused test parameters
+
+// Mock config interface
+interface MockConfig {
+  [key: string]: unknown;
+}
+
+// Test processor interface
+interface TestItemProcessor {
+  (item: unknown, lineNumber: number): Promise<void>;
+}
 
 describe('Stream Processing Integration Tests', () => {
   let pushshiftService: PushshiftProcessorService;
   let streamService: StreamProcessorService;
   let metricsService: ProcessingMetricsService;
-  let configService: ConfigService;
 
   const archiveBasePath = path.resolve(
     __dirname,
@@ -34,8 +46,8 @@ describe('Stream Processing Integration Tests', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string, defaultValue?: any) => {
-              const config = {
+            get: jest.fn((key: string, defaultValue?: unknown) => {
+              const config: MockConfig = {
                 'pushshift.baseDirectory': archiveBasePath,
                 'pushshift.targetSubreddits': ['austinfood', 'FoodNYC'],
                 'pushshift.fileTypes': ['comments', 'submissions'],
@@ -58,7 +70,7 @@ describe('Stream Processing Integration Tests', () => {
             debug: jest.fn(),
             warn: jest.fn(),
             error: jest.fn(),
-          },
+          } as TestLoggerService,
         },
       ],
     }).compile();
@@ -70,7 +82,6 @@ describe('Stream Processing Integration Tests', () => {
     metricsService = module.get<ProcessingMetricsService>(
       ProcessingMetricsService,
     );
-    configService = module.get<ConfigService>(ConfigService);
   });
 
   describe('Archive File Validation', () => {
@@ -236,7 +247,11 @@ describe('Stream Processing Integration Tests', () => {
         expect(memoryGrowthMB).toBeLessThan(100);
 
         console.log(
-          `Memory usage - Initial: ${Math.round(initialMemory / 1024 / 1024)}MB, Peak: ${Math.round(peakMemory / 1024 / 1024)}MB, Final: ${Math.round(finalMemory / 1024 / 1024)}MB`,
+          `Memory usage - Initial: ${Math.round(
+            initialMemory / 1024 / 1024,
+          )}MB, Peak: ${Math.round(
+            peakMemory / 1024 / 1024,
+          )}MB, Final: ${Math.round(finalMemory / 1024 / 1024)}MB`,
         );
       },
       30000,
@@ -306,9 +321,9 @@ describe('Stream Processing Integration Tests', () => {
   describe('Error Handling', () => {
     it('should handle missing archive files gracefully', async () => {
       const processor = async (
-        item: any,
-        lineNumber: number,
-        fileType: any,
+        _item: unknown,
+        _lineNumber: number,
+        _fileType: unknown,
       ) => {};
 
       await expect(
@@ -323,7 +338,10 @@ describe('Stream Processing Integration Tests', () => {
     it('should handle corrupted archive files', async () => {
       // This test would require a corrupted test file
       // For now, we'll test the error handling path exists
-      const processor = async (item: any, lineNumber: number) => {};
+      const processor: TestItemProcessor = async (
+        _item: unknown,
+        _lineNumber: number,
+      ) => {};
 
       // Test with a non-existent file path to trigger file access error
       await expect(

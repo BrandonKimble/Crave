@@ -1,11 +1,48 @@
 #!/usr/bin/env ts-node
 
+// Reason: Validation script with type casting and external configuration access
+
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import { PushshiftProcessorService } from './pushshift-processor.service';
 import { StreamProcessorService } from './stream-processor.service';
 import { ProcessingMetricsService } from './processing-metrics.service';
 import configuration from '../../../config/configuration';
+import { RedditComment, RedditSubmission } from './reddit-data.types';
+
+// Mock configuration service interface
+interface MockConfigService {
+  get(key: string, defaultValue?: unknown): unknown;
+}
+
+// Mock logger interface matching LoggerService
+interface MockLoggerService {
+  logger: unknown;
+  setContext: (context: string) => MockLoggerService;
+  info: (msg: string, meta?: unknown) => void;
+  debug: (msg: string, meta?: unknown) => void;
+  warn: (msg: string, meta?: unknown) => void;
+  error: (msg: string, error?: unknown, meta?: unknown) => void;
+  http: () => void;
+  database: () => void;
+  performance: () => void;
+  audit: () => void;
+  child: () => unknown;
+  buildErrorMetadata: (error: Error, context?: string) => unknown;
+  sanitizeLog: (data: unknown) => unknown;
+  sanitizeMetadata: (data: unknown) => unknown;
+  sanitizeNestedObject: (data: unknown, depth?: number) => unknown;
+}
+
+// Union type for Reddit items
+type RedditItem = RedditComment | RedditSubmission;
+
+// Processor callback type
+type ItemProcessor = (
+  item: RedditItem,
+  lineNumber: number,
+  fileType: 'comments' | 'submissions',
+) => Promise<void>;
 
 /**
  * Validation script for stream processing functionality
@@ -13,20 +50,27 @@ import configuration from '../../../config/configuration';
  */
 
 // Mock logger for script
-const mockLogger = {
-  logger: {} as any,
+const mockLogger: MockLoggerService = {
+  logger: {},
   setContext: () => mockLogger,
-  info: (msg: string, meta?: any) => console.log(`[INFO] ${msg}`, meta || ''),
-  debug: (msg: string, meta?: any) => console.log(`[DEBUG] ${msg}`, meta || ''),
-  warn: (msg: string, meta?: any) => console.warn(`[WARN] ${msg}`, meta || ''),
-  error: (msg: string, error?: any, meta?: any) =>
+  info: (msg: string, meta?: unknown) =>
+    console.log(`[INFO] ${msg}`, meta || ''),
+  debug: (msg: string, meta?: unknown) =>
+    console.log(`[DEBUG] ${msg}`, meta || ''),
+  warn: (msg: string, meta?: unknown) =>
+    console.warn(`[WARN] ${msg}`, meta || ''),
+  error: (msg: string, error?: unknown, meta?: unknown) =>
     console.error(`[ERROR] ${msg}`, error, meta || ''),
   http: () => {},
   database: () => {},
   performance: () => {},
   audit: () => {},
-  child: () => ({}) as any,
-} as unknown as LoggerService;
+  child: () => ({}),
+  buildErrorMetadata: () => ({}),
+  sanitizeLog: (data: unknown) => data,
+  sanitizeMetadata: (data: unknown) => data,
+  sanitizeNestedObject: (data: unknown) => data,
+};
 
 async function validateStreamProcessing(): Promise<void> {
   console.log('🔍 Validating stream processing implementation...\n');
@@ -34,26 +78,33 @@ async function validateStreamProcessing(): Promise<void> {
   try {
     // Create services
     const config = configuration();
-    const configService = {
-      get: (key: string, defaultValue?: any) => {
+    const configService: MockConfigService = {
+      get: (key: string, defaultValue?: unknown) => {
         const keys = key.split('.');
-        let value = config as any;
+        let value: unknown = config;
         for (const k of keys) {
-          value = value?.[k];
+          if (typeof value === 'object' && value !== null && k in value) {
+            value = (value as Record<string, unknown>)[k];
+          } else {
+            value = undefined;
+            break;
+          }
         }
         return value ?? defaultValue;
       },
-    } as ConfigService;
+    };
 
     const streamProcessor = new StreamProcessorService(
-      configService,
-      mockLogger,
+      configService as ConfigService,
+      mockLogger as unknown as LoggerService,
     );
-    const metricsService = new ProcessingMetricsService(mockLogger);
+    const metricsService = new ProcessingMetricsService(
+      mockLogger as unknown as LoggerService,
+    );
     const pushshiftProcessor = new PushshiftProcessorService(
-      configService,
+      configService as ConfigService,
       streamProcessor,
-      mockLogger,
+      mockLogger as unknown as LoggerService,
     );
 
     // Validate setup
@@ -95,25 +146,35 @@ async function validateStreamProcessing(): Promise<void> {
     let totalProcessed = 0;
     const maxTestItems = 50; // Limit for validation
 
-    const processor = async (
-      item: any,
+    const processor: ItemProcessor = (
+      item: RedditItem,
       lineNumber: number,
       fileType: 'comments' | 'submissions',
     ) => {
-      if (totalProcessed >= maxTestItems) {
-        return;
-      }
+      return new Promise<void>((resolve) => {
+        if (totalProcessed >= maxTestItems) {
+          return;
+        }
 
-      totalProcessed++;
+        totalProcessed++;
 
-      // Basic validation
-      if (!item.id || !item.subreddit || typeof item.created_utc !== 'number') {
-        throw new Error(`Invalid ${fileType} structure at line ${lineNumber}`);
-      }
+        // Basic validation
+        if (
+          !item.id ||
+          !item.subreddit ||
+          (typeof item.created_utc !== 'number' &&
+            typeof item.created_utc !== 'string')
+        ) {
+          throw new Error(
+            `Invalid ${fileType} structure at line ${lineNumber}`,
+          );
+        }
 
-      if (totalProcessed % 10 === 0) {
-        console.log(`   Processed ${totalProcessed} items...`);
-      }
+        if (totalProcessed % 10 === 0) {
+          console.log(`   Processed ${totalProcessed} items...`);
+        }
+        resolve();
+      });
     };
 
     // Test one archive from each subreddit
@@ -156,7 +217,9 @@ async function validateStreamProcessing(): Promise<void> {
           `   ⏱️  Processing time: ${result.result.metrics.processingTime}ms`,
         );
         console.log(
-          `   💾 Memory peak: ${Math.round(result.result.metrics.memoryUsage.peak / 1024 / 1024)}MB`,
+          `   💾 Memory peak: ${Math.round(
+            result.result.metrics.memoryUsage.peak / 1024 / 1024,
+          )}MB`,
         );
       } catch (error) {
         console.error(
@@ -187,7 +250,9 @@ async function validateStreamProcessing(): Promise<void> {
     console.log(`   Files processed: ${aggregated.totalFiles}`);
     console.log(`   Total lines: ${aggregated.totalLines}`);
     console.log(
-      `   Processing speed: ${Math.round(aggregated.averageProcessingSpeed)} lines/sec`,
+      `   Processing speed: ${Math.round(
+        aggregated.averageProcessingSpeed,
+      )} lines/sec`,
     );
     console.log(`   Error rate: ${aggregated.errorRate.toFixed(2)}%`);
 

@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/require-await */
+// Reason: Test file with mock object setup and async test patterns
+
 import {
   RedditDataExtractorService,
   CraveRedditComment,
@@ -248,7 +251,9 @@ describe('RedditDataExtractorService', () => {
       console.log(`   Successfully extracted: ${extractedComments.length}`);
       console.log(`   Extraction errors: ${extractionErrors.length}`);
       console.log(
-        `   Success rate: ${Math.round((extractedComments.length / result.totalLines) * 100)}%`,
+        `   Success rate: ${Math.round(
+          (extractedComments.length / result.totalLines) * 100,
+        )}%`,
       );
 
       if (extractedComments.length > 0) {

@@ -5,8 +5,10 @@ import { LoggerService } from '../../../shared';
 import { StreamProcessorException } from './stream-processor.exceptions';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { createWriteStream } from 'fs';
 import { compress } from '@mongodb-js/zstd';
+
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/no-unused-vars */
+// Reason: Test file with complex mock patterns and test data generation
 
 describe('StreamProcessorService', () => {
   let service: StreamProcessorService;
@@ -199,7 +201,7 @@ describe('StreamProcessorService', () => {
 
     it('should handle file not found error', async () => {
       const nonExistentFile = path.join(testDataDir, 'nonexistent.zst');
-      const processor = async (item: any, lineNumber: number) => {};
+      const processor = async (_item: unknown, _lineNumber: number) => {};
 
       await expect(
         service.processZstdNdjsonFile(nonExistentFile, processor),

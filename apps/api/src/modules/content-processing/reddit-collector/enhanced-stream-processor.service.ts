@@ -139,7 +139,9 @@ export class EnhancedStreamProcessorService {
       throughputLinesPerSecond: Math.round(
         result.totalLines / (result.processingTime / 1000),
       ),
-      memoryEfficiency: `${Math.round(result.memoryUsage.peak / 1024 / 1024)}MB peak`,
+      memoryEfficiency: `${Math.round(
+        result.memoryUsage.peak / 1024 / 1024,
+      )}MB peak`,
     });
 
     return processingResult;

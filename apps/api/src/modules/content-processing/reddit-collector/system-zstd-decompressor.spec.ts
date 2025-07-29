@@ -1,7 +1,23 @@
 import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { LoggerService } from '../../../shared';
-import { isRedditComment } from './reddit-data.types';
+import {
+  isRedditComment,
+  RedditComment,
+  TestLoggerService,
+  CommentProcessor,
+  FileStats,
+} from './reddit-data.types';
 import * as path from 'path';
+import { promises as fs } from 'fs';
+
+// Test data interfaces
+interface ProcessedTestItem {
+  lineNumber: number;
+  id: string;
+  author: string;
+  subreddit: string;
+  bodyLength: number;
+}
 
 describe('SystemZstdDecompressor - Large File Test', () => {
   let decompressor: SystemZstdDecompressor;
@@ -25,10 +41,13 @@ describe('SystemZstdDecompressor - Large File Test', () => {
       '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst',
     );
 
-    const processedItems: any[] = [];
+    const processedItems: ProcessedTestItem[] = [];
     const maxTestItems = 1000; // Process only first 1000 items for testing
 
-    const processor = async (comment: any, lineNumber: number) => {
+    const processor: CommentProcessor = (
+      comment: RedditComment,
+      lineNumber: number,
+    ) => {
       if (processedItems.length < maxTestItems) {
         processedItems.push({
           lineNumber,
@@ -43,7 +62,6 @@ describe('SystemZstdDecompressor - Large File Test', () => {
     console.log('🚀 Starting large file streaming test...');
     console.log(`📄 File: ${testFilePath}`);
 
-    const startTime = Date.now();
     const result = await decompressor.streamDecompressFile(
       testFilePath,
       processor,
@@ -53,7 +71,6 @@ describe('SystemZstdDecompressor - Large File Test', () => {
         timeout: 60000,
       },
     );
-    const endTime = Date.now();
 
     console.log('\n📊 STREAMING PERFORMANCE RESULTS:');
     console.log(`⏱️  Processing time: ${result.processingTime}ms`);
@@ -63,7 +80,9 @@ describe('SystemZstdDecompressor - Large File Test', () => {
     console.log(`✅ Valid lines: ${result.validLines.toLocaleString()}`);
     console.log(`❌ Error lines: ${result.errorLines.toLocaleString()}`);
     console.log(
-      `🚀 Throughput: ${Math.round(result.totalLines / (result.processingTime / 1000)).toLocaleString()} lines/second`,
+      `🚀 Throughput: ${Math.round(
+        result.totalLines / (result.processingTime / 1000),
+      ).toLocaleString()} lines/second`,
     );
     console.log(`💾 Memory usage:`);
     console.log(
@@ -144,8 +163,7 @@ describe('SystemZstdDecompressor - Large File Test', () => {
       '../../../../data/pushshift/archives/austinfood/austinfood_comments.zst',
     );
 
-    const fs = require('fs/promises');
-    const stats = await fs.stat(testFilePath);
+    const stats: FileStats = (await fs.stat(testFilePath)) as FileStats;
     const fileSizeMB = stats.size / (1024 * 1024);
 
     console.log(`\n📏 File validation:`);

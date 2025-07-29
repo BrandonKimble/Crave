@@ -225,7 +225,9 @@ export class DatabaseMetricsService {
       alerts.push({
         type: 'POOL_EXHAUSTION',
         severity: 'CRITICAL',
-        message: `Critical connection pool utilization: ${Math.round(utilization * 100)}% (${sample.activeConnections}/${maxConnections})`,
+        message: `Critical connection pool utilization: ${Math.round(
+          utilization * 100,
+        )}% (${sample.activeConnections}/${maxConnections})`,
         timestamp: sample.timestamp,
         metrics: { activeConnections: sample.activeConnections },
       });
@@ -233,7 +235,9 @@ export class DatabaseMetricsService {
       alerts.push({
         type: 'HIGH_UTILIZATION',
         severity: 'HIGH',
-        message: `High connection pool utilization: ${Math.round(utilization * 100)}% (${sample.activeConnections}/${maxConnections})`,
+        message: `High connection pool utilization: ${Math.round(
+          utilization * 100,
+        )}% (${sample.activeConnections}/${maxConnections})`,
         timestamp: sample.timestamp,
         metrics: { activeConnections: sample.activeConnections },
       });
@@ -247,7 +251,9 @@ export class DatabaseMetricsService {
         alerts.push({
           type: 'SLOW_QUERIES',
           severity: 'CRITICAL',
-          message: `Critical slow query rate: ${Math.round(slowQueryRate * 100)}% (${sample.slowQueries}/${sample.queryCount})`,
+          message: `Critical slow query rate: ${Math.round(
+            slowQueryRate * 100,
+          )}% (${sample.slowQueries}/${sample.queryCount})`,
           timestamp: sample.timestamp,
           metrics: {
             slowQueries: sample.slowQueries,
@@ -258,7 +264,9 @@ export class DatabaseMetricsService {
         alerts.push({
           type: 'SLOW_QUERIES',
           severity: 'MEDIUM',
-          message: `Elevated slow query rate: ${Math.round(slowQueryRate * 100)}% (${sample.slowQueries}/${sample.queryCount})`,
+          message: `Elevated slow query rate: ${Math.round(
+            slowQueryRate * 100,
+          )}% (${sample.slowQueries}/${sample.queryCount})`,
           timestamp: sample.timestamp,
           metrics: {
             slowQueries: sample.slowQueries,
@@ -274,7 +282,9 @@ export class DatabaseMetricsService {
         alerts.push({
           type: 'CONNECTION_ERRORS',
           severity: 'CRITICAL',
-          message: `Critical connection error rate: ${Math.round(errorRate * 100)}% (${sample.connectionErrors}/${sample.queryCount})`,
+          message: `Critical connection error rate: ${Math.round(
+            errorRate * 100,
+          )}% (${sample.connectionErrors}/${sample.queryCount})`,
           timestamp: sample.timestamp,
           metrics: {
             connectionErrors: sample.connectionErrors,
@@ -285,7 +295,9 @@ export class DatabaseMetricsService {
         alerts.push({
           type: 'CONNECTION_ERRORS',
           severity: 'HIGH',
-          message: `Elevated connection error rate: ${Math.round(errorRate * 100)}% (${sample.connectionErrors}/${sample.queryCount})`,
+          message: `Elevated connection error rate: ${Math.round(
+            errorRate * 100,
+          )}% (${sample.connectionErrors}/${sample.queryCount})`,
           timestamp: sample.timestamp,
           metrics: {
             connectionErrors: sample.connectionErrors,

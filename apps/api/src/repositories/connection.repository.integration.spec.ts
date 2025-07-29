@@ -554,7 +554,9 @@ describe('ConnectionRepository Integration Tests', () => {
           Array.from({ length: 5 }, (_, i) =>
             prisma.entity.create({
               data: {
-                name: `Concurrent Dish ${i} ${timestamp}-${Math.random().toString(36).substring(2, 11)}`,
+                name: `Concurrent Dish ${i} ${timestamp}-${Math.random()
+                  .toString(36)
+                  .substring(2, 11)}`,
                 type: 'dish_or_category',
               },
             }),

@@ -152,7 +152,10 @@ export class PrismaService
         if (duration > this.dbConfig.performance.logging.slowQueryThreshold) {
           this.connectionMetrics.slowQueries++;
           this.logger.warn(
-            `Slow query detected: ${duration}ms - ${event.query.slice(0, 100)}...`,
+            `Slow query detected: ${duration}ms - ${event.query.slice(
+              0,
+              100,
+            )}...`,
           );
         } else if (process.env.NODE_ENV === 'development') {
           this.logger.debug(

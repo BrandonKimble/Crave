@@ -207,7 +207,9 @@ export class PushshiftProcessorService {
 
       throw new StreamProcessorException(
         'PUSHSHIFT_PROCESSING_FAILED',
-        `Failed to process ${fileName}: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to process ${fileName}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
         { subreddit, fileType, filePath, originalError: error },
       );
     }
@@ -360,7 +362,9 @@ export class PushshiftProcessorService {
 
     if (missingFiles.length > 0) {
       issues.push(
-        `Missing archive files: ${missingFiles.map((f) => f.filePath).join(', ')}`,
+        `Missing archive files: ${missingFiles
+          .map((f) => f.filePath)
+          .join(', ')}`,
       );
     }
 

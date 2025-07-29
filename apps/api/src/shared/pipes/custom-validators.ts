@@ -82,7 +82,9 @@ export function IsConnectionQuality(validationOptions?: ValidationOptions) {
           return typeof value === 'string' && validQualities.includes(value);
         },
         defaultMessage(args: ValidationArguments) {
-          return `${args.property} must be one of: ${validQualities.join(', ')}`;
+          return `${args.property} must be one of: ${validQualities.join(
+            ', ',
+          )}`;
         },
       },
     });

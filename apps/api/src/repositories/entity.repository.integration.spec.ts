@@ -494,7 +494,9 @@ describe('EntityRepository Integration Tests', () => {
         const timestamp = Date.now();
         const promises = Array.from({ length: 5 }, (_, index) =>
           repository.createDishOrCategory({
-            name: `Concurrent Entity ${index} ${timestamp}-${Math.random().toString(36).substring(2, 11)}`,
+            name: `Concurrent Entity ${index} ${timestamp}-${Math.random()
+              .toString(36)
+              .substring(2, 11)}`,
           }),
         );
 

@@ -473,7 +473,9 @@ describe('BulkOperationsService Integration Tests', () => {
     it('should create new entities when upsert target does not exist', async () => {
       await testSetup.withCleanup(async () => {
         // Use a truly unique name with timestamp and random number
-        const uniqueName = `Upsert Entity ${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const uniqueName = `Upsert Entity ${Date.now()}-${Math.random()
+          .toString(36)
+          .substr(2, 9)}`;
 
         const upsertData = [
           {

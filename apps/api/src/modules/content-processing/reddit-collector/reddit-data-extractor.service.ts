@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
+import { isRedditComment } from './reddit-data.types';
 
 /**
  * Optimized Reddit comment data for Crave Search processing
@@ -44,7 +45,7 @@ export class RedditDataExtractorService {
   extractCraveSearchData(rawComment: unknown): CraveRedditComment | null {
     try {
       // Validate required fields are present
-      if (!this.hasRequiredFields(rawComment)) {
+      if (!isRedditComment(rawComment)) {
         this.logger.debug('Comment missing required fields', {
           available:
             rawComment && typeof rawComment === 'object'
@@ -54,7 +55,7 @@ export class RedditDataExtractorService {
         return null;
       }
 
-      const comment = rawComment as any;
+      const comment = rawComment; // Type narrowed by isRedditComment guard
 
       return {
         // Required fields - guaranteed to be present
@@ -105,42 +106,6 @@ export class RedditDataExtractorService {
     }
 
     throw new Error(`Invalid timestamp format: ${timestamp}`);
-  }
-
-  /**
-   * Validate that all required fields are present in the raw comment
-   */
-  private hasRequiredFields(rawComment: unknown): boolean {
-    if (!rawComment || typeof rawComment !== 'object') {
-      return false;
-    }
-
-    const comment = rawComment as Record<string, unknown>;
-    const requiredFields = [
-      'id',
-      'body',
-      'author',
-      'subreddit',
-      'created_utc',
-      'score',
-      'link_id',
-    ];
-
-    return requiredFields.every((field) => {
-      const value = comment[field];
-
-      // Check field exists and has valid content
-      if (value === undefined || value === null) {
-        return false;
-      }
-
-      // String fields must not be empty
-      if (typeof value === 'string' && value.trim() === '') {
-        return false;
-      }
-
-      return true;
-    });
   }
 
   /**

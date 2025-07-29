@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { spawn, ChildProcess } from 'child_process';
-import { createInterface, Interface } from 'readline';
+import { spawn } from 'child_process';
+import { createInterface } from 'readline';
 import { LoggerService } from '../../../shared';
 import { StreamProcessorException } from './stream-processor.exceptions';
 
@@ -75,10 +75,13 @@ export class SystemZstdDecompressor {
       });
 
       zstdProcess.stderr.on('data', (data) => {
+        /* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+        // Reason: Node.js child process stream data is Buffer with safe toString() method
         this.logger.warn('Zstd stderr', {
           filePath,
           stderr: data.toString().trim(),
         });
+        /* eslint-enable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
       });
 
       // Create readline interface for line-by-line processing
@@ -105,7 +108,7 @@ export class SystemZstdDecompressor {
       }, options.timeout || 60000);
 
       // Process each line
-      readline.on('line', async (line: string) => {
+      readline.on('line', (line: string) => {
         totalLines++;
 
         // Track memory usage
@@ -133,14 +136,34 @@ export class SystemZstdDecompressor {
 
         try {
           // Parse JSON
+          // Reason: JSON.parse returns unknown, type validation happens later
+          /* eslint-disable @typescript-eslint/no-unsafe-assignment */
           const data = JSON.parse(line);
+          /* eslint-enable @typescript-eslint/no-unsafe-assignment */
 
           // Validate if validator provided
           const isValid = options.validator ? options.validator(data) : true;
 
           if (isValid) {
             validLines++;
-            await processor(data as T, totalLines);
+            // Handle both sync and async processors
+            const result = processor(data as T, totalLines);
+            if (result instanceof Promise) {
+              result.catch((error) => {
+                errorLines++;
+                this.logger.debug('Processor error', {
+                  lineNumber: totalLines,
+                  error:
+                    error instanceof Error
+                      ? {
+                          message: error.message,
+                          stack: error.stack,
+                          name: error.name,
+                        }
+                      : { message: String(error) },
+                });
+              });
+            }
           } else {
             errorLines++;
             this.logger.debug('Line failed validation', {
@@ -201,11 +224,13 @@ export class SystemZstdDecompressor {
         clearTimeout(timeout);
         this.logger.error('Readline error', error, { filePath });
         zstdProcess.kill('SIGTERM');
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         reject(
           new StreamProcessorException(
             'READLINE_ERROR',
-            `Readline error: ${error.message}`,
-            { filePath, error: error.message },
+            `Readline error: ${errorMessage}`,
+            { filePath, error: errorMessage },
           ),
         );
       });
@@ -244,7 +269,10 @@ export class SystemZstdDecompressor {
 
       let output = '';
       testProcess.stdout.on('data', (data) => {
+        /* eslint-disable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+        // Reason: Node.js child process stream data is Buffer with safe toString() method
         output += data.toString();
+        /* eslint-enable @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
       });
 
       testProcess.on('close', (code) => {

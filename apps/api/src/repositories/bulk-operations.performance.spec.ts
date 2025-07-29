@@ -301,7 +301,9 @@ describe('Bulk Operations Performance Validation', () => {
         expect(duration).toBeLessThan(5000);
 
         console.log(
-          `Bulk Dish Insert: ${150} records in ${duration}ms (${Math.round(150 / (duration / 1000))} records/sec)`,
+          `Bulk Dish Insert: ${150} records in ${duration}ms (${Math.round(
+            150 / (duration / 1000),
+          )} records/sec)`,
         );
       });
     });

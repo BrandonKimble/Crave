@@ -130,7 +130,9 @@ export class EntitiesService {
 
         default:
           throw new ValidationException('entity', [
-            `Unsupported entity type: ${String(data.entityType)}. Supported types: restaurant, dish_or_category, dish_attribute, restaurant_attribute`,
+            `Unsupported entity type: ${String(
+              data.entityType,
+            )}. Supported types: restaurant, dish_or_category, dish_attribute, restaurant_attribute`,
           ]);
       }
 

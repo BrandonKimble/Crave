@@ -20,7 +20,12 @@ import {
   HistoricalProcessingStats,
 } from './historical-content-pipeline.types';
 import { HistoricalContentPipelineException } from './historical-content-pipeline.exceptions';
-import { isRedditComment, isRedditSubmission } from './reddit-data.types';
+import {
+  isRedditComment,
+  isRedditSubmission,
+  RedditSubmission,
+  RedditComment,
+} from './reddit-data.types';
 
 /**
  * Historical Content Pipeline Service
@@ -54,10 +59,10 @@ export class HistoricalContentPipelineService {
    * @param config Processing configuration
    * @returns Processed batch with extracted and validated content
    */
-  async processBatch(
+  processBatch(
     rawData: unknown[],
     config: HistoricalProcessingConfig,
-  ): Promise<HistoricalContentBatch> {
+  ): HistoricalContentBatch {
     const startTime = Date.now();
     const batchId = this.generateBatchId();
 
@@ -81,11 +86,7 @@ export class HistoricalContentPipelineService {
         const item = rawData[i];
 
         try {
-          const extracted = await this.extractHistoricalItem(
-            item,
-            i + 1,
-            config,
-          );
+          const extracted = this.extractHistoricalItem(item, i + 1, config);
 
           if (extracted.isValid) {
             if (extracted.type === 'submission') {
@@ -181,11 +182,11 @@ export class HistoricalContentPipelineService {
    * @param config Processing configuration
    * @returns Extracted content item with validation status
    */
-  async extractHistoricalItem(
+  extractHistoricalItem(
     rawItem: unknown,
     lineNumber: number,
     config: HistoricalProcessingConfig,
-  ): Promise<HistoricalContentItem> {
+  ): HistoricalContentItem {
     if (isRedditSubmission(rawItem)) {
       return this.extractSubmission(rawItem, lineNumber, config);
     } else if (isRedditComment(rawItem)) {
@@ -207,7 +208,7 @@ export class HistoricalContentPipelineService {
    * Extract Reddit submission with validation
    */
   private extractSubmission(
-    rawSubmission: any,
+    rawSubmission: RedditSubmission,
     lineNumber: number,
     config: HistoricalProcessingConfig,
   ): HistoricalContentItem {
@@ -254,7 +255,7 @@ export class HistoricalContentPipelineService {
 
       throw HistoricalContentPipelineException.extraction(
         'submission',
-        rawSubmission.id || 'unknown',
+        (rawSubmission as { id?: string }).id || 'unknown',
         errorMessage,
       );
     }
@@ -264,7 +265,7 @@ export class HistoricalContentPipelineService {
    * Extract Reddit comment using existing RedditDataExtractorService
    */
   private extractComment(
-    rawComment: any,
+    rawComment: RedditComment,
     lineNumber: number,
     config: HistoricalProcessingConfig,
   ): HistoricalContentItem {
@@ -502,10 +503,10 @@ export class HistoricalContentPipelineService {
    * @param preserveThreads Whether to organize comments by thread
    * @returns LLM input DTO ready for M02 pipeline processing
    */
-  async convertToLLMFormat(
+  convertToLLMFormat(
     batch: HistoricalContentBatch,
     preserveThreads = true,
-  ): Promise<LLMInputDto> {
+  ): LLMInputDto {
     try {
       this.logger.debug('Converting batch to LLM format', {
         batchId: batch.batchId,
@@ -524,7 +525,7 @@ export class HistoricalContentPipelineService {
         );
 
         for (const thread of threads) {
-          const llmPost = await this.convertThreadToLLMPost(thread);
+          const llmPost = this.convertThreadToLLMPost(thread);
           llmPosts.push(llmPost);
         }
       } else {
@@ -534,7 +535,7 @@ export class HistoricalContentPipelineService {
             (comment) => comment.link_id === `t3_${submission.id}`,
           );
 
-          const llmPost = await this.convertSubmissionToLLMPost(
+          const llmPost = this.convertSubmissionToLLMPost(
             submission,
             relatedComments,
           );
@@ -652,11 +653,9 @@ export class HistoricalContentPipelineService {
   /**
    * Convert comment thread to LLM post format
    */
-  private async convertThreadToLLMPost(
-    thread: CommentThread,
-  ): Promise<LLMPostDto> {
+  private convertThreadToLLMPost(thread: CommentThread): LLMPostDto {
     // Find the submission for this thread
-    const submission = await this.findSubmissionById(thread.postId);
+    const submission = this.findSubmissionById(thread.postId);
 
     if (!submission) {
       throw new Error(`Submission not found for thread ${thread.postId}`);
@@ -687,10 +686,10 @@ export class HistoricalContentPipelineService {
   /**
    * Convert submission and comments to LLM post format
    */
-  private async convertSubmissionToLLMPost(
+  private convertSubmissionToLLMPost(
     submission: CraveRedditSubmission,
     comments: CraveRedditComment[],
-  ): Promise<LLMPostDto> {
+  ): LLMPostDto {
     // Convert comments to LLM format
     const llmComments: LLMCommentDto[] = comments.map((comment) => ({
       comment_id: comment.id,
@@ -723,9 +722,9 @@ export class HistoricalContentPipelineService {
    * Find submission by ID (helper method for thread processing)
    * Note: In actual implementation, this would query from the batch context
    */
-  private async findSubmissionById(
-    postId: string,
-  ): Promise<CraveRedditSubmission | null> {
+  private findSubmissionById(postId: string): CraveRedditSubmission | null {
+    // Suppress unused variable for future implementation
+    void postId;
     // This is a simplified implementation for the current context
     // In practice, this would be passed from the batch context or stored in service state
     return null; // Will be properly implemented when integrating with actual batch processing

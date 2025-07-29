@@ -118,16 +118,23 @@ describe('Gemini Integration Test', () => {
         console.log('Gemini Integration Test Results:');
         console.log(`- Posts processed: ${sampleInput.posts.length}`);
         console.log(
-          `- Total comments: ${sampleInput.posts.reduce((sum, post) => sum + post.comments.length, 0)}`,
+          `- Total comments: ${sampleInput.posts.reduce(
+            (sum, post) => sum + post.comments.length,
+            0,
+          )}`,
         );
         console.log(`- Mentions extracted: ${result.mentions.length}`);
 
         if (result.mentions.length > 0) {
           console.log(
-            `- Sample mention restaurant: ${result.mentions[0].restaurant?.normalized_name || 'N/A'}`,
+            `- Sample mention restaurant: ${
+              result.mentions[0].restaurant?.normalized_name || 'N/A'
+            }`,
           );
           console.log(
-            `- Sample mention dish: ${result.mentions[0].dish_or_category?.normalized_name || 'N/A'}`,
+            `- Sample mention dish: ${
+              result.mentions[0].dish_or_category?.normalized_name || 'N/A'
+            }`,
           );
         }
       } catch (error) {

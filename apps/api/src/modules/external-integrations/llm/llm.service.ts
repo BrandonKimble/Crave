@@ -192,7 +192,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
    * Build the processing prompt using the complete llm-content-processing.md system prompt
    */
   private buildProcessingPrompt(input: LLMInputStructure): string {
-    const userPrompt = `Extract entities from this Reddit content:\n\n${JSON.stringify(input, null, 2)}`;
+    const userPrompt = `Extract entities from this Reddit content:\n\n${JSON.stringify(
+      input,
+      null,
+      2,
+    )}`;
 
     return `${this.systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: `;
   }
@@ -362,7 +366,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       return parsed;
     } catch (error) {
       throw new LLMResponseParsingError(
-        `Failed to parse JSON from Gemini response: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to parse JSON from Gemini response: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
         content,
       );
     }

@@ -14,7 +14,9 @@ const logFormat = winston.format.combine(
       Object.keys(metadata).length > 0
         ? ` ${JSON.stringify(metadata)}`
         : '';
-    return `${String(timestamp)} [${String(level).toUpperCase()}] ${String(message)}${metaString}`;
+    return `${String(timestamp)} [${String(level).toUpperCase()}] ${String(
+      message,
+    )}${metaString}`;
   }),
 );
 

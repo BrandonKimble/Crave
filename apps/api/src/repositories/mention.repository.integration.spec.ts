@@ -172,7 +172,9 @@ describe('MentionRepository Integration Tests', () => {
           },
           sourceType: 'comment',
           sourceId: `query_test_${Date.now() + 1}_2`,
-          sourceUrl: `https://reddit.com/r/food/comments/query_test_${Date.now() + 1}_2`,
+          sourceUrl: `https://reddit.com/r/food/comments/query_test_${
+            Date.now() + 1
+          }_2`,
           subreddit: 'nyc',
           contentExcerpt: 'Second test mention',
           author: 'user2',
@@ -303,7 +305,9 @@ describe('MentionRepository Integration Tests', () => {
             },
             sourceType: 'comment',
             sourceId: `analytics_${Date.now() + 1}_2`,
-            sourceUrl: `https://reddit.com/r/food/comments/analytics_${Date.now() + 1}_2`,
+            sourceUrl: `https://reddit.com/r/food/comments/analytics_${
+              Date.now() + 1
+            }_2`,
             subreddit: 'nyc',
             contentExcerpt: 'Analytics test 2',
             author: 'user2',
@@ -316,7 +320,9 @@ describe('MentionRepository Integration Tests', () => {
             },
             sourceType: 'post',
             sourceId: `analytics_${Date.now() + 2}_3`,
-            sourceUrl: `https://reddit.com/r/food/comments/analytics_${Date.now() + 2}_3`,
+            sourceUrl: `https://reddit.com/r/food/comments/analytics_${
+              Date.now() + 2
+            }_3`,
             subreddit: 'food',
             contentExcerpt: 'Analytics test 3',
             author: 'user3',

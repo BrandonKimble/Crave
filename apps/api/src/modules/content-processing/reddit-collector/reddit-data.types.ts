@@ -158,3 +158,146 @@ export function isRedditSubmission(data: unknown): data is RedditSubmission {
 export function isRedditDataObject(data: unknown): data is RedditDataObject {
   return isRedditComment(data) || isRedditSubmission(data);
 }
+
+/**
+ * Test utility interfaces for type-safe testing
+ */
+export interface TestLoggerService {
+  setContext: jest.MockedFunction<(context: string) => TestLoggerService>;
+  debug: jest.MockedFunction<(message: string, ...args: unknown[]) => void>;
+  info: jest.MockedFunction<(message: string, ...args: unknown[]) => void>;
+  warn: jest.MockedFunction<(message: string, ...args: unknown[]) => void>;
+  error: jest.MockedFunction<(message: string, error?: Error) => void>;
+}
+
+/**
+ * Stream processing callback types
+ */
+export type CommentProcessor = (
+  comment: RedditComment,
+  lineNumber?: number,
+) => Promise<void> | void;
+export type SubmissionProcessor = (
+  submission: RedditSubmission,
+  lineNumber: number,
+) => Promise<void>;
+
+/**
+ * Stream processing result interface
+ */
+export interface StreamProcessingResult {
+  totalLines: number;
+  processedLines: number;
+  errors: number;
+}
+
+/**
+ * Optimized Reddit data structures (from reddit-data-extractor.service.ts)
+ */
+export interface OptimizedRedditComment {
+  id: string;
+  body: string;
+  author: string;
+  subreddit: string;
+  created_utc: number;
+  score: number;
+  link_id: string;
+  parent_id?: string;
+  permalink?: string;
+  edited?: boolean | number;
+}
+
+export interface OptimizedRedditSubmission {
+  id: string;
+  title: string;
+  selftext: string;
+  author: string;
+  subreddit: string;
+  created_utc: number;
+  score: number;
+  num_comments: number;
+  url: string;
+  permalink?: string;
+  edited?: boolean | number;
+}
+
+/**
+ * Historical content pipeline types
+ */
+export interface HistoricalItem {
+  id: string;
+  body?: string;
+  title?: string;
+  selftext?: string;
+  author: string;
+  subreddit: string;
+  created_utc: number | string;
+  score: number;
+  link_id?: string;
+  num_comments?: number;
+  // Raw data may contain additional fields
+  [key: string]: unknown;
+}
+
+export interface ProcessedHistoricalItem {
+  id: string;
+  content: string;
+  author: string;
+  subreddit: string;
+  createdAt: Date;
+  upvotes: number;
+}
+
+/**
+ * File stats interface for Node.js fs compatibility
+ */
+export interface FileStats {
+  size: number;
+  isFile(): boolean;
+  isDirectory(): boolean;
+  mtime: Date;
+  atime: Date;
+  ctime: Date;
+}
+
+/**
+ * Type guard for historical items
+ */
+export function isHistoricalItem(item: unknown): item is HistoricalItem {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'id' in item &&
+    'author' in item &&
+    'subreddit' in item &&
+    'created_utc' in item &&
+    'score' in item &&
+    ('body' in item || 'title' in item)
+  );
+}
+
+/**
+ * Bulk entity operation interfaces
+ */
+export interface BulkEntityData {
+  entityId: string;
+  name: string;
+  type: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Type guard for bulk entity data
+ */
+export function isBulkEntityData(item: unknown): item is BulkEntityData {
+  return (
+    typeof item === 'object' &&
+    item !== null &&
+    'entityId' in item &&
+    'name' in item &&
+    'type' in item &&
+    typeof (item as BulkEntityData).entityId === 'string' &&
+    typeof (item as BulkEntityData).name === 'string' &&
+    typeof (item as BulkEntityData).type === 'string'
+  );
+}

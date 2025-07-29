@@ -117,7 +117,9 @@ export class LoggerService {
     };
 
     const level = success ? 'debug' : 'error';
-    const message = `Database ${operation} on ${entityType} ${success ? 'completed' : 'failed'} (${duration}ms)`;
+    const message = `Database ${operation} on ${entityType} ${
+      success ? 'completed' : 'failed'
+    } (${duration}ms)`;
 
     this.logger.log(level, message, this.sanitizeMetadata(dbMetadata));
   }

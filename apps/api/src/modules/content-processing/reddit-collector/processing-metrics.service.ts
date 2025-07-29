@@ -190,7 +190,9 @@ export class ProcessingMetricsService {
     // Analyze processing speed
     if (aggregated.averageProcessingSpeed < 1000) {
       warnings.push(
-        `Processing speed is below optimal (${Math.round(aggregated.averageProcessingSpeed)} lines/sec)`,
+        `Processing speed is below optimal (${Math.round(
+          aggregated.averageProcessingSpeed,
+        )} lines/sec)`,
       );
       recommendations.push(
         'Consider increasing batch size or optimizing processing logic',
@@ -208,7 +210,9 @@ export class ProcessingMetricsService {
     // Analyze memory efficiency
     if (aggregated.memoryEfficiency < 80) {
       warnings.push(
-        `Memory efficiency below optimal (${aggregated.memoryEfficiency.toFixed(1)}%)`,
+        `Memory efficiency below optimal (${aggregated.memoryEfficiency.toFixed(
+          1,
+        )}%)`,
       );
       recommendations.push(
         'Consider optimizing memory usage or reducing batch sizes',
