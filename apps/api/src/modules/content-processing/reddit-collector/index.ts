@@ -8,3 +8,8 @@ export * from './historical-content-pipeline.service';
 export * from './historical-content-pipeline.types';
 export * from './historical-content-pipeline.exceptions';
 export * from './reddit-data-extractor.service';
+export * from './batch-processing-coordinator.service';
+export * from './batch-processing.types';
+export * from './batch-processing.exceptions';
+export * from './resource-monitoring.service';
+export * from './processing-checkpoint.service';

@@ -166,5 +166,61 @@ export default () => ({
         keyPrefix: process.env.PUSHSHIFT_S3_KEY_PREFIX || 'pushshift-archives/',
       },
     },
+    // Batch Processing System Configuration
+    batchProcessing: {
+      minBatchSize: parseInt(process.env.PUSHSHIFT_MIN_BATCH_SIZE || '100', 10),
+      maxBatchSize: parseInt(
+        process.env.PUSHSHIFT_MAX_BATCH_SIZE || '5000',
+        10,
+      ),
+      maxMemoryUsageMB: parseInt(
+        process.env.PUSHSHIFT_MAX_MEMORY_MB || '512',
+        10,
+      ),
+      enableCheckpoints: process.env.PUSHSHIFT_ENABLE_CHECKPOINTS !== 'false',
+      enableResourceMonitoring:
+        process.env.PUSHSHIFT_ENABLE_RESOURCE_MONITORING !== 'false',
+      adaptiveBatchSizing:
+        process.env.PUSHSHIFT_ADAPTIVE_BATCH_SIZING !== 'false',
+      progressReportingInterval: parseInt(
+        process.env.PUSHSHIFT_PROGRESS_REPORTING_INTERVAL || '10000',
+        10,
+      ),
+      resourceCheckInterval: parseInt(
+        process.env.PUSHSHIFT_RESOURCE_CHECK_INTERVAL || '1000',
+        10,
+      ),
+      memoryCheckInterval: parseInt(
+        process.env.PUSHSHIFT_MEMORY_CHECK_INTERVAL || '5000',
+        10,
+      ),
+      preserveThreadStructure:
+        process.env.PUSHSHIFT_PRESERVE_THREADS !== 'false',
+      validateTimestamps: process.env.PUSHSHIFT_VALIDATE_TIMESTAMPS !== 'false',
+      qualityFilters: {
+        minScore: parseInt(process.env.PUSHSHIFT_QUALITY_MIN_SCORE || '-5', 10),
+        excludeDeleted: process.env.PUSHSHIFT_EXCLUDE_DELETED !== 'false',
+        excludeRemoved: process.env.PUSHSHIFT_EXCLUDE_REMOVED !== 'false',
+      },
+    },
+    // Checkpoint Service Configuration
+    checkpoints: {
+      enablePersistence:
+        process.env.PUSHSHIFT_CHECKPOINT_PERSISTENCE !== 'false',
+      storageLocation:
+        process.env.PUSHSHIFT_CHECKPOINT_STORAGE || './data/checkpoints',
+      maxCheckpointsPerJob: parseInt(
+        process.env.PUSHSHIFT_MAX_CHECKPOINTS_PER_JOB || '50',
+        10,
+      ),
+      cleanupInterval: parseInt(
+        process.env.PUSHSHIFT_CHECKPOINT_CLEANUP_INTERVAL || '3600000',
+        10,
+      ), // 1 hour
+      retentionPeriod: parseInt(
+        process.env.PUSHSHIFT_CHECKPOINT_RETENTION_PERIOD || '604800000',
+        10,
+      ), // 7 days
+    },
   },
 });
