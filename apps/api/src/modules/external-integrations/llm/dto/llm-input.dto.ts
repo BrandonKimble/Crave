@@ -37,10 +37,10 @@ export class LLMCommentDto {
   @IsDateString()
   created_at: string;
 
-  @IsOptional()
-  @IsString()
+  @IsString({ message: 'parent_id must be a string when provided' })
   @IsSafeString()
-  parent_id?: string | null;
+  @IsOptional()
+  parent_id: string | null;
 
   @IsUrl()
   url: string;

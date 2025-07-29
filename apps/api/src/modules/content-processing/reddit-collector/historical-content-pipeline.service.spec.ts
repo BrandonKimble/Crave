@@ -332,11 +332,13 @@ describe('HistoricalContentPipelineService', () => {
   });
 
   describe('error handling', () => {
-    it('should throw HistoricalContentPipelineException on batch processing failure', async () => {
+    it('should handle batch processing failure gracefully', async () => {
       // Mock an internal error during processing
-      jest
+      const mockSpy = jest
         .spyOn(service as any, 'extractHistoricalItem')
-        .mockRejectedValue(new Error('Internal processing error'));
+        .mockImplementation(() => {
+          throw new Error('Internal processing error');
+        });
 
       const mockConfig: HistoricalProcessingConfig = {
         batchSize: 100,

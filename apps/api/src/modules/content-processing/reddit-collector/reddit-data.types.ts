@@ -121,12 +121,18 @@ export function isRedditComment(data: unknown): data is RedditComment {
     'subreddit' in data &&
     'link_id' in data &&
     typeof (data as RedditComment).id === 'string' &&
+    (data as RedditComment).id.trim() !== '' &&
     typeof (data as RedditComment).body === 'string' &&
+    (data as RedditComment).body.trim() !== '' &&
     typeof (data as RedditComment).author === 'string' &&
+    (data as RedditComment).author.trim() !== '' &&
     (typeof (data as RedditComment).created_utc === 'number' ||
       (typeof (data as RedditComment).created_utc === 'string' &&
         !isNaN(Number((data as RedditComment).created_utc)))) &&
-    typeof (data as RedditComment).subreddit === 'string'
+    typeof (data as RedditComment).subreddit === 'string' &&
+    (data as RedditComment).subreddit.trim() !== '' &&
+    typeof (data as RedditComment).link_id === 'string' &&
+    (data as RedditComment).link_id.trim() !== ''
   );
 }
 
