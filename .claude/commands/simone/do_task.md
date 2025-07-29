@@ -104,6 +104,13 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - Leverage discovered infrastructure to minimize code duplication and maintain consistency
 - **PRD GUIDANCE**: When encountering implementation nuances, edge cases, or technical decisions, search through PRD subsections for additional guidance and specifications
 
+**REAL DATA FEEDBACK PRINCIPLE:**
+- **Test with Production-Like Conditions**: Use actual data sources, realistic file sizes, real API responses, and production-scale scenarios whenever possible
+- **Discover Reality Early**: Real-world feedback reveals assumptions, edge cases, and structural issues that synthetic data cannot expose
+- **Document Real-World Discoveries**: When real conditions reveal unexpected behaviors or constraints, document them as valuable implementation insights
+- **Iterate Based on Reality**: Allow real-world feedback to guide implementation decisions and architectural adjustments within PRD scope
+- **Build Resilient Solutions**: Design implementations that handle the messiness and variability of real production environments
+
 **Subtask Execution:**
 1. Pick next incomplete subtask
 2. Implement using existing infrastructure wherever possible

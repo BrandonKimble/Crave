@@ -78,6 +78,12 @@ Follow step by step and adhere closely to the following instructions for each st
 - **Testing**: Includes appropriate test coverage
 - **Dependencies**: Uses existing dependencies vs adding unnecessary new ones
 
+**Real data validation:**
+- **Production-like testing**: Implementation tested with realistic data sources, file sizes, and conditions
+- **Edge case discovery**: Real-world scenarios exposed and properly handled
+- **Performance validation**: Code performs adequately under realistic load and data conditions
+- **Environmental assumptions**: Implementation doesn't rely on synthetic or overly simplified test conditions
+
 ## 5 · Provide PASS/FAIL verdict with actionable feedback
 
 **Decision criteria:**
