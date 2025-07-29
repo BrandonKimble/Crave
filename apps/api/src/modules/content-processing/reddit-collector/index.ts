@@ -1,0 +1,6 @@
+export * from './stream-processor.service';
+export * from './pushshift-processor.service';
+export * from './processing-metrics.service';
+export * from './stream-processor.exceptions';
+export * from './reddit-data.types';
+export * from './reddit-collector.module';
