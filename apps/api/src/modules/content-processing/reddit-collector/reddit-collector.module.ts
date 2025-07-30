@@ -20,6 +20,8 @@ import { ChronologicalCollectionService } from './chronological-collection.servi
 import { CollectionSchedulingService } from './collection-scheduling.service';
 import { ChronologicalCollectionProcessor } from './chronological-collection.processor';
 import { ChronologicalLlmIntegrationService } from './chronological-llm-integration.service';
+import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
+import { ContentRetrievalMonitoringService } from './content-retrieval-monitoring.service';
 
 /**
  * Reddit Collector Module
@@ -74,6 +76,9 @@ import { ChronologicalLlmIntegrationService } from './chronological-llm-integrat
     CollectionSchedulingService,
     ChronologicalCollectionProcessor,
     ChronologicalLlmIntegrationService,
+    // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
+    ContentRetrievalPipelineService,
+    ContentRetrievalMonitoringService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -94,6 +99,9 @@ import { ChronologicalLlmIntegrationService } from './chronological-llm-integrat
     ChronologicalCollectionService,
     CollectionSchedulingService,
     ChronologicalLlmIntegrationService,
+    // Export content retrieval pipeline components
+    ContentRetrievalPipelineService,
+    ContentRetrievalMonitoringService,
   ],
 })
 export class RedditCollectorModule {}
