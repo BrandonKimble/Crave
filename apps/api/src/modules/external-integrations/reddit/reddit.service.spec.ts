@@ -342,6 +342,7 @@ describe('RedditService', () => {
 
       await service.getChronologicalPosts('austinfood');
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rateLimitCoordinator.requestPermission).toHaveBeenCalledWith({
         service: ExternalApiService.REDDIT,
         operation: 'chronological_collection',
@@ -379,10 +380,11 @@ describe('RedditService', () => {
 
       try {
         await service.getChronologicalPosts('austinfood');
-      } catch (error) {
+      } catch {
         // Expected to throw
       }
 
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       expect(rateLimitCoordinator.reportRateLimitHit).toHaveBeenCalledWith(
         ExternalApiService.REDDIT,
         120,
@@ -467,6 +469,7 @@ describe('RedditService', () => {
         );
 
         expect(result.data).toHaveLength(1);
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expect(result.data[0].data.id).toBe('post2');
       });
 
@@ -559,6 +562,7 @@ describe('RedditService', () => {
 
         // Mock the delay
         jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
           fn();
           return {} as any;
         });
@@ -582,6 +586,7 @@ describe('RedditService', () => {
         );
 
         jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
           fn();
           return {} as any;
         });
@@ -607,6 +612,7 @@ describe('RedditService', () => {
         });
 
         jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-call
           fn();
           return {} as any;
         });

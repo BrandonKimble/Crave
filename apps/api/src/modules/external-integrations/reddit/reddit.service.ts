@@ -1289,4 +1289,298 @@ export class RedditService implements OnModuleInit {
 
     return results;
   }
+
+  /**
+   * Content Retrieval Pipeline - PRD Section 5.1.2
+   * Fetch complete posts with comment threads from Reddit API
+   * Implements post/comment fetching with URL storage and hierarchical structure
+   */
+  async getCompletePostWithComments(
+    subreddit: string,
+    postId: string,
+    options: {
+      limit?: number;
+      sort?: 'new' | 'old' | 'top' | 'controversial';
+      depth?: number;
+    } = {},
+  ): Promise<{
+    post: any;
+    comments: any[];
+    metadata: {
+      totalComments: number;
+      maxDepth: number;
+      retrievalMethod: string;
+      rateLimitStatus: RateLimitResponse;
+    };
+    performance: {
+      responseTime: number;
+      apiCallsUsed: number;
+      rateLimitHit: boolean;
+    };
+    attribution: {
+      postUrl: string;
+      commentUrls: string[];
+    };
+  }> {
+    const { limit = 500, sort = 'top', depth = 10 } = options;
+
+    this.logger.info('Fetching complete post with comment thread', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'get_complete_post_with_comments',
+      subreddit,
+      postId,
+      limit,
+      sort,
+      depth,
+    });
+
+    const startTime = Date.now();
+    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}&depth=${depth}`;
+
+    const rateLimitStatus = this.getRateLimitStatus();
+
+    try {
+      const response = await this.makeRequest<any[]>(
+        'GET',
+        url,
+        'get_complete_post_with_comments',
+      );
+
+      if (!response || !Array.isArray(response) || response.length < 2) {
+        throw new RedditApiError('Invalid response format for post retrieval');
+      }
+
+      // Extract post and comments from Reddit API response format
+      const postListing = response[0] as { data?: { children?: any[] } };
+      const commentListing = response[1] as { data?: { children?: any[] } };
+
+      const post = postListing.data?.children?.[0]?.data || null;
+      const comments = commentListing.data?.children || [];
+
+      if (!post) {
+        throw new RedditApiError(`Post ${postId} not found or deleted`);
+      }
+
+      const responseTime = Date.now() - startTime;
+
+      // Analyze comment thread structure
+      const threadAnalysis = this.analyzeCommentThreadDepth(comments);
+
+      // Generate attribution URLs
+      const postUrl = `https://reddit.com${post.permalink || `/r/${subreddit}/comments/${postId}`}`;
+      const commentUrls = this.extractCommentUrls(comments, subreddit);
+
+      return {
+        post,
+        comments,
+        metadata: {
+          totalComments: threadAnalysis.totalComments,
+          maxDepth: threadAnalysis.maxDepth,
+          retrievalMethod: 'reddit_api_complete_thread',
+          rateLimitStatus,
+        },
+        performance: {
+          responseTime,
+          apiCallsUsed: 1,
+          rateLimitHit: false,
+        },
+        attribution: {
+          postUrl,
+          commentUrls,
+        },
+      };
+    } catch (error) {
+      if (error instanceof RedditRateLimitError) {
+        return {
+          post: null,
+          comments: [],
+          metadata: {
+            totalComments: 0,
+            maxDepth: 0,
+            retrievalMethod: 'reddit_api_complete_thread',
+            rateLimitStatus,
+          },
+          performance: {
+            responseTime: Date.now() - startTime,
+            apiCallsUsed: 1,
+            rateLimitHit: true,
+          },
+          attribution: {
+            postUrl: '',
+            commentUrls: [],
+          },
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Extract comment URLs for attribution tracking
+   */
+  private extractCommentUrls(comments: any[], subreddit: string): string[] {
+    const urls: string[] = [];
+
+    const extractUrls = (commentList: any[]) => {
+      commentList.forEach((comment: any) => {
+        if (comment?.data?.id && comment?.data?.permalink) {
+          urls.push(`https://reddit.com${comment.data.permalink}`);
+        } else if (comment?.data?.id) {
+          // Fallback URL generation if permalink is missing
+          urls.push(
+            `https://reddit.com/r/${subreddit}/comments/_/_/${comment.data.id}`,
+          );
+        }
+
+        // Recursively process replies
+        if (comment?.data?.replies?.data?.children) {
+          extractUrls(comment.data.replies.data.children);
+        }
+      });
+    };
+
+    extractUrls(comments);
+    return urls;
+  }
+
+  /**
+   * Batch post retrieval with complete comment threads
+   * Implements batching optimization for API efficiency - PRD Section 6.1
+   */
+  async fetchPostsBatch(
+    subreddit: string,
+    postIds: string[],
+    options: {
+      limit?: number;
+      sort?: 'new' | 'old' | 'top' | 'controversial';
+      depth?: number;
+      delayBetweenRequests?: number;
+    } = {},
+  ): Promise<{
+    posts: { [postId: string]: any };
+    comments: { [postId: string]: any[] };
+    metadata: {
+      totalPosts: number;
+      totalComments: number;
+      successfulRetrievals: number;
+      failedRetrievals: number;
+      rateLimitStatus: RateLimitResponse;
+    };
+    performance: {
+      totalResponseTime: number;
+      averageResponseTime: number;
+      apiCallsUsed: number;
+      rateLimitHits: number;
+    };
+    attribution: {
+      postUrls: { [postId: string]: string };
+      commentUrls: { [postId: string]: string[] };
+    };
+    errors: { [postId: string]: string };
+  }> {
+    const { delayBetweenRequests = 1000 } = options;
+
+    this.logger.info('Starting batch post retrieval with comments', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'fetch_posts_batch',
+      subreddit,
+      postCount: postIds.length,
+      options,
+    });
+
+    const startTime = Date.now();
+    const posts: { [postId: string]: any } = {};
+    const comments: { [postId: string]: any[] } = {};
+    const postUrls: { [postId: string]: string } = {};
+    const commentUrls: { [postId: string]: string[] } = {};
+    const errors: { [postId: string]: string } = {};
+
+    let totalComments = 0;
+    let successfulRetrievals = 0;
+    let failedRetrievals = 0;
+    let apiCallsUsed = 0;
+    let rateLimitHits = 0;
+    const responseTimes: number[] = [];
+
+    for (let i = 0; i < postIds.length; i++) {
+      const postId = postIds[i];
+
+      try {
+        const result = await this.getCompletePostWithComments(
+          subreddit,
+          postId,
+          options,
+        );
+
+        responseTimes.push(result.performance.responseTime);
+        apiCallsUsed += result.performance.apiCallsUsed;
+
+        if (result.performance.rateLimitHit) {
+          rateLimitHits++;
+        }
+
+        if (result.post) {
+          posts[postId] = result.post;
+          comments[postId] = result.comments;
+          postUrls[postId] = result.attribution.postUrl;
+          commentUrls[postId] = result.attribution.commentUrls;
+          totalComments += result.metadata.totalComments;
+          successfulRetrievals++;
+        } else {
+          failedRetrievals++;
+          errors[postId] = 'Post not found or empty response';
+        }
+
+        // Add delay between requests to respect rate limits (except for last request)
+        if (i < postIds.length - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenRequests),
+          );
+        }
+      } catch (error) {
+        failedRetrievals++;
+        errors[postId] =
+          error instanceof Error ? error.message : 'Unknown error';
+
+        this.logger.warn(`Failed to retrieve post ${postId}`, {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'fetch_posts_batch',
+          postId,
+          error: error instanceof Error ? error.message : String(error),
+        } as any);
+      }
+    }
+
+    const totalResponseTime = Date.now() - startTime;
+    const averageResponseTime =
+      responseTimes.length > 0
+        ? responseTimes.reduce((sum, time) => sum + time, 0) /
+          responseTimes.length
+        : 0;
+
+    const rateLimitStatus = this.getRateLimitStatus();
+
+    return {
+      posts,
+      comments,
+      metadata: {
+        totalPosts: postIds.length,
+        totalComments,
+        successfulRetrievals,
+        failedRetrievals,
+        rateLimitStatus,
+      },
+      performance: {
+        totalResponseTime,
+        averageResponseTime,
+        apiCallsUsed,
+        rateLimitHits,
+      },
+      attribution: {
+        postUrls,
+        commentUrls,
+      },
+      errors,
+    };
+  }
 }
