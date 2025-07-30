@@ -200,7 +200,12 @@ export class StreamProcessorService {
     const issues: string[] = [];
 
     // Check system zstd availability via SystemZstdDecompressor
-    // This will be implemented to use system zstd binary validation
+    // TODO: Implement proper zstd validation
+    // try {
+    //   await this.zstdDecompressor.validateZstdAvailable();
+    // } catch (error) {
+    //   issues.push(`System zstd validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    // }
 
     // Check configuration
     if (this.config.batchSize <= 0) {

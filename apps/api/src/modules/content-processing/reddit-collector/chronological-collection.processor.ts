@@ -209,9 +209,9 @@ export class ChronologicalCollectionProcessor {
    * Handle job failure events
    */
   @Process('handle-collection-failure')
-  async handleCollectionFailure(
+  handleCollectionFailure(
     job: Job<{ jobId: string; error: string; subreddits: string[] }>,
-  ): Promise<void> {
+  ): void {
     const { jobId, error, subreddits } = job.data;
 
     this.logger.error('Handling collection failure', {
@@ -233,9 +233,7 @@ export class ChronologicalCollectionProcessor {
    * Handle job completion events for monitoring
    */
   @Process('log-collection-metrics')
-  async logCollectionMetrics(
-    job: Job<ChronologicalCollectionJobResult>,
-  ): Promise<void> {
+  logCollectionMetrics(job: Job<ChronologicalCollectionJobResult>): void {
     const result = job.data;
 
     this.logger.info('Logging collection metrics', {

@@ -111,6 +111,19 @@ export class CollectionSchedulingService {
       averagePostsPerDay,
     });
 
+    // Validate input - handle NaN, zero, negative, and infinite values
+    if (!Number.isFinite(averagePostsPerDay) || averagePostsPerDay <= 0) {
+      this.logger.warn('Invalid averagePostsPerDay input, using default', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        subreddit,
+        invalidValue: averagePostsPerDay,
+        defaultValue: this.DEFAULT_POSTING_VOLUMES[subreddit] || 20,
+      });
+
+      // Use default value for this subreddit or fallback
+      averagePostsPerDay = this.DEFAULT_POSTING_VOLUMES[subreddit] || 20;
+    }
+
     // Apply PRD safety buffer equation
     const rawInterval = this.SAFETY_BUFFER_POSTS / averagePostsPerDay;
 
