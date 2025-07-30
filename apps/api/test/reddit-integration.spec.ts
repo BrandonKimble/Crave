@@ -8,6 +8,7 @@ import {
   RedditConfigurationError,
 } from '../src/modules/external-integrations/reddit/reddit.exceptions';
 import { LoggerService } from '../src/shared/logging/logger.service';
+import { RateLimitCoordinatorService } from '../src/modules/external-integrations/shared/rate-limit-coordinator.service';
 
 describe('Reddit Integration (e2e)', () => {
   let app: TestingModule;
@@ -101,7 +102,7 @@ describe('Reddit Integration (e2e)', () => {
       const testService = new RedditService(
         httpService,
         invalidConfigService as unknown as ConfigService,
-        mockRateLimitCoordinator as any,
+        mockRateLimitCoordinator as unknown as RateLimitCoordinatorService,
         {
           setContext: jest.fn().mockReturnThis(),
           info: jest.fn(),
@@ -137,7 +138,7 @@ describe('Reddit Integration (e2e)', () => {
         new RedditService(
           httpService,
           incompleteConfigService as unknown as ConfigService,
-          mockRateLimitCoordinator as any,
+          mockRateLimitCoordinator as unknown as RateLimitCoordinatorService,
           {
             setContext: jest.fn().mockReturnThis(),
             info: jest.fn(),

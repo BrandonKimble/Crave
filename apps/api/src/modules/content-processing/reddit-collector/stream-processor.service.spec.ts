@@ -7,7 +7,7 @@ import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return, @typescript-eslint/require-await, @typescript-eslint/no-unused-vars, @typescript-eslint/unbound-method */
 // Reason: Test file with complex mock patterns and test data generation
 
 describe('StreamProcessorService', () => {
@@ -82,7 +82,7 @@ describe('StreamProcessorService', () => {
 
   describe('validateSetup', () => {
     it('should validate setup successfully', async () => {
-      const result = await service.validateSetup();
+      const result = service.validateSetup();
       expect(result.valid).toBe(true);
       expect(result.issues).toHaveLength(0);
     });
@@ -107,7 +107,7 @@ describe('StreamProcessorService', () => {
         loggerService,
         mockZstdDecompressor,
       );
-      const result = await invalidService.validateSetup();
+      const result = invalidService.validateSetup();
 
       expect(result.valid).toBe(false);
       expect(result.issues).toContain('Invalid batch size configuration');
@@ -131,8 +131,11 @@ describe('StreamProcessorService', () => {
       };
 
       // Mock SystemZstdDecompressor to simulate processing 3 lines
+
       const mockStreamDecompressFile =
-        zstdDecompressor.streamDecompressFile as jest.Mock;
+        zstdDecompressor.streamDecompressFile as jest.MockedFunction<
+          typeof zstdDecompressor.streamDecompressFile
+        >;
       mockStreamDecompressFile.mockImplementation(
         async (
           filePath: string,
@@ -188,8 +191,11 @@ describe('StreamProcessorService', () => {
       const validator = (data: unknown): data is any => false;
 
       // Mock SystemZstdDecompressor - validator rejects all, so validLines will be 0
+
       const mockStreamDecompressFile =
-        zstdDecompressor.streamDecompressFile as jest.Mock;
+        zstdDecompressor.streamDecompressFile as jest.MockedFunction<
+          typeof zstdDecompressor.streamDecompressFile
+        >;
       mockStreamDecompressFile.mockImplementation(
         async (
           filePath: string,
@@ -228,8 +234,11 @@ describe('StreamProcessorService', () => {
       };
 
       // Mock SystemZstdDecompressor to simulate processing with JSON parse errors
+
       const mockStreamDecompressFile =
-        zstdDecompressor.streamDecompressFile as jest.Mock;
+        zstdDecompressor.streamDecompressFile as jest.MockedFunction<
+          typeof zstdDecompressor.streamDecompressFile
+        >;
       mockStreamDecompressFile.mockImplementation(
         async (
           filePath: string,
@@ -267,8 +276,11 @@ describe('StreamProcessorService', () => {
       const processor = async (_item: unknown, _lineNumber: number) => {};
 
       // Mock SystemZstdDecompressor to throw an error for missing file
+
       const mockStreamDecompressFile =
-        zstdDecompressor.streamDecompressFile as jest.Mock;
+        zstdDecompressor.streamDecompressFile as jest.MockedFunction<
+          typeof zstdDecompressor.streamDecompressFile
+        >;
       mockStreamDecompressFile.mockRejectedValue(new Error('File not found'));
 
       const result = await service.processZstdNdjsonFile(
@@ -341,8 +353,11 @@ describe('StreamProcessorService', () => {
       };
 
       // Mock SystemZstdDecompressor for memory usage tracking test
+
       const mockStreamDecompressFile =
-        zstdDecompressor.streamDecompressFile as jest.Mock;
+        zstdDecompressor.streamDecompressFile as jest.MockedFunction<
+          typeof zstdDecompressor.streamDecompressFile
+        >;
       mockStreamDecompressFile.mockImplementation(
         async (
           filePath: string,

@@ -70,7 +70,7 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
 
     try {
       // Step 1: Validate batch compatibility
-      await this.validateBatchCompatibility(batch);
+      this.validateBatchCompatibility(batch);
 
       // Step 2: Convert to LLM input format using existing pipeline
       const llmInput = this.historicalPipeline.convertToLLMFormat(
@@ -212,9 +212,7 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
   /**
    * Validate historical batch compatibility with LLM pipeline
    */
-  private async validateBatchCompatibility(
-    batch: HistoricalContentBatch,
-  ): Promise<void> {
+  private validateBatchCompatibility(batch: HistoricalContentBatch): void {
     const issues: string[] = [];
 
     // Check batch size limits

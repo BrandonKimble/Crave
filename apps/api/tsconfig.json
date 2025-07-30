@@ -20,6 +20,6 @@
     "declarationDir": "./dist/types",
     "types": ["jest", "node"]
   },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["dist/**/*", "node_modules/**/*", "scripts/**/*"]
+  "include": ["src/**/*", "test/**/*", "scripts/**/*"],
+  "exclude": ["dist/**/*", "node_modules/**/*"]
 }

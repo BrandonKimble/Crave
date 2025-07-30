@@ -37,9 +37,7 @@ export class HistoricalLlmIntegrationValidator {
    * @param batch Historical content batch
    * @returns Validation result with detailed issues if any
    */
-  async validateHistoricalBatch(
-    batch: HistoricalContentBatch,
-  ): Promise<ValidationResult> {
+  validateHistoricalBatch(batch: HistoricalContentBatch): ValidationResult {
     const startTime = Date.now();
     const issues: ValidationIssue[] = [];
     let isValid = true;

@@ -289,8 +289,8 @@ describe('Historical LLM Integration', () => {
       mockLlmService.validateOutput.mockResolvedValue([]);
     });
 
-    it('should validate historical batch successfully', async () => {
-      const result = await validator.validateHistoricalBatch(mockBatch);
+    it('should validate historical batch successfully', () => {
+      const result = validator.validateHistoricalBatch(mockBatch);
 
       expect(result.isValid).toBe(true);
       expect(result.issues).toHaveLength(0);
@@ -299,7 +299,7 @@ describe('Historical LLM Integration', () => {
       expect(result.summary.validComments).toBe(1);
     });
 
-    it('should detect missing required fields', async () => {
+    it('should detect missing required fields', () => {
       const invalidBatch: HistoricalContentBatch = {
         ...mockBatch,
         batchId: '', // Missing batch ID
@@ -312,7 +312,7 @@ describe('Historical LLM Integration', () => {
         ],
       };
 
-      const result = await validator.validateHistoricalBatch(invalidBatch);
+      const result = validator.validateHistoricalBatch(invalidBatch);
 
       expect(result.isValid).toBe(false);
       expect(
@@ -354,7 +354,7 @@ describe('Historical LLM Integration', () => {
       ).toBe(true);
     });
 
-    it('should detect high error rates', async () => {
+    it('should detect high error rates', () => {
       const highErrorBatch: HistoricalContentBatch = {
         ...mockBatch,
         totalProcessed: 100,
@@ -368,7 +368,7 @@ describe('Historical LLM Integration', () => {
         })),
       };
 
-      const result = await validator.validateHistoricalBatch(highErrorBatch);
+      const result = validator.validateHistoricalBatch(highErrorBatch);
 
       expect(
         result.issues.some((issue) => issue.type === 'high_error_rate'),

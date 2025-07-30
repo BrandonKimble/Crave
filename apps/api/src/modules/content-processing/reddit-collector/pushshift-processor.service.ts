@@ -369,7 +369,7 @@ export class PushshiftProcessorService {
     }
 
     // Check stream processor setup
-    const streamSetup = await this.streamProcessor.validateSetup();
+    const streamSetup = this.streamProcessor.validateSetup();
     if (!streamSetup.valid) {
       issues.push(...streamSetup.issues);
     }

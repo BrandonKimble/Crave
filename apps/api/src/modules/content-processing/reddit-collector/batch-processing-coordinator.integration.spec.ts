@@ -5,9 +5,11 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Stats } from 'fs';
 import { BatchProcessingCoordinatorService } from './batch-processing-coordinator.service';
 import { StreamProcessorService } from './stream-processor.service';
 import { HistoricalContentPipelineService } from './historical-content-pipeline.service';
+import { ProcessingCheckpoint, BatchProcessingConfig } from './batch-processing.types';
 import { ResourceMonitoringService } from './resource-monitoring.service';
 import { ProcessingCheckpointService } from './processing-checkpoint.service';
 import { LoggerService } from '../../../shared';
@@ -126,9 +128,9 @@ describe('BatchProcessingCoordinatorService Integration', () => {
     it('should successfully process a small archive file', async () => {
       // Mock file stats
       const mockFileStats = { size: 1024 * 1024 }; // 1MB file
-      /* eslint-disable @typescript-eslint/no-unsafe-argument */
+       
       // Reason: Mock file stats object for testing purposes
-      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as any);
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as Stats);
       /* eslint-enable @typescript-eslint/no-unsafe-argument */
 
       // Mock checkpoint service responses
@@ -141,7 +143,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
         completionPercentage: 0,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       });
       mockCheckpointService.getAllCheckpoints.mockResolvedValue([]);
 
@@ -206,7 +208,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
     it('should handle memory warnings by adjusting batch size', async () => {
       // Mock file stats
       const mockFileStats = { size: 10 * 1024 * 1024 }; // 10MB file
-      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as any);
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as Stats);
 
       // Mock checkpoint service
       mockCheckpointService.getLatestCheckpoint.mockResolvedValue(null);
@@ -218,7 +220,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
         completionPercentage: 0,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       });
       mockCheckpointService.getAllCheckpoints.mockResolvedValue([]);
 
@@ -287,7 +289,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
     it('should resume from checkpoint when available', async () => {
       // Mock file stats
       const mockFileStats = { size: 2 * 1024 * 1024 }; // 2MB file
-      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as any);
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as Stats);
 
       // Mock existing checkpoint
       const existingCheckpoint = {
@@ -298,7 +300,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
         completionPercentage: 50,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       };
 
       mockCheckpointService.getLatestCheckpoint.mockResolvedValue(
@@ -347,6 +349,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
       expect(mockLogger.info).toHaveBeenCalledWith(
         expect.stringContaining('Resuming from checkpoint'),
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           checkpoint: expect.objectContaining({
             processedLines: 100,
             lastPosition: 100,
@@ -359,10 +362,10 @@ describe('BatchProcessingCoordinatorService Integration', () => {
     it('should handle processing errors gracefully', async () => {
       // Mock file stats
       const mockFileStats = { size: 1024 * 1024 }; // 1MB file
-      /* eslint-disable @typescript-eslint/no-unsafe-argument */
+       
       // Reason: Mock file stats object for testing purposes
-      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as any);
-      /* eslint-enable @typescript-eslint/no-unsafe-argument */
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as Stats);
+       
 
       // Mock checkpoint service
       mockCheckpointService.getLatestCheckpoint.mockResolvedValue(null);
@@ -374,7 +377,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
         completionPercentage: 0,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       });
 
       // Mock stream processor to throw error
@@ -392,6 +395,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Batch processing job failed',
         expect.objectContaining({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           error: expect.objectContaining({
             message: 'Test processing error',
           }),
@@ -404,7 +408,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
     it('should return progress for active job', async () => {
       // First start a job to create active job state
       const mockFileStats = { size: 1024 * 1024 };
-      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as any);
+      jest.spyOn(fs, 'stat').mockResolvedValue(mockFileStats as Stats);
 
       mockCheckpointService.getLatestCheckpoint.mockResolvedValue(null);
       mockCheckpointService.createInitialCheckpoint.mockResolvedValue({
@@ -415,7 +419,7 @@ describe('BatchProcessingCoordinatorService Integration', () => {
         completionPercentage: 0,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       });
       mockCheckpointService.getAllCheckpoints.mockResolvedValue([]);
 
@@ -461,13 +465,14 @@ describe('BatchProcessingCoordinatorService Integration', () => {
       // Mock checkpoint with progress
       const progressCheckpoint = {
         checkpointId: 'progress-checkpoint',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         jobId: expect.any(String),
         processedLines: 50,
         lastPosition: 50,
         completionPercentage: 25,
         timestamp: new Date(),
         completed: false,
-        config: {} as any,
+        config: {} as BatchProcessingConfig,
       };
 
       mockCheckpointService.getLatestCheckpoint.mockResolvedValue(

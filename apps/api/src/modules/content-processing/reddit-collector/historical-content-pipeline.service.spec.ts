@@ -334,7 +334,7 @@ describe('HistoricalContentPipelineService', () => {
   describe('error handling', () => {
     it('should handle batch processing failure gracefully', async () => {
       // Mock an internal error during processing
-      const mockSpy = jest
+      jest
         .spyOn(service as any, 'extractHistoricalItem')
         .mockImplementation(() => {
           throw new Error('Internal processing error');
