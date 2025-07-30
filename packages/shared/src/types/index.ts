@@ -1,6 +1,31 @@
 // PRD Section 4 compliant unified entity model types
 
 /**
+ * Restaurant Metadata structure
+ * PRD 4.1.1: Complex/infrequent Google Places data in JSONB format
+ */
+export interface RestaurantMetadata {
+  phone?: string;
+  hours?: Record<string, string>;
+  last_places_update?: string;
+  additional_place_details?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+/**
+ * Top Mention structure
+ * PRD 4.1.1: Top mentions metadata structure for connections
+ */
+export interface TopMention {
+  mention_id: string;
+  score: number;
+  upvotes: number;
+  content_excerpt: string;
+  source_url: string;
+  created_at: string;
+}
+
+/**
  * Entity Types for unified entity model
  * PRD 4.2: All food-related entities stored in single table differentiated by type
  */
@@ -26,7 +51,7 @@ export interface Entity {
   longitude?: number;
   address?: string;
   googlePlaceId?: string;
-  restaurantMetadata: Record<string, any>;
+  restaurantMetadata: RestaurantMetadata;
   lastUpdated: Date;
   createdAt: Date;
 }
@@ -48,7 +73,7 @@ export interface Connection {
   recentMentionCount: number;
   lastMentionedAt?: Date;
   activityLevel: 'low' | 'normal' | 'high' | 'trending';
-  topMentions: any[];
+  topMentions: TopMention[];
   dishQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;

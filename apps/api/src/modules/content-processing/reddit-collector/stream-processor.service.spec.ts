@@ -134,11 +134,24 @@ describe('StreamProcessorService', () => {
       const mockStreamDecompressFile =
         zstdDecompressor.streamDecompressFile as jest.Mock;
       mockStreamDecompressFile.mockImplementation(
-        async (filePath: string, processorFn: (data: any, lineNumber: number) => Promise<void>, options?: any) => {
+        async (
+          filePath: string,
+          processorFn: (data: any, lineNumber: number) => Promise<void>,
+          options?: any,
+        ) => {
           // Simulate processing 3 lines of test data
-          await processorFn({ id: '1', content: 'test line 1', valid: true }, 1);
-          await processorFn({ id: '2', content: 'test line 2', valid: true }, 2);
-          await processorFn({ id: '3', content: 'test line 3', valid: true }, 3);
+          await processorFn(
+            { id: '1', content: 'test line 1', valid: true },
+            1,
+          );
+          await processorFn(
+            { id: '2', content: 'test line 2', valid: true },
+            2,
+          );
+          await processorFn(
+            { id: '3', content: 'test line 3', valid: true },
+            3,
+          );
 
           return {
             totalLines: 3,
@@ -178,7 +191,11 @@ describe('StreamProcessorService', () => {
       const mockStreamDecompressFile =
         zstdDecompressor.streamDecompressFile as jest.Mock;
       mockStreamDecompressFile.mockImplementation(
-        async (filePath: string, processorFn: (data: any, lineNumber: number) => Promise<void>, options?: any) => {
+        async (
+          filePath: string,
+          processorFn: (data: any, lineNumber: number) => Promise<void>,
+          options?: any,
+        ) => {
           // SystemZstdDecompressor will handle validation and not call processor for invalid items
           return {
             totalLines: 3,
@@ -214,7 +231,11 @@ describe('StreamProcessorService', () => {
       const mockStreamDecompressFile =
         zstdDecompressor.streamDecompressFile as jest.Mock;
       mockStreamDecompressFile.mockImplementation(
-        async (filePath: string, processorFn: (data: any, lineNumber: number) => Promise<void>, options?: any) => {
+        async (
+          filePath: string,
+          processorFn: (data: any, lineNumber: number) => Promise<void>,
+          options?: any,
+        ) => {
           // Only process the valid JSON line
           await processorFn({ valid: 'json' }, 2);
 
@@ -323,7 +344,11 @@ describe('StreamProcessorService', () => {
       const mockStreamDecompressFile =
         zstdDecompressor.streamDecompressFile as jest.Mock;
       mockStreamDecompressFile.mockImplementation(
-        async (filePath: string, processorFn: (data: any, lineNumber: number) => Promise<void>, options?: any) => {
+        async (
+          filePath: string,
+          processorFn: (data: any, lineNumber: number) => Promise<void>,
+          options?: any,
+        ) => {
           // Simulate processing a few lines for memory tracking
           await processorFn({ id: '1', content: 'test line 1' }, 1);
           await processorFn({ id: '2', content: 'test line 2' }, 2);

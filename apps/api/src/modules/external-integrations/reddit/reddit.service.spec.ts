@@ -104,7 +104,9 @@ describe('RedditService', () => {
 
     service = module.get<RedditService>(RedditService);
     httpService = module.get<HttpService>(HttpService);
-    rateLimitCoordinator = module.get<RateLimitCoordinatorService>(RateLimitCoordinatorService);
+    rateLimitCoordinator = module.get<RateLimitCoordinatorService>(
+      RateLimitCoordinatorService,
+    );
   });
 
   afterEach(() => {
@@ -332,9 +334,11 @@ describe('RedditService', () => {
     });
 
     it('should request permission from rate limiter before making API calls', async () => {
-      const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(of({
-        data: { data: { children: [] } },
-      } as AxiosResponse));
+      const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(
+        of({
+          data: { data: { children: [] } },
+        } as AxiosResponse),
+      );
 
       await service.getChronologicalPosts('austinfood');
 
@@ -369,7 +373,9 @@ describe('RedditService', () => {
         message: 'Too Many Requests',
       };
 
-      jest.spyOn(httpService, 'get').mockReturnValue(throwError(() => rateLimitError));
+      jest
+        .spyOn(httpService, 'get')
+        .mockReturnValue(throwError(() => rateLimitError));
 
       try {
         await service.getChronologicalPosts('austinfood');
@@ -391,9 +397,11 @@ describe('RedditService', () => {
     });
 
     it('should track cost metrics for API requests', async () => {
-      jest.spyOn(httpService, 'get').mockReturnValue(of({
-        data: { data: { children: [] } },
-      } as AxiosResponse));
+      jest.spyOn(httpService, 'get').mockReturnValue(
+        of({
+          data: { data: { children: [] } },
+        } as AxiosResponse),
+      );
 
       await service.getChronologicalPosts('austinfood');
 
@@ -405,7 +413,7 @@ describe('RedditService', () => {
 
     it('should return rate limit status', () => {
       const status = service.getRateLimitStatus();
-      
+
       expect(status).toEqual({
         allowed: true,
         currentUsage: 10,
@@ -424,12 +432,14 @@ describe('RedditService', () => {
       it('should fetch chronological posts successfully', async () => {
         const mockPosts = [
           { data: { id: 'post1', created_utc: 1640995200 } },
-          { data: { id: 'post2', created_utc: 1640995300 } }
+          { data: { id: 'post2', created_utc: 1640995300 } },
         ];
 
-        jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: mockPosts } },
-        } as AxiosResponse));
+        jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: mockPosts } },
+          } as AxiosResponse),
+        );
 
         const result = await service.getChronologicalPosts('austinfood');
 
@@ -442,14 +452,19 @@ describe('RedditService', () => {
       it('should filter posts by timestamp when provided', async () => {
         const mockPosts = [
           { data: { id: 'post1', created_utc: 1640995200 } },
-          { data: { id: 'post2', created_utc: 1640995300 } }
+          { data: { id: 'post2', created_utc: 1640995300 } },
         ];
 
-        jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: mockPosts } },
-        } as AxiosResponse));
+        jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: mockPosts } },
+          } as AxiosResponse),
+        );
 
-        const result = await service.getChronologicalPosts('austinfood', 1640995250);
+        const result = await service.getChronologicalPosts(
+          'austinfood',
+          1640995250,
+        );
 
         expect(result.data).toHaveLength(1);
         expect(result.data[0].data.id).toBe('post2');
@@ -475,12 +490,14 @@ describe('RedditService', () => {
       it('should search posts by keyword successfully', async () => {
         const mockSearchResults = [
           { data: { id: 'search1', title: 'Best tacos in Austin' } },
-          { data: { id: 'search2', title: 'Austin taco recommendations' } }
+          { data: { id: 'search2', title: 'Austin taco recommendations' } },
         ];
 
-        jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: mockSearchResults } },
-        } as AxiosResponse));
+        jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: mockSearchResults } },
+          } as AxiosResponse),
+        );
 
         const result = await service.searchByKeyword('austinfood', 'tacos');
 
@@ -490,49 +507,55 @@ describe('RedditService', () => {
       });
 
       it('should encode keywords properly', async () => {
-        const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: [] } },
-        } as AxiosResponse));
+        const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: [] } },
+          } as AxiosResponse),
+        );
 
         await service.searchByKeyword('austinfood', 'tacos & burritos');
 
         expect(getSpy).toHaveBeenCalledWith(
           expect.stringContaining('tacos%20%26%20burritos'),
-          expect.any(Object)
+          expect.any(Object),
         );
       });
 
       it('should respect search options', async () => {
-        const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: [] } },
-        } as AxiosResponse));
+        const getSpy = jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: [] } },
+          } as AxiosResponse),
+        );
 
         await service.searchByKeyword('austinfood', 'pizza', {
           sort: 'top',
           limit: 50,
-          timeframe: 'week'
+          timeframe: 'week',
         });
 
         expect(getSpy).toHaveBeenCalledWith(
           expect.stringContaining('sort=top'),
-          expect.any(Object)
+          expect.any(Object),
         );
         expect(getSpy).toHaveBeenCalledWith(
           expect.stringContaining('limit=50'),
-          expect.any(Object)
+          expect.any(Object),
         );
         expect(getSpy).toHaveBeenCalledWith(
           expect.stringContaining('t=week'),
-          expect.any(Object)
+          expect.any(Object),
         );
       });
     });
 
     describe('batchCollectFromSubreddits', () => {
       it('should collect from multiple subreddits chronologically', async () => {
-        jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: [{ data: { id: 'test' } }] } },
-        } as AxiosResponse));
+        jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: [{ data: { id: 'test' } }] } },
+          } as AxiosResponse),
+        );
 
         // Mock the delay
         jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
@@ -542,7 +565,7 @@ describe('RedditService', () => {
 
         const results = await service.batchCollectFromSubreddits(
           ['austinfood', 'FoodNYC'],
-          'chronological'
+          'chronological',
         );
 
         expect(results).toHaveProperty('austinfood');
@@ -552,9 +575,11 @@ describe('RedditService', () => {
       });
 
       it('should collect from multiple subreddits by keyword', async () => {
-        jest.spyOn(httpService, 'get').mockReturnValue(of({
-          data: { data: { children: [{ data: { id: 'search' } }] } },
-        } as AxiosResponse));
+        jest.spyOn(httpService, 'get').mockReturnValue(
+          of({
+            data: { data: { children: [{ data: { id: 'search' } }] } },
+          } as AxiosResponse),
+        );
 
         jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
           fn();
@@ -564,7 +589,7 @@ describe('RedditService', () => {
         const results = await service.batchCollectFromSubreddits(
           ['austinfood', 'FoodNYC'],
           'keyword',
-          { keyword: 'pizza' }
+          { keyword: 'pizza' },
         );
 
         expect(results).toHaveProperty('austinfood');
@@ -588,7 +613,7 @@ describe('RedditService', () => {
 
         const results = await service.batchCollectFromSubreddits(
           ['austinfood', 'FoodNYC'],
-          'chronological'
+          'chronological',
         );
 
         expect(results.austinfood.data).toHaveLength(0);

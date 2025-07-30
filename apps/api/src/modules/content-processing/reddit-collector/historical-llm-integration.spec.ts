@@ -29,6 +29,7 @@ import {
  * - Validation services
  * - Error handling
  */
+/* eslint-disable @typescript-eslint/unbound-method */
 describe('Historical LLM Integration', () => {
   let adapter: HistoricalLlmIntegrationAdapter;
   let validator: HistoricalLlmIntegrationValidator;
@@ -138,11 +139,11 @@ describe('Historical LLM Integration', () => {
       processContent: jest.fn(),
       validateInput: jest.fn(),
       validateOutput: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<LLMService>;
 
     mockHistoricalPipeline = {
       convertToLLMFormat: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<HistoricalContentPipelineService>;
 
     mockLogger = {
       setContext: jest.fn().mockReturnThis(),
@@ -150,7 +151,7 @@ describe('Historical LLM Integration', () => {
       debug: jest.fn(),
       error: jest.fn(),
       warn: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<LoggerService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -172,7 +173,7 @@ describe('Historical LLM Integration', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string, defaultValue?: any) => {
+            get: jest.fn((key: string, defaultValue?: unknown) => {
               // Return test configuration
               const config = {
                 'historicalLlmIntegration.enableValidation': true,
@@ -180,7 +181,7 @@ describe('Historical LLM Integration', () => {
                 'historicalLlmIntegration.preserveThreads': true,
                 'historicalLlmIntegration.testWithLLM': false,
               };
-              return config[key] ?? defaultValue;
+              return config[key as keyof typeof config] ?? defaultValue;
             }),
           },
         },
@@ -359,12 +360,12 @@ describe('Historical LLM Integration', () => {
         totalProcessed: 100,
         validItems: 40,
         invalidItems: 60,
-        errors: new Array(60).fill({
+        errors: Array.from({ length: 60 }, () => ({
           lineNumber: 1,
           itemType: 'comment' as const,
           errorCode: 'VALIDATION_FAILED',
           message: 'Test error',
-        }),
+        })),
       };
 
       const result = await validator.validateHistoricalBatch(highErrorBatch);

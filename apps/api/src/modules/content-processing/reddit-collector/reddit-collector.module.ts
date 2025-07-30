@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { StreamProcessorService } from './stream-processor.service';
@@ -14,27 +15,44 @@ import { ProcessingCheckpointService } from './processing-checkpoint.service';
 import { HistoricalLlmIntegrationAdapter } from './historical-llm-integration.adapter';
 import { HistoricalLlmIntegrationConfigService } from './historical-llm-integration.config';
 import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.validator';
+import { DualCollectionStrategyService } from './dual-collection-strategy.service';
+import { ChronologicalCollectionService } from './chronological-collection.service';
+import { CollectionSchedulingService } from './collection-scheduling.service';
+import { ChronologicalCollectionProcessor } from './chronological-collection.processor';
+import { ChronologicalLlmIntegrationService } from './chronological-llm-integration.service';
 
 /**
  * Reddit Collector Module
  *
- * Implements PRD Section 5.1.1: Initial Historical Load (Primary Foundation)
- * Provides stream processing capabilities for zstd-compressed ndjson archive files
- * with memory-efficient handling of large Pushshift datasets.
+ * Implements PRD Section 5.1: Data Collection Strategy & Architecture
+ * Provides comprehensive Reddit data collection capabilities including:
  *
- * Enhanced with batch processing coordination system and LLM integration:
- * - BatchProcessingCoordinatorService: Orchestrates processing pipeline
- * - ResourceMonitoringService: Monitors memory usage and system performance
- * - ProcessingCheckpointService: Enables resumption from interrupted processing
- * - HistoricalLlmIntegrationAdapter: Bridges historical data with M02 LLM pipeline
- * - HistoricalLlmIntegrationValidator: Validates data structure compatibility
- * - HistoricalLlmIntegrationConfigService: Centralizes integration configuration
+ * Historical Data Foundation (Section 5.1.1):
+ * - Stream processing for zstd-compressed ndjson archive files
+ * - Memory-efficient handling of large Pushshift datasets
+ * - Batch processing coordination and resource monitoring
+ *
+ * Real-Time Collection (Section 5.1.2):
+ * - Dual collection strategy with chronological cycles
+ * - Dynamic scheduling with safety buffer equation
+ * - Integration with existing M02 LLM processing pipeline
+ * - Error handling and retry logic for reliable collection
+ *
+ * Key Services:
+ * - DualCollectionStrategyService: Orchestrates both collection strategies
+ * - ChronologicalCollectionService: Handles /r/subreddit/new collection
+ * - CollectionSchedulingService: Implements safety buffer calculations
+ * - ChronologicalCollectionProcessor: Bull queue processor for scheduled jobs
+ * - ChronologicalLlmIntegrationService: Bridges with M02 LLM pipeline
  */
 @Module({
   imports: [
     ConfigModule,
     SharedModule, // Provides LoggerService
     ExternalIntegrationsModule, // Provides LLMService for integration
+    BullModule.registerQueue({
+      name: 'chronological-collection',
+    }),
   ],
   providers: [
     SystemZstdDecompressor,
@@ -50,6 +68,12 @@ import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.
     HistoricalLlmIntegrationAdapter,
     HistoricalLlmIntegrationConfigService,
     HistoricalLlmIntegrationValidator,
+    // Dual Collection Strategy components (PRD Section 5.1.2)
+    DualCollectionStrategyService,
+    ChronologicalCollectionService,
+    CollectionSchedulingService,
+    ChronologicalCollectionProcessor,
+    ChronologicalLlmIntegrationService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -65,6 +89,11 @@ import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.
     HistoricalLlmIntegrationAdapter,
     HistoricalLlmIntegrationConfigService,
     HistoricalLlmIntegrationValidator,
+    // Export dual collection strategy components
+    DualCollectionStrategyService,
+    ChronologicalCollectionService,
+    CollectionSchedulingService,
+    ChronologicalLlmIntegrationService,
   ],
 })
 export class RedditCollectorModule {}

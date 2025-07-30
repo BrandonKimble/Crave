@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-misused-promises */
+/* eslint-disable @typescript-eslint/no-misused-promises */
 // Reason: Service integration with exception factories and Promise handling patterns
 
 import { Injectable } from '@nestjs/common';
@@ -152,7 +152,7 @@ export class ProcessingCheckpointService {
   async markAsCompleted(
     jobId: string,
     completionInfo: {
-      finalMetrics: any;
+      finalMetrics: Record<string, unknown>;
       completedAt: Date;
     },
   ): Promise<ProcessingCheckpoint> {

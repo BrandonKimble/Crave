@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
 import { ExternalIntegrationsModule } from './modules/external-integrations/external-integrations.module';
 import { SecurityModule } from './modules/infrastructure/security/security.module';
+import { RedditCollectorModule } from './modules/content-processing/reddit-collector/reddit-collector.module';
 import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
 
@@ -30,6 +31,7 @@ import { SharedModule } from './shared/shared.module';
     PrismaModule,
     RepositoryModule,
     ExternalIntegrationsModule,
+    RedditCollectorModule,
   ],
   controllers: [AppController],
   providers: [],

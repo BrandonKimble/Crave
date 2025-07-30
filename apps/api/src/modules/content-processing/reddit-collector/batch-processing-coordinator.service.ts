@@ -563,7 +563,7 @@ export class BatchProcessingCoordinatorService {
     // Create final checkpoint
     if (result.success && job?.config.enableCheckpoints) {
       await this.checkpointService.markAsCompleted(jobId, {
-        finalMetrics: result.metrics,
+        finalMetrics: result.metrics as unknown as Record<string, unknown>,
         completedAt: new Date(),
       });
     }

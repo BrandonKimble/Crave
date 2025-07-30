@@ -128,7 +128,7 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
   async testIntegrationConnectivity(): Promise<{
     status: string;
     message: string;
-    details?: any;
+    details?: Record<string, unknown>;
   }> {
     try {
       this.logger.info('Testing historical LLM integration connectivity');
@@ -191,7 +191,9 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
       return {
         status: 'failed',
         message: 'Historical LLM integration test failed',
-        details: error instanceof Error ? error.message : String(error),
+        details: {
+          error: error instanceof Error ? error.message : String(error),
+        },
       };
     }
   }
