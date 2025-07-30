@@ -1,11 +1,12 @@
 import { create } from 'zustand';
+import { Entity } from '@crave-search/shared';
 
 interface SearchState {
   query: string;
-  results: any[]; // Type this properly based on your API response
+  results: Entity[];
   isLoading: boolean;
   setQuery: (query: string) => void;
-  setResults: (results: any[]) => void;
+  setResults: (results: Entity[]) => void;
   setIsLoading: (isLoading: boolean) => void;
 }
 

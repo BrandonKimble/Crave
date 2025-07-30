@@ -35,32 +35,26 @@ Each milestone folder MUST contain:
 - **Purpose**: Contains milestone metadata and overview
 - **Location**: Root of milestone folder
 
-### 2. Product Requirements Documents (PRD)
+### 2. End-to-End Testing Status (REQUIRED for Active Milestones)
 
-- **Pattern**: `PRD_*.md`
-- **Examples**: `PRD_Backend_Setup.md`, `PRD_User_Authentication.md`
-- **Purpose**: Define product requirements and user stories
-
-### 3. Amendments (as needed)
-
-- **Pattern**: `PRD_AMEND_##_*.md`
-- **Examples**: `PRD_AMEND_01_Additional_Endpoints.md`
-- **Purpose**: Document changes to original requirements
+- **Name**: `M##_E2E_Testing_Status.md`
+- **Purpose**: Track real data integration testing and milestone-level production readiness
+- **Template**: Use `.simone/99_TEMPLATES/milestone_e2e_testing_template.md`
+- **Focus**: Seamless integration testing with REAL DATA across all implemented services
 
 ## Example Structure
 
 ```
 02_REQUIREMENTS/
-├── M01_Backend_Setup/
+├── M01_Database_Foundation_Basic_Setup/
 │   ├── M01_milestone_meta.md
-│   ├── PRD_Backend_Setup.md
-│   └── PRD_AMEND_01_Cache_Layer.md
-├── M02_Frontend_UI/
+│   └── M01_E2E_Testing_Status.md (if active/testing)
+├── M02_Entity_Processing_Core_External_Integrations/
 │   ├── M02_milestone_meta.md
-│   ├── PRD_User_Interface.md
-└── M03_Authentication_System/
+│   └── M02_E2E_Testing_Status.md (if active/testing)
+└── M03_Hybrid_Data_Collection_Implementation/
     ├── M03_milestone_meta.md
-    ├── PRD_Authentication.md
+    └── M03_E2E_Testing_Status.md (active milestone)
 ```
 
 ## Important Notes for Claude Code
@@ -68,13 +62,14 @@ Each milestone folder MUST contain:
 1. **Always use the M## prefix** when creating milestone folders
 2. **Use underscores** for spaces in milestone names
 3. **Create the milestone meta file first** using the template from `99_TEMPLATES/milestone_meta_template.md`
-4. **Update the project manifest** (`00_PROJECT_MANIFEST.md`) when creating new milestones
-5. **Maintain sequential numbering** - don't skip milestone numbers
+4. **Create E2E testing status file** for active milestones using `99_TEMPLATES/milestone_e2e_testing_template.md`
+5. **Update the project manifest** (`00_PROJECT_MANIFEST.md`) when creating new milestones
+6. **Maintain sequential numbering** - don't skip milestone numbers
 
 ## Common Mistakes to Avoid
 
 - Creating milestones without the M## prefix
 - Using hyphens instead of underscores
-- Forgetting the milestone meta file
+- Forgetting the milestone meta file or E2E testing status file
 - Not updating the project manifest
 - Creating milestones in the wrong location (must be in 02_REQUIREMENTS)

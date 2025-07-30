@@ -42,9 +42,10 @@ Implement the dual collection strategy as specified in PRD 5.1.2, focusing on th
 - Section 2: Technology Stack (all subsections) - Background job processing and scheduling
 - Section 3: Hybrid Monorepo & Modular Monolith Architecture (all subsections) - Content processing domain
 - Section 4: Data Model & Database Architecture (all subsections) - Entity and connection structures
+- Section 5: Data Collection Strategy & Architecture (all subsections) - Collection strategy context
 - Section 6: Reddit Data Collection Process (all subsections) - Processing pipeline integration
-- Section 9: PRE-MVP Implementation Roadmap (all subsections) - Milestone context and boundaries
-- Section 10: POST-MVP Roadmap (all subsections) - Future roadmap and scaling considerations
+- Section 9: PRE-MVP IMPLEMENTATION ROADMAP (all subsections) - Milestone context and boundaries
+- Section 10: POST-MVP ROADMAP (all subsections) - Future roadmap and scaling considerations
 
 **SCOPE BOUNDARIES FROM PRD:**
 

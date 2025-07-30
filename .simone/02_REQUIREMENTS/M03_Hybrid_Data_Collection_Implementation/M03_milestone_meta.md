@@ -39,6 +39,10 @@ last_updated: 2025-07-28 14:32
 - `PRD.md` sections 9 and 10 - Roadmap context and milestone boundaries
 - `CLAUDE.md` - Project architecture and development guide
 
+**End-to-End Testing & Integration:**
+- `M03_E2E_Testing_Status.md` - Real data integration testing status and milestone-level production readiness assessment
+- Template: `.simone/99_TEMPLATES/milestone_e2e_testing_template.md` - Use this template to create and maintain comprehensive real data testing documentation
+
 ### Definition of Done (DoD)
 
 **COPIED FROM PRD SUCCESS CRITERIA (9.3.2):**

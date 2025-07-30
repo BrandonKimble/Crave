@@ -42,8 +42,9 @@ Implement reliable scheduled collection jobs for both chronological and keyword 
 - Section 2: Technology Stack (all subsections) - @nestjs/bull for background jobs and scheduling
 - Section 3: Hybrid Monorepo & Modular Monolith Architecture (all subsections) - Infrastructure domain
 - Section 4: Data Model & Database Architecture (all subsections) - Job state persistence
-- Section 9: PRE-MVP Implementation Roadmap (all subsections) - Milestone context and boundaries
-- Section 10: POST-MVP Roadmap (all subsections) - Future roadmap and scaling considerations
+- Section 5: Data Collection Strategy & Architecture (all subsections) - Collection strategy context
+- Section 9: PRE-MVP IMPLEMENTATION ROADMAP (all subsections) - Milestone context and boundaries
+- Section 10: POST-MVP ROADMAP (all subsections) - Future roadmap and scaling considerations
 
 **SCOPE BOUNDARIES FROM PRD:**
 

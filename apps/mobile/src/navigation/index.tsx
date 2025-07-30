@@ -33,7 +33,7 @@ const MainNavigator = () => {
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => {
-          let iconName: string;
+          let iconName: keyof typeof Ionicons.glyphMap;
 
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
@@ -47,7 +47,7 @@ const MainNavigator = () => {
             iconName = 'help-circle';
           }
 
-          return <Ionicons name={iconName as any} size={size} color={color} />;
+          return <Ionicons name={iconName} size={size} color={color} />;
         },
       })}
     >

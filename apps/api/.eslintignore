@@ -1,0 +1,2 @@
+# Exclude scripts folder from linting
+scripts/

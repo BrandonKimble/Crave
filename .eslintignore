@@ -1,0 +1,10 @@
+# Build outputs
+dist/
+build/
+node_modules/
+
+# Scripts folder (utility scripts, not part of main codebase)
+scripts/
+
+# Generated files
+*.generated.*

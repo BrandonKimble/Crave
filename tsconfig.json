@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "exclude": [
+    "node_modules/**/*",
+    "dist/**/*",
+    "build/**/*",
+    "scripts/**/*"
+  ],
+  "references": [
+    { "path": "./apps/api" },
+    { "path": "./apps/mobile" }
+  ]
+}

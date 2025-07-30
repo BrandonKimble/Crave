@@ -10,7 +10,7 @@ module.exports = {
     },
   },
   plugins: ['@typescript-eslint'],
-  ignorePatterns: ['dist', 'node_modules', 'build'],
+  ignorePatterns: ['dist', 'node_modules', 'build', 'scripts'],
   rules: {
     '@typescript-eslint/explicit-module-boundary-types': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',
