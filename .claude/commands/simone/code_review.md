@@ -45,6 +45,7 @@ Follow step by step and adhere closely to the following instructions for each st
 - Run detected tools and capture output
 - Apply auto-fixes for formatting (safe changes only)
 - Flag critical issues: type errors, syntax errors, security issues
+- **CRITICAL SCOPE PRINCIPLE**: If errors appear in shared packages, dependencies, or related files that prevent task completion, they MUST be fixed regardless of whether they were "caused" by current task - the goal is working, production-ready code
 
 ## 3 · Validate against PRD requirements and infrastructure patterns
 
@@ -87,8 +88,13 @@ Follow step by step and adhere closely to the following instructions for each st
 ## 5 · Provide PASS/FAIL verdict with actionable feedback
 
 **Decision criteria:**
-- **FAIL**: Any deviation from PRD requirements, critical quality issues, or poor infrastructure integration
-- **PASS**: Full compliance with PRD requirements and good infrastructure integration
+- **FAIL**: Any deviation from PRD requirements, critical quality issues, poor infrastructure integration, OR any errors that prevent the task from being production-ready (including errors in shared code, dependencies, or related files)
+- **PASS**: Full compliance with PRD requirements, good infrastructure integration, AND all code compiles/runs without errors in production-like conditions
+
+**CRITICAL SCOPE CLARIFICATION**: 
+- Fix ALL issues that prevent production readiness, even if they appear in files outside the primary task scope
+- The boundary is "production-ready task completion" not "only files I directly modified"
+- Shared package errors, dependency issues, and related file problems MUST be resolved for PASS verdict
 
 **Rate all issues (1-10 severity scale):**
 - 8-10: Critical (PRD deviations, type errors, security issues)  

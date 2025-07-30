@@ -2,14 +2,15 @@
 
 Implements task requirements strictly within PRD boundaries while maximizing integration with existing codebase infrastructure.
 
-**CREATE A TODO LIST** with exactly these 6 items
+**CREATE A TODO LIST** with exactly these 7 items
 
 1. Load task context and PRD requirements comprehensively
 2. Validate task scope against PRD boundaries  
 3. Execute PRD-scoped implementation with infrastructure integration
-4. Perform comprehensive code review and validation
-5. Finalize task completion and update sprint and manifest files
-6. Report results
+4. Validate with real data and production-like conditions
+5. Perform comprehensive code review and validation
+6. Finalize task completion and update sprint and manifest files
+7. Report results
 
 ## 1 · Load task context and PRD requirements comprehensively
 
@@ -110,12 +111,6 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - Leverage discovered infrastructure to minimize code duplication and maintain consistency
 - **PRD GUIDANCE**: When encountering implementation nuances, edge cases, or technical decisions, search through PRD subsections for additional guidance and specifications
 
-**REAL DATA FEEDBACK PRINCIPLE:**
-- **Test with Production-Like Conditions**: Use actual data sources, realistic file sizes, real API responses, and production-scale scenarios whenever possible
-- **Discover Reality Early**: Real-world feedback reveals assumptions, edge cases, and structural issues that synthetic data cannot expose
-- **Document Real-World Discoveries**: When real conditions reveal unexpected behaviors or constraints, document them as valuable implementation insights
-- **Iterate Based on Reality**: Allow real-world feedback to guide implementation decisions and architectural adjustments within PRD scope
-- **Build Resilient Solutions**: Design implementations that handle the messiness and variability of real production environments
 
 **Subtask Execution:**
 1. Pick next incomplete subtask
@@ -130,7 +125,38 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 - No optimizations not explicitly required by PRD
 - Simplify implementation if it exceeds PRD scope
 
-## 4 · Perform comprehensive code review and validation
+## 4 · Validate with real data and production-like conditions
+
+**ITERATIVE REAL DATA VALIDATION LOOP - Continue until production-ready**
+
+**CRITICAL PRINCIPLE**: No implementation is complete until validated against real-world conditions and production-like scenarios.
+
+Follow these steps for Real Data Validation (in order):
+
+1. **Run Real Data Validation**: include @.claude/commands/simone/real_data_validation.md and use the Task ID as Scope
+2. **Evaluate Result**:
+   - On **PRODUCTION READY**: Move to step 5 (Perform comprehensive code review and validation)
+   - On **ISSUES FOUND**: Continue to step 3 below
+
+3. **Fix Real-World Issues and Re-validate** (ISSUES FOUND path):
+   - Thoroughly understand all real-world problems discovered
+   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including problems in shared packages, dependencies, or related files discovered during real-world testing
+   - Document real-world insights as implementation learnings
+   - Extend current task with real-world issues as subtasks
+   - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
+   - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run real data validation
+   - **Continue this loop until real data validation shows PRODUCTION READY**
+
+**LOOP REQUIREMENTS (NON-NEGOTIABLE)**:
+- **Never proceed to step 5 without a PRODUCTION READY result**
+- **Always re-run real data validation after fixing issues**
+- **Track iterations in task Output Log with timestamps**
+- **Each iteration should show measurable progress toward production readiness**
+- **Document all real-world discoveries for future reference**
+
+**MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to step 1.
+
+## 5 · Perform comprehensive code review and validation
 
 **ITERATIVE CODE REVIEW LOOP - Continue until PASS**
 
@@ -140,25 +166,26 @@ Follow these steps for a Code Review (in order):
 
 1. **Run Code Review**: include @.claude/commands/simone/code_review.md and use the Task ID as Scope
 2. **Evaluate Result**:
-   - On **PASS**: Move to step 5 (Finalize task completion)
+   - On **PASS**: Move to step 6 (Finalize task completion)
    - On **FAIL**: Continue to step 3 below
 
 3. **Fix Issues and Re-validate** (FAIL path):
    - Thoroughly understand all identified problems
+   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including errors in shared packages, dependencies, or related files - the boundary is "production-ready task completion" not "only files I directly modified"
    - Extend current task with identified issues as subtasks
    - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
    - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run code review
    - **Continue this loop until code review PASSES**
 
 **LOOP REQUIREMENTS (NON-NEGOTIABLE)**:
-- **Never proceed to step 5 without a PASS result**
+- **Never proceed to step 6 without a PASS result**
 - **Always re-run code review after fixing issues**
 - **Track iterations in task Output Log with timestamps**
 - **Each iteration should show measurable progress toward resolution**
 
 **MEMORY AID**: After fixing issues, ask yourself: "Have I re-run the code review yet?" If no, go back to step 1.
 
-## 5 · Finalize task completion and update sprint and manifest files
+## 6 · Finalize task completion and update sprint and manifest files
 
 **Task Completion:**
 - Set task status to **completed**
@@ -178,7 +205,7 @@ Follow these steps for a Code Review (in order):
 - Update manifest `last_updated` timestamp in frontmatter
 - If milestone complete: Update `current_milestone_id` to next milestone if available
 
-## 6 · Report results
+## 7 · Report results
 
 **Report format:**
 
@@ -188,15 +215,17 @@ Follow these steps for a Code Review (in order):
 **PRD Compliance**: ✅ Implementation within [PRD sections] scope
 **Infrastructure Integration**: ✅ Leveraged existing [patterns/utilities/components]
 **Scope Boundaries**: Maintained - no features beyond PRD requirements
+**Real Data Validation**: ✅ Production-ready with real-world testing
 
 **Work Completed**: [brief summary]
 **Integration Points**: [existing infrastructure leveraged]
+**Real-World Insights**: [key discoveries from production-like testing]
 
 **Project Status Updates**: 
 ✅ Task status set to completed
 ✅ Task file renamed to TX## format
 [✅/❌] Sprint S## status updated to "completed" (if all tasks complete)
-[✅/❌] Milestone M## status updated to "completed" (if all sprints complete)
+[✅/❌] Milestone M## status updated to "completed" (if all sprints complete)  
 ✅ Project manifest updated with completion status
 
 **Next Steps**: 
