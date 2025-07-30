@@ -111,9 +111,11 @@ describe('DualCollectionStrategyService', () => {
     it('should handle errors during initialization', () => {
       // Arrange
       const testError = new Error('Initialization failed');
-      chronologicalCollection.initializeChronologicalCollection.mockImplementation(() => {
-        throw testError;
-      });
+      chronologicalCollection.initializeChronologicalCollection.mockImplementation(
+        () => {
+          throw testError;
+        },
+      );
 
       // Act & Assert
       expect(() => service.initializeCollectionStrategies()).toThrow(

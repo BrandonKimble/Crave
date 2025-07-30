@@ -3,7 +3,6 @@ import { LoggerService } from '../../../shared';
 import {
   isRedditComment,
   RedditComment,
-  TestLoggerService,
   CommentProcessor,
   FileStats,
 } from './reddit-data.types';
@@ -30,7 +29,12 @@ describe('SystemZstdDecompressor - Large File Test', () => {
       debug: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
-    } as any;
+      http: jest.fn(),
+      database: jest.fn(),
+      performance: jest.fn(),
+      audit: jest.fn(),
+      child: jest.fn().mockReturnThis(),
+    } as unknown as jest.Mocked<LoggerService>;
 
     decompressor = new SystemZstdDecompressor(mockLogger);
   });

@@ -16,7 +16,9 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "strictBindCallApply": false,
-    "noFallthroughCasesInSwitch": false /* Enable error reporting in type-checked JavaScript files. */
+    "noFallthroughCasesInSwitch": false,
+    "declarationDir": "./dist/types"
   },
-  "exclude": ["scripts/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["dist/**/*", "node_modules/**/*", "scripts/**/*", "**/*.spec.ts", "**/*.test.ts"]
 }

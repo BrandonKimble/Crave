@@ -102,12 +102,12 @@ describe('CollectionSchedulingService', () => {
   });
 
   describe('initializeSubredditScheduling', () => {
-    it('should initialize scheduling for known subreddit', async () => {
+    it('should initialize scheduling for known subreddit', () => {
       // Arrange
       const subreddit = 'austinfood';
 
       // Act
-      const result = await service.initializeSubredditScheduling(subreddit);
+      const result = service.initializeSubredditScheduling(subreddit);
 
       // Assert
       expect(result.subreddit).toBe(subreddit);
@@ -117,12 +117,12 @@ describe('CollectionSchedulingService', () => {
       expect(result.nextCollectionDue).toBeInstanceOf(Date);
     });
 
-    it('should initialize scheduling for unknown subreddit with default', async () => {
+    it('should initialize scheduling for unknown subreddit with default', () => {
       // Arrange
       const subreddit = 'unknownfood';
 
       // Act
-      const result = await service.initializeSubredditScheduling(subreddit);
+      const result = service.initializeSubredditScheduling(subreddit);
 
       // Assert
       expect(result.subreddit).toBe(subreddit);
@@ -135,12 +135,12 @@ describe('CollectionSchedulingService', () => {
     it('should update posting volume using weighted average', async () => {
       // Arrange
       const subreddit = 'austinfood';
-      await service.initializeSubredditScheduling(subreddit); // Initialize with 15 posts/day
+      service.initializeSubredditScheduling(subreddit); // Initialize with 15 posts/day
 
       const observedPostsPerDay = 25;
 
       // Act
-      const result = await service.updatePostingVolume(
+      const result = service.updatePostingVolume(
         subreddit,
         observedPostsPerDay,
       );
@@ -157,7 +157,7 @@ describe('CollectionSchedulingService', () => {
       const observedPostsPerDay = 12;
 
       // Act
-      const result = await service.updatePostingVolume(
+      const result = service.updatePostingVolume(
         subreddit,
         observedPostsPerDay,
       );
@@ -180,7 +180,7 @@ describe('CollectionSchedulingService', () => {
     it('should return false for recently scheduled subreddit', async () => {
       // Arrange
       const subreddit = 'austinfood';
-      await service.initializeSubredditScheduling(subreddit);
+      service.initializeSubredditScheduling(subreddit);
 
       // Act
       const result = service.isCollectionDue(subreddit);
@@ -193,8 +193,8 @@ describe('CollectionSchedulingService', () => {
   describe('getSchedulingStatistics', () => {
     it('should return correct statistics', async () => {
       // Arrange
-      await service.initializeSubredditScheduling('austinfood');
-      await service.initializeSubredditScheduling('FoodNYC');
+      service.initializeSubredditScheduling('austinfood');
+      service.initializeSubredditScheduling('FoodNYC');
 
       // Act
       const stats = service.getSchedulingStatistics();
