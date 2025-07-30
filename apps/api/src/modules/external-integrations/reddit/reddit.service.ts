@@ -15,7 +15,13 @@ import {
   RedditNetworkError,
 } from './reddit.exceptions';
 
-import { RetryOptions } from '../shared/external-integrations.types';
+import { 
+  RetryOptions,
+  ExternalApiService,
+  RateLimitRequest,
+  RateLimitResponse,
+} from '../shared/external-integrations.types';
+import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
 
 export interface RedditConfig {
   clientId: string;
@@ -48,6 +54,7 @@ export interface PerformanceMetrics {
   totalResponseTime: number;
   averageResponseTime: number;
   lastReset: Date;
+  rateLimitHits: number;
 }
 
 export interface HistoricalDataParams {
@@ -136,6 +143,32 @@ export interface StreamingMetrics {
   duplicateComments: number;
 }
 
+export interface CostMetrics {
+  totalRequestsThisMonth: number;
+  totalRequestsToday: number;
+  estimatedMonthlyCost: number;
+  freeQuotaRemaining: number;
+  costPerThousandRequests: number;
+  lastReset: Date;
+  isWithinFreeTier: boolean;
+}
+
+export interface CollectionMethodResult {
+  data: any[];
+  metadata: {
+    totalRetrieved: number;
+    rateLimitStatus: RateLimitResponse;
+    costIncurred: number;
+    timeDepth?: string;
+    completenessRatio?: number;
+  };
+  performance: {
+    responseTime: number;
+    apiCallsUsed: number;
+    rateLimitHit: boolean;
+  };
+}
+
 @Injectable()
 export class RedditService implements OnModuleInit {
   private readonly logger: LoggerService;
@@ -147,6 +180,7 @@ export class RedditService implements OnModuleInit {
     totalResponseTime: 0,
     averageResponseTime: 0,
     lastReset: new Date(),
+    rateLimitHits: 0,
   };
   private connectionMetrics: ConnectionStabilityMetrics = {
     totalRequests: 0,
@@ -156,10 +190,20 @@ export class RedditService implements OnModuleInit {
     lastConnectionCheck: new Date(),
     connectionStatus: 'healthy',
   };
+  private costMetrics: CostMetrics = {
+    totalRequestsThisMonth: 0,
+    totalRequestsToday: 0,
+    estimatedMonthlyCost: 0,
+    freeQuotaRemaining: 144000, // Reddit free tier: 100 requests/minute * 60 * 24 = 144k/day theoretical max
+    costPerThousandRequests: 0.60, // Reddit API pricing (approximate)
+    lastReset: new Date(),
+    isWithinFreeTier: true,
+  };
 
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly rateLimitCoordinator: RateLimitCoordinatorService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('RedditService');
@@ -414,6 +458,57 @@ export class RedditService implements OnModuleInit {
       totalResponseTime: 0,
       averageResponseTime: 0,
       lastReset: new Date(),
+      rateLimitHits: 0,
+    };
+  }
+
+  private updateCostMetrics(requestCount: number): void {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const currentMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Reset daily counter if it's a new day
+    if (this.costMetrics.lastReset < today) {
+      this.costMetrics.totalRequestsToday = 0;
+    }
+    
+    // Reset monthly counter if it's a new month
+    if (this.costMetrics.lastReset < currentMonth) {
+      this.costMetrics.totalRequestsThisMonth = 0;
+    }
+    
+    this.costMetrics.totalRequestsToday += requestCount;
+    this.costMetrics.totalRequestsThisMonth += requestCount;
+    this.costMetrics.estimatedMonthlyCost = 
+      (this.costMetrics.totalRequestsThisMonth / 1000) * this.costMetrics.costPerThousandRequests;
+    this.costMetrics.freeQuotaRemaining = Math.max(0, 144000 - this.costMetrics.totalRequestsToday);
+    this.costMetrics.isWithinFreeTier = this.costMetrics.estimatedMonthlyCost === 0; // Reddit is free within rate limits
+    this.costMetrics.lastReset = now;
+  }
+
+  private updateRateLimitMetrics(retryAfter?: number): void {
+    this.performanceMetrics.rateLimitHits++;
+
+    this.logger.warn(`Rate limit hit for Reddit API`, {
+      service: 'reddit',
+      rateLimitHits: this.performanceMetrics.rateLimitHits,
+      retryAfter,
+      costMetrics: this.costMetrics,
+    });
+  }
+
+  getCostMetrics(): CostMetrics {
+    return { ...this.costMetrics };
+  }
+
+  getRateLimitStatus(): RateLimitResponse {
+    const status = this.rateLimitCoordinator.getStatus(ExternalApiService.REDDIT);
+    return {
+      allowed: !status.isAtLimit,
+      retryAfter: status.retryAfter,
+      currentUsage: status.currentRequests,
+      limit: 100, // Reddit API limit
+      resetTime: status.resetTime,
     };
   }
 
@@ -466,9 +561,28 @@ export class RedditService implements OnModuleInit {
   private async makeRequest<T>(
     method: 'GET' | 'POST',
     url: string,
+    operation: string,
     data?: any,
     customHeaders?: Record<string, string>,
   ): Promise<T> {
+    // Check rate limit before making request
+    const rateLimitRequest: RateLimitRequest = {
+      service: ExternalApiService.REDDIT,
+      operation,
+      priority: 'medium',
+    };
+
+    const rateLimitResponse = this.rateLimitCoordinator.requestPermission(rateLimitRequest);
+    
+    if (!rateLimitResponse.allowed) {
+      const retryAfter = rateLimitResponse.retryAfter || 60;
+      this.updateRateLimitMetrics(retryAfter);
+      throw new RedditRateLimitError(
+        `Rate limited by coordinator: ${rateLimitResponse.currentUsage}/${rateLimitResponse.limit} requests used`,
+        retryAfter,
+      );
+    }
+
     const startTime = Date.now();
     const headers = await this.getAuthenticatedHeaders();
     const requestHeaders = { ...headers, ...customHeaders };
@@ -482,6 +596,7 @@ export class RedditService implements OnModuleInit {
 
       const responseTime = Date.now() - startTime;
       this.recordPerformanceMetrics(responseTime);
+      this.updateCostMetrics(1); // Track 1 API request
 
       return response.data as T;
     } catch (error) {
@@ -490,11 +605,21 @@ export class RedditService implements OnModuleInit {
 
       const axiosError = error as AxiosError;
       if (axiosError.response?.status === 429) {
+        const retryAfter = parseInt(
+          String(axiosError.response.headers?.['retry-after'] || '60'),
+        );
+        
+        // Report rate limit hit to coordinator
+        this.rateLimitCoordinator.reportRateLimitHit(
+          ExternalApiService.REDDIT,
+          retryAfter,
+          operation,
+        );
+        
+        this.updateRateLimitMetrics(retryAfter);
         throw new RedditRateLimitError(
           'Rate limited by Reddit API',
-          parseInt(
-            String(axiosError.response.headers?.['retry-after'] || '60'),
-          ),
+          retryAfter,
         );
       } else if (
         axiosError.code === 'ENOTFOUND' ||
@@ -531,6 +656,7 @@ export class RedditService implements OnModuleInit {
     const response = await this.makeRequest<{ data?: { children?: any[] } }>(
       'GET',
       url,
+      'get_historical_posts',
     );
     const posts = response.data?.children || [];
     const responseTime = Date.now() - startTime;
@@ -664,7 +790,7 @@ export class RedditService implements OnModuleInit {
     });
 
     const url = `https://oauth.reddit.com/r/austinfood/comments/${postId}`;
-    const response = await this.makeRequest<any[]>('GET', url);
+    const response = await this.makeRequest<any[]>('GET', url, 'get_historical_comments');
 
     if (!response || !Array.isArray(response) || response.length < 2) {
       throw new RedditApiError('Invalid response format for comment retrieval');
@@ -760,7 +886,7 @@ export class RedditService implements OnModuleInit {
       after ? `&after=${after}` : ''
     }`;
 
-    const response = await this.makeRequest<RedditCommentStream>('GET', url);
+    const response = await this.makeRequest<RedditCommentStream>('GET', url, 'get_comment_stream_page');
     const comments = response.data.children || [];
     const responseTime = Date.now() - startTime;
 
@@ -917,7 +1043,7 @@ export class RedditService implements OnModuleInit {
     try {
       // Test a simple endpoint
       const url = 'https://oauth.reddit.com/r/austinfood/hot?limit=1';
-      await this.makeRequest('GET', url);
+      await this.makeRequest('GET', url, 'test_api_endpoints');
       return {
         status: 'operational',
         message: 'API endpoints test passed',
@@ -929,5 +1055,215 @@ export class RedditService implements OnModuleInit {
         details: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  /**
+   * Chronological Collection Cycle - PRD Section 5.1.2
+   * Fetch all recent posts chronologically using /r/subreddit/new
+   * Implements dynamic scheduling based on posting volume
+   */
+  async getChronologicalPosts(
+    subreddit: string,
+    lastProcessedTimestamp?: number,
+    limit = 100,
+  ): Promise<CollectionMethodResult> {
+    this.logger.info('Fetching chronological posts for real-time collection', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'chronological_collection',
+      subreddit,
+      lastProcessedTimestamp,
+      limit,
+    });
+
+    const startTime = Date.now();
+    const url = `https://oauth.reddit.com/r/${subreddit}/new?limit=${Math.min(limit, 100)}`;
+    
+    const rateLimitStatus = this.getRateLimitStatus();
+    
+    try {
+      const response = await this.makeRequest<{ data?: { children?: any[] } }>(
+        'GET',
+        url,
+        'chronological_collection',
+      );
+      
+      const posts = response.data?.children || [];
+      const responseTime = Date.now() - startTime;
+      
+      // Filter posts by timestamp if provided
+      const filteredPosts = lastProcessedTimestamp 
+        ? posts.filter((post: any) => {
+            const postTime = post?.data?.created_utc;
+            return typeof postTime === 'number' && postTime > lastProcessedTimestamp;
+          })
+        : posts;
+
+      return {
+        data: filteredPosts,
+        metadata: {
+          totalRetrieved: filteredPosts.length,
+          rateLimitStatus,
+          costIncurred: 0, // Reddit is free within rate limits
+          completenessRatio: filteredPosts.length / posts.length,
+        },
+        performance: {
+          responseTime,
+          apiCallsUsed: 1,
+          rateLimitHit: false,
+        },
+      };
+    } catch (error) {
+      if (error instanceof RedditRateLimitError) {
+        return {
+          data: [],
+          metadata: {
+            totalRetrieved: 0,
+            rateLimitStatus,
+            costIncurred: 0,
+          },
+          performance: {
+            responseTime: Date.now() - startTime,
+            apiCallsUsed: 1,
+            rateLimitHit: true,
+          },
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Keyword Entity Search Cycle - PRD Section 5.1.2
+   * Search using /r/subreddit/search?q={entity}&sort=relevance&limit=1000
+   * Implements targeted historical enrichment for specific entities
+   */
+  async searchByKeyword(
+    subreddit: string,
+    keyword: string,
+    options: {
+      sort?: 'relevance' | 'new' | 'top';
+      limit?: number;
+      timeframe?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+    } = {},
+  ): Promise<CollectionMethodResult> {
+    const { sort = 'relevance', limit = 100, timeframe = 'all' } = options;
+    
+    this.logger.info('Searching by keyword for entity enrichment', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'keyword_entity_search',
+      subreddit,
+      keyword,
+      sort,
+      limit,
+      timeframe,
+    });
+
+    const startTime = Date.now();
+    const encodedKeyword = encodeURIComponent(keyword);
+    const url = `https://oauth.reddit.com/r/${subreddit}/search?q=${encodedKeyword}&sort=${sort}&limit=${Math.min(limit, 100)}&t=${timeframe}&restrict_sr=1`;
+    
+    const rateLimitStatus = this.getRateLimitStatus();
+    
+    try {
+      const response = await this.makeRequest<{ data?: { children?: any[] } }>(
+        'GET',
+        url,
+        'keyword_entity_search',
+      );
+      
+      const posts = response.data?.children || [];
+      const responseTime = Date.now() - startTime;
+
+      return {
+        data: posts,
+        metadata: {
+          totalRetrieved: posts.length,
+          rateLimitStatus,
+          costIncurred: 0, // Reddit is free within rate limits
+          completenessRatio: posts.length >= limit ? 1.0 : posts.length / limit,
+        },
+        performance: {
+          responseTime,
+          apiCallsUsed: 1,
+          rateLimitHit: false,
+        },
+      };
+    } catch (error) {
+      if (error instanceof RedditRateLimitError) {
+        return {
+          data: [],
+          metadata: {
+            totalRetrieved: 0,
+            rateLimitStatus,
+            costIncurred: 0,
+          },
+          performance: {
+            responseTime: Date.now() - startTime,
+            apiCallsUsed: 1,
+            rateLimitHit: true,
+          },
+        };
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Batch request optimization for API efficiency
+   * Combines multiple subreddit requests to optimize API usage
+   */
+  async batchCollectFromSubreddits(
+    subreddits: string[],
+    method: 'chronological' | 'keyword',
+    options: {
+      keyword?: string;
+      lastProcessedTimestamp?: number;
+      limit?: number;
+    } = {},
+  ): Promise<{ [subreddit: string]: CollectionMethodResult }> {
+    const { keyword, lastProcessedTimestamp, limit = 25 } = options;
+    const results: { [subreddit: string]: CollectionMethodResult } = {};
+    
+    this.logger.info('Starting batch collection from multiple subreddits', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'batch_collection',
+      subreddits,
+      method,
+      options,
+    });
+
+    for (const subreddit of subreddits) {
+      try {
+        if (method === 'chronological') {
+          results[subreddit] = await this.getChronologicalPosts(
+            subreddit,
+            lastProcessedTimestamp,
+            limit,
+          );
+        } else if (method === 'keyword' && keyword) {
+          results[subreddit] = await this.searchByKeyword(subreddit, keyword, { limit });
+        }
+        
+        // Add delay between requests to respect rate limits
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      } catch (error) {
+        this.logger.error(`Batch collection failed for subreddit ${subreddit}`, error);
+        results[subreddit] = {
+          data: [],
+          metadata: {
+            totalRetrieved: 0,
+            rateLimitStatus: this.getRateLimitStatus(),
+            costIncurred: 0,
+          },
+          performance: {
+            responseTime: 0,
+            apiCallsUsed: 0,
+            rateLimitHit: error instanceof RedditRateLimitError,
+          },
+        };
+      }
+    }
+
+    return results;
   }
 }

@@ -3,6 +3,7 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { RedditService } from './reddit.service';
 import { RedditHealthController } from './reddit-health.controller';
+import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { RedditHealthController } from './reddit-health.controller';
     }),
     ConfigModule,
   ],
-  providers: [RedditService],
+  providers: [RedditService, RateLimitCoordinatorService],
   controllers: [RedditHealthController],
   exports: [RedditService],
 })

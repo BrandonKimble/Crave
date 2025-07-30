@@ -92,9 +92,16 @@ describe('Reddit Integration (e2e)', () => {
       };
 
       const httpService = app.get<HttpService>(HttpService);
+      const mockRateLimitCoordinator = {
+        requestPermission: jest.fn().mockReturnValue({ allowed: true }),
+        reportRateLimitHit: jest.fn(),
+        getStatus: jest.fn().mockReturnValue({ isAtLimit: false }),
+      };
+
       const testService = new RedditService(
         httpService,
         invalidConfigService as unknown as ConfigService,
+        mockRateLimitCoordinator as any,
         {
           setContext: jest.fn().mockReturnThis(),
           info: jest.fn(),
@@ -120,10 +127,17 @@ describe('Reddit Integration (e2e)', () => {
 
       const httpService = app.get<HttpService>(HttpService);
 
+      const mockRateLimitCoordinator = {
+        requestPermission: jest.fn().mockReturnValue({ allowed: true }),
+        reportRateLimitHit: jest.fn(),
+        getStatus: jest.fn().mockReturnValue({ isAtLimit: false }),
+      };
+
       expect(() => {
         new RedditService(
           httpService,
           incompleteConfigService as unknown as ConfigService,
+          mockRateLimitCoordinator as any,
           {
             setContext: jest.fn().mockReturnThis(),
             info: jest.fn(),
