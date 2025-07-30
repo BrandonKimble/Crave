@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { StreamProcessorService } from './stream-processor.service';
+import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { PushshiftProcessorService } from './pushshift-processor.service';
 import { ProcessingMetricsService } from './processing-metrics.service';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';
@@ -36,6 +37,7 @@ import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.
     ExternalIntegrationsModule, // Provides LLMService for integration
   ],
   providers: [
+    SystemZstdDecompressor,
     StreamProcessorService,
     PushshiftProcessorService,
     ProcessingMetricsService,
@@ -50,6 +52,7 @@ import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.
     HistoricalLlmIntegrationValidator,
   ],
   exports: [
+    SystemZstdDecompressor,
     StreamProcessorService,
     PushshiftProcessorService,
     ProcessingMetricsService,

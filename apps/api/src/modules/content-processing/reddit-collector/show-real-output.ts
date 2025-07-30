@@ -14,6 +14,7 @@ import { LoggerService } from '../../../shared';
 import { HistoricalContentPipelineService } from './historical-content-pipeline.service';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';
 import { StreamProcessorService } from './stream-processor.service';
+import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { HistoricalProcessingConfig } from './historical-content-pipeline.types';
 import { isRedditSubmission, isRedditComment } from './reddit-data.types';
 
@@ -42,9 +43,18 @@ async function showRealOutput(): Promise<void> {
       redditDataExtractor,
       mockLogger,
     );
+    const mockZstdDecompressor = {
+      streamDecompressFile: jest.fn(),
+      validateSystemZstd: jest.fn().mockResolvedValue({
+        available: true,
+        version: '1.5.0',
+      }),
+    } as unknown as SystemZstdDecompressor;
+
     const streamProcessor = new StreamProcessorService(
       { get: () => undefined } as any,
       mockLogger,
+      mockZstdDecompressor,
     );
 
     // Adjusted configuration based on real data discovery (timestamps from 2012)

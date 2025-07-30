@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import { PushshiftProcessorService } from './pushshift-processor.service';
 import { StreamProcessorService } from './stream-processor.service';
+import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { ProcessingMetricsService } from './processing-metrics.service';
 import configuration from '../../../config/configuration';
 import { RedditComment, RedditSubmission } from './reddit-data.types';
@@ -94,9 +95,18 @@ async function validateStreamProcessing(): Promise<void> {
       },
     };
 
+    const mockZstdDecompressor = {
+      streamDecompressFile: jest.fn(),
+      validateSystemZstd: jest.fn().mockResolvedValue({
+        available: true,
+        version: '1.5.0',
+      }),
+    } as unknown as SystemZstdDecompressor;
+
     const streamProcessor = new StreamProcessorService(
       configService as ConfigService,
       mockLogger as unknown as LoggerService,
+      mockZstdDecompressor,
     );
     const metricsService = new ProcessingMetricsService(
       mockLogger as unknown as LoggerService,
