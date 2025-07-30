@@ -5,7 +5,6 @@ import * as path from 'path';
 import {
   RedditComment,
   OptimizedRedditComment,
-  TestLoggerService,
   CommentProcessor,
 } from './reddit-data.types';
 
@@ -21,7 +20,12 @@ describe('Reddit Data Optimization Comparison', () => {
       info: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
-    } as any;
+      http: jest.fn(),
+      database: jest.fn(),
+      performance: jest.fn(),
+      audit: jest.fn(),
+      child: jest.fn().mockReturnThis(),
+    } as unknown as jest.Mocked<LoggerService>;
 
     extractor = new RedditDataExtractorService(mockLogger);
     decompressor = new SystemZstdDecompressor(mockLogger);

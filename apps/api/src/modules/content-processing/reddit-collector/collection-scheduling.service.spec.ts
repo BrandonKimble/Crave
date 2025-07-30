@@ -5,8 +5,6 @@ import { LoggerService } from '../../../shared';
 
 describe('CollectionSchedulingService', () => {
   let service: CollectionSchedulingService;
-  let configService: jest.Mocked<ConfigService>;
-  let loggerService: jest.Mocked<LoggerService>;
 
   beforeEach(async () => {
     const mockConfigService = {
@@ -37,8 +35,6 @@ describe('CollectionSchedulingService', () => {
     service = module.get<CollectionSchedulingService>(
       CollectionSchedulingService,
     );
-    configService = module.get(ConfigService);
-    loggerService = module.get(LoggerService);
   });
 
   it('should be defined', () => {
@@ -132,7 +128,7 @@ describe('CollectionSchedulingService', () => {
   });
 
   describe('updatePostingVolume', () => {
-    it('should update posting volume using weighted average', async () => {
+    it('should update posting volume using weighted average', () => {
       // Arrange
       const subreddit = 'austinfood';
       service.initializeSubredditScheduling(subreddit); // Initialize with 15 posts/day
@@ -151,7 +147,7 @@ describe('CollectionSchedulingService', () => {
       expect(result.safeInterval).toBeCloseTo(750 / 18, 1); // ~41.67 days
     });
 
-    it('should initialize if subreddit does not exist', async () => {
+    it('should initialize if subreddit does not exist', () => {
       // Arrange
       const subreddit = 'newfood';
       const observedPostsPerDay = 12;
@@ -177,7 +173,7 @@ describe('CollectionSchedulingService', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false for recently scheduled subreddit', async () => {
+    it('should return false for recently scheduled subreddit', () => {
       // Arrange
       const subreddit = 'austinfood';
       service.initializeSubredditScheduling(subreddit);
@@ -191,7 +187,7 @@ describe('CollectionSchedulingService', () => {
   });
 
   describe('getSchedulingStatistics', () => {
-    it('should return correct statistics', async () => {
+    it('should return correct statistics', () => {
       // Arrange
       service.initializeSubredditScheduling('austinfood');
       service.initializeSubredditScheduling('FoodNYC');

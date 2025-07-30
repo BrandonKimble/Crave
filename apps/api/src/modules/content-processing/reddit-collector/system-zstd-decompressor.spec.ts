@@ -50,11 +50,11 @@ describe('SystemZstdDecompressor - Large File Test', () => {
 
     const processor: CommentProcessor = (
       comment: RedditComment,
-      lineNumber: number,
+      lineNumber?: number,
     ) => {
       if (processedItems.length < maxTestItems) {
         processedItems.push({
-          lineNumber,
+          lineNumber: lineNumber || 0,
           id: comment.id,
           author: comment.author,
           subreddit: comment.subreddit,

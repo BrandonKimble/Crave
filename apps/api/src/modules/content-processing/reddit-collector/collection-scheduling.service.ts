@@ -51,7 +51,7 @@ export class CollectionSchedulingService {
   };
 
   constructor(
-    private readonly configService: ConfigService,
+    private readonly configService: ConfigService, // Reserved for future configuration needs
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('CollectionScheduling');

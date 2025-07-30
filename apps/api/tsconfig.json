@@ -17,8 +17,9 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "declarationDir": "./dist/types"
+    "declarationDir": "./dist/types",
+    "types": ["jest", "node"]
   },
-  "include": ["src/**/*"],
-  "exclude": ["dist/**/*", "node_modules/**/*", "scripts/**/*", "**/*.spec.ts", "**/*.test.ts"]
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["dist/**/*", "node_modules/**/*", "scripts/**/*"]
 }

@@ -196,7 +196,7 @@ export class StreamProcessorService {
    * Validate stream processing setup
    * Now validates system zstd binary availability
    */
-  async validateSetup(): Promise<{ valid: boolean; issues: string[] }> {
+  validateSetup(): { valid: boolean; issues: string[] } {
     const issues: string[] = [];
 
     // Check system zstd availability via SystemZstdDecompressor
