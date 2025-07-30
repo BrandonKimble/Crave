@@ -145,7 +145,8 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
             score: 1,
             url: 'https://reddit.com/test',
             num_comments: 1,
-            selftext: 'Franklin BBQ has amazing brisket for testing integration',
+            selftext:
+              'Franklin BBQ has amazing brisket for testing integration',
           },
         ],
         comments: [

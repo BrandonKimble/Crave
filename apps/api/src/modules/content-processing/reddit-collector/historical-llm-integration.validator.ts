@@ -171,8 +171,8 @@ export class HistoricalLlmIntegrationValidator {
       issues.push(...historicalIssues);
 
       const validationTime = Date.now() - startTime;
-      const isValid = issues.filter((issue) => issue.severity === 'critical')
-        .length === 0;
+      const isValid =
+        issues.filter((issue) => issue.severity === 'critical').length === 0;
 
       this.logger.info('LLM input compatibility validation completed', {
         isValid,
@@ -191,8 +191,9 @@ export class HistoricalLlmIntegrationValidator {
             0,
           ),
           totalIssues: issues.length,
-          criticalIssues: issues.filter((issue) => issue.severity === 'critical')
-            .length,
+          criticalIssues: issues.filter(
+            (issue) => issue.severity === 'critical',
+          ).length,
           validationTime,
         },
       };
@@ -255,8 +256,8 @@ export class HistoricalLlmIntegrationValidator {
       issues.push(...outputIssues);
 
       const validationTime = Date.now() - startTime;
-      const isValid = issues.filter((issue) => issue.severity === 'critical')
-        .length === 0;
+      const isValid =
+        issues.filter((issue) => issue.severity === 'critical').length === 0;
 
       this.logger.info('LLM output compatibility validation completed', {
         isValid,
@@ -273,8 +274,9 @@ export class HistoricalLlmIntegrationValidator {
           validSubmissions: 0, // Not applicable for output
           validComments: 0, // Not applicable for output
           totalIssues: issues.length,
-          criticalIssues: issues.filter((issue) => issue.severity === 'critical')
-            .length,
+          criticalIssues: issues.filter(
+            (issue) => issue.severity === 'critical',
+          ).length,
           validationTime,
         },
       };
@@ -307,7 +309,9 @@ export class HistoricalLlmIntegrationValidator {
   /**
    * Validate batch structure and metadata
    */
-  private validateBatchStructure(batch: HistoricalContentBatch): ValidationIssue[] {
+  private validateBatchStructure(
+    batch: HistoricalContentBatch,
+  ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
 
     // Check required fields
@@ -346,7 +350,9 @@ export class HistoricalLlmIntegrationValidator {
   /**
    * Validate content quality metrics
    */
-  private validateContentQuality(batch: HistoricalContentBatch): ValidationIssue[] {
+  private validateContentQuality(
+    batch: HistoricalContentBatch,
+  ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
 
     // Check error rate
@@ -376,7 +382,9 @@ export class HistoricalLlmIntegrationValidator {
   /**
    * Validate individual submission structure
    */
-  private validateSubmission(submission: CraveRedditSubmission): ValidationIssue[] {
+  private validateSubmission(
+    submission: CraveRedditSubmission,
+  ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
 
     // Required fields
@@ -481,7 +489,9 @@ export class HistoricalLlmIntegrationValidator {
   /**
    * Validate historical context in LLM input
    */
-  private validateHistoricalContext(input: LLMInputStructure): ValidationIssue[] {
+  private validateHistoricalContext(
+    input: LLMInputStructure,
+  ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
 
     // Check for historical timestamp patterns
@@ -517,7 +527,9 @@ export class HistoricalLlmIntegrationValidator {
   /**
    * Validate LLM output structure for entity resolution compatibility
    */
-  private validateOutputStructure(output: LLMOutputStructure): ValidationIssue[] {
+  private validateOutputStructure(
+    output: LLMOutputStructure,
+  ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
 
     // Check mentions structure
@@ -575,4 +587,3 @@ export interface ValidationSummary {
   criticalIssues: number;
   validationTime: number;
 }
-

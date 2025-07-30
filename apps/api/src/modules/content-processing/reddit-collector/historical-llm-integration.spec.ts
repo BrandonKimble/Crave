@@ -47,7 +47,8 @@ describe('Historical LLM Integration', () => {
     score: 45,
     url: 'https://reddit.com/r/austinfood/test_submission_1',
     num_comments: 5,
-    selftext: 'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
+    selftext:
+      'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
   };
 
   const mockComment: CraveRedditComment = {
@@ -76,7 +77,8 @@ describe('Historical LLM Integration', () => {
       {
         post_id: 'test_submission_1',
         title: 'Best BBQ in Austin - Franklin BBQ Review',
-        content: 'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
+        content:
+          'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
         subreddit: 'austinfood',
         url: 'https://reddit.com/r/austinfood/test_submission_1',
         upvotes: 45,
@@ -219,7 +221,7 @@ describe('Historical LLM Integration', () => {
       expect(result.status).toBe('connected');
       expect(result.message).toContain('integration test passed');
       expect(mockHistoricalPipeline.convertToLLMFormat).toHaveBeenCalled();
-      
+
       // Should not call LLM service when testWithLLM is false
       expect(mockLlmService.processContent).not.toHaveBeenCalled();
     });
@@ -312,37 +314,43 @@ describe('Historical LLM Integration', () => {
       const result = await validator.validateHistoricalBatch(invalidBatch);
 
       expect(result.isValid).toBe(false);
-      expect(result.issues.some((issue) => issue.type === 'missing_field')).toBe(
-        true,
-      );
+      expect(
+        result.issues.some((issue) => issue.type === 'missing_field'),
+      ).toBe(true);
       expect(result.summary.criticalIssues).toBeGreaterThan(0);
     });
 
     it('should validate LLM input compatibility', async () => {
-      const result = await validator.validateLLMInputCompatibility(mockLlmInput);
+      const result =
+        await validator.validateLLMInputCompatibility(mockLlmInput);
 
       expect(result.isValid).toBe(true);
       expect(mockLlmService.validateInput).toHaveBeenCalledWith(mockLlmInput);
     });
 
     it('should validate LLM output compatibility', async () => {
-      const result = await validator.validateLLMOutputCompatibility(mockLlmOutput);
+      const result =
+        await validator.validateLLMOutputCompatibility(mockLlmOutput);
 
       expect(result.isValid).toBe(true);
       expect(mockLlmService.validateOutput).toHaveBeenCalledWith(mockLlmOutput);
     });
 
     it('should handle LLM validation errors', async () => {
-      const validationErrors = ['Invalid post structure', 'Missing required field'];
+      const validationErrors = [
+        'Invalid post structure',
+        'Missing required field',
+      ];
       mockLlmService.validateInput.mockResolvedValue(validationErrors);
 
-      const result = await validator.validateLLMInputCompatibility(mockLlmInput);
+      const result =
+        await validator.validateLLMInputCompatibility(mockLlmInput);
 
       expect(result.isValid).toBe(false);
       expect(result.issues).toHaveLength(2);
-      expect(result.issues.every((issue) => issue.severity === 'critical')).toBe(
-        true,
-      );
+      expect(
+        result.issues.every((issue) => issue.severity === 'critical'),
+      ).toBe(true);
     });
 
     it('should detect high error rates', async () => {
@@ -361,9 +369,9 @@ describe('Historical LLM Integration', () => {
 
       const result = await validator.validateHistoricalBatch(highErrorBatch);
 
-      expect(result.issues.some((issue) => issue.type === 'high_error_rate')).toBe(
-        true,
-      );
+      expect(
+        result.issues.some((issue) => issue.type === 'high_error_rate'),
+      ).toBe(true);
     });
   });
 
@@ -455,9 +463,12 @@ describe('Historical LLM Integration', () => {
       expect(mockLlmOutput.mentions[0]).toHaveProperty('source');
 
       expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty('temp_id');
-      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty('normalized_name');
-      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty('original_text');
+      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty(
+        'normalized_name',
+      );
+      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty(
+        'original_text',
+      );
     });
   });
 });
-
