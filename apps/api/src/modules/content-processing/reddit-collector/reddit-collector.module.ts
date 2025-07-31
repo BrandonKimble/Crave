@@ -22,6 +22,10 @@ import { ChronologicalCollectionProcessor } from './chronological-collection.pro
 import { ChronologicalLlmIntegrationService } from './chronological-llm-integration.service';
 import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
 import { ContentRetrievalMonitoringService } from './content-retrieval-monitoring.service';
+import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
+import { CollectionJobMonitoringService } from './collection-job-monitoring.service';
+import { CollectionJobStateService } from './collection-job-state.service';
+import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 
 /**
  * Reddit Collector Module
@@ -40,12 +44,23 @@ import { ContentRetrievalMonitoringService } from './content-retrieval-monitorin
  * - Integration with existing M02 LLM processing pipeline
  * - Error handling and retry logic for reliable collection
  *
+ * Scheduled Collection Jobs (Section 5.1.2):
+ * - Automated job scheduling using Bull queues
+ * - Comprehensive error handling and retry logic
+ * - Job monitoring, alerting, and performance tracking
+ * - Job state persistence and resume capability
+ * - Monthly keyword entity search scheduling
+ *
  * Key Services:
  * - DualCollectionStrategyService: Orchestrates both collection strategies
  * - ChronologicalCollectionService: Handles /r/subreddit/new collection
  * - CollectionSchedulingService: Implements safety buffer calculations
  * - ChronologicalCollectionProcessor: Bull queue processor for scheduled jobs
  * - ChronologicalLlmIntegrationService: Bridges with M02 LLM pipeline
+ * - CollectionJobSchedulerService: Orchestrates automated job scheduling
+ * - CollectionJobMonitoringService: Tracks job performance and health
+ * - CollectionJobStateService: Handles job state persistence and resume
+ * - KeywordSearchSchedulerService: Manages monthly keyword search cycles
  */
 @Module({
   imports: [
@@ -79,6 +94,11 @@ import { ContentRetrievalMonitoringService } from './content-retrieval-monitorin
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
     ContentRetrievalPipelineService,
     ContentRetrievalMonitoringService,
+    // Scheduled Collection Jobs components (PRD Section 5.1.2)
+    CollectionJobSchedulerService,
+    CollectionJobMonitoringService,
+    CollectionJobStateService,
+    KeywordSearchSchedulerService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -102,6 +122,11 @@ import { ContentRetrievalMonitoringService } from './content-retrieval-monitorin
     // Export content retrieval pipeline components
     ContentRetrievalPipelineService,
     ContentRetrievalMonitoringService,
+    // Export scheduled collection jobs components
+    CollectionJobSchedulerService,
+    CollectionJobMonitoringService,
+    CollectionJobStateService,
+    KeywordSearchSchedulerService,
   ],
 })
 export class RedditCollectorModule {}
