@@ -5,7 +5,7 @@ highest_milestone: M03
 highest_sprint_in_milestone: S02
 current_sprint_id: S02
 status: active
-last_updated: 2025-07-30T17:41:44Z
+last_updated: 2025-07-30T19:15:30Z
 ---
 
 # Project Manifest: Crave Search
@@ -99,10 +99,10 @@ Implementing the hybrid data collection system using both Pushshift archives for
   - Completed: TX01_S01 (Archive Download), TX02_S01 (Stream Processing), TX03_S01 (Content Pipeline), TX04_S01 (Batch Processing), TX05_S01 (LLM Integration)
   - [Sprint Details](./03_SPRINTS/M03_S01_Historical_Data_Foundation/M03_S01_sprint_meta.md)
 
-- [ ] **S02: Real-Time Collection & Unified Pipeline** - Status: Active (3/9 tasks completed)
+- [ ] **S02: Real-Time Collection & Unified Pipeline** - Status: Active (4/9 tasks completed)
   - Focus: Reddit API integration, dual collection strategy, unified processing pipeline, gap tracking system
   - PRD Sections: 1, 2, 3, 4, 5.1.2, 6.1, 9.3, 10
-  - Completed: TX01_S02 (Reddit API Integration), TX02_S02 (Dual Collection Strategy), TX03_S02 (Content Retrieval Pipeline)
+  - Completed: TX01_S02 (Reddit API Integration), TX02_S02 (Dual Collection Strategy), TX03_S02 (Content Retrieval Pipeline), TX04_S02 (Scheduled Collection Jobs)
   - [Sprint Details](./03_SPRINTS/M03_S02_Real_Time_Collection_Unified_Pipeline/M03_S02_sprint_meta.md)
 
 ## 4. Key Documentation
