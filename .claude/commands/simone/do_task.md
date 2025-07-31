@@ -131,6 +131,12 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **CRITICAL PRINCIPLE**: No implementation is complete until validated against real-world conditions and production-like scenarios.
 
+**SPRINT COMPLETION CHECK:**
+First, determine if this is the last task in the current sprint:
+- Check if all other tasks in current sprint are completed (TX## format)
+- If this IS the last task in sprint: Run `include @.claude/commands/simone/real_data_validation.md` for comprehensive cross-service integration validation
+- If this is NOT the last task: Continue with task-level validation below
+
 Follow these steps for Real Data Validation (in order):
 
 ### Phase 1: Setup Production-like Environment
@@ -167,13 +173,15 @@ Follow these steps for Real Data Validation (in order):
 - Use actual database operations (not mocks) where possible
 - Test with real API calls to external services (within rate limits)
 - Process realistic data volumes and edge cases
-- Test complete workflows end-to-end
+- Test complete workflows end-to-end including cross-service data flows
 
 **Integration Testing:**
 - Verify all service integrations work with real dependencies
+- Test complete user journeys where applicable (data ingestion → processing → storage → retrieval)
 - Test error handling with actual error conditions (network failures, invalid data, etc.)
 - Confirm data persistence and retrieval works correctly
 - Validate any file I/O, caching, or external system interactions
+- Test integration points with existing system components from previous tasks
 
 **Performance Validation:**
 - Measure response times against targets

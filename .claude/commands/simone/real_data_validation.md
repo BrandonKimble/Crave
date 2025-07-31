@@ -2,6 +2,31 @@
 
 Validates seamless integration using **REAL DATA** across all implemented services to ensure Crave app components work together toward unified user experience goals.
 
+## CONTEXT LOADING AND PRD REQUIREMENTS
+
+**Load Sprint and Milestone Context Comprehensively:**
+
+**Current Sprint Analysis:**
+- Read ALL task files in current sprint (both T## and TX## files) to understand complete implementation scope
+- Extract: What services have been implemented, integration points created, data flows established
+- Identify: API endpoints, database schemas, external integrations, processing pipelines built during sprint
+- Map: Dependencies between tasks and how they work together as a unified system
+
+**Previous Milestone Context:**
+- Read ALL milestone meta files from `.simone/02_REQUIREMENTS/` (M01, M02, etc.) up to current milestone
+- Extract: Foundation services, core capabilities, architectural patterns established in previous milestones
+- Identify: What infrastructure, services, and integrations are available from previous work
+- Understand: How current sprint builds upon and integrates with existing foundation
+
+**PRD Analysis for E2E Requirements:**
+- Read current milestone's PRD sections systematically:
+  1. **Read MILESTONE PRD SECTIONS**: All sections referenced in current milestone meta file
+  2. **Read BROADER CONTEXT**: Sections 1, 2, 3, 4 for architectural context and constraints
+  3. **Read SUCCESS CRITERIA**: Section 9 subsections for current milestone success criteria and E2E requirements
+  4. **Read INTEGRATION REQUIREMENTS**: Section 6 and other relevant sections for cross-service integration specifications
+- Extract: E2E user journeys, integration requirements, performance targets, success criteria for seamless system operation
+- Identify: What constitutes "production ready" for this milestone's integrated system
+
 ## VALIDATION PHASES
 
 ### Phase 1: Current Integration State Assessment
@@ -13,10 +38,12 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 - Map existing API integrations and data flows between services
 - Understand current system capabilities and integration points
 
-**Assess New Task Integration:**
-- Identify how new task enhances data flows between services
-- Map new API integrations or data sources introduced
-- Plan enhanced E2E scenarios now possible with actual data sources
+**Assess Sprint Integration State:**
+- Based on ALL sprint tasks read, identify complete data flows and service integrations implemented
+- Map how services work together to deliver end-to-end user journeys
+- Identify critical integration points that must be tested with real data
+- Plan comprehensive E2E scenarios that validate the complete sprint implementation as integrated system
+- Reference PRD requirements to ensure E2E testing covers all specified integration points and user journeys
 
 ### Phase 2: Comprehensive Real Data Integration Testing
 
