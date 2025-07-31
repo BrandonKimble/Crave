@@ -2,12 +2,6 @@
 
 Validates seamless integration using **REAL DATA** across all implemented services to ensure Crave app components work together toward unified user experience goals.
 
-## SCOPE PARAMETER REQUIRED
-
-**Usage**: This command requires a scope parameter: 
-- **Task ID**: `T##_S##_Task_Name` - Validates how this task enhances overall system integration with real data
-- Tests new + existing components using actual data sources and production-like scenarios
-
 ## VALIDATION PHASES
 
 ### Phase 1: Current Integration State Assessment

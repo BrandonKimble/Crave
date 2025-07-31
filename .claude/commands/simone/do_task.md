@@ -133,32 +133,105 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 Follow these steps for Real Data Validation (in order):
 
-1. **Execute Real Data Validation**: Follow the validation phases from real_data_validation.md directly:
-   - **Phase 1**: Setup production-like environment with real APIs, databases, and data sources
-   - **Phase 2**: Execute complete E2E scenarios with realistic data flows and integration testing
-   - **Phase 3**: Performance and resilience validation under production-like conditions
-   - **Update E2E Status**: Update milestone's `M##_E2E_Testing_Status.md` in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with detailed technical validation account
-2. **Evaluate Result**:
-   - On **PRODUCTION READY**: Move to step 5 (Perform comprehensive code review and validation)
-   - On **ISSUES FOUND**: Continue to step 3 below
+### Phase 1: Setup Production-like Environment
 
-3. **Fix Real-World Issues and Re-validate** (ISSUES FOUND path):
-   - Thoroughly understand all real-world problems discovered
-   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including problems in shared packages, dependencies, or related files discovered during real-world testing
-   - Document real-world insights as implementation learnings
-   - Extend current task with real-world issues as subtasks
-   - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
-   - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run real data validation
-   - **Continue this loop until real data validation shows PRODUCTION READY**
+**Environment Prerequisites:**
+- Start required services (PostgreSQL, Redis, etc.):
+  ```bash
+  make docker-up
+  # OR
+  docker-compose up -d
+  # OR
+  pnpm --filter api docker:up
+  ```
+- Verify database connectivity and schema is current:
+  ```bash
+  pnpm --filter api db:migrate
+  pnpm --filter api prisma:generate
+  ```
+- Check environment variables are loaded (`.env` files present)
+- Ensure all dependencies installed: `pnpm install`
+- Verify all services are healthy and responding
 
-**LOOP REQUIREMENTS (NON-NEGOTIABLE)**:
+**Environment Validation:**
+- Database connection successful
+- All required tables/indexes exist
+- External API keys/credentials configured (if needed)
+- Cache/Redis connection working
+- Log file permissions and directories exist
+
+### Phase 2: Execute Complete E2E Scenarios
+
+**Real Data Testing:**
+- Create or run validation scripts that test the implementation with realistic data
+- Use actual database operations (not mocks) where possible
+- Test with real API calls to external services (within rate limits)
+- Process realistic data volumes and edge cases
+- Test complete workflows end-to-end
+
+**Integration Testing:**
+- Verify all service integrations work with real dependencies
+- Test error handling with actual error conditions (network failures, invalid data, etc.)
+- Confirm data persistence and retrieval works correctly
+- Validate any file I/O, caching, or external system interactions
+
+**Performance Validation:**
+- Measure response times against targets
+- Monitor memory usage during operations
+- Test with concurrent operations if applicable
+- Verify resource cleanup (connections, file handles, etc.)
+
+### Phase 3: Production Readiness Assessment
+
+**Acceptance Criteria Verification:**
+- Systematically verify each acceptance criteria from the task
+- Test both happy path and error scenarios
+- Confirm all subtasks work with real data
+- Validate integration with existing system components
+
+**Resilience Testing:**
+- Test with malformed/unexpected data
+- Verify graceful degradation under load
+- Test recovery from service interruptions
+- Confirm proper error logging and handling
+
+**Documentation and Limitations:**
+- Document any discovered limitations or assumptions
+- Note performance characteristics observed
+- Record any manual setup steps required
+- Identify any areas needing monitoring in production
+
+### Result Evaluation and Loop Control
+
+**Evaluate Results:**
+- **On PRODUCTION READY**: Continue to step 5 (code review)
+- **On ISSUES FOUND**: Continue to remediation below
+
+**Issues Found Remediation:**
+- Thoroughly understand all real-world problems discovered
+- **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including problems in shared packages, dependencies, or related files discovered during real-world testing
+- Document real-world insights as implementation learnings
+- Extend current task with real-world issues as subtasks
+- Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
+- **CRITICAL STEP**: After completing fixes, **MUST** return to Phase 1 of this validation step
+- **Continue this loop until real data validation shows PRODUCTION READY**
+
+**Update E2E Testing Status:**
+Update the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with a detailed technical account of validation testing from beginning to end, including:
+- Validation Setup
+- Testing Execution
+- Issues Encountered and Resolutions
+- Performance and Resilience Validation
+- Production Readiness Assessment
+
+**LOOP REQUIREMENTS (NON-NEGOTIABLE):**
 - **Never proceed to step 5 without a PRODUCTION READY result**
 - **Always re-run real data validation after fixing issues**
 - **Track iterations in task Output Log with timestamps**
 - **Each iteration should show measurable progress toward production readiness**
 - **Document all real-world discoveries for future reference**
 
-**MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to step 1.
+**MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to Phase 1.
 
 ## 5 · Perform comprehensive code review and validation
 

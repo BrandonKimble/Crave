@@ -280,7 +280,9 @@ describe('CollectionJobMonitoringService', () => {
       const health = service.getHealthStatus();
 
       expect(health.status).toBe('degraded');
-      expect(health.issues.some(issue => issue.includes('Low success rate'))).toBe(true);
+      expect(
+        health.issues.some((issue) => issue.includes('Low success rate')),
+      ).toBe(true);
     });
 
     it('should report unhealthy status for consecutive failures', () => {
@@ -299,7 +301,9 @@ describe('CollectionJobMonitoringService', () => {
       const health = service.getHealthStatus();
 
       expect(health.status).toBe('unhealthy');
-      expect(health.issues.some(issue => issue.includes('consecutive failures'))).toBe(true);
+      expect(
+        health.issues.some((issue) => issue.includes('consecutive failures')),
+      ).toBe(true);
     });
   });
 
@@ -325,13 +329,13 @@ describe('CollectionJobMonitoringService', () => {
 
     it('should trigger alert for slow jobs', () => {
       service.recordJobStart('slow-job', 'chronological', 'austinfood');
-      
+
       // Mock the job metrics to have an old start time to simulate slow job
       const jobMetrics = service.getJobMetrics('slow-job');
       if (jobMetrics) {
         jobMetrics.startTime = new Date(Date.now() - 15 * 60 * 1000); // 15 minutes ago
       }
-      
+
       service.recordJobCompletion('slow-job', {
         success: true,
         jobId: 'slow-job',
