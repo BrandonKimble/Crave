@@ -133,7 +133,11 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 Follow these steps for Real Data Validation (in order):
 
-1. **Run Real Data Validation**: include @.claude/commands/simone/real_data_validation.md and use the Task ID as Scope
+1. **Execute Real Data Validation**: Follow the validation phases from real_data_validation.md directly:
+   - **Phase 1**: Setup production-like environment with real APIs, databases, and data sources
+   - **Phase 2**: Execute complete E2E scenarios with realistic data flows and integration testing
+   - **Phase 3**: Performance and resilience validation under production-like conditions
+   - **Update E2E Status**: Update milestone's `M##_E2E_Testing_Status.md` in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with detailed technical validation account
 2. **Evaluate Result**:
    - On **PRODUCTION READY**: Move to step 5 (Perform comprehensive code review and validation)
    - On **ISSUES FOUND**: Continue to step 3 below

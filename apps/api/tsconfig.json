@@ -18,7 +18,8 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "declarationDir": "./dist/types",
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    "composite": true
   },
   "include": ["src/**/*", "test/**/*", "scripts/**/*"],
   "exclude": ["dist/**/*", "node_modules/**/*", "../../scripts/**/*"]

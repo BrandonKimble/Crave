@@ -13,7 +13,8 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 ### Phase 1: Current Integration State Assessment
 
 **Read Current E2E Status:**
-- Read milestone's `M##_E2E_Testing_Status.md` (create from template if missing)
+- Read current milestone's `M##_E2E_Testing_Status.md` from `.simone/02_REQUIREMENTS/M##_Milestone_Name/` (create if missing)
+- If starting new milestone and file doesn't exist, read previous milestone's E2E testing status for context
 - Identify currently testable E2E scenarios with real data sources
 - Map existing API integrations and data flows between services
 - Understand current system capabilities and integration points
@@ -153,13 +154,37 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 ## MILESTONE E2E TESTING STATUS UPDATE
 
 **CRITICAL FINAL STEP:**
-After completing all validation phases, **UPDATE** the milestone's `M##_E2E_Testing_Status.md` file with:
+After completing all validation phases, **UPDATE** the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with:
 
-1. **Enhanced Real Data Capabilities**: What new E2E scenarios are now testable
-2. **Integration Improvements**: How service integration was enhanced  
-3. **Performance Characteristics**: Actual metrics from integrated system testing
-4. **Real-World Insights**: Key discoveries about system behavior with real data
-5. **Production Readiness Status**: Updated milestone-level assessment
-6. **Next Testing Opportunities**: What becomes testable with future task completions
+**Format**: Write a detailed technical account of validation testing from beginning to end, including:
 
-**Purpose**: This validation reveals integration assumptions that were incorrect, cross-service challenges that only appear under production conditions, and optimization opportunities. This ensures the complete Crave app system works seamlessly together toward unified food discovery goals using **REAL DATA** throughout.
+1. **Validation Setup**: 
+   - Environment configuration (containers, databases, APIs, data sources)
+   - Real data sources used (specific subreddits, data volumes, existing system state)
+   - Production-like conditions established
+
+2. **Testing Execution**:
+   - Chronological account of what was tested when
+   - Specific test scenarios run with actual data (e.g., "processed 847 posts from r/austinfood over 2-hour period")
+   - Real performance metrics observed (response times, memory usage, throughput, error rates)
+   - Integration points tested between services
+
+3. **Issues Encountered and Resolutions**:
+   - Problems discovered during testing (failures, bottlenecks, edge cases)
+   - Root cause analysis of issues
+   - Fixes applied and validation of fixes
+   - Lessons learned from real-world conditions
+
+4. **Performance and Resilience Validation**:
+   - Load testing results with actual data volumes
+   - Network failure simulation and recovery testing
+   - Resource usage under sustained operations
+   - Edge case handling with production data
+
+5. **Production Readiness Assessment**:
+   - Concrete evidence of system capabilities
+   - Integration quality between all components
+   - Readiness for next development phase
+   - Outstanding concerns or recommendations
+
+**Purpose**: This technical validation record documents real-world testing scenarios, issues encountered, and resolutions applied. It provides future developers with detailed understanding of system behavior under production conditions and lessons learned during validation.
