@@ -26,6 +26,7 @@ import { CollectionJobSchedulerService } from './collection-job-scheduler.servic
 import { CollectionJobMonitoringService } from './collection-job-monitoring.service';
 import { CollectionJobStateService } from './collection-job-state.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
+import { DataMergeService } from './data-merge.service';
 
 /**
  * Reddit Collector Module
@@ -48,6 +49,11 @@ import { KeywordSearchSchedulerService } from './keyword-search-scheduler.servic
  * - Automated job scheduling using Bull queues
  * - Comprehensive error handling and retry logic
  * - Job monitoring, alerting, and performance tracking
+ *
+ * Data Merge Logic (Section 5.1.2 & 6.1):
+ * - Temporal merging of historical archives and real-time API data
+ * - Source attribution tracking and gap minimization
+ * - Quality validation and comprehensive merge statistics
  * - Job state persistence and resume capability
  * - Monthly keyword entity search scheduling
  *
@@ -99,6 +105,8 @@ import { KeywordSearchSchedulerService } from './keyword-search-scheduler.servic
     CollectionJobMonitoringService,
     CollectionJobStateService,
     KeywordSearchSchedulerService,
+    // Data Merge components (PRD Section 5.1.2 & 6.1)
+    DataMergeService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -127,6 +135,8 @@ import { KeywordSearchSchedulerService } from './keyword-search-scheduler.servic
     CollectionJobMonitoringService,
     CollectionJobStateService,
     KeywordSearchSchedulerService,
+    // Export data merge components
+    DataMergeService,
   ],
 })
 export class RedditCollectorModule {}

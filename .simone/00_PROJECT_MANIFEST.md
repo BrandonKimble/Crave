@@ -99,10 +99,10 @@ Implementing the hybrid data collection system using both Pushshift archives for
   - Completed: TX01_S01 (Archive Download), TX02_S01 (Stream Processing), TX03_S01 (Content Pipeline), TX04_S01 (Batch Processing), TX05_S01 (LLM Integration)
   - [Sprint Details](./03_SPRINTS/M03_S01_Historical_Data_Foundation/M03_S01_sprint_meta.md)
 
-- [ ] **S02: Real-Time Collection & Unified Pipeline** - Status: Active (4/8 tasks completed, 1 cancelled)
+- [ ] **S02: Real-Time Collection & Unified Pipeline** - Status: Active (5/8 tasks completed, 1 cancelled)
   - Focus: Reddit API integration, dual collection strategy, unified processing pipeline
   - PRD Sections: 1, 2, 3, 4, 5.1.2, 6.1, 9.3, 10
-  - Completed: TX01_S02 (Reddit API Integration), TX02_S02 (Dual Collection Strategy), TX03_S02 (Content Retrieval Pipeline), TX04_S02 (Scheduled Collection Jobs)
+  - Completed: TX01_S02 (Reddit API Integration), TX02_S02 (Dual Collection Strategy), TX03_S02 (Content Retrieval Pipeline), TX04_S02 (Scheduled Collection Jobs), TX06_S02 (Data Merge Logic)
   - Cancelled: TX05_S02 (Gap Tracking System - determined over-engineered)
   - [Sprint Details](./03_SPRINTS/M03_S02_Real_Time_Collection_Unified_Pipeline/M03_S02_sprint_meta.md)
 
