@@ -128,6 +128,8 @@
       "<rootDir>/../test/jest.setup.ts"
     ],
     "globalSetup": "<rootDir>/../test/jest.global-setup.ts",
-    "globalTeardown": "<rootDir>/../test/jest.global-teardown.ts"
+    "globalTeardown": "<rootDir>/../test/jest.global-teardown.ts",
+    "forceExit": true,
+    "detectOpenHandles": true
   }
 }

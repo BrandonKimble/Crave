@@ -3,6 +3,8 @@ import { ConfigModule } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
+import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
+import { RepositoryModule } from '../../../repositories/repository.module';
 import { StreamProcessorService } from './stream-processor.service';
 import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { PushshiftProcessorService } from './pushshift-processor.service';
@@ -28,6 +30,7 @@ import { CollectionJobStateService } from './collection-job-state.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { DataMergeService } from './data-merge.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
+import { UnifiedProcessingService } from './unified-processing.service';
 
 /**
  * Reddit Collector Module
@@ -64,6 +67,12 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
  * - Performance optimization for large datasets
  * - Overlap pattern analysis and statistics tracking
  *
+ * Unified Processing Integration (Section 5.1.2 & 6.1):
+ * - Integration of Reddit API data with existing M02 LLM processing pipeline
+ * - Unified entity extraction for both historical and real-time data sources
+ * - Six-step processing pipeline from data retrieval to quality score updates
+ * - Maintains consistency with existing processing standards
+ *
  * Key Services:
  * - DualCollectionStrategyService: Orchestrates both collection strategies
  * - ChronologicalCollectionService: Handles /r/subreddit/new collection
@@ -75,12 +84,15 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
  * - CollectionJobStateService: Handles job state persistence and resume
  * - KeywordSearchSchedulerService: Manages monthly keyword search cycles
  * - DuplicateDetectionService: Comprehensive duplicate detection and filtering
+ * - UnifiedProcessingService: Main orchestrator for LLM processing integration
  */
 @Module({
   imports: [
     ConfigModule,
     SharedModule, // Provides LoggerService
     ExternalIntegrationsModule, // Provides LLMService for integration
+    EntityResolverModule, // Provides EntityResolutionService for unified processing
+    RepositoryModule, // Provides BulkOperationsService for database operations
     BullModule.registerQueue({
       name: 'chronological-collection',
     }),
@@ -117,6 +129,8 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
     DataMergeService,
     // Duplicate Detection components (PRD Section 5.1.2 & 6.1)
     DuplicateDetectionService,
+    // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
+    UnifiedProcessingService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -149,6 +163,8 @@ import { DuplicateDetectionService } from './duplicate-detection.service';
     DataMergeService,
     // Export duplicate detection components
     DuplicateDetectionService,
+    // Export unified processing integration components
+    UnifiedProcessingService,
   ],
 })
 export class RedditCollectorModule {}

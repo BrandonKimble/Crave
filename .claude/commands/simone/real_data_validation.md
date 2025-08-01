@@ -66,67 +66,111 @@ Follow step by step and adhere closely to the following instructions for each st
 
 ## 3 · Execute comprehensive E2E testing scenarios with real data flows
 
+**CRITICAL: This section requires ACTUAL DATA PROCESSING, not just connectivity testing**
+
 **Setup Production-Like Environment:**
 - Use real APIs, databases, and data sources (no mocks or test data)
 - Use real API keys, tokens, and authentication for live service calls
 - Verify all services (PostgreSQL, Redis, external APIs) are running and accessible
 - Configure realistic network conditions and resource constraints
-- Identify specific subreddits, data sources, and authentic content volumes to use
+- **MANDATORY**: Clear existing database tables to ensure fresh data processing validation
 
-**Execute Complete E2E Scenarios:**
-- **Cross-Service Data Flow**: Test complete user journeys across all implemented services
-  - Reddit data → LLM processing → Database storage → API responses
-  - Google Places integration with location processing
-  - Any other service integrations with real data flows
+**MANDATORY REAL DATA PROCESSING REQUIREMENTS:**
 
-- **User Experience Validation**: Test realistic scenarios with actual app workflows
-  - Complete food discovery journeys with real restaurant/dish data
-  - User search queries with authentic Reddit community responses
-  - Seamless experience across all touchpoints
+**1. ACTUAL PUSHSHIFT ARCHIVE PROCESSING (Required for Historical Data tasks):**
+- **MUST DO**: Download and process at least one real Pushshift archive file (minimum 100MB)
+- **MUST DO**: Stream process the file line-by-line through the complete pipeline
+- **MUST DO**: Verify entities, connections, and mentions tables are populated with real data
+- **MUST DO**: Process minimum 1,000 posts/comments through LLM → entity resolution → database
+- **Database Population Check**: Query and count actual records in all tables after processing
+- **Performance Measurement**: Record actual processing times, memory usage, and throughput
 
-- **System Integration Points**: Test all integration points with real data
-  - Database operations with realistic volumes and query patterns
-  - Caching, queueing, and async processing under production-like loads
-  - Monitoring, logging, and error tracking with real system behavior
+**2. ACTUAL REDDIT API DATA COLLECTION (Required for Real-Time Collection tasks):**
+- **MUST DO**: Execute real Reddit API calls to fetch live data from target subreddits
+- **MUST DO**: Process minimum 100 posts/comments through the complete pipeline
+- **MUST DO**: Verify real Reddit content is processed through LLM and stored in database
+- **MUST DO**: Execute both chronological collection and keyword search scenarios with real API
+- **Database Population Check**: Confirm new entities/connections created from live Reddit data
 
-**Performance & Resilience Validation:**
-- Test sustained load across all services with realistic usage patterns
-- Measure performance under expected peak loads and identify bottlenecks
-- Test network failures, API outages, and recovery scenarios
-- Validate retry logic, circuit breakers, and fallback mechanisms
-- Monitor resource usage (CPU, memory, network) under integrated loads
-- Test edge cases and boundary conditions with actual production data
-- Assess service coordination effectiveness and data consistency across boundaries
-- Validate complete food discovery journey performance and recommendation quality
+**3. ACTUAL LLM PROCESSING WITH REAL CONTENT:**
+- **MUST DO**: Process real Reddit discussions about food/restaurants through LLM service
+- **MUST DO**: Extract minimum 50 real entity mentions (restaurants, dishes, attributes)
+- **MUST DO**: Validate LLM output contains actual restaurant names, dish names, attributes from Reddit
+- **Content Verification**: Manually verify extracted entities match original Reddit content
+
+**4. ACTUAL DATABASE POPULATION VALIDATION:**
+- **MANDATORY DATABASE CHECKS** - Execute these SQL queries and report results:
+  ```sql
+  SELECT COUNT(*) FROM entities WHERE entity_type = 'restaurant';
+  SELECT COUNT(*) FROM entities WHERE entity_type = 'dish_or_category';  
+  SELECT COUNT(*) FROM entities WHERE entity_type = 'dish_attribute';
+  SELECT COUNT(*) FROM entities WHERE entity_type = 'restaurant_attribute';
+  SELECT COUNT(*) FROM connections;
+  SELECT COUNT(*) FROM mentions;
+  ```
+- **MINIMUM REQUIREMENTS**: 
+  - At least 25 restaurant entities
+  - At least 50 dish/category entities
+  - At least 100 attribute entities
+  - At least 75 connections
+  - At least 200 mentions
+- **CONTENT VALIDATION**: Sample actual entity names and verify they are real restaurants/dishes
+
+**5. ACTUAL END-TO-END DATA FLOW VALIDATION:**
+- **MUST DO**: Execute complete pipeline: Raw Reddit data → LLM processing → Entity resolution → Database storage
+- **MUST DO**: Trace specific Reddit posts through entire pipeline and verify final database records
+- **MUST DO**: Validate source attribution - ensure mentions link back to original Reddit URLs
+- **Performance Requirements**: Complete pipeline must process 100 items within 10 minutes
+
+**EXPLICIT ACTIONS REQUIRED (Not Just Testing):**
+- Start database services and clear tables
+- Download real archive files or execute real Reddit API calls  
+- Run actual stream processing or collection services with real data
+- Execute LLM processing on real Reddit content about food
+- Perform entity resolution on real extracted entities
+- Execute bulk database operations with real processed data
+- Query database tables and report actual record counts
+- Verify real restaurant names, dish names exist in database
+- Measure actual processing times and resource usage
+
+**FAILURE CONDITIONS - Mark as MAJOR ISSUES if:**
+- Database tables remain empty or have <10 records after "processing"
+- No real restaurant/dish names found in entities table
+- LLM processing was not executed with real Reddit content
+- Archive files were not actually downloaded and processed
+- Reddit API was not called with real authentication
+- Processing pipeline was simulated rather than executed
 
 ## 4 · Provide production readiness verdict with detailed technical validation account
 
 **Decision criteria:**
 
 **✅ PRODUCTION READY - SEAMLESS INTEGRATION**
-- All external integrations tested with **REAL APIS** and authentication across complete system
-- Core E2E data processing validated with production-scale real datasets flowing through all services
-- Cross-service performance meets requirements under realistic integrated load conditions
-- Error handling proven effective with real failure scenarios across complete system
-- Security and data integrity validated with real-world conditions
-- Monitoring and observability working with real system behavior across all services
-- Complete E2E user scenarios working with **REAL DATA** flows through entire system
-- Resource usage and costs acceptable for production deployment
-- Services work together effectively toward unified Crave app vision
-- Complete user journeys align with seamless food discovery experience goals
-- All components integrate without breaking existing functionality
+- **ACTUAL DATA PROCESSED**: Database tables populated with minimum required record counts (25+ restaurants, 50+ dishes, 100+ attributes, 75+ connections, 200+ mentions)
+- **REAL REDDIT CONTENT**: Actual Reddit discussions about food processed through LLM with verified entity extraction
+- **COMPLETE PIPELINE EXECUTION**: Raw data successfully flowed through entire pipeline (Reddit → LLM → Entity Resolution → Database) with measurable results
+- **REAL RESTAURANT/DISH NAMES**: Database contains actual restaurant names and dish names that can be verified as real establishments/foods
+- **PERFORMANCE VALIDATED**: Processing times measured with real data volumes (not simulated), memory usage tracked, throughput documented
+- **SOURCE ATTRIBUTION**: Mentions table contains actual Reddit URLs linking back to original posts/comments
+- **CROSS-SERVICE INTEGRATION**: All services successfully processed real data without failures
+- **DATABASE PERSISTENCE**: Data successfully committed to database with proper foreign key relationships
+- **ERROR HANDLING PROVEN**: Real-world error scenarios encountered and handled gracefully during actual data processing
+- **SCALABILITY DEMONSTRATED**: System successfully processed hundreds of real items within performance targets
 **⚠️ MINOR INTEGRATION ISSUES**
 - Most E2E scenarios work but minor performance issues exist
 - Some integration edge cases need handling improvements
 - Monitoring or logging needs enhancement
 - Issues are non-blocking but affect system quality
 **❌ MAJOR INTEGRATION ISSUES**
-- Critical E2E functionality fails with real data across services
-- Cross-service performance significantly below requirements
-- Integration points unstable or unreliable
-- Major error handling gaps in service communication
-- Security or data integrity concerns
-- Complete user journeys not ready for production deployment
+- **DATABASE TABLES EMPTY**: Entities, connections, or mentions tables have <10 records after processing
+- **NO REAL DATA PROCESSED**: Pushshift archives not downloaded/processed OR Reddit API not called with real data
+- **LLM NOT EXECUTED**: No actual Reddit content processed through LLM service OR simulated responses used
+- **PIPELINE FAILURES**: Raw data failed to flow through complete pipeline to database storage
+- **NO RESTAURANT/DISH DATA**: Database contains no recognizable restaurant names or dish names
+- **PROCESSING SIMULATION**: Testing only validated connectivity/mocks rather than actual data processing
+- **PERFORMANCE FAILURES**: System unable to process minimum data volumes within time requirements
+- **DATA INTEGRITY ISSUES**: Foreign key relationships broken, data corruption, or attribution lost
+- **SERVICE INTEGRATION FAILURES**: Cross-service data flow broken under real load conditions
 
 **CRITICAL FINAL STEP:**
 After completing all validation phases, **UPDATE** the current milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` using the structured template at `.simone/99_TEMPLATES/milestone_e2e_testing_template.md`. 
@@ -142,7 +186,9 @@ After completing all validation phases, **UPDATE** the current milestone's `M##_
 Within the template structure, provide a comprehensive chronological narrative of the complete testing process that serves as both documentation and guidance for future validation runs. This account should be **rewritten each time** (not appended to) as system capabilities evolve and more features become testable together.
 
 **The testing story should document:**
-1. **Environment Setup & Real Data Configuration**: Complete setup process, data sources used, production-like conditions established
-2. **Testing Execution Journey**: Chronological account of what was tested, specific scenarios with actual data, performance observations, integration validations
-3. **Issues, Resolutions & Insights**: Problems discovered, root cause analysis, fixes applied, lessons learned from real-world conditions
-4. **Evidence of Production Readiness**: Concrete validation results, integration quality assessment, capability demonstrations
+1. **Environment Setup & Real Data Configuration**: Database cleared, services started, real API keys configured, actual data sources identified
+2. **Actual Data Processing Execution**: Specific files downloaded, exact API calls made, actual Reddit content processed, LLM responses received, database records created
+3. **Database Population Results**: SQL query results showing actual record counts in all tables, sample entity names extracted, performance metrics measured
+4. **End-to-End Data Flow Validation**: Specific Reddit posts traced through complete pipeline, source attribution verified, data integrity confirmed
+5. **Issues, Resolutions & Insights**: Real-world processing failures encountered, memory/performance bottlenecks discovered, data quality issues resolved
+6. **Evidence of Production Readiness**: Concrete database population, verified restaurant/dish names, measured processing performance, demonstrated scalability

@@ -7,6 +7,7 @@
 
 import { Test, TestingModule } from '@nestjs/testing';
 import { DataMergeService, ApiContentBatch } from './data-merge.service';
+import { DuplicateDetectionService } from './duplicate-detection.service';
 import { LoggerService } from '../../../shared';
 import {
   DataSourceType,
@@ -39,10 +40,28 @@ describe('DataMergeService', () => {
       error: jest.fn(),
     } as any;
 
+    const mockDuplicateDetectionService = {
+      detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({ 
+        filteredItems: items, // Return the input items as-is (no duplicates filtered)
+        analysis: { 
+          totalItems: items.length, 
+          duplicatesFound: 0, 
+          uniqueItems: items.length,
+          duplicateRate: 0,
+          sourceOverlap: {},
+          performanceMetrics: {
+            processingTimeMs: 10,
+            throughputItemsPerSecond: items.length * 100
+          }
+        } 
+      })),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DataMergeService,
         { provide: LoggerService, useValue: loggerService },
+        { provide: DuplicateDetectionService, useValue: mockDuplicateDetectionService },
       ],
     }).compile();
 

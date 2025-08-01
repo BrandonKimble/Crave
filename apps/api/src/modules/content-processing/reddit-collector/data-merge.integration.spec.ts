@@ -59,31 +59,33 @@ describe('DataMergeService Integration', () => {
         {
           provide: DuplicateDetectionService,
           useValue: {
-            detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({
-              filteredItems: items,
-              analysis: {
-                totalItems: items.length,
-                duplicatesFound: 0,
-                duplicateRate: 0,
-                processingTimeMs: 100,
-                sourceBreakdown: {},
-                overlapMatrix: {},
-                commonOverlapPatterns: [],
-                temporalOverlapAnalysis: {
-                  overlapsByHour: {},
-                  peakOverlapTimes: [],
-                  avgTimeBetweenDuplicates: 0,
+            detectAndFilterDuplicates: jest
+              .fn()
+              .mockImplementation((items) => ({
+                filteredItems: items,
+                analysis: {
+                  totalItems: items.length,
+                  duplicatesFound: 0,
+                  duplicateRate: 0,
+                  processingTimeMs: 100,
+                  sourceBreakdown: {},
+                  overlapMatrix: {},
+                  commonOverlapPatterns: [],
+                  temporalOverlapAnalysis: {
+                    overlapsByHour: {},
+                    peakOverlapTimes: [],
+                    avgTimeBetweenDuplicates: 0,
+                  },
+                  performance: {
+                    startTime: new Date(),
+                    endTime: new Date(),
+                    durationMs: 100,
+                    throughputPerSecond: items.length / 0.1,
+                    memoryUsage: { peakMemoryMB: 0, memoryPerItemKB: 0 },
+                    lookupPerformance: { avgLookupTimeMs: 0 },
+                  },
                 },
-                performance: {
-                  startTime: new Date(),
-                  endTime: new Date(),
-                  durationMs: 100,
-                  throughputPerSecond: items.length / 0.1,
-                  memoryUsage: { peakMemoryMB: 0, memoryPerItemKB: 0 },
-                  lookupPerformance: { avgLookupTimeMs: 0 },
-                },
-              },
-            })),
+              })),
           },
         },
       ],
