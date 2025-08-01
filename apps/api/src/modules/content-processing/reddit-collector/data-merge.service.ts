@@ -20,6 +20,7 @@ import {
   GapAnalysisResult,
   MergedLLMInputDto,
 } from './data-merge.types';
+import { DuplicateDetectionService } from './duplicate-detection.service';
 import {
   DataMergeException,
   MergeValidationException,
@@ -71,7 +72,10 @@ export class DataMergeService {
   private readonly logger: LoggerService;
   private readonly defaultConfig: TemporalMergeConfig;
 
-  constructor(loggerService: LoggerService) {
+  constructor(
+    loggerService: LoggerService,
+    private readonly duplicateDetectionService: DuplicateDetectionService,
+  ) {
     this.logger = loggerService.setContext('DataMerge');
     this.defaultConfig = this.getDefaultMergeConfig();
   }
@@ -126,38 +130,58 @@ export class DataMergeService {
         timeSpan: this.calculateTimeSpan(orderedItems),
       });
 
-      // Step 3: Detect and analyze data gaps
-      const gapAnalysis = this.analyzeTemporalGaps(orderedItems, mergeConfig);
+      // Step 2.5: Detect and filter duplicates (PRD Section 5.1.2)
+      const { filteredItems: deduplicatedItems, analysis: duplicateAnalysis } =
+        this.duplicateDetectionService.detectAndFilterDuplicates(orderedItems, {
+          enableSourceOverlapAnalysis: true,
+          enablePerformanceTracking: true,
+          maxTimeDifferenceSeconds: mergeConfig.timestampTolerance,
+        });
+
+      this.logger.debug('Filtered duplicates', {
+        batchId,
+        originalItems: orderedItems.length,
+        deduplicatedItems: deduplicatedItems.length,
+        duplicatesRemoved: duplicateAnalysis.duplicatesFound,
+        duplicateRate: duplicateAnalysis.duplicateRate,
+      });
+
+      // Step 3: Detect and analyze data gaps (using deduplicated items)
+      const gapAnalysis = this.analyzeTemporalGaps(
+        deduplicatedItems,
+        mergeConfig,
+      );
 
       // Step 4: Separate submissions and comments for LLM pipeline compatibility
-      const submissions = orderedItems
+      const submissions = deduplicatedItems
         .filter((item) => item.type === 'submission')
         .map((item) => item.data as CraveRedditSubmission);
 
-      const comments = orderedItems
+      const comments = deduplicatedItems
         .filter((item) => item.type === 'comment')
         .map((item) => item.data as CraveRedditComment);
 
-      // Step 5: Create merge batch result
+      // Step 5: Create merge batch result (using deduplicated items)
       const mergeEndTime = new Date();
-      const sourceBreakdown = this.calculateSourceBreakdown(orderedItems);
-      const temporalRange = this.calculateTemporalRange(orderedItems);
+      const sourceBreakdown = this.calculateSourceBreakdown(deduplicatedItems);
+      const temporalRange = this.calculateTemporalRange(deduplicatedItems);
 
       const mergeBatch: TemporalMergeBatch = {
-        mergedItems: orderedItems,
+        mergedItems: deduplicatedItems,
         submissions,
         comments,
-        totalItems: orderedItems.length,
-        validItems: orderedItems.filter((item) => item.isValid).length,
-        invalidItems: orderedItems.filter((item) => !item.isValid).length,
+        totalItems: deduplicatedItems.length,
+        validItems: deduplicatedItems.filter((item) => item.isValid).length,
+        invalidItems: deduplicatedItems.filter((item) => !item.isValid).length,
         sourceBreakdown,
         temporalRange,
         processingStats: {
           mergeStartTime,
           mergeEndTime,
           mergeDurationMs: mergeEndTime.getTime() - mergeStartTime.getTime(),
-          duplicatesDetected: this.detectDuplicates(orderedItems, mergeConfig),
+          duplicatesDetected: duplicateAnalysis.duplicatesFound,
           gapsDetected: gapAnalysis,
+          duplicateAnalysis, // Add comprehensive duplicate analysis
         },
         batchId,
       };
@@ -583,41 +607,21 @@ export class DataMergeService {
   }
 
   /**
-   * Detect duplicate items based on timestamp tolerance
+   * Legacy duplicate detection method - now handled by DuplicateDetectionService
+   * Kept for backwards compatibility but returns analysis from comprehensive service
    */
   private detectDuplicates(
     items: MergedContentItem[],
     config: TemporalMergeConfig,
   ): number {
-    let duplicates = 0;
-    const seenItems = new Map<string, MergedContentItem>();
-
-    for (const item of items) {
-      const key = `${item.sourceMetadata.originalId}-${item.type}`;
-      const existing = seenItems.get(key);
-
-      if (existing) {
-        const timeDiff = Math.abs(
-          item.normalizedTimestamp - existing.normalizedTimestamp,
-        );
-        if (timeDiff <= config.timestampTolerance) {
-          duplicates++;
-          this.logger.debug('Potential duplicate detected', {
-            itemId: item.sourceMetadata.originalId,
-            type: item.type,
-            timeDiff,
-            sources: [
-              existing.sourceMetadata.sourceType,
-              item.sourceMetadata.sourceType,
-            ],
-          });
-        }
-      } else {
-        seenItems.set(key, item);
-      }
-    }
-
-    return duplicates;
+    // Use DuplicateDetectionService for consistent duplicate detection
+    const { analysis } =
+      this.duplicateDetectionService.detectAndFilterDuplicates(items, {
+        maxTimeDifferenceSeconds: config.timestampTolerance,
+        enablePerformanceTracking: false,
+        enableSourceOverlapAnalysis: false,
+      });
+    return analysis.duplicatesFound;
   }
 
   /**

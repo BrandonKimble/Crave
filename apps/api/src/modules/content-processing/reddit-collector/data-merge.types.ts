@@ -16,6 +16,7 @@ import {
   CraveRedditSubmission,
   CraveRedditComment,
 } from './historical-content-pipeline.types';
+import { BatchDuplicateAnalysis } from './duplicate-detection.types';
 
 /**
  * Data source types for temporal merge attribution
@@ -77,6 +78,7 @@ export interface TemporalMergeBatch {
     mergeDurationMs: number;
     duplicatesDetected: number;
     gapsDetected: GapAnalysisResult[];
+    duplicateAnalysis?: BatchDuplicateAnalysis; // Comprehensive duplicate analysis
   };
   batchId: string;
 }

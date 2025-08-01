@@ -1,35 +1,51 @@
-# Real Data E2E Integration Validation Command
+# Real Data E2E Integration Validation
 
 Validates seamless integration using **REAL DATA** across all implemented services to ensure Crave app components work together toward unified user experience goals.
 
-## CONTEXT LOADING AND PRD REQUIREMENTS
+## Create a TODO with EXACTLY these
+
+1.
+2.
+3.
+
+Follow step by step and adhere closely to the following instructions for each step.
+
+## DETAILS on every TODO item
+
+## 1 · Load context and PRD requirements
 
 **Load Sprint and Milestone Context Comprehensively:**
 
-**Current Sprint Analysis:**
+**Parse current sprint and context:**
+- Check <$ARGUMENTS> for task ID or read `.simone/00_PROJECT_MANIFEST.md` for current task/sprint/milestone context
+- Find task file in `.simone/03_SPRINTS/`
+- **Read PRD sections systematically in this order:**
+
+1. **Read TASK PRD SECTIONS**: Locate and read ALL sections listed under "IMPLEMENTS PRD REQUIREMENTS" in the task
+   - Extract: Specific requirements, acceptance criteria, technical specifications
+   - Read ALL subsections completely (e.g., section 4 = read 4.1, 4.2, 4.3, 4.1.1, 4.1.2, etc.)
+
+2. **Read CONTEXT PRD SECTIONS**: Locate and read ALL sections listed under "BROADER CONTEXT" in the task  
+   - Extract: Constraints, integration requirements, architectural context, dependencies
+   - Read ALL subsections completely for full understanding
+
+3. **Read ROADMAP SECTIONS**: Read PRD sections 9 and 10 completely
+   - Extract: Scope boundaries, milestone context, what NOT to implement
+   - Read ALL subsections within 9 and 10
+
+**Gather Previous Task Context:**
 - Read ALL task files in current sprint (both T## and TX## files) to understand complete implementation scope
 - Extract: What services have been implemented, integration points created, data flows established
 - Identify: API endpoints, database schemas, external integrations, processing pipelines built during sprint
 - Map: Dependencies between tasks and how they work together as a unified system
 
-**Previous Milestone Context:**
+**Gather Previous Milestone Context:**
 - Read ALL milestone meta files from `.simone/02_REQUIREMENTS/` (M01, M02, etc.) up to current milestone
 - Extract: Foundation services, core capabilities, architectural patterns established in previous milestones
 - Identify: What infrastructure, services, and integrations are available from previous work
 - Understand: How current sprint builds upon and integrates with existing foundation
 
-**PRD Analysis for E2E Requirements:**
-- Read current milestone's PRD sections systematically:
-  1. **Read MILESTONE PRD SECTIONS**: All sections referenced in current milestone meta file
-  2. **Read BROADER CONTEXT**: Sections 1, 2, 3, 4 for architectural context and constraints
-  3. **Read SUCCESS CRITERIA**: Section 9 subsections for current milestone success criteria and E2E requirements
-  4. **Read INTEGRATION REQUIREMENTS**: Section 6 and other relevant sections for cross-service integration specifications
-- Extract: E2E user journeys, integration requirements, performance targets, success criteria for seamless system operation
-- Identify: What constitutes "production ready" for this milestone's integrated system
-
-## VALIDATION PHASES
-
-### Phase 1: Current Integration State Assessment
+## 2 · Assess Current Integration State
 
 **Read Current E2E Status:**
 - Read current milestone's `M##_E2E_Testing_Status.md` from `.simone/02_REQUIREMENTS/M##_Milestone_Name/` (create if missing)
@@ -45,9 +61,10 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 - Plan comprehensive E2E scenarios that validate the complete sprint implementation as integrated system
 - Reference PRD requirements to ensure E2E testing covers all specified integration points and user journeys
 
-### Phase 2: Comprehensive Real Data Integration Testing
+## 3 · Test Comprehensive Real Data Integration
 
 **Setup Production-Like Environment:**
+- Use real APIs, databases, and data sources
 - Use real API keys, tokens, and authentication for live service calls
 - Configure realistic network conditions and resource constraints
 - Test with production-scale data volumes and authentic load patterns
@@ -68,7 +85,7 @@ Validates seamless integration using **REAL DATA** across all implemented servic
   - Caching, queueing, and async processing under production-like loads
   - Monitoring, logging, and error tracking with real system behavior
 
-### Phase 3: Performance & Resilience Validation
+## 4 · Validate Performance & Resilience
 
 **Performance Testing:**
 - Test sustained load across all services with realistic usage patterns
@@ -84,16 +101,6 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 - Test real edge cases and boundary conditions with actual production data
 - Verify graceful handling of unexpected data formats from external APIs
 
-## VALIDATION OUTPUTS
-
-### Key Metrics to Document
-
-**Performance Results:**
-- E2E response times across all services
-- Processing throughput for complete user journeys
-- Resource usage under integrated load
-- Cost analysis per user scenario
-
 **Integration Assessment:**
 - Service coordination effectiveness with real data
 - Data consistency across service boundaries
@@ -105,26 +112,27 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 - Cross-service functionality and reliability
 - Quality of recommendations with real data
 
-### Production Readiness Assessment
+## 5 · Provide production readiness verdict with technical account of validation testing, issues encountered, resolutions applied and actionable feedback
 
-**RESULT CATEGORIES:**
+**Decision criteria:**
 
 **✅ PRODUCTION READY - SEAMLESS INTEGRATION**
-- All critical E2E user journeys tested successfully with real data across services
-- Cross-service performance meets requirements under realistic integrated load
-- Error handling validated with real failure scenarios across complete system
-- All integration points stable with production-like conditions
+- All external integrations tested with **REAL APIS** and authentication across complete system
+- Core E2E data processing validated with production-scale real datasets flowing through all services
+- Cross-service performance meets requirements under realistic integrated load conditions
+- Error handling proven effective with real failure scenarios across complete system
+- Security and data integrity validated with real-world conditions
+- Monitoring and observability working with real system behavior across all services
+- Complete E2E user scenarios working with **REAL DATA** flows through entire system
+- Resource usage and costs acceptable for production deployment
 - Services work together effectively toward unified Crave app vision
-- Complete user experience delivers seamless food discovery
-- No critical issues or blockers identified
-- Monitoring and observability working effectively
-
+- Complete user journeys align with seamless food discovery experience goals
+- All components integrate without breaking existing functionality
 **⚠️ MINOR INTEGRATION ISSUES**
 - Most E2E scenarios work but minor performance issues exist
 - Some integration edge cases need handling improvements
 - Monitoring or logging needs enhancement
 - Issues are non-blocking but affect system quality
-
 **❌ MAJOR INTEGRATION ISSUES**
 - Critical E2E functionality fails with real data across services
 - Cross-service performance significantly below requirements
@@ -132,6 +140,11 @@ Validates seamless integration using **REAL DATA** across all implemented servic
 - Major error handling gaps in service communication
 - Security or data integrity concerns
 - Complete user journeys not ready for production deployment
+
+**CRITICAL FINAL STEP:**
+After completing all validation phases, **UPDATE** the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with a detailed technical account of validation testing from beginning to end, including:
+
+`.simone/99_TEMPLATES/milestone_e2e_testing_template.md`
 
 ## ISSUE RESOLUTION GUIDANCE
 
@@ -147,37 +160,12 @@ Validates seamless integration using **REAL DATA** across all implemented servic
    - What is the user experience impact?
    - Are there security or data integrity risks?
 
-3. **Plan Resolution**:
+3. **Plan and Document Resolution**:
    - Can this be fixed within current PRD scope?
-   - Does this require architectural changes across services?
-   - What is the effort and timeline for resolution?
+   - Does this require architectural changes across services
 
-4. **Iterate and Re-validate**:
-   - Implement fixes focusing on seamless integration
-   - Re-test with the same real data E2E scenarios
-   - Verify the fix resolves issues without breaking existing functionality
 
-## CRITICAL SUCCESS CRITERIA
-
-**Never mark PRODUCTION READY unless:**
-- ✅ All external integrations tested with **REAL APIS** and authentication across complete system
-- ✅ Core E2E data processing validated with production-scale real datasets flowing through all services
-- ✅ Cross-service performance meets requirements under realistic integrated load conditions
-- ✅ Error handling proven effective with real failure scenarios across complete system
-- ✅ Security and data integrity validated with real-world conditions
-- ✅ Monitoring and observability working with real system behavior across all services
-- ✅ Complete E2E user scenarios working with **REAL DATA** flows through entire system
-- ✅ Resource usage and costs acceptable for production deployment
-- ✅ Services work together effectively toward unified Crave app vision
-- ✅ Complete user journeys deliver seamless food discovery experience
-- ✅ All components integrate without breaking existing functionality
-
-## MILESTONE E2E TESTING STATUS UPDATE
-
-**CRITICAL FINAL STEP:**
-After completing all validation phases, **UPDATE** the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with:
-
-**Format**: Write a detailed technical account of validation testing from beginning to end, including:
+   
 
 1. **Validation Setup**: 
    - Environment configuration (containers, databases, APIs, data sources)

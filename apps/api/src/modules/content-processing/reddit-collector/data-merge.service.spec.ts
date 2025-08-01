@@ -399,10 +399,7 @@ describe('DataMergeService', () => {
       const apiData = createMockApiData();
 
       // Act & Assert - Should not throw, but should handle errors gracefully
-      const result = service.mergeTemporalData(
-        malformedArchiveData,
-        apiData,
-      );
+      const result = service.mergeTemporalData(malformedArchiveData, apiData);
       expect(result).toBeDefined();
       expect(result.totalItems).toBeGreaterThan(0); // Should still process valid API data
       expect(loggerService.warn).toHaveBeenCalled(); // Should log warnings for malformed items
@@ -414,10 +411,7 @@ describe('DataMergeService', () => {
       const malformedApiData = createMalformedApiData();
 
       // Act & Assert - Should not throw, but should handle errors gracefully
-      const result = service.mergeTemporalData(
-        archiveData,
-        malformedApiData,
-      );
+      const result = service.mergeTemporalData(archiveData, malformedApiData);
       expect(result).toBeDefined();
       expect(result.totalItems).toBeGreaterThan(0); // Should still process valid archive data
       expect(loggerService.warn).toHaveBeenCalled(); // Should log warnings for malformed items

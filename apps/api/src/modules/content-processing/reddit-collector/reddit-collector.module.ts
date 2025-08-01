@@ -27,6 +27,7 @@ import { CollectionJobMonitoringService } from './collection-job-monitoring.serv
 import { CollectionJobStateService } from './collection-job-state.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { DataMergeService } from './data-merge.service';
+import { DuplicateDetectionService } from './duplicate-detection.service';
 
 /**
  * Reddit Collector Module
@@ -57,6 +58,12 @@ import { DataMergeService } from './data-merge.service';
  * - Job state persistence and resume capability
  * - Monthly keyword entity search scheduling
  *
+ * Duplicate Detection (Section 5.1.2 & 6.1):
+ * - Comprehensive duplicate detection between Pushshift archives and Reddit API
+ * - Exact ID-based matching to prevent duplicate processing
+ * - Performance optimization for large datasets
+ * - Overlap pattern analysis and statistics tracking
+ *
  * Key Services:
  * - DualCollectionStrategyService: Orchestrates both collection strategies
  * - ChronologicalCollectionService: Handles /r/subreddit/new collection
@@ -67,6 +74,7 @@ import { DataMergeService } from './data-merge.service';
  * - CollectionJobMonitoringService: Tracks job performance and health
  * - CollectionJobStateService: Handles job state persistence and resume
  * - KeywordSearchSchedulerService: Manages monthly keyword search cycles
+ * - DuplicateDetectionService: Comprehensive duplicate detection and filtering
  */
 @Module({
   imports: [
@@ -107,6 +115,8 @@ import { DataMergeService } from './data-merge.service';
     KeywordSearchSchedulerService,
     // Data Merge components (PRD Section 5.1.2 & 6.1)
     DataMergeService,
+    // Duplicate Detection components (PRD Section 5.1.2 & 6.1)
+    DuplicateDetectionService,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -137,6 +147,8 @@ import { DataMergeService } from './data-merge.service';
     KeywordSearchSchedulerService,
     // Export data merge components
     DataMergeService,
+    // Export duplicate detection components
+    DuplicateDetectionService,
   ],
 })
 export class RedditCollectorModule {}

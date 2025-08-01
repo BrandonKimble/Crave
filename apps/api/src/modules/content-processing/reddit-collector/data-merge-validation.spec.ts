@@ -188,10 +188,7 @@ describe('DataMergeService Production Validation', () => {
       };
 
       // Act
-      const mergeBatch = service.mergeTemporalData(
-        historicalBatch,
-        apiData,
-      );
+      const mergeBatch = service.mergeTemporalData(historicalBatch, apiData);
       const llmInput = service.convertToLLMInput(mergeBatch);
 
       // Assert - LLM format validation

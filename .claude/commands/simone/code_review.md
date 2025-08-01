@@ -17,8 +17,7 @@ Follow step by step and adhere closely to the following instructions for each st
 ## 1 · Analyze scope and identify code changes
 
 **Parse scope and context:**
-- Check <$ARGUMENTS> for task ID or use default scope
-- Read `.simone/00_PROJECT_MANIFEST.md` for current sprint/milestone context  
+- Check <$ARGUMENTS> for task ID or read `.simone/00_PROJECT_MANIFEST.md` for current task/sprint/milestone context
 - Find task file in `.simone/03_SPRINTS/` or `.simone/04_GENERAL_TASKS/`
 - Read task PRD references and requirements
 
@@ -93,7 +92,7 @@ Follow step by step and adhere closely to the following instructions for each st
 
 **CRITICAL SCOPE CLARIFICATION**: 
 - Fix ALL issues that prevent production readiness, even if they appear in files outside the primary task scope
-- The boundary is "production-ready task completion" not "only files I directly modified"
+- The boundary is "production-ready completion" not "only files I directly modified"
 - Shared package errors, dependency issues, and related file problems MUST be resolved for PASS verdict
 
 **Rate all issues (1-10 severity scale):**

@@ -131,7 +131,7 @@ describe('DataMergeService Integration', () => {
       expect(processingTimeMs).toBeLessThan(5000); // Should complete within 5 seconds
       expect(mergeResult.processingStats.mergeDurationMs).toBeLessThan(5000);
 
-      // Verify memory efficiency - no significant memory leaks  
+      // Verify memory efficiency - no significant memory leaks
       expect(process.memoryUsage().heapUsed).toBeLessThan(600 * 1024 * 1024); // < 600MB adjusted for test environment
     });
   });

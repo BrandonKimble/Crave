@@ -127,110 +127,24 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 ## 4 · Validate with real data and production-like conditions
 
-**ITERATIVE REAL DATA VALIDATION LOOP - Continue until production-ready**
+**ITERATIVE REAL DATA VALIDATION LOOP - Continue until PRODUCTION READY**
 
-**CRITICAL PRINCIPLE**: No implementation is complete until validated against real-world conditions and production-like scenarios.
-
-**SPRINT COMPLETION CHECK:**
-First, determine if this is the last task in the current sprint:
-- Check if all other tasks in current sprint are completed (TX## format)
-- If this IS the last task in sprint: Run `include @.claude/commands/simone/real_data_validation.md` for comprehensive cross-service integration validation
-- If this is NOT the last task: Continue with task-level validation below
+**MANDATORY LOOP - NO SHORTCUTS ALLOWED**
 
 Follow these steps for Real Data Validation (in order):
 
-### Phase 1: Setup Production-like Environment
+1. **Run Real Data Validation**: Include @.claude/commands/simone/real_data_validation.md and use the Task ID as Scope
+2. **Evaluate Result**:
+   - On **PRODUCTION READY**: Move to step 5 (Perform comprehensive code review and validation)
+   - On **ISSUES FOUND**: Continue to step 3 below
 
-**Environment Prerequisites:**
-- Start required services (PostgreSQL, Redis, etc.):
-  ```bash
-  make docker-up
-  # OR
-  docker-compose up -d
-  # OR
-  pnpm --filter api docker:up
-  ```
-- Verify database connectivity and schema is current:
-  ```bash
-  pnpm --filter api db:migrate
-  pnpm --filter api prisma:generate
-  ```
-- Check environment variables are loaded (`.env` files present)
-- Ensure all dependencies installed: `pnpm install`
-- Verify all services are healthy and responding
-
-**Environment Validation:**
-- Database connection successful
-- All required tables/indexes exist
-- External API keys/credentials configured (if needed)
-- Cache/Redis connection working
-- Log file permissions and directories exist
-
-### Phase 2: Execute Complete E2E Scenarios
-
-**Real Data Testing:**
-- Create or run validation scripts that test the implementation with realistic data
-- Use actual database operations (not mocks) where possible
-- Test with real API calls to external services (within rate limits)
-- Process realistic data volumes and edge cases
-- Test complete workflows end-to-end including cross-service data flows
-
-**Integration Testing:**
-- Verify all service integrations work with real dependencies
-- Test complete user journeys where applicable (data ingestion → processing → storage → retrieval)
-- Test error handling with actual error conditions (network failures, invalid data, etc.)
-- Confirm data persistence and retrieval works correctly
-- Validate any file I/O, caching, or external system interactions
-- Test integration points with existing system components from previous tasks
-
-**Performance Validation:**
-- Measure response times against targets
-- Monitor memory usage during operations
-- Test with concurrent operations if applicable
-- Verify resource cleanup (connections, file handles, etc.)
-
-### Phase 3: Production Readiness Assessment
-
-**Acceptance Criteria Verification:**
-- Systematically verify each acceptance criteria from the task
-- Test both happy path and error scenarios
-- Confirm all subtasks work with real data
-- Validate integration with existing system components
-
-**Resilience Testing:**
-- Test with malformed/unexpected data
-- Verify graceful degradation under load
-- Test recovery from service interruptions
-- Confirm proper error logging and handling
-
-**Documentation and Limitations:**
-- Document any discovered limitations or assumptions
-- Note performance characteristics observed
-- Record any manual setup steps required
-- Identify any areas needing monitoring in production
-
-### Result Evaluation and Loop Control
-
-**Evaluate Results:**
-- **On PRODUCTION READY**: Continue to step 5 (code review)
-- **On ISSUES FOUND**: Continue to remediation below
-
-**Issues Found Remediation:**
-- Thoroughly understand all real-world problems discovered
-- **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including problems in shared packages, dependencies, or related files discovered during real-world testing
-- Document real-world insights as implementation learnings
-- Extend current task with real-world issues as subtasks
-- Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
-- **CRITICAL STEP**: After completing fixes, **MUST** return to Phase 1 of this validation step
-- **Continue this loop until real data validation shows PRODUCTION READY**
-
-**Update E2E Testing Status:**
-Update the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREMENTS/M##_Milestone_Name/` with a detailed technical account of validation testing from beginning to end, including:
-- Validation Setup
-- Testing Execution
-- Issues Encountered and Resolutions
-- Performance and Resilience Validation
-- Production Readiness Assessment
+3. **Fix Issues and Re-validate** (ISSUES FOUND path):
+   - Thoroughly understand all real-world problems discovered
+   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues discovered during real-world testing that prevent production readiness, including problems in shared packages, dependencies, or related files or services even if the issues are not directly relevant to the current task
+   - Extend current task with real-world issues as subtasks
+   - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
+   - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run real data validation
+   - **Continue this loop until real data validation shows PRODUCTION READY**
 
 **LOOP REQUIREMENTS (NON-NEGOTIABLE):**
 - **Never proceed to step 5 without a PRODUCTION READY result**
@@ -239,7 +153,7 @@ Update the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREME
 - **Each iteration should show measurable progress toward production readiness**
 - **Document all real-world discoveries for future reference**
 
-**MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to Phase 1.
+**MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to step 1.
 
 ## 5 · Perform comprehensive code review and validation
 
@@ -249,20 +163,20 @@ Update the milestone's `M##_E2E_Testing_Status.md` file in `.simone/02_REQUIREME
 
 Follow these steps for a Code Review (in order):
 
-1. **Run Code Review**: include @.claude/commands/simone/code_review.md and use the Task ID as Scope
+1. **Run Code Review**: Include @.claude/commands/simone/code_review.md and use the Task ID as Scope
 2. **Evaluate Result**:
    - On **PASS**: Move to step 6 (Finalize task completion)
    - On **FAIL**: Continue to step 3 below
 
 3. **Fix Issues and Re-validate** (FAIL path):
    - Thoroughly understand all identified problems
-   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including errors in shared packages, dependencies, or related files - the boundary is "production-ready task completion" not "only files I directly modified"
+   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues that prevent production readiness, including errors in shared packages, dependencies, or related files even if the issues are not directly relevant to the current task
    - Extend current task with identified issues as subtasks
    - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
    - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run code review
    - **Continue this loop until code review PASSES**
 
-**LOOP REQUIREMENTS (NON-NEGOTIABLE)**:
+**LOOP REQUIREMENTS (NON-NEGOTIABLE):**
 - **Never proceed to step 6 without a PASS result**
 - **Always re-run code review after fixing issues**
 - **Track iterations in task Output Log with timestamps**
