@@ -10,6 +10,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataMergeService, ApiContentBatch } from './data-merge.service';
 import { HistoricalContentPipelineService } from './historical-content-pipeline.service';
 import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
+import { DuplicateDetectionService } from './duplicate-detection.service';
 import { LoggerService } from '../../../shared';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
@@ -54,6 +55,36 @@ describe('DataMergeService Integration', () => {
         {
           provide: RedditService,
           useValue: createMockRedditService(),
+        },
+        {
+          provide: DuplicateDetectionService,
+          useValue: {
+            detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({
+              filteredItems: items,
+              analysis: {
+                totalItems: items.length,
+                duplicatesFound: 0,
+                duplicateRate: 0,
+                processingTimeMs: 100,
+                sourceBreakdown: {},
+                overlapMatrix: {},
+                commonOverlapPatterns: [],
+                temporalOverlapAnalysis: {
+                  overlapsByHour: {},
+                  peakOverlapTimes: [],
+                  avgTimeBetweenDuplicates: 0,
+                },
+                performance: {
+                  startTime: new Date(),
+                  endTime: new Date(),
+                  durationMs: 100,
+                  throughputPerSecond: items.length / 0.1,
+                  memoryUsage: { peakMemoryMB: 0, memoryPerItemKB: 0 },
+                  lookupPerformance: { avgLookupTimeMs: 0 },
+                },
+              },
+            })),
+          },
         },
       ],
     }).compile();

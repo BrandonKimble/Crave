@@ -28,7 +28,11 @@ describe('Duplicate Detection Integration', () => {
       performance: jest.fn(),
       audit: jest.fn(),
       child: jest.fn().mockReturnThis(),
-    } as jest.Mocked<LoggerService>;
+      logger: {} as any,
+      buildErrorMetadata: jest.fn(),
+      sanitizeMetadata: jest.fn(),
+      sanitizeNestedObject: jest.fn(),
+    } as any;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
