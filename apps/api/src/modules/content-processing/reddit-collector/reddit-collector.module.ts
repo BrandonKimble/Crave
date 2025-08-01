@@ -28,6 +28,8 @@ import { CollectionJobSchedulerService } from './collection-job-scheduler.servic
 import { CollectionJobMonitoringService } from './collection-job-monitoring.service';
 import { CollectionJobStateService } from './collection-job-state.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
+import { EntityPrioritySelectionService } from './entity-priority-selection.service';
+import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { DataMergeService } from './data-merge.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { UnifiedProcessingService } from './unified-processing.service';
@@ -125,6 +127,9 @@ import { UnifiedProcessingService } from './unified-processing.service';
     CollectionJobMonitoringService,
     CollectionJobStateService,
     KeywordSearchSchedulerService,
+    // Keyword Entity Search components (PRD Section 5.1.2)
+    EntityPrioritySelectionService,
+    KeywordSearchOrchestratorService,
     // Data Merge components (PRD Section 5.1.2 & 6.1)
     DataMergeService,
     // Duplicate Detection components (PRD Section 5.1.2 & 6.1)
@@ -159,6 +164,9 @@ import { UnifiedProcessingService } from './unified-processing.service';
     CollectionJobMonitoringService,
     CollectionJobStateService,
     KeywordSearchSchedulerService,
+    // Export keyword entity search components
+    EntityPrioritySelectionService,
+    KeywordSearchOrchestratorService,
     // Export data merge components
     DataMergeService,
     // Export duplicate detection components

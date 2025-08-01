@@ -2,24 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
-
-export interface EntityPriorityScore {
-  entityId: string;
-  entityName: string;
-  entityType:
-    | 'restaurant'
-    | 'dish_or_category'
-    | 'dish_attribute'
-    | 'restaurant_attribute';
-  score: number;
-  factors: {
-    dataRecency: number; // days since last enrichment
-    dataQuality: number; // mention count, source diversity
-    userDemand: number; // query frequency, high-potential entities
-  };
-  lastEnrichment?: Date;
-  isNewEntity: boolean;
-}
+import {
+  EntityPrioritySelectionService,
+  EntityPriorityScore,
+} from './entity-priority-selection.service';
 
 export interface KeywordSearchConfig {
   enabled: boolean;
@@ -73,45 +59,9 @@ export class KeywordSearchSchedulerService {
     searchLimit: 1000, // Reddit API limit per search query
   };
 
-  // Mock entity data for M03 implementation (will be replaced by actual entity queries in M05)
-  private readonly MOCK_ENTITIES: Omit<
-    EntityPriorityScore,
-    'score' | 'factors'
-  >[] = [
-    {
-      entityId: '1',
-      entityName: 'Franklin Barbecue',
-      entityType: 'restaurant',
-      isNewEntity: false,
-    },
-    {
-      entityId: '2',
-      entityName: 'tacos',
-      entityType: 'dish_or_category',
-      isNewEntity: false,
-    },
-    {
-      entityId: '3',
-      entityName: 'spicy',
-      entityType: 'dish_attribute',
-      isNewEntity: true,
-    },
-    {
-      entityId: '4',
-      entityName: 'patio',
-      entityType: 'restaurant_attribute',
-      isNewEntity: false,
-    },
-    {
-      entityId: '5',
-      entityName: 'ramen',
-      entityType: 'dish_or_category',
-      isNewEntity: false,
-    },
-  ];
-
   constructor(
     private readonly configService: ConfigService,
+    private readonly entityPriorityService: EntityPrioritySelectionService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('KeywordSearchScheduler');
@@ -202,97 +152,43 @@ export class KeywordSearchSchedulerService {
       subreddit,
     });
 
-    // TODO: In M05, this will query actual entities from database
-    // For M03, we use mock data to establish the framework
-    const mockEntities = this.MOCK_ENTITIES.map((entity) => {
-      const factors = this.calculatePriorityFactors(entity);
-      const score = this.calculateCompositeScore(factors);
+    try {
+      // Use real entity priority selection service per PRD 5.1.2
+      const prioritizedEntities =
+        await this.entityPriorityService.selectTopPriorityEntities({
+          maxEntities: this.config.monthlyEntityCount,
+        });
 
-      return {
-        ...entity,
-        score,
-        factors,
-        lastEnrichment: entity.isNewEntity
-          ? undefined
-          : this.getRandomPastDate(),
-      } as EntityPriorityScore;
-    });
+      this.logger.info('Entity priority scores calculated', {
+        correlationId,
+        subreddit,
+        totalCandidates: 'N/A', // EntityPriorityService provides top entities directly
+        selectedCount: prioritizedEntities.length,
+        averageScore:
+          prioritizedEntities.length > 0
+            ? prioritizedEntities.reduce((sum, e) => sum + e.score, 0) /
+              prioritizedEntities.length
+            : 0,
+        entityTypes: this.getEntityTypeDistribution(prioritizedEntities),
+        topEntities: prioritizedEntities.slice(0, 5).map((e) => ({
+          name: e.entityName,
+          type: e.entityType,
+          score: e.score,
+        })),
+      });
 
-    // Sort by priority score (highest first)
-    const prioritizedEntities = mockEntities
-      .sort((a, b) => b.score - a.score)
-      .slice(0, this.config.monthlyEntityCount);
+      return prioritizedEntities;
+    } catch (error: unknown) {
+      this.logger.error('Failed to calculate entity priority scores', {
+        correlationId,
+        subreddit,
+        error: error instanceof Error ? error.message : String(error),
+      });
 
-    this.logger.info('Entity priority scores calculated', {
-      correlationId,
-      subreddit,
-      totalEntities: mockEntities.length,
-      selectedCount: prioritizedEntities.length,
-      averageScore:
-        prioritizedEntities.reduce((sum, e) => sum + e.score, 0) /
-        prioritizedEntities.length,
-      entityTypes: this.getEntityTypeDistribution(prioritizedEntities),
-    });
-
-    return prioritizedEntities;
-  }
-
-  /**
-   * Calculate priority factors for an entity
-   */
-  private calculatePriorityFactors(
-    entity: Omit<EntityPriorityScore, 'score' | 'factors'>,
-  ): EntityPriorityScore['factors'] {
-    // Mock calculations for M03 - will be replaced with actual data queries in M05
-
-    // Data recency factor (higher score = more urgent need for enrichment)
-    let dataRecency = 0;
-    if (entity.isNewEntity) {
-      dataRecency = 100; // New entities get highest priority
-    } else {
-      // Simulate days since last enrichment (0-365 days)
-      const daysSinceEnrichment = Math.floor(Math.random() * 365);
-      dataRecency = Math.min(100, daysSinceEnrichment / 3.65); // Scale to 0-100
+      // Fallback to empty array if priority calculation fails
+      // In production, this might warrant alerting or alternative handling
+      return [];
     }
-
-    // Data quality factor (higher score = lower quality, needs enrichment)
-    const mentionCount = Math.floor(Math.random() * 100); // Mock mention count
-    const sourceDiversity = Math.floor(Math.random() * 20); // Mock source diversity
-    const dataQuality = Math.max(
-      0,
-      100 - (mentionCount * 0.5 + sourceDiversity * 2),
-    );
-
-    // User demand factor (higher score = more user interest)
-    const queryFrequency = Math.floor(Math.random() * 50); // Mock query frequency
-    const userDemand = queryFrequency * 2; // Scale to 0-100
-
-    return {
-      dataRecency,
-      dataQuality,
-      userDemand,
-    };
-  }
-
-  /**
-   * Calculate composite priority score from factors
-   */
-  private calculateCompositeScore(
-    factors: EntityPriorityScore['factors'],
-  ): number {
-    // Weight factors according to PRD priorities
-    const weights = {
-      dataRecency: 0.4, // 40% - Most important for gap filling
-      dataQuality: 0.35, // 35% - Important for improving coverage
-      userDemand: 0.25, // 25% - Important for user-relevant content
-    };
-
-    const score =
-      factors.dataRecency * weights.dataRecency +
-      factors.dataQuality * weights.dataQuality +
-      factors.userDemand * weights.userDemand;
-
-    return Math.round(score * 10) / 10; // Round to 1 decimal place
   }
 
   /**
@@ -487,13 +383,6 @@ export class KeywordSearchSchedulerService {
     return distribution;
   }
 
-  /**
-   * Get random past date for mock data
-   */
-  private getRandomPastDate(): Date {
-    const daysAgo = Math.floor(Math.random() * 365);
-    return new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-  }
 
   /**
    * Load configuration from environment/config service

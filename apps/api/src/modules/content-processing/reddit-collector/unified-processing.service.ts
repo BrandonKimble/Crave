@@ -32,7 +32,10 @@ import {
   LLMInputStructure,
   LLMOutputStructure,
 } from '../../external-integrations/llm/llm.types';
-import { EntityResolutionInput, BatchResolutionResult } from '../entity-resolver/entity-resolution.types';
+import {
+  EntityResolutionInput,
+  BatchResolutionResult,
+} from '../entity-resolver/entity-resolution.types';
 import {
   UnifiedProcessingException,
   LLMIntegrationException,
@@ -248,7 +251,11 @@ export class UnifiedProcessingService {
     try {
       for (const mention of llmOutput.mentions) {
         // Restaurant entities
-        if (mention.restaurant && mention.restaurant.normalized_name && mention.restaurant.original_text) {
+        if (
+          mention.restaurant &&
+          mention.restaurant.normalized_name &&
+          mention.restaurant.original_text
+        ) {
           entities.push({
             normalizedName: mention.restaurant.normalized_name,
             originalText: mention.restaurant.original_text,
@@ -258,7 +265,11 @@ export class UnifiedProcessingService {
         }
 
         // Dish or category entities
-        if (mention.dish_or_category && mention.dish_or_category.normalized_name && mention.dish_or_category.original_text) {
+        if (
+          mention.dish_or_category &&
+          mention.dish_or_category.normalized_name &&
+          mention.dish_or_category.original_text
+        ) {
           entities.push({
             normalizedName: mention.dish_or_category.normalized_name,
             originalText: mention.dish_or_category.original_text,
@@ -327,7 +338,9 @@ export class UnifiedProcessingService {
         entitiesCreated: resolutionResult.newEntitiesCreated,
         connectionsCreated: llmOutput.mentions.length,
         mentionsCreated: llmOutput.mentions.length,
-        affectedEntityIds: Array.from(resolutionResult.tempIdToEntityIdMap.values()),
+        affectedEntityIds: Array.from(
+          resolutionResult.tempIdToEntityIdMap.values(),
+        ),
       };
 
       this.performanceMetrics.databaseOperations++;
@@ -349,9 +362,7 @@ export class UnifiedProcessingService {
    * Trigger quality score updates using existing M02 infrastructure
    * Maintains compatibility with existing quality scoring system
    */
-  private triggerQualityScoreUpdates(
-    affectedEntityIds: string[],
-  ): void {
+  private triggerQualityScoreUpdates(affectedEntityIds: string[]): void {
     try {
       this.logger.debug(
         `Triggering quality score updates for ${affectedEntityIds.length} entities`,
@@ -382,7 +393,7 @@ export class UnifiedProcessingService {
     this.performanceMetrics.averageProcessingTime =
       this.performanceMetrics.totalProcessingTime /
       this.performanceMetrics.batchesProcessed;
-    
+
     if (success) {
       this.performanceMetrics.successfulLLMCalls++;
     } else {
