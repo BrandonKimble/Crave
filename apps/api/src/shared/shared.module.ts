@@ -32,7 +32,9 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
     // Global exception filter
     {
       provide: APP_FILTER,
-      useClass: GlobalExceptionFilter,
+      useFactory: (configService: ConfigService, loggerService: LoggerService) =>
+        new GlobalExceptionFilter(configService, loggerService),
+      inject: [ConfigService, LoggerService],
     },
   ],
   exports: [WinstonModule, LoggerService],

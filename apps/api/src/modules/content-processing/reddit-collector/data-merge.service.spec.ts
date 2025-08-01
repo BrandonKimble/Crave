@@ -41,19 +41,19 @@ describe('DataMergeService', () => {
     } as any;
 
     const mockDuplicateDetectionService = {
-      detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({ 
+      detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({
         filteredItems: items, // Return the input items as-is (no duplicates filtered)
-        analysis: { 
-          totalItems: items.length, 
-          duplicatesFound: 0, 
+        analysis: {
+          totalItems: items.length,
+          duplicatesFound: 0,
           uniqueItems: items.length,
           duplicateRate: 0,
           sourceOverlap: {},
           performanceMetrics: {
             processingTimeMs: 10,
-            throughputItemsPerSecond: items.length * 100
-          }
-        } 
+            throughputItemsPerSecond: items.length * 100,
+          },
+        },
       })),
     };
 
@@ -61,7 +61,10 @@ describe('DataMergeService', () => {
       providers: [
         DataMergeService,
         { provide: LoggerService, useValue: loggerService },
-        { provide: DuplicateDetectionService, useValue: mockDuplicateDetectionService },
+        {
+          provide: DuplicateDetectionService,
+          useValue: mockDuplicateDetectionService,
+        },
       ],
     }).compile();
 

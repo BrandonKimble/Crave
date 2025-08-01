@@ -131,27 +131,44 @@ Implements task requirements strictly within PRD boundaries while maximizing int
 
 **MANDATORY LOOP - NO SHORTCUTS ALLOWED**
 
+**UNCOMPROMISING MANDATE**: Process ACTUAL data through complete pipeline with unrelenting effort and focus, fix EVERY issue encountered regardless of scope. No shortcuts, no mocks, no proceeding with broken components.
+
 Follow these steps for Real Data Validation (in order):
 
-1. **Run Real Data Validation**: Include @.claude/commands/simone/real_data_validation.md and use the Task ID as Scope
+1. **Execute Real Data Processing**:
+   - Clear database tables, use real API keys, live services and archive files
+   - Process minimum 100+ Reddit posts/comments through complete pipeline: Reddit API → LLM → Entity Resolution → Database
+   - **Test component interactions, not just individual services** - verify complete data flow end-to-end
+   - Report every discovery, issue, and breakthrough immediately
+   - Verify database populated with real entities: 25+ restaurants, 50+ dishes, 100+ attributes, 75+ connections, 200+ mentions
+
 2. **Evaluate Result**:
-   - On **PRODUCTION READY**: Move to step 5 (Perform comprehensive code review and validation)
+   - On **PRODUCTION READY**: Database populated with real food entities, pipeline processes 100+ items without failures, all services integrated seamlessly
    - On **ISSUES FOUND**: Continue to step 3 below
 
 3. **Fix Issues and Re-validate** (ISSUES FOUND path):
-   - Thoroughly understand all real-world problems discovered
-   - **CRITICAL SCOPE PRINCIPLE**: Fix ALL issues discovered during real-world testing that prevent production readiness, including problems in shared packages, dependencies, or related files or services even if the issues are not directly relevant to the current task
-   - Extend current task with real-world issues as subtasks
+   - **SYSTEMATIC DIAGNOSIS**: Debug each pipeline component individually when issues found
+   - **UNDERSTAND BEFORE FIXING**: Distinguish between "broken components" vs "working components with unmet criteria"
+     - Verify data transformation requirements (API response structures, nested data handling)
+     - Understand processing criteria (e.g., LLM content requirements, sentiment thresholds)
+     - Test with content that meets system specifications before assuming code is broken
+   - **RELENTLESS DEBUGGING**: Fix dependency injection errors, data transformations, API authentication, parsing failures, database constraints, rate limits, etc.
+   - **NO EXCEPTIONS**: Fix issues in shared packages, dependencies, related services - anything blocking real data flow
+   - **Scope expansion mandate**: If real-world testing reveals broader infrastructure issues, expand task scope to fix them completely
    - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
    - **CRITICAL STEP**: After completing fixes, **MUST** return to step 1 of this section to re-run real data validation
    - **Continue this loop until real data validation shows PRODUCTION READY**
 
+4. **Update Technical Validation Account**:
+   - Update current milestone's `M##_E2E_Testing_Status.md` with detailed chronological account of real-world testing
+   - Document: Environment setup, actual data processed, issues encountered & fixed, production readiness evidence
+   - Include: Database population results, performance measurements, integration discoveries
+
 **LOOP REQUIREMENTS (NON-NEGOTIABLE):**
-- **Never proceed to step 5 without a PRODUCTION READY result**
+- **Never proceed to step 5 without PRODUCTION READY result**
 - **Always re-run real data validation after fixing issues**
 - **Track iterations in task Output Log with timestamps**
 - **Each iteration should show measurable progress toward production readiness**
-- **Document all real-world discoveries for future reference**
 
 **MEMORY AID**: After fixing real-world issues, ask yourself: "Have I re-run the real data validation yet?" If no, go back to step 1.
 

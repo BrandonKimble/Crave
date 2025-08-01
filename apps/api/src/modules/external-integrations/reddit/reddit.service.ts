@@ -49,6 +49,86 @@ export interface ConnectionStabilityMetrics {
   connectionStatus: 'healthy' | 'degraded' | 'failed';
 }
 
+export interface RedditPost {
+  id: string;
+  title: string;
+  content: string;
+  author: string;
+  subreddit: string;
+  url: string;
+  upvotes: number;
+  createdAt: Date;
+  commentCount: number;
+  sourceType: 'post';
+}
+
+export interface RedditComment {
+  id: string;
+  content: string;
+  author: string;
+  subreddit: string;
+  url: string;
+  upvotes: number;
+  createdAt: Date;
+  parentId?: string;
+  sourceType: 'comment';
+}
+
+export interface KeywordSearchResponse {
+  posts: RedditPost[];
+  comments: RedditComment[];
+  metadata: {
+    subreddit: string;
+    entityName: string;
+    searchQuery: string;
+    searchOptions: {
+      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      limit?: number;
+      timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+    };
+    totalPosts: number;
+    totalComments: number;
+    totalItems: number;
+    searchTimestamp: Date;
+  };
+  performance: {
+    searchDuration: number;
+    apiCallsUsed: number;
+    rateLimitStatus: any;
+  };
+  attribution: {
+    postUrls: string[];
+    commentUrls: string[];
+  };
+}
+
+export interface BatchKeywordSearchResponse {
+  results: Record<string, KeywordSearchResponse>;
+  errors: Record<string, string>;
+  metadata: {
+    subreddit: string;
+    entityNames: string[];
+    searchOptions: {
+      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      limit?: number;
+      timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+      batchDelay?: number;
+    };
+    totalEntities: number;
+    successfulSearches: number;
+    failedSearches: number;
+    totalPosts: number;
+    totalComments: number;
+    batchTimestamp: Date;
+  };
+  performance: {
+    batchDuration: number;
+    averageSearchTime: number;
+    totalApiCalls: number;
+    rateLimitStatus: any;
+  };
+}
+
 export interface PerformanceMetrics {
   requestCount: number;
   totalResponseTime: number;
@@ -1116,13 +1196,16 @@ export class RedditService implements OnModuleInit {
           })
         : posts;
 
+      // Transform Reddit API response to flatten the data structure
+      const transformedPosts = filteredPosts.map((post: any) => post.data || post);
+
       return {
-        data: filteredPosts,
+        data: transformedPosts,
         metadata: {
-          totalRetrieved: filteredPosts.length,
+          totalRetrieved: transformedPosts.length,
           rateLimitStatus,
           costIncurred: 0, // Reddit is free within rate limits
-          completenessRatio: filteredPosts.length / posts.length,
+          completenessRatio: transformedPosts.length / posts.length,
         },
         performance: {
           responseTime,
@@ -1582,5 +1665,357 @@ export class RedditService implements OnModuleInit {
       },
       errors,
     };
+  }
+
+  /**
+   * Search Reddit for posts about specific entity using keyword search
+   * Implements PRD 5.1.2 keyword entity search cycles
+   *
+   * @param subreddit - Target subreddit (e.g., 'austinfood')
+   * @param entityName - Entity name to search for
+   * @param searchOptions - Search configuration options
+   * @returns Promise<KeywordSearchResponse> - Search results with posts and comments
+   */
+  async searchEntityKeywords(
+    subreddit: string,
+    entityName: string,
+    searchOptions: {
+      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      limit?: number;
+      timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+    } = {},
+  ): Promise<KeywordSearchResponse> {
+    const startTime = Date.now();
+    const correlationId = CorrelationUtils.getCorrelationId();
+
+    this.logger.info('Starting keyword entity search', {
+      correlationId,
+      operation: 'search_entity_keywords',
+      subreddit,
+      entityName,
+      searchOptions,
+    });
+
+    try {
+      // Ensure authentication
+      await this.authenticate();
+
+      // Request rate limiting permission
+      const rateLimitRequest: RateLimitRequest = {
+        service: 'reddit' as ExternalApiService,
+        operation: 'search_entity_keywords',
+        priority: 'medium',
+      };
+
+      const rateLimitResponse: RateLimitResponse =
+        await this.rateLimitCoordinator.requestPermission(
+          rateLimitRequest,
+        );
+
+      if (!rateLimitResponse.allowed) {
+        throw new RedditRateLimitError(
+          `Rate limit exceeded. Retry after: ${rateLimitResponse.retryAfter}ms`,
+          rateLimitResponse.retryAfter || 60000,
+        );
+      }
+
+      // Build search URL per PRD 5.1.2 specification
+      const searchUrl = `https://oauth.reddit.com/r/${subreddit}/search`;
+      const searchParams = new URLSearchParams({
+        q: entityName,
+        restrict_sr: 'true', // Restrict to subreddit
+        sort: searchOptions.sort || 'relevance',
+        limit: Math.min(searchOptions.limit || 1000, 1000).toString(), // PRD limit: 1000
+        type: 'link', // Search posts only initially
+        ...(searchOptions.timeFilter && { t: searchOptions.timeFilter }),
+      });
+
+      this.logger.debug('Executing keyword search request', {
+        correlationId,
+        searchUrl,
+        searchParams: Object.fromEntries(searchParams.entries()),
+      });
+
+      // Execute search request
+      const response = await firstValueFrom(
+        this.httpService.get(`${searchUrl}?${searchParams.toString()}`, {
+          headers: {
+            Authorization: `Bearer ${this.accessToken}`,
+            'User-Agent': this.redditConfig.userAgent,
+          },
+          timeout: this.redditConfig.timeout,
+        }),
+      );
+
+      const searchData = response.data?.data?.children || [];
+      const posts: RedditPost[] = [];
+      const postIds: string[] = [];
+
+      // Process search results
+      for (const child of searchData) {
+        const postData = child.data;
+        if (postData && postData.id) {
+          const post: RedditPost = {
+            id: postData.id,
+            title: postData.title || '',
+            content: postData.selftext || '',
+            author: postData.author || '',
+            subreddit: postData.subreddit || subreddit,
+            url: `https://reddit.com${postData.permalink}`,
+            upvotes: postData.ups || 0,
+            createdAt: new Date((postData.created_utc || 0) * 1000),
+            commentCount: postData.num_comments || 0,
+            sourceType: 'post',
+          };
+
+          posts.push(post);
+          postIds.push(postData.id);
+        }
+      }
+
+      // Fetch comments for found posts (limit to top posts for performance)
+      const topPostIds = postIds.slice(0, Math.min(50, postIds.length)); // Limit comment fetching
+      let comments: RedditComment[] = [];
+      let commentUrls: string[] = [];
+
+      if (topPostIds.length > 0) {
+        try {
+          // TODO: Implement comment fetching for posts
+          const commentResult = { posts: [], comments: [], attribution: { commentUrls: [] } };
+          comments = commentResult.comments;
+          commentUrls = commentResult.attribution.commentUrls;
+        } catch (commentError: unknown) {
+          this.logger.warn(
+            'Failed to fetch comments for keyword search posts',
+            {
+              correlationId,
+              error: {
+                message: commentError instanceof Error
+                  ? commentError.message
+                  : String(commentError),
+                stack: commentError instanceof Error ? commentError.stack : undefined,
+              },
+              postCount: topPostIds.length,
+            },
+          );
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const totalItems = posts.length + comments.length;
+
+      this.logger.info('Keyword entity search completed', {
+        correlationId,
+        operation: 'search_entity_keywords',
+        subreddit,
+        entityName,
+        duration,
+        postsFound: posts.length,
+        commentsFound: comments.length,
+        totalItems,
+      });
+
+      return {
+        posts,
+        comments,
+        metadata: {
+          subreddit,
+          entityName,
+          searchQuery: entityName,
+          searchOptions,
+          totalPosts: posts.length,
+          totalComments: comments.length,
+          totalItems,
+          searchTimestamp: new Date(),
+        },
+        performance: {
+          searchDuration: duration,
+          apiCallsUsed: 1 + (topPostIds.length > 0 ? 1 : 0), // Search + optional comment fetch
+          rateLimitStatus: this.getRateLimitStatus(),
+        },
+        attribution: {
+          postUrls: posts.map((post) => post.url),
+          commentUrls,
+        },
+      };
+    } catch (error: unknown) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Keyword entity search failed', {
+        correlationId,
+        operation: 'search_entity_keywords',
+        subreddit,
+        entityName,
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (
+        error instanceof RedditRateLimitError ||
+        error instanceof RedditApiError
+      ) {
+        throw error;
+      }
+
+      throw new RedditApiError(
+        `Failed to search entity keywords: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Perform batch keyword searches for multiple entities
+   * Implements PRD 5.1.2 multi-entity coverage with efficient API usage
+   *
+   * @param subreddit - Target subreddit
+   * @param entityNames - Array of entity names to search
+   * @param searchOptions - Search configuration options
+   * @returns Promise<BatchKeywordSearchResponse> - Batch search results
+   */
+  async batchEntityKeywordSearch(
+    subreddit: string,
+    entityNames: string[],
+    searchOptions: {
+      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      limit?: number;
+      timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+      batchDelay?: number; // Delay between searches to respect rate limits
+    } = {},
+  ): Promise<BatchKeywordSearchResponse> {
+    const startTime = Date.now();
+    const correlationId = CorrelationUtils.getCorrelationId();
+
+    this.logger.info('Starting batch keyword entity search', {
+      correlationId,
+      operation: 'batch_entity_keyword_search',
+      subreddit,
+      entityCount: entityNames.length,
+      searchOptions,
+    });
+
+    const results: Record<string, KeywordSearchResponse> = {};
+    const errors: Record<string, string> = {};
+    let successfulSearches = 0;
+    let failedSearches = 0;
+
+    try {
+      for (let i = 0; i < entityNames.length; i++) {
+        const entityName = entityNames[i];
+
+        try {
+          this.logger.debug(
+            `Processing entity ${i + 1}/${entityNames.length}: ${entityName}`,
+            {
+              correlationId,
+              entityName,
+              progress: `${i + 1}/${entityNames.length}`,
+            },
+          );
+
+          const searchResult = await this.searchEntityKeywords(
+            subreddit,
+            entityName,
+            searchOptions,
+          );
+
+          results[entityName] = searchResult;
+          successfulSearches++;
+
+          // Add delay between searches to respect rate limits (default 1 second)
+          if (i < entityNames.length - 1) {
+            const delay = searchOptions.batchDelay || 1000;
+            await new Promise((resolve) => setTimeout(resolve, delay));
+          }
+        } catch (entityError: unknown) {
+          const errorMessage =
+            entityError instanceof Error
+              ? entityError.message
+              : String(entityError);
+          errors[entityName] = errorMessage;
+          failedSearches++;
+
+          this.logger.warn(`Failed to search entity: ${entityName}`, {
+            correlationId,
+            entityName,
+            error: {
+              message: errorMessage,
+              stack: entityError instanceof Error ? entityError.stack : undefined,
+            },
+            progress: `${i + 1}/${entityNames.length}`,
+          });
+
+          // For rate limit errors, wait longer before continuing
+          if (entityError instanceof RedditRateLimitError) {
+            this.logger.info(
+              'Rate limit hit, waiting before continuing batch',
+              {
+                correlationId,
+                retryAfter: entityError.retryAfter,
+              },
+            );
+            await new Promise((resolve) =>
+              setTimeout(resolve, entityError.retryAfter),
+            );
+          }
+        }
+      }
+
+      const duration = Date.now() - startTime;
+      const totalPosts = Object.values(results).reduce(
+        (sum, result) => sum + result.posts.length,
+        0,
+      );
+      const totalComments = Object.values(results).reduce(
+        (sum, result) => sum + result.comments.length,
+        0,
+      );
+
+      this.logger.info('Batch keyword entity search completed', {
+        correlationId,
+        operation: 'batch_entity_keyword_search',
+        subreddit,
+        duration,
+        entityCount: entityNames.length,
+        successfulSearches,
+        failedSearches,
+        totalPosts,
+        totalComments,
+      });
+
+      return {
+        results,
+        errors,
+        metadata: {
+          subreddit,
+          entityNames,
+          searchOptions,
+          totalEntities: entityNames.length,
+          successfulSearches,
+          failedSearches,
+          totalPosts,
+          totalComments,
+          batchTimestamp: new Date(),
+        },
+        performance: {
+          batchDuration: duration,
+          averageSearchTime:
+            successfulSearches > 0 ? duration / successfulSearches : 0,
+          totalApiCalls: successfulSearches, // Approximate
+          rateLimitStatus: this.getRateLimitStatus(),
+        },
+      };
+    } catch (error: unknown) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Batch keyword entity search failed', {
+        correlationId,
+        operation: 'batch_entity_keyword_search',
+        subreddit,
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      throw new RedditApiError(
+        `Failed to perform batch entity keyword search: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }

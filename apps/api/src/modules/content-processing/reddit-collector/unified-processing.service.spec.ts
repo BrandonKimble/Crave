@@ -21,7 +21,10 @@ import {
   LLMInputStructure,
   LLMOutputStructure,
 } from '../../external-integrations/llm/llm.types';
-import { UnifiedProcessingException, LLMIntegrationException } from './unified-processing.exceptions';
+import {
+  UnifiedProcessingException,
+  LLMIntegrationException,
+} from './unified-processing.exceptions';
 
 describe('UnifiedProcessingService', () => {
   let service: UnifiedProcessingService;
@@ -112,9 +115,9 @@ describe('UnifiedProcessingService', () => {
       ['dish_1', 'entity_2'],
     ]),
     resolutionResults: [
-      { 
-        entityId: 'entity_1', 
-        tempId: 'restaurant_1', 
+      {
+        entityId: 'entity_1',
+        tempId: 'restaurant_1',
         confidence: 0.9,
         resolutionTier: 'exact' as const,
         originalInput: {
@@ -122,11 +125,11 @@ describe('UnifiedProcessingService', () => {
           originalText: 'Franklin BBQ',
           entityType: 'restaurant' as const,
           tempId: 'restaurant_1',
-        }
+        },
       },
-      { 
-        entityId: 'entity_2', 
-        tempId: 'dish_1', 
+      {
+        entityId: 'entity_2',
+        tempId: 'dish_1',
         confidence: 0.7,
         resolutionTier: 'fuzzy' as const,
         originalInput: {
@@ -134,7 +137,7 @@ describe('UnifiedProcessingService', () => {
           originalText: 'Brisket',
           entityType: 'dish_or_category' as const,
           tempId: 'dish_1',
-        }
+        },
       },
     ],
     newEntitiesCreated: 2,

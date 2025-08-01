@@ -211,11 +211,15 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     const generationConfig: GeminiApiRequest['generationConfig'] = {
       temperature: this.llmConfig.temperature,
-      maxOutputTokens: this.llmConfig.maxTokens,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
     };
+
+    // Only include maxOutputTokens if it's greater than 0 (0 means no limit)
+    if (this.llmConfig.maxTokens && this.llmConfig.maxTokens > 0) {
+      generationConfig.maxOutputTokens = this.llmConfig.maxTokens;
+    }
 
     // Add thinking configuration if enabled
     if (this.llmConfig.thinking?.enabled) {

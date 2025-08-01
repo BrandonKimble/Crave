@@ -79,25 +79,27 @@ describe('UnifiedProcessingService Integration', () => {
         RepositoryModule,
       ],
       providers: [
-        UnifiedProcessingService, 
+        UnifiedProcessingService,
         DataMergeService,
         {
           provide: DuplicateDetectionService,
           useValue: {
-            detectAndFilterDuplicates: jest.fn().mockImplementation((items) => ({ 
-              filteredItems: items, // Return the input items as-is (no duplicates filtered)
-              analysis: { 
-                totalItems: items?.length || 0, 
-                duplicatesFound: 0, 
-                uniqueItems: items?.length || 0,
-                duplicateRate: 0,
-                sourceOverlap: {},
-                performanceMetrics: {
-                  processingTimeMs: 10,
-                  throughputItemsPerSecond: (items?.length || 0) * 100
-                }
-              } 
-            })),
+            detectAndFilterDuplicates: jest
+              .fn()
+              .mockImplementation((items) => ({
+                filteredItems: items, // Return the input items as-is (no duplicates filtered)
+                analysis: {
+                  totalItems: items?.length || 0,
+                  duplicatesFound: 0,
+                  uniqueItems: items?.length || 0,
+                  duplicateRate: 0,
+                  sourceOverlap: {},
+                  performanceMetrics: {
+                    processingTimeMs: 10,
+                    throughputItemsPerSecond: (items?.length || 0) * 100,
+                  },
+                },
+              })),
           },
         },
       ],
@@ -285,7 +287,9 @@ describe('UnifiedProcessingService Integration', () => {
         expect(result.sourceBreakdown[DataSourceType.PUSHSHIFT_ARCHIVE]).toBe(
           2,
         );
-        expect(result.sourceBreakdown[DataSourceType.REDDIT_API_KEYWORD_SEARCH]).toBe(3);
+        expect(
+          result.sourceBreakdown[DataSourceType.REDDIT_API_KEYWORD_SEARCH],
+        ).toBe(3);
       } else {
         // At least validate the service can handle the input structure
         expect(multiSourceInput.sourceMetadata.sourceBreakdown).toBeDefined();
