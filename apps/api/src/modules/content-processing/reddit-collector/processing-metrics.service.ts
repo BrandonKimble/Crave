@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { ProcessingMetrics } from './stream-processor.service';
 
@@ -40,12 +40,16 @@ export interface AggregatedMetrics {
  * Provides comprehensive performance monitoring for stream processing operations
  */
 @Injectable()
-export class ProcessingMetricsService {
-  private readonly logger: LoggerService;
+export class ProcessingMetricsService implements OnModuleInit {
+  private logger!: LoggerService;
   private readonly metrics: StreamProcessingMetrics[] = [];
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('ProcessingMetrics');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ProcessingMetrics');
   }
 
   /**

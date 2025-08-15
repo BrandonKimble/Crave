@@ -6,13 +6,16 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 @ApiTags('Google Places Health')
 @Controller('health/google-places')
 export class GooglePlacesHealthController {
-  private readonly logger: LoggerService;
+  private logger!: LoggerService;
 
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('GooglePlacesHealthController');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('GooglePlacesHealthController');
   }
 
   @Get()

@@ -28,9 +28,9 @@ import {
 
 @Injectable()
 export class LLMService implements OnModuleInit {
-  private readonly logger: LoggerService;
-  private readonly llmConfig: LLMConfig;
-  private readonly systemPrompt: string;
+  private logger!: LoggerService;
+  private llmConfig!: LLMConfig;
+  private systemPrompt!: string;
   private performanceMetrics: LLMPerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -44,17 +44,21 @@ export class LLMService implements OnModuleInit {
   constructor(
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('LLMService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('LLMService');
+    }
     this.llmConfig = {
       apiKey: this.configService.get<string>('llm.apiKey') || '',
       model: this.configService.get<string>('llm.model') || 'gemini-2.5-flash',
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
-      timeout: this.configService.get<number>('llm.timeout') || 30000,
-      maxTokens: this.configService.get<number>('llm.maxTokens') || 4000,
+      timeout: this.configService.get<number>('llm.timeout') || 0,
+      maxTokens: this.configService.get<number>('llm.maxTokens') || 0,
       temperature: this.configService.get<number>('llm.temperature') || 0.1,
       topP: this.configService.get<number>('llm.topP') || 0.95,
       topK: this.configService.get<number>('llm.topK') || 40,
@@ -79,14 +83,18 @@ export class LLMService implements OnModuleInit {
     // Load system prompt from llm-content-processing.md
     this.systemPrompt = this.loadSystemPrompt();
     this.validateConfig();
-  }
 
-  onModuleInit() {
     this.logger.info('Gemini LLM service initialized', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'module_init',
       model: this.llmConfig.model,
       provider: 'google-gemini',
+      apiKeyExists: !!this.llmConfig.apiKey,
+      apiKeyLength: this.llmConfig.apiKey ? this.llmConfig.apiKey.length : 0,
+      apiKeyPrefix: this.llmConfig.apiKey ? this.llmConfig.apiKey.substring(0, 8) + '...' : 'none',
+      maxTokens: this.llmConfig.maxTokens,
+      thinkingEnabled: this.llmConfig.thinking?.enabled,
+      thinkingBudget: this.llmConfig.thinking?.budget,
     });
   }
 
@@ -221,12 +229,72 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       generationConfig.maxOutputTokens = this.llmConfig.maxTokens;
     }
 
-    // Add thinking configuration if enabled
-    if (this.llmConfig.thinking?.enabled) {
-      generationConfig.thinkingConfig = {
-        thinkingBudget: this.llmConfig.thinking.budget,
-      };
-    }
+    // Always add thinking configuration to explicitly control it
+    generationConfig.thinkingConfig = {
+      thinkingBudget: this.llmConfig.thinking?.enabled ? this.llmConfig.thinking.budget : 0,
+    };
+
+    // Add structured output configuration
+    (generationConfig as any).responseMimeType = 'application/json';
+    (generationConfig as any).responseSchema = {
+      type: 'object',
+      properties: {
+        mentions: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              temp_id: { type: 'string' },
+              restaurant_temp_id: { type: 'string' },
+              restaurant_normalized_name: { type: 'string' },
+              restaurant_original_text: { type: 'string' },
+              restaurant_attributes: { 
+                type: 'array', 
+                items: { type: 'string' },
+                nullable: true 
+              },
+              dish_temp_id: { type: 'string', nullable: true },
+              dish_primary_category: { type: 'string', nullable: true },
+              dish_categories: { 
+                type: 'array', 
+                items: { type: 'string' },
+                nullable: true 
+              },
+              dish_original_text: { type: 'string', nullable: true },
+              dish_attributes: { 
+                type: 'array', 
+                items: { type: 'string' },
+                nullable: true 
+              },
+              dish_is_menu_item: { type: 'boolean' },
+              general_praise: { type: 'boolean' },
+              source_type: { type: 'string', enum: ['post', 'comment'] },
+              source_id: { type: 'string' },
+              source_content: { type: 'string' },
+              source_created_at: { type: 'string' },
+              source_upvotes: { type: 'number' },
+              source_url: { type: 'string' }
+            },
+            required: [
+              'temp_id', 'restaurant_temp_id', 'restaurant_normalized_name', 
+              'restaurant_original_text', 'dish_is_menu_item', 'general_praise',
+              'source_type', 'source_id', 'source_content', 'source_created_at', 
+              'source_upvotes', 'source_url'
+            ]
+          }
+        }
+      },
+      required: ['mentions']
+    };
+
+    // Debug logging to verify structured output config
+    this.logger.info('Generation config after adding structured output', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'call_llm_api',
+      hasResponseMimeType: !!(generationConfig as any).responseMimeType,
+      hasResponseSchema: !!(generationConfig as any).responseSchema,
+      configKeys: Object.keys(generationConfig),
+    });
 
     const payload: GeminiApiRequest = {
       contents: [
@@ -243,16 +311,37 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     };
 
     try {
+      const url = `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`;
+      
+      this.logger.info('Making LLM API request', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'call_llm_api',
+        url: url.replace(/key=.*$/, 'key=***'),
+        model: this.llmConfig.model,
+        hasApiKey: !!this.llmConfig.apiKey,
+        promptLength: prompt.length,
+        generationConfig: generationConfig,
+        payloadKeys: Object.keys(payload),
+      });
+
       const response = await firstValueFrom(
-        this.httpService.post(
-          `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`,
-          payload,
-          {
-            headers,
-            timeout: this.llmConfig.timeout,
-          },
-        ),
+        this.httpService.post(url, payload, {
+          headers,
+          timeout: this.llmConfig.timeout,
+        }),
       );
+
+      this.logger.info('LLM API response received', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'call_llm_api',
+        status: response.status,
+        candidatesCount: response.data?.candidates?.length || 0,
+        hasContent: !!response.data?.candidates?.[0]?.content?.parts?.[0]?.text,
+        contentLength: response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+        finishReason: response.data?.candidates?.[0]?.finishReason,
+        safetyRatings: response.data?.candidates?.[0]?.safetyRatings,
+        rawResponse: JSON.stringify(response.data, null, 2),
+      });
 
       return response.data as LLMApiResponse;
     } catch (error) {
@@ -322,6 +411,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
 
+    this.logger.debug('Parsing LLM response content', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'parse_response',
+      contentLength: content.length,
+      contentPreview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+    });
+
     try {
       // Remove markdown code block formatting if present
       let cleanContent = content.trim();
@@ -366,6 +462,18 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           content,
         );
       }
+
+      this.logger.debug('LLM response successfully parsed', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'parse_response',
+        mentionsCount: parsed.mentions.length,
+        mentions: parsed.mentions.length > 0 ? parsed.mentions.map(m => ({
+          temp_id: m.temp_id,
+          restaurant: m.restaurant_normalized_name || m.restaurant_original_text,
+          dish: m.dish_primary_category || m.dish_original_text,
+          dish_categories: m.dish_categories,
+        })) : [],
+      });
 
       return parsed;
     } catch (error) {

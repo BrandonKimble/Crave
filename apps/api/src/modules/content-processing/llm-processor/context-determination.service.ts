@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
@@ -18,14 +18,16 @@ import {
  * Extracts attributes from LLM output and determines scope for entity resolution
  */
 @Injectable()
-export class ContextDeterminationService {
-  private readonly logger: LoggerService;
+export class ContextDeterminationService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly entityResolutionService: EntityResolutionService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('ContextDeterminationService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ContextDeterminationService');
   }
 
   /**

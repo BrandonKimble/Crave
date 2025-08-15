@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import { LoggerService } from '../../../shared';
@@ -11,15 +11,18 @@ import { ProcessingResult } from './stream-processor.service';
  * Optimized for Reddit Pushshift archives with unlimited file size support
  */
 @Injectable()
-export class EnhancedStreamProcessorService {
-  private readonly logger: LoggerService;
+export class EnhancedStreamProcessorService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly systemZstdDecompressor: SystemZstdDecompressor,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('EnhancedStreamProcessor');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('EnhancedStreamProcessor');
   }
 
   /**

@@ -3,6 +3,9 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { LLMService } from './llm.service';
 import { LLMHealthController } from './llm-health.controller';
+import { LLMChunkingService } from './llm-chunking.service';
+import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
+import { SharedModule } from '../../../shared/shared.module';
 
 @Module({
   imports: [
@@ -11,9 +14,10 @@ import { LLMHealthController } from './llm-health.controller';
       maxRedirects: 5,
     }),
     ConfigModule,
+    SharedModule, // For LoggerService
   ],
-  providers: [LLMService],
+  providers: [LLMService, LLMChunkingService, LLMConcurrentProcessingService],
   controllers: [LLMHealthController],
-  exports: [LLMService],
+  exports: [LLMService, LLMChunkingService, LLMConcurrentProcessingService],
 })
 export class LLMModule {}

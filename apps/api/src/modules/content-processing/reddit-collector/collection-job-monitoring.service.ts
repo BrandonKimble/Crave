@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ChronologicalCollectionJobResult } from './chronological-collection.processor';
 import {
@@ -55,8 +55,8 @@ export interface AlertConfig {
  * - Monitor data collection continuity
  */
 @Injectable()
-export class CollectionJobMonitoringService {
-  private readonly logger: LoggerService;
+export class CollectionJobMonitoringService implements OnModuleInit {
+  private logger!: LoggerService;
   private jobMetrics = new Map<string, JobMetrics>();
   private performanceHistory: JobMetrics[] = [];
   private lastAlerts = new Map<string, Date>();
@@ -72,9 +72,12 @@ export class CollectionJobMonitoringService {
 
   constructor(
     private readonly jobScheduler: CollectionJobSchedulerService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('CollectionJobMonitoring');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('CollectionJobMonitoring');
   }
 
   /**

@@ -23,9 +23,9 @@ import {
 
 @Injectable()
 export class GooglePlacesService implements OnModuleInit {
-  private readonly logger: LoggerService;
-  private readonly googlePlacesConfig: GooglePlacesConfig;
-  private readonly googleMapsClient: Client;
+  private logger!: LoggerService;
+  private googlePlacesConfig!: GooglePlacesConfig;
+  private googleMapsClient!: Client;
   private performanceMetrics: GooglePlacesPerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -39,9 +39,13 @@ export class GooglePlacesService implements OnModuleInit {
 
   constructor(
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('GooglePlacesService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('GooglePlacesService');
+    }
     this.googlePlacesConfig = {
       apiKey: this.configService.get<string>('googlePlaces.apiKey') || '',
       timeout: this.configService.get<number>('googlePlaces.timeout') || 10000,
@@ -70,9 +74,7 @@ export class GooglePlacesService implements OnModuleInit {
     });
 
     this.validateConfig();
-  }
 
-  onModuleInit() {
     this.logger.info('Google Places service initialized', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'module_init',

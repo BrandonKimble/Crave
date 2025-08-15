@@ -14,7 +14,7 @@
  * 6. Quality Score Updates (trigger existing M02 infrastructure)
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -46,8 +46,8 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
-export class UnifiedProcessingService {
-  private readonly logger: LoggerService;
+export class UnifiedProcessingService implements OnModuleInit {
+  private logger!: LoggerService;
   private performanceMetrics: ProcessingPerformanceMetrics = {
     batchesProcessed: 0,
     totalProcessingTime: 0,
@@ -64,9 +64,11 @@ export class UnifiedProcessingService {
     private readonly entityResolutionService: EntityResolutionService,
     private readonly bulkOperationsService: BulkOperationsService,
     private readonly dataMergeService: DataMergeService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('UnifiedProcessingService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('UnifiedProcessingService');
   }
 
   /**
@@ -252,53 +254,66 @@ export class UnifiedProcessingService {
       for (const mention of llmOutput.mentions) {
         // Restaurant entities
         if (
-          mention.restaurant &&
-          mention.restaurant.normalized_name &&
-          mention.restaurant.original_text
+          mention.restaurant_normalized_name &&
+          mention.restaurant_original_text
         ) {
           entities.push({
-            normalizedName: mention.restaurant.normalized_name,
-            originalText: mention.restaurant.original_text,
+            normalizedName: mention.restaurant_normalized_name,
+            originalText: mention.restaurant_original_text,
             entityType: 'restaurant' as const,
-            tempId: mention.restaurant.temp_id || '',
+            tempId: mention.temp_id || '',
           });
         }
 
-        // Dish or category entities
-        if (
-          mention.dish_or_category &&
-          mention.dish_or_category.normalized_name &&
-          mention.dish_or_category.original_text
-        ) {
+        // Dish or category entities - handle both primary and categories array
+        if (mention.dish_primary_category && mention.dish_original_text) {
           entities.push({
-            normalizedName: mention.dish_or_category.normalized_name,
-            originalText: mention.dish_or_category.original_text,
+            normalizedName: mention.dish_primary_category,
+            originalText: mention.dish_original_text,
             entityType: 'dish_or_category' as const,
-            tempId: mention.dish_or_category.temp_id || '',
+            tempId: mention.temp_id || '',
           });
+        }
+        
+        // Also process dish_categories array if present
+        if (mention.dish_categories && Array.isArray(mention.dish_categories)) {
+          for (const category of mention.dish_categories) {
+            if (category && category !== mention.dish_primary_category) {
+              entities.push({
+                normalizedName: category,
+                originalText: category,
+                entityType: 'dish_or_category' as const,
+                tempId: uuidv4(),
+              });
+            }
+          }
         }
 
         // Dish attributes
-        if (mention.dish_attributes) {
+        if (mention.dish_attributes && Array.isArray(mention.dish_attributes)) {
           for (const attr of mention.dish_attributes) {
-            entities.push({
-              normalizedName: attr.attribute,
-              originalText: attr.attribute,
-              entityType: 'dish_attribute' as const,
-              tempId: uuidv4(),
-            });
+            if (typeof attr === 'string' && attr) {
+              entities.push({
+                normalizedName: attr,
+                originalText: attr,
+                entityType: 'dish_attribute' as const,
+                tempId: uuidv4(),
+              });
+            }
           }
         }
 
         // Restaurant attributes
-        if (mention.restaurant_attributes) {
+        if (mention.restaurant_attributes && Array.isArray(mention.restaurant_attributes)) {
           for (const attr of mention.restaurant_attributes) {
-            entities.push({
-              normalizedName: attr,
-              originalText: attr,
-              entityType: 'restaurant_attribute' as const,
-              tempId: uuidv4(),
-            });
+            if (typeof attr === 'string' && attr) {
+              entities.push({
+                normalizedName: attr,
+                originalText: attr,
+                entityType: 'restaurant_attribute' as const,
+                tempId: uuidv4(),
+              });
+            }
           }
         }
       }

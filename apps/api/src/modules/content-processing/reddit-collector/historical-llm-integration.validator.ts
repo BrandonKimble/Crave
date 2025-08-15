@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   HistoricalContentBatch,
@@ -20,14 +20,17 @@ import { LLMService } from '../../external-integrations/llm/llm.service';
  * Implements PRD Section 6.1 validation requirements for seamless integration.
  */
 @Injectable()
-export class HistoricalLlmIntegrationValidator {
-  private readonly logger: LoggerService;
+export class HistoricalLlmIntegrationValidator implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly llmService: LLMService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('HistoricalLlmIntegrationValidator');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('HistoricalLlmIntegrationValidator');
   }
 
   /**
@@ -541,12 +544,12 @@ export class HistoricalLlmIntegrationValidator {
         });
       }
 
-      if (!mention.restaurant) {
+      if (!mention.restaurant_temp_id) {
         issues.push({
           type: 'missing_restaurant',
           severity: 'critical',
-          message: 'Mention missing restaurant entity',
-          location: `mention.${mention.temp_id}.restaurant`,
+          message: 'Mention missing restaurant temp_id',
+          location: `mention.${mention.temp_id}.restaurant_temp_id`,
         });
       }
     }

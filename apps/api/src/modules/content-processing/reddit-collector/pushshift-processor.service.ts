@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import {
@@ -44,16 +44,21 @@ export interface SubredditProcessingResult {
  * Specialized service for processing Pushshift archive files with Reddit-specific data structures
  */
 @Injectable()
-export class PushshiftProcessorService {
-  private readonly logger: LoggerService;
-  private readonly config: PushshiftProcessingConfig;
+export class PushshiftProcessorService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: PushshiftProcessingConfig;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly streamProcessor: StreamProcessorService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('PushshiftProcessor');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('PushshiftProcessor');
+    }
     this.config = {
       baseDirectory: this.configService.get(
         'pushshift.baseDirectory',
@@ -77,7 +82,7 @@ export class PushshiftProcessorService {
             'pushshift.storage.local.archivePath',
             'data/pushshift/archives',
           ),
-        },
+  },
       },
     };
   }

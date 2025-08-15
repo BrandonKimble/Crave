@@ -152,7 +152,7 @@ Follow these steps for Real Data Validation (in order):
      - Verify data transformation requirements (API response structures, nested data handling)
      - Understand processing criteria (e.g., LLM content requirements, sentiment thresholds)
      - Test with content that meets system specifications before assuming code is broken
-   - **RELENTLESS DEBUGGING**: Fix dependency injection errors, data transformations, API authentication, parsing failures, database constraints, rate limits, etc.
+   - **RELENTLESS DEBUGGING**: Fix architecture errors, data transformations, API authentication, parsing failures, database constraints, rate limits, etc.
    - **NO EXCEPTIONS**: Fix issues in shared packages, dependencies, related services - anything blocking real data flow
    - **Scope expansion mandate**: If real-world testing reveals broader infrastructure issues, expand task scope to fix them completely
    - Return to step "3 · Execute PRD-scoped implementation with infrastructure integration"
@@ -160,7 +160,7 @@ Follow these steps for Real Data Validation (in order):
    - **Continue this loop until real data validation shows PRODUCTION READY**
 
 4. **Update Technical Validation Account**:
-   - Update current milestone's `M##_E2E_Testing_Status.md` with detailed chronological account of real-world testing
+   - Overwrite current milestone's `M##_E2E_Testing_Status.md` with detailed chronological account of real-world testing
    - Document: Environment setup, actual data processed, issues encountered & fixed, production readiness evidence
    - Include: Database population results, performance measurements, integration discoveries
 

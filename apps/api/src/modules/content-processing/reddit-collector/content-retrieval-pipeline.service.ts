@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import {
@@ -47,14 +47,17 @@ export class ContentValidationException extends AppException {
  * - Provide performance monitoring and success rate tracking
  */
 @Injectable()
-export class ContentRetrievalPipelineService {
-  private readonly logger: LoggerService;
+export class ContentRetrievalPipelineService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly redditService: RedditService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('ContentRetrievalPipeline');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ContentRetrievalPipeline');
   }
 
   /**
@@ -239,16 +242,17 @@ export class ContentRetrievalPipelineService {
       // Create LLM post object
 
       const llmPost: LLMPostDto = {
-        post_id: post.id || '',
+        id: `t3_${post.id || ''}`, // Add Reddit post prefix
 
         title: post.title || '',
 
         content: post.selftext || post.title || '',
 
         subreddit: post.subreddit || '',
+        author: post.author || 'unknown', // Add author field
         url: postUrl,
 
-        upvotes: typeof post.score === 'number' ? Math.max(0, post.score) : 0,
+        score: typeof post.score === 'number' ? Math.max(0, post.score) : 0, // Use score instead of upvotes
 
         created_at: this.formatTimestamp(post.created_utc),
         comments: llmComments,
@@ -304,13 +308,13 @@ export class ContentRetrievalPipelineService {
 
       try {
         return {
-          comment_id: commentData.id,
+          id: `t1_${commentData.id}`, // Add Reddit comment prefix
 
           content: commentData.body,
 
           author: commentData.author || 'unknown',
 
-          upvotes:
+          score: // Use score instead of upvotes
             typeof commentData.score === 'number'
               ? Math.max(0, commentData.score)
               : 0,
@@ -389,15 +393,15 @@ export class ContentRetrievalPipelineService {
   }
 
   /**
-   * Extract parent comment ID from Reddit format
+   * Extract parent comment ID from Reddit format (keep prefixes)
    */
   private extractParentId(parentId?: string): string | null {
     if (!parentId) return null;
 
     // Reddit parent IDs come in format "t1_commentid" or "t3_postid"
-    // For comments, we only want the comment parent ID (t1_)
-    if (parentId.startsWith('t1_')) {
-      return parentId.substring(3); // Remove "t1_" prefix
+    // Keep the prefixes to denote type (t1_ for comment, t3_ for post)
+    if (parentId.startsWith('t1_') || parentId.startsWith('t3_')) {
+      return parentId; // Keep the full ID with prefix
     }
 
     // If it's a top-level comment (parent is post), return null

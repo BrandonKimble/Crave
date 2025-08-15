@@ -36,6 +36,7 @@ export interface LLMPost {
   upvotes: number;
   created_at: string;
   comments: LLMComment[];
+  extract_from_post?: boolean;
 }
 
 export interface LLMComment {
@@ -49,40 +50,46 @@ export interface LLMComment {
 }
 
 /**
- * LLM Output Structure as defined in PRD Section 6.3.2
+ * LLM Output Structure - flattened for performance while preserving ALL properties
+ * Enhanced for compound term processing with hierarchical decomposition
  */
 export interface LLMOutputStructure {
   mentions: LLMMention[];
 }
 
+/**
+ * Flat mention structure with ALL properties preserved
+ * Optimized structure for better LLM parsing performance and compound term support
+ */
 export interface LLMMention {
   temp_id: string;
-  restaurant: LLMEntityRef;
-  restaurant_attributes: string[] | null;
-  dish_or_category: LLMEntityRef | null;
-  dish_attributes: LLMDishAttribute[] | null;
-  is_menu_item: boolean;
+  
+  // Restaurant fields (ALL preserved)
+  restaurant_normalized_name: string | null;
+  restaurant_original_text: string | null;
+  restaurant_temp_id: string;
+  
+  // Enhanced dish fields for compound term processing
+  dish_primary_category?: string | null;
+  dish_categories?: string[] | null;
+  dish_original_text?: string | null;
+  dish_temp_id?: string | null;
+  dish_is_menu_item?: boolean | null;
+  
+  // Attributes (preserved as arrays)
+  restaurant_attributes?: string[] | null;
+  dish_attributes?: string[] | null;
+  
+  // Core processing fields (VITAL)
   general_praise: boolean;
-  source: LLMSource;
-}
-
-export interface LLMEntityRef {
-  normalized_name: string | null;
-  original_text: string | null;
-  temp_id: string;
-}
-
-export interface LLMDishAttribute {
-  attribute: string;
-  type: 'selective' | 'descriptive';
-}
-
-export interface LLMSource {
-  type: 'post' | 'comment';
-  id: string;
-  url: string;
-  upvotes: number;
-  created_at: string;
+  
+  // Source tracking with enhanced fields
+  source_type: 'post' | 'comment';
+  source_id: string;
+  source_content: string;
+  source_upvotes?: number | null;
+  source_url?: string | null;
+  source_created_at?: string | null;
 }
 
 /**
@@ -152,6 +159,7 @@ export interface GeminiApiRequest {
     }>;
   };
 }
+
 
 /**
  * Performance metrics for LLM operations

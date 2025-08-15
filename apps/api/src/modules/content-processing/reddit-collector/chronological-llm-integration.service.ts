@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { HistoricalLlmIntegrationAdapter } from './historical-llm-integration.adapter';
 import { ChronologicalCollectionResult } from './chronological-collection.service';
@@ -59,14 +59,17 @@ export interface ChronologicalLlmProcessingResult {
  * - Track processing metrics for monitoring and optimization
  */
 @Injectable()
-export class ChronologicalLlmIntegrationService {
-  private readonly logger: LoggerService;
+export class ChronologicalLlmIntegrationService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly historicalIntegration: HistoricalLlmIntegrationAdapter,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('ChronologicalLlmIntegration');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ChronologicalLlmIntegration');
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
@@ -35,8 +35,8 @@ export interface SafetyBufferCalculation {
  * - Handle different subreddit posting volumes
  */
 @Injectable()
-export class CollectionSchedulingService {
-  private readonly logger: LoggerService;
+export class CollectionSchedulingService implements OnModuleInit {
+  private logger!: LoggerService;
   private subredditConfigs = new Map<string, SubredditSchedulingConfig>();
 
   // PRD constants from Section 5.1.2
@@ -52,9 +52,12 @@ export class CollectionSchedulingService {
 
   constructor(
     private readonly configService: ConfigService, // Reserved for future configuration needs
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('CollectionScheduling');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('CollectionScheduling');
   }
 
   /**

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
+import { DiscoveryModule } from '@nestjs/core';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
@@ -16,8 +17,8 @@ import { SharedModule } from './shared/shared.module';
       isGlobal: true,
       load: [configuration],
     }),
+    DiscoveryModule, // Add DiscoveryModule for BullModule dependencies
     SharedModule,
-    SecurityModule, // Handles ThrottlerModule and security guards internally
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

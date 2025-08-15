@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 // import { StreamProcessorException } from './stream-processor.exceptions';
@@ -53,16 +53,18 @@ export interface ProcessingResult {
  * without memory limitations, supporting multi-GB file processing.
  */
 @Injectable()
-export class StreamProcessorService {
-  private readonly logger: LoggerService;
-  private readonly config: StreamProcessingConfig;
+export class StreamProcessorService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: StreamProcessingConfig;
 
   constructor(
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
+    private readonly loggerService: LoggerService,
     private readonly zstdDecompressor: SystemZstdDecompressor,
-  ) {
-    this.logger = loggerService.setContext('StreamProcessor');
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('StreamProcessor');
     this.config = {
       batchSize: this.configService.get('pushshift.batchSize', 1000),
       processingTimeout: this.configService.get(

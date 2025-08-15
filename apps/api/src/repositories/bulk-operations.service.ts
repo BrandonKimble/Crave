@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../shared';
@@ -28,8 +28,8 @@ import {
  * - Section 6.6.2: Transaction Strategy, UPSERT operations, bulk operations
  */
 @Injectable()
-export class BulkOperationsService {
-  private readonly logger: LoggerService;
+export class BulkOperationsService implements OnModuleInit {
+  private logger!: LoggerService;
   private readonly defaultConfig: BulkOperationConfig = {
     batchSize: 250, // PRD 6.6.4: Start with 100-500 entities per batch
     enableTransactions: true,
@@ -43,9 +43,13 @@ export class BulkOperationsService {
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
     private readonly mentionRepository: MentionRepository,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('BulkOperationsService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('BulkOperationsService');
+    }
   }
 
   /**

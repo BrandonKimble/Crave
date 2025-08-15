@@ -439,12 +439,13 @@ Manages query processing and result delivery using pre-computed data
 
 ### 3.4 Development and Design Principles
 
-#### 3.4.1 Dependency Injection & Loose Coupling
+#### 3.4.1 Balanced Architecture: DI for Infrastructure, FP for Business Logic
 
-- **NestJS DI container**: Use dependency injection for all module interactions
-- **Interface-based design**: Define clear contracts between modules to enable testing and flexibility
-- **Repository pattern**: Abstract database access through repositories for clean separation
-- **Service layer isolation**: Keep business logic separate from framework concerns
+- **Strategic Dependency Injection**: Use NestJS DI container for stateful services, lifecycle management, and cross-cutting concerns (database connections, external APIs, logging, caching)
+- **Functional Programming for Pure Logic**: Implement business rules, data transformations, and calculations as pure functions without DI overhead
+- **Utility-First Approach**: Simple operations (deduplication, merging, validation) implemented as utility functions, not injectable services
+- **Event-Driven Decoupling**: Replace excessive service-to-service dependencies with event-based communication where appropriate
+- **Schema-Based Validation**: Use Zod schemas for runtime validation instead of custom validator services
 
 #### 3.4.2 Event-Driven Communication
 
@@ -1088,7 +1089,7 @@ For restaurant ranking in category/attribute queries:
 **Collection Triggers:**
 
 - **Historical Load**: One-time processing of Pushshift archives
-- **Scheduled Collection**: Daily/hourly Reddit API updates
+- **Scheduled Collection**: Chronological and keyword entity search with dynamic, offset scheduling
 - **On-Demand Collection**: Triggered by insufficient query results (Reddit API only)
 
 ### 6.1 Processing Pipeline
@@ -1170,34 +1171,65 @@ See llm-content-processing.md for more implementation and processing details.
 
 #### 6.3.1 LLM Input Structure
 
-_**Note**: Structure may evolve during implementation. Key principles are batch processing efficiency, original context preservation, and hierarchical post-comment relationships._
+_**Note**: Based on real Reddit API field analysis (NYC subreddit sample). Uses exact Reddit field names for consistency with source data. Key principles are batch processing efficiency, original context preservation, and hierarchical post-comment relationships._
 
 ```json
 {
   "posts": [
     {
-      "post_id": "string",
-      "title": "string",
-      "content": "string",
+      "id": "string",
+      "title": "string", 
+      "selftext": "string",
       "subreddit": "string",
-      "url": "string",
-      "upvotes": number,
-      "created_at": "timestamp",
+      "author": "string",
+      "permalink": "string",
+      "score": number,
+      "created_utc": number,
       "comments": [
         {
-          "comment_id": "string",
-          "content": "string",
+          "id": "string",
+          "body": "string",
           "author": "string",
-          "upvotes": number,
-          "created_at": "timestamp",
-          "parent_id": "string|null",
-          "url": "string"
-        }
+          "score": number,
+          "parent_id": "string",
+          "permalink": "string",
+          "subreddit": "string",
+          "created_utc": number
+        },
+        ...
       ]
     }
+  ],
+  "comments": [
+    {
+      "id": "string",
+      "body": "string", 
+      "author": "string",
+      "score": number,
+      "parent_id": "string|null",
+      "permalink": "string",
+      "subreddit": "string",
+      "created_utc": number
+    },
+    ...
   ]
 }
 ```
+
+**Field Descriptions:**
+- **`id`**: Reddit ID with type prefix (e.g., `"t3_1mg7vy4"`, `"t1_n6mnqad"`) for type safety
+- **`title`**: Post title text
+- **`selftext`**: Post body text content (Reddit field name) 
+- **`body`**: Comment text content (Reddit field name)
+- **`author`**: Reddit username
+- **`subreddit`**: Subreddit name without "r/" prefix
+- **`parent_id`**: Parent object ID with type prefix (`"t3_postid"` for top-level comments, `"t1_commentid"` for replies)
+- **`permalink`**: Reddit URL path for source attribution
+- **`score`**: Net votes (upvotes minus downvotes)
+- **`created_utc`**: Unix timestamp (Reddit field name)
+- **`comments`**: Array for standalone comments from archive-only processing
+
+**Minimal Field Set:** Optimized for food discovery use case, removing unnecessary metadata like editing timestamps, vote ratios, and moderation flags.
 
 #### 6.3.2 LLM Output Structure
 

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -251,10 +251,10 @@ export interface CollectionMethodResult {
 
 @Injectable()
 export class RedditService implements OnModuleInit {
-  private readonly logger: LoggerService;
+  private logger!: LoggerService;
   private accessToken: string | null = null;
   private tokenExpiresAt: Date | null = null;
-  private readonly redditConfig: RedditConfig;
+  private redditConfig!: RedditConfig;
   private performanceMetrics: PerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -282,11 +282,15 @@ export class RedditService implements OnModuleInit {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('RedditService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('RedditService');
+    }
     this.redditConfig = {
       clientId: this.configService.get<string>('reddit.clientId') || '',
       clientSecret: this.configService.get<string>('reddit.clientSecret') || '',
@@ -310,13 +314,13 @@ export class RedditService implements OnModuleInit {
     };
 
     this.validateConfig();
-  }
 
-  onModuleInit() {
-    this.logger.info('Reddit service initialized', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'module_init',
-    });
+    if (this.logger) {
+      this.logger.info('Reddit service initialized', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'module_init',
+      });
+    }
   }
 
   private validateConfig(): void {

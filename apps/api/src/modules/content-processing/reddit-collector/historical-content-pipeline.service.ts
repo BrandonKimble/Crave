@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   RedditDataExtractorService,
@@ -41,14 +41,17 @@ import {
  * - Maintain comprehensive error handling and logging
  */
 @Injectable()
-export class HistoricalContentPipelineService {
-  private readonly logger: LoggerService;
+export class HistoricalContentPipelineService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly redditDataExtractor: RedditDataExtractorService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('HistoricalContentPipeline');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('HistoricalContentPipeline');
   }
 
   /**
@@ -692,10 +695,10 @@ export class HistoricalContentPipelineService {
   ): LLMPostDto {
     // Convert comments to LLM format
     const llmComments: LLMCommentDto[] = comments.map((comment) => ({
-      comment_id: comment.id,
+      id: `t1_${comment.id}`, // Add Reddit comment prefix
       content: comment.body,
       author: comment.author,
-      upvotes: Math.max(0, comment.score), // Ensure non-negative
+      score: Math.max(0, comment.score), // Use score instead of upvotes
       created_at: new Date(comment.created_utc * 1000).toISOString(),
       parent_id: comment.parent_id || null,
       url:
@@ -705,12 +708,13 @@ export class HistoricalContentPipelineService {
 
     // Create LLM post
     const llmPost: LLMPostDto = {
-      post_id: submission.id,
+      id: `t3_${submission.id}`, // Add Reddit post prefix
       title: submission.title,
       content: submission.selftext || '', // Empty string for link posts
       subreddit: submission.subreddit,
+      author: submission.author, // Add author field
       url: submission.url,
-      upvotes: Math.max(0, submission.score), // Ensure non-negative
+      score: Math.max(0, submission.score), // Use score instead of upvotes
       created_at: new Date(submission.created_utc * 1000).toISOString(),
       comments: llmComments,
     };

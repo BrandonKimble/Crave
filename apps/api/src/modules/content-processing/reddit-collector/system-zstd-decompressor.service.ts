@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { LoggerService } from '../../../shared';
@@ -14,11 +14,15 @@ import { StreamProcessorException } from './stream-processor.exceptions';
  * - Production-ready error handling and timeout management
  */
 @Injectable()
-export class SystemZstdDecompressor {
-  private readonly logger: LoggerService;
+export class SystemZstdDecompressor implements OnModuleInit {
+  private logger!: LoggerService;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('SystemZstdDecompressor');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('SystemZstdDecompressor');
   }
 
   /**

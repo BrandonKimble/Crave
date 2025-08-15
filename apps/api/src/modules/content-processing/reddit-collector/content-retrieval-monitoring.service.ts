@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
 /**
@@ -51,14 +51,18 @@ export interface PerformanceDataPoint {
  * Provides insights into success rates, performance trends, and API efficiency.
  */
 @Injectable()
-export class ContentRetrievalMonitoringService {
-  private readonly logger: LoggerService;
+export class ContentRetrievalMonitoringService implements OnModuleInit {
+  private logger!: LoggerService;
   private metrics: ContentRetrievalMetrics;
   private performanceHistory: PerformanceDataPoint[] = [];
   private readonly maxHistorySize = 1000;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('ContentRetrievalMonitoring');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ContentRetrievalMonitoring');
     this.resetMetrics();
   }
 

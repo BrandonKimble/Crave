@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-misused-promises, @typescript-eslint/no-unsafe-call, @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access */
 // Reason: Service integration with OS monitoring, Promise callbacks, and dynamic imports
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   ResourceMonitoringConfig,
@@ -22,14 +22,18 @@ import { BatchProcessingExceptionFactory } from './batch-processing.exceptions';
  * - Enable automatic resource management during batch processing
  */
 @Injectable()
-export class ResourceMonitoringService {
-  private readonly logger: LoggerService;
+export class ResourceMonitoringService implements OnModuleInit {
+  private logger!: LoggerService;
   private activeMonitors = new Map<string, NodeJS.Timeout>();
   private monitoringConfigs = new Map<string, ResourceMonitoringConfig>();
   private resourceStats = new Map<string, ResourceUsageStats>();
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('ResourceMonitoring');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ResourceMonitoring');
   }
 
   /**

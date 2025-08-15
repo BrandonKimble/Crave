@@ -8,7 +8,7 @@
  * while providing visibility into overlap patterns and performance optimization.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   ContentIdentifier,
@@ -34,15 +34,19 @@ import {
 } from './historical-content-pipeline.types';
 
 @Injectable()
-export class DuplicateDetectionService {
-  private readonly logger: LoggerService;
-  private readonly defaultConfig: DuplicateDetectionConfig;
-  private readonly edgeCaseHandling: EdgeCaseHandling;
-  private readonly seenItems: Map<string, DuplicateTrackingEntry>;
-  private readonly stats: DuplicateDetectionStats;
+export class DuplicateDetectionService implements OnModuleInit {
+  private logger!: LoggerService;
+  private defaultConfig!: DuplicateDetectionConfig;
+  private edgeCaseHandling!: EdgeCaseHandling;
+  private seenItems!: Map<string, DuplicateTrackingEntry>;
+  private stats!: DuplicateDetectionStats;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('DuplicateDetection');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('DuplicateDetection');
     this.defaultConfig = this.getDefaultConfig();
     this.edgeCaseHandling = this.getDefaultEdgeCaseHandling();
     this.seenItems = new Map();

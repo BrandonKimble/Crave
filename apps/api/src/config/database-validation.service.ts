@@ -1,4 +1,4 @@
-import { Injectable, HttpStatus } from '@nestjs/common';
+import { Injectable, OnModuleInit, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseConfig } from './database-config.interface';
 import { LoggerService, CorrelationUtils } from '../shared';
@@ -17,11 +17,15 @@ export class DatabaseConfigurationError extends AppException {
 }
 
 @Injectable()
-export class DatabaseValidationService {
-  private readonly logger: LoggerService;
+export class DatabaseValidationService implements OnModuleInit {
+  private logger!: LoggerService;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('DatabaseValidationService');
+  constructor(private readonly loggerService: LoggerService) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('DatabaseValidationService');
+    }
   }
 
   /**
@@ -40,13 +44,15 @@ export class DatabaseValidationService {
     this.validateQueryConfiguration(dbConfig.query);
     this.validatePerformanceConfiguration(dbConfig.performance);
 
-    this.logger.info(
-      'Database configuration validation completed successfully',
-      {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_database_configuration',
-      },
-    );
+    if (this.logger) {
+      this.logger.info(
+        'Database configuration validation completed successfully',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_database_configuration',
+        },
+      );
+    }
   }
 
   /**
@@ -120,39 +126,47 @@ export class DatabaseValidationService {
     }
 
     if (max > 200) {
-      this.logger.warn('Large connection pool size detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_connection_pool',
-        max,
-        recommendation: 'Consider scaling considerations',
-      });
+      if (this.logger) {
+        this.logger.warn('Large connection pool size detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_connection_pool',
+          max,
+          recommendation: 'Consider scaling considerations',
+        });
+      }
     }
 
     if (acquire < 1000) {
-      this.logger.warn('Very short acquire timeout detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_connection_pool',
-        acquire,
-        warning: 'This may cause connection failures',
-      });
+      if (this.logger) {
+        this.logger.warn('Very short acquire timeout detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_connection_pool',
+          acquire,
+          warning: 'This may cause connection failures',
+        });
+      }
     }
 
     if (idle < 1000) {
-      this.logger.warn('Very short idle timeout detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_connection_pool',
-        idle,
-        warning: 'This may cause frequent reconnections',
-      });
+      if (this.logger) {
+        this.logger.warn('Very short idle timeout detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_connection_pool',
+          idle,
+          warning: 'This may cause frequent reconnections',
+        });
+      }
     }
 
     if (evict < 1000) {
-      this.logger.warn('Very short eviction interval detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_connection_pool',
-        evict,
-        warning: 'This may impact performance',
-      });
+      if (this.logger) {
+        this.logger.warn('Very short eviction interval detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_connection_pool',
+          evict,
+          warning: 'This may impact performance',
+        });
+      }
     }
   }
 
@@ -173,12 +187,14 @@ export class DatabaseValidationService {
 
     if (timeout > 300000) {
       // 5 minutes
-      this.logger.warn('Very long query timeout detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_query_configuration',
-        timeout,
-        warning: 'Consider if this is necessary',
-      });
+      if (this.logger) {
+        this.logger.warn('Very long query timeout detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_query_configuration',
+          timeout,
+          warning: 'Consider if this is necessary',
+        });
+      }
     }
 
     // Validate retry configuration
@@ -190,12 +206,14 @@ export class DatabaseValidationService {
     }
 
     if (retry.attempts > 10) {
-      this.logger.warn('High retry attempts detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_query_configuration',
-        retryAttempts: retry.attempts,
-        warning: 'This may mask underlying issues',
-      });
+      if (this.logger) {
+        this.logger.warn('High retry attempts detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_query_configuration',
+          retryAttempts: retry.attempts,
+          warning: 'This may mask underlying issues',
+        });
+      }
     }
 
     if (retry.delay < 100) {
@@ -222,21 +240,25 @@ export class DatabaseValidationService {
     const { logging } = perfConfig;
 
     if (logging.slowQueryThreshold < 100) {
-      this.logger.warn('Very low slow query threshold detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_performance_configuration',
-        slowQueryThreshold: logging.slowQueryThreshold,
-        warning: 'This may generate excessive logs',
-      });
+      if (this.logger) {
+        this.logger.warn('Very low slow query threshold detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_performance_configuration',
+          slowQueryThreshold: logging.slowQueryThreshold,
+          warning: 'This may generate excessive logs',
+        });
+      }
     }
 
     if (logging.slowQueryThreshold > 10000) {
-      this.logger.warn('High slow query threshold detected', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'validate_performance_configuration',
-        slowQueryThreshold: logging.slowQueryThreshold,
-        warning: 'You may miss performance issues',
-      });
+      if (this.logger) {
+        this.logger.warn('High slow query threshold detected', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'validate_performance_configuration',
+          slowQueryThreshold: logging.slowQueryThreshold,
+          warning: 'You may miss performance issues',
+        });
+      }
     }
   }
 
@@ -257,55 +279,65 @@ export class DatabaseValidationService {
     switch (env) {
       case 'production':
         if (dbConfig.performance.logging.enabled) {
-          this.logger.warn(
-            'Detailed logging enabled in production environment',
-            {
+          if (this.logger) {
+            this.logger.warn(
+              'Detailed logging enabled in production environment',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                operation: 'validate_environment_consistency',
+                environment: 'production',
+                warning: 'Consider disabling for performance',
+              },
+            );
+          }
+        }
+        if (dbConfig.connectionPool.max < 20) {
+          if (this.logger) {
+            this.logger.warn('Small connection pool detected in production', {
               correlationId: CorrelationUtils.getCorrelationId(),
               operation: 'validate_environment_consistency',
               environment: 'production',
-              warning: 'Consider disabling for performance',
-            },
-          );
-        }
-        if (dbConfig.connectionPool.max < 20) {
-          this.logger.warn('Small connection pool detected in production', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            operation: 'validate_environment_consistency',
-            environment: 'production',
-            maxConnections: dbConfig.connectionPool.max,
-            warning: 'Consider increasing for better performance',
-          });
+              maxConnections: dbConfig.connectionPool.max,
+              warning: 'Consider increasing for better performance',
+            });
+          }
         }
         break;
 
       case 'development':
         if (!dbConfig.performance.logging.enabled) {
-          this.logger.warn(
-            'Detailed logging disabled in development environment',
-            {
+          if (this.logger) {
+            this.logger.warn(
+              'Detailed logging disabled in development environment',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                operation: 'validate_environment_consistency',
+                environment: 'development',
+                warning: 'Consider enabling for debugging',
+              },
+            );
+          }
+        }
+        if (dbConfig.connectionPool.max > 20) {
+          if (this.logger) {
+            this.logger.warn('Large connection pool detected in development', {
               correlationId: CorrelationUtils.getCorrelationId(),
               operation: 'validate_environment_consistency',
               environment: 'development',
-              warning: 'Consider enabling for debugging',
-            },
-          );
-        }
-        if (dbConfig.connectionPool.max > 20) {
-          this.logger.warn('Large connection pool detected in development', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            operation: 'validate_environment_consistency',
-            environment: 'development',
-            maxConnections: dbConfig.connectionPool.max,
-            warning: 'Consider reducing to save resources',
-          });
+              maxConnections: dbConfig.connectionPool.max,
+              warning: 'Consider reducing to save resources',
+            });
+          }
         }
         break;
     }
 
-    this.logger.info('Environment-specific validation completed', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'validate_environment_consistency',
-      environment: env,
-    });
+    if (this.logger) {
+      this.logger.info('Environment-specific validation completed', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'validate_environment_consistency',
+        environment: env,
+      });
+    }
   }
 }

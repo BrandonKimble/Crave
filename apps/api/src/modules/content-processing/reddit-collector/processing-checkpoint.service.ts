@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-misused-promises */
 // Reason: Service integration with exception factories and Promise handling patterns
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   ProcessingCheckpoint,
@@ -27,20 +27,26 @@ import * as path from 'path';
  * - Provide checkpoint history and recovery options
  */
 @Injectable()
-export class ProcessingCheckpointService {
-  private readonly logger: LoggerService;
-  private readonly config: CheckpointServiceConfig;
+export class ProcessingCheckpointService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: CheckpointServiceConfig;
   private checkpoints = new Map<string, ProcessingCheckpoint[]>();
   private cleanupTimer?: NodeJS.Timeout;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('ProcessingCheckpoint');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('ProcessingCheckpoint');
+    }
     this.config = this.loadConfiguration();
 
     // Start cleanup timer if persistence is enabled
     if (this.config.enablePersistence) {
       this.startCleanupTimer();
-    }
+  }
   }
 
   /**

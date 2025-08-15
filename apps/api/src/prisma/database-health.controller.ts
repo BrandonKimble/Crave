@@ -1,4 +1,4 @@
-import { Controller, Get, HttpStatus, HttpException } from '@nestjs/common';
+import { Controller, Get, HttpStatus, HttpException, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { LoggerService, CorrelationUtils } from '../shared';
 
@@ -14,14 +14,18 @@ interface DatabaseMetrics {
 }
 
 @Controller('health')
-export class DatabaseHealthController {
-  private readonly logger: LoggerService;
+export class DatabaseHealthController implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly prismaService: PrismaService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('DatabaseHealthController');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('DatabaseHealthController');
+    }
   }
 
   /**
@@ -33,10 +37,12 @@ export class DatabaseHealthController {
     const startTime = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
 
-    this.logger.debug('Database health check started', {
-      correlationId,
-      operation: 'health_check',
-    });
+    if (this.logger) {
+      this.logger.debug('Database health check started', {
+        correlationId,
+        operation: 'health_check',
+      });
+    }
 
     try {
       const isHealthy = await this.prismaService.performHealthCheck();
@@ -53,12 +59,14 @@ export class DatabaseHealthController {
       }
 
       const duration = Date.now() - startTime;
-      this.logger.info('Database health check completed successfully', {
-        correlationId,
-        operation: 'health_check',
-        duration,
-        healthy: true,
-      });
+      if (this.logger) {
+        this.logger.info('Database health check completed successfully', {
+          correlationId,
+          operation: 'health_check',
+          duration,
+          healthy: true,
+        });
+      }
 
       return {
         status: 'healthy',
@@ -67,12 +75,14 @@ export class DatabaseHealthController {
       };
     } catch (error) {
       const duration = Date.now() - startTime;
-      this.logger.error('Database health check failed', error, {
-        correlationId,
-        operation: 'health_check',
-        duration,
-        healthy: false,
-      });
+      if (this.logger) {
+        this.logger.error('Database health check failed', error, {
+          correlationId,
+          operation: 'health_check',
+          duration,
+          healthy: false,
+        });
+      }
 
       throw new HttpException(
         {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
@@ -18,16 +18,19 @@ import { ChronologicalCollectionService } from './chronological-collection.servi
  * - Handle overlap detection and merge data based on timestamps
  */
 @Injectable()
-export class DualCollectionStrategyService {
-  private readonly logger: LoggerService;
+export class DualCollectionStrategyService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly configService: ConfigService,
     private readonly redditService: RedditService,
     private readonly chronologicalCollection: ChronologicalCollectionService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('DualCollectionStrategy');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('DualCollectionStrategy');
   }
 
   /**

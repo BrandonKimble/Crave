@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Entity, EntityType, Connection } from '@prisma/client';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
@@ -26,13 +26,19 @@ import { ValidationException } from './base/repository.exceptions';
  * Implements PRD Section 4.3.1 - Unified dish_or_category Entity Approach
  */
 @Injectable()
-export class EntityContextService {
+export class EntityContextService implements OnModuleInit {
+  private logger!: LoggerService;
+
   constructor(
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
-    private readonly logger: LoggerService,
-  ) {
-    this.logger.setContext('EntityContextService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('EntityContextService');
+    }
   }
 
   /**

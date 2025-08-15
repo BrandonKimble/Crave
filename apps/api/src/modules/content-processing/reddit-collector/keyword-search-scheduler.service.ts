@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
@@ -44,9 +44,9 @@ export interface KeywordSearchSchedule {
  * For M03, it establishes the scheduling framework and basic entity selection.
  */
 @Injectable()
-export class KeywordSearchSchedulerService {
-  private readonly logger: LoggerService;
-  private readonly config: KeywordSearchConfig;
+export class KeywordSearchSchedulerService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: KeywordSearchConfig;
   private schedules = new Map<string, KeywordSearchSchedule>();
   private scheduleTimer?: NodeJS.Timeout;
 
@@ -62,9 +62,14 @@ export class KeywordSearchSchedulerService {
   constructor(
     private readonly configService: ConfigService,
     private readonly entityPriorityService: EntityPrioritySelectionService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('KeywordSearchScheduler');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('KeywordSearchScheduler');
+    }
     this.config = this.loadConfiguration();
   }
 

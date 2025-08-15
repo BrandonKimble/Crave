@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
+import { SharedModule } from '../../../shared/shared.module';
 import { RedditService } from './reddit.service';
 import { RedditHealthController } from './reddit-health.controller';
 import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
@@ -12,6 +13,7 @@ import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.se
       maxRedirects: 5,
     }),
     ConfigModule,
+    SharedModule,
   ],
   providers: [RedditService, RateLimitCoordinatorService],
   controllers: [RedditHealthController],

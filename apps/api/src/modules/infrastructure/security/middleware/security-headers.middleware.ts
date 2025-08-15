@@ -11,7 +11,8 @@ export class SecurityHeadersMiddleware implements NestMiddleware {
   private readonly isProd: boolean;
 
   constructor(private readonly configService: ConfigService) {
-    this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
+    // Handle case where configService might not be ready during DI
+    this.isProd = this.configService?.get<string>('NODE_ENV') === 'production';
   }
 
   use(req: FastifyRequest, res: FastifyReply, next: () => void) {

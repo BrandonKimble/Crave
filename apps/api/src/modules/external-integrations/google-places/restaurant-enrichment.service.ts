@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Entity, Prisma } from '@prisma/client';
 import { GooglePlacesService } from './google-places.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
@@ -13,15 +13,17 @@ import {
  * Implements PRD Section 9.2.1: Restaurant data enrichment, location services setup
  */
 @Injectable()
-export class RestaurantEnrichmentService {
-  private readonly logger: LoggerService;
+export class RestaurantEnrichmentService implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
     private readonly entityRepository: EntityRepository,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('RestaurantEnrichmentService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('RestaurantEnrichmentService');
   }
 
   /**

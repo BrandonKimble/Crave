@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsArray,
   IsOptional,
+  IsBoolean,
   ValidateNested,
   IsUrl,
   IsDateString,
@@ -20,7 +21,7 @@ import {
 export class LLMCommentDto {
   @IsString()
   @IsSafeString()
-  comment_id: string;
+  id: string;
 
   @IsString()
   @IsSafeString()
@@ -32,7 +33,7 @@ export class LLMCommentDto {
 
   @IsNumber()
   @Min(0)
-  upvotes: number;
+  score: number;
 
   @IsDateString()
   created_at: string;
@@ -52,7 +53,7 @@ export class LLMCommentDto {
 export class LLMPostDto {
   @IsString()
   @IsSafeString()
-  post_id: string;
+  id: string;
 
   @IsString()
   @IsSafeString()
@@ -66,12 +67,16 @@ export class LLMPostDto {
   @IsSafeString()
   subreddit: string;
 
+  @IsString()
+  @IsSafeString()
+  author: string;
+
   @IsUrl()
   url: string;
 
   @IsNumber()
   @Min(0)
-  upvotes: number;
+  score: number;
 
   @IsDateString()
   created_at: string;
@@ -80,6 +85,10 @@ export class LLMPostDto {
   @ValidateNested({ each: true })
   @Type(() => LLMCommentDto)
   comments: LLMCommentDto[];
+
+  @IsBoolean()
+  @IsOptional()
+  extract_from_post?: boolean;
 }
 
 /**

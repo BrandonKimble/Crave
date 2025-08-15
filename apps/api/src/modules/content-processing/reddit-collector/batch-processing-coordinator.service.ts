@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import { StreamProcessorService } from './stream-processor.service';
@@ -32,9 +32,9 @@ import { HistoricalProcessingConfig } from './historical-content-pipeline.types'
  * - Handle realistic Pushshift archive file sizes without performance degradation
  */
 @Injectable()
-export class BatchProcessingCoordinatorService {
-  private readonly logger: LoggerService;
-  private readonly config: BatchProcessingConfig;
+export class BatchProcessingCoordinatorService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: BatchProcessingConfig;
   private activeJobs = new Map<string, BatchProcessingJob>();
 
   constructor(
@@ -43,9 +43,14 @@ export class BatchProcessingCoordinatorService {
     private readonly contentPipeline: HistoricalContentPipelineService,
     private readonly resourceMonitor: ResourceMonitoringService,
     private readonly checkpointService: ProcessingCheckpointService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('BatchProcessingCoordinator');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('BatchProcessingCoordinator');
+    }
     this.config = this.loadConfiguration();
   }
 

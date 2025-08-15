@@ -4,6 +4,7 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FastifyRequest, FastifyReply } from 'fastify';
@@ -25,15 +26,19 @@ interface ErrorDetails {
 }
 
 @Catch()
-export class GlobalExceptionFilter implements ExceptionFilter {
-  private readonly logger: LoggerService;
-  private readonly isProd: boolean;
+export class GlobalExceptionFilter implements ExceptionFilter, OnModuleInit {
+  private logger!: LoggerService;
+  private isProd!: boolean;
 
   constructor(
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('GlobalExceptionFilter');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('GlobalExceptionFilter');
+    }
     this.isProd = this.configService.get<string>('NODE_ENV') === 'production';
   }
 

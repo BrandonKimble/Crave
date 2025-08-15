@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { isRedditComment } from './reddit-data.types';
 
@@ -29,11 +29,13 @@ export interface CraveRedditComment {
  * providing 59% memory reduction while maintaining all required functionality
  */
 @Injectable()
-export class RedditDataExtractorService {
-  private readonly logger: LoggerService;
+export class RedditDataExtractorService implements OnModuleInit {
+  private logger!: LoggerService;
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('RedditDataExtractor');
+  constructor(private readonly loggerService: LoggerService) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('RedditDataExtractor');
   }
 
   /**

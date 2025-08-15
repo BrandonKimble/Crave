@@ -57,7 +57,7 @@ export interface ScheduledJobInfo {
  */
 @Injectable()
 export class CollectionJobSchedulerService implements OnModuleInit {
-  private readonly logger: LoggerService;
+  private logger!: LoggerService;
   private readonly scheduleConfig: JobScheduleConfig;
   private scheduledJobs = new Map<string, ScheduledJobInfo>();
   private scheduleTimer?: NodeJS.Timeout;
@@ -84,9 +84,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     private readonly chronologicalQueue: Queue,
     private readonly schedulingService: CollectionSchedulingService,
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
+    private readonly loggerService: LoggerService,
   ) {
-    this.logger = loggerService.setContext('CollectionJobScheduler');
     this.scheduleConfig = this.loadConfiguration();
   }
 
@@ -94,14 +93,21 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    * Initialize scheduling on module startup
    */
   async onModuleInit(): Promise<void> {
-    this.logger.info('Initializing collection job scheduler', {
-      correlationId: CorrelationUtils.generateCorrelationId(),
-      operation: 'scheduler_init',
-      config: this.scheduleConfig,
-    });
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('CollectionJobScheduler');
+    }
+    if (this.logger) {
+      this.logger.info('Initializing collection job scheduler', {
+        correlationId: CorrelationUtils.generateCorrelationId(),
+        operation: 'scheduler_init',
+        config: this.scheduleConfig,
+      });
+    }
 
     if (!this.scheduleConfig.enabled) {
-      this.logger.warn('Collection job scheduler is disabled');
+      if (this.logger) {
+        this.logger.warn('Collection job scheduler is disabled');
+      }
       return;
     }
 

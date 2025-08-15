@@ -27,25 +27,30 @@ import {
  */
 @Injectable()
 export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
-  private readonly logger: LoggerService;
-  private readonly integrationConfig: HistoricalLlmIntegrationConfig;
+  private logger!: LoggerService;
+  private integrationConfig!: HistoricalLlmIntegrationConfig;
 
   constructor(
     private readonly llmService: LLMService,
     private readonly historicalPipeline: HistoricalContentPipelineService,
     private readonly configService: ConfigService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('HistoricalLlmIntegrationAdapter');
-    this.integrationConfig = this.loadIntegrationConfig();
-  }
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
 
-  onModuleInit() {
-    this.logger.info('Historical LLM integration adapter initialized', {
-      enableValidation: this.integrationConfig.enableValidation,
-      batchSizeLimit: this.integrationConfig.batchSizeLimit,
-      preserveThreads: this.integrationConfig.preserveThreads,
-    });
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('HistoricalLlmIntegrationAdapter');
+    }
+    this.integrationConfig = this.loadIntegrationConfig();
+    
+    if (this.logger) {
+      this.logger.info('Historical LLM integration adapter initialized', {
+        enableValidation: this.integrationConfig.enableValidation,
+        batchSizeLimit: this.integrationConfig.batchSizeLimit,
+        preserveThreads: this.integrationConfig.preserveThreads,
+      });
+    }
   }
 
   /**

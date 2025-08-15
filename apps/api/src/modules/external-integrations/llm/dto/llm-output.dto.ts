@@ -69,17 +69,56 @@ export class LLMSourceDto {
 }
 
 /**
- * DTO for LLM mention with validation
+ * DTO for LLM flat mention structure with validation
+ * Flattened structure for better LLM performance while preserving ALL properties
  */
 export class LLMMentionDto {
   @IsString()
   @IsSafeString()
   temp_id: string;
 
-  @ValidateNested()
-  @Type(() => LLMEntityRefDto)
-  restaurant: LLMEntityRefDto;
+  // Restaurant fields (ALL preserved)
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  restaurant_normalized_name?: string | null;
 
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  restaurant_original_text?: string | null;
+
+  @IsString()
+  @IsSafeString()
+  restaurant_temp_id: string;
+
+  // Enhanced dish fields for compound term processing
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  dish_primary_category?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsSafeString({ each: true })
+  dish_categories?: string[] | null;
+
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  dish_original_text?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  dish_temp_id?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  dish_is_menu_item?: boolean | null;
+
+  // Attributes (simplified - all non-food descriptors)
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
@@ -87,25 +126,41 @@ export class LLMMentionDto {
   restaurant_attributes?: string[] | null;
 
   @IsOptional()
-  @ValidateNested()
-  @Type(() => LLMEntityRefDto)
-  dish_or_category?: LLMEntityRefDto | null;
-
-  @IsOptional()
   @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => LLMDishAttributeDto)
-  dish_attributes?: LLMDishAttributeDto[] | null;
+  @IsString({ each: true })
+  @IsSafeString({ each: true })
+  dish_attributes?: string[] | null;
 
-  @IsBoolean()
-  is_menu_item: boolean;
-
+  // Core processing fields (VITAL)
   @IsBoolean()
   general_praise: boolean;
 
-  @ValidateNested()
-  @Type(() => LLMSourceDto)
-  source: LLMSourceDto;
+  // Source tracking with enhanced fields
+  @IsString()
+  @IsIn(['post', 'comment'])
+  source_type: 'post' | 'comment';
+
+  @IsString()
+  @IsSafeString()
+  source_id: string;
+
+  @IsString()
+  @IsSafeString()
+  source_content: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  source_upvotes?: number | null;
+
+  @IsOptional()
+  @IsString()
+  @IsSafeString()
+  source_url?: string | null;
+
+  @IsOptional()
+  @IsDateString()
+  source_created_at?: string | null;
 }
 
 /**

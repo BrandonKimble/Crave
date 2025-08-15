@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
 import * as fs from 'fs/promises';
@@ -44,9 +44,9 @@ export interface JobStateConfig {
  * - Integrate with existing checkpoint patterns
  */
 @Injectable()
-export class CollectionJobStateService {
-  private readonly logger: LoggerService;
-  private readonly config: JobStateConfig;
+export class CollectionJobStateService implements OnModuleInit {
+  private logger!: LoggerService;
+  private config!: JobStateConfig;
   private jobStates = new Map<string, JobState>();
   private cleanupTimer?: NodeJS.Timeout;
 
@@ -58,8 +58,14 @@ export class CollectionJobStateService {
     autoCleanup: true,
   };
 
-  constructor(loggerService: LoggerService) {
-    this.logger = loggerService.setContext('CollectionJobState');
+  constructor(
+    private readonly loggerService: LoggerService
+  ) {} 
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('CollectionJobState');
+    }
     this.config = this.loadConfiguration();
 
     // Initialize state directory and cleanup timer

@@ -1,5 +1,3 @@
-import { Injectable, Inject } from '@nestjs/common';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { Logger as WinstonLogger } from 'winston';
 import {
   isHttpError,
@@ -32,11 +30,10 @@ export interface LogMetadata {
 
 /**
  * Enhanced logger service providing structured logging with Winston integration
+ * Not using @Injectable since we're using a factory provider
  */
-@Injectable()
 export class LoggerService {
   constructor(
-    @Inject(WINSTON_MODULE_PROVIDER)
     private readonly logger: WinstonLogger,
   ) {}
 

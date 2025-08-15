@@ -21,7 +21,7 @@ import { BaseExternalApiException } from './external-integrations.exceptions';
  */
 @Injectable()
 export abstract class BaseExternalApiService implements OnModuleInit {
-  protected readonly logger: LoggerService;
+  protected logger!: LoggerService;
   protected performanceMetrics: BasePerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -34,16 +34,22 @@ export abstract class BaseExternalApiService implements OnModuleInit {
 
   constructor(
     protected readonly configService: ConfigService,
-    loggerService: LoggerService,
+    private readonly loggerService: LoggerService,
     protected readonly serviceName: string,
-  ) {
-    this.logger = loggerService.setContext(serviceName);
-  }
+  
+  ) {} 
 
   async onModuleInit(): Promise<void> {
-    this.logger.info(`Initializing ${this.serviceName}`);
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext(this.serviceName);
+    }
+    if (this.logger) {
+      this.logger.info(`Initializing ${this.serviceName}`);
+    }
     await this.initializeService();
-    this.logger.info(`${this.serviceName} initialized successfully`);
+    if (this.logger) {
+      this.logger.info(`${this.serviceName} initialized successfully`);
+    }
   }
 
   /**

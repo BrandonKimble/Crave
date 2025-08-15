@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EntityType, Entity } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -25,15 +25,19 @@ import {
  * 3. Fuzzy matching with confidence scoring
  */
 @Injectable()
-export class EntityResolutionService {
-  private readonly logger: LoggerService;
+export class EntityResolutionService implements OnModuleInit {
+  private logger!: LoggerService;
   constructor(
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
     private readonly aliasManagementService: AliasManagementService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('EntityResolutionService');
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    if (this.loggerService) {
+      this.logger = this.loggerService.setContext('EntityResolutionService');
+    }
   }
 
   /**

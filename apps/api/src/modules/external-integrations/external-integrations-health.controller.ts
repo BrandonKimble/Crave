@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, OnModuleInit } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoggerService, CorrelationUtils } from '../../shared';
 import { GooglePlacesService } from './google-places/google-places.service';
@@ -18,17 +18,19 @@ import {
  */
 @ApiTags('Health')
 @Controller('health/external-integrations')
-export class ExternalIntegrationsHealthController {
-  private readonly logger: LoggerService;
+export class ExternalIntegrationsHealthController implements OnModuleInit {
+  private logger!: LoggerService;
 
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
     private readonly llmService: LLMService,
     private readonly redditService: RedditService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext(
+    private readonly loggerService: LoggerService,
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext(
       'ExternalIntegrationsHealthController',
     );
   }

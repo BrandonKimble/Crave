@@ -6,13 +6,16 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 @ApiTags('LLM Health')
 @Controller('health/llm')
 export class LLMHealthController {
-  private readonly logger: LoggerService;
+  private logger!: LoggerService;
 
   constructor(
     private readonly llmService: LLMService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('LLMHealthController');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('LLMHealthController');
   }
 
   @Get()

@@ -2,6 +2,7 @@ import { Module, Global } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { SharedModule } from '../../../shared/shared.module';
 import { SecurityGuard } from './guards/security.guard';
 import { SecurityService } from './security.service';
 import { SanitizationMiddleware } from './middleware/sanitization.middleware';
@@ -33,6 +34,7 @@ import { SecurityHeadersMiddleware } from './middleware/security-headers.middlew
       ],
     }),
     ConfigModule,
+    SharedModule, // For LoggerService
   ],
   providers: [
     SecurityService,

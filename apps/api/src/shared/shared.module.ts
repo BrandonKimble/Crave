@@ -1,6 +1,6 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { WinstonModule } from 'nest-winston';
+import { WinstonModule, WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { createWinstonConfig } from './logging/winston.config';
 import { LoggerService } from './logging/logger.service';
@@ -22,8 +22,14 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
     }),
   ],
   providers: [
-    // Logger service
-    LoggerService,
+    // Logger service as factory to ensure Winston is initialized first
+    {
+      provide: LoggerService,
+      useFactory: (winstonLogger: any) => {
+        return new LoggerService(winstonLogger);
+      },
+      inject: [WINSTON_MODULE_PROVIDER],
+    },
     // Global logging interceptor
     {
       provide: APP_INTERCEPTOR,

@@ -8,7 +8,7 @@
  * based on timestamps, maintaining source attribution and minimizing data gaps.
  */
 
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   DataSourceType,
@@ -68,15 +68,17 @@ export interface ApiContentBatch {
 }
 
 @Injectable()
-export class DataMergeService {
-  private readonly logger: LoggerService;
-  private readonly defaultConfig: TemporalMergeConfig;
+export class DataMergeService implements OnModuleInit {
+  private logger!: LoggerService;
+  private defaultConfig!: TemporalMergeConfig;
 
   constructor(
-    loggerService: LoggerService,
+    private readonly loggerService: LoggerService,
     private readonly duplicateDetectionService: DuplicateDetectionService,
-  ) {
-    this.logger = loggerService.setContext('DataMerge');
+  ) {}
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('DataMerge');
     this.defaultConfig = this.getDefaultMergeConfig();
   }
 

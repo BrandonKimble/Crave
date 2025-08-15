@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
@@ -59,8 +59,8 @@ export interface ChronologicalCollectionOptions {
  * - Provide complete recent coverage ensuring no content gaps
  */
 @Injectable()
-export class ChronologicalCollectionService {
-  private readonly logger: LoggerService;
+export class ChronologicalCollectionService implements OnModuleInit {
+  private logger!: LoggerService;
   private lastProcessedTimestamps = new Map<string, number>();
   private isCollectionActive = false;
 
@@ -68,9 +68,12 @@ export class ChronologicalCollectionService {
     private readonly configService: ConfigService,
     private readonly redditService: RedditService,
     private readonly schedulingService: CollectionSchedulingService,
-    loggerService: LoggerService,
-  ) {
-    this.logger = loggerService.setContext('ChronologicalCollection');
+    private readonly loggerService: LoggerService,
+  
+  ) {} 
+
+  onModuleInit(): void {
+    this.logger = this.loggerService.setContext('ChronologicalCollection');
   }
 
   /**

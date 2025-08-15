@@ -38,11 +38,29 @@ turbo run lint && turbo run type-check
 - **Mobile**: React Native + Expo + Zustand 
 - **Build**: Turborepo + pnpm + TypeScript
 
+## Architectural Approach: Balanced DI & FP
+
+### When to Use Dependency Injection
+- **Stateful Services**: Database connections, external APIs, cache management
+- **Lifecycle Management**: Services needing initialization/cleanup (OnModuleInit/OnModuleDestroy)
+- **Cross-Cutting Concerns**: Logging, metrics, authentication
+- **Request-Scoped Data**: Per-request isolation needs
+
+### When to Use Utility Functions
+- **Pure Transformations**: Data mapping, formatting, calculations
+- **Simple Operations**: Deduplication, merging, validation
+- **Business Rules**: Score calculation, ranking logic
+- **Stateless Processing**: Any operation without side effects
+
 ## Code Patterns
 - **Modules**: Domain-driven structure in `src/modules/`
-- **Database**: Prisma with dependency injection `constructor(private readonly prisma: PrismaService)`
-- **Errors**: Custom exceptions in `src/shared/exceptions/`
-- **Config**: `@nestjs/config` with validation
+- **Core Infrastructure**: `/src/core/` for cache, events, config, errors
+- **Utilities**: `/src/utils/` for pure functions and helpers
+- **Schemas**: `/src/schemas/` for Zod validation schemas
+- **Database**: Prisma with DI for stateful operations
+- **Errors**: Unified AppException with error codes (not 15+ custom classes)
+- **Config**: Single source in `/src/core/config/app.config.ts`
+- **Events**: Event-driven decoupling with EventEmitter2
 
 ## Database Schema (Key Tables)
 - **entities**: Restaurants, dishes_or_categories, attributes (unified with `entity_type`)

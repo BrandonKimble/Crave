@@ -4,129 +4,14 @@
 
 _These sections function together as a logical processing flow for the LLM: first establishing data structures, then classification frameworks and processing rules, then providing step-by-step extraction and processing instructions._
 
-### 1.1 LLM Input/Output Structures
+### 1.1 Core Comment & Post Processing Criteria
 
-#### Data Collection Input Structure
+#### Post Extraction Control
 
-```json
-{
-  "posts": [
-    {
-      "post_id": "string",
-      "title": "string",
-      "content": "string",
-      "subreddit": "string",
-      "url": "string",
-      "upvotes": number,
-      "created_at": "timestamp",
-      "comments": [
-        {
-          "comment_id": "string",
-          "content": "string",
-          "author": "string",
-          "upvotes": number,
-          "created_at": "timestamp",
-          "parent_id": "string|null",
-          "url": "string"
-        }
-      ]
-    }
-  ]
-}
-```
-
-#### Data Collection Output Structure
-
-```json
-{
-  "mentions": [
-    {
-      "temp_id": "string",
-      "restaurant": {
-        "normalized_name": "string" | null,
-        "original_text": "string" | null,
-        "temp_id": "string"
-      },
-      "restaurant_attributes": ["string"] | null,
-      "dish_or_category": {
-        "normalized_name": "string" | null,
-        "original_text": "string" | null,
-        "temp_id": "string"
-      } | null,
-      "dish_attributes": [
-        {
-          "attribute": "string",
-          "type": "selective|descriptive"
-        }
-      ] | null,
-      "is_menu_item": boolean,
-      "general_praise": boolean,
-      "source": {
-        "type": "post|comment",
-        "id": "string",
-        "url": "string",
-        "upvotes": number,
-        "created_at": "timestamp"
-      }
-    }
-  ]
-}
-```
-
-#### Query Processing Input Structure
-
-```json
-{
-  "query": "string",
-  "location_bounds": {
-    "ne_lat": number,
-    "ne_lng": number,
-    "sw_lat": number,
-    "sw_lng": number
-  },
-  "open_now": boolean,
-  "user_context": "string|null"
-}
-```
-
-#### Query Processing Output Structure
-
-```json
-{
-  "entities": {
-    "restaurants": [
-      {
-        "normalized_name": "string",
-        "original_text": "string" | null, // original user text
-        "entity_ids": ["uuid"] // resolved database IDs
-      }
-    ],
-    "dish_or_categories": [
-      {
-        "normalized_name": "string",
-        "original_text": "string" | null,
-        "entity_ids": ["uuid"]
-      }
-    ],
-    "dish_attributes": [
-      {
-        "normalized_name": "string",
-        "original_text": "string" | null,
-        "entity_id": "uuid"
-      }
-    ],
-    "restaurant_attributes": [
-      {
-        "normalized_name": "string",
-        "original_text": "string" | null,
-        "entity_id": "uuid"
-      }
-    ]
-  }
-}
-```
-
-### 1.2 Core Comment & Post Processing Criteria
+**CRITICAL**: Check the `extract_from_post` flag in each input:
+- If `extract_from_post: true` → Extract entities from both the post content AND comments
+- If `extract_from_post: false` → Extract entities ONLY from comments, NOT from the post content
+- The post is always provided for context to understand references in comments
 
 #### Entity Inheritance Principle
 
@@ -134,7 +19,7 @@ Comments may inherit entities (restaurants, dishes, attributes) from parent comm
 
 #### Core Processing Criteria - Process ONLY When ALL Are Met
 
-1. **Sentiment Criterion:** Content expresses or affirms positive sentiment about food/restaurant quality
+1. **Sentiment Criterion:** Content expresses or affirms positive sentiment about food/restaurant quality from first-hand experience (having personally visited, eaten, or tasted)
 2. **Entity Criterion:** Content can be linked to:
    - Restaurant entity AND EITHER:
      - Dish/category entity, OR
@@ -145,8 +30,10 @@ Comments may inherit entities (restaurants, dishes, attributes) from parent comm
 #### Skip Conditions (Overrides All Other Rules)
 
 - Content fails to meet ANY of the core requirements above
-- Focused exclusively on non-food aspects
+- Focused exclusively on non-food/restaurant aspects  
 - Promotional or marketing content
+- Any request for recommendations, suggestions, or opinions from others
+- Secondhand information or hearsay
 
 #### General Praise Identification
 
@@ -163,7 +50,7 @@ Examples:
 
 **For posts/comments that don't contain directly processable information:** Even if content doesn't meet the core processing criteria, it can still provide valuable context for entity inheritance, restaurant identification, or setting up context for subsequent comments in the thread.
 
-### 1.3 Entity Types & Classification Rules
+### 1.2 Entity Types & Classification Rules
 
 #### Entity Types
 
@@ -221,7 +108,7 @@ Examples:
 
 **Principle:** Is it about what type of thing it is (selective) or how that thing is (descriptive)?
 
-### 1.4 Compound Term Processing Rules (Food Terms Only)
+### 1.3 Compound Term Processing Rules (Food Terms Only)
 
 _Apply these rules only to food-related compound terms, not restaurant names or other entities._
 
@@ -254,7 +141,7 @@ Examples:
 - Derive broader cuisine attributes from specific ones
 - Apply known culinary relationships
 
-### 1.5 Menu Item Identification Rules
+### 1.4 Menu Item Identification Rules
 
 When setting the is_menu_item flag on restaurant→dish connections (applied to clean food terms after attribute extraction):
 
@@ -297,7 +184,7 @@ When setting the is_menu_item flag on restaurant→dish connections (applied to 
 - Example: "I ordered the pad thai" (is_menu_item = true)
 - Example: "They specialize in Thai food" (is_menu_item = false)
 
-### 1.6 Central Entity Extraction & Processing Guide
+### 1.5 Central Entity Extraction & Processing Guide
 
 #### Processing Flow Overview
 
@@ -305,15 +192,15 @@ Use this central guide to extract entities systematically, referencing the appro
 
 #### Step 1: Initial Content Assessment
 
-- Apply **Core Comment & Post Processing Criteria** (Section 1.2) to determine if content should be processed
+- Apply **Core Comment & Post Processing Criteria** (Section 1.1) to determine if content should be processed
 - **Entity Inheritance:** Check if entities can be inherited from parent comment/post when connection is unambiguous
 - **Short Affirmations:** Handle "+1", "seconded", "this", "agreed" by automatically inheriting all entities and sentiment from parent
-- **General Praise Identification:** Determine if mention contains holistic restaurant praise using guidelines from Section 1.2
+- **General Praise Identification:** Determine if mention contains holistic restaurant praise using guidelines from Section 1.1
 
 #### Step 2: Entity Identification & Classification
 
 - Extract restaurant mentions (explicit or contextually inferred)
-- For food mentions, apply **Entity Types & Classification Rules** (Section 1.3) to identify:
+- For food mentions, apply **Entity Types & Classification Rules** (Section 1.2) to identify:
   - Which terms are dish_or_category entities (food nouns)
   - Which terms are dish_attributes based on context (preparation, cuisine when applied to dishes, etc.)
   - Which terms are restaurant_attributes based on context (ambiance, features, cuisine when applied to restaurants, etc.)
@@ -321,15 +208,15 @@ Use this central guide to extract entities systematically, referencing the appro
 
 #### Step 3: Food Term Processing
 
-- For food mentions, apply **Compound Term Processing Rules** (Section 1.4):
+- For food mentions, apply **Compound Term Processing Rules** (Section 1.3):
   - Exclude attribute terms identified in Step 2
   - Apply hierarchical decomposition to remaining food substance terms
   - Create parent-child category relationships
-- Apply **Menu Item Identification Rules** (Section 1.5) to determine is_menu_item flag
+- Apply **Menu Item Identification Rules** (Section 1.4) to determine is_menu_item flag
 
 #### Step 4: Attribute Classification
 
-- For identified attributes, apply **Selective vs Descriptive Classification** (Section 1.3)
+- For identified attributes, apply **Selective vs Descriptive Classification** (Section 1.2)
 - Ensure proper scope assignment (dish attributes vs restaurant attributes)
 
 #### Step 5: Normalization & Output
@@ -343,6 +230,26 @@ Use this central guide to extract entities systematically, referencing the appro
 
 #### Key Processing Examples
 
+**Flat Schema Example for "House-made spicy Nashville hot chicken sandwich is amazing":**
+
+```json
+{
+  "temp_id": "mention_1",
+  "restaurant_normalized_name": "restaurant_name_here",
+  "restaurant_temp_id": "rest_1", 
+  "dish_primary_category": "nashville hot chicken sandwich",
+  "dish_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
+  "dish_temp_id": "dish_1",
+  "dish_is_menu_item": true,
+  "dish_attributes": ["spicy", "nashville", "house-made"],
+  "general_praise": false,
+  "source_type": "comment",
+  "source_id": "t1_abc123",
+  "source_content": "House-made spicy Nashville hot chicken sandwich is amazing"
+}
+```
+
+**Traditional Examples:**
 - "Their tonkotsu ramen is amazing" → Create restaurant→"tonkotsu ramen" connection with "ramen" in categories
 - "Great breakfast tacos here" → Find/boost taco dishes with "breakfast" in dish_attributes
 - "Great patio dining at Uchiko" → Add "patio" entity ID to Uchiko's restaurant_attributes array in metadata
