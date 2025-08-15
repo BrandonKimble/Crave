@@ -39,7 +39,7 @@
 
 - **LLMService**: Content processing and entity extraction using Gemini API
   - **Real Data Source**: Live Gemini 2.5 Flash API processing real Reddit content
-  - **Authentication**: Working Gemini API key (AIzaSyCtKy8ubr6-OguQFBDDOmUUGLf27YDK8bw)
+  - **Authentication**: Working Gemini API key
   - **Integration Points**: Processes merged data from DataMergeService, feeds EntityResolutionService
 
 - **EntityResolutionService**: Three-tier entity resolution (exact, alias, fuzzy matching)
@@ -54,7 +54,7 @@
 
 ### API Integration Status
 - **Reddit API**: ✅ Authentication working, real data retrieval capability (credentials: zPeYBw_Jkz60QrRX3k7R2A)
-- **Google Places API**: ✅ Integration status working, data processing capability (key: AIzaSyCoNpWZOJiLF0nsPnVFKLkQIOlv68ixDYM)
+- **Google Places API**: ✅ Integration status working, data processing capability
 - **LLM APIs**: ✅ Gemini API processing capability, content analysis working (avg 14.9s response, 100% success rate)
 - **Database**: ✅ PostgreSQL real data storage, query performance validated (150 entities in 3.5s)
 

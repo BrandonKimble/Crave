@@ -21,3 +21,6 @@ pre-commit:
     # root-lint:
     #   glob: '{*.js,*.ts,.eslintrc.*,lefthook.yml}'
     #   run: pnpm eslint --fix {staged_files}
+
+    secrets:
+      run: gitleaks protect --staged --verbose --redact
