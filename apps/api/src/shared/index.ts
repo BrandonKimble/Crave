@@ -16,7 +16,8 @@ export {
   createWinstonConfig,
   requestLoggingConfig,
 } from './logging/winston.config';
-export { LoggerService } from './logging/logger.service';
+export { LoggerService, LogMetadata } from './logging/logger.interface';
+export { WinstonLoggerService } from './logging/winston-logger.service';
 export { LoggingInterceptor } from './logging/logging.interceptor';
 export { CorrelationUtils } from './logging/correlation.utils';
 

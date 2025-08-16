@@ -185,24 +185,25 @@ export class UnifiedProcessingService implements OnModuleInit {
     try {
       return {
         posts: mergedInput.posts.map((post) => ({
-          post_id: post.post_id,
+          id: post.id,
           title: post.title,
           content: post.content || '',
           subreddit: post.subreddit,
+          author: post.author || 'unknown',
           url: post.url,
-          upvotes: post.upvotes,
+          score: post.score,
           created_at: post.created_at,
           comments: mergedInput.comments
             .filter(
               (comment) =>
-                comment.parent_id === post.post_id ||
+                comment.parent_id === post.id ||
                 comment.parent_id === null,
             )
             .map((comment) => ({
-              comment_id: comment.comment_id,
+              id: comment.id,
               content: comment.content,
               author: comment.author,
-              upvotes: comment.upvotes,
+              score: comment.score,
               created_at: comment.created_at,
               parent_id: comment.parent_id,
               url: comment.url,

@@ -1,9 +1,8 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { WinstonModule, WINSTON_MODULE_PROVIDER } from 'nest-winston';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
-import { createWinstonConfig } from './logging/winston.config';
-import { LoggerService } from './logging/logger.service';
+import { LoggerService } from './logging/logger.interface';
+import { WinstonLoggerService } from './logging/winston-logger.service';
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
 
@@ -13,36 +12,37 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
 @Global()
 @Module({
   imports: [
-    // Winston logging module
-    WinstonModule.forRootAsync({
-      imports: [ConfigModule],
-      useFactory: (configService: ConfigService) =>
-        createWinstonConfig(configService.get<string>('NODE_ENV')),
-      inject: [ConfigService],
-    }),
+    // Config module for environment variables
+    ConfigModule,
   ],
   providers: [
-    // Logger service as factory to ensure Winston is initialized first
+    // Winston logger service - direct implementation
+    WinstonLoggerService,
+    // Provide WinstonLoggerService as LoggerService for backward compatibility
     {
       provide: LoggerService,
-      useFactory: (winstonLogger: any) => {
-        return new LoggerService(winstonLogger);
-      },
-      inject: [WINSTON_MODULE_PROVIDER],
+      useExisting: WinstonLoggerService,
     },
     // Global logging interceptor
     {
       provide: APP_INTERCEPTOR,
-      useClass: LoggingInterceptor,
+      useFactory: (loggerService: LoggerService) => {
+        return new LoggingInterceptor(loggerService);
+      },
+      inject: [LoggerService],
     },
     // Global exception filter
     {
       provide: APP_FILTER,
-      useFactory: (configService: ConfigService, loggerService: LoggerService) =>
+      useFactory: (configService: ConfigService, loggerService: WinstonLoggerService) =>
         new GlobalExceptionFilter(configService, loggerService),
-      inject: [ConfigService, LoggerService],
+      inject: [ConfigService, WinstonLoggerService],
     },
   ],
-  exports: [WinstonModule, LoggerService],
+  exports: [
+    WinstonLoggerService,
+    LoggerService, // Export both for compatibility
+    ConfigModule, // Also export ConfigModule since many services need it
+  ],
 })
 export class SharedModule {}

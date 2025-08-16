@@ -1,17 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject, OnModuleInit } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LLMService } from './llm.service';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
 @ApiTags('LLM Health')
 @Controller('health/llm')
-export class LLMHealthController {
+export class LLMHealthController implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
     private readonly llmService: LLMService,
-    private readonly loggerService: LoggerService,
-  
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {} 
 
   onModuleInit(): void {

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Entity, Prisma } from '@prisma/client';
 import { GooglePlacesService } from './google-places.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
@@ -19,7 +19,7 @@ export class RestaurantEnrichmentService implements OnModuleInit {
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
     private readonly entityRepository: EntityRepository,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {

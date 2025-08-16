@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, WinstonLoggerService, CorrelationUtils } from '../../../shared';
 import {
   ExternalApiService,
   RateLimitConfig,
@@ -27,20 +27,14 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('RateLimitCoordinator');
-    }
-    if (this.logger) {
-      this.logger.info('Initializing Rate Limit Coordinator');
-    }
+    this.logger = this.loggerService.setContext('RateLimitCoordinator');
+    this.logger.info('Initializing Rate Limit Coordinator');
     this.initializeRateLimitConfigs();
-    if (this.logger) {
-      this.logger.info('Rate Limit Coordinator initialized successfully');
-    }
+    this.logger.info('Rate Limit Coordinator initialized successfully');
   }
 
   /**

@@ -70,7 +70,7 @@ export class LLMChunkingService implements OnModuleInit {
     if (!post.comments || post.comments.length === 0) {
       this.logger.info('No comments to chunk, returning single chunk with post only', {
         correlationId: CorrelationUtils.getCorrelationId(),
-        postId: post.post_id
+        postId: post.id
       });
       
       chunks.push({
@@ -81,11 +81,11 @@ export class LLMChunkingService implements OnModuleInit {
       });
       
       chunkMetadata.push({
-        chunkId: `chunk_post_${post.post_id}`,
+        chunkId: `chunk_post_${post.id}`,
         commentCount: 0,
         rootCommentScore: 0,
         estimatedProcessingTime: 5, // Base processing time for post only
-        threadRootId: post.post_id
+        threadRootId: post.id
       });
       
       return { chunks, metadata: chunkMetadata };
@@ -94,15 +94,15 @@ export class LLMChunkingService implements OnModuleInit {
     // Get top-level comments (parent_id is null or points to post)
     // Comments should already be sorted by "top" from Reddit API
     const topLevelComments = post.comments
-      .filter(c => c.parent_id === null || c.parent_id === post.post_id || c.parent_id === `t3_${post.post_id}`)
-      .sort((a, b) => b.upvotes - a.upvotes); // Ensure top-scored first
+      .filter(c => c.parent_id === null || c.parent_id === post.id || c.parent_id === post.id.replace('t3_', ''))
+      .sort((a, b) => b.score - a.score); // Ensure top-scored first
 
     this.logger.info('Creating chunks from top comments', {
       correlationId: CorrelationUtils.getCorrelationId(),
-      postId: post.post_id,
+      postId: post.id,
       totalTopLevel: topLevelComments.length,
       totalComments: post.comments.length,
-      topScores: topLevelComments.slice(0, 5).map(c => c.upvotes)
+      topScores: topLevelComments.slice(0, 5).map(c => c.score)
     });
 
     // Create one chunk per top-level comment thread
@@ -120,12 +120,13 @@ export class LLMChunkingService implements OnModuleInit {
           }
         : {
             // Lightweight post object - exclude unnecessary metadata for token savings
-            post_id: post.post_id,
+            id: post.id,
             title: post.title,
             content: post.content, // Keep for context
             subreddit: post.subreddit, // Keep for references
+            author: post.author,
             url: post.url,
-            upvotes: post.upvotes,
+            score: post.score,
             created_at: post.created_at,
             comments: [], // Will be set below
             extract_from_post: false // Don't extract from post in subsequent chunks
@@ -140,11 +141,11 @@ export class LLMChunkingService implements OnModuleInit {
       });
       
       chunkMetadata.push({
-        chunkId: `chunk_${topComment.comment_id}`,
+        chunkId: `chunk_${topComment.id}`,
         commentCount: threadComments.length,
-        rootCommentScore: topComment.upvotes,
+        rootCommentScore: topComment.score,
         estimatedProcessingTime: threadComments.length * 6.4, // 6.4 seconds per comment
-        threadRootId: topComment.comment_id
+        threadRootId: topComment.id
       });
     }
 
@@ -152,39 +153,39 @@ export class LLMChunkingService implements OnModuleInit {
     const processedCommentIds = new Set<string>();
     chunks.forEach(chunk => {
       chunk.posts[0].comments.forEach(comment => {
-        processedCommentIds.add(comment.comment_id);
+        processedCommentIds.add(comment.id);
       });
     });
 
-    const orphanedComments = post.comments.filter(c => !processedCommentIds.has(c.comment_id));
+    const orphanedComments = post.comments.filter(c => !processedCommentIds.has(c.id));
     if (orphanedComments.length > 0) {
       this.logger.warn('Found orphaned comments, adding as separate chunk', {
         correlationId: CorrelationUtils.getCorrelationId(),
         orphanedCount: orphanedComments.length,
-        orphanedIds: orphanedComments.slice(0, 5).map(c => c.comment_id)
+        orphanedIds: orphanedComments.slice(0, 5).map(c => c.id)
       });
 
       // Orphaned comments get lightweight post context
       chunks.push({
         posts: [{
           // Lightweight post object for orphaned chunk
-          post_id: post.post_id,
+          id: post.id,
           title: post.title,
           content: post.content, // Keep for context
           subreddit: post.subreddit, // Keep for references
+          author: post.author, // Keep author field
           url: post.url,
-          upvotes: post.upvotes,
+          score: post.score,
           created_at: post.created_at,
           comments: orphanedComments,
           extract_from_post: false // Never extract from post in orphaned chunk
-          // Exclude: author, permalink, score, created_utc for token savings
         }]
       });
 
       chunkMetadata.push({
-        chunkId: `chunk_orphaned_${post.post_id}`,
+        chunkId: `chunk_orphaned_${post.id}`,
         commentCount: orphanedComments.length,
-        rootCommentScore: Math.max(...orphanedComments.map(c => c.upvotes || 0)),
+        rootCommentScore: Math.max(...orphanedComments.map(c => c.score || 0)),
         estimatedProcessingTime: orphanedComments.length * 6.4,
         threadRootId: 'orphaned'
       });
@@ -196,7 +197,7 @@ export class LLMChunkingService implements OnModuleInit {
     
     this.logger.info('Chunk distribution analysis', {
       correlationId: CorrelationUtils.getCorrelationId(),
-      postId: post.post_id,
+      postId: post.id,
       totalChunks: chunks.length,
       chunkSizes,
       averageChunkSize: totalChunkComments / chunks.length,
@@ -220,7 +221,7 @@ export class LLMChunkingService implements OnModuleInit {
     const thread = [root];
     
     // Find all direct replies to this comment
-    const replies = allComments.filter(c => c.parent_id === root.comment_id);
+    const replies = allComments.filter(c => c.parent_id === root.id);
     
     // Recursively get full threads for each reply
     for (const reply of replies) {

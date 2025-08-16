@@ -201,6 +201,15 @@ async function testPipeline() {
     console.log(`   📈 Largest chunk: ${Math.max(...chunkData.metadata.map(m => m.commentCount))} comments`);
     console.log(`   📉 Smallest chunk: ${Math.min(...chunkData.metadata.map(m => m.commentCount))} comments`);
     
+    // Log chunk details showing extract_from_post flag
+    console.log(`\n   📦 Chunk Details:`);
+    chunkData.chunks.slice(0, 3).forEach((chunk, i) => {
+      console.log(`     Chunk ${i + 1}: extract_from_post=${chunk.posts[0].extract_from_post}, comments=${chunk.posts[0].comments.length}, post_id=${chunk.posts[0].id}`);
+    });
+    if (chunkData.chunks.length > 3) {
+      console.log(`     ... and ${chunkData.chunks.length - 3} more chunks`);
+    }
+    
     // Step 4b: Process chunks concurrently using p-limit (16 concurrent)
     console.log('\n   🚀 Step 4b: Processing chunks concurrently (16 simultaneous)...');
     console.log(`⏰ Concurrent processing started at: ${new Date().toISOString()}`);
@@ -324,9 +333,17 @@ async function testPipeline() {
           averageChunkTime: processingResult.metrics.averageChunkTime
         }
       },
-      input: {
-        posts: llmResult.llmInput.posts
+      rawInput: {
+        posts: llmResult.llmInput.posts  // Raw data from Reddit API
       },
+      chunkedInputs: chunkData.chunks.map((chunk, i) => ({
+        chunkIndex: i,
+        chunkId: chunkData.metadata[i].chunkId,
+        commentCount: chunkData.metadata[i].commentCount,
+        rootCommentScore: chunkData.metadata[i].rootCommentScore,
+        extractFromPost: chunk.posts[0].extract_from_post,
+        post: chunk.posts[0]  // The actual chunk data sent to LLM
+      })),
       output: llmExtractionResult
     };
 

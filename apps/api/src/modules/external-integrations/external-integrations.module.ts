@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { RedditModule } from './reddit/reddit.module';
 import { LLMModule } from './llm/llm.module';
 import { GooglePlacesModule } from './google-places/google-places.module';
-import { RateLimitCoordinatorService } from './shared/rate-limit-coordinator.service';
+import { SharedServicesModule } from './shared/shared-services.module';
 import { ExternalIntegrationsHealthController } from './external-integrations-health.controller';
 import { SharedModule } from '../../shared/shared.module';
 
@@ -23,14 +23,20 @@ import { SharedModule } from '../../shared/shared.module';
  * - Unified health monitoring and error handling
  */
 @Module({
-  imports: [RedditModule, LLMModule, GooglePlacesModule, SharedModule],
-  providers: [RateLimitCoordinatorService],
+  imports: [
+    SharedModule, // Import SharedModule for LoggerService
+    SharedServicesModule, // Import for RateLimitCoordinatorService
+    RedditModule, 
+    LLMModule, 
+    GooglePlacesModule,
+  ],
+  providers: [],
   controllers: [ExternalIntegrationsHealthController],
   exports: [
+    SharedServicesModule, // Export so submodules can access RateLimitCoordinatorService
     RedditModule,
     LLMModule,
     GooglePlacesModule,
-    RateLimitCoordinatorService,
   ],
 })
 export class ExternalIntegrationsModule {}

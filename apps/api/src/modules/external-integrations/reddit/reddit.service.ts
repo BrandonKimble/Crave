@@ -7,6 +7,7 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import type { AxiosError } from 'axios';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { filterRedditResponse } from './reddit-data-filter';
 import {
   RedditApiError,
   RedditAuthenticationError,
@@ -1437,12 +1438,8 @@ export class RedditService implements OnModuleInit {
         throw new RedditApiError('Invalid response format for post retrieval');
       }
 
-      // Extract post and comments from Reddit API response format
-      const postListing = response[0] as { data?: { children?: any[] } };
-      const commentListing = response[1] as { data?: { children?: any[] } };
-
-      const post = postListing.data?.children?.[0]?.data || null;
-      const comments = commentListing.data?.children || [];
+      // Filter Reddit response immediately to reduce data volume by ~70%
+      const { post, comments } = filterRedditResponse(response);
 
       if (!post) {
         throw new RedditApiError(`Post ${postId} not found or deleted`);

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -43,8 +43,8 @@ export class LLMService implements OnModuleInit {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
@@ -498,12 +498,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       const testInput: LLMInputStructure = {
         posts: [
           {
-            post_id: 'test',
+            id: 'test',
             title: 'Test connection',
             content: 'Franklin BBQ has amazing brisket',
             subreddit: 'austinfood',
+            author: 'test_user',
             url: 'https://reddit.com/test',
-            upvotes: 1,
+            score: 1,
             created_at: new Date().toISOString(),
             comments: [],
           },

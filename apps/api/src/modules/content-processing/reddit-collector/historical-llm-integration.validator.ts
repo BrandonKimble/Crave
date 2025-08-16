@@ -504,7 +504,7 @@ export class HistoricalLlmIntegrationValidator implements OnModuleInit {
           type: 'invalid_timestamp',
           severity: 'warning',
           message: `Invalid post timestamp: ${post.created_at}`,
-          location: `post.${post.post_id}.created_at`,
+          location: `post.${post.id}.created_at`,
         });
       }
 
@@ -516,7 +516,7 @@ export class HistoricalLlmIntegrationValidator implements OnModuleInit {
             type: 'invalid_timestamp',
             severity: 'warning',
             message: `Invalid comment timestamp: ${comment.created_at}`,
-            location: `comment.${comment.comment_id}.created_at`,
+            location: `comment.${comment.id}.created_at`,
           });
         }
       }

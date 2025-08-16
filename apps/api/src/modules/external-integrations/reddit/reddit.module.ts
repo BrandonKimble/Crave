@@ -4,18 +4,16 @@ import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../../shared/shared.module';
 import { RedditService } from './reddit.service';
 import { RedditHealthController } from './reddit-health.controller';
-import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
-
 @Module({
   imports: [
+    SharedModule, // Import SharedModule first for LoggerService
     HttpModule.register({
       timeout: 10000,
       maxRedirects: 5,
     }),
     ConfigModule,
-    SharedModule,
   ],
-  providers: [RedditService, RateLimitCoordinatorService],
+  providers: [RedditService],
   controllers: [RedditHealthController],
   exports: [RedditService],
 })

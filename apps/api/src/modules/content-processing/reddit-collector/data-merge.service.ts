@@ -241,21 +241,22 @@ export class DataMergeService implements OnModuleInit {
    */
   convertToLLMInput(mergeBatch: TemporalMergeBatch): MergedLLMInputDto {
     const posts: LLMPostDto[] = mergeBatch.submissions.map((submission) => ({
-      post_id: submission.id,
+      id: submission.id,
       title: submission.title,
       content: submission.selftext || '',
       subreddit: submission.subreddit,
+      author: submission.author,
       created_at: new Date(submission.created_utc * 1000).toISOString(),
-      upvotes: submission.score,
+      score: submission.score,
       url: submission.url,
       comments: [], // Comments are handled separately in MergedLLMInputDto
     }));
 
     const comments: LLMCommentDto[] = mergeBatch.comments.map((comment) => ({
-      comment_id: comment.id,
+      id: comment.id,
       content: comment.body,
       author: comment.author,
-      upvotes: comment.score,
+      score: comment.score,
       created_at: new Date(comment.created_utc * 1000).toISOString(),
       parent_id: comment.parent_id || null,
       url:

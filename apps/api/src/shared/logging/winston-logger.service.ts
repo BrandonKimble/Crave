@@ -1,49 +1,79 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { WINSTON_MODULE_PROVIDER } from 'nest-winston';
-import { Logger as WinstonLogger } from 'winston';
+import * as winston from 'winston';
+import { ConfigService } from '@nestjs/config';
 import {
   isHttpError,
   getErrorMessage,
   getErrorCode,
 } from '../types/error-interfaces';
+import { LoggerService, LogMetadata } from './logger.interface';
 
 /**
- * Structured logging metadata interface
- */
-export interface LogMetadata {
-  correlationId?: string;
-  userId?: string;
-  operation?: string;
-  duration?: number;
-  entityId?: string;
-  entityType?: string;
-  method?: string;
-  url?: string;
-  statusCode?: number;
-  error?: {
-    message: string;
-    stack?: string;
-    code?: string | number;
-    name?: string;
-    cause?: string;
-  };
-  [key: string]: unknown;
-}
-
-/**
- * Enhanced logger service providing structured logging with Winston integration
+ * Winston Logger Service - Direct implementation without nest-winston
+ * Provides structured logging with context support
  */
 @Injectable()
-export class LoggerService {
-  constructor(
-    @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: WinstonLogger,
-  ) {}
+export class WinstonLoggerService extends LoggerService {
+  private readonly logger: winston.Logger;
+  private context?: string;
+
+  constructor(@Inject(ConfigService) private readonly configService: ConfigService) {
+    super();
+    const isDevelopment = this.configService.get<string>('NODE_ENV') !== 'production';
+    
+    // Create Winston logger with appropriate configuration
+    this.logger = winston.createLogger({
+      level: isDevelopment ? 'debug' : 'info',
+      format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.errors({ stack: true }),
+        winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp', 'label'] })
+      ),
+      defaultMeta: { service: 'crave-search-api' },
+      transports: [
+        new winston.transports.Console({
+          format: isDevelopment
+            ? winston.format.combine(
+                winston.format.colorize(),
+                winston.format.printf(({ timestamp, level, message, label, metadata }) => {
+                  const prefix = label ? `[${label}]` : '';
+                  const meta = metadata && Object.keys(metadata).length 
+                    ? ` ${JSON.stringify(metadata)}` 
+                    : '';
+                  return `${timestamp} ${level} ${prefix} ${message}${meta}`;
+                })
+              )
+            : winston.format.json(),
+        }),
+      ],
+    });
+
+    // Add file transport in production
+    if (!isDevelopment) {
+      this.logger.add(
+        new winston.transports.File({
+          filename: 'logs/error.log',
+          level: 'error',
+          format: winston.format.json(),
+        })
+      );
+      this.logger.add(
+        new winston.transports.File({
+          filename: 'logs/combined.log',
+          format: winston.format.json(),
+        })
+      );
+    }
+  }
 
   /**
-   * Set context for all subsequent log entries from this service instance
+   * Create a new instance with a specific context
    */
   setContext(context: string): LoggerService {
-    const contextualLogger = new LoggerService(this.logger.child({ context }));
+    const contextualLogger = Object.create(this);
+    contextualLogger.context = context;
+    // Create a child logger with the context as a label
+    contextualLogger.logger = this.logger.child({ label: context });
     return contextualLogger;
   }
 
@@ -51,21 +81,21 @@ export class LoggerService {
    * Log debug level messages with structured metadata
    */
   debug(message: string, metadata?: LogMetadata): void {
-    this.logger.debug(message, this.sanitizeMetadata(metadata));
+    this.log('debug', message, metadata);
   }
 
   /**
    * Log info level messages with structured metadata
    */
   info(message: string, metadata?: LogMetadata): void {
-    this.logger.info(message, this.sanitizeMetadata(metadata));
+    this.log('info', message, metadata);
   }
 
   /**
    * Log warning level messages with structured metadata
    */
   warn(message: string, metadata?: LogMetadata): void {
-    this.logger.warn(message, this.sanitizeMetadata(metadata));
+    this.log('warn', message, metadata);
   }
 
   /**
@@ -73,7 +103,7 @@ export class LoggerService {
    */
   error(message: string, error?: unknown, metadata?: LogMetadata): void {
     const errorMetadata = this.buildErrorMetadata(error, metadata);
-    this.logger.error(message, errorMetadata);
+    this.log('error', message, errorMetadata);
   }
 
   /**
@@ -94,7 +124,7 @@ export class LoggerService {
       statusCode,
       duration,
     };
-    this.logger.http(message, this.sanitizeMetadata(httpMetadata));
+    this.log('http', message, httpMetadata);
   }
 
   /**
@@ -120,7 +150,7 @@ export class LoggerService {
       success ? 'completed' : 'failed'
     } (${duration}ms)`;
 
-    this.logger.log(level, message, this.sanitizeMetadata(dbMetadata));
+    this.log(level, message, dbMetadata);
   }
 
   /**
@@ -139,10 +169,10 @@ export class LoggerService {
       success,
     };
 
-    const level = duration > 1000 ? 'warn' : 'info'; // Warn for operations > 1 second
+    const level = duration > 1000 ? 'warn' : 'info';
     const message = `Performance: ${operation} took ${duration}ms`;
 
-    this.logger.log(level, message, this.sanitizeMetadata(perfMetadata));
+    this.log(level, message, perfMetadata);
   }
 
   /**
@@ -164,16 +194,30 @@ export class LoggerService {
       auditLog: true,
     };
 
-    this.logger.info(`Audit: ${action}`, this.sanitizeMetadata(auditMetadata));
+    this.log('info', `Audit: ${action}`, auditMetadata);
   }
 
   /**
    * Create a child logger with additional context
    */
   child(context: Partial<LogMetadata>): LoggerService {
-    const sanitized = this.sanitizeMetadata(context);
-    const childLogger = this.logger.child(sanitized || {});
-    return new LoggerService(childLogger);
+    const childInstance = Object.create(this);
+    childInstance.logger = this.logger.child(context);
+    return childInstance;
+  }
+
+  /**
+   * Core logging method
+   */
+  private log(level: string, message: string, metadata?: LogMetadata): void {
+    const sanitized = this.sanitizeMetadata(metadata);
+    
+    if (this.context && !this.logger.defaultMeta?.label) {
+      // If we have context but no child logger, add it to metadata
+      this.logger.log(level, message, { label: this.context, ...sanitized });
+    } else {
+      this.logger.log(level, message, sanitized);
+    }
   }
 
   /**

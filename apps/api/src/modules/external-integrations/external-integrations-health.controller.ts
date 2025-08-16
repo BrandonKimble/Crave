@@ -1,4 +1,4 @@
-import { Controller, Get, OnModuleInit } from '@nestjs/common';
+import { Controller, Get, OnModuleInit, Inject } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { LoggerService, CorrelationUtils } from '../../shared';
 import { GooglePlacesService } from './google-places/google-places.service';
@@ -26,7 +26,7 @@ export class ExternalIntegrationsHealthController implements OnModuleInit {
     private readonly llmService: LLMService,
     private readonly redditService: RedditService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {

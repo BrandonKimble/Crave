@@ -28,22 +28,23 @@ export interface LLMInputStructure {
 }
 
 export interface LLMPost {
-  post_id: string;
+  id: string;
   title: string;
   content: string;
   subreddit: string;
+  author: string;
   url: string;
-  upvotes: number;
+  score: number;
   created_at: string;
   comments: LLMComment[];
   extract_from_post?: boolean;
 }
 
 export interface LLMComment {
-  comment_id: string;
+  id: string;
   content: string;
   author: string;
-  upvotes: number;
+  score: number;
   created_at: string;
   parent_id: string | null;
   url: string;

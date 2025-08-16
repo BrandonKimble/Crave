@@ -1,17 +1,16 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Inject, OnModuleInit } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { GooglePlacesService } from './google-places.service';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
 @ApiTags('Google Places Health')
 @Controller('health/google-places')
-export class GooglePlacesHealthController {
+export class GooglePlacesHealthController implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
-    private readonly loggerService: LoggerService,
-  
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {} 
 
   onModuleInit(): void {

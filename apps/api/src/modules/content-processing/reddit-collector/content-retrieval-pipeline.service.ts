@@ -242,7 +242,7 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
       // Create LLM post object
 
       const llmPost: LLMPostDto = {
-        id: `t3_${post.id || ''}`, // Add Reddit post prefix
+        id: post.name || `t3_${post.id || ''}`, // Use name field which already has t3_ prefix
 
         title: post.title || '',
 
@@ -290,11 +290,12 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
     });
 
     const transformComment = (comment: any): LLMCommentDto | null => {
-      if (!comment?.data?.id || !comment?.data?.body) {
+      // Check if comment is already filtered (no data wrapper) or raw Reddit format
+      const commentData = comment?.data || comment;
+      
+      if (!commentData?.id || !commentData?.body) {
         return null;
       }
-
-      const commentData = comment.data;
 
       // Skip deleted/removed comments
 
@@ -308,7 +309,7 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
 
       try {
         return {
-          id: `t1_${commentData.id}`, // Add Reddit comment prefix
+          id: commentData.name || `t1_${commentData.id}`, // Use name field which already has t1_ prefix
 
           content: commentData.body,
 
@@ -344,9 +345,10 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
         }
 
         // Process replies recursively
-
-        if (comment?.data?.replies?.data?.children) {
-          processCommentList(comment.data.replies.data.children);
+        // Handle both filtered (no data wrapper) and raw Reddit format
+        const commentData = comment?.data || comment;
+        if (commentData?.replies?.data?.children) {
+          processCommentList(commentData.replies.data.children);
         }
       });
     };

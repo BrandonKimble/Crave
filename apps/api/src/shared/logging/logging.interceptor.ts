@@ -3,10 +3,11 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  Inject,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { LoggerService } from './logger.service';
+import { LoggerService } from './logger.interface';
 import { CorrelationUtils, RequestContext } from './correlation.utils';
 
 /**
