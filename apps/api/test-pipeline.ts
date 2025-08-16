@@ -440,8 +440,13 @@ async function testPipeline() {
 
 // Run the pipeline test
 if (require.main === module) {
-  testPipeline().catch((error) => {
-    console.error('Pipeline test failed:', error);
-    process.exit(1);
-  });
+  testPipeline()
+    .then(() => {
+      console.log('✅ Pipeline test completed successfully');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('Pipeline test failed:', error);
+      process.exit(1);
+    });
 }
