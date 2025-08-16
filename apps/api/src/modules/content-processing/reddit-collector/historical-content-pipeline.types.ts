@@ -14,6 +14,7 @@
 export interface CraveRedditSubmission {
   // Required fields from Pushshift archives
   id: string;
+  name?: string; // Full Reddit ID with t3_ prefix
   title: string;
   author: string;
   subreddit: string;

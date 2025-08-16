@@ -10,6 +10,6 @@ import { DatabaseMetricsService } from './database-metrics.service';
   imports: [ConfigModule, SharedModule],
   controllers: [DatabaseHealthController],
   providers: [PrismaService, DatabaseValidationService, DatabaseMetricsService],
-  exports: [PrismaService, DatabaseMetricsService]
+  exports: [PrismaService, DatabaseMetricsService],
 })
 export class PrismaModule {}

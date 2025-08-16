@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
@@ -83,8 +83,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     @InjectQueue('chronological-collection')
     private readonly chronologicalQueue: Queue,
     private readonly schedulingService: CollectionSchedulingService,
-    private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
     this.scheduleConfig = this.loadConfiguration();
   }
@@ -93,21 +93,23 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    * Initialize scheduling on module startup
    */
   async onModuleInit(): Promise<void> {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('CollectionJobScheduler');
-    }
-    if (this.logger) {
-      this.logger.info('Initializing collection job scheduler', {
-        correlationId: CorrelationUtils.generateCorrelationId(),
-        operation: 'scheduler_init',
-        config: this.scheduleConfig,
-      });
-    }
+    this.logger = this.loggerService.setContext('CollectionJobScheduler');
+    this.logger.info('Initializing collection job scheduler', {
+      correlationId: CorrelationUtils.generateCorrelationId(),
+      operation: 'scheduler_init',
+      config: this.scheduleConfig,
+    });
 
     if (!this.scheduleConfig.enabled) {
-      if (this.logger) {
-        this.logger.warn('Collection job scheduler is disabled');
-      }
+      this.logger.warn('Collection job scheduler is disabled');
+      return;
+    }
+
+    // Skip initialization if schedulingService is not available (e.g., in tests)
+    if (!this.schedulingService) {
+      this.logger.warn(
+        'Scheduling service not available, skipping initialization',
+      );
       return;
     }
 

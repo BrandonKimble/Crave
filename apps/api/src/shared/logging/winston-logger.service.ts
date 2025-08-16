@@ -17,17 +17,22 @@ export class WinstonLoggerService extends LoggerService {
   private readonly logger: winston.Logger;
   private context?: string;
 
-  constructor(@Inject(ConfigService) private readonly configService: ConfigService) {
+  constructor(
+    @Inject(ConfigService) private readonly configService: ConfigService,
+  ) {
     super();
-    const isDevelopment = this.configService.get<string>('NODE_ENV') !== 'production';
-    
+    const isDevelopment =
+      this.configService.get<string>('NODE_ENV') !== 'production';
+
     // Create Winston logger with appropriate configuration
     this.logger = winston.createLogger({
       level: isDevelopment ? 'debug' : 'info',
       format: winston.format.combine(
         winston.format.timestamp(),
         winston.format.errors({ stack: true }),
-        winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp', 'label'] })
+        winston.format.metadata({
+          fillExcept: ['message', 'level', 'timestamp', 'label'],
+        }),
       ),
       defaultMeta: { service: 'crave-search-api' },
       transports: [
@@ -35,13 +40,16 @@ export class WinstonLoggerService extends LoggerService {
           format: isDevelopment
             ? winston.format.combine(
                 winston.format.colorize(),
-                winston.format.printf(({ timestamp, level, message, label, metadata }) => {
-                  const prefix = label ? `[${label}]` : '';
-                  const meta = metadata && Object.keys(metadata).length 
-                    ? ` ${JSON.stringify(metadata)}` 
-                    : '';
-                  return `${timestamp} ${level} ${prefix} ${message}${meta}`;
-                })
+                winston.format.printf(
+                  ({ timestamp, level, message, label, metadata }) => {
+                    const prefix = label ? `[${label}]` : '';
+                    const meta =
+                      metadata && Object.keys(metadata).length
+                        ? ` ${JSON.stringify(metadata)}`
+                        : '';
+                    return `${timestamp} ${level} ${prefix} ${message}${meta}`;
+                  },
+                ),
               )
             : winston.format.json(),
         }),
@@ -55,13 +63,13 @@ export class WinstonLoggerService extends LoggerService {
           filename: 'logs/error.log',
           level: 'error',
           format: winston.format.json(),
-        })
+        }),
       );
       this.logger.add(
         new winston.transports.File({
           filename: 'logs/combined.log',
           format: winston.format.json(),
-        })
+        }),
       );
     }
   }
@@ -211,7 +219,7 @@ export class WinstonLoggerService extends LoggerService {
    */
   private log(level: string, message: string, metadata?: LogMetadata): void {
     const sanitized = this.sanitizeMetadata(metadata);
-    
+
     if (this.context && !this.logger.defaultMeta?.label) {
       // If we have context but no child logger, add it to metadata
       this.logger.log(level, message, { label: this.context, ...sanitized });

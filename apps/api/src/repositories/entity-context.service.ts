@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Entity, EntityType, Connection } from '@prisma/client';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
@@ -32,13 +32,11 @@ export class EntityContextService implements OnModuleInit {
   constructor(
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('EntityContextService');
-    }
+    this.logger = this.loggerService.setContext('EntityContextService');
   }
 
   /**

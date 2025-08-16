@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
@@ -65,12 +65,11 @@ export class ChronologicalCollectionService implements OnModuleInit {
   private isCollectionActive = false;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly redditService: RedditService,
     private readonly schedulingService: CollectionSchedulingService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ChronologicalCollection');
@@ -89,6 +88,14 @@ export class ChronologicalCollectionService implements OnModuleInit {
     try {
       // Get configured subreddits from config
       const targetSubreddits = this.getTargetSubreddits();
+
+      // Skip initialization if schedulingService is not available (e.g., in tests)
+      if (!this.schedulingService) {
+        this.logger.warn(
+          'Scheduling service not available, skipping initialization',
+        );
+        return false;
+      }
 
       // Initialize scheduling for each subreddit
       for (const subreddit of targetSubreddits) {

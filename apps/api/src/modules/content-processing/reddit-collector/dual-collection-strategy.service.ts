@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
@@ -22,12 +22,11 @@ export class DualCollectionStrategyService implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly redditService: RedditService,
     private readonly chronologicalCollection: ChronologicalCollectionService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('DualCollectionStrategy');

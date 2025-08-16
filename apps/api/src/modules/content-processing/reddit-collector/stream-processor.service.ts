@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 // import { StreamProcessorException } from './stream-processor.exceptions';
@@ -58,8 +58,8 @@ export class StreamProcessorService implements OnModuleInit {
   private config!: StreamProcessingConfig;
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly zstdDecompressor: SystemZstdDecompressor,
   ) {}
 

@@ -298,9 +298,7 @@ describe('BulkOperationsService Integration Tests', () => {
             recentMentionCount: 3,
             lastMentionedAt: new Date(),
             activityLevel: 'trending',
-            topMentions: [
-              { mentionId: 'test-mention-1', score: 45.2, upvotes: 20 },
-            ],
+            topMentions: [{ mentionId: 'test-mention-1', upvotes: 20 }],
             dishQualityScore: 9.2,
           },
         ];

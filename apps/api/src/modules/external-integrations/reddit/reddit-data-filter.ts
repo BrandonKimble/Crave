@@ -3,121 +3,129 @@
  * Strips unnecessary properties from Reddit API responses early to reduce memory and processing overhead
  */
 
-export interface MinimalRedditPost {
-  id: string;
-  name: string; // Full ID with t3_ prefix
-  title: string;
-  selftext?: string;
-  author: string;
-  score: number;
-  ups?: number;
-  created_utc: number;
-  subreddit: string;
-  permalink: string;
-  num_comments?: number;
-}
-
-export interface MinimalRedditComment {
-  id: string;
-  name: string; // Full ID with t1_ prefix
-  parent_id: string; // Full parent ID with prefix
-  body: string;
-  author: string;
-  score: number;
-  ups?: number;
-  created_utc: number;
-  permalink?: string;
-  depth?: number;
-  replies?: any; // Preserve replies structure for recursion
-}
 
 /**
- * Filter post data to only essential fields needed for LLM processing
- * Removes ~70% of data volume from Reddit API response
+ * Combined single-pass filter and transform to LLM format
+ * Eliminates double processing by doing filtering and transformation in one pass
  */
-export function filterPostData(rawPost: any): MinimalRedditPost {
-  return {
-    id: rawPost.id,
-    name: rawPost.name,
-    title: rawPost.title,
-    selftext: rawPost.selftext,
-    author: rawPost.author,
-    score: rawPost.score,
-    ups: rawPost.ups,
-    created_utc: rawPost.created_utc,
-    subreddit: rawPost.subreddit,
-    permalink: rawPost.permalink,
-    num_comments: rawPost.num_comments,
-  };
-}
-
-/**
- * Filter comment data to only essential fields needed for LLM processing
- * Preserves hierarchical structure through replies
- */
-export function filterCommentData(rawComment: any): MinimalRedditComment | null {
-  // Skip deleted/removed comments early
-  if (!rawComment?.data || rawComment.kind !== 't1') {
-    return null;
-  }
-  
-  const data = rawComment.data;
-  
-  // Skip deleted/removed comments
-  if (data.body === '[deleted]' || data.body === '[removed]' || !data.author) {
-    return null;
-  }
-  
-  const filtered: MinimalRedditComment = {
-    id: data.id,
-    name: data.name,
-    parent_id: data.parent_id,
-    body: data.body,
-    author: data.author,
-    score: data.score,
-    ups: data.ups,
-    created_utc: data.created_utc,
-    permalink: data.permalink,
-    depth: data.depth,
-  };
-  
-  // Recursively filter replies if they exist
-  if (data.replies?.data?.children) {
-    filtered.replies = {
-      data: {
-        children: data.replies.data.children
-          .map(filterCommentData)
-          .filter((c: any) => c !== null)
-      }
-    };
-  }
-  
-  return filtered;
-}
-
-/**
- * Filter the entire Reddit API response to minimal required data
- * This should be called immediately after receiving data from Reddit API
- */
-export function filterRedditResponse(response: any[]): {
-  post: MinimalRedditPost | null;
-  comments: MinimalRedditComment[];
+export function filterAndTransformToLLM(
+  response: any[],
+  postUrl: string,
+): {
+  post: any | null;
+  comments: any[];
 } {
   if (!response || !Array.isArray(response) || response.length < 2) {
     return { post: null, comments: [] };
   }
-  
-  // Extract and filter post
+
+  // Single-pass post processing
   const postListing = response[0];
   const postData = postListing?.data?.children?.[0]?.data;
-  const post = postData ? filterPostData(postData) : null;
-  
-  // Extract and filter comments
+  const post = postData ? transformPostDirectly(postData, postUrl) : null;
+
+  // Single-pass comment processing
   const commentListing = response[1];
   const rawComments = commentListing?.data?.children || [];
-  const comments = rawComments
-    .map(filterCommentData)
-    .filter((c): c is MinimalRedditComment => c !== null);
-  
+  const comments = transformCommentsDirectly(rawComments);
+
   return { post, comments };
+}
+
+/**
+ * Direct post transformation (single-pass)
+ */
+function transformPostDirectly(postData: any, postUrl: string): any {
+  return {
+    id: postData.name || `t3_${postData.id || ''}`,
+    title: postData.title || '',
+    content: postData.selftext || postData.title || '',
+    subreddit: postData.subreddit || '',
+    author: postData.author || 'unknown',
+    url: postUrl,
+    score: typeof postData.score === 'number' ? Math.max(0, postData.score) : 0,
+    created_at: formatTimestamp(postData.created_utc),
+    comments: [], // Will be populated separately
+  };
+}
+
+/**
+ * Direct comment transformation (single-pass recursive)
+ */
+function transformCommentsDirectly(rawComments: any[]): any[] {
+  const result: any[] = [];
+
+  function processComment(rawComment: any): any | null {
+    // Skip non-comment items
+    if (!rawComment?.data || rawComment.kind !== 't1') {
+      return null;
+    }
+
+    const data = rawComment.data;
+
+    // Skip deleted/removed comments early
+    if (data.body === '[deleted]' || data.body === '[removed]') {
+      return null;
+    }
+
+    // Build URL from permalink or generate as fallback
+    const url = data.permalink ? `https://reddit.com${data.permalink}` : '';
+
+    const transformed = {
+      id: data.name, // Already has t1_ prefix
+      content: data.body,
+      author: data.author || '[deleted]',
+      score: typeof data.score === 'number' ? Math.max(0, data.score) : 0,
+      created_at: formatTimestamp(data.created_utc),
+      parent_id: extractParentId(data.parent_id),
+      url,
+    };
+
+    return transformed;
+  }
+
+  function traverse(commentList: any[]) {
+    commentList.forEach((rawComment) => {
+      const transformed = processComment(rawComment);
+      if (transformed) {
+        result.push(transformed);
+      }
+
+      // Process replies recursively - Reddit's nested structure
+      if (rawComment?.data?.replies?.data?.children) {
+        traverse(rawComment.data.replies.data.children);
+      }
+    });
+  }
+
+  traverse(rawComments);
+  return result;
+}
+
+/**
+ * Helper functions for single-pass processing
+ */
+function formatTimestamp(timestamp: number | string): string {
+  try {
+    const ts = typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp;
+    if (isNaN(ts)) {
+      return new Date().toISOString();
+    }
+    return new Date(ts * 1000).toISOString();
+  } catch {
+    return new Date().toISOString();
+  }
+}
+
+function extractParentId(parentId?: string): string | null {
+  if (!parentId) return null;
+
+  // Reddit parent IDs come in format "t1_commentid" or "t3_postid"
+  // Keep the prefixes to denote type (t1_ for comment, t3_ for post)
+  if (parentId.startsWith('t1_') || parentId.startsWith('t3_')) {
+    return parentId; // Keep the full ID with prefix
+  }
+
+  // If it's a top-level comment (parent is post), return null
+  return null;
 }

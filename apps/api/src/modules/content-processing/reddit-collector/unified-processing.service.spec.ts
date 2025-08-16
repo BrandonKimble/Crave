@@ -37,22 +37,23 @@ describe('UnifiedProcessingService', () => {
   const mockMergedInput: MergedLLMInputDto = {
     posts: [
       {
-        post_id: 'test_post_1',
+        id: 'test_post_1',
         title: 'Best Austin BBQ',
         content: 'Franklin BBQ has amazing brisket',
         subreddit: 'austinfood',
+        author: 'test_author',
         url: 'https://reddit.com/r/austinfood/test_post_1',
-        upvotes: 42,
+        score: 42,
         created_at: '2024-01-15T10:30:00Z',
         comments: [],
       },
     ],
     comments: [
       {
-        comment_id: 'test_comment_1',
+        id: 'test_comment_1',
         content: 'Their ribs are also incredible',
         author: 'food_lover',
-        upvotes: 15,
+        score: 15,
         created_at: '2024-01-15T11:00:00Z',
         parent_id: 'test_post_1',
         url: 'https://reddit.com/r/austinfood/test_post_1/test_comment_1',
@@ -79,32 +80,23 @@ describe('UnifiedProcessingService', () => {
     mentions: [
       {
         temp_id: 'mention_1',
-        restaurant: {
-          normalized_name: 'Franklin Barbecue',
-          original_text: 'Franklin BBQ',
-          temp_id: 'restaurant_1',
-        },
+        restaurant_normalized_name: 'Franklin Barbecue',
+        restaurant_original_text: 'Franklin BBQ',
+        restaurant_temp_id: 'restaurant_1',
         restaurant_attributes: ['popular', 'bbq'],
-        dish_or_category: {
-          normalized_name: 'Brisket',
-          original_text: 'brisket',
-          temp_id: 'dish_1',
-        },
-        dish_attributes: [
-          {
-            attribute: 'amazing',
-            type: 'descriptive',
-          },
-        ],
-        is_menu_item: true,
+        dish_primary_category: 'Brisket',
+        dish_original_text: 'brisket',
+        dish_temp_id: 'dish_1',
+        dish_attributes_selective: null,
+        dish_attributes_descriptive: ['amazing'],
+        dish_is_menu_item: true,
         general_praise: true,
-        source: {
-          type: 'post',
-          id: 'test_post_1',
-          url: 'https://reddit.com/r/austinfood/test_post_1',
-          upvotes: 42,
-          created_at: '2024-01-15T10:30:00Z',
-        },
+        source_type: 'post',
+        source_id: 'test_post_1',
+        source_content: 'Franklin BBQ has amazing brisket',
+        source_url: 'https://reddit.com/r/austinfood/test_post_1',
+        source_ups: 42,
+        source_created_at: '2024-01-15T10:30:00Z',
       },
     ],
   };
@@ -336,10 +328,10 @@ describe('UnifiedProcessingService', () => {
 
       const llmInput: LLMInputStructure = llmCalls[0][0];
       expect(llmInput.posts).toHaveLength(1);
-      expect(llmInput.posts[0].post_id).toBe('test_post_1');
+      expect(llmInput.posts[0].id).toBe('test_post_1');
       expect(llmInput.posts[0].title).toBe('Best Austin BBQ');
       expect(llmInput.posts[0].comments).toHaveLength(1);
-      expect(llmInput.posts[0].comments[0].comment_id).toBe('test_comment_1');
+      expect(llmInput.posts[0].comments[0].id).toBe('test_comment_1');
     });
 
     it('should track performance metrics correctly', async () => {

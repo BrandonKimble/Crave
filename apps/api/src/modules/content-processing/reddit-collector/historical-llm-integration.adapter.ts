@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
@@ -33,24 +33,21 @@ export class HistoricalLlmIntegrationAdapter implements OnModuleInit {
   constructor(
     private readonly llmService: LLMService,
     private readonly historicalPipeline: HistoricalContentPipelineService,
-    private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('HistoricalLlmIntegrationAdapter');
-    }
+    this.logger = this.loggerService.setContext(
+      'HistoricalLlmIntegrationAdapter',
+    );
     this.integrationConfig = this.loadIntegrationConfig();
-    
-    if (this.logger) {
-      this.logger.info('Historical LLM integration adapter initialized', {
-        enableValidation: this.integrationConfig.enableValidation,
-        batchSizeLimit: this.integrationConfig.batchSizeLimit,
-        preserveThreads: this.integrationConfig.preserveThreads,
-      });
-    }
+
+    this.logger.info('Historical LLM integration adapter initialized', {
+      enableValidation: this.integrationConfig.enableValidation,
+      batchSizeLimit: this.integrationConfig.batchSizeLimit,
+      preserveThreads: this.integrationConfig.preserveThreads,
+    });
   }
 
   /**

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { LoggerService } from '../shared';
@@ -35,39 +35,41 @@ export class DatabaseMetricsService implements OnModuleInit {
   private readonly alertCooldown = 300000; // 5 minutes in milliseconds
 
   constructor(
-    private readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('DatabaseMetricsService');
-    }
+    this.logger = this.loggerService.setContext('DatabaseMetricsService');
     const dbConfig = this.configService?.get<DatabaseConfig>('database');
     if (!dbConfig) {
       // In test environments, create minimal config to allow service to function
-      if (process.env.NODE_ENV === 'test' || !process.env.NODE_ENV || !this.configService) {
+      if (
+        process.env.NODE_ENV === 'test' ||
+        !process.env.NODE_ENV ||
+        !this.configService
+      ) {
         this.dbConfig = {
           url: process.env.DATABASE_URL || 'postgresql://localhost:5432/test',
           performance: {
             logging: {
               enabled: false,
-              slowQueryThreshold: 1000
-            }
+              slowQueryThreshold: 1000,
+            },
           },
           connectionPool: {
             max: 10,
             min: 2,
             idle: 10000,
-            acquire: 30000
+            acquire: 30000,
           },
           query: {
             retry: {
               attempts: 3,
               delay: 1000,
-              factor: 2.0
-            }
-          }
+              factor: 2.0,
+            },
+          },
         } as DatabaseConfig;
       } else {
         throw new Error(
@@ -375,16 +377,14 @@ export class DatabaseMetricsService implements OnModuleInit {
           : 'log';
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    if (this.logger) {
-      this.logger[logMethod](
-        `Database Performance Alert [${alert.severity}]: ${alert.message}`,
-        {
-          type: alert.type,
-          timestamp: alert.timestamp,
-          metrics: alert.metrics,
-        },
-      );
-    }
+    this.logger[logMethod](
+      `Database Performance Alert [${alert.severity}]: ${alert.message}`,
+      {
+        type: alert.type,
+        timestamp: alert.timestamp,
+        metrics: alert.metrics,
+      },
+    );
   }
 
   /**
@@ -393,14 +393,12 @@ export class DatabaseMetricsService implements OnModuleInit {
   private startMetricsCollection(): void {
     // This would be implemented to collect metrics from the actual PrismaService
     // For now, it's a placeholder for the architecture
-    if (this.logger) {
-      this.logger.info(
-        'Database metrics collection started for production environment',
-        {
-          operation: 'start_metrics_collection',
-        },
-      );
-    }
+    this.logger.info(
+      'Database metrics collection started for production environment',
+      {
+        operation: 'start_metrics_collection',
+      },
+    );
   }
 
   /**
@@ -419,11 +417,9 @@ export class DatabaseMetricsService implements OnModuleInit {
     ) as Record<string, number>;
 
     this.alertThresholds = { ...this.alertThresholds, ...filteredThresholds };
-    if (this.logger) {
-      this.logger.info('Alert thresholds updated', {
-        operation: 'update_alert_thresholds',
-        thresholds: filteredThresholds,
-      });
-    }
+    this.logger.info('Alert thresholds updated', {
+      operation: 'update_alert_thresholds',
+      thresholds: filteredThresholds,
+    });
   }
 }

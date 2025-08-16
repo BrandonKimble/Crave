@@ -3,7 +3,7 @@ import { chunk, flatten, omit, pick } from 'lodash-es';
 
 /**
  * Transformer Utilities
- * 
+ *
  * Pure functions for transforming data between formats.
  * Replaces transformation logic scattered across services.
  */
@@ -12,7 +12,8 @@ import { chunk, flatten, omit, pick } from 'lodash-es';
  * Transform Unix timestamp to Date
  */
 export function unixToDate(timestamp: number | string): Date {
-  const ts = typeof timestamp === 'string' ? parseInt(timestamp, 10) : timestamp;
+  const ts =
+    typeof timestamp === 'string' ? parseInt(timestamp, 10) : timestamp;
   return new Date(ts * 1000);
 }
 
@@ -58,7 +59,8 @@ export function transformRedditPost(post: any): {
     id: normalizeRedditId(post.id || post.name || ''),
     title: post.title || '',
     author: post.author || '[deleted]',
-    subreddit: post.subreddit || post.subreddit_name_prefixed?.replace('r/', '') || '',
+    subreddit:
+      post.subreddit || post.subreddit_name_prefixed?.replace('r/', '') || '',
     created_utc: post.created_utc || post.created || 0,
     score: post.score || post.ups || 0,
     url: post.url || '',
@@ -98,10 +100,7 @@ export function transformRedditComment(comment: any): {
 /**
  * Transform array to chunks for batch processing
  */
-export function toChunks<T>(
-  items: T[],
-  chunkSize: number
-): T[][] {
+export function toChunks<T>(items: T[], chunkSize: number): T[][] {
   return chunk(items, chunkSize);
 }
 
@@ -117,7 +116,7 @@ export function flattenDeep<T>(arrays: any[]): T[] {
  */
 export function pickFields<T extends object, K extends keyof T>(
   obj: T,
-  keys: K[]
+  keys: K[],
 ): Pick<T, K> {
   return pick(obj, keys);
 }
@@ -127,7 +126,7 @@ export function pickFields<T extends object, K extends keyof T>(
  */
 export function omitFields<T extends object, K extends keyof T>(
   obj: T,
-  keys: K[]
+  keys: K[],
 ): Omit<T, K> {
   return omit(obj, keys) as Omit<T, K>;
 }
@@ -156,12 +155,12 @@ export function toCamelCase(str: string): string {
  */
 export function keysToSnakeCase<T extends object>(obj: T): any {
   const result: any = {};
-  
+
   for (const [key, value] of Object.entries(obj)) {
     const snakeKey = toSnakeCase(key);
     result[snakeKey] = value;
   }
-  
+
   return result;
 }
 
@@ -170,12 +169,12 @@ export function keysToSnakeCase<T extends object>(obj: T): any {
  */
 export function keysToCamelCase<T extends object>(obj: T): any {
   const result: any = {};
-  
+
   for (const [key, value] of Object.entries(obj)) {
     const camelKey = toCamelCase(key);
     result[camelKey] = value;
   }
-  
+
   return result;
 }
 
@@ -212,23 +211,26 @@ export function htmlToText(html: string): string {
 export function toTitleCase(str: string): string {
   return str.replace(
     /\w\S*/g,
-    txt => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+    (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase(),
   );
 }
 
 /**
  * Transform score to quality rating
  */
-export function scoreToQuality(score: number, max: number = 100): {
+export function scoreToQuality(
+  score: number,
+  max: number = 100,
+): {
   rating: 'poor' | 'fair' | 'good' | 'excellent';
   percentage: number;
   stars: number;
 } {
   const percentage = (score / max) * 100;
-  
+
   let rating: 'poor' | 'fair' | 'good' | 'excellent';
   let stars: number;
-  
+
   if (percentage >= 90) {
     rating = 'excellent';
     stars = 5;
@@ -242,7 +244,7 @@ export function scoreToQuality(score: number, max: number = 100): {
     rating = 'poor';
     stars = 2;
   }
-  
+
   return { rating, percentage, stars };
 }
 
@@ -251,7 +253,7 @@ export function scoreToQuality(score: number, max: number = 100): {
  */
 export function flattenComments(
   comments: any[],
-  parentId: string | null = null
+  parentId: string | null = null,
 ): Array<{
   id: string;
   body: string;
@@ -260,8 +262,12 @@ export function flattenComments(
   depth: number;
 }> {
   const result: any[] = [];
-  
-  function traverse(items: any[], depth: number = 0, parent: string | null = null) {
+
+  function traverse(
+    items: any[],
+    depth: number = 0,
+    parent: string | null = null,
+  ) {
     for (const item of items) {
       if (item.kind === 't1' || item.body) {
         const comment = item.data || item;
@@ -272,14 +278,15 @@ export function flattenComments(
           parent_id: parent,
           depth,
         });
-        
-        if (comment.replies?.data?.children) {
-          traverse(comment.replies.data.children, depth + 1, comment.id);
+
+        // Handle replies - comments use simplified structure
+        if (comment.replies) {
+          traverse(comment.replies, depth + 1, comment.id);
         }
       }
     }
   }
-  
+
   traverse(comments, 0, parentId);
   return result;
 }
@@ -287,7 +294,11 @@ export function flattenComments(
 /**
  * Transform to percentage
  */
-export function toPercentage(value: number, total: number, decimals: number = 2): string {
+export function toPercentage(
+  value: number,
+  total: number,
+  decimals: number = 2,
+): string {
   if (total === 0) return '0%';
   const percentage = (value / total) * 100;
   return `${percentage.toFixed(decimals)}%`;
@@ -300,12 +311,12 @@ export function bytesToHuman(bytes: number): string {
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let size = bytes;
   let unitIndex = 0;
-  
+
   while (size >= 1024 && unitIndex < units.length - 1) {
     size /= 1024;
     unitIndex++;
   }
-  
+
   return `${size.toFixed(2)} ${units[unitIndex]}`;
 }
 
@@ -317,7 +328,7 @@ export function durationToHuman(ms: number): string {
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  
+
   if (days > 0) return `${days}d ${hours % 24}h`;
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
@@ -343,7 +354,7 @@ export function errorToObject(error: any): {
       details: (error as any).details,
     };
   }
-  
+
   return {
     message: String(error),
     name: 'UnknownError',

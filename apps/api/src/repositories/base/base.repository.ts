@@ -3,7 +3,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../../shared';
@@ -21,20 +21,20 @@ import {
  */
 @Injectable()
 export abstract class BaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>
-  implements IBaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>, OnModuleInit
+  implements
+    IBaseRepository<T, TWhereInput, TCreateInput, TUpdateInput>,
+    OnModuleInit
 {
   protected logger!: LoggerService;
 
   constructor(
     protected readonly prisma: PrismaService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
     protected readonly entityName: string,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext(`${this.entityName}Repository`);
-    }
+    this.logger = this.loggerService.setContext(`${this.entityName}Repository`);
   }
 
   /**

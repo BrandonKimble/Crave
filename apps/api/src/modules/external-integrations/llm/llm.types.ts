@@ -64,33 +64,63 @@ export interface LLMOutputStructure {
  */
 export interface LLMMention {
   temp_id: string;
-  
-  // Restaurant fields (ALL preserved)
-  restaurant_normalized_name: string | null;
-  restaurant_original_text: string | null;
+
+  // Restaurant fields (REQUIRED)
+  restaurant_normalized_name: string;
+  restaurant_original_text: string;
   restaurant_temp_id: string;
-  
+
   // Enhanced dish fields for compound term processing
   dish_primary_category?: string | null;
   dish_categories?: string[] | null;
   dish_original_text?: string | null;
   dish_temp_id?: string | null;
   dish_is_menu_item?: boolean | null;
-  
+
   // Attributes (preserved as arrays)
   restaurant_attributes?: string[] | null;
-  dish_attributes?: string[] | null;
-  
+  dish_attributes_selective?: string[] | null;
+  dish_attributes_descriptive?: string[] | null;
+
   // Core processing fields (VITAL)
   general_praise: boolean;
-  
+
   // Source tracking with enhanced fields
   source_type: 'post' | 'comment';
   source_id: string;
   source_content: string;
-  source_upvotes?: number | null;
-  source_url?: string | null;
-  source_created_at?: string | null;
+  source_ups: number;
+  source_url: string;
+  source_created_at: string;
+}
+
+/**
+ * LLM Entity Reference type
+ */
+export interface LLMEntityRef {
+  normalized_name?: string | null;
+  original_text?: string | null;
+  temp_id: string;
+}
+
+/**
+ * LLM Dish Attribute type
+ */
+export interface LLMDishAttribute {
+  attribute: string;
+  type: 'selective' | 'descriptive';
+}
+
+/**
+ * LLM Source type
+ */
+export interface LLMSource {
+  type: 'post' | 'comment';
+  id: string;
+  content: string;
+  ups?: number | null;
+  url?: string | null;
+  created_at?: string | null;
 }
 
 /**
@@ -160,7 +190,6 @@ export interface GeminiApiRequest {
     }>;
   };
 }
-
 
 /**
  * Performance metrics for LLM operations

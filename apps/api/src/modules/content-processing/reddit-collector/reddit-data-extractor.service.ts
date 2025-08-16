@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { isRedditComment } from './reddit-data.types';
 
@@ -9,6 +9,7 @@ import { isRedditComment } from './reddit-data.types';
 export interface CraveRedditComment {
   // Required fields (100% availability)
   id: string;
+  name?: string; // Full Reddit ID with t1_ prefix
   body: string;
   author: string;
   subreddit: string;
@@ -32,7 +33,9 @@ export interface CraveRedditComment {
 export class RedditDataExtractorService implements OnModuleInit {
   private logger!: LoggerService;
 
-  constructor(private readonly loggerService: LoggerService) {}
+  constructor(
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RedditDataExtractor');

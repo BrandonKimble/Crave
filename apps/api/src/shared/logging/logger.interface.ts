@@ -29,7 +29,11 @@ export abstract class LoggerService {
   abstract debug(message: string, metadata?: LogMetadata): void;
   abstract info(message: string, metadata?: LogMetadata): void;
   abstract warn(message: string, metadata?: LogMetadata): void;
-  abstract error(message: string, error?: unknown, metadata?: LogMetadata): void;
+  abstract error(
+    message: string,
+    error?: unknown,
+    metadata?: LogMetadata,
+  ): void;
   abstract http(
     message: string,
     method: string,

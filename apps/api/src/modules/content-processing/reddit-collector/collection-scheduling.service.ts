@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
@@ -51,10 +51,9 @@ export class CollectionSchedulingService implements OnModuleInit {
   };
 
   constructor(
-    private readonly configService: ConfigService, // Reserved for future configuration needs
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(ConfigService) private readonly configService: ConfigService, // Reserved for future configuration needs
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('CollectionScheduling');

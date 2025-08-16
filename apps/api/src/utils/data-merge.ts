@@ -2,10 +2,10 @@ import { sortBy, groupBy, mergeWith } from 'lodash-es';
 
 /**
  * Data Merge Utilities
- * 
+ *
  * Simple utilities for merging data from multiple sources.
  * Replaces the 820-line DataMergeService with ~150 lines of pure functions.
- * 
+ *
  * Preserves all PRD Section 5.1.2 temporal merging logic.
  */
 
@@ -23,16 +23,16 @@ export function mergeByTimestamp<T extends { timestamp: number }>(
  * Merge with source attribution
  */
 export function mergeWithAttribution<T>(
-  sources: Array<{ name: string; data: T[] }>
+  sources: Array<{ name: string; data: T[] }>,
 ): Array<T & { source: string }> {
   const result: Array<T & { source: string }> = [];
-  
+
   for (const { name, data } of sources) {
     for (const item of data) {
       result.push({ ...item, source: name });
     }
   }
-  
+
   return result;
 }
 
@@ -47,37 +47,40 @@ export function temporalMerge<T extends { timestamp: number; id: string }>(
     timestampTolerance?: number;
     gapThreshold?: number;
     prioritySource?: 'archive' | 'api';
-  } = {}
+  } = {},
 ): {
   merged: T[];
   gaps: Array<{ start: number; end: number; duration: number }>;
   duplicates: number;
 } {
-  const { 
+  const {
     timestampTolerance = 60,
     gapThreshold = 14400, // 4 hours
-    prioritySource = 'archive' 
+    prioritySource = 'archive',
   } = options;
 
   // Combine and sort by timestamp
-  const allItems = [...archiveData, ...apiData].sort((a, b) => a.timestamp - b.timestamp);
-  
+  const allItems = [...archiveData, ...apiData].sort(
+    (a, b) => a.timestamp - b.timestamp,
+  );
+
   // Remove duplicates within tolerance
   const merged: T[] = [];
   const seen = new Map<string, T>();
   let duplicates = 0;
-  
+
   for (const item of allItems) {
     const existing = seen.get(item.id);
-    
+
     if (existing) {
       const timeDiff = Math.abs(item.timestamp - existing.timestamp);
       if (timeDiff <= timestampTolerance) {
         duplicates++;
         // Keep priority source item
         const isArchive = archiveData.includes(item);
-        const shouldReplace = prioritySource === 'archive' ? isArchive : !isArchive;
-        
+        const shouldReplace =
+          prioritySource === 'archive' ? isArchive : !isArchive;
+
         if (shouldReplace) {
           const index = merged.indexOf(existing);
           if (index !== -1) {
@@ -88,17 +91,17 @@ export function temporalMerge<T extends { timestamp: number; id: string }>(
         continue;
       }
     }
-    
+
     merged.push(item);
     seen.set(item.id, item);
   }
-  
+
   // Detect gaps
   const gaps: Array<{ start: number; end: number; duration: number }> = [];
-  
+
   for (let i = 1; i < merged.length; i++) {
     const timeDiff = merged[i].timestamp - merged[i - 1].timestamp;
-    
+
     if (timeDiff > gapThreshold) {
       gaps.push({
         start: merged[i - 1].timestamp,
@@ -107,7 +110,7 @@ export function temporalMerge<T extends { timestamp: number; id: string }>(
       });
     }
   }
-  
+
   return { merged, gaps, duplicates };
 }
 
@@ -117,34 +120,36 @@ export function temporalMerge<T extends { timestamp: number; id: string }>(
  */
 export function mergeRedditContent<
   P extends { id: string; created_utc: number },
-  C extends { id: string; created_utc: number }
+  C extends { id: string; created_utc: number },
 >(
   posts: P[],
   comments: C[],
-  source: string
+  source: string,
 ): {
   posts: Array<P & { sourceMetadata: { source: string; timestamp: number } }>;
-  comments: Array<C & { sourceMetadata: { source: string; timestamp: number } }>;
+  comments: Array<
+    C & { sourceMetadata: { source: string; timestamp: number } }
+  >;
   totalItems: number;
 } {
   const timestamp = Date.now() / 1000;
-  
-  const annotatedPosts = posts.map(post => ({
+
+  const annotatedPosts = posts.map((post) => ({
     ...post,
     sourceMetadata: {
       source,
       timestamp,
     },
   }));
-  
-  const annotatedComments = comments.map(comment => ({
+
+  const annotatedComments = comments.map((comment) => ({
     ...comment,
     sourceMetadata: {
       source,
       timestamp,
     },
   }));
-  
+
   return {
     posts: annotatedPosts,
     comments: annotatedComments,
@@ -161,7 +166,7 @@ export function mergeBatches<T>(
     items: T[];
     timestamp: number;
     metadata?: any;
-  }>
+  }>,
 ): {
   items: T[];
   batchCount: number;
@@ -170,15 +175,15 @@ export function mergeBatches<T>(
 } {
   const items: T[] = [];
   const metadata: Record<string, any> = {};
-  
+
   for (const batch of batches) {
     items.push(...batch.items);
-    
+
     if (batch.metadata) {
       metadata[batch.id] = batch.metadata;
     }
   }
-  
+
   return {
     items,
     batchCount: batches.length,
@@ -193,7 +198,7 @@ export function mergeBatches<T>(
 export function deepMerge<T extends object>(
   target: T,
   source: Partial<T>,
-  customMerger?: (objValue: any, srcValue: any, key: string) => any
+  customMerger?: (objValue: any, srcValue: any, key: string) => any,
 ): T {
   return mergeWith({}, target, source, customMerger);
 }
@@ -201,12 +206,9 @@ export function deepMerge<T extends object>(
 /**
  * Merge arrays with deduplication
  */
-export function mergeArrays<T>(
-  arrays: T[][],
-  keyFn: (item: T) => string
-): T[] {
+export function mergeArrays<T>(arrays: T[][], keyFn: (item: T) => string): T[] {
   const seen = new Map<string, T>();
-  
+
   for (const array of arrays) {
     for (const item of array) {
       const key = keyFn(item);
@@ -215,7 +217,7 @@ export function mergeArrays<T>(
       }
     }
   }
-  
+
   return Array.from(seen.values());
 }
 
@@ -225,12 +227,12 @@ export function mergeArrays<T>(
 export function groupAndMerge<T, K extends keyof T>(
   items: T[],
   groupKey: K,
-  mergeFn: (items: T[]) => T
+  mergeFn: (items: T[]) => T,
 ): T[] {
   const grouped = groupBy(items, groupKey) as Record<string, T[]>;
-  
-  return Object.values(grouped).map((group: T[]) => 
-    group.length === 1 ? group[0] : mergeFn(group)
+
+  return Object.values(grouped).map((group: T[]) =>
+    group.length === 1 ? group[0] : mergeFn(group),
   );
 }
 
@@ -240,7 +242,7 @@ export function groupAndMerge<T, K extends keyof T>(
 export function getMergeStats<T>(
   original: T[],
   merged: T[],
-  duplicatesRemoved: number = 0
+  duplicatesRemoved: number = 0,
 ): {
   originalCount: number;
   mergedCount: number;
@@ -249,10 +251,11 @@ export function getMergeStats<T>(
 } {
   const originalCount = original.length;
   const mergedCount = merged.length;
-  const reductionPercent = originalCount > 0 
-    ? ((originalCount - mergedCount) / originalCount) * 100 
-    : 0;
-  
+  const reductionPercent =
+    originalCount > 0
+      ? ((originalCount - mergedCount) / originalCount) * 100
+      : 0;
+
   return {
     originalCount,
     mergedCount,

@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import {
@@ -49,16 +49,13 @@ export class PushshiftProcessorService implements OnModuleInit {
   private config!: PushshiftProcessingConfig;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly streamProcessor: StreamProcessorService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('PushshiftProcessor');
-    }
+    this.logger = this.loggerService.setContext('PushshiftProcessor');
     this.config = {
       baseDirectory: this.configService.get(
         'pushshift.baseDirectory',
@@ -82,7 +79,7 @@ export class PushshiftProcessorService implements OnModuleInit {
             'pushshift.storage.local.archivePath',
             'data/pushshift/archives',
           ),
-  },
+        },
       },
     };
   }

@@ -161,7 +161,7 @@ async function testPipeline() {
     const llmResult = await contentRetrievalPipeline.retrieveContentForLLM(
       'austinfood',
       [targetPostId],
-      { depth: 10 } // Remove limit to get ALL comments with full threads
+      { depth: 50 } // Increased depth to get all nested comments
     );
     const step3Time = Date.now() - startTime3;
 
@@ -252,8 +252,8 @@ async function testPipeline() {
         console.log(`       Hierarchical Categories: ${mention.dish_categories.join(' → ')}`);
       }
       
-      if (mention.dish_attributes && mention.dish_attributes.length > 0) {
-        console.log(`       Dish Attributes: ${mention.dish_attributes.join(', ')}`);
+      if (mention.dish_attributes_descriptive && mention.dish_attributes_descriptive.length > 0) {
+        console.log(`       Dish Attributes: ${mention.dish_attributes_descriptive.join(', ')}`);
       }
       
       if (mention.restaurant_attributes && mention.restaurant_attributes.length > 0) {
@@ -261,7 +261,7 @@ async function testPipeline() {
       }
       
       console.log(`       General Praise: ${mention.general_praise}`);
-      console.log(`       Source: ${mention.source_type} (${mention.source_id}) - ${mention.source_upvotes || 0} upvotes`);
+      console.log(`       Source: ${mention.source_type} (${mention.source_id}) - ${mention.source_ups || 0} upvotes`);
       
       // Show enhanced source fields
       if (mention.source_url) {

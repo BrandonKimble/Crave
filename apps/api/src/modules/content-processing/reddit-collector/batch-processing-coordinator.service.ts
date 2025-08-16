@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../../shared';
 import { StreamProcessorService } from './stream-processor.service';
@@ -38,19 +38,16 @@ export class BatchProcessingCoordinatorService implements OnModuleInit {
   private activeJobs = new Map<string, BatchProcessingJob>();
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly streamProcessor: StreamProcessorService,
     private readonly contentPipeline: HistoricalContentPipelineService,
     private readonly resourceMonitor: ResourceMonitoringService,
     private readonly checkpointService: ProcessingCheckpointService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('BatchProcessingCoordinator');
-    }
+    this.logger = this.loggerService.setContext('BatchProcessingCoordinator');
     this.config = this.loadConfiguration();
   }
 

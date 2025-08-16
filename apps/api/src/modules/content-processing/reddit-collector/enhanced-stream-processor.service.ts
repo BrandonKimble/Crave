@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import { LoggerService } from '../../../shared';
@@ -15,11 +15,10 @@ export class EnhancedStreamProcessorService implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly systemZstdDecompressor: SystemZstdDecompressor,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('EnhancedStreamProcessor');

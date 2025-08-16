@@ -6,9 +6,7 @@ import { LoggerService } from '../../../shared';
 import {
   LLMOutputStructure,
   LLMMention,
-  LLMEntityRef,
   LLMDishAttribute,
-  LLMSource,
 } from '../../external-integrations/llm/llm.types';
 import { BatchResolutionResult } from '../entity-resolver/entity-resolution.types';
 
@@ -245,29 +243,35 @@ describe('ContextDeterminationService', () => {
     restaurantAttributes: string[] | null,
     dishAttributes: LLMDishAttribute[] | null,
   ): LLMMention {
-    const mockRestaurant: LLMEntityRef = {
-      normalized_name: 'Test Restaurant',
-      original_text: 'test restaurant',
-      temp_id: `${tempId}_restaurant`,
-    };
-
-    const mockSource: LLMSource = {
-      type: 'post',
-      id: 'test_post_1',
-      url: 'https://reddit.com/test',
-      upvotes: 10,
-      created_at: '2024-01-01T00:00:00Z',
-    };
+    // Split dish attributes by type
+    const selectiveAttrs =
+      dishAttributes
+        ?.filter((attr) => attr.type === 'selective')
+        .map((attr) => attr.attribute) || null;
+    const descriptiveAttrs =
+      dishAttributes
+        ?.filter((attr) => attr.type === 'descriptive')
+        .map((attr) => attr.attribute) || null;
 
     return {
       temp_id: tempId,
-      restaurant: mockRestaurant,
+      restaurant_normalized_name: 'Test Restaurant',
+      restaurant_original_text: 'test restaurant',
+      restaurant_temp_id: `${tempId}_restaurant`,
       restaurant_attributes: restaurantAttributes,
-      dish_or_category: null,
-      dish_attributes: dishAttributes,
-      is_menu_item: true,
+      dish_primary_category: null,
+      dish_original_text: null,
+      dish_temp_id: null,
+      dish_attributes_selective: selectiveAttrs,
+      dish_attributes_descriptive: descriptiveAttrs,
+      dish_is_menu_item: true,
       general_praise: false,
-      source: mockSource,
+      source_type: 'post',
+      source_id: 'test_post_1',
+      source_content: 'Test post content',
+      source_url: 'https://reddit.com/test',
+      source_ups: 10,
+      source_created_at: '2024-01-01T00:00:00Z',
     };
   }
 });

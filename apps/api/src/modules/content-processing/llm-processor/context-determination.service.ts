@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import {
@@ -23,7 +23,7 @@ export class ContextDeterminationService implements OnModuleInit {
 
   constructor(
     private readonly entityResolutionService: EntityResolutionService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
@@ -107,13 +107,32 @@ export class ContextDeterminationService implements OnModuleInit {
         }
       }
 
-      // Extract dish attributes (dish scope)
-      if (mention.dish_attributes && mention.dish_attributes.length > 0) {
-        for (const dishAttr of mention.dish_attributes) {
+      // Extract selective dish attributes (dish scope)
+      if (
+        mention.dish_attributes_selective &&
+        mention.dish_attributes_selective.length > 0
+      ) {
+        for (const dishAttr of mention.dish_attributes_selective) {
           attributes.push({
-            tempId: `${mention.temp_id}_dish_attr_${dishAttr.attribute}`,
-            attributeName: dishAttr.attribute,
-            originalText: dishAttr.attribute,
+            tempId: `${mention.temp_id}_dish_attr_selective_${dishAttr}`,
+            attributeName: dishAttr,
+            originalText: dishAttr,
+            scope: 'dish',
+            aliases: [], // LLM normalization already done
+          });
+        }
+      }
+
+      // Extract descriptive dish attributes (dish scope)
+      if (
+        mention.dish_attributes_descriptive &&
+        mention.dish_attributes_descriptive.length > 0
+      ) {
+        for (const dishAttr of mention.dish_attributes_descriptive) {
+          attributes.push({
+            tempId: `${mention.temp_id}_dish_attr_descriptive_${dishAttr}`,
+            attributeName: dishAttr,
+            originalText: dishAttr,
             scope: 'dish',
             aliases: [], // LLM normalization already done
           });

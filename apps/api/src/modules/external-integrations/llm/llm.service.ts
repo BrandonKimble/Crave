@@ -48,9 +48,7 @@ export class LLMService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('LLMService');
-    }
+    this.logger = this.loggerService.setContext('LLMService');
     this.llmConfig = {
       apiKey: this.configService.get<string>('llm.apiKey') || '',
       model: this.configService.get<string>('llm.model') || 'gemini-2.5-flash',
@@ -65,7 +63,7 @@ export class LLMService implements OnModuleInit {
       candidateCount: this.configService.get<number>('llm.candidateCount') || 1,
       thinking: {
         enabled:
-          this.configService.get<boolean>('llm.thinking.enabled') !== false,
+          this.configService.get<boolean>('llm.thinking.enabled') === true,
         budget: this.configService.get<number>('llm.thinking.budget') || 0,
       },
       retryOptions: {
@@ -91,7 +89,9 @@ export class LLMService implements OnModuleInit {
       provider: 'google-gemini',
       apiKeyExists: !!this.llmConfig.apiKey,
       apiKeyLength: this.llmConfig.apiKey ? this.llmConfig.apiKey.length : 0,
-      apiKeyPrefix: this.llmConfig.apiKey ? this.llmConfig.apiKey.substring(0, 8) + '...' : 'none',
+      apiKeyPrefix: this.llmConfig.apiKey
+        ? this.llmConfig.apiKey.substring(0, 8) + '...'
+        : 'none',
       maxTokens: this.llmConfig.maxTokens,
       thinkingEnabled: this.llmConfig.thinking?.enabled,
       thinkingBudget: this.llmConfig.thinking?.budget,
@@ -231,60 +231,142 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     // Always add thinking configuration to explicitly control it
     generationConfig.thinkingConfig = {
-      thinkingBudget: this.llmConfig.thinking?.enabled ? this.llmConfig.thinking.budget : 0,
+      thinkingBudget: this.llmConfig.thinking?.enabled
+        ? this.llmConfig.thinking.budget
+        : 0,
     };
 
-    // Add structured output configuration
+    // Add enhanced structured output configuration with Gemini optimization features
     (generationConfig as any).responseMimeType = 'application/json';
     (generationConfig as any).responseSchema = {
       type: 'object',
+      description: 'Restaurant and dish mentions extracted from Reddit content',
       properties: {
         mentions: {
           type: 'array',
+          description: 'Array of restaurant/dish mentions with entity details',
           items: {
             type: 'object',
+            description: 'Single mention of restaurant or dish with complete metadata',
             properties: {
-              temp_id: { type: 'string' },
-              restaurant_temp_id: { type: 'string' },
-              restaurant_normalized_name: { type: 'string' },
-              restaurant_original_text: { type: 'string' },
-              restaurant_attributes: { 
-                type: 'array', 
-                items: { type: 'string' },
-                nullable: true 
+              // Core identifiers (shortened names for complexity reduction)
+              temp_id: { 
+                type: 'string',
+                description: 'Unique identifier for this mention'
               },
-              dish_temp_id: { type: 'string', nullable: true },
-              dish_primary_category: { type: 'string', nullable: true },
-              dish_categories: { 
-                type: 'array', 
-                items: { type: 'string' },
-                nullable: true 
+              restaurant_temp_id: { 
+                type: 'string',
+                description: 'Unique identifier for the restaurant entity'
               },
-              dish_original_text: { type: 'string', nullable: true },
-              dish_attributes: { 
-                type: 'array', 
-                items: { type: 'string' },
-                nullable: true 
+              
+              // Restaurant info (required)
+              restaurant_normalized_name: { 
+                type: 'string',
+                description: 'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing'
               },
-              dish_is_menu_item: { type: 'boolean' },
-              general_praise: { type: 'boolean' },
-              source_type: { type: 'string', enum: ['post', 'comment'] },
-              source_id: { type: 'string' },
-              source_content: { type: 'string' },
-              source_created_at: { type: 'string' },
-              source_upvotes: { type: 'number' },
-              source_url: { type: 'string' }
+              restaurant_original_text: { 
+                type: 'string',
+                description: 'Exact restaurant name as mentioned in source'
+              },
+              restaurant_attributes: {
+                type: 'array',
+                description: 'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
+                items: { type: 'string' },
+                nullable: true
+              },
+              
+              // Dish info (optional with nullable)
+              dish_temp_id: { 
+                type: 'string',
+                description: 'Unique identifier for dish if mentioned',
+                nullable: true
+              },
+              dish_primary_category: { 
+                type: 'string',
+                description: 'Complete compound food term as primary category, singular form, excluding attributes',
+                nullable: true
+              },
+              dish_categories: {
+                type: 'array',
+                description: 'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
+                items: { type: 'string' },
+                nullable: true
+              },
+              dish_original_text: { 
+                type: 'string',
+                description: 'Exact dish name as mentioned in source',
+                nullable: true
+              },
+              dish_attributes_selective: {
+                type: 'array',
+                description: 'Selective attributes: help filter or categorize food options',
+                items: { type: 'string' },
+                nullable: true
+              },
+              dish_attributes_descriptive: {
+                type: 'array', 
+                description: 'Descriptive attributes: characterize or describe specific food items',
+                items: { type: 'string' },
+                nullable: true
+              },
+              dish_is_menu_item: { 
+                type: 'boolean',
+                description: 'True if specific menu item, false if general food type',
+                nullable: true
+              },
+              
+              // Sentiment (required)
+              general_praise: { 
+                type: 'boolean',
+                description: 'True if mention contains holistic restaurant praise, regardless of specific dish praise'
+              },
+              
+              // Source metadata (all required)
+              source_type: { 
+                type: 'string', 
+                enum: ['post', 'comment'],
+                description: 'Whether content came from post or comment'
+              },
+              source_id: { 
+                type: 'string',
+                description: 'Reddit ID of the source (t3_ or t1_ prefixed)'
+              },
+              source_content: { 
+                type: 'string',
+                description: 'Complete source text content being analyzed for entity extraction'
+              },
+              source_ups: { 
+                type: 'number',
+                minimum: 0,
+                description: 'Reddit upvote count for credibility weighting'
+              },
+              source_url: { 
+                type: 'string',
+                description: 'Full Reddit URL to the source content'
+              },
+              source_created_at: { 
+                type: 'string',
+                format: 'date-time',
+                description: 'ISO timestamp when content was created'
+              },
             },
             required: [
-              'temp_id', 'restaurant_temp_id', 'restaurant_normalized_name', 
-              'restaurant_original_text', 'dish_is_menu_item', 'general_praise',
-              'source_type', 'source_id', 'source_content', 'source_created_at', 
-              'source_upvotes', 'source_url'
-            ]
-          }
-        }
+              'temp_id',
+              'restaurant_temp_id',
+              'restaurant_normalized_name',
+              'restaurant_original_text',
+              'general_praise',
+              'source_type',
+              'source_id',
+              'source_content',
+              'source_ups',
+              'source_url',
+              'source_created_at',
+            ],
+          },
+        },
       },
-      required: ['mentions']
+      required: ['mentions'],
     };
 
     // Debug logging to verify structured output config
@@ -312,7 +394,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     try {
       const url = `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`;
-      
+
       this.logger.info('Making LLM API request', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
@@ -337,7 +419,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         status: response.status,
         candidatesCount: response.data?.candidates?.length || 0,
         hasContent: !!response.data?.candidates?.[0]?.content?.parts?.[0]?.text,
-        contentLength: response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+        contentLength:
+          response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.length ||
+          0,
         finishReason: response.data?.candidates?.[0]?.finishReason,
         safetyRatings: response.data?.candidates?.[0]?.safetyRatings,
         rawResponse: JSON.stringify(response.data, null, 2),
@@ -415,7 +499,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'parse_response',
       contentLength: content.length,
-      contentPreview: content.substring(0, 200) + (content.length > 200 ? '...' : ''),
+      contentPreview:
+        content.substring(0, 200) + (content.length > 200 ? '...' : ''),
     });
 
     try {
@@ -467,12 +552,16 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'parse_response',
         mentionsCount: parsed.mentions.length,
-        mentions: parsed.mentions.length > 0 ? parsed.mentions.map(m => ({
-          temp_id: m.temp_id,
-          restaurant: m.restaurant_normalized_name || m.restaurant_original_text,
-          dish: m.dish_primary_category || m.dish_original_text,
-          dish_categories: m.dish_categories,
-        })) : [],
+        mentions:
+          parsed.mentions.length > 0
+            ? parsed.mentions.map((m) => ({
+                temp_id: m.temp_id,
+                restaurant:
+                  m.restaurant_normalized_name || m.restaurant_original_text,
+                dish: m.dish_primary_category || m.dish_original_text,
+                dish_categories: m.dish_categories,
+              }))
+            : [],
       });
 
       return parsed;

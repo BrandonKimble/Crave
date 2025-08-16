@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 
 /**
@@ -58,8 +58,8 @@ export class ContentRetrievalMonitoringService implements OnModuleInit {
   private readonly maxHistorySize = 1000;
 
   constructor(
-    private readonly loggerService: LoggerService
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ContentRetrievalMonitoring');

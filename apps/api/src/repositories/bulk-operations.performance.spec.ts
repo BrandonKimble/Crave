@@ -161,7 +161,7 @@ describe('Bulk Operations Performance Validation', () => {
         subreddit: 'bulktest',
         contentExcerpt: `This is bulk test mention ${index} for performance validation`,
         author: `test_user_${index}`,
-        upvotes: Math.floor(Math.random() * 50),
+        score: Math.floor(Math.random() * 50),
         createdAt: new Date(timestamp - Math.floor(Math.random() * 86400000)),
       }));
     }
@@ -450,7 +450,7 @@ describe('Bulk Operations Performance Validation', () => {
           subreddit: 'bulktest',
           contentExcerpt: `This is bulk test mention ${index} for performance validation`,
           author: `test_user_${index}`,
-          upvotes: Math.floor(Math.random() * 50),
+          score: Math.floor(Math.random() * 50),
           createdAt: new Date(),
         }));
 

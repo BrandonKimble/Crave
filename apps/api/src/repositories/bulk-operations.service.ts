@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Prisma, Entity } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../shared';
@@ -43,13 +43,11 @@ export class BulkOperationsService implements OnModuleInit {
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
     private readonly mentionRepository: MentionRepository,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('BulkOperationsService');
-    }
+    this.logger = this.loggerService.setContext('BulkOperationsService');
   }
 
   /**

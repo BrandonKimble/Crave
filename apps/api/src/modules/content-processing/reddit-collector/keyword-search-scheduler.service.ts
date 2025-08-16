@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
@@ -60,16 +60,13 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   };
 
   constructor(
-    private readonly configService: ConfigService,
+    @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly entityPriorityService: EntityPrioritySelectionService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('KeywordSearchScheduler');
-    }
+    this.logger = this.loggerService.setContext('KeywordSearchScheduler');
     this.config = this.loadConfiguration();
   }
 
@@ -387,7 +384,6 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     return distribution;
   }
-
 
   /**
    * Load configuration from environment/config service

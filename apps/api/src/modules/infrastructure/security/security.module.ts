@@ -42,11 +42,11 @@ import { SecurityHeadersMiddleware } from './middleware/security-headers.middlew
     SecurityHeadersMiddleware,
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard, // Rate limiting guard
+      useClass: ThrottlerGuard,
     },
     {
       provide: APP_GUARD,
-      useClass: SecurityGuard, // Security validation guard
+      useClass: SecurityGuard,
     },
   ],
   exports: [SecurityService, SanitizationMiddleware, SecurityHeadersMiddleware],

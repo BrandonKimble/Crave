@@ -208,8 +208,12 @@ export class EntityPrioritySelectionService {
             entityId: entity.entityId,
             entityName: entity.name,
             error: {
-              message: entityError instanceof Error ? entityError.message : String(entityError),
-              stack: entityError instanceof Error ? entityError.stack : undefined,
+              message:
+                entityError instanceof Error
+                  ? entityError.message
+                  : String(entityError),
+              stack:
+                entityError instanceof Error ? entityError.stack : undefined,
             },
           });
           // Continue processing other entities
@@ -228,9 +232,9 @@ export class EntityPrioritySelectionService {
         `Failed to calculate scores for entity type: ${entityType}`,
         {
           error: {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        },
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          },
         },
       );
       throw error;

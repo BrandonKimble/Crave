@@ -27,23 +27,24 @@ describe('UnifiedProcessingService Integration', () => {
   const mockMergedInput: MergedLLMInputDto = {
     posts: [
       {
-        post_id: 'integration_test_post',
+        id: 'integration_test_post',
         title: 'Integration Test: Best Austin Tacos',
         content:
           'Torchys Tacos has the best queso in Austin. Their trailer park taco is amazing.',
         subreddit: 'austinfood',
+        author: 'test_author',
         url: 'https://reddit.com/r/austinfood/integration_test_post',
-        upvotes: 38,
+        score: 38,
         created_at: '2024-01-15T14:30:00Z',
         comments: [],
       },
     ],
     comments: [
       {
-        comment_id: 'integration_test_comment',
+        id: 'integration_test_comment',
         content: 'I love their green chile queso too!',
         author: 'taco_enthusiast',
-        upvotes: 12,
+        score: 12,
         created_at: '2024-01-15T15:00:00Z',
         parent_id: 'integration_test_post',
         url: 'https://reddit.com/r/austinfood/integration_test_post/integration_test_comment',

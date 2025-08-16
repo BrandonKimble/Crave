@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
 import { LoggerService } from '../../../shared';
@@ -18,8 +18,8 @@ export class SystemZstdDecompressor implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly loggerService: LoggerService
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('SystemZstdDecompressor');

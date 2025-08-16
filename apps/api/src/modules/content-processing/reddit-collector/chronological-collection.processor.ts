@@ -1,6 +1,6 @@
 import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   ChronologicalCollectionService,
@@ -50,12 +50,13 @@ export class ChronologicalCollectionProcessor implements OnModuleInit {
   constructor(
     private readonly chronologicalCollection: ChronologicalCollectionService,
     private readonly schedulingService: CollectionSchedulingService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    this.logger = this.loggerService.setContext('ChronologicalCollectionProcessor');
+    this.logger = this.loggerService.setContext(
+      'ChronologicalCollectionProcessor',
+    );
   }
 
   /**

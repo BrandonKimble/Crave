@@ -241,7 +241,7 @@ describe('BulkOperationsService', () => {
         recentMentionCount: 2,
         lastMentionedAt: new Date(),
         activityLevel: 'active' as ActivityLevel,
-        topMentions: [{ id: 'mention-1', score: 10 }],
+        topMentions: [{ id: 'mention-1', upvotes: 10 }],
         dishQualityScore: 8.5,
       },
     ];

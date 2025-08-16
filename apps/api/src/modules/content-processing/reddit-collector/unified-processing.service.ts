@@ -14,7 +14,7 @@
  * 6. Quality Score Updates (trigger existing M02 infrastructure)
  */
 
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -64,7 +64,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly entityResolutionService: EntityResolutionService,
     private readonly bulkOperationsService: BulkOperationsService,
     private readonly dataMergeService: DataMergeService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
@@ -196,8 +196,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           comments: mergedInput.comments
             .filter(
               (comment) =>
-                comment.parent_id === post.id ||
-                comment.parent_id === null,
+                comment.parent_id === post.id || comment.parent_id === null,
             )
             .map((comment) => ({
               id: comment.id,
@@ -275,7 +274,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             tempId: mention.temp_id || '',
           });
         }
-        
+
         // Also process dish_categories array if present
         if (mention.dish_categories && Array.isArray(mention.dish_categories)) {
           for (const category of mention.dish_categories) {
@@ -290,9 +289,29 @@ export class UnifiedProcessingService implements OnModuleInit {
           }
         }
 
-        // Dish attributes
-        if (mention.dish_attributes && Array.isArray(mention.dish_attributes)) {
-          for (const attr of mention.dish_attributes) {
+        // Selective dish attributes
+        if (
+          mention.dish_attributes_selective &&
+          Array.isArray(mention.dish_attributes_selective)
+        ) {
+          for (const attr of mention.dish_attributes_selective) {
+            if (typeof attr === 'string' && attr) {
+              entities.push({
+                normalizedName: attr,
+                originalText: attr,
+                entityType: 'dish_attribute' as const,
+                tempId: uuidv4(),
+              });
+            }
+          }
+        }
+
+        // Descriptive dish attributes
+        if (
+          mention.dish_attributes_descriptive &&
+          Array.isArray(mention.dish_attributes_descriptive)
+        ) {
+          for (const attr of mention.dish_attributes_descriptive) {
             if (typeof attr === 'string' && attr) {
               entities.push({
                 normalizedName: attr,
@@ -305,7 +324,10 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
 
         // Restaurant attributes
-        if (mention.restaurant_attributes && Array.isArray(mention.restaurant_attributes)) {
+        if (
+          mention.restaurant_attributes &&
+          Array.isArray(mention.restaurant_attributes)
+        ) {
           for (const attr of mention.restaurant_attributes) {
             if (typeof attr === 'string' && attr) {
               entities.push({

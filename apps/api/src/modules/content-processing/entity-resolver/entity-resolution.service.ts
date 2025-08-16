@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { EntityType, Entity } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -31,13 +31,11 @@ export class EntityResolutionService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
     private readonly aliasManagementService: AliasManagementService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('EntityResolutionService');
-    }
+    this.logger = this.loggerService.setContext('EntityResolutionService');
   }
 
   /**

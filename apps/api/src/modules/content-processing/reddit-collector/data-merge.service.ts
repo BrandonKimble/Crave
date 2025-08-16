@@ -8,7 +8,7 @@
  * based on timestamps, maintaining source attribution and minimizing data gaps.
  */
 
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   DataSourceType,
@@ -73,7 +73,7 @@ export class DataMergeService implements OnModuleInit {
   private defaultConfig!: TemporalMergeConfig;
 
   constructor(
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly duplicateDetectionService: DuplicateDetectionService,
   ) {}
 
@@ -241,11 +241,11 @@ export class DataMergeService implements OnModuleInit {
    */
   convertToLLMInput(mergeBatch: TemporalMergeBatch): MergedLLMInputDto {
     const posts: LLMPostDto[] = mergeBatch.submissions.map((submission) => ({
-      id: submission.id,
+      id: submission.name || `t3_${submission.id}`, // Use name (with t3_ prefix) or build it
       title: submission.title,
       content: submission.selftext || '',
       subreddit: submission.subreddit,
-      author: submission.author,
+      author: submission.author || '[deleted]',
       created_at: new Date(submission.created_utc * 1000).toISOString(),
       score: submission.score,
       url: submission.url,
@@ -253,15 +253,15 @@ export class DataMergeService implements OnModuleInit {
     }));
 
     const comments: LLMCommentDto[] = mergeBatch.comments.map((comment) => ({
-      id: comment.id,
+      id: comment.name || `t1_${comment.id}`, // Use name (with t1_ prefix) or build it
       content: comment.body,
-      author: comment.author,
+      author: comment.author || '[deleted]',
       score: comment.score,
       created_at: new Date(comment.created_utc * 1000).toISOString(),
       parent_id: comment.parent_id || null,
-      url:
-        comment.permalink ||
-        `https://reddit.com/r/${comment.subreddit}/comments/${comment.link_id?.replace('t3_', '')}/_/${comment.id}`,
+      url: comment.permalink
+        ? `https://reddit.com${comment.permalink}`
+        : `https://reddit.com/r/${comment.subreddit}/comments/${comment.link_id?.replace('t3_', '')}/_/${comment.id}`,
     }));
 
     return {

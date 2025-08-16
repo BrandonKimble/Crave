@@ -115,7 +115,9 @@ export default () => ({
       process.env.LLM_BASE_URL ||
       'https://generativelanguage.googleapis.com/v1beta',
     timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
-    maxTokens: process.env.LLM_MAX_TOKENS ? parseInt(process.env.LLM_MAX_TOKENS, 10) : 4000,
+    maxTokens: process.env.LLM_MAX_TOKENS
+      ? parseInt(process.env.LLM_MAX_TOKENS, 10)
+      : 4000,
     temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
     topP: parseFloat(process.env.LLM_TOP_P || '0.95'),
     topK: parseInt(process.env.LLM_TOP_K || '40', 10),

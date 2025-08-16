@@ -103,7 +103,7 @@ describe('ContentRetrievalPipelineService', () => {
       ]);
 
       expect(result.llmInput.posts).toHaveLength(1);
-      expect(result.llmInput.posts[0].post_id).toBe('post1');
+      expect(result.llmInput.posts[0].id).toBe('post1');
       expect(result.llmInput.posts[0].comments).toHaveLength(1);
       expect(result.metadata.totalPosts).toBe(1);
       expect(result.metadata.totalComments).toBe(1);
@@ -197,7 +197,7 @@ describe('ContentRetrievalPipelineService', () => {
       );
 
       expect(result.llmInput.posts).toHaveLength(1);
-      expect(result.llmInput.posts[0].post_id).toBe('post1');
+      expect(result.llmInput.posts[0].id).toBe('post1');
       expect(result.metadata.totalComments).toBe(0);
       expect(result.performance.rateLimitHit).toBe(false);
     });

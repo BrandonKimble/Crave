@@ -268,18 +268,18 @@ describe('DataMergeService Integration', () => {
 
       // Verify LLM input format matches expected structure
       llmInput.posts.forEach((post) => {
-        expect(post.post_id).toBeDefined();
+        expect(post.id).toBeDefined();
         expect(post.title).toBeDefined();
         expect(post.subreddit).toBeDefined();
         expect(post.created_at).toBeDefined();
-        expect(post.upvotes).toBeDefined();
+        expect(post.score).toBeDefined();
         expect(post.url).toContain('reddit.com');
       });
 
       llmInput.comments.forEach((comment) => {
         expect(comment.content).toBeDefined();
         expect(comment.author).toBeDefined();
-        expect(comment.upvotes).toBeDefined();
+        expect(comment.score).toBeDefined();
         expect(comment.created_at).toBeDefined();
         expect(comment.url).toBeDefined();
       });

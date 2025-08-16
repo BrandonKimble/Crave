@@ -43,9 +43,7 @@ export class GooglePlacesService implements OnModuleInit {
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('GooglePlacesService');
-    }
+    this.logger = this.loggerService.setContext('GooglePlacesService');
     this.googlePlacesConfig = {
       apiKey: this.configService.get<string>('googlePlaces.apiKey') || '',
       timeout: this.configService.get<number>('googlePlaces.timeout') || 10000,

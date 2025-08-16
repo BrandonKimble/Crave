@@ -153,23 +153,21 @@ describe('HistoricalContentPipelineService Integration', () => {
       expect(llmInput.posts).toHaveLength(1);
 
       const llmPost = llmInput.posts[0];
-      expect(llmPost.post_id).toBe('abc123');
+      expect(llmPost.id).toBe('abc123');
       expect(llmPost.title).toBe('Best BBQ in East Austin?');
       expect(llmPost.subreddit).toBe('austinfood');
       expect(llmPost.comments).toHaveLength(4);
 
       // Verify LLM comments format
-      expect(llmPost.comments[0].comment_id).toBe('def456');
+      expect(llmPost.comments[0].id).toBe('def456');
       expect(llmPost.comments[0].content).toBe(
         'Franklin BBQ is absolutely amazing! Worth the wait.',
       );
-      expect(llmPost.comments[0].upvotes).toBe(18);
+      expect(llmPost.comments[0].score).toBe(18);
       expect(llmPost.comments[0].parent_id).toBeNull(); // Top-level comment
 
       // Verify thread relationships are preserved
-      const replyComment = llmPost.comments.find(
-        (c) => c.comment_id === 'ghi789',
-      );
+      const replyComment = llmPost.comments.find((c) => c.id === 'ghi789');
       expect(replyComment).toBeDefined();
       expect(replyComment!.parent_id).toBe('t1_def456');
 

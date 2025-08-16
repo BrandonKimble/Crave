@@ -5,14 +5,14 @@ import { RedditCollectorModule } from './reddit-collector/reddit-collector.modul
 
 /**
  * Content Processing Module
- * 
+ *
  * Provides async LLM content processing capabilities:
  * - Queue-based processing with Bull Redis queues
  * - Async API endpoints for job submission and status tracking
  * - Integration with LLM processing pipeline
  * - Queue health monitoring and performance metrics
- * 
- * This module serves as the main entry point for Phase 1 and 2 
+ *
+ * This module serves as the main entry point for Phase 1 and 2
  * LLM processing scaling implementation.
  */
 @Module({

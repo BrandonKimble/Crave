@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
@@ -33,23 +33,16 @@ export abstract class BaseExternalApiService implements OnModuleInit {
   };
 
   constructor(
-    protected readonly configService: ConfigService,
-    private readonly loggerService: LoggerService,
+    @Inject(ConfigService) protected readonly configService: ConfigService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
     protected readonly serviceName: string,
-  
-  ) {} 
+  ) {}
 
   async onModuleInit(): Promise<void> {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext(this.serviceName);
-    }
-    if (this.logger) {
-      this.logger.info(`Initializing ${this.serviceName}`);
-    }
+    this.logger = this.loggerService.setContext(this.serviceName);
+    this.logger.info(`Initializing ${this.serviceName}`);
     await this.initializeService();
-    if (this.logger) {
-      this.logger.info(`${this.serviceName} initialized successfully`);
-    }
+    this.logger.info(`${this.serviceName} initialized successfully`);
   }
 
   /**

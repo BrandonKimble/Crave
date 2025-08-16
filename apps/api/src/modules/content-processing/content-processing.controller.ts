@@ -1,9 +1,28 @@
-import { Controller, Post, Get, Body, Param, NotFoundException, OnModuleInit } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  NotFoundException,
+  OnModuleInit,
+  Inject,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue, Job } from 'bull';
-import { IsString, IsOptional, IsNumber, Min, Max, IsIn } from 'class-validator';
+import { Queue } from 'bull';
+import {
+  IsString,
+  IsOptional,
+  IsNumber,
+  Min,
+  Max,
+  IsIn,
+} from 'class-validator';
 import { LoggerService, CorrelationUtils } from '../../shared';
-import { LLMProcessingJobData, LLMProcessingJobResult } from './reddit-collector/llm-processing.processor';
+import {
+  LLMProcessingJobData,
+  LLMProcessingJobResult,
+} from './reddit-collector/llm-processing.processor';
 
 /**
  * DTO for content processing request
@@ -57,7 +76,7 @@ export interface JobStatusResponse {
 
 /**
  * Content Processing Controller
- * 
+ *
  * Provides async endpoints for queue-based LLM content processing:
  * - Submit posts for processing (returns job ID immediately)
  * - Check job status and retrieve results
@@ -69,7 +88,7 @@ export class ContentProcessingController implements OnModuleInit {
 
   constructor(
     @InjectQueue('llm-processing-queue') private readonly llmQueue: Queue,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
@@ -79,14 +98,18 @@ export class ContentProcessingController implements OnModuleInit {
   /**
    * Submit a post for async LLM processing
    * Returns immediately with job ID for status tracking
-   * 
+   *
    * @param dto - Processing request data
    * @returns Job ID and queue status
    */
   @Post('process-async')
-  async processAsync(@Body() dto: ProcessContentDto): Promise<ProcessContentResponse> {
-    const correlationId = CorrelationUtils.getCorrelationId() || CorrelationUtils.generateCorrelationId();
-    
+  async processAsync(
+    @Body() dto: ProcessContentDto,
+  ): Promise<ProcessContentResponse> {
+    const correlationId =
+      CorrelationUtils.getCorrelationId() ||
+      CorrelationUtils.generateCorrelationId();
+
     this.logger.info('Submitting content for async processing', {
       correlationId,
       operation: 'process_async',
@@ -95,8 +118,8 @@ export class ContentProcessingController implements OnModuleInit {
       requestedBy: dto.requestedBy,
       options: {
         commentLimit: dto.commentLimit,
-        sort: dto.sort
-      }
+        sort: dto.sort,
+      },
     });
 
     try {
@@ -108,8 +131,8 @@ export class ContentProcessingController implements OnModuleInit {
         requestedBy: dto.requestedBy,
         options: {
           commentLimit: dto.commentLimit,
-          sort: dto.sort || 'top'
-        }
+          sort: dto.sort || 'top',
+        },
       };
 
       // Simple FIFO queue processing
@@ -124,22 +147,21 @@ export class ContentProcessingController implements OnModuleInit {
         jobId: job.id,
         postId: dto.postId,
         position,
-        estimatedWaitTime
+        estimatedWaitTime,
       });
 
       return {
         jobId: String(job.id),
         status: 'queued',
         position,
-        estimatedWaitTime
+        estimatedWaitTime,
       };
-
     } catch (error) {
       this.logger.error('Failed to submit job for processing', {
         correlationId,
         postId: dto.postId,
         subreddit: dto.subreddit,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       throw error;
@@ -148,82 +170,94 @@ export class ContentProcessingController implements OnModuleInit {
 
   /**
    * Get status of a processing job
-   * 
+   *
    * @param jobId - Job ID to check
    * @returns Job status and results (if completed)
    */
   @Get('status/:jobId')
   async getStatus(@Param('jobId') jobId: string): Promise<JobStatusResponse> {
-    const correlationId = CorrelationUtils.getCorrelationId() || CorrelationUtils.generateCorrelationId();
+    const correlationId =
+      CorrelationUtils.getCorrelationId() ||
+      CorrelationUtils.generateCorrelationId();
 
     this.logger.debug('Checking job status', {
       correlationId,
       operation: 'get_status',
-      jobId
+      jobId,
     });
 
     try {
       const job = await this.llmQueue.getJob(jobId);
-      
+
       if (!job) {
         throw new NotFoundException(`Job with ID ${jobId} not found`);
       }
 
       const state = await job.getState();
       const progress = job.progress();
-      
+
       // Map Bull job states to our response types
-      let status: 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'paused';
+      let status:
+        | 'waiting'
+        | 'active'
+        | 'completed'
+        | 'failed'
+        | 'delayed'
+        | 'paused';
       if (state === 'stuck') {
         status = 'delayed'; // Map stuck to delayed
       } else {
-        status = state as 'waiting' | 'active' | 'completed' | 'failed' | 'delayed' | 'paused';
+        status = state as
+          | 'waiting'
+          | 'active'
+          | 'completed'
+          | 'failed'
+          | 'delayed'
+          | 'paused';
       }
-      
+
       // Base response
       const response: JobStatusResponse = {
         jobId: String(job.id),
         status,
         progress,
         processedOn: job.processedOn || undefined,
-        finishedOn: job.finishedOn || undefined
+        finishedOn: job.finishedOn || undefined,
       };
 
       // Add specific data based on job state
       if (state === 'completed' && job.returnvalue) {
         response.result = job.returnvalue as LLMProcessingJobResult;
-        
+
         this.logger.info('Job completed successfully', {
           correlationId,
           jobId,
           postId: response.result.postId,
           totalMentions: response.result.totalMentions,
-          processingDuration: response.result.processingDuration
+          processingDuration: response.result.processingDuration,
         });
       }
 
       if (state === 'failed' && job.failedReason) {
         response.failedReason = job.failedReason;
-        
+
         this.logger.warn('Job failed', {
           correlationId,
           jobId,
-          failedReason: job.failedReason
+          failedReason: job.failedReason,
         });
       }
 
       if (state === 'waiting') {
-        const waiting = await this.llmQueue.getWaitingCount();
         const waitingJobs = await this.llmQueue.getWaiting();
-        
+
         // Find position of this job in the queue
-        const position = waitingJobs.findIndex(j => j.id === job.id) + 1;
+        const position = waitingJobs.findIndex((j) => j.id === job.id) + 1;
         response.position = position;
         response.estimatedCompletion = this.estimateCompletionTime(position);
       }
 
       return response;
-
     } catch (error) {
       if (error instanceof NotFoundException) {
         throw error;
@@ -232,7 +266,7 @@ export class ContentProcessingController implements OnModuleInit {
       this.logger.error('Failed to get job status', {
         correlationId,
         jobId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       throw error;
@@ -241,7 +275,7 @@ export class ContentProcessingController implements OnModuleInit {
 
   /**
    * Get queue health and statistics
-   * 
+   *
    * @returns Queue health information
    */
   @Get('queue/status')
@@ -255,17 +289,20 @@ export class ContentProcessingController implements OnModuleInit {
     health: 'healthy' | 'warning' | 'critical';
     message?: string;
   }> {
-    const correlationId = CorrelationUtils.getCorrelationId() || CorrelationUtils.generateCorrelationId();
+    const correlationId =
+      CorrelationUtils.getCorrelationId() ||
+      CorrelationUtils.generateCorrelationId();
 
     try {
-      const [waiting, active, completed, failed, delayed, paused] = await Promise.all([
-        this.llmQueue.getWaitingCount(),
-        this.llmQueue.getActiveCount(),
-        this.llmQueue.getCompletedCount(),
-        this.llmQueue.getFailedCount(),
-        this.llmQueue.getDelayedCount(),
-        this.llmQueue.getPausedCount(),
-      ]);
+      const [waiting, active, completed, failed, delayed, paused] =
+        await Promise.all([
+          this.llmQueue.getWaitingCount(),
+          this.llmQueue.getActiveCount(),
+          this.llmQueue.getCompletedCount(),
+          this.llmQueue.getFailedCount(),
+          this.llmQueue.getDelayedCount(),
+          this.llmQueue.getPausedCount(),
+        ]);
 
       // Determine health status
       let health: 'healthy' | 'warning' | 'critical' = 'healthy';
@@ -278,7 +315,8 @@ export class ContentProcessingController implements OnModuleInit {
 
       if (waiting > 500 && active === 0) {
         health = 'critical';
-        message = 'Queue may be stuck - no active processing with large backlog';
+        message =
+          'Queue may be stuck - no active processing with large backlog';
       }
 
       if (failed > completed && completed > 0) {
@@ -292,7 +330,7 @@ export class ContentProcessingController implements OnModuleInit {
         active,
         completed,
         failed,
-        health
+        health,
       });
 
       return {
@@ -303,13 +341,12 @@ export class ContentProcessingController implements OnModuleInit {
         delayed,
         paused,
         health,
-        message
+        message,
       };
-
     } catch (error) {
       this.logger.error('Failed to get queue status', {
         correlationId,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
 
       throw error;
@@ -318,28 +355,28 @@ export class ContentProcessingController implements OnModuleInit {
 
   /**
    * Estimate wait time based on queue position
-   * 
+   *
    * @param position - Position in queue
    * @returns Estimated wait time in seconds
    */
   private estimateWaitTime(position: number): number {
-    // Rough estimate: 
+    // Rough estimate:
     // - 5 concurrent processing slots
     // - Average 60 seconds per job (mix of small and large posts)
     const concurrency = 5;
     const averageJobTime = 60;
-    
+
     return Math.ceil(position / concurrency) * averageJobTime;
   }
 
   /**
    * Estimate completion time for a job in queue
-   * 
+   *
    * @param position - Position in queue
    * @returns Estimated completion timestamp
    */
   private estimateCompletionTime(position: number): number {
     const estimatedWait = this.estimateWaitTime(position);
-    return Date.now() + (estimatedWait * 1000);
+    return Date.now() + estimatedWait * 1000;
   }
 }

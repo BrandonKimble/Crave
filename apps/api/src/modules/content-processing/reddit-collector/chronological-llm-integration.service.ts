@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { HistoricalLlmIntegrationAdapter } from './historical-llm-integration.adapter';
 import { ChronologicalCollectionResult } from './chronological-collection.service';
@@ -64,9 +64,8 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
 
   constructor(
     private readonly historicalIntegration: HistoricalLlmIntegrationAdapter,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ChronologicalLlmIntegration');

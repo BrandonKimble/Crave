@@ -257,11 +257,11 @@ describe('HistoricalContentPipelineService', () => {
       const result = await service.convertToLLMFormat(mockBatch, false);
 
       expect(result.posts).toHaveLength(1);
-      expect(result.posts[0].post_id).toBe('post123');
+      expect(result.posts[0].id).toBe('post123');
       expect(result.posts[0].title).toBe('Best BBQ in Austin');
       expect(result.posts[0].comments).toHaveLength(2);
-      expect(result.posts[0].comments[0].comment_id).toBe('comment1');
-      expect(result.posts[0].comments[1].comment_id).toBe('comment2');
+      expect(result.posts[0].comments[0].id).toBe('comment1');
+      expect(result.posts[0].comments[1].id).toBe('comment2');
     });
 
     it('should handle empty batch', async () => {

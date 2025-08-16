@@ -11,7 +11,7 @@ export class GooglePlacesHealthController implements OnModuleInit {
   constructor(
     private readonly googlePlacesService: GooglePlacesService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-  ) {} 
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('GooglePlacesHealthController');

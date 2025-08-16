@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { EntityType } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 
@@ -36,12 +36,12 @@ export class AliasManagementService implements OnModuleInit {
     deduplicationEnabled: true,
   };
 
-  constructor(private readonly loggerService: LoggerService) {}
+  constructor(
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('AliasManagementService');
-    }
+    this.logger = this.loggerService.setContext('AliasManagementService');
   }
 
   /**

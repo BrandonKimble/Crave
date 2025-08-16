@@ -6,7 +6,6 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
 import { SecurityService } from './modules/infrastructure/security';
@@ -19,11 +18,7 @@ async function bootstrap() {
   );
 
   const configService = app.get(ConfigService);
-  const securityService = app.get(SecurityService);
   const isProd = configService.get<string>('NODE_ENV') === 'production';
-
-  // Use Winston logger for NestJS
-  app.useLogger(app.get(WINSTON_MODULE_NEST_PROVIDER));
 
   // Note: Global exception filter is already configured in SharedModule
 
@@ -58,6 +53,7 @@ async function bootstrap() {
   });
 
   // Enhanced CORS configuration
+  const securityService = app.get(SecurityService);
   app.enableCors(securityService.getCorsConfiguration());
 
   // Enhanced validation with security settings

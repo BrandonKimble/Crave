@@ -77,16 +77,14 @@ export class LLMMentionDto {
   @IsSafeString()
   temp_id: string;
 
-  // Restaurant fields (ALL preserved)
-  @IsOptional()
+  // Restaurant fields (REQUIRED)
   @IsString()
   @IsSafeString()
-  restaurant_normalized_name?: string | null;
+  restaurant_normalized_name: string;
 
-  @IsOptional()
   @IsString()
   @IsSafeString()
-  restaurant_original_text?: string | null;
+  restaurant_original_text: string;
 
   @IsString()
   @IsSafeString()
@@ -148,19 +146,16 @@ export class LLMMentionDto {
   @IsSafeString()
   source_content: string;
 
-  @IsOptional()
   @IsNumber()
   @Min(0)
-  source_upvotes?: number | null;
+  source_ups: number;
 
-  @IsOptional()
   @IsString()
   @IsSafeString()
-  source_url?: string | null;
+  source_url: string;
 
-  @IsOptional()
   @IsDateString()
-  source_created_at?: string | null;
+  source_created_at: string;
 }
 
 /**

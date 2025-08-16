@@ -198,7 +198,7 @@ describe('DataMergeService Production Validation', () => {
 
       // Verify post structure
       const post = llmInput.posts[0];
-      expect(post.post_id).toBe('test_post');
+      expect(post.id).toBe('test_post');
       expect(post.title).toBe('Test Food Post');
       expect(post.subreddit).toBe('austinfood');
       expect(post.created_at).toBeDefined();
@@ -206,7 +206,7 @@ describe('DataMergeService Production Validation', () => {
 
       // Verify comment structure
       const comment = llmInput.comments[0];
-      expect(comment.comment_id).toBe('test_comment');
+      expect(comment.id).toBe('test_comment');
       expect(comment.content).toBe('Great food!');
       expect(comment.author).toBe('test_commenter');
       expect(comment.created_at).toBeDefined();

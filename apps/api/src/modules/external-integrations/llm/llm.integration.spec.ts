@@ -53,30 +53,31 @@ describe('Gemini Integration Test', () => {
       const sampleInput: LLMInputStructure = {
         posts: [
           {
-            post_id: 'e2e_test_123',
+            id: 'e2e_test_123',
             title: 'Best BBQ in Austin',
             content:
               'Franklin BBQ has incredible brisket. The line is worth it!',
             subreddit: 'austinfood',
+            author: 'test_author',
             url: 'https://reddit.com/r/austinfood/comments/test123',
-            upvotes: 25,
+            score: 25,
             created_at: '2024-01-15T12:00:00Z',
             comments: [
               {
-                comment_id: 'comment_456',
+                id: 'comment_456',
                 content:
                   'I agree! Their ribs are amazing too. Try the pork shoulder.',
                 author: 'bbq_lover',
-                upvotes: 12,
+                score: 12,
                 created_at: '2024-01-15T12:30:00Z',
                 parent_id: null,
                 url: 'https://reddit.com/r/austinfood/comments/test123/comment_456',
               },
               {
-                comment_id: 'comment_789',
+                id: 'comment_789',
                 content: 'The mac and cheese is also fantastic as a side.',
                 author: 'foodie_austin',
-                upvotes: 8,
+                score: 8,
                 created_at: '2024-01-15T13:00:00Z',
                 parent_id: 'comment_456',
                 url: 'https://reddit.com/r/austinfood/comments/test123/comment_789',
@@ -105,13 +106,13 @@ describe('Gemini Integration Test', () => {
           const mention = result.mentions[0];
 
           expect(mention).toHaveProperty('temp_id');
-          expect(mention).toHaveProperty('restaurant');
-          expect(mention).toHaveProperty('source');
-          expect(mention.source).toHaveProperty('type');
-          expect(mention.source).toHaveProperty('id');
+          expect(mention).toHaveProperty('restaurant_normalized_name');
+          expect(mention).toHaveProperty('source_type');
+          expect(mention).toHaveProperty('source_id');
+          expect(mention).toHaveProperty('source_content');
 
           // Validate that booleans are properly set
-          expect(typeof mention.is_menu_item).toBe('boolean');
+          expect(typeof mention.dish_is_menu_item).toBe('boolean');
           expect(typeof mention.general_praise).toBe('boolean');
         }
 
@@ -128,12 +129,12 @@ describe('Gemini Integration Test', () => {
         if (result.mentions.length > 0) {
           console.log(
             `- Sample mention restaurant: ${
-              result.mentions[0].restaurant?.normalized_name || 'N/A'
+              result.mentions[0].restaurant_normalized_name || 'N/A'
             }`,
           );
           console.log(
             `- Sample mention dish: ${
-              result.mentions[0].dish_or_category?.normalized_name || 'N/A'
+              result.mentions[0].dish_primary_category || 'N/A'
             }`,
           );
         }

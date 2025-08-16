@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-misused-promises, @typescript-eslint/no-unsafe-call, @typescript-eslint/require-await, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-require-imports, @typescript-eslint/no-unsafe-member-access */
 // Reason: Service integration with OS monitoring, Promise callbacks, and dynamic imports
 
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   ResourceMonitoringConfig,
@@ -29,8 +29,8 @@ export class ResourceMonitoringService implements OnModuleInit {
   private resourceStats = new Map<string, ResourceUsageStats>();
 
   constructor(
-    private readonly loggerService: LoggerService
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ResourceMonitoring');

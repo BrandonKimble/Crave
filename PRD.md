@@ -1253,9 +1253,9 @@ _**Note**: Structure will evolve during implementation. Key principles are entit
       } | null,
       "dish_attributes": [
         {
-          "attribute": "string",
+          "attribute": ["string"] | null,
           "type": "selective|descriptive"
-        }
+        },
       ] | null,
       "is_menu_item": boolean,
       "general_praise": boolean,

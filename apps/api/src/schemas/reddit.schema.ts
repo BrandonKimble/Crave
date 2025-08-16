@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Reddit Data Schemas
- * 
+ *
  * Type-safe validation schemas for Reddit data structures.
  * Replaces custom validators and type definitions.
  */
@@ -73,7 +73,10 @@ export const RedditCommentSchema = z.object({
   score: RedditScoreSchema,
   subreddit: z.string().min(1).max(50),
   link_id: z.string().regex(/^t3_[a-z0-9]+$/i),
-  parent_id: z.string().regex(/^t[1-3]_[a-z0-9]+$/i).optional(),
+  parent_id: z
+    .string()
+    .regex(/^t[1-3]_[a-z0-9]+$/i)
+    .optional(),
   permalink: RedditPermalinkSchema,
   depth: z.number().int().min(0).default(0),
   edited: z.union([z.boolean(), z.number()]).default(false),
@@ -109,10 +112,12 @@ export const RedditListingSchema = z.object({
   data: z.object({
     after: z.string().nullable(),
     before: z.string().nullable(),
-    children: z.array(z.object({
-      kind: z.enum(['t1', 't3']),
-      data: z.any(),
-    })),
+    children: z.array(
+      z.object({
+        kind: z.enum(['t1', 't3']),
+        data: z.any(),
+      }),
+    ),
     dist: z.number().nullable(),
     modhash: z.string().nullable(),
   }),
@@ -134,14 +139,18 @@ export type RedditApiError = z.infer<typeof RedditApiErrorSchema>;
 
 export const RedditSearchOptionsSchema = z.object({
   q: z.string().min(1),
-  sort: z.enum(['relevance', 'hot', 'top', 'new', 'comments']).default('relevance'),
+  sort: z
+    .enum(['relevance', 'hot', 'top', 'new', 'comments'])
+    .default('relevance'),
   time: z.enum(['all', 'year', 'month', 'week', 'day', 'hour']).optional(),
   limit: z.number().int().min(1).max(100).default(25),
   after: z.string().optional(),
   before: z.string().optional(),
   include_over_18: z.boolean().default(false),
   restrict_sr: z.boolean().default(false),
-  type: z.enum(['link', 'self', 'image', 'video', 'videogif', 'gif']).optional(),
+  type: z
+    .enum(['link', 'self', 'image', 'video', 'videogif', 'gif'])
+    .optional(),
   syntax: z.enum(['cloudsearch', 'lucene', 'plain']).default('plain'),
 });
 
@@ -223,7 +232,7 @@ export function parseRedditListing(data: unknown): {
   const listing = RedditListingSchema.parse(data);
   const posts: RedditPost[] = [];
   const comments: RedditComment[] = [];
-  
+
   for (const child of listing.data.children) {
     if (child.kind === 't3') {
       const post = safeValidateRedditPost(child.data);
@@ -233,7 +242,7 @@ export function parseRedditListing(data: unknown): {
       if (comment) comments.push(comment);
     }
   }
-  
+
   return {
     posts,
     comments,

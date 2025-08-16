@@ -122,7 +122,10 @@ export class KeywordSearchOrchestratorService {
       });
 
       // Process search results through unified processing pipeline
-      await this.processSearchResults(results, correlationId || 'keyword-search');
+      await this.processSearchResults(
+        results,
+        correlationId || 'keyword-search',
+      );
 
       const totalDuration = Date.now() - startTime;
       results.performance.totalDuration = totalDuration;

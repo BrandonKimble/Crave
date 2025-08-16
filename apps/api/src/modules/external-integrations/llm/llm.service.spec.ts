@@ -139,19 +139,20 @@ describe('LLMService', () => {
     const mockInput: LLMInputStructure = {
       posts: [
         {
-          post_id: 'test123',
+          id: 'test123',
           title: 'Great food at Franklin BBQ',
           content: 'Franklin BBQ has amazing brisket',
           subreddit: 'austinfood',
+          author: 'test_author',
           url: 'https://reddit.com/test',
-          upvotes: 10,
+          score: 10,
           created_at: '2024-01-01T00:00:00Z',
           comments: [
             {
-              comment_id: 'comment123',
+              id: 'comment123',
               content: 'Their ribs are also excellent',
               author: 'foodlover',
-              upvotes: 5,
+              score: 5,
               created_at: '2024-01-01T01:00:00Z',
               parent_id: null,
               url: 'https://reddit.com/test#comment123',
@@ -165,32 +166,23 @@ describe('LLMService', () => {
       mentions: [
         {
           temp_id: 'mention_1',
-          restaurant: {
-            normalized_name: 'franklin bbq',
-            original_text: 'Franklin BBQ',
-            temp_id: 'restaurant_1',
-          },
+          restaurant_normalized_name: 'franklin bbq',
+          restaurant_original_text: 'Franklin BBQ',
+          restaurant_temp_id: 'restaurant_1',
           restaurant_attributes: null,
-          dish_or_category: {
-            normalized_name: 'brisket',
-            original_text: 'brisket',
-            temp_id: 'dish_1',
-          },
-          dish_attributes: [
-            {
-              attribute: 'amazing',
-              type: 'descriptive',
-            },
-          ],
-          is_menu_item: true,
+          dish_primary_category: 'brisket',
+          dish_original_text: 'brisket',
+          dish_temp_id: 'dish_1',
+          dish_attributes_selective: null,
+          dish_attributes_descriptive: ['amazing'],
+          dish_is_menu_item: true,
           general_praise: false,
-          source: {
-            type: 'post',
-            id: 'test123',
-            url: 'https://reddit.com/test',
-            upvotes: 10,
-            created_at: '2024-01-01T00:00:00Z',
-          },
+          source_type: 'post',
+          source_id: 'test123',
+          source_content: 'Test post content',
+          source_url: 'https://reddit.com/test',
+          source_ups: 10,
+          source_created_at: '2024-01-01T00:00:00Z',
         },
       ],
     };
@@ -463,12 +455,13 @@ describe('LLMService', () => {
       const validInput = {
         posts: [
           {
-            post_id: 'test123',
+            id: 'test123',
             title: 'Great food at Franklin BBQ',
             content: 'Franklin BBQ has amazing brisket',
             subreddit: 'austinfood',
+            author: 'test_author',
             url: 'https://reddit.com/test',
-            upvotes: 10,
+            score: 10,
             created_at: '2024-01-01T00:00:00Z',
             comments: [],
           },
@@ -496,23 +489,23 @@ describe('LLMService', () => {
         mentions: [
           {
             temp_id: 'mention_1',
-            restaurant: {
-              normalized_name: 'franklin bbq',
-              original_text: 'Franklin BBQ',
-              temp_id: 'restaurant_1',
-            },
+            restaurant_normalized_name: 'franklin bbq',
+            restaurant_original_text: 'Franklin BBQ',
+            restaurant_temp_id: 'restaurant_1',
             restaurant_attributes: null,
-            dish_or_category: null,
-            dish_attributes: null,
-            is_menu_item: true,
+            dish_primary_category: null,
+            dish_original_text: null,
+            dish_temp_id: null,
+            dish_attributes_selective: null,
+            dish_attributes_descriptive: null,
+            dish_is_menu_item: true,
             general_praise: false,
-            source: {
-              type: 'post' as const,
-              id: 'test123',
-              url: 'https://reddit.com/test',
-              upvotes: 10,
-              created_at: '2024-01-01T00:00:00Z',
-            },
+            source_type: 'post' as const,
+            source_id: 'test123',
+            source_url: 'https://reddit.com/test',
+            source_ups: 10,
+            source_created_at: '2024-01-01T00:00:00Z',
+            source_content: 'Test content',
           },
         ],
       };

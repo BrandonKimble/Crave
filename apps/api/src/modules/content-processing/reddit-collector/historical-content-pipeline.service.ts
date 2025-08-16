@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService } from '../../../shared';
 import {
   RedditDataExtractorService,
@@ -46,9 +46,8 @@ export class HistoricalContentPipelineService implements OnModuleInit {
 
   constructor(
     private readonly redditDataExtractor: RedditDataExtractorService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('HistoricalContentPipeline');

@@ -76,20 +76,21 @@ describe('Historical LLM Integration', () => {
   const mockLlmInput: LLMInputStructure = {
     posts: [
       {
-        post_id: 'test_submission_1',
+        id: 'test_submission_1',
         title: 'Best BBQ in Austin - Franklin BBQ Review',
         content:
           'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
         subreddit: 'austinfood',
+        author: 'test_author',
         url: 'https://reddit.com/r/austinfood/test_submission_1',
-        upvotes: 45,
+        score: 45,
         created_at: '2022-01-01T00:00:00.000Z',
         comments: [
           {
-            comment_id: 'test_comment_1',
+            id: 'test_comment_1',
             content: 'Their brisket is incredible, best in Texas!',
             author: 'bbq_lover',
-            upvotes: 12,
+            score: 12,
             created_at: '2022-01-01T00:10:00.000Z',
             parent_id: null,
             url: 'https://reddit.com/r/austinfood/test_comment_1',
@@ -103,32 +104,24 @@ describe('Historical LLM Integration', () => {
     mentions: [
       {
         temp_id: 'mention_1',
-        restaurant: {
-          normalized_name: 'franklin bbq',
-          original_text: 'Franklin BBQ',
-          temp_id: 'restaurant_1',
-        },
+        restaurant_normalized_name: 'franklin bbq',
+        restaurant_original_text: 'Franklin BBQ',
+        restaurant_temp_id: 'restaurant_1',
         restaurant_attributes: null,
-        dish_or_category: {
-          normalized_name: 'brisket',
-          original_text: 'brisket',
-          temp_id: 'dish_1',
-        },
-        dish_attributes: [
-          {
-            attribute: 'amazing',
-            type: 'descriptive',
-          },
-        ],
-        is_menu_item: true,
+        dish_primary_category: 'brisket',
+        dish_original_text: 'brisket',
+        dish_temp_id: 'dish_1',
+        dish_attributes_selective: null,
+        dish_attributes_descriptive: ['amazing'],
+        dish_is_menu_item: true,
         general_praise: true,
-        source: {
-          type: 'post',
-          id: 'test_submission_1',
-          url: 'https://reddit.com/r/austinfood/test_submission_1',
-          upvotes: 45,
-          created_at: '2022-01-01T00:00:00.000Z',
-        },
+        source_type: 'post',
+        source_id: 'test_submission_1',
+        source_content:
+          'Franklin BBQ has the most amazing brisket in Austin. The wait is worth it!',
+        source_url: 'https://reddit.com/r/austinfood/test_submission_1',
+        source_ups: 45,
+        source_created_at: '2022-01-01T00:00:00.000Z',
       },
     ],
   };
@@ -456,19 +449,23 @@ describe('Historical LLM Integration', () => {
     it('should validate LLM output structure for entity resolution', () => {
       // Test that LLM output contains all fields needed for entity resolution
       expect(mockLlmOutput.mentions[0]).toHaveProperty('temp_id');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('restaurant');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('dish_or_category');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('dish_attributes');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('is_menu_item');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('general_praise');
-      expect(mockLlmOutput.mentions[0]).toHaveProperty('source');
-
-      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty('temp_id');
-      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty(
-        'normalized_name',
+      expect(mockLlmOutput.mentions[0]).toHaveProperty(
+        'restaurant_normalized_name',
       );
-      expect(mockLlmOutput.mentions[0].restaurant).toHaveProperty(
-        'original_text',
+      expect(mockLlmOutput.mentions[0]).toHaveProperty('dish_primary_category');
+      expect(mockLlmOutput.mentions[0]).toHaveProperty(
+        'dish_attributes_descriptive',
+      );
+      expect(mockLlmOutput.mentions[0]).toHaveProperty('dish_is_menu_item');
+      expect(mockLlmOutput.mentions[0]).toHaveProperty('general_praise');
+      expect(mockLlmOutput.mentions[0]).toHaveProperty('source_type');
+
+      expect(mockLlmOutput.mentions[0]).toHaveProperty('restaurant_temp_id');
+      expect(mockLlmOutput.mentions[0]).toHaveProperty(
+        'restaurant_normalized_name',
+      );
+      expect(mockLlmOutput.mentions[0]).toHaveProperty(
+        'restaurant_original_text',
       );
     });
   });

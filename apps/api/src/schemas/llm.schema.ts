@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * LLM Data Schemas
- * 
+ *
  * Type-safe validation schemas for LLM input/output structures.
  * Ensures data integrity in LLM processing pipeline.
  */
@@ -52,22 +52,22 @@ export const LLMMentionSchema = z.object({
   restaurant_temp_id: z.string(),
   dish_temp_id: z.string().optional(),
   attribute_temp_ids: z.array(z.string()).default([]),
-  
+
   // Content
   source_content: z.string(),
   source_url: z.string().url(),
   author: z.string(),
   created_at: z.number(),
-  
+
   // Sentiment & Quality
   sentiment: z.enum(['positive', 'negative', 'neutral', 'mixed']),
   confidence_score: z.number().min(0).max(1),
   general_praise: z.boolean(),
-  
+
   // Dish specifics (when dish_temp_id exists)
   dish_is_menu_item: z.boolean().optional(),
   dish_category: z.string().optional(),
-  
+
   // Metadata
   reddit_post_id: z.string(),
   reddit_comment_id: z.string().optional(),
@@ -85,15 +85,19 @@ export const LLMFlatOutputStructureSchema = z.object({
   dishes: z.array(LLMDishSchema),
   attributes: z.array(LLMAttributeSchema),
   mentions: z.array(LLMMentionSchema),
-  processing_metadata: z.object({
-    chunk_id: z.string(),
-    processing_time_ms: z.number(),
-    token_count: z.number().optional(),
-    model: z.string(),
-  }).optional(),
+  processing_metadata: z
+    .object({
+      chunk_id: z.string(),
+      processing_time_ms: z.number(),
+      token_count: z.number().optional(),
+      model: z.string(),
+    })
+    .optional(),
 });
 
-export type LLMFlatOutputStructure = z.infer<typeof LLMFlatOutputStructureSchema>;
+export type LLMFlatOutputStructure = z.infer<
+  typeof LLMFlatOutputStructureSchema
+>;
 
 // ==========================================
 // LLM Input Structure
@@ -129,11 +133,13 @@ export type LLMInputComment = z.infer<typeof LLMInputCommentSchema>;
 export const LLMInputSchema = z.object({
   posts: z.array(LLMInputPostSchema),
   comments: z.array(LLMInputCommentSchema),
-  metadata: z.object({
-    subreddit: z.string(),
-    batch_id: z.string(),
-    timestamp: z.date(),
-  }).optional(),
+  metadata: z
+    .object({
+      subreddit: z.string(),
+      batch_id: z.string(),
+      timestamp: z.date(),
+    })
+    .optional(),
 });
 
 export type LLMInput = z.infer<typeof LLMInputSchema>;
@@ -156,12 +162,14 @@ export const LLMChunkResultSchema = z.object({
   chunks: z.array(LLMChunkSchema),
   total_chunks: z.number(),
   total_comments: z.number(),
-  metadata: z.array(z.object({
-    chunkId: z.string(),
-    commentCount: z.number(),
-    estimatedProcessingTime: z.number(),
-    rootCommentScore: z.number().optional(),
-  })),
+  metadata: z.array(
+    z.object({
+      chunkId: z.string(),
+      commentCount: z.number(),
+      estimatedProcessingTime: z.number(),
+      rootCommentScore: z.number().optional(),
+    }),
+  ),
 });
 
 export type LLMChunkResult = z.infer<typeof LLMChunkResultSchema>;
@@ -198,7 +206,9 @@ export function validateLLMOutput(data: unknown): LLMFlatOutputStructure {
 /**
  * Safe validation that returns null on failure
  */
-export function safeValidateLLMOutput(data: unknown): LLMFlatOutputStructure | null {
+export function safeValidateLLMOutput(
+  data: unknown,
+): LLMFlatOutputStructure | null {
   const result = LLMFlatOutputStructureSchema.safeParse(data);
   return result.success ? result.data : null;
 }
@@ -220,19 +230,21 @@ export function validateLLMMention(data: unknown): LLMMention {
 /**
  * Merge multiple LLM outputs
  */
-export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutputStructure {
+export function mergeLLMOutputs(
+  outputs: LLMFlatOutputStructure[],
+): LLMFlatOutputStructure {
   const merged: LLMFlatOutputStructure = {
     restaurants: [],
     dishes: [],
     attributes: [],
     mentions: [],
   };
-  
+
   const seenRestaurants = new Set<string>();
   const seenDishes = new Set<string>();
   const seenAttributes = new Set<string>();
   const seenMentions = new Set<string>();
-  
+
   for (const output of outputs) {
     // Merge restaurants (deduplicated)
     for (const restaurant of output.restaurants) {
@@ -241,7 +253,7 @@ export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutpu
         seenRestaurants.add(restaurant.temp_id);
       }
     }
-    
+
     // Merge dishes (deduplicated)
     for (const dish of output.dishes) {
       if (!seenDishes.has(dish.temp_id)) {
@@ -249,7 +261,7 @@ export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutpu
         seenDishes.add(dish.temp_id);
       }
     }
-    
+
     // Merge attributes (deduplicated)
     for (const attribute of output.attributes) {
       if (!seenAttributes.has(attribute.temp_id)) {
@@ -257,7 +269,7 @@ export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutpu
         seenAttributes.add(attribute.temp_id);
       }
     }
-    
+
     // Merge mentions (deduplicated)
     for (const mention of output.mentions) {
       if (!seenMentions.has(mention.temp_id)) {
@@ -266,7 +278,7 @@ export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutpu
       }
     }
   }
-  
+
   return merged;
 }
 
@@ -276,33 +288,37 @@ export function mergeLLMOutputs(outputs: LLMFlatOutputStructure[]): LLMFlatOutpu
  */
 export function calculateQualityScore(mentions: LLMMention[]): number {
   if (mentions.length === 0) return 0;
-  
+
   let score = 0;
   let weight = 0;
-  
+
   for (const mention of mentions) {
     // Base score from confidence
     const baseScore = mention.confidence_score * 100;
-    
+
     // Sentiment multiplier
-    const sentimentMultiplier = 
-      mention.sentiment === 'positive' ? 1.2 :
-      mention.sentiment === 'negative' ? 0.8 :
-      mention.sentiment === 'mixed' ? 1.0 : 0.9;
-    
+    const sentimentMultiplier =
+      mention.sentiment === 'positive'
+        ? 1.2
+        : mention.sentiment === 'negative'
+          ? 0.8
+          : mention.sentiment === 'mixed'
+            ? 1.0
+            : 0.9;
+
     // General praise bonus
     const praiseBonus = mention.general_praise ? 10 : 0;
-    
+
     // Calculate mention score
-    const mentionScore = (baseScore * sentimentMultiplier) + praiseBonus;
-    
+    const mentionScore = baseScore * sentimentMultiplier + praiseBonus;
+
     // Weight by recency (newer = higher weight)
     const ageInDays = (Date.now() / 1000 - mention.created_at) / 86400;
-    const recencyWeight = Math.max(0.5, 1 - (ageInDays / 365));
-    
+    const recencyWeight = Math.max(0.5, 1 - ageInDays / 365);
+
     score += mentionScore * recencyWeight;
     weight += recencyWeight;
   }
-  
+
   return weight > 0 ? Math.min(100, score / weight) : 0;
 }

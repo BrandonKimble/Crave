@@ -6,6 +6,10 @@
 - **Code Review Loop**: Always re-run code review after fixes (don't skip to completion)
 - **Project Manifest**: Update `.simone/00_PROJECT_MANIFEST.md` along with sprint/milestone status in step 5 of do_task.md command
 - **Task Renaming**: Rename completed tasks to `TX##_` format for recognition
+- **Dependency Injection**: Do NOT add unnecessary backward compatibility or safety checks that add complexity and would obscure real issues. Trust NestJS DI system.
+- **Integration Testing**: Use test-pipeline.ts as the primary validation tool for the entire NestJS app without shortcuts or workarounds. Comment out (don't remove) services not yet being validated to maintain context for future phases.
+- **LLM Model**: Always use the latest Gemini 2.5 Flash model. Never downgrade to older models when debugging API issues - the model is never the problem.
+- **Code Cleanup**: Always remove unused, refactored, or replaced code as we go. Don't leave deprecated methods or dead code paths.
 
 ## Project Overview
 
@@ -61,6 +65,10 @@ turbo run lint && turbo run type-check
 - **Errors**: Unified AppException with error codes (not 15+ custom classes)
 - **Config**: Single source in `/src/core/config/app.config.ts`
 - **Events**: Event-driven decoupling with EventEmitter2
+- **Dependency Injection**: Do NOT add unnecessary backward compatibility or safety checks that add complexity and would obscure real issues. Trust NestJS DI system.
+- **Integration Testing**: Use test-pipeline.ts as the primary validation tool for the entire NestJS app without shortcuts or workarounds. Comment out (don't remove) services not yet being validated to maintain context for future phases.
+- **LLM Model**: Always use the latest Gemini 2.5 Flash model. Never downgrade to older models when debugging API issues - the model is never the problem.
+- **Code Cleanup**: Always remove unused, refactored, or replaced code as we go. Don't leave deprecated methods or dead code paths.
 
 ## Database Schema (Key Tables)
 - **entities**: Restaurants, dishes_or_categories, attributes (unified with `entity_type`)

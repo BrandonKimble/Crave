@@ -377,9 +377,9 @@ describe('Duplicate Detection Integration', () => {
       // Verify LLM input structure
       expect(llmInput.posts).toHaveLength(1); // Duplicate filtered out
       expect(llmInput.comments).toHaveLength(1);
-      expect(llmInput.posts[0].post_id).toBe('llm_post');
+      expect(llmInput.posts[0].id).toBe('llm_post');
       expect(llmInput.posts[0].title).toBe('Best tacos in Austin');
-      expect(llmInput.comments[0].comment_id).toBe('llm_comment');
+      expect(llmInput.comments[0].id).toBe('llm_comment');
       expect(llmInput.comments[0].content).toBe('Try Suerte for amazing tacos');
 
       // Verify source metadata includes duplicate analysis

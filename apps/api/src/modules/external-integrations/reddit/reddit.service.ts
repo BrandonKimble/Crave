@@ -7,7 +7,6 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import type { AxiosError } from 'axios';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { filterRedditResponse } from './reddit-data-filter';
 import {
   RedditApiError,
   RedditAuthenticationError,
@@ -285,13 +284,11 @@ export class RedditService implements OnModuleInit {
     private readonly httpService: HttpService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
-    private readonly loggerService: LoggerService,
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('RedditService');
-    }
+    this.logger = this.loggerService.setContext('RedditService');
     this.redditConfig = {
       clientId: this.configService.get<string>('reddit.clientId') || '',
       clientSecret: this.configService.get<string>('reddit.clientSecret') || '',
@@ -919,36 +916,17 @@ export class RedditService implements OnModuleInit {
       maxDepth = Math.max(maxDepth, depth);
 
       commentList.forEach((comment: any) => {
-        if (
-          comment &&
-          typeof comment === 'object' &&
-          'kind' in comment &&
-          comment.kind === 't1' &&
-          'data' in comment &&
-          comment.data &&
-          typeof comment.data === 'object'
-        ) {
+        // Comments are already filtered with simplified structure
+        if (comment && typeof comment === 'object') {
           totalComments++;
-          const commentData = comment.data as Record<string, any>;
 
-          if (
-            commentData.body === '[deleted]' ||
-            commentData.body === '[removed]'
-          ) {
+          if (comment.body === '[deleted]' || comment.body === '[removed]') {
             deletedComments++;
           }
 
-          const replies = commentData.replies;
-          if (
-            replies &&
-            typeof replies === 'object' &&
-            'data' in replies &&
-            replies.data &&
-            typeof replies.data === 'object' &&
-            'children' in replies.data &&
-            Array.isArray(replies.data.children)
-          ) {
-            traverseComments(replies.data.children, depth + 1);
+          // Handle replies - simplified structure
+          if (comment.replies && Array.isArray(comment.replies)) {
+            traverseComments(comment.replies, depth + 1);
           }
         }
       });
@@ -1202,7 +1180,9 @@ export class RedditService implements OnModuleInit {
         : posts;
 
       // Transform Reddit API response to flatten the data structure
-      const transformedPosts = filteredPosts.map((post: any) => post.data || post);
+      const transformedPosts = filteredPosts.map(
+        (post: any) => post.data || post,
+      );
 
       return {
         data: transformedPosts,
@@ -1379,11 +1359,10 @@ export class RedditService implements OnModuleInit {
   }
 
   /**
-   * Content Retrieval Pipeline - PRD Section 5.1.2
-   * Fetch complete posts with comment threads from Reddit API
-   * Implements post/comment fetching with URL storage and hierarchical structure
+   * Get raw Reddit API response for single-pass processing
+   * Returns unfiltered response for optimal single-pass transformation
    */
-  async getCompletePostWithComments(
+  async getRawPostWithComments(
     subreddit: string,
     postId: string,
     options: {
@@ -1392,11 +1371,8 @@ export class RedditService implements OnModuleInit {
       depth?: number;
     } = {},
   ): Promise<{
-    post: any;
-    comments: any[];
+    rawResponse: any[];
     metadata: {
-      totalComments: number;
-      maxDepth: number;
       retrievalMethod: string;
       rateLimitStatus: RateLimitResponse;
     };
@@ -1407,14 +1383,13 @@ export class RedditService implements OnModuleInit {
     };
     attribution: {
       postUrl: string;
-      commentUrls: string[];
     };
   }> {
-    const { limit = 500, sort = 'top', depth = 10 } = options;
+    const { limit = 500, sort = 'top', depth = null } = options;
 
-    this.logger.info('Fetching complete post with comment thread', {
+    this.logger.info('Fetching raw post with comment thread for single-pass processing', {
       correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'get_complete_post_with_comments',
+      operation: 'get_raw_post_with_comments',
       subreddit,
       postId,
       limit,
@@ -1423,7 +1398,7 @@ export class RedditService implements OnModuleInit {
     });
 
     const startTime = Date.now();
-    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}&depth=${depth}`;
+    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}${depth !== null ? `&depth=${depth}` : ''}`;
 
     const rateLimitStatus = this.getRateLimitStatus();
 
@@ -1431,36 +1406,23 @@ export class RedditService implements OnModuleInit {
       const response = await this.makeRequest<any[]>(
         'GET',
         url,
-        'get_complete_post_with_comments',
+        'get_raw_post_with_comments',
       );
 
       if (!response || !Array.isArray(response) || response.length < 2) {
         throw new RedditApiError('Invalid response format for post retrieval');
       }
 
-      // Filter Reddit response immediately to reduce data volume by ~70%
-      const { post, comments } = filterRedditResponse(response);
-
-      if (!post) {
-        throw new RedditApiError(`Post ${postId} not found or deleted`);
-      }
-
       const responseTime = Date.now() - startTime;
 
-      // Analyze comment thread structure
-      const threadAnalysis = this.analyzeCommentThreadDepth(comments);
-
-      // Generate attribution URLs
-      const postUrl = `https://reddit.com${post.permalink || `/r/${subreddit}/comments/${postId}`}`;
-      const commentUrls = this.extractCommentUrls(comments, subreddit);
+      // Extract post permalink for URL generation
+      const postData = response[0]?.data?.children?.[0]?.data;
+      const postUrl = `https://reddit.com${postData?.permalink || `/r/${subreddit}/comments/${postId}`}`;
 
       return {
-        post,
-        comments,
+        rawResponse: response,
         metadata: {
-          totalComments: threadAnalysis.totalComments,
-          maxDepth: threadAnalysis.maxDepth,
-          retrievalMethod: 'reddit_api_complete_thread',
+          retrievalMethod: 'reddit_api_raw_response',
           rateLimitStatus,
         },
         performance: {
@@ -1470,18 +1432,14 @@ export class RedditService implements OnModuleInit {
         },
         attribution: {
           postUrl,
-          commentUrls,
         },
       };
     } catch (error) {
       if (error instanceof RedditRateLimitError) {
         return {
-          post: null,
-          comments: [],
+          rawResponse: [],
           metadata: {
-            totalComments: 0,
-            maxDepth: 0,
-            retrievalMethod: 'reddit_api_complete_thread',
+            retrievalMethod: 'reddit_api_raw_response',
             rateLimitStatus,
           },
           performance: {
@@ -1491,7 +1449,6 @@ export class RedditService implements OnModuleInit {
           },
           attribution: {
             postUrl: '',
-            commentUrls: [],
           },
         };
       }
@@ -1500,32 +1457,37 @@ export class RedditService implements OnModuleInit {
   }
 
   /**
-   * Extract comment URLs for attribution tracking
+   * Content Retrieval Pipeline - PRD Section 5.1.2
+   * Fetch complete posts with comment threads from Reddit API
+   * Returns raw response for single-pass processing
    */
-  private extractCommentUrls(comments: any[], subreddit: string): string[] {
-    const urls: string[] = [];
-
-    const extractUrls = (commentList: any[]) => {
-      commentList.forEach((comment: any) => {
-        if (comment?.data?.id && comment?.data?.permalink) {
-          urls.push(`https://reddit.com${comment.data.permalink}`);
-        } else if (comment?.data?.id) {
-          // Fallback URL generation if permalink is missing
-          urls.push(
-            `https://reddit.com/r/${subreddit}/comments/_/_/${comment.data.id}`,
-          );
-        }
-
-        // Recursively process replies
-        if (comment?.data?.replies?.data?.children) {
-          extractUrls(comment.data.replies.data.children);
-        }
-      });
+  async getCompletePostWithComments(
+    subreddit: string,
+    postId: string,
+    options: {
+      limit?: number;
+      sort?: 'new' | 'old' | 'top' | 'controversial';
+      depth?: number;
+    } = {},
+  ): Promise<{
+    rawResponse: any[];
+    metadata: {
+      retrievalMethod: string;
+      rateLimitStatus: RateLimitResponse;
     };
-
-    extractUrls(comments);
-    return urls;
+    performance: {
+      responseTime: number;
+      apiCallsUsed: number;
+      rateLimitHit: boolean;
+    };
+    attribution: {
+      postUrl: string;
+    };
+  }> {
+    // Delegate to the optimized raw response method
+    return this.getRawPostWithComments(subreddit, postId, options);
   }
+
 
   /**
    * Batch post retrieval with complete comment threads
@@ -1603,12 +1565,12 @@ export class RedditService implements OnModuleInit {
           rateLimitHits++;
         }
 
-        if (result.post) {
-          posts[postId] = result.post;
-          comments[postId] = result.comments;
+        if (result.rawResponse && result.rawResponse.length > 0) {
+          // Store raw response for single-pass processing
+          posts[postId] = result.rawResponse;
+          comments[postId] = []; // Not used in single-pass
           postUrls[postId] = result.attribution.postUrl;
-          commentUrls[postId] = result.attribution.commentUrls;
-          totalComments += result.metadata.totalComments;
+          commentUrls[postId] = []; // Not used in single-pass
           successfulRetrievals++;
         } else {
           failedRetrievals++;
@@ -1709,9 +1671,7 @@ export class RedditService implements OnModuleInit {
       };
 
       const rateLimitResponse: RateLimitResponse =
-        await this.rateLimitCoordinator.requestPermission(
-          rateLimitRequest,
-        );
+        await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
 
       if (!rateLimitResponse.allowed) {
         throw new RedditRateLimitError(
@@ -1782,7 +1742,11 @@ export class RedditService implements OnModuleInit {
       if (topPostIds.length > 0) {
         try {
           // TODO: Implement comment fetching for posts
-          const commentResult = { posts: [], comments: [], attribution: { commentUrls: [] } };
+          const commentResult = {
+            posts: [],
+            comments: [],
+            attribution: { commentUrls: [] },
+          };
           comments = commentResult.comments;
           commentUrls = commentResult.attribution.commentUrls;
         } catch (commentError: unknown) {
@@ -1791,10 +1755,14 @@ export class RedditService implements OnModuleInit {
             {
               correlationId,
               error: {
-                message: commentError instanceof Error
-                  ? commentError.message
-                  : String(commentError),
-                stack: commentError instanceof Error ? commentError.stack : undefined,
+                message:
+                  commentError instanceof Error
+                    ? commentError.message
+                    : String(commentError),
+                stack:
+                  commentError instanceof Error
+                    ? commentError.stack
+                    : undefined,
               },
               postCount: topPostIds.length,
             },
@@ -1939,7 +1907,8 @@ export class RedditService implements OnModuleInit {
             entityName,
             error: {
               message: errorMessage,
-              stack: entityError instanceof Error ? entityError.stack : undefined,
+              stack:
+                entityError instanceof Error ? entityError.stack : undefined,
             },
             progress: `${i + 1}/${entityNames.length}`,
           });

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import {
@@ -11,6 +11,7 @@ import {
 } from '../../external-integrations/llm/dto';
 import { AppException } from '../../../shared/exceptions/app-exception.base';
 import { HttpStatus } from '@nestjs/common';
+import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 
 /**
  * Content Retrieval Pipeline Exceptions
@@ -52,9 +53,8 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
 
   constructor(
     private readonly redditService: RedditService,
-    private readonly loggerService: LoggerService,
-  
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('ContentRetrievalPipeline');
@@ -104,12 +104,6 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
     const startTime = Date.now();
 
     try {
-      // Fetch posts and comments using Reddit API
-      const batchResult = await this.redditService.fetchPostsBatch(
-        subreddit,
-        postIds,
-        options,
-      );
 
       // Transform Reddit data to LLM format
       const llmPosts: LLMPostDto[] = [];
@@ -119,13 +113,15 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
 
       for (const postId of postIds) {
         try {
-          const post = batchResult.posts[postId];
-          const comments = batchResult.comments[postId];
-          const postUrl = batchResult.attribution.postUrls[postId];
-          const commentUrls = batchResult.attribution.commentUrls[postId];
+          // Use single-pass processing for optimal performance
+          const rawResult = await this.redditService.getCompletePostWithComments(
+            subreddit,
+            postId,
+            options,
+          );
 
-          if (!post) {
-            this.logger.warn(`Skipping post ${postId} - not retrieved`, {
+          if (!rawResult.rawResponse || rawResult.rawResponse.length === 0) {
+            this.logger.warn(`Skipping post ${postId} - no raw response`, {
               correlationId: CorrelationUtils.getCorrelationId(),
               operation: 'retrieve_content_for_llm',
               postId,
@@ -133,22 +129,30 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
             continue;
           }
 
-          // Transform post to LLM format
-          const llmPost = this.transformPostToLLMFormat(
-            post,
-
-            comments || [],
-            postUrl,
-            commentUrls || [],
+          // Single-pass transformation using filterAndTransformToLLM
+          const llmPost = this.transformResponseToLLMFormat(
+            rawResult.rawResponse,
+            rawResult.attribution.postUrl,
           );
 
+          if (!llmPost) {
+            this.logger.warn(`Skipping post ${postId} - transformation failed`, {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              operation: 'retrieve_content_for_llm',
+              postId,
+            });
+            continue;
+          }
+
           llmPosts.push(llmPost);
-          allSourceUrls.push(postUrl);
-          allSourceUrls.push(...(commentUrls || []));
+          allSourceUrls.push(rawResult.attribution.postUrl);
+          
+          // Extract comment URLs from the transformed comments
+          const commentUrls = llmPost.comments.map((comment: any) => comment.url).filter(Boolean);
+          allSourceUrls.push(...commentUrls);
 
           // Track thread depth for metadata
-
-          const threadDepth = this.calculateThreadDepth(comments || []);
+          const threadDepth = this.calculateThreadDepthFromLLMComments(llmPost.comments);
           totalThreadDepth += threadDepth;
           validThreads++;
         } catch (error) {
@@ -170,28 +174,31 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
           {
             subreddit,
             postIds,
-            batchErrors: batchResult.errors,
           },
         );
       }
 
       const averageThreadDepth =
         validThreads > 0 ? totalThreadDepth / validThreads : 0;
+      
+      const totalComments = llmPosts.reduce((sum, post) => sum + post.comments.length, 0);
+      const successfulRetrievals = llmPosts.length;
+      const failedRetrievals = postIds.length - successfulRetrievals;
 
       return {
         llmInput: { posts: llmPosts },
         metadata: {
           totalPosts: postIds.length,
-          totalComments: batchResult.metadata.totalComments,
-          successfulRetrievals: batchResult.metadata.successfulRetrievals,
-          failedRetrievals: batchResult.metadata.failedRetrievals,
+          totalComments,
+          successfulRetrievals,
+          failedRetrievals,
           averageThreadDepth,
         },
         performance: {
           totalResponseTime: Date.now() - startTime,
-          averageResponseTime: batchResult.performance.averageResponseTime,
-          apiCallsUsed: batchResult.performance.apiCallsUsed,
-          rateLimitHits: batchResult.performance.rateLimitHits,
+          averageResponseTime: (Date.now() - startTime) / postIds.length,
+          apiCallsUsed: postIds.length, // One call per post
+          rateLimitHits: 0, // We'd track this if needed
         },
         attribution: {
           sourceUrls: allSourceUrls,
@@ -222,193 +229,69 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
   }
 
   /**
-   * Transform Reddit post and comments to LLM input format
-   * Implements PRD Section 6.3.1 LLM Input Structure
+   * Single-pass transform from Reddit API response to LLM format
+   * Combines filtering and transformation to eliminate double processing
    */
-
-  private transformPostToLLMFormat(
-    post: any,
-    comments: any[],
+  private transformResponseToLLMFormat(
+    redditResponse: any[],
     postUrl: string,
-    commentUrls: string[],
-  ): LLMPostDto {
+  ): LLMPostDto | null {
     try {
-      // Transform comments with hierarchical structure
-      const llmComments = this.transformCommentsToLLMFormat(
-        comments,
-        commentUrls,
-      );
+      const { post, comments } = filterAndTransformToLLM(redditResponse, postUrl);
+      
+      if (!post) {
+        return null;
+      }
 
-      // Create LLM post object
-
-      const llmPost: LLMPostDto = {
-        id: post.name || `t3_${post.id || ''}`, // Use name field which already has t3_ prefix
-
-        title: post.title || '',
-
-        content: post.selftext || post.title || '',
-
-        subreddit: post.subreddit || '',
-        author: post.author || 'unknown', // Add author field
-        url: postUrl,
-
-        score: typeof post.score === 'number' ? Math.max(0, post.score) : 0, // Use score instead of upvotes
-
-        created_at: this.formatTimestamp(post.created_utc),
-        comments: llmComments,
-      };
-
-      return llmPost;
+      // Set comments on the post
+      post.comments = comments;
+      return post as LLMPostDto;
     } catch (error) {
       throw new ContentValidationException(
-        `Failed to transform post to LLM format: ${error instanceof Error ? error.message : 'Unknown error'}`,
-
-        { postId: post?.id },
+        `Failed to transform Reddit response to LLM format: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        { postUrl },
         error instanceof Error ? error : undefined,
       );
     }
   }
 
+
   /**
-   * Transform Reddit comments to LLM format with hierarchical preservation
-   * Maintains parent-child relationships for thread context
+   * Calculate maximum thread depth from LLM comment structure
    */
-
-  private transformCommentsToLLMFormat(
-    comments: any[],
-    commentUrls: string[],
-  ): LLMCommentDto[] {
-    const llmComments: LLMCommentDto[] = [];
-    const urlMap = new Map<string, string>();
-
-    // Create URL mapping for quick lookup
-    commentUrls.forEach((url) => {
-      const match = url.match(/\/comments\/.*?\/_\/(\w+)/);
-      if (match) {
-        urlMap.set(match[1], url);
-      }
+  private calculateThreadDepthFromLLMComments(comments: any[]): number {
+    if (!comments || comments.length === 0) return 0;
+    
+    // Build parent-child mapping
+    const commentMap = new Map();
+    comments.forEach(comment => {
+      commentMap.set(comment.id, comment);
     });
-
-    const transformComment = (comment: any): LLMCommentDto | null => {
-      // Check if comment is already filtered (no data wrapper) or raw Reddit format
-      const commentData = comment?.data || comment;
-      
-      if (!commentData?.id || !commentData?.body) {
-        return null;
-      }
-
-      // Skip deleted/removed comments
-
-      if (
-        commentData.body === '[deleted]' ||
-        commentData.body === '[removed]' ||
-        commentData.author === '[deleted]'
-      ) {
-        return null;
-      }
-
-      try {
-        return {
-          id: commentData.name || `t1_${commentData.id}`, // Use name field which already has t1_ prefix
-
-          content: commentData.body,
-
-          author: commentData.author || 'unknown',
-
-          score: // Use score instead of upvotes
-            typeof commentData.score === 'number'
-              ? Math.max(0, commentData.score)
-              : 0,
-
-          created_at: this.formatTimestamp(commentData.created_utc),
-
-          parent_id: this.extractParentId(commentData.parent_id),
-
-          url: urlMap.get(commentData.id) || '',
-        };
-      } catch (error) {
-        this.logger.warn('Failed to transform comment', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-
-          commentId: commentData.id,
-          error: error instanceof Error ? error.message : String(error),
-        } as any);
-        return null;
-      }
-    };
-
-    const processCommentList = (commentList: any[]) => {
-      commentList.forEach((comment) => {
-        const llmComment = transformComment(comment);
-        if (llmComment) {
-          llmComments.push(llmComment);
-        }
-
-        // Process replies recursively
-        // Handle both filtered (no data wrapper) and raw Reddit format
-        const commentData = comment?.data || comment;
-        if (commentData?.replies?.data?.children) {
-          processCommentList(commentData.replies.data.children);
-        }
-      });
-    };
-
-    processCommentList(comments);
-    return llmComments;
-  }
-
-  /**
-   * Calculate maximum thread depth for metadata
-   */
-
-  private calculateThreadDepth(comments: any[]): number {
+    
+    // Calculate depth for each comment
     let maxDepth = 0;
-
-    const calculateDepth = (commentList: any[], currentDepth = 0) => {
-      maxDepth = Math.max(maxDepth, currentDepth);
-
-      commentList.forEach((comment) => {
-        if (comment?.data?.replies?.data?.children) {
-          calculateDepth(comment.data.replies.data.children, currentDepth + 1);
-        }
-      });
+    
+    const getDepth = (commentId: string, visited = new Set()): number => {
+      if (visited.has(commentId)) return 0; // Prevent cycles
+      visited.add(commentId);
+      
+      const comment = commentMap.get(commentId);
+      if (!comment || !comment.parent_id) return 0;
+      
+      const parentComment = commentMap.get(comment.parent_id);
+      if (!parentComment) return 0; // Top-level comment or parent is post
+      
+      return 1 + getDepth(comment.parent_id, visited);
     };
-
-    calculateDepth(comments);
+    
+    comments.forEach(comment => {
+      const depth = getDepth(comment.id);
+      maxDepth = Math.max(maxDepth, depth);
+    });
+    
     return maxDepth;
   }
 
-  /**
-   * Format Reddit timestamp for LLM processing
-   */
-  private formatTimestamp(timestamp: number | string): string {
-    try {
-      const ts =
-        typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp;
-      if (isNaN(ts)) {
-        return new Date().toISOString();
-      }
-      return new Date(ts * 1000).toISOString();
-    } catch {
-      return new Date().toISOString();
-    }
-  }
-
-  /**
-   * Extract parent comment ID from Reddit format (keep prefixes)
-   */
-  private extractParentId(parentId?: string): string | null {
-    if (!parentId) return null;
-
-    // Reddit parent IDs come in format "t1_commentid" or "t3_postid"
-    // Keep the prefixes to denote type (t1_ for comment, t3_ for post)
-    if (parentId.startsWith('t1_') || parentId.startsWith('t3_')) {
-      return parentId; // Keep the full ID with prefix
-    }
-
-    // If it's a top-level comment (parent is post), return null
-    return null;
-  }
 
   /**
    * Retrieve single post content for LLM processing

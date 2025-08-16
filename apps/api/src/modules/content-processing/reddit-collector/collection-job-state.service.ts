@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
 import * as fs from 'fs/promises';
@@ -59,13 +59,11 @@ export class CollectionJobStateService implements OnModuleInit {
   };
 
   constructor(
-    private readonly loggerService: LoggerService
-  ) {} 
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('CollectionJobState');
-    }
+    this.logger = this.loggerService.setContext('CollectionJobState');
     this.config = this.loadConfiguration();
 
     // Initialize state directory and cleanup timer

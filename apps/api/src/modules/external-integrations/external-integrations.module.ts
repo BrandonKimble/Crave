@@ -26,8 +26,8 @@ import { SharedModule } from '../../shared/shared.module';
   imports: [
     SharedModule, // Import SharedModule for LoggerService
     SharedServicesModule, // Import for RateLimitCoordinatorService
-    RedditModule, 
-    LLMModule, 
+    RedditModule,
+    LLMModule,
     GooglePlacesModule,
   ],
   providers: [],

@@ -2,10 +2,10 @@ import { uniqBy } from 'lodash-es';
 
 /**
  * Deduplication Utilities
- * 
+ *
  * Simple, functional utilities for removing duplicates.
  * Replaces the 687-line DuplicateDetectionService with ~50 lines of pure functions.
- * 
+ *
  * These utilities:
  * - Use native JavaScript features (Map, Set)
  * - Are pure functions with no side effects
@@ -22,14 +22,14 @@ export function removeDuplicatesByKey<T>(
   keyFn: (item: T) => string,
 ): T[] {
   const seen = new Map<string, T>();
-  
+
   for (const item of items) {
     const key = keyFn(item);
     if (!seen.has(key)) {
       seen.set(key, item);
     }
   }
-  
+
   return Array.from(seen.values());
 }
 
@@ -40,7 +40,7 @@ export function removeDuplicatesByKey<T>(
 export function removeDuplicatesById<T extends { id: string | number }>(
   items: T[],
 ): T[] {
-  return removeDuplicatesByKey(items, item => String(item.id));
+  return removeDuplicatesByKey(items, (item) => String(item.id));
 }
 
 /**
@@ -57,24 +57,21 @@ export function removeDuplicatesByProperty<T, K extends keyof T>(
  * Find duplicates in an array
  * Returns items that appear more than once
  */
-export function findDuplicates<T>(
-  items: T[],
-  keyFn: (item: T) => string,
-): T[] {
+export function findDuplicates<T>(items: T[], keyFn: (item: T) => string): T[] {
   const seen = new Map<string, number>();
   const duplicates: T[] = [];
-  
+
   for (const item of items) {
     const key = keyFn(item);
     const count = seen.get(key) || 0;
     seen.set(key, count + 1);
-    
+
     if (count === 1) {
       // Second occurrence - add to duplicates
       duplicates.push(item);
     }
   }
-  
+
   return duplicates;
 }
 
@@ -88,18 +85,18 @@ export function mergeDuplicates<T>(
   mergeFn: (existing: T, duplicate: T) => T,
 ): T[] {
   const merged = new Map<string, T>();
-  
+
   for (const item of items) {
     const key = keyFn(item);
     const existing = merged.get(key);
-    
+
     if (existing) {
       merged.set(key, mergeFn(existing, item));
     } else {
       merged.set(key, item);
     }
   }
-  
+
   return Array.from(merged.values());
 }
 
@@ -115,21 +112,21 @@ export function deduplicateWithTimeWindow<T>(
 ): T[] {
   // Sort by timestamp first
   const sorted = [...items].sort((a, b) => timestampFn(a) - timestampFn(b));
-  
+
   const result: T[] = [];
   const lastSeen = new Map<string, number>();
-  
+
   for (const item of sorted) {
     const key = keyFn(item);
     const timestamp = timestampFn(item);
     const lastTimestamp = lastSeen.get(key);
-    
+
     if (!lastTimestamp || timestamp - lastTimestamp > windowSeconds) {
       result.push(item);
       lastSeen.set(key, timestamp);
     }
   }
-  
+
   return result;
 }
 
@@ -139,7 +136,7 @@ export function deduplicateWithTimeWindow<T>(
  */
 export function createDeduplicationContext<T>() {
   const seen = new Set<string>();
-  
+
   return {
     /**
      * Check if item is duplicate
@@ -147,20 +144,20 @@ export function createDeduplicationContext<T>() {
     isDuplicate(key: string): boolean {
       return seen.has(key);
     },
-    
+
     /**
      * Mark item as seen
      */
     markSeen(key: string): void {
       seen.add(key);
     },
-    
+
     /**
      * Filter duplicates from array
      */
     filter(items: T[], keyFn: (item: T) => string): T[] {
       const unique: T[] = [];
-      
+
       for (const item of items) {
         const key = keyFn(item);
         if (!seen.has(key)) {
@@ -168,17 +165,17 @@ export function createDeduplicationContext<T>() {
           unique.push(item);
         }
       }
-      
+
       return unique;
     },
-    
+
     /**
      * Clear seen items
      */
     clear(): void {
       seen.clear();
     },
-    
+
     /**
      * Get statistics
      */
@@ -199,10 +196,10 @@ export async function* deduplicateBatch<T>(
   keyFn: (item: T) => string,
 ): AsyncGenerator<T[], void, unknown> {
   const seen = new Set<string>();
-  
+
   for await (const batch of items) {
     const unique: T[] = [];
-    
+
     for (const item of batch) {
       const key = keyFn(item);
       if (!seen.has(key)) {
@@ -210,7 +207,7 @@ export async function* deduplicateBatch<T>(
         unique.push(item);
       }
     }
-    
+
     if (unique.length > 0) {
       yield unique;
     }
@@ -228,26 +225,26 @@ export const redditDeduplication = {
   posts<T extends { id: string }>(posts: T[]): T[] {
     return removeDuplicatesById(posts);
   },
-  
+
   /**
    * Deduplicate Reddit comments by ID
    */
   comments<T extends { id: string }>(comments: T[]): T[] {
     return removeDuplicatesById(comments);
   },
-  
+
   /**
    * Deduplicate mixed Reddit content
    */
   content<T extends { id: string; type: 'post' | 'comment' }>(items: T[]): T[] {
-    return removeDuplicatesByKey(items, item => `${item.type}:${item.id}`);
+    return removeDuplicatesByKey(items, (item) => `${item.type}:${item.id}`);
   },
-  
+
   /**
    * Remove Reddit ID prefixes and deduplicate
    */
   normalizedIds<T extends { id: string }>(items: T[]): T[] {
-    return removeDuplicatesByKey(items, item => {
+    return removeDuplicatesByKey(items, (item) => {
       // Remove Reddit prefixes (t1_, t3_, etc.)
       return item.id.replace(/^t[0-9]_/, '');
     });

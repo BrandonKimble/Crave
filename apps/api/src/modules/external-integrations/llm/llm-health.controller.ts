@@ -11,7 +11,7 @@ export class LLMHealthController implements OnModuleInit {
   constructor(
     private readonly llmService: LLMService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-  ) {} 
+  ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('LLMHealthController');

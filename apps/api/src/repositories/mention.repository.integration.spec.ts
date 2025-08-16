@@ -495,7 +495,6 @@ describe('MentionRepository Integration Tests', () => {
               sourceUrl: `https://reddit.com/test_${Date.now()}`,
               subreddit: 'test',
               contentExcerpt: 'Test content',
-              author: 'test_author',
               upvotes: 10,
               createdAt: new Date(),
             },

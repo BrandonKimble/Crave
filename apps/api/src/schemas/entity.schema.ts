@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 /**
  * Entity Data Schemas
- * 
+ *
  * Type-safe validation schemas for entity structures.
  * Aligns with database schema and PRD entity model.
  */
@@ -11,7 +11,11 @@ import { z } from 'zod';
 // Entity Type Enum
 // ==========================================
 
-export const EntityTypeSchema = z.enum(['restaurant', 'dish_or_category', 'attribute']);
+export const EntityTypeSchema = z.enum([
+  'restaurant',
+  'dish_or_category',
+  'attribute',
+]);
 export type EntityType = z.infer<typeof EntityTypeSchema>;
 
 // ==========================================
@@ -154,15 +158,19 @@ export const EntityResolutionRequestSchema = z.object({
   temp_id: z.string(),
   name: z.string(),
   entity_type: EntityTypeSchema,
-  context: z.object({
-    address: z.string().optional(),
-    neighborhood: z.string().optional(),
-    cuisine_type: z.string().optional(),
-    related_entities: z.array(z.string()).optional(),
-  }).optional(),
+  context: z
+    .object({
+      address: z.string().optional(),
+      neighborhood: z.string().optional(),
+      cuisine_type: z.string().optional(),
+      related_entities: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
-export type EntityResolutionRequest = z.infer<typeof EntityResolutionRequestSchema>;
+export type EntityResolutionRequest = z.infer<
+  typeof EntityResolutionRequestSchema
+>;
 
 export const EntityResolutionResultSchema = z.object({
   temp_id: z.string(),
@@ -172,7 +180,9 @@ export const EntityResolutionResultSchema = z.object({
   entity: EntitySchema,
 });
 
-export type EntityResolutionResult = z.infer<typeof EntityResolutionResultSchema>;
+export type EntityResolutionResult = z.infer<
+  typeof EntityResolutionResultSchema
+>;
 
 // ==========================================
 // Query Schemas
@@ -188,7 +198,9 @@ export const EntitySearchQuerySchema = z.object({
   price_range: z.array(z.enum(['$', '$$', '$$$', '$$$$'])).optional(),
   limit: z.number().int().min(1).max(100).default(20),
   offset: z.number().int().min(0).default(0),
-  sort_by: z.enum(['quality_score', 'mention_count', 'name', 'created_at']).default('quality_score'),
+  sort_by: z
+    .enum(['quality_score', 'mention_count', 'name', 'created_at'])
+    .default('quality_score'),
   sort_order: z.enum(['asc', 'desc']).default('desc'),
 });
 
@@ -247,7 +259,7 @@ export function isAttributeEntity(entity: Entity): entity is AttributeEntity {
  */
 export function createEntityFromRequest(
   request: EntityResolutionRequest,
-  id: string
+  id: string,
 ): Entity {
   const base = {
     id,
@@ -258,7 +270,7 @@ export function createEntityFromRequest(
     created_at: new Date(),
     updated_at: new Date(),
   };
-  
+
   switch (request.entity_type) {
     case 'restaurant':
       return {
@@ -268,14 +280,14 @@ export function createEntityFromRequest(
         neighborhood: request.context?.neighborhood,
         cuisine_type: request.context?.cuisine_type,
       } as RestaurantEntity;
-      
+
     case 'dish_or_category':
       return {
         ...base,
         entity_type: 'dish_or_category',
         is_menu_item: false,
       } as DishEntity;
-      
+
     case 'attribute':
       return {
         ...base,

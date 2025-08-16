@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, HttpStatus } from '@nestjs/common';
+import { Injectable, OnModuleInit, HttpStatus, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseConfig } from './database-config.interface';
 import { LoggerService, CorrelationUtils } from '../shared';
@@ -20,12 +20,12 @@ export class DatabaseConfigurationError extends AppException {
 export class DatabaseValidationService implements OnModuleInit {
   private logger!: LoggerService;
 
-  constructor(private readonly loggerService: LoggerService) {}
+  constructor(
+    @Inject(LoggerService) private readonly loggerService: LoggerService,
+  ) {}
 
   onModuleInit(): void {
-    if (this.loggerService) {
-      this.logger = this.loggerService.setContext('DatabaseValidationService');
-    }
+    this.logger = this.loggerService.setContext('DatabaseValidationService');
   }
 
   /**
