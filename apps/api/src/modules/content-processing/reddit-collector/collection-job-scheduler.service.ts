@@ -193,6 +193,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       delay?: number;
       priority?: number;
       triggeredBy?: 'scheduled' | 'manual' | 'gap_detection';
+      limit?: number;
+      lastProcessedTimestamp?: number;
     },
   ): Promise<string> {
     const correlationId = CorrelationUtils.generateCorrelationId();
@@ -214,8 +216,9 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         jobId,
         triggeredBy,
         options: {
-          limit: 100,
+          limit: options?.limit || 100,
           retryCount: 0,
+          lastProcessedTimestamp: options?.lastProcessedTimestamp,
         },
       };
 
@@ -295,6 +298,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     return this.scheduleChronologicalCollection(subreddits, {
       priority: options?.priority || 10, // Higher priority than scheduled jobs
       triggeredBy: 'manual',
+      limit: options?.limit,
+      lastProcessedTimestamp: options?.lastProcessedTimestamp,
     });
   }
 

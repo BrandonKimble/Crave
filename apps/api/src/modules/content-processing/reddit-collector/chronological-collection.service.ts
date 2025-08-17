@@ -202,10 +202,12 @@ export class ChronologicalCollectionService implements OnModuleInit {
     options: ChronologicalCollectionOptions,
   ): Promise<ChronologicalCollectionResult> {
     const startTime = Date.now();
+    // Default to 7 days ago if no timestamp is provided (for initial collection)
+    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
     const lastProcessed =
       options.lastProcessedTimestamp ||
       this.lastProcessedTimestamps.get(subreddit) ||
-      Math.floor(Date.now() / 1000);
+      sevenDaysAgo;
 
     this.logger.info('Collecting from subreddit chronologically', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -216,11 +218,24 @@ export class ChronologicalCollectionService implements OnModuleInit {
 
     try {
       // Use existing RedditService chronological collection method
+      this.logger.debug('Calling Reddit API for chronological posts', {
+        subreddit,
+        lastProcessed,
+        lastProcessedDate: new Date(lastProcessed * 1000).toISOString(),
+        limit: options.limit || 100,
+      });
+
       const collectionResult = await this.redditService.getChronologicalPosts(
         subreddit,
         lastProcessed,
         options.limit || 100,
       );
+
+      this.logger.debug('Reddit API response received', {
+        dataLength: collectionResult.data?.length || 0,
+        hasData: !!collectionResult.data,
+        performance: collectionResult.performance,
+      });
 
       // Extract metrics from Reddit API response
       const postsCollected = collectionResult.data?.length || 0;
@@ -231,8 +246,8 @@ export class ChronologicalCollectionService implements OnModuleInit {
       let latest = 0;
 
       if (collectionResult.data && collectionResult.data.length > 0) {
-        const timestamps = (collectionResult.data as RedditPost[])
-          .map((post) => post.data?.created_utc || 0)
+        const timestamps = collectionResult.data
+          .map((post: any) => post.created_utc || 0)
           .filter((timestamp: number) => timestamp > 0);
 
         if (timestamps.length > 0) {

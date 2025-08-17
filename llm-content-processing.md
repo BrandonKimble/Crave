@@ -8,10 +8,11 @@ _These sections function together as a logical processing flow for the LLM: firs
 
 #### Post Extraction Control
 
-**CRITICAL**: Check the `extract_from_post` flag in each input:
+**CRITICAL RULE - MUST BE FOLLOWED**: Check the `extract_from_post` flag in each input:
 - If `extract_from_post: true` → Extract entities from both the post content AND comments
-- If `extract_from_post: false` → Extract entities ONLY from comments, NOT from the post content
+- If `extract_from_post: false` → **DO NOT EXTRACT ANY ENTITIES FROM THE POST CONTENT** - Extract entities ONLY from comments
 - The post is always provided for context to understand references in comments
+- **IMPORTANT**: When `extract_from_post: false`, even if the post mentions restaurants and dishes, you MUST NOT create mentions from the post content itself - only use it as context for understanding comment references
 
 #### Entity Inheritance Principle
 
