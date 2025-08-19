@@ -3,11 +3,11 @@ import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { CollectionSchedulingService } from './collection-scheduling.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   ChronologicalCollectionJobData,
   ChronologicalCollectionJobResult,
-} from './chronological-collection.processor';
+} from './chronological-collection.service';
 import {
   ScheduledCollectionExceptionFactory,
   JobSchedulingException,
@@ -60,12 +60,11 @@ export class CollectionJobSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
   private readonly scheduleConfig: JobScheduleConfig;
   private scheduledJobs = new Map<string, ScheduledJobInfo>();
-  private scheduleTimer?: NodeJS.Timeout;
 
   // Default configuration following PRD requirements
   private readonly DEFAULT_CONFIG: JobScheduleConfig = {
     enabled: true,
-    subreddits: ['austinfood', 'FoodNYC'], // PRD example subreddits
+    subreddits: [], // Subreddits loaded dynamically from database
     maxRetries: 3,
     retryBackoffMs: 5000, // 5 seconds base delay
     jobOptions: {
@@ -82,7 +81,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
   constructor(
     @InjectQueue('chronological-collection')
     private readonly chronologicalQueue: Queue,
-    private readonly schedulingService: CollectionSchedulingService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
@@ -105,58 +104,168 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       return;
     }
 
-    // Skip initialization if schedulingService is not available (e.g., in tests)
-    if (!this.schedulingService) {
-      this.logger.warn(
-        'Scheduling service not available, skipping initialization',
-      );
-      return;
-    }
+    // Database-driven scheduling - no dependency on old scheduling service
 
-    // Initialize scheduling for configured subreddits
-    for (const subreddit of this.scheduleConfig.subreddits) {
-      this.schedulingService.initializeSubredditScheduling(subreddit);
-    }
+    // Load active subreddits from database and initialize scheduling
+    const activeSubreddits = await this.prisma.subreddit.findMany({
+      where: { isActive: true },
+      select: { name: true },
+    });
+    this.scheduleConfig.subreddits = activeSubreddits.map((s) => s.name);
+
+    this.logger.info('Loaded active subreddits from database', {
+      activeSubreddits: this.scheduleConfig.subreddits,
+      count: this.scheduleConfig.subreddits.length,
+    });
+
+    // All scheduling configuration now stored in database
 
     // Start the scheduling loop
     await this.startScheduling();
   }
 
   /**
-   * Start the scheduling loop that checks for due collections
+   * Initialize event-driven scheduling using Bull delayed jobs
    */
   private async startScheduling(): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
 
-    this.logger.info('Starting collection scheduling loop', {
+    this.logger.info('Starting event-driven collection job scheduling', {
       correlationId,
-      operation: 'start_scheduling',
+      operation: 'start_event_driven_scheduling',
     });
 
-    // Initial schedule check
-    await this.checkAndScheduleJobs();
+    // Schedule delayed jobs for all active subreddits that are due or overdue
+    await this.initializeDelayedJobs();
+  }
 
-    // Set up periodic scheduling checks (every 30 minutes)
-    this.scheduleTimer = setInterval(
-      async () => {
-        try {
-          await this.checkAndScheduleJobs();
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          this.logger.error('Error in scheduling loop', {
-            correlationId: CorrelationUtils.generateCorrelationId(),
-            operation: 'scheduling_loop_error',
-            error: errorMessage,
-          });
-        }
+  /**
+   * Initialize delayed jobs for all active subreddits
+   * Replaces the 30-minute polling approach with precise event-driven scheduling
+   */
+  private async initializeDelayedJobs(): Promise<void> {
+    const correlationId = CorrelationUtils.generateCorrelationId();
+
+    this.logger.info('Initializing delayed jobs for active subreddits', {
+      correlationId,
+      operation: 'initialize_delayed_jobs',
+    });
+
+    // Get all active subreddits with their timing data
+    const allActiveSubreddits = await this.prisma.subreddit.findMany({
+      where: { isActive: true },
+      select: {
+        name: true,
+        safeIntervalDays: true,
+        lastProcessed: true,
       },
-      30 * 60 * 1000,
-    ); // 30 minutes
+    });
+
+    const now = Date.now();
+
+    for (const subreddit of allActiveSubreddits) {
+      const nextDueTime = this.calculateNextDueTime(subreddit, now);
+
+      if (nextDueTime <= now) {
+        // Due now or overdue - schedule immediately
+        this.logger.info('Subreddit is due for immediate collection', {
+          correlationId,
+          subreddit: subreddit.name,
+          lastProcessed: subreddit.lastProcessed,
+          safeIntervalDays: subreddit.safeIntervalDays,
+        });
+
+        const lastProcessedTimestamp = subreddit.lastProcessed
+          ? Math.floor(subreddit.lastProcessed.getTime() / 1000)
+          : Math.floor(
+              (now - subreddit.safeIntervalDays * 24 * 60 * 60 * 1000) / 1000,
+            );
+
+        await this.scheduleChronologicalCollection(subreddit.name, {
+          lastProcessedTimestamp,
+          triggeredBy: 'startup_due',
+        });
+      } else {
+        // Schedule for future execution
+        const delayMs = nextDueTime - now;
+
+        this.logger.info('Scheduling delayed job for subreddit', {
+          correlationId,
+          subreddit: subreddit.name,
+          nextDueTime: new Date(nextDueTime).toISOString(),
+          delayMs,
+          delayHours: Math.round(delayMs / (60 * 60 * 1000)),
+        });
+
+        await this.scheduleDelayedCollection(subreddit.name, delayMs);
+      }
+    }
+  }
+
+  /**
+   * Calculate when a subreddit is next due for collection
+   */
+  private calculateNextDueTime(
+    subreddit: { lastProcessed: Date | null; safeIntervalDays: number },
+    now: number,
+  ): number {
+    if (!subreddit.lastProcessed) {
+      return now; // Never processed, due immediately
+    }
+
+    return (
+      subreddit.lastProcessed.getTime() +
+      subreddit.safeIntervalDays * 24 * 60 * 60 * 1000
+    );
+  }
+
+  /**
+   * Schedule a delayed collection job using Bull's built-in delay feature
+   */
+  private async scheduleDelayedCollection(
+    subreddit: string,
+    delayMs: number,
+  ): Promise<void> {
+    const correlationId = CorrelationUtils.generateCorrelationId();
+    const jobId = this.generateJobId('chronological-delayed', [subreddit]);
+
+    // Get fresh data when the job actually runs
+    const jobData: ChronologicalCollectionJobData = {
+      subreddit,
+      jobId,
+      triggeredBy: 'delayed_schedule',
+      options: {
+        limit: 1000,
+        retryCount: 0,
+        // Don't set lastProcessedTimestamp here - let the processor calculate it fresh
+      },
+    };
+
+    const bullJobOptions = {
+      ...this.scheduleConfig.jobOptions,
+      delay: delayMs,
+      jobId,
+    };
+
+    await this.chronologicalQueue.add(
+      'execute-chronological-collection',
+      jobData,
+      bullJobOptions,
+    );
+
+    this.logger.debug('Scheduled delayed collection job', {
+      correlationId,
+      jobId,
+      subreddit,
+      delayMs,
+      executeAt: new Date(Date.now() + delayMs).toISOString(),
+    });
   }
 
   /**
    * Check for due collections and schedule jobs
+   * DEPRECATED: Replaced by event-driven scheduling
+   * Kept for manual triggers and testing
    */
   private async checkAndScheduleJobs(): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
@@ -166,18 +275,55 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       operation: 'check_due_collections',
     });
 
-    // Check chronological collections
-    const dueSubreddits =
-      this.schedulingService.getSubredditsDueForCollection();
+    // Query database for subreddits that are due for collection
+    // We'll filter in code since we need to use each subreddit's individual safeIntervalDays
+    const allActiveSubreddits = await this.prisma.subreddit.findMany({
+      where: { isActive: true },
+      select: {
+        name: true,
+        safeIntervalDays: true,
+        lastProcessed: true,
+      },
+    });
+
+    const now = Date.now();
+    const dueSubreddits = allActiveSubreddits.filter((subreddit) => {
+      if (!subreddit.lastProcessed) {
+        return true; // Never processed before, so it's due
+      }
+
+      const timeSinceLastProcessed = now - subreddit.lastProcessed.getTime();
+      const safeIntervalMs = subreddit.safeIntervalDays * 24 * 60 * 60 * 1000;
+
+      return timeSinceLastProcessed >= safeIntervalMs;
+    });
 
     if (dueSubreddits.length > 0) {
       this.logger.info('Found subreddits due for chronological collection', {
         correlationId,
-        dueSubreddits,
+        dueSubreddits: dueSubreddits.map((s) => ({
+          name: s.name,
+          safeIntervalDays: s.safeIntervalDays,
+          lastProcessed: s.lastProcessed,
+        })),
         count: dueSubreddits.length,
       });
 
-      await this.scheduleChronologicalCollection(dueSubreddits);
+      // Schedule each subreddit independently
+      for (const subreddit of dueSubreddits) {
+        // Calculate lastProcessedTimestamp with fallback
+        const lastProcessedTimestamp = subreddit.lastProcessed
+          ? Math.floor(subreddit.lastProcessed.getTime() / 1000)
+          : Math.floor(
+              (Date.now() - subreddit.safeIntervalDays * 24 * 60 * 60 * 1000) /
+                1000,
+            );
+
+        await this.scheduleChronologicalCollection(subreddit.name, {
+          lastProcessedTimestamp,
+          triggeredBy: 'scheduled',
+        });
+      }
     }
 
     // TODO: Check for monthly keyword search cycles (T09_S02)
@@ -185,38 +331,91 @@ export class CollectionJobSchedulerService implements OnModuleInit {
   }
 
   /**
-   * Schedule chronological collection job for specified subreddits
+   * Schedule the next collection for a subreddit after job completion
+   * Called by the processor after successful collection
+   */
+  async scheduleNextCollection(subreddit: string): Promise<void> {
+    const correlationId = CorrelationUtils.generateCorrelationId();
+
+    this.logger.info('Scheduling next collection after job completion', {
+      correlationId,
+      operation: 'schedule_next_collection',
+      subreddit,
+    });
+
+    // Get updated subreddit data from database
+    const subredditData = await this.prisma.subreddit.findUnique({
+      where: { name: subreddit.toLowerCase() },
+      select: {
+        name: true,
+        safeIntervalDays: true,
+        lastProcessed: true,
+      },
+    });
+
+    if (!subredditData) {
+      this.logger.warn('Subreddit not found for next collection scheduling', {
+        correlationId,
+        subreddit,
+      });
+      return;
+    }
+
+    // Calculate next collection time
+    const now = Date.now();
+    const nextDueTime = this.calculateNextDueTime(subredditData, now);
+    const delayMs = nextDueTime - now;
+
+    this.logger.info('Scheduling next delayed collection', {
+      correlationId,
+      subreddit: subredditData.name,
+      nextDueTime: new Date(nextDueTime).toISOString(),
+      delayMs,
+      delayDays: Math.round(delayMs / (24 * 60 * 60 * 1000)),
+    });
+
+    await this.scheduleDelayedCollection(subredditData.name, delayMs);
+  }
+
+  /**
+   * Schedule chronological collection job for a single subreddit
+   * Updated to process one subreddit per job for better isolation and monitoring
    */
   async scheduleChronologicalCollection(
-    subreddits: string[],
+    subreddit: string,
     options?: {
       delay?: number;
       priority?: number;
-      triggeredBy?: 'scheduled' | 'manual' | 'gap_detection';
+      triggeredBy?:
+        | 'scheduled'
+        | 'manual'
+        | 'gap_detection'
+        | 'startup_due'
+        | 'delayed_schedule';
       limit?: number;
       lastProcessedTimestamp?: number;
     },
   ): Promise<string> {
     const correlationId = CorrelationUtils.generateCorrelationId();
-    const jobId = this.generateJobId('chronological', subreddits);
+    const jobId = this.generateJobId('chronological', [subreddit]);
     const triggeredBy = options?.triggeredBy || 'scheduled';
 
     this.logger.info('Scheduling chronological collection job', {
       correlationId,
       operation: 'schedule_chronological',
       jobId,
-      subreddits,
+      subreddit,
       triggeredBy,
       options,
     });
 
     try {
       const jobData: ChronologicalCollectionJobData = {
-        subreddits,
+        subreddit, // Single subreddit per job for better isolation
         jobId,
         triggeredBy,
         options: {
-          limit: options?.limit || 100,
+          limit: 1000, // ALWAYS use Reddit's max - safety buffer is for scheduling only
           retryCount: 0,
           lastProcessedTimestamp: options?.lastProcessedTimestamp,
         },
@@ -240,7 +439,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       const scheduledJob: ScheduledJobInfo = {
         jobId,
         jobType: 'chronological',
-        subreddit: subreddits.join(','),
+        subreddit,
         scheduledTime: new Date(Date.now() + (options?.delay || 0)),
         status: 'scheduled',
         attempts: 0,
@@ -264,7 +463,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         correlationId,
         jobId,
         error: errorMessage,
-        subreddits,
+        subreddit,
       });
 
       throw ScheduledCollectionExceptionFactory.jobSchedulingFailed(
@@ -277,9 +476,10 @@ export class CollectionJobSchedulerService implements OnModuleInit {
 
   /**
    * Schedule manual collection job (for testing or emergency collection)
+   * Updated to handle single subreddit per job
    */
   async scheduleManualCollection(
-    subreddits: string[],
+    subreddit: string,
     options?: {
       priority?: number;
       lastProcessedTimestamp?: number;
@@ -291,11 +491,11 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     this.logger.info('Scheduling manual collection job', {
       correlationId,
       operation: 'schedule_manual',
-      subreddits,
+      subreddit,
       options,
     });
 
-    return this.scheduleChronologicalCollection(subreddits, {
+    return this.scheduleChronologicalCollection(subreddit, {
       priority: options?.priority || 10, // Higher priority than scheduled jobs
       triggeredBy: 'manual',
       limit: options?.limit,
@@ -393,10 +593,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       operation: 'stop_scheduler',
     });
 
-    if (this.scheduleTimer) {
-      clearInterval(this.scheduleTimer);
-      this.scheduleTimer = undefined;
-    }
+    // Event-driven scheduling - no timer to clear
 
     // Wait for current jobs to complete (with timeout)
     const runningJobs = Array.from(this.scheduledJobs.values()).filter(
@@ -425,6 +622,48 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
       }
     }
+  }
+
+  /**
+   * Get calculated timing information for a subreddit (for testing and validation)
+   */
+  async getSubredditTiming(subreddit: string): Promise<{
+    lastProcessedTimestamp: number;
+    safeIntervalDays: number;
+    nextDueTime: number;
+    isDue: boolean;
+  }> {
+    const subredditData = await this.prisma.subreddit.findUnique({
+      where: { name: subreddit.toLowerCase() },
+      select: { name: true, safeIntervalDays: true, lastProcessed: true },
+    });
+
+    if (!subredditData) {
+      throw new Error(`Subreddit ${subreddit} not found in database`);
+    }
+
+    const now = Date.now();
+    let lastProcessedTimestamp: number;
+
+    if (subredditData.lastProcessed) {
+      lastProcessedTimestamp = Math.floor(
+        subredditData.lastProcessed.getTime() / 1000,
+      );
+    } else {
+      // Use safe interval to calculate starting point for first collection
+      lastProcessedTimestamp =
+        Math.floor(now / 1000) - subredditData.safeIntervalDays * 24 * 60 * 60;
+    }
+
+    const nextDueTime = this.calculateNextDueTime(subredditData, now);
+    const isDue = nextDueTime <= now;
+
+    return {
+      lastProcessedTimestamp,
+      safeIntervalDays: subredditData.safeIntervalDays,
+      nextDueTime,
+      isDue,
+    };
   }
 
   /**

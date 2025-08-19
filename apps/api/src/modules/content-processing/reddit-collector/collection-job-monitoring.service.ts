@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { ChronologicalCollectionJobResult } from './chronological-collection.processor';
+import { ChronologicalCollectionJobResult } from './chronological-collection.service';
 import {
   ScheduledJobInfo,
   CollectionJobSchedulerService,
@@ -128,7 +128,7 @@ export class CollectionJobMonitoringService implements OnModuleInit {
         jobId,
         result: {
           success: result.success,
-          totalPostsCollected: result.totalPostsCollected,
+          postsProcessed: result.postsProcessed,
           processingTime: result.processingTime,
         },
       });
@@ -139,7 +139,7 @@ export class CollectionJobMonitoringService implements OnModuleInit {
     metrics.endTime = new Date();
     metrics.duration = metrics.endTime.getTime() - metrics.startTime.getTime();
     metrics.status = result.success ? 'completed' : 'failed';
-    metrics.postsCollected = result.totalPostsCollected;
+    metrics.postsCollected = result.postsProcessed;
     metrics.error = result.error;
     metrics.nextScheduledCollection = result.nextScheduledCollection;
 

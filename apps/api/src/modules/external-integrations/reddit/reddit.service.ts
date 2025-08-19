@@ -281,8 +281,9 @@ export class RedditService implements OnModuleInit {
   };
 
   constructor(
-    private readonly httpService: HttpService,
+    @Inject(HttpService) private readonly httpService: HttpService,
     @Inject(ConfigService) private readonly configService: ConfigService,
+    @Inject(RateLimitCoordinatorService)
     private readonly rateLimitCoordinator: RateLimitCoordinatorService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
@@ -1155,34 +1156,87 @@ export class RedditService implements OnModuleInit {
     });
 
     const startTime = Date.now();
-    const url = `https://oauth.reddit.com/r/${subreddit}/new?limit=${Math.min(limit, 100)}`;
-
     const rateLimitStatus = this.getRateLimitStatus();
 
-    try {
-      const response = await this.makeRequest<{ data?: { children?: any[] } }>(
-        'GET',
-        url,
-        'chronological_collection',
-      );
+    // Reddit API has a hard limit of 100 posts per request
+    // To get up to 1000 posts (Reddit's max accessible), we need pagination
+    const postsPerPage = 100;
+    const totalPages = Math.ceil(Math.min(limit, 1000) / postsPerPage);
 
-      const posts = response.data?.children || [];
+    let allPosts: any[] = [];
+    let after: string | null = null;
+    let apiCallsUsed = 0;
+
+    try {
+      for (let page = 0; page < totalPages; page++) {
+        // Build URL with pagination
+        const pageLimit = Math.min(postsPerPage, limit - allPosts.length);
+        let url = `https://oauth.reddit.com/r/${subreddit}/new?limit=${pageLimit}`;
+        if (after) {
+          url += `&after=${after}`;
+        }
+
+        const response = await this.makeRequest<{
+          data?: {
+            children?: any[];
+            after?: string | null;
+          };
+        }>('GET', url, 'chronological_collection');
+
+        apiCallsUsed++;
+        const pagePosts = response.data?.children || [];
+
+        if (pagePosts.length === 0) {
+          // No more posts available
+          break;
+        }
+
+        // Filter posts by timestamp if provided
+        const filteredPosts = lastProcessedTimestamp
+          ? pagePosts.filter((post: any) => {
+              const postTime = post?.data?.created_utc;
+              return (
+                typeof postTime === 'number' &&
+                postTime > lastProcessedTimestamp
+              );
+            })
+          : pagePosts;
+
+        allPosts.push(...filteredPosts);
+
+        // Check if we've collected enough posts
+        if (allPosts.length >= limit) {
+          allPosts = allPosts.slice(0, limit);
+          break;
+        }
+
+        // Get the "after" token for next page
+        after = response.data?.after || null;
+
+        if (!after) {
+          // No more pages available
+          break;
+        }
+
+        // Add a small delay between requests to be respectful
+        if (page < totalPages - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+
       const responseTime = Date.now() - startTime;
 
-      // Filter posts by timestamp if provided
-      const filteredPosts = lastProcessedTimestamp
-        ? posts.filter((post: any) => {
-            const postTime = post?.data?.created_utc;
-            return (
-              typeof postTime === 'number' && postTime > lastProcessedTimestamp
-            );
-          })
-        : posts;
-
       // Transform Reddit API response to flatten the data structure
-      const transformedPosts = filteredPosts.map(
-        (post: any) => post.data || post,
-      );
+      const transformedPosts = allPosts.map((post: any) => post.data || post);
+
+      this.logger.info('Chronological collection completed', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        subreddit,
+        requestedLimit: limit,
+        actualRetrieved: transformedPosts.length,
+        pagesUsed: apiCallsUsed,
+        responseTime,
+      });
 
       return {
         data: transformedPosts,
@@ -1190,11 +1244,11 @@ export class RedditService implements OnModuleInit {
           totalRetrieved: transformedPosts.length,
           rateLimitStatus,
           costIncurred: 0, // Reddit is free within rate limits
-          completenessRatio: transformedPosts.length / posts.length,
+          completenessRatio: transformedPosts.length / Math.min(limit, 1000),
         },
         performance: {
           responseTime,
-          apiCallsUsed: 1,
+          apiCallsUsed,
           rateLimitHit: false,
         },
       };
@@ -1209,7 +1263,7 @@ export class RedditService implements OnModuleInit {
           },
           performance: {
             responseTime: Date.now() - startTime,
-            apiCallsUsed: 1,
+            apiCallsUsed,
             rateLimitHit: true,
           },
         };
@@ -1387,15 +1441,18 @@ export class RedditService implements OnModuleInit {
   }> {
     const { limit = 500, sort = 'top', depth = null } = options;
 
-    this.logger.info('Fetching raw post with comment thread for single-pass processing', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'get_raw_post_with_comments',
-      subreddit,
-      postId,
-      limit,
-      sort,
-      depth,
-    });
+    this.logger.info(
+      'Fetching raw post with comment thread for single-pass processing',
+      {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'get_raw_post_with_comments',
+        subreddit,
+        postId,
+        limit,
+        sort,
+        depth,
+      },
+    );
 
     const startTime = Date.now();
     const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}${depth !== null ? `&depth=${depth}` : ''}`;
@@ -1488,7 +1545,6 @@ export class RedditService implements OnModuleInit {
     return this.getRawPostWithComments(subreddit, postId, options);
   }
 
-
   /**
    * Batch post retrieval with complete comment threads
    * Implements batching optimization for API efficiency - PRD Section 6.1
@@ -1541,7 +1597,7 @@ export class RedditService implements OnModuleInit {
     const commentUrls: { [postId: string]: string[] } = {};
     const errors: { [postId: string]: string } = {};
 
-    let totalComments = 0;
+    const totalComments = 0;
     let successfulRetrievals = 0;
     let failedRetrievals = 0;
     let apiCallsUsed = 0;

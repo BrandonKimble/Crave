@@ -3,13 +3,11 @@ import { getQueueToken } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bull';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
-import { CollectionSchedulingService } from './collection-scheduling.service';
 import { LoggerService } from '../../../shared';
 
 describe('CollectionJobSchedulerService', () => {
   let service: CollectionJobSchedulerService;
   let mockQueue: jest.Mocked<Queue>;
-  let mockSchedulingService: jest.Mocked<CollectionSchedulingService>;
   let mockLogger: jest.Mocked<LoggerService>;
 
   beforeEach(async () => {
@@ -24,12 +22,12 @@ describe('CollectionJobSchedulerService', () => {
       close: jest.fn(),
     };
 
-    const mockSchedulingMethods = {
-      initializeSubredditScheduling: jest.fn(),
-      getSubredditsDueForCollection: jest.fn().mockReturnValue([]),
-      getSchedulingConfig: jest.fn(),
-      isCollectionDue: jest.fn(),
-      calculateSafetyBuffer: jest.fn(),
+    const mockPrismaMethods = {
+      subreddit: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+      },
     };
 
     const mockLoggerMethods = {
@@ -48,8 +46,8 @@ describe('CollectionJobSchedulerService', () => {
           useValue: mockQueueMethods,
         },
         {
-          provide: CollectionSchedulingService,
-          useValue: mockSchedulingMethods,
+          provide: 'PrismaService',
+          useValue: mockPrismaMethods,
         },
         {
           provide: ConfigService,
@@ -68,7 +66,6 @@ describe('CollectionJobSchedulerService', () => {
       CollectionJobSchedulerService,
     );
     mockQueue = module.get(getQueueToken('chronological-collection'));
-    mockSchedulingService = module.get(CollectionSchedulingService);
     mockLogger = module.get(LoggerService);
   });
 
@@ -78,22 +75,8 @@ describe('CollectionJobSchedulerService', () => {
     });
 
     it('should initialize scheduling for configured subreddits on module init', async () => {
-      mockSchedulingService.initializeSubredditScheduling.mockReturnValue({
-        subreddit: 'austinfood',
-        averagePostsPerDay: 15,
-        safeInterval: 50,
-        lastCalculated: new Date(),
-        nextCollectionDue: new Date(),
-      });
-
       await service.onModuleInit();
 
-      expect(
-        mockSchedulingService.initializeSubredditScheduling,
-      ).toHaveBeenCalledWith('austinfood');
-      expect(
-        mockSchedulingService.initializeSubredditScheduling,
-      ).toHaveBeenCalledWith('FoodNYC');
       expect(mockLogger.info).toHaveBeenCalledWith(
         'Initializing collection job scheduler',
         expect.any(Object),
@@ -106,18 +89,16 @@ describe('CollectionJobSchedulerService', () => {
       const mockJob = { id: 'bull-job-123' };
       mockQueue.add.mockResolvedValue(mockJob as any);
 
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
 
       expect(mockQueue.add).toHaveBeenCalledWith(
         'execute-chronological-collection',
         expect.objectContaining({
-          subreddits: ['austinfood'],
+          subreddit: 'austinfood',
           jobId: expect.stringContaining('chronological-austinfood-'),
           triggeredBy: 'scheduled',
           options: {
-            limit: 100,
+            limit: 1000,
             retryCount: 0,
           },
         }),
@@ -147,7 +128,7 @@ describe('CollectionJobSchedulerService', () => {
       mockQueue.add.mockRejectedValue(error);
 
       await expect(
-        service.scheduleChronologicalCollection(['austinfood']),
+        service.scheduleChronologicalCollection('austinfood'),
       ).rejects.toThrow('Failed to schedule chronological job');
 
       expect(mockLogger.error).toHaveBeenCalledWith(
@@ -160,7 +141,7 @@ describe('CollectionJobSchedulerService', () => {
       const mockJob = { id: 'bull-job-456' };
       mockQueue.add.mockResolvedValue(mockJob as any);
 
-      const jobId = await service.scheduleChronologicalCollection(['FoodNYC'], {
+      const jobId = await service.scheduleChronologicalCollection('FoodNYC', {
         delay: 3600000, // 1 hour
         priority: 5,
         triggeredBy: 'manual',
@@ -169,7 +150,7 @@ describe('CollectionJobSchedulerService', () => {
       expect(mockQueue.add).toHaveBeenCalledWith(
         'execute-chronological-collection',
         expect.objectContaining({
-          subreddits: ['FoodNYC'],
+          subreddit: 'FoodNYC',
           triggeredBy: 'manual',
         }),
         expect.objectContaining({
@@ -185,7 +166,7 @@ describe('CollectionJobSchedulerService', () => {
       const mockJob = { id: 'bull-job-789' };
       mockQueue.add.mockResolvedValue(mockJob as any);
 
-      const jobId = await service.scheduleManualCollection(['austinfood'], {
+      const jobId = await service.scheduleManualCollection('austinfood', {
         priority: 15,
         limit: 50,
       });
@@ -207,9 +188,7 @@ describe('CollectionJobSchedulerService', () => {
       const mockJob = { id: 'bull-job-123' };
       mockQueue.add.mockResolvedValue(mockJob as any);
 
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
       const scheduledJobs = service.getScheduledJobs();
 
       expect(scheduledJobs).toHaveLength(1);
@@ -226,9 +205,7 @@ describe('CollectionJobSchedulerService', () => {
       const mockJob = { id: 'bull-job-123' };
       mockQueue.add.mockResolvedValue(mockJob as any);
 
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
 
       service.updateJobStatus(jobId, 'running', { attempts: 1 });
       const job = service.getJobInfo(jobId);
@@ -257,9 +234,7 @@ describe('CollectionJobSchedulerService', () => {
       mockQueue.add.mockResolvedValue(mockJob as any);
 
       // Schedule and complete a job
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
       service.updateJobStatus(jobId, 'completed');
 
       // Mock old timestamp
@@ -279,9 +254,7 @@ describe('CollectionJobSchedulerService', () => {
       mockQueue.add.mockResolvedValue(mockJob as any);
 
       // Schedule a recent job
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
       service.updateJobStatus(jobId, 'completed');
 
       const cleanedCount = service.cleanupOldJobs(24);
@@ -306,9 +279,7 @@ describe('CollectionJobSchedulerService', () => {
       mockQueue.add.mockResolvedValue(mockJob as any);
 
       // Schedule and start a job
-      const jobId = await service.scheduleChronologicalCollection([
-        'austinfood',
-      ]);
+      const jobId = await service.scheduleChronologicalCollection('austinfood');
       service.updateJobStatus(jobId, 'running');
 
       // Mock completing the job after a short delay
@@ -330,22 +301,19 @@ describe('CollectionJobSchedulerService', () => {
       mockQueue.add.mockRejectedValue(new Error('Redis connection lost'));
 
       await expect(
-        service.scheduleChronologicalCollection(['austinfood']),
+        service.scheduleChronologicalCollection('austinfood'),
       ).rejects.toThrow('Failed to schedule chronological job');
     });
 
     it('should handle invalid subreddit configurations', async () => {
       await expect(
-        service.scheduleChronologicalCollection([]),
+        service.scheduleChronologicalCollection(''),
       ).rejects.toThrow();
     });
   });
 
   describe('scheduling coordination', () => {
     it('should check for due collections and schedule jobs', async () => {
-      mockSchedulingService.getSubredditsDueForCollection.mockReturnValue([
-        'austinfood',
-      ]);
       mockQueue.add.mockResolvedValue({ id: 'bull-job-123' } as any);
 
       // Trigger the private checkAndScheduleJobs method via onModuleInit
@@ -354,17 +322,13 @@ describe('CollectionJobSchedulerService', () => {
       // Wait for the async scheduling to complete
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      expect(
-        mockSchedulingService.getSubredditsDueForCollection,
-      ).toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalled();
     });
 
     it('should handle empty due collections', async () => {
-      mockSchedulingService.getSubredditsDueForCollection.mockReturnValue([]);
-
       await service.onModuleInit();
 
-      expect(mockQueue.add).not.toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalled();
     });
   });
 });

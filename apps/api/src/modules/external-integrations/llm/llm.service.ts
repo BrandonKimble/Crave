@@ -200,8 +200,31 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
    * Build the processing prompt using the complete llm-content-processing.md system prompt
    */
   private buildProcessingPrompt(input: LLMInputStructure): string {
+    // Validate input structure first to prevent undefined access errors
+    if (!input || !input.posts || !Array.isArray(input.posts)) {
+      throw new Error(`Invalid LLM input structure: ${JSON.stringify({ hasInput: !!input, hasPostsProperty: input && 'posts' in input, postsType: input && typeof input.posts })}`);
+    }
+
+    // Filter out any undefined or null posts
+    const validPosts = input.posts.filter((post, index) => {
+      if (!post) {
+        this.logger.warn(`Found undefined/null post at index ${index}, skipping`, {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'build_processing_prompt',
+          inputPostsLength: input.posts.length,
+          undefinedIndex: index
+        });
+        return false;
+      }
+      return true;
+    });
+
+    if (validPosts.length === 0) {
+      throw new Error(`No valid posts found in LLM input. Total posts: ${input.posts.length}, valid: ${validPosts.length}`);
+    }
+
     const userPrompt = `Extract entities from this Reddit content:\n\n${JSON.stringify(
-      input,
+      { posts: validPosts },
       null,
       2,
     )}`;
@@ -247,107 +270,117 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           description: 'Array of restaurant/dish mentions with entity details',
           items: {
             type: 'object',
-            description: 'Single mention of restaurant or dish with complete metadata',
+            description:
+              'Single mention of restaurant or dish with complete metadata',
             properties: {
               // Core identifiers (shortened names for complexity reduction)
-              temp_id: { 
+              temp_id: {
                 type: 'string',
-                description: 'Unique identifier for this mention'
+                description: 'Unique identifier for this mention',
               },
-              restaurant_temp_id: { 
+              restaurant_temp_id: {
                 type: 'string',
-                description: 'Unique identifier for the restaurant entity'
+                description: 'Unique identifier for the restaurant entity',
               },
-              
+
               // Restaurant info (required)
-              restaurant_normalized_name: { 
+              restaurant_normalized_name: {
                 type: 'string',
-                description: 'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing'
+                description:
+                  'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
               },
-              restaurant_original_text: { 
+              restaurant_original_text: {
                 type: 'string',
-                description: 'Exact restaurant name as mentioned in source'
+                description: 'Exact restaurant name as mentioned in source',
               },
               restaurant_attributes: {
                 type: 'array',
-                description: 'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
+                description:
+                  'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
                 items: { type: 'string' },
-                nullable: true
+                nullable: true,
               },
-              
+
               // Dish info (optional with nullable)
-              dish_temp_id: { 
+              dish_temp_id: {
                 type: 'string',
                 description: 'Unique identifier for dish if mentioned',
-                nullable: true
+                nullable: true,
               },
-              dish_primary_category: { 
+              dish_primary_category: {
                 type: 'string',
-                description: 'Complete compound food term as primary category, singular form, excluding attributes',
-                nullable: true
+                description:
+                  'Complete compound food term as primary category, singular form, excluding attributes',
+                nullable: true,
               },
               dish_categories: {
                 type: 'array',
-                description: 'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
+                description:
+                  'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
                 items: { type: 'string' },
-                nullable: true
+                nullable: true,
               },
-              dish_original_text: { 
+              dish_original_text: {
                 type: 'string',
                 description: 'Exact dish name as mentioned in source',
-                nullable: true
+                nullable: true,
               },
               dish_attributes_selective: {
                 type: 'array',
-                description: 'Selective attributes: help filter or categorize food options',
+                description:
+                  'Selective attributes: help filter or categorize food options',
                 items: { type: 'string' },
-                nullable: true
+                nullable: true,
               },
               dish_attributes_descriptive: {
-                type: 'array', 
-                description: 'Descriptive attributes: characterize or describe specific food items',
+                type: 'array',
+                description:
+                  'Descriptive attributes: characterize or describe specific food items',
                 items: { type: 'string' },
-                nullable: true
+                nullable: true,
               },
-              dish_is_menu_item: { 
+              dish_is_menu_item: {
                 type: 'boolean',
-                description: 'True if specific menu item, false if general food type',
-                nullable: true
+                description:
+                  'True if specific menu item, false if general food type',
+                nullable: true,
               },
-              
+
               // Sentiment (required)
-              general_praise: { 
+              general_praise: {
                 type: 'boolean',
-                description: 'True if mention contains holistic restaurant praise, regardless of specific dish praise'
+                description:
+                  'True if mention contains holistic restaurant praise, regardless of specific dish praise',
               },
-              
+
               // Source metadata (all required)
-              source_type: { 
-                type: 'string', 
+              source_type: {
+                type: 'string',
                 enum: ['post', 'comment'],
-                description: 'Whether content came from post or comment'
+                description: 'Whether content came from post or comment',
               },
-              source_id: { 
+              source_id: {
                 type: 'string',
-                description: 'Reddit ID of the source (t3_ or t1_ prefixed)'
+                description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
               },
-              source_content: { 
+              source_content: {
                 type: 'string',
-                description: 'Complete source text content being analyzed for entity extraction'
+                description:
+                  'Complete source text content being analyzed for entity extraction',
               },
-              source_ups: { 
+              source_ups: {
                 type: 'number',
                 minimum: 0,
-                description: 'Reddit upvote count for credibility weighting'
+                description: 'Reddit upvote count for credibility weighting',
               },
-              source_url: { 
+              source_url: {
                 type: 'string',
-                description: 'Full Reddit URL to the source content'
+                description: 'Full Reddit URL to the source content',
               },
-              source_created_at: { 
+              source_created_at: {
                 type: 'string',
                 format: 'date-time',
-                description: 'ISO timestamp when content was created'
+                description: 'ISO timestamp when content was created',
               },
             },
             required: [
@@ -392,9 +425,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       generationConfig,
     };
 
-    try {
-      const url = `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`;
+    const url = `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`;
 
+    try {
       this.logger.info('Making LLM API request', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
@@ -424,41 +457,94 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           0,
         finishReason: response.data?.candidates?.[0]?.finishReason,
         safetyRatings: response.data?.candidates?.[0]?.safetyRatings,
-        rawResponse: JSON.stringify(response.data, null, 2),
+        // rawResponse: JSON.stringify(response.data, null, 2), // Removed: Too verbose for performance monitoring
       });
 
       return response.data as LLMApiResponse;
     } catch (error) {
-      const axiosError = error as AxiosError;
+      // Enhanced error logging to diagnose Gemini API issues
+      // Handle various error types that might not be AxiosError
+      let errorDetails: any = {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'call_llm_api',
+        requestURL: url.replace(/key=.*$/, 'key=***'),
+        errorType: typeof error,
+        errorConstructor: error?.constructor?.name,
+      };
 
-      if (
-        axiosError.response?.status === 401 ||
-        axiosError.response?.status === 403
-      ) {
-        throw new LLMAuthenticationError(
-          'Invalid Gemini API key',
-          JSON.stringify(axiosError.response.data),
-        );
-      } else if (axiosError.response?.status === 429) {
-        throw new LLMRateLimitError(
-          parseInt(
-            String(axiosError.response.headers?.['retry-after'] || '60'),
-          ),
-        );
-      } else if (
-        axiosError.code === 'ENOTFOUND' ||
-        axiosError.code === 'ECONNREFUSED' ||
-        axiosError.code === 'ETIMEDOUT'
-      ) {
-        throw new LLMNetworkError(
-          'Network error during Gemini API request',
-          error as Error,
-        );
+      if (error instanceof Error) {
+        errorDetails.errorMessage = error.message;
+        errorDetails.errorName = error.name;
+        errorDetails.errorStack = error.stack;
       } else {
+        errorDetails.rawError = String(error);
+      }
+
+      // Check if it's an AxiosError specifically
+      const axiosError = error as AxiosError;
+      if (axiosError.isAxiosError) {
+        errorDetails.isAxiosError = true;
+        errorDetails.axiosCode = axiosError.code;
+        errorDetails.axiosConfig = {
+          method: axiosError.config?.method,
+          url: axiosError.config?.url?.replace(/key=.*$/, 'key=***'),
+          timeout: axiosError.config?.timeout,
+        };
+        
+        if (axiosError.response) {
+          errorDetails.responseStatus = axiosError.response.status;
+          errorDetails.responseStatusText = axiosError.response.statusText;
+          errorDetails.responseHeaders = axiosError.response.headers;
+          errorDetails.responseData = axiosError.response.data;
+        }
+        
+        if (axiosError.request) {
+          errorDetails.hasRequest = true;
+          errorDetails.requestReadyState = axiosError.request.readyState;
+          errorDetails.requestStatus = axiosError.request.status;
+        }
+      }
+
+      this.logger.error('Detailed Gemini API error', errorDetails);
+
+      // Check for specific error conditions with improved handling
+      if (axiosError.isAxiosError) {
+        if (
+          axiosError.response?.status === 401 ||
+          axiosError.response?.status === 403
+        ) {
+          throw new LLMAuthenticationError(
+            'Invalid Gemini API key',
+            JSON.stringify(axiosError.response.data),
+          );
+        } else if (axiosError.response?.status === 429) {
+          throw new LLMRateLimitError(
+            parseInt(
+              String(axiosError.response.headers?.['retry-after'] || '60'),
+            ),
+          );
+        } else if (
+          axiosError.code === 'ENOTFOUND' ||
+          axiosError.code === 'ECONNREFUSED' ||
+          axiosError.code === 'ETIMEDOUT'
+        ) {
+          throw new LLMNetworkError(
+            'Network error during Gemini API request',
+            error as Error,
+          );
+        } else {
+          throw new LLMApiError(
+            `Gemini API request failed: ${axiosError.message}`,
+            axiosError.response?.status,
+            JSON.stringify(axiosError.response?.data),
+          );
+        }
+      } else {
+        // Handle non-Axios errors
         throw new LLMApiError(
-          'Gemini API request failed',
-          axiosError.response?.status,
-          JSON.stringify(axiosError.response?.data),
+          `LLM request failed: ${error instanceof Error ? error.message : String(error)}`,
+          undefined,
+          JSON.stringify(errorDetails),
         );
       }
     }

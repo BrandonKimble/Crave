@@ -3,7 +3,6 @@
  * Strips unnecessary properties from Reddit API responses early to reduce memory and processing overhead
  */
 
-
 /**
  * Combined single-pass filter and transform to LLM format
  * Eliminates double processing by doing filtering and transformation in one pass
@@ -107,7 +106,8 @@ function transformCommentsDirectly(rawComments: any[]): any[] {
  */
 function formatTimestamp(timestamp: number | string): string {
   try {
-    const ts = typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp;
+    const ts =
+      typeof timestamp === 'string' ? parseFloat(timestamp) : timestamp;
     if (isNaN(ts)) {
       return new Date().toISOString();
     }

@@ -69,20 +69,26 @@ export class LLMChunkingService implements OnModuleInit {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'create_contextual_chunks',
       totalPosts: llmInput.posts.length,
-      postIds: llmInput.posts.map(p => p.id),
-      totalComments: llmInput.posts.reduce((sum, p) => sum + (p.comments?.length || 0), 0)
+      postIds: llmInput.posts.map((p) => p.id),
+      totalComments: llmInput.posts.reduce(
+        (sum, p) => sum + (p.comments?.length || 0),
+        0,
+      ),
     });
 
     // Process each post individually
     for (let postIndex = 0; postIndex < llmInput.posts.length; postIndex++) {
       const post = llmInput.posts[postIndex];
-      
-      this.logger.info(`Processing post ${postIndex + 1}/${llmInput.posts.length}`, {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        postId: post.id,
-        postTitle: post.title,
-        commentCount: post.comments?.length || 0
-      });
+
+      this.logger.info(
+        `Processing post ${postIndex + 1}/${llmInput.posts.length}`,
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          postId: post.id,
+          postTitle: post.title,
+          commentCount: post.comments?.length || 0,
+        },
+      );
 
       if (!post.comments || post.comments.length === 0) {
         this.logger.info(
@@ -92,7 +98,7 @@ export class LLMChunkingService implements OnModuleInit {
             postId: post.id,
           },
         );
-        
+
         chunks.push({
           posts: [
             {
@@ -141,7 +147,7 @@ export class LLMChunkingService implements OnModuleInit {
       });
 
       // Create one chunk per top-level comment thread
-      
+
       for (let i = 0; i < topLevelComments.length; i++) {
         const topComment = topLevelComments[i];
         const threadComments = this.getFullThread(topComment, post.comments);
@@ -151,7 +157,7 @@ export class LLMChunkingService implements OnModuleInit {
         // Use lightweight post object for chunks after the first one (token savings)
         const isFirstChunkOfThisPost = i === 0;
         const shouldExtractFromPost = isFirstChunkOfThisPost; // Extract from first chunk of EACH post
-        
+
         const chunkPost = shouldExtractFromPost
           ? {
               id: post.id,
@@ -201,7 +207,7 @@ export class LLMChunkingService implements OnModuleInit {
       // Handle orphaned comments for this post (defensive programming)
       const postChunksStartIndex = chunks.length - topLevelComments.length;
       const thisPostChunks = chunks.slice(postChunksStartIndex);
-      
+
       const processedCommentIds = new Set<string>();
       thisPostChunks.forEach((chunk) => {
         chunk.posts[0].comments.forEach((comment) => {
@@ -253,7 +259,10 @@ export class LLMChunkingService implements OnModuleInit {
       // Log chunk distribution analysis for this post
       const postChunkMetadata = chunkMetadata.slice(postChunksStartIndex);
       const chunkSizes = postChunkMetadata.map((m) => m.commentCount);
-      const totalChunkComments = chunkSizes.reduce((sum, size) => sum + size, 0);
+      const totalChunkComments = chunkSizes.reduce(
+        (sum, size) => sum + size,
+        0,
+      );
 
       this.logger.info('Chunk distribution analysis for post', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -264,7 +273,9 @@ export class LLMChunkingService implements OnModuleInit {
         averageChunkSize: totalChunkComments / postChunkMetadata.length,
         largestChunk: Math.max(...chunkSizes),
         smallestChunk: Math.min(...chunkSizes),
-        topRootScores: postChunkMetadata.slice(0, 10).map((m) => m.rootCommentScore),
+        topRootScores: postChunkMetadata
+          .slice(0, 10)
+          .map((m) => m.rootCommentScore),
         estimatedTotalTime: Math.max(
           ...postChunkMetadata.map((m) => m.estimatedProcessingTime),
         ),

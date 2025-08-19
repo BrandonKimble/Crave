@@ -117,7 +117,7 @@ export default () => ({
     timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
     maxTokens: process.env.LLM_MAX_TOKENS
       ? parseInt(process.env.LLM_MAX_TOKENS, 10)
-      : 4000,
+      : 0, // 0 = Use Gemini 2.5 Flash default 65,536 tokens maximum
     temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
     topP: parseFloat(process.env.LLM_TOP_P || '0.95'),
     topK: parseInt(process.env.LLM_TOP_K || '40', 10),

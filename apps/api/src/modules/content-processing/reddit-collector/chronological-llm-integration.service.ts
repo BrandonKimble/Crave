@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { HistoricalLlmIntegrationAdapter } from './historical-llm-integration.adapter';
-import { ChronologicalCollectionResult } from './chronological-collection.service';
+import { ChronologicalCollectionJobResult } from './chronological-collection.service';
 
 // Reddit API data structures
 interface RedditPostData {
@@ -76,7 +76,7 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
    * Implements PRD requirement: "Unified Pipeline: Both data sources use the same entity extraction and processing pipeline"
    */
   processChronologicalResults(
-    collectionResults: Record<string, ChronologicalCollectionResult>,
+    collectionResults: Record<string, ChronologicalCollectionJobResult>,
   ): Record<string, ChronologicalLlmProcessingResult> {
     this.logger.info(
       'Processing chronological collection results through LLM pipeline',
@@ -129,14 +129,14 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
    */
   private processSubredditResults(
     subreddit: string,
-    result: ChronologicalCollectionResult,
+    result: ChronologicalCollectionJobResult,
   ): ChronologicalLlmProcessingResult {
     const startTime = Date.now();
 
     this.logger.debug('Processing subreddit chronological results', {
       correlationId: CorrelationUtils.getCorrelationId(),
       subreddit,
-      postsCollected: result.postsCollected,
+      postsCollected: result.postsProcessed,
     });
 
     const errors: string[] = [];
@@ -155,8 +155,8 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
       // 4. Update database through existing M02 pipeline
 
       // Simulate processing metrics based on collection results
-      entitiesExtracted = Math.floor(result.postsCollected * 2.5); // Estimate 2.5 entities per post
-      connectionsCreated = Math.floor(result.postsCollected * 1.2); // Estimate 1.2 connections per post
+      entitiesExtracted = Math.floor(result.postsProcessed * 2.5); // Estimate 2.5 entities per post
+      connectionsCreated = Math.floor(result.postsProcessed * 1.2); // Estimate 1.2 connections per post
 
       this.logger.debug('Subreddit chronological processing completed', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -178,7 +178,7 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
 
     return {
       subreddit,
-      postsProcessed: result.postsCollected,
+      postsProcessed: result.postsProcessed,
       entitiesExtracted,
       connectionsCreated,
       processingTime: Date.now() - startTime,
@@ -237,18 +237,14 @@ export class ChronologicalLlmIntegrationService implements OnModuleInit {
    * Ensures data quality before expensive LLM operations
    */
   private validateChronologicalResults(
-    result: ChronologicalCollectionResult,
+    result: ChronologicalCollectionJobResult,
   ): boolean {
     // Basic validation checks
-    if (!result.subreddit || result.postsCollected <= 0) {
+    if (!result.subreddit || result.postsProcessed <= 0) {
       return false;
     }
 
-    if (result.timeRange.earliest <= 0 || result.timeRange.latest <= 0) {
-      return false;
-    }
-
-    if (result.timeRange.latest < result.timeRange.earliest) {
+    if (result.latestTimestamp && result.latestTimestamp <= 0) {
       return false;
     }
 

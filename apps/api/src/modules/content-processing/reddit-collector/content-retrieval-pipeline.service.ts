@@ -52,7 +52,7 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly redditService: RedditService,
+    @Inject(RedditService) private readonly redditService: RedditService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -104,7 +104,6 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
     const startTime = Date.now();
 
     try {
-
       // Transform Reddit data to LLM format
       const llmPosts: LLMPostDto[] = [];
       const allSourceUrls: string[] = [];
@@ -113,12 +112,20 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
 
       for (const postId of postIds) {
         try {
+          // Check if service is still available
+          if (!this.redditService) {
+            throw new Error(
+              'RedditService is undefined in ContentRetrievalPipeline',
+            );
+          }
+
           // Use single-pass processing for optimal performance
-          const rawResult = await this.redditService.getCompletePostWithComments(
-            subreddit,
-            postId,
-            options,
-          );
+          const rawResult =
+            await this.redditService.getCompletePostWithComments(
+              subreddit,
+              postId,
+              options,
+            );
 
           if (!rawResult.rawResponse || rawResult.rawResponse.length === 0) {
             this.logger.warn(`Skipping post ${postId} - no raw response`, {
@@ -136,23 +143,30 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
           );
 
           if (!llmPost) {
-            this.logger.warn(`Skipping post ${postId} - transformation failed`, {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              operation: 'retrieve_content_for_llm',
-              postId,
-            });
+            this.logger.warn(
+              `Skipping post ${postId} - transformation failed`,
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                operation: 'retrieve_content_for_llm',
+                postId,
+              },
+            );
             continue;
           }
 
           llmPosts.push(llmPost);
           allSourceUrls.push(rawResult.attribution.postUrl);
-          
+
           // Extract comment URLs from the transformed comments
-          const commentUrls = llmPost.comments.map((comment: any) => comment.url).filter(Boolean);
+          const commentUrls = llmPost.comments
+            .map((comment: any) => comment.url)
+            .filter(Boolean);
           allSourceUrls.push(...commentUrls);
 
           // Track thread depth for metadata
-          const threadDepth = this.calculateThreadDepthFromLLMComments(llmPost.comments);
+          const threadDepth = this.calculateThreadDepthFromLLMComments(
+            llmPost.comments,
+          );
           totalThreadDepth += threadDepth;
           validThreads++;
         } catch (error) {
@@ -180,8 +194,11 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
 
       const averageThreadDepth =
         validThreads > 0 ? totalThreadDepth / validThreads : 0;
-      
-      const totalComments = llmPosts.reduce((sum, post) => sum + post.comments.length, 0);
+
+      const totalComments = llmPosts.reduce(
+        (sum, post) => sum + post.comments.length,
+        0,
+      );
       const successfulRetrievals = llmPosts.length;
       const failedRetrievals = postIds.length - successfulRetrievals;
 
@@ -237,8 +254,11 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
     postUrl: string,
   ): LLMPostDto | null {
     try {
-      const { post, comments } = filterAndTransformToLLM(redditResponse, postUrl);
-      
+      const { post, comments } = filterAndTransformToLLM(
+        redditResponse,
+        postUrl,
+      );
+
       if (!post) {
         return null;
       }
@@ -255,43 +275,41 @@ export class ContentRetrievalPipelineService implements OnModuleInit {
     }
   }
 
-
   /**
    * Calculate maximum thread depth from LLM comment structure
    */
   private calculateThreadDepthFromLLMComments(comments: any[]): number {
     if (!comments || comments.length === 0) return 0;
-    
+
     // Build parent-child mapping
     const commentMap = new Map();
-    comments.forEach(comment => {
+    comments.forEach((comment) => {
       commentMap.set(comment.id, comment);
     });
-    
+
     // Calculate depth for each comment
     let maxDepth = 0;
-    
+
     const getDepth = (commentId: string, visited = new Set()): number => {
       if (visited.has(commentId)) return 0; // Prevent cycles
       visited.add(commentId);
-      
+
       const comment = commentMap.get(commentId);
       if (!comment || !comment.parent_id) return 0;
-      
+
       const parentComment = commentMap.get(comment.parent_id);
       if (!parentComment) return 0; // Top-level comment or parent is post
-      
+
       return 1 + getDepth(comment.parent_id, visited);
     };
-    
-    comments.forEach(comment => {
+
+    comments.forEach((comment) => {
       const depth = getDepth(comment.id);
       maxDepth = Math.max(maxDepth, depth);
     });
-    
+
     return maxDepth;
   }
-
 
   /**
    * Retrieve single post content for LLM processing

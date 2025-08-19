@@ -142,17 +142,6 @@ export class JobCoordinationException extends BatchProcessingException {
       { jobId, stage, reason },
     );
   }
-
-  static invalidJobState(
-    jobId: string,
-    currentState: string,
-    expectedState: string,
-  ): JobCoordinationException {
-    return new JobCoordinationException(
-      `Invalid job state for ${jobId}: expected ${expectedState}, got ${currentState}`,
-      { jobId, currentState, expectedState },
-    );
-  }
 }
 
 /**
@@ -246,18 +235,6 @@ export const BatchProcessingExceptionFactory = {
       jobId,
       stage,
       reason,
-    );
-  },
-
-  invalidJobState(
-    jobId: string,
-    currentState: string,
-    expectedState: string,
-  ): JobCoordinationException {
-    return JobCoordinationException.invalidJobState(
-      jobId,
-      currentState,
-      expectedState,
     );
   },
 

@@ -95,13 +95,17 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     // Increment usage counter
     this.incrementUsage(request.service, now);
 
-    this.logger.debug(`API request approved for ${request.service}`, {
-      service: request.service,
-      operation: request.operation,
-      currentUsage: currentUsage + 1,
-      limit,
-      correlationId,
-    });
+    // Only log when approaching limits (80%+) to reduce noise
+    if ((currentUsage + 1) / limit >= 0.8) {
+      this.logger.info(`Approaching rate limit for ${request.service}`, {
+        service: request.service,
+        operation: request.operation,
+        currentUsage: currentUsage + 1,
+        limit,
+        utilizationPercent: Math.round(((currentUsage + 1) / limit) * 100),
+        correlationId,
+      });
+    }
 
     return {
       allowed: true,

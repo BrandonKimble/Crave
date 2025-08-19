@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CollectionJobMonitoringService } from './collection-job-monitoring.service';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
-import { ChronologicalCollectionJobResult } from './chronological-collection.processor';
+import { ChronologicalCollectionJobResult } from './chronological-collection.service';
 import { LoggerService } from '../../../shared';
 
 describe('CollectionJobMonitoringService', () => {
@@ -79,7 +79,10 @@ describe('CollectionJobMonitoringService', () => {
       const successResult: ChronologicalCollectionJobResult = {
         success: true,
         jobId: 'job-123',
-        totalPostsCollected: 25,
+        subreddit: 'austinfood',
+        postsProcessed: 25,
+        batchesProcessed: 1,
+        mentionsExtracted: 10,
         processingTime: 15000,
         nextScheduledCollection: new Date(),
       };
@@ -110,7 +113,10 @@ describe('CollectionJobMonitoringService', () => {
       const failureResult: ChronologicalCollectionJobResult = {
         success: false,
         jobId: 'job-456',
-        totalPostsCollected: 0,
+        subreddit: 'austinfood',
+        postsProcessed: 0,
+        batchesProcessed: 0,
+        mentionsExtracted: 0,
         processingTime: 5000,
         error: 'API rate limit exceeded',
       };
@@ -161,7 +167,10 @@ describe('CollectionJobMonitoringService', () => {
       const result: ChronologicalCollectionJobResult = {
         success: true,
         jobId: 'unknown-job',
-        totalPostsCollected: 10,
+        subreddit: 'austinfood',
+        postsProcessed: 10,
+        batchesProcessed: 1,
+        mentionsExtracted: 5,
         processingTime: 3000,
       };
 
@@ -181,7 +190,10 @@ describe('CollectionJobMonitoringService', () => {
       service.recordJobCompletion('job-1', {
         success: true,
         jobId: 'job-1',
-        totalPostsCollected: 20,
+        subreddit: 'austinfood',
+        postsProcessed: 20,
+        batchesProcessed: 1,
+        mentionsExtracted: 8,
         processingTime: 10000,
       });
 
@@ -189,7 +201,10 @@ describe('CollectionJobMonitoringService', () => {
       service.recordJobCompletion('job-2', {
         success: false,
         jobId: 'job-2',
-        totalPostsCollected: 0,
+        subreddit: 'austinfood',
+        postsProcessed: 0,
+        batchesProcessed: 0,
+        mentionsExtracted: 0,
         processingTime: 5000,
         error: 'Rate limit exceeded',
       });
@@ -198,7 +213,10 @@ describe('CollectionJobMonitoringService', () => {
       service.recordJobCompletion('job-3', {
         success: true,
         jobId: 'job-3',
-        totalPostsCollected: 30,
+        subreddit: 'austinfood',
+        postsProcessed: 30,
+        batchesProcessed: 2,
+        mentionsExtracted: 12,
         processingTime: 15000,
       });
     });
@@ -252,7 +270,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`job-${i}`, {
           success: true,
           jobId: `job-${i}`,
-          totalPostsCollected: 20,
+          subreddit: 'austinfood',
+          postsProcessed: 20,
+          batchesProcessed: 1,
+          mentionsExtracted: 8,
           processingTime: 5000, // 5 seconds (under threshold)
         });
       }
@@ -271,7 +292,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`job-${i}`, {
           success: i % 5 === 0, // Every 5th job succeeds (20% success rate, not consecutive failures)
           jobId: `job-${i}`,
-          totalPostsCollected: i % 5 === 0 ? 20 : 0,
+          subreddit: 'austinfood',
+          postsProcessed: i % 5 === 0 ? 20 : 0,
+          batchesProcessed: i % 5 === 0 ? 1 : 0,
+          mentionsExtracted: i % 5 === 0 ? 8 : 0,
           processingTime: 5000,
           error: i % 5 !== 0 ? 'Test failure' : undefined,
         });
@@ -292,7 +316,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`job-${i}`, {
           success: false,
           jobId: `job-${i}`,
-          totalPostsCollected: 0,
+          subreddit: 'austinfood',
+          postsProcessed: 0,
+          batchesProcessed: 0,
+          mentionsExtracted: 0,
           processingTime: 5000,
           error: 'Consecutive failure',
         });
@@ -315,7 +342,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`job-${i}`, {
           success: false,
           jobId: `job-${i}`,
-          totalPostsCollected: 0,
+          subreddit: 'austinfood',
+          postsProcessed: 0,
+          batchesProcessed: 0,
+          mentionsExtracted: 0,
           processingTime: 5000,
           error: 'Test failure',
         });
@@ -339,7 +369,10 @@ describe('CollectionJobMonitoringService', () => {
       service.recordJobCompletion('slow-job', {
         success: true,
         jobId: 'slow-job',
-        totalPostsCollected: 10,
+        subreddit: 'austinfood',
+        postsProcessed: 10,
+        batchesProcessed: 1,
+        mentionsExtracted: 5,
         processingTime: 15 * 60 * 1000, // 15 minutes (above threshold)
       });
 
@@ -367,7 +400,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`job-${index}`, {
           success: false,
           jobId: `job-${index}`,
-          totalPostsCollected: 0,
+          subreddit: 'austinfood',
+          postsProcessed: 0,
+          batchesProcessed: 0,
+          mentionsExtracted: 0,
           processingTime: 5000,
           error,
         });
@@ -390,7 +426,10 @@ describe('CollectionJobMonitoringService', () => {
         service.recordJobCompletion(`old-job-${i}`, {
           success: true,
           jobId: `old-job-${i}`,
-          totalPostsCollected: 10,
+          subreddit: 'austinfood',
+          postsProcessed: 10,
+          batchesProcessed: 1,
+          mentionsExtracted: 5,
           processingTime: 5000,
         });
       }

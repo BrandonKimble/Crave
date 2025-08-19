@@ -169,6 +169,23 @@ model UserEvent {
   @@map("user_events")
 }
 
+model Subreddit {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String    @unique @db.VarChar(100)
+  avgPostsPerDay       Float     @map("avg_posts_per_day")
+  safeIntervalDays     Float     @map("safe_interval_days") // Calculated as (750_posts / avg_posts_per_day)
+  lastCalculated       DateTime  @map("last_calculated") @db.Timestamptz(6)
+  lastProcessed        DateTime? @map("last_processed") @db.Timestamptz(6)
+  isActive             Boolean   @default(true) @map("is_active")
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([name])
+  @@index([isActive])
+  @@index([lastProcessed])
+  @@index([safeIntervalDays])
+  @@map("subreddits")
+}
+
 enum EntityType {
   restaurant
   dish_or_category

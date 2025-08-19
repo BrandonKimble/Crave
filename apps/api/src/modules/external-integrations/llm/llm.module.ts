@@ -5,6 +5,7 @@ import { LLMService } from './llm.service';
 import { LLMHealthController } from './llm-health.controller';
 import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
+import { LLMPerformanceOptimizerService } from './llm-performance-optimizer.service';
 import { SharedModule } from '../../../shared/shared.module';
 
 @Module({
@@ -16,8 +17,8 @@ import { SharedModule } from '../../../shared/shared.module';
     ConfigModule,
     SharedModule, // For LoggerService
   ],
-  providers: [LLMService, LLMChunkingService, LLMConcurrentProcessingService],
+  providers: [LLMService, LLMChunkingService, LLMConcurrentProcessingService, LLMPerformanceOptimizerService],
   controllers: [LLMHealthController],
-  exports: [LLMService, LLMChunkingService, LLMConcurrentProcessingService],
+  exports: [LLMService, LLMChunkingService, LLMConcurrentProcessingService, LLMPerformanceOptimizerService],
 })
 export class LLMModule {}

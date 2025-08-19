@@ -96,34 +96,6 @@ export class JobMonitoringException extends ScheduledCollectionException {
 }
 
 /**
- * Job state persistence failed
- */
-export class JobStateException extends ScheduledCollectionException {
-  readonly errorCode = 'SCHEDULED_JOB_STATE_FAILED';
-
-  static stateSaveFailed(jobId: string, reason: string): JobStateException {
-    return new JobStateException(
-      `Failed to save state for job ${jobId}: ${reason}`,
-      { jobId, reason },
-    );
-  }
-
-  static stateLoadFailed(jobId: string, reason: string): JobStateException {
-    return new JobStateException(
-      `Failed to load state for job ${jobId}: ${reason}`,
-      { jobId, reason },
-    );
-  }
-
-  static resumeFailed(jobId: string, reason: string): JobStateException {
-    return new JobStateException(`Failed to resume job ${jobId}: ${reason}`, {
-      jobId,
-      reason,
-    });
-  }
-}
-
-/**
  * Configuration validation failed
  */
 export class SchedulingConfigurationException extends ScheduledCollectionException {
@@ -202,18 +174,6 @@ export const ScheduledCollectionExceptionFactory = {
 
   alertingFailed(alertType: string, reason: string): JobMonitoringException {
     return JobMonitoringException.alertingFailed(alertType, reason);
-  },
-
-  stateSaveFailed(jobId: string, reason: string): JobStateException {
-    return JobStateException.stateSaveFailed(jobId, reason);
-  },
-
-  stateLoadFailed(jobId: string, reason: string): JobStateException {
-    return JobStateException.stateLoadFailed(jobId, reason);
-  },
-
-  resumeFailed(jobId: string, reason: string): JobStateException {
-    return JobStateException.resumeFailed(jobId, reason);
   },
 
   invalidSchedule(

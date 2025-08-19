@@ -1,349 +1,428 @@
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Process, Processor } from '@nestjs/bull';
+import { Job } from 'bull';
+import { OnModuleInit, Inject } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
-import { CollectionSchedulingService } from './collection-scheduling.service';
+import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
+import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking.service';
+import { LLMConcurrentProcessingService } from '../../external-integrations/llm/llm-concurrent-processing.service';
+import { LLMService } from '../../external-integrations/llm/llm.service';
+import { UnifiedProcessingService } from './unified-processing.service';
+import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
 
-// Reddit API data structures
-interface RedditPostData {
-  id: string;
-  title: string;
-  created_utc: number;
-  subreddit: string;
-  author?: string;
-  score?: number;
-  num_comments?: number;
-  permalink?: string;
-  selftext?: string;
-  url?: string;
-}
-
-interface RedditPost {
-  kind: string;
-  data: RedditPostData;
-}
-
-export interface ChronologicalCollectionResult {
-  subreddit: string;
-  postsCollected: number;
-  commentsCollected: number;
-  timeRange: {
-    earliest: number;
-    latest: number;
+export interface ChronologicalCollectionJobData {
+  subreddit: string; // Changed from subreddits array to single subreddit
+  jobId: string;
+  triggeredBy:
+    | 'scheduled'
+    | 'manual'
+    | 'gap_detection'
+    | 'startup_due'
+    | 'delayed_schedule';
+  options?: {
+    lastProcessedTimestamp?: number;
+    limit?: number;
+    retryCount?: number;
   };
+}
+
+export interface ChronologicalCollectionJobResult {
+  success: boolean;
+  jobId: string;
+  subreddit: string;
+  postsProcessed: number;
+  batchesProcessed: number;
+  mentionsExtracted: number;
   processingTime: number;
-  rateLimitStatus: {
-    requestsUsed: number;
-    remainingQuota: number;
-  };
+  error?: string;
+  nextScheduledCollection?: Date;
+  latestTimestamp?: number;
 }
 
-export interface ChronologicalCollectionOptions {
-  lastProcessedTimestamp?: number;
-  limit?: number;
-  includeComments?: boolean;
+// Helper function to chunk arrays
+function chunk<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
 }
 
 /**
  * Chronological Collection Service
  *
- * Implements PRD Section 5.1.2: Chronological Collection Cycles
- * Handles fetching all recent posts chronologically using /r/subreddit/new
- * with dynamic scheduling based on posting volume and safety buffer calculations.
+ * Implements PRD Section 5.1.2: Complete chronological collection pipeline
+ * Combines Bull queue processing with Reddit data collection and LLM processing.
  *
  * Key responsibilities:
- * - Execute chronological collection using /r/subreddit/new endpoint
- * - Track last_processed_timestamp for collection continuity
- * - Integrate with dynamic scheduling service for frequency calculation
- * - Handle error scenarios with retry logic
- * - Provide complete recent coverage ensuring no content gaps
+ * - Process scheduled chronological collection jobs via Bull queue
+ * - Execute Reddit API chronological collection
+ * - Coordinate LLM processing pipeline
+ * - Handle retry logic for failed collections
+ * - Update database timestamps and schedule next collections
+ * - Provide comprehensive error handling and logging
  */
-@Injectable()
+@Processor('chronological-collection')
 export class ChronologicalCollectionService implements OnModuleInit {
   private logger!: LoggerService;
-  private lastProcessedTimestamps = new Map<string, number>();
-  private isCollectionActive = false;
+  private readonly BATCH_SIZE = 25; // Optimal batch size from testing
 
   constructor(
-    @Inject(ConfigService) private readonly configService: ConfigService,
-    private readonly redditService: RedditService,
-    private readonly schedulingService: CollectionSchedulingService,
+    private readonly moduleRef: ModuleRef,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RedditService) private readonly redditService: RedditService,
+    @Inject(ContentRetrievalPipelineService) private readonly contentRetrievalPipeline: ContentRetrievalPipelineService,
+    @Inject(LLMChunkingService) private readonly llmChunkingService: LLMChunkingService,
+    @Inject(LLMConcurrentProcessingService) private readonly llmConcurrentService: LLMConcurrentProcessingService,
+    @Inject(LLMService) private readonly llmService: LLMService,
+    @Inject(UnifiedProcessingService) private readonly unifiedProcessingService: UnifiedProcessingService,
   ) {}
 
   onModuleInit(): void {
-    this.logger = this.loggerService.setContext('ChronologicalCollection');
+    this.logger = this.loggerService.setContext(
+      'ChronologicalCollectionService',
+    );
+    // Scheduling now handled by database-driven Bull queue scheduler
   }
 
   /**
-   * Initialize chronological collection for configured subreddits
-   * Implements PRD requirement: "Start immediately: Begin both collection strategies"
+   * Process chronological collection job for a single subreddit
+   * Implements batch processing with natural rate limiting via LLM processing
    */
-  initializeChronologicalCollection(): boolean {
-    this.logger.info('Initializing chronological collection', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'initialize_chronological',
-    });
-
-    try {
-      // Get configured subreddits from config
-      const targetSubreddits = this.getTargetSubreddits();
-
-      // Skip initialization if schedulingService is not available (e.g., in tests)
-      if (!this.schedulingService) {
-        this.logger.warn(
-          'Scheduling service not available, skipping initialization',
-        );
-        return false;
-      }
-
-      // Initialize scheduling for each subreddit
-      for (const subreddit of targetSubreddits) {
-        this.schedulingService.initializeSubredditScheduling(subreddit);
-
-        // Set initial timestamp to current time for new collections
-        if (!this.lastProcessedTimestamps.has(subreddit)) {
-          this.lastProcessedTimestamps.set(subreddit, Date.now() / 1000);
-        }
-      }
-
-      this.logger.info('Chronological collection initialization complete', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        subreddits: targetSubreddits,
-        timestamps: Object.fromEntries(this.lastProcessedTimestamps),
-      });
-
-      return true;
-    } catch (error) {
-      this.logger.error('Failed to initialize chronological collection', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return false;
-    }
-  }
-
-  /**
-   * Execute chronological collection for specified subreddits
-   * Implements PRD Section 5.1.2: "Fetch all recent posts chronologically using /r/subreddit/new"
-   */
-  async executeCollection(
-    subreddits: string[],
-    options: ChronologicalCollectionOptions = {},
-  ): Promise<{
-    results: Record<string, ChronologicalCollectionResult>;
-    totalPostsCollected: number;
-    processingTime: number;
-  }> {
+  @Process('execute-chronological-collection')
+  async processChronologicalCollection(
+    job: Job<ChronologicalCollectionJobData>,
+  ): Promise<ChronologicalCollectionJobResult> {
+    const { subreddit, jobId, triggeredBy, options = {} } = job.data;
+    const correlationId = CorrelationUtils.generateCorrelationId();
     const startTime = Date.now();
-    this.isCollectionActive = true;
 
-    this.logger.info('Starting chronological collection execution', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'execute_chronological_collection',
-      subreddits,
+    this.logger.info('Processing chronological collection job', {
+      correlationId,
+      operation: 'process_chronological_job',
+      jobId,
+      subreddit,
+      triggeredBy,
       options,
     });
 
-    const results: Record<string, ChronologicalCollectionResult> = {};
-    let totalPostsCollected = 0;
+    // Services injected via constructor - no ModuleRef resolution needed
 
     try {
-      // Process each subreddit sequentially to manage rate limits
-      for (const subreddit of subreddits) {
-        const subredditResult = await this.collectFromSubreddit(
-          subreddit,
-          options,
-        );
-        results[subreddit] = subredditResult;
-        totalPostsCollected += subredditResult.postsCollected;
+      // PHASE 1: Collect all post metadata (lightweight, 1 API call)
+      // Scheduler ALWAYS provides lastProcessedTimestamp - either from DB or calculated fallback
+      const lastProcessed = options.lastProcessedTimestamp!;
 
-        // Update last processed timestamp for continuity
-        if (subredditResult.timeRange.latest > 0) {
-          this.lastProcessedTimestamps.set(
-            subreddit,
-            subredditResult.timeRange.latest,
-          );
-        }
-      }
-
-      const processingTime = Date.now() - startTime;
-
-      this.logger.info('Chronological collection execution completed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        totalPostsCollected,
-        processingTime,
-        subredditsProcessed: subreddits.length,
-      });
-
-      return {
-        results,
-        totalPostsCollected,
-        processingTime,
-      };
-    } catch (error) {
-      this.logger.error('Chronological collection execution failed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        error: error instanceof Error ? error.message : String(error),
-        subreddits,
-      });
-      throw error;
-    } finally {
-      this.isCollectionActive = false;
-    }
-  }
-
-  /**
-   * Collect posts from a single subreddit using chronological method
-   * Implements PRD requirement: Dynamic scheduling with safety buffer equation
-   */
-  private async collectFromSubreddit(
-    subreddit: string,
-    options: ChronologicalCollectionOptions,
-  ): Promise<ChronologicalCollectionResult> {
-    const startTime = Date.now();
-    // Default to 7 days ago if no timestamp is provided (for initial collection)
-    const sevenDaysAgo = Math.floor(Date.now() / 1000) - (7 * 24 * 60 * 60);
-    const lastProcessed =
-      options.lastProcessedTimestamp ||
-      this.lastProcessedTimestamps.get(subreddit) ||
-      sevenDaysAgo;
-
-    this.logger.info('Collecting from subreddit chronologically', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      subreddit,
-      lastProcessed,
-      limit: options.limit,
-    });
-
-    try {
-      // Use existing RedditService chronological collection method
-      this.logger.debug('Calling Reddit API for chronological posts', {
-        subreddit,
-        lastProcessed,
-        lastProcessedDate: new Date(lastProcessed * 1000).toISOString(),
-        limit: options.limit || 100,
-      });
-
-      const collectionResult = await this.redditService.getChronologicalPosts(
-        subreddit,
-        lastProcessed,
-        options.limit || 100,
+      await job.log(
+        `Collecting posts from r/${subreddit} since ${new Date(lastProcessed * 1000).toISOString()}`,
       );
 
-      this.logger.debug('Reddit API response received', {
-        dataLength: collectionResult.data?.length || 0,
-        hasData: !!collectionResult.data,
-        performance: collectionResult.performance,
-      });
+      // ALWAYS request maximum posts (1000) regardless of what's in options
+      // We want to ensure we never miss any posts between collection cycles
+      // The PRD safety buffer (750) is for scheduling frequency, not collection limit
+      const postsResult = await this.redditService.getChronologicalPosts(
+        subreddit,
+        lastProcessed,
+        1000, // Always request Reddit's maximum to never miss posts
+      );
 
-      // Extract metrics from Reddit API response
-      const postsCollected = collectionResult.data?.length || 0;
-      const commentsCollected = 0; // Comments will be processed separately
+      const posts = postsResult.data || [];
+      await job.log(`Collected ${posts.length} posts from r/${subreddit}`);
 
-      // Calculate time range from posts
-      let earliest = 0;
-      let latest = 0;
+      if (posts.length === 0) {
+        return {
+          success: true,
+          jobId,
+          subreddit,
+          postsProcessed: 0,
+          batchesProcessed: 0,
+          mentionsExtracted: 0,
+          processingTime: Date.now() - startTime,
+          nextScheduledCollection: undefined,
+        };
+      }
 
-      if (collectionResult.data && collectionResult.data.length > 0) {
-        const timestamps = collectionResult.data
-          .map((post: any) => post.created_utc || 0)
-          .filter((timestamp: number) => timestamp > 0);
+      // PHASE 2: Process in batches of 25 posts
+      const batches = chunk(
+        posts.map((p: any) => p.id),
+        this.BATCH_SIZE,
+      );
+      let totalMentionsExtracted = 0;
+      let latestTimestamp = 0;
 
-        if (timestamps.length > 0) {
-          earliest = Math.min(...timestamps);
-          latest = Math.max(...timestamps);
+      for (const [index, batchIds] of batches.entries()) {
+        const batchNum = index + 1;
+        const batchStartTime = Date.now();
+        await job.log(
+          `🔄 Processing batch ${batchNum}/${batches.length} (${batchIds.length} posts) - Started`,
+        );
+
+        try {
+          // Get full content for this batch (25 API calls)
+          const fullPosts =
+            await this.contentRetrievalPipeline.retrieveContentForLLM(
+              subreddit,
+              batchIds,
+              { depth: 50 },
+            );
+
+          // LLM processing (~82 seconds, provides natural rate limiting)
+          const chunkData = await this.llmChunkingService.createContextualChunks(
+            fullPosts.llmInput,
+          );
+          const processingResult = await this.llmConcurrentService.processConcurrent(
+            chunkData,
+            this.llmService,
+          );
+
+          // Consolidate results
+          const llmOutput = {
+            mentions: processingResult.results.flatMap((r) => r.mentions),
+          };
+          totalMentionsExtracted += llmOutput.mentions.length;
+
+          // Save to database immediately (progressive saves)
+          const mergedInput = {
+            posts: fullPosts.llmInput.posts,
+            comments: [], // Comments are nested in posts
+            sourceMetadata: {
+              batchId: `${jobId}-batch-${batchNum}`,
+              mergeTimestamp: new Date(),
+              sourceBreakdown: {
+                pushshift_archive: 0,
+                reddit_api_chronological: fullPosts.llmInput.posts.length,
+                reddit_api_keyword_search: 0,
+                reddit_api_on_demand: 0,
+              },
+              temporalRange: {
+                earliest: Math.min(
+                  ...fullPosts.llmInput.posts.map((p: any) =>
+                    new Date(p.created_at).getTime(),
+                  ),
+                ),
+                latest: Math.max(
+                  ...fullPosts.llmInput.posts.map((p: any) =>
+                    new Date(p.created_at).getTime(),
+                  ),
+                ),
+                spanHours: 0, // Will be calculated from earliest/latest
+              },
+            },
+          };
+          // Calculate span hours
+          mergedInput.sourceMetadata.temporalRange.spanHours =
+            (mergedInput.sourceMetadata.temporalRange.latest -
+              mergedInput.sourceMetadata.temporalRange.earliest) /
+            (1000 * 60 * 60);
+
+          await this.unifiedProcessingService.processUnifiedBatch(mergedInput);
+
+          // Update progress for monitoring
+          const progress = (batchNum / batches.length) * 100;
+          await job.progress(progress);
+
+          // Log batch completion with timing and performance metrics
+          const batchDuration = Date.now() - batchStartTime;
+          await job.log(
+            `✅ Batch ${batchNum}/${batches.length} completed - ${llmOutput.mentions.length} mentions in ${(batchDuration/1000).toFixed(1)}s (${(llmOutput.mentions.length/(batchDuration/1000)).toFixed(1)} mentions/sec)`,
+          );
+        } catch (batchError) {
+          const batchDuration = Date.now() - batchStartTime;
+          await job.log(
+            `❌ Batch ${batchNum}/${batches.length} failed after ${(batchDuration/1000).toFixed(1)}s`,
+          );
+          this.logger.error(`Failed to process batch ${batchNum}`, {
+            correlationId,
+            error:
+              batchError instanceof Error
+                ? batchError.message
+                : String(batchError),
+            batch: batchNum,
+            totalBatches: batches.length,
+            batchDurationMs: batchDuration,
+          });
+          // Continue with next batch even if one fails
         }
       }
 
-      const processingTime = Date.now() - startTime;
+      // Update last processed timestamp in database ONLY if LLM processing succeeded
+      const timestamps = posts
+        .map((p: any) => p.created_utc || 0)
+        .filter((t: number) => t > 0);
+      if (timestamps.length > 0) {
+        latestTimestamp = Math.max(...timestamps);
 
-      const result: ChronologicalCollectionResult = {
+        // Only update database if we successfully extracted mentions
+        if (totalMentionsExtracted > 0) {
+          // Update database with new lastProcessed timestamp
+          await this.prisma.subreddit.update({
+            where: { name: subreddit.toLowerCase() },
+            data: {
+              lastProcessed: new Date(latestTimestamp * 1000),
+            },
+          });
+
+          this.logger.info('Updated lastProcessed timestamp in database', {
+            correlationId,
+            subreddit,
+            lastProcessedTimestamp: latestTimestamp,
+            lastProcessedDate: new Date(latestTimestamp * 1000).toISOString(),
+            mentionsExtracted: totalMentionsExtracted,
+          });
+
+          // Schedule next collection using event-driven approach
+          const collectionJobScheduler = await this.moduleRef.resolve(
+            CollectionJobSchedulerService,
+          );
+          await collectionJobScheduler.scheduleNextCollection(subreddit);
+        } else {
+          this.logger.warn('LLM processing failed - NOT updating lastProcessed timestamp', {
+            correlationId,
+            subreddit,
+            postsProcessed: posts.length,
+            batchesProcessed: batches.length,
+            mentionsExtracted: totalMentionsExtracted,
+            message: 'Will retry these posts in next collection cycle',
+          });
+        }
+      }
+
+      // Update scheduling based on observed posting volume
+      await this.updateSchedulingFromResults(
         subreddit,
-        postsCollected,
-        commentsCollected,
-        timeRange: { earliest, latest },
-        processingTime,
-        rateLimitStatus: {
-          requestsUsed: collectionResult.performance?.apiCallsUsed || 1,
-          remainingQuota: 100, // Placeholder - will be enhanced with actual rate limit data
-        },
+        posts.length,
+        latestTimestamp - lastProcessed,
+      );
+
+      const result: ChronologicalCollectionJobResult = {
+        success: true,
+        jobId,
+        subreddit,
+        postsProcessed: posts.length,
+        batchesProcessed: batches.length,
+        mentionsExtracted: totalMentionsExtracted,
+        processingTime: Date.now() - startTime,
+        nextScheduledCollection: undefined,
+        latestTimestamp,
       };
 
-      this.logger.info('Subreddit collection completed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
+      this.logger.info('Chronological collection job completed successfully', {
+        correlationId,
         result,
       });
 
       return result;
     } catch (error) {
-      this.logger.error('Failed to collect from subreddit', {
-        correlationId: CorrelationUtils.getCorrelationId(),
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      const retryCount = options.retryCount || 0;
+
+      this.logger.error('Chronological collection job failed', {
+        correlationId,
+        jobId,
+        error: errorMessage,
+        retryCount,
         subreddit,
-        error: error instanceof Error ? error.message : String(error),
       });
 
-      // Return empty result on error to allow other subreddits to continue
+      // Implement retry logic
+      if (retryCount < 3) {
+        this.logger.info('Scheduling retry for failed collection job', {
+          correlationId,
+          jobId,
+          retryCount: retryCount + 1,
+        });
+
+        job.data.options = {
+          ...options,
+          retryCount: retryCount + 1,
+        };
+
+        throw error; // Trigger Bull's retry mechanism
+      }
+
       return {
+        success: false,
+        jobId,
         subreddit,
-        postsCollected: 0,
-        commentsCollected: 0,
-        timeRange: { earliest: 0, latest: 0 },
+        postsProcessed: 0,
+        batchesProcessed: 0,
+        mentionsExtracted: 0,
         processingTime: Date.now() - startTime,
-        rateLimitStatus: {
-          requestsUsed: 0,
-          remainingQuota: 100,
-        },
+        error: errorMessage,
       };
     }
   }
 
   /**
-   * Get collection status for monitoring
+   * Update scheduling configurations based on collection results
+   * Adjusts posting volume estimates for better future scheduling
    */
-  getCollectionStatus(): {
-    isActive: boolean;
-    lastCollection: Date | null;
-    nextScheduled: Date | null;
-  } {
-    // This will be enhanced with actual scheduling data
-    return {
-      isActive: this.isCollectionActive,
-      lastCollection: null, // Will be implemented with persistent storage
-      nextScheduled: null, // Will be implemented with Bull queue integration
-    };
+  private async updateSchedulingFromResults(
+    subreddit: string,
+    postsCollected: number,
+    timeSpanSeconds: number,
+  ): Promise<void> {
+    if (postsCollected > 0 && timeSpanSeconds > 0) {
+      const timeSpanDays = timeSpanSeconds / (24 * 60 * 60);
+      const observedPostsPerDay = postsCollected / Math.max(timeSpanDays, 1);
+
+      // Volume tracking is now handled by database updates
+      // Scheduling is handled by the CollectionJobSchedulerService via delayed jobs
+    }
   }
 
   /**
-   * Get target subreddits from configuration
-   * Implements PRD Section 5.1.1: "Target Subreddits: r/austinfood (primary), r/FoodNYC"
+   * Handle job failure events
    */
-  private getTargetSubreddits(): string[] {
-    return this.configService.get<string[]>('reddit.targetSubreddits', [
-      'austinfood',
-      'FoodNYC',
-    ]);
-  }
+  @Process('handle-collection-failure')
+  handleCollectionFailure(
+    job: Job<{ jobId: string; error: string; subreddit: string }>,
+  ): void {
+    const { jobId, error, subreddit } = job.data;
 
-  /**
-   * Get last processed timestamp for a subreddit
-   */
-  getLastProcessedTimestamp(subreddit: string): number | undefined {
-    return this.lastProcessedTimestamps.get(subreddit);
-  }
-
-  /**
-   * Update last processed timestamp for a subreddit
-   * Used for tracking collection continuity
-   */
-  updateLastProcessedTimestamp(subreddit: string, timestamp: number): void {
-    this.lastProcessedTimestamps.set(subreddit, timestamp);
-
-    this.logger.debug('Updated last processed timestamp', {
-      correlationId: CorrelationUtils.getCorrelationId(),
+    this.logger.error('Handling collection failure', {
+      correlationId: CorrelationUtils.generateCorrelationId(),
+      operation: 'handle_collection_failure',
+      jobId,
+      error,
       subreddit,
-      timestamp,
-      date: new Date(timestamp * 1000).toISOString(),
     });
+
+    // Failure recovery strategies:
+    // - Alert administrators
+    // - Schedule emergency collection
+    // - Update monitoring dashboards
+    // - Adjust collection frequencies temporarily
+  }
+
+  /**
+   * Handle job completion events for monitoring
+   */
+  @Process('log-collection-metrics')
+  logCollectionMetrics(job: Job<ChronologicalCollectionJobResult>): void {
+    const result = job.data;
+
+    this.logger.info('Logging collection metrics', {
+      correlationId: CorrelationUtils.generateCorrelationId(),
+      operation: 'log_collection_metrics',
+      metrics: {
+        success: result.success,
+        postsProcessed: result.postsProcessed,
+        batchesProcessed: result.batchesProcessed,
+        mentionsExtracted: result.mentionsExtracted,
+        processingTime: result.processingTime,
+        nextScheduledCollection: result.nextScheduledCollection,
+      },
+    });
+
+    // Here we could send metrics to monitoring systems:
+    // - Prometheus metrics
+    // - Custom dashboards
+    // - Performance tracking
+    // - Alert systems
   }
 }

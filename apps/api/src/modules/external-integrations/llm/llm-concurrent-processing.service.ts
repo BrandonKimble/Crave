@@ -4,6 +4,7 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from './llm.service';
 import { LLMOutputStructure } from './llm.types';
 import { ChunkResult, ChunkMetadata } from './llm-chunking.service';
+import { LLMPerformanceOptimizerService } from './llm-performance-optimizer.service';
 
 /**
  * Processing result for a single chunk
@@ -32,6 +33,12 @@ export interface ProcessingResult {
     fastestChunk: number;
     slowestChunk: number;
   };
+  configuration?: {
+    workerCount: number;
+    delayStrategy: string;
+    delayMs: number;
+    burstRate: number;
+  };
 }
 
 /**
@@ -48,10 +55,14 @@ export interface ProcessingResult {
 export class LLMConcurrentProcessingService implements OnModuleInit {
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
-  private readonly concurrencyLimit: number = 16; // Significantly increased for compound term processing test
+  private concurrencyLimit: number = 24; // Optimized for TPM limits: 24w/linear/50ms
+  private delayStrategy: 'none' | 'linear' | 'exponential' | 'jittered' = 'linear';
+  private delayMs: number = 50;
+  private isOptimized: boolean = true; // Pre-configured with optimized settings
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    @Inject(LLMPerformanceOptimizerService) private readonly optimizer: LLMPerformanceOptimizerService,
   ) {}
 
   onModuleInit() {
@@ -60,7 +71,62 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     this.logger.info('LLM Concurrent Processing Service initialized', {
       concurrencyLimit: this.concurrencyLimit,
+      optimized: this.isOptimized,
     });
+  }
+
+  /**
+   * Optimize concurrency settings based on actual performance testing
+   */
+  async optimizeConfiguration(
+    sampleChunks: ChunkResult,
+    llmService: LLMService,
+    options: {
+      maxWorkers?: number;
+      testDurationLimitMs?: number;
+    } = {}
+  ): Promise<void> {
+    this.logger.info('Starting performance optimization', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'optimize_configuration',
+      currentConfig: {
+        workerCount: this.concurrencyLimit,
+        delayStrategy: this.delayStrategy,
+        delayMs: this.delayMs
+      }
+    });
+
+    try {
+      const optimal = await this.optimizer.findOptimalConfiguration(
+        sampleChunks,
+        llmService,
+        options
+      );
+
+      // Update configuration
+      this.concurrencyLimit = optimal.workerCount;
+      this.delayStrategy = optimal.delayStrategy;
+      this.delayMs = optimal.delayMs;
+      this.isOptimized = true;
+
+      // Recreate p-limit with new concurrency
+      this.limit = pLimit(this.concurrencyLimit);
+
+      this.logger.info('Performance optimization completed', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'optimize_configuration',
+        optimalConfig: optimal,
+        previousWorkerCount: 16,
+        newWorkerCount: this.concurrencyLimit
+      });
+
+    } catch (error) {
+      this.logger.error('Performance optimization failed, keeping current configuration', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'optimize_configuration',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
   }
 
   /**
@@ -105,13 +171,19 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       chunkSizes: metadata.map((m) => m.commentCount),
       estimatedTimes: metadata.map((m) => m.estimatedProcessingTime),
       concurrencyLimit: this.concurrencyLimit,
+      delayStrategy: this.delayStrategy,
+      delayMs: this.delayMs,
+      isOptimized: this.isOptimized,
       topRootScores: metadata.slice(0, 5).map((m) => m.rootCommentScore),
     });
 
-    // Process chunks with concurrency control
+    // Process chunks with concurrency control and optional delay strategy
     // p-limit naturally handles variable processing times
     const promises = chunks.map((chunk, index) =>
       this.limit(async (): Promise<ChunkProcessingResult> => {
+        // Apply delay strategy to stagger request initiation
+        await this.applyDelayStrategy(index);
+        
         const chunkStart = Date.now();
         const meta = metadata[index];
 
@@ -259,6 +331,12 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         fastestChunk,
         slowestChunk,
       },
+      configuration: {
+        workerCount: this.concurrencyLimit,
+        delayStrategy: this.delayStrategy,
+        delayMs: this.delayMs,
+        burstRate: this.calculateBurstRate(this.concurrencyLimit, this.delayMs, this.delayStrategy),
+      },
     };
   }
 
@@ -346,6 +424,89 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       currentlyActive: this.limit.activeCount,
       currentlyPending: this.limit.pendingCount,
       utilizationRate,
+    };
+  }
+
+  /**
+   * Apply delay strategy before starting request to stagger worker initiation
+   */
+  private async applyDelayStrategy(workerIndex: number): Promise<void> {
+    if (this.delayStrategy === 'none' || this.delayMs === 0) {
+      return;
+    }
+
+    let delayMs = 0;
+
+    switch (this.delayStrategy) {
+      case 'linear':
+        // Linear spacing: 0ms, 50ms, 100ms, 150ms...
+        delayMs = workerIndex * this.delayMs;
+        break;
+      
+      case 'exponential':
+        // Exponential spacing: 0ms, 50ms, 75ms, 112ms...
+        delayMs = this.delayMs * Math.pow(1.5, workerIndex);
+        break;
+      
+      case 'jittered':
+        // Linear + random jitter to avoid thundering herd
+        const jitter = Math.random() * this.delayMs;
+        delayMs = (workerIndex * this.delayMs) + jitter;
+        break;
+    }
+
+    if (delayMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  /**
+   * Calculate theoretical burst rate based on configuration
+   */
+  private calculateBurstRate(
+    workerCount: number, 
+    delayMs: number, 
+    strategy: string
+  ): number {
+    if (strategy === 'none' || delayMs === 0) {
+      // All workers start simultaneously
+      return workerCount / 0.01; // 16 workers in 10ms = 1600 req/sec
+    }
+
+    let totalSpreadMs = 0;
+    switch (strategy) {
+      case 'linear':
+        totalSpreadMs = (workerCount - 1) * delayMs;
+        break;
+      case 'exponential':
+        totalSpreadMs = delayMs * Math.pow(1.5, workerCount - 1);
+        break;
+      case 'jittered':
+        totalSpreadMs = (workerCount - 1) * delayMs + delayMs; // worst case
+        break;
+    }
+
+    // Convert to seconds and calculate rate
+    const totalSpreadSeconds = Math.max(totalSpreadMs / 1000, 0.01);
+    return workerCount / totalSpreadSeconds;
+  }
+
+  /**
+   * Get current configuration for monitoring and debugging
+   */
+  getCurrentConfiguration(): {
+    workerCount: number;
+    delayStrategy: string;
+    delayMs: number;
+    isOptimized: boolean;
+    burstRate: number;
+  } {
+    return {
+      workerCount: this.concurrencyLimit,
+      delayStrategy: this.delayStrategy,
+      delayMs: this.delayMs,
+      isOptimized: this.isOptimized,
+      burstRate: this.calculateBurstRate(this.concurrencyLimit, this.delayMs, this.delayStrategy),
     };
   }
 }

@@ -5,6 +5,7 @@ import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
 import { RepositoryModule } from '../../../repositories/repository.module';
+import { PrismaModule } from '../../../prisma/prisma.module';
 import { StreamProcessorService } from './stream-processor.service';
 import { SystemZstdDecompressor } from './system-zstd-decompressor.service';
 import { PushshiftProcessorService } from './pushshift-processor.service';
@@ -17,22 +18,20 @@ import { ProcessingCheckpointService } from './processing-checkpoint.service';
 import { HistoricalLlmIntegrationAdapter } from './historical-llm-integration.adapter';
 import { HistoricalLlmIntegrationConfigService } from './historical-llm-integration.config';
 import { HistoricalLlmIntegrationValidator } from './historical-llm-integration.validator';
-import { DualCollectionStrategyService } from './dual-collection-strategy.service';
 import { ChronologicalCollectionService } from './chronological-collection.service';
-import { CollectionSchedulingService } from './collection-scheduling.service';
-import { ChronologicalCollectionProcessor } from './chronological-collection.processor';
 import { ChronologicalLlmIntegrationService } from './chronological-llm-integration.service';
 import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
 import { ContentRetrievalMonitoringService } from './content-retrieval-monitoring.service';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
 import { CollectionJobMonitoringService } from './collection-job-monitoring.service';
-import { CollectionJobStateService } from './collection-job-state.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { EntityPrioritySelectionService } from './entity-priority-selection.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { DataMergeService } from './data-merge.service';
 import { DuplicateDetectionService } from './duplicate-detection.service';
 import { UnifiedProcessingService } from './unified-processing.service';
+import { SubredditVolumeTrackingService } from './subreddit-volume-tracking.service';
+import { VolumeTrackingProcessor } from './volume-tracking.processor';
 
 /**
  * Reddit Collector Module
@@ -46,7 +45,7 @@ import { UnifiedProcessingService } from './unified-processing.service';
  * - Batch processing coordination and resource monitoring
  *
  * Real-Time Collection (Section 5.1.2):
- * - Dual collection strategy with chronological cycles
+ * - Event-driven chronological collection cycles
  * - Dynamic scheduling with safety buffer equation
  * - Integration with existing M02 LLM processing pipeline
  * - Error handling and retry logic for reliable collection
@@ -76,14 +75,11 @@ import { UnifiedProcessingService } from './unified-processing.service';
  * - Maintains consistency with existing processing standards
  *
  * Key Services:
- * - DualCollectionStrategyService: Orchestrates both collection strategies
  * - ChronologicalCollectionService: Handles /r/subreddit/new collection
- * - CollectionSchedulingService: Implements safety buffer calculations
- * - ChronologicalCollectionProcessor: Bull queue processor for scheduled jobs
+ * - ChronologicalCollectionService: Bull queue processor and Reddit collection service
  * - ChronologicalLlmIntegrationService: Bridges with M02 LLM pipeline
  * - CollectionJobSchedulerService: Orchestrates automated job scheduling
  * - CollectionJobMonitoringService: Tracks job performance and health
- * - CollectionJobStateService: Handles job state persistence and resume
  * - KeywordSearchSchedulerService: Manages monthly keyword search cycles
  * - DuplicateDetectionService: Comprehensive duplicate detection and filtering
  * - UnifiedProcessingService: Main orchestrator for LLM processing integration
@@ -92,11 +88,15 @@ import { UnifiedProcessingService } from './unified-processing.service';
   imports: [
     ConfigModule,
     SharedModule, // Provides LoggerService
+    PrismaModule, // Provides PrismaService for database access
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
     RepositoryModule, // Provides BulkOperationsService for database operations
     BullModule.registerQueue({
       name: 'chronological-collection',
+    }),
+    BullModule.registerQueue({
+      name: 'volume-tracking',
     }),
   ],
   providers: [
@@ -113,11 +113,8 @@ import { UnifiedProcessingService } from './unified-processing.service';
     HistoricalLlmIntegrationAdapter,
     HistoricalLlmIntegrationConfigService,
     HistoricalLlmIntegrationValidator,
-    // Dual Collection Strategy components (PRD Section 5.1.2)
-    DualCollectionStrategyService,
+    // Chronological Collection components (PRD Section 5.1.2)
     ChronologicalCollectionService,
-    CollectionSchedulingService,
-    ChronologicalCollectionProcessor,
     ChronologicalLlmIntegrationService,
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
     ContentRetrievalPipelineService,
@@ -125,7 +122,6 @@ import { UnifiedProcessingService } from './unified-processing.service';
     // Scheduled Collection Jobs components (PRD Section 5.1.2)
     CollectionJobSchedulerService,
     CollectionJobMonitoringService,
-    CollectionJobStateService,
     KeywordSearchSchedulerService,
     // Keyword Entity Search components (PRD Section 5.1.2)
     EntityPrioritySelectionService,
@@ -136,6 +132,9 @@ import { UnifiedProcessingService } from './unified-processing.service';
     DuplicateDetectionService,
     // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
     UnifiedProcessingService,
+    // Volume Tracking components (PRD Section 5.1.2)
+    SubredditVolumeTrackingService,
+    VolumeTrackingProcessor,
   ],
   exports: [
     SystemZstdDecompressor,
@@ -151,10 +150,8 @@ import { UnifiedProcessingService } from './unified-processing.service';
     HistoricalLlmIntegrationAdapter,
     HistoricalLlmIntegrationConfigService,
     HistoricalLlmIntegrationValidator,
-    // Export dual collection strategy components
-    DualCollectionStrategyService,
+    // Export chronological collection components
     ChronologicalCollectionService,
-    CollectionSchedulingService,
     ChronologicalLlmIntegrationService,
     // Export content retrieval pipeline components
     ContentRetrievalPipelineService,
@@ -162,7 +159,6 @@ import { UnifiedProcessingService } from './unified-processing.service';
     // Export scheduled collection jobs components
     CollectionJobSchedulerService,
     CollectionJobMonitoringService,
-    CollectionJobStateService,
     KeywordSearchSchedulerService,
     // Export keyword entity search components
     EntityPrioritySelectionService,
@@ -173,6 +169,9 @@ import { UnifiedProcessingService } from './unified-processing.service';
     DuplicateDetectionService,
     // Export unified processing integration components
     UnifiedProcessingService,
+    // Export volume tracking components
+    SubredditVolumeTrackingService,
+    VolumeTrackingProcessor,
   ],
 })
 export class RedditCollectorModule {}
