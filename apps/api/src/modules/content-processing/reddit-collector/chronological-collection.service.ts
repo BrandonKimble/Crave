@@ -116,8 +116,15 @@ export class ChronologicalCollectionService implements OnModuleInit {
       // Scheduler ALWAYS provides lastProcessedTimestamp - either from DB or calculated fallback
       const lastProcessed = options.lastProcessedTimestamp!;
 
+      // CRITICAL: Capture collection start time BEFORE Reddit API call
+      // This prevents missing posts that arrive during the 1+ hour processing time
+      const collectionStartTime = Math.floor(Date.now() / 1000); // Unix timestamp
+      
       await job.log(
         `Collecting posts from r/${subreddit} since ${new Date(lastProcessed * 1000).toISOString()}`,
+      );
+      await job.log(
+        `Collection start time: ${new Date(collectionStartTime * 1000).toISOString()} (for next cycle)`,
       );
 
       // ALWAYS request maximum posts (1000) regardless of what's in options
@@ -257,20 +264,24 @@ export class ChronologicalCollectionService implements OnModuleInit {
 
         // Only update database if we successfully extracted mentions
         if (totalMentionsExtracted > 0) {
-          // Update database with new lastProcessed timestamp
+          // CRITICAL: Use collection start time to prevent missing posts during processing
+          // This ensures next cycle includes any posts created during this 1+ hour processing
           await this.prisma.subreddit.update({
             where: { name: subreddit.toLowerCase() },
             data: {
-              lastProcessed: new Date(latestTimestamp * 1000),
+              lastProcessed: new Date(collectionStartTime * 1000),
             },
           });
 
           this.logger.info('Updated lastProcessed timestamp in database', {
             correlationId,
             subreddit,
-            lastProcessedTimestamp: latestTimestamp,
-            lastProcessedDate: new Date(latestTimestamp * 1000).toISOString(),
+            lastProcessedTimestamp: collectionStartTime,
+            lastProcessedDate: new Date(collectionStartTime * 1000).toISOString(),
             mentionsExtracted: totalMentionsExtracted,
+            latestPostTimestamp: latestTimestamp,
+            latestPostDate: new Date(latestTimestamp * 1000).toISOString(),
+            processingDurationMinutes: Math.round((Date.now() - startTime) / (1000 * 60)),
           });
 
           // Schedule next collection using event-driven approach

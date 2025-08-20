@@ -679,8 +679,12 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    * Load configuration from environment/config service
    */
   private loadConfiguration(): JobScheduleConfig {
-    // Use default configuration for now
-    // In the future, this could load from ConfigService
-    return { ...this.DEFAULT_CONFIG };
+    // Load configuration from environment variables
+    const enabled = this.configService.get<string>('COLLECTION_JOBS_ENABLED', 'true').toLowerCase() === 'true';
+    
+    return { 
+      ...this.DEFAULT_CONFIG,
+      enabled
+    };
   }
 }

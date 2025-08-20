@@ -5,6 +5,7 @@ import { LLMService } from './llm.service';
 import { LLMOutputStructure } from './llm.types';
 import { ChunkResult, ChunkMetadata } from './llm-chunking.service';
 import { LLMPerformanceOptimizerService } from './llm-performance-optimizer.service';
+import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 
 /**
  * Processing result for a single chunk
@@ -63,6 +64,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(LLMPerformanceOptimizerService) private readonly optimizer: LLMPerformanceOptimizerService,
+    @Inject(SmartLLMProcessor) private readonly smartProcessor: SmartLLMProcessor,
   ) {}
 
   onModuleInit() {
@@ -198,7 +200,9 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         });
 
         try {
-          const result = await llmService.processContent(chunk);
+          // Use smart processor with worker ID for perfect rate limiting
+          const workerId = `worker-${index % 24}`; // Distribute across 24 worker IDs
+          const result = await this.smartProcessor.processContent(chunk, llmService, workerId);
           const duration = (Date.now() - chunkStart) / 1000;
 
           // Validate all vital fields are present
@@ -212,6 +216,9 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             estimatedTime: meta.estimatedProcessingTime,
             variance: duration - meta.estimatedProcessingTime,
             mentionsExtracted: result.mentions.length,
+            rateLimitWait: result.rateLimitInfo?.waitTimeMs || 0,
+            tpmUtilization: result.rateLimitInfo?.tpmUtilization || 0,
+            rpmUtilization: result.rateLimitInfo?.rpmUtilization || 0,
           });
 
           return {
@@ -429,31 +436,36 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
   /**
    * Apply delay strategy before starting request to stagger worker initiation
+   * Enhanced with RPM protection for Gemini Tier 1 limits (1000 RPM = 16.67 req/sec)
    */
   private async applyDelayStrategy(workerIndex: number): Promise<void> {
-    if (this.delayStrategy === 'none' || this.delayMs === 0) {
-      return;
-    }
-
     let delayMs = 0;
 
-    switch (this.delayStrategy) {
-      case 'linear':
-        // Linear spacing: 0ms, 50ms, 100ms, 150ms...
-        delayMs = workerIndex * this.delayMs;
-        break;
-      
-      case 'exponential':
-        // Exponential spacing: 0ms, 50ms, 75ms, 112ms...
-        delayMs = this.delayMs * Math.pow(1.5, workerIndex);
-        break;
-      
-      case 'jittered':
-        // Linear + random jitter to avoid thundering herd
-        const jitter = Math.random() * this.delayMs;
-        delayMs = (workerIndex * this.delayMs) + jitter;
-        break;
+    // PHASE 1: Initial worker staggering (existing logic)
+    if (this.delayStrategy !== 'none' && this.delayMs > 0) {
+      switch (this.delayStrategy) {
+        case 'linear':
+          // Linear spacing: 0ms, 50ms, 100ms, 150ms...
+          delayMs = workerIndex * this.delayMs;
+          break;
+        
+        case 'exponential':
+          // Exponential spacing: 0ms, 50ms, 75ms, 112ms...
+          delayMs = this.delayMs * Math.pow(1.5, workerIndex);
+          break;
+        
+        case 'jittered':
+          // Linear + random jitter to avoid thundering herd
+          const jitter = Math.random() * this.delayMs;
+          delayMs = (workerIndex * this.delayMs) + jitter;
+          break;
+      }
     }
+
+    // PHASE 2: RPM protection - add minimum spacing to prevent rate limits
+    // Target: Stay under 15 req/sec to provide safety margin below 16.67 req/sec limit
+    const minRpmDelay = 75; // 75ms minimum = max ~13.3 req/sec per worker
+    delayMs = Math.max(delayMs, minRpmDelay);
 
     if (delayMs > 0) {
       await new Promise(resolve => setTimeout(resolve, delayMs));

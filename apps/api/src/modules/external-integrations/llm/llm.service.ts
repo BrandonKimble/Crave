@@ -56,7 +56,7 @@ export class LLMService implements OnModuleInit {
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
       timeout: this.configService.get<number>('llm.timeout') || 0,
-      maxTokens: this.configService.get<number>('llm.maxTokens') || 0,
+      maxTokens: this.configService.get<number>('llm.maxTokens') || 65536, // Gemini 2.5 Flash supports up to 65,536 output tokens
       temperature: this.configService.get<number>('llm.temperature') || 0.1,
       topP: this.configService.get<number>('llm.topP') || 0.95,
       topK: this.configService.get<number>('llm.topK') || 40,
@@ -247,10 +247,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       candidateCount: this.llmConfig.candidateCount,
     };
 
-    // Only include maxOutputTokens if it's greater than 0 (0 means no limit)
-    if (this.llmConfig.maxTokens && this.llmConfig.maxTokens > 0) {
-      generationConfig.maxOutputTokens = this.llmConfig.maxTokens;
-    }
+    // Set maxOutputTokens to 65536 for Gemini 2.5 Flash
+    // This prevents JSON truncation on large responses
+    generationConfig.maxOutputTokens = this.llmConfig.maxTokens || 65536;
 
     // Always add thinking configuration to explicitly control it
     generationConfig.thinkingConfig = {
