@@ -4,7 +4,7 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { LLMService } from './llm.service';
 import { LLMOutputStructure } from './llm.types';
 import { ChunkResult, ChunkMetadata } from './llm-chunking.service';
-import { LLMPerformanceOptimizerService } from './llm-performance-optimizer.service';
+// LLMPerformanceOptimizerService removed - optimization handled by SmartLLMProcessor
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 
 /**
@@ -45,25 +45,23 @@ export interface ProcessingResult {
 /**
  * LLM Concurrent Processing Service
  *
- * Handles concurrent processing of Reddit content chunks using p-limit:
- * - Processes chunks with controlled concurrency (default: 5 simultaneous)
- * - Maintains "top" comment processing order value while allowing concurrency
- * - Handles variable chunk sizes gracefully (1-50+ comments per chunk)
- * - Provides comprehensive error handling and metrics
- * - Natural load balancing (fast chunks complete quickly, slow ones take time)
+ * Simplified concurrency coordinator that delegates to SmartLLMProcessor:
+ * - Controls worker concurrency using p-limit (24 workers max)
+ * - Distributes chunks to SmartLLMProcessor with worker IDs
+ * - Aggregates results and provides metrics
+ * - All rate limiting handled by SmartLLMProcessor
+ * - Simple coordination without redundant timing logic
  */
 @Injectable()
 export class LLMConcurrentProcessingService implements OnModuleInit {
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
-  private concurrencyLimit: number = 24; // Optimized for TPM limits: 24w/linear/50ms
-  private delayStrategy: 'none' | 'linear' | 'exponential' | 'jittered' = 'linear';
-  private delayMs: number = 50;
-  private isOptimized: boolean = true; // Pre-configured with optimized settings
+  private readonly concurrencyLimit: number = 24; // Max workers for memory/resource management
+  private readonly delayStrategy: 'none' | 'linear' = 'none'; // Simplified - no artificial delays
+  private readonly delayMs: number = 0; // No delays - SmartLLMProcessor handles timing
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-    @Inject(LLMPerformanceOptimizerService) private readonly optimizer: LLMPerformanceOptimizerService,
     @Inject(SmartLLMProcessor) private readonly smartProcessor: SmartLLMProcessor,
   ) {}
 
@@ -73,12 +71,13 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     this.logger.info('LLM Concurrent Processing Service initialized', {
       concurrencyLimit: this.concurrencyLimit,
-      optimized: this.isOptimized,
+      rateLimitingMode: 'delegated_to_smart_processor',
     });
   }
 
   /**
    * Optimize concurrency settings based on actual performance testing
+   * Note: Rate limiting optimization is handled by SmartLLMProcessor
    */
   async optimizeConfiguration(
     sampleChunks: ChunkResult,
@@ -88,47 +87,15 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       testDurationLimitMs?: number;
     } = {}
   ): Promise<void> {
-    this.logger.info('Starting performance optimization', {
+    this.logger.info('Concurrency optimization delegated to SmartLLMProcessor', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'optimize_configuration',
-      currentConfig: {
-        workerCount: this.concurrencyLimit,
-        delayStrategy: this.delayStrategy,
-        delayMs: this.delayMs
-      }
+      concurrencyLimit: this.concurrencyLimit,
+      note: 'Rate limiting optimization handled by SmartLLMProcessor'
     });
 
-    try {
-      const optimal = await this.optimizer.findOptimalConfiguration(
-        sampleChunks,
-        llmService,
-        options
-      );
-
-      // Update configuration
-      this.concurrencyLimit = optimal.workerCount;
-      this.delayStrategy = optimal.delayStrategy;
-      this.delayMs = optimal.delayMs;
-      this.isOptimized = true;
-
-      // Recreate p-limit with new concurrency
-      this.limit = pLimit(this.concurrencyLimit);
-
-      this.logger.info('Performance optimization completed', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'optimize_configuration',
-        optimalConfig: optimal,
-        previousWorkerCount: 16,
-        newWorkerCount: this.concurrencyLimit
-      });
-
-    } catch (error) {
-      this.logger.error('Performance optimization failed, keeping current configuration', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'optimize_configuration',
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
+    // No-op: SmartLLMProcessor handles all rate limiting optimization
+    // This service only manages concurrency via pLimit
   }
 
   /**
@@ -173,9 +140,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       chunkSizes: metadata.map((m) => m.commentCount),
       estimatedTimes: metadata.map((m) => m.estimatedProcessingTime),
       concurrencyLimit: this.concurrencyLimit,
-      delayStrategy: this.delayStrategy,
-      delayMs: this.delayMs,
-      isOptimized: this.isOptimized,
+      rateLimitingMode: 'delegated_to_smart_processor',
       topRootScores: metadata.slice(0, 5).map((m) => m.rootCommentScore),
     });
 
@@ -183,8 +148,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     // p-limit naturally handles variable processing times
     const promises = chunks.map((chunk, index) =>
       this.limit(async (): Promise<ChunkProcessingResult> => {
-        // Apply delay strategy to stagger request initiation
-        await this.applyDelayStrategy(index);
+        // No artificial delays - SmartLLMProcessor handles all timing
+        // Workers start immediately and wait for their reserved time slots
         
         const chunkStart = Date.now();
         const meta = metadata[index];
@@ -342,7 +307,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         workerCount: this.concurrencyLimit,
         delayStrategy: this.delayStrategy,
         delayMs: this.delayMs,
-        burstRate: this.calculateBurstRate(this.concurrencyLimit, this.delayMs, this.delayStrategy),
+        burstRate: 0, // Not applicable - SmartLLMProcessor handles timing
       },
     };
   }
@@ -434,91 +399,25 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     };
   }
 
-  /**
-   * Apply delay strategy before starting request to stagger worker initiation
-   * Enhanced with RPM protection for Gemini Tier 1 limits (1000 RPM = 16.67 req/sec)
-   */
-  private async applyDelayStrategy(workerIndex: number): Promise<void> {
-    let delayMs = 0;
+  // REMOVED: All delay strategy logic
+  // Rate limiting is now handled by SmartLLMProcessor's reservation system
+  // which provides more precise timing than artificial delays
 
-    // PHASE 1: Initial worker staggering (existing logic)
-    if (this.delayStrategy !== 'none' && this.delayMs > 0) {
-      switch (this.delayStrategy) {
-        case 'linear':
-          // Linear spacing: 0ms, 50ms, 100ms, 150ms...
-          delayMs = workerIndex * this.delayMs;
-          break;
-        
-        case 'exponential':
-          // Exponential spacing: 0ms, 50ms, 75ms, 112ms...
-          delayMs = this.delayMs * Math.pow(1.5, workerIndex);
-          break;
-        
-        case 'jittered':
-          // Linear + random jitter to avoid thundering herd
-          const jitter = Math.random() * this.delayMs;
-          delayMs = (workerIndex * this.delayMs) + jitter;
-          break;
-      }
-    }
-
-    // PHASE 2: RPM protection - add minimum spacing to prevent rate limits
-    // Target: Stay under 15 req/sec to provide safety margin below 16.67 req/sec limit
-    const minRpmDelay = 75; // 75ms minimum = max ~13.3 req/sec per worker
-    delayMs = Math.max(delayMs, minRpmDelay);
-
-    if (delayMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-  }
-
-  /**
-   * Calculate theoretical burst rate based on configuration
-   */
-  private calculateBurstRate(
-    workerCount: number, 
-    delayMs: number, 
-    strategy: string
-  ): number {
-    if (strategy === 'none' || delayMs === 0) {
-      // All workers start simultaneously
-      return workerCount / 0.01; // 16 workers in 10ms = 1600 req/sec
-    }
-
-    let totalSpreadMs = 0;
-    switch (strategy) {
-      case 'linear':
-        totalSpreadMs = (workerCount - 1) * delayMs;
-        break;
-      case 'exponential':
-        totalSpreadMs = delayMs * Math.pow(1.5, workerCount - 1);
-        break;
-      case 'jittered':
-        totalSpreadMs = (workerCount - 1) * delayMs + delayMs; // worst case
-        break;
-    }
-
-    // Convert to seconds and calculate rate
-    const totalSpreadSeconds = Math.max(totalSpreadMs / 1000, 0.01);
-    return workerCount / totalSpreadSeconds;
-  }
+  // REMOVED: Burst rate calculation
+  // SmartLLMProcessor handles all rate limiting calculations
 
   /**
    * Get current configuration for monitoring and debugging
    */
   getCurrentConfiguration(): {
     workerCount: number;
-    delayStrategy: string;
-    delayMs: number;
-    isOptimized: boolean;
-    burstRate: number;
+    rateLimitingMode: string;
+    note: string;
   } {
     return {
       workerCount: this.concurrencyLimit,
-      delayStrategy: this.delayStrategy,
-      delayMs: this.delayMs,
-      isOptimized: this.isOptimized,
-      burstRate: this.calculateBurstRate(this.concurrencyLimit, this.delayMs, this.delayStrategy),
+      rateLimitingMode: 'delegated_to_smart_processor',
+      note: 'All rate limiting handled by SmartLLMProcessor reservation system',
     };
   }
 }

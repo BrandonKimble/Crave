@@ -6,7 +6,6 @@ import { LLMService } from './llm.service';
 import { LLMHealthController } from './llm-health.controller';
 import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
-import { LLMPerformanceOptimizerService } from './llm-performance-optimizer.service';
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 import { CentralizedRateLimiter } from './rate-limiting/centralized-rate-limiter.service';
 import { SharedModule } from '../../../shared/shared.module';
@@ -32,7 +31,6 @@ import { SharedModule } from '../../../shared/shared.module';
     LLMService, 
     LLMChunkingService, 
     LLMConcurrentProcessingService, 
-    LLMPerformanceOptimizerService,
     CentralizedRateLimiter,
     SmartLLMProcessor
   ],
@@ -41,7 +39,6 @@ import { SharedModule } from '../../../shared/shared.module';
     LLMService, 
     LLMChunkingService, 
     LLMConcurrentProcessingService, 
-    LLMPerformanceOptimizerService,
     CentralizedRateLimiter,
     SmartLLMProcessor
   ],
