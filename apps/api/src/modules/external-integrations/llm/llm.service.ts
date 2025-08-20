@@ -1,8 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import type { AxiosError } from 'axios';
+import { GoogleGenAI } from '@google/genai';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
 import { readFileSync } from 'fs';
@@ -14,7 +12,6 @@ import {
   LLMOutputStructure,
   LLMApiResponse,
   LLMPerformanceMetrics,
-  GeminiApiRequest,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
 import {
@@ -41,8 +38,9 @@ export class LLMService implements OnModuleInit {
     successRate: 100,
   };
 
+  private genAI!: GoogleGenAI;
+
   constructor(
-    private readonly httpService: HttpService,
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
@@ -78,15 +76,18 @@ export class LLMService implements OnModuleInit {
       },
     };
 
+    // Initialize GoogleGenAI client  
+    this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
+
     // Load system prompt from llm-content-processing.md
     this.systemPrompt = this.loadSystemPrompt();
     this.validateConfig();
 
-    this.logger.info('Gemini LLM service initialized', {
+    this.logger.info('Gemini LLM service initialized with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'module_init',
       model: this.llmConfig.model,
-      provider: 'google-gemini',
+      provider: 'google-genai-library',
       apiKeyExists: !!this.llmConfig.apiKey,
       apiKeyLength: this.llmConfig.apiKey ? this.llmConfig.apiKey.length : 0,
       apiKeyPrefix: this.llmConfig.apiKey
@@ -233,315 +234,246 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   }
 
   /**
-   * Make authenticated API call to Gemini service
+   * Make authenticated API call to Gemini service using @google/genai library
    */
   private async callLLMApi(prompt: string): Promise<LLMApiResponse> {
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-
-    const generationConfig: GeminiApiRequest['generationConfig'] = {
+    const generationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
       candidateCount: this.llmConfig.candidateCount,
-    };
+      maxOutputTokens: this.llmConfig.maxTokens || 65536,
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        description: 'Restaurant and dish mentions extracted from Reddit content',
+        properties: {
+          mentions: {
+            type: 'array',
+            description: 'Array of restaurant/dish mentions with entity details',
+            items: {
+              type: 'object',
+              description:
+                'Single mention of restaurant or dish with complete metadata',
+              properties: {
+                // Core identifiers (shortened names for complexity reduction)
+                temp_id: {
+                  type: 'string',
+                  description: 'Unique identifier for this mention',
+                },
+                restaurant_temp_id: {
+                  type: 'string',
+                  description: 'Unique identifier for the restaurant entity',
+                },
 
-    // Set maxOutputTokens to 65536 for Gemini 2.5 Flash
-    // This prevents JSON truncation on large responses
-    generationConfig.maxOutputTokens = this.llmConfig.maxTokens || 65536;
+                // Restaurant info (required)
+                restaurant_normalized_name: {
+                  type: 'string',
+                  description:
+                    'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
+                },
+                restaurant_original_text: {
+                  type: 'string',
+                  description: 'Exact restaurant name as mentioned in source',
+                },
+                restaurant_attributes: {
+                  type: 'array',
+                  description:
+                    'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
+                  items: { type: 'string' },
+                  nullable: true,
+                },
 
-    // Always add thinking configuration to explicitly control it
-    generationConfig.thinkingConfig = {
-      thinkingBudget: this.llmConfig.thinking?.enabled
-        ? this.llmConfig.thinking.budget
-        : 0,
-    };
+                // Dish info (optional with nullable)
+                dish_temp_id: {
+                  type: 'string',
+                  description: 'Unique identifier for dish if mentioned',
+                  nullable: true,
+                },
+                dish_primary_category: {
+                  type: 'string',
+                  description:
+                    'Complete compound food term as primary category, singular form, excluding attributes',
+                  nullable: true,
+                },
+                dish_categories: {
+                  type: 'array',
+                  description:
+                    'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
+                  items: { type: 'string' },
+                  nullable: true,
+                },
+                dish_original_text: {
+                  type: 'string',
+                  description: 'Exact dish name as mentioned in source',
+                  nullable: true,
+                },
+                dish_attributes_selective: {
+                  type: 'array',
+                  description:
+                    'Selective attributes: help filter or categorize food options',
+                  items: { type: 'string' },
+                  nullable: true,
+                },
+                dish_attributes_descriptive: {
+                  type: 'array',
+                  description:
+                    'Descriptive attributes: characterize or describe specific food items',
+                  items: { type: 'string' },
+                  nullable: true,
+                },
+                dish_is_menu_item: {
+                  type: 'boolean',
+                  description:
+                    'True if specific menu item, false if general food type',
+                  nullable: true,
+                },
 
-    // Add enhanced structured output configuration with Gemini optimization features
-    (generationConfig as any).responseMimeType = 'application/json';
-    (generationConfig as any).responseSchema = {
-      type: 'object',
-      description: 'Restaurant and dish mentions extracted from Reddit content',
-      properties: {
-        mentions: {
-          type: 'array',
-          description: 'Array of restaurant/dish mentions with entity details',
-          items: {
-            type: 'object',
-            description:
-              'Single mention of restaurant or dish with complete metadata',
-            properties: {
-              // Core identifiers (shortened names for complexity reduction)
-              temp_id: {
-                type: 'string',
-                description: 'Unique identifier for this mention',
-              },
-              restaurant_temp_id: {
-                type: 'string',
-                description: 'Unique identifier for the restaurant entity',
-              },
+                // Sentiment (required)
+                general_praise: {
+                  type: 'boolean',
+                  description:
+                    'True if mention contains holistic restaurant praise, regardless of specific dish praise',
+                },
 
-              // Restaurant info (required)
-              restaurant_normalized_name: {
-                type: 'string',
-                description:
-                  'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
+                // Source metadata (all required)
+                source_type: {
+                  type: 'string',
+                  enum: ['post', 'comment'],
+                  description: 'Whether content came from post or comment',
+                },
+                source_id: {
+                  type: 'string',
+                  description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
+                },
+                source_content: {
+                  type: 'string',
+                  description:
+                    'Complete source text content being analyzed for entity extraction',
+                },
+                source_ups: {
+                  type: 'number',
+                  minimum: 0,
+                  description: 'Reddit upvote count for credibility weighting',
+                },
+                source_url: {
+                  type: 'string',
+                  description: 'Full Reddit URL to the source content',
+                },
+                source_created_at: {
+                  type: 'string',
+                  format: 'date-time',
+                  description: 'ISO timestamp when content was created',
+                },
               },
-              restaurant_original_text: {
-                type: 'string',
-                description: 'Exact restaurant name as mentioned in source',
-              },
-              restaurant_attributes: {
-                type: 'array',
-                description:
-                  'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
-                items: { type: 'string' },
-                nullable: true,
-              },
-
-              // Dish info (optional with nullable)
-              dish_temp_id: {
-                type: 'string',
-                description: 'Unique identifier for dish if mentioned',
-                nullable: true,
-              },
-              dish_primary_category: {
-                type: 'string',
-                description:
-                  'Complete compound food term as primary category, singular form, excluding attributes',
-                nullable: true,
-              },
-              dish_categories: {
-                type: 'array',
-                description:
-                  'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
-                items: { type: 'string' },
-                nullable: true,
-              },
-              dish_original_text: {
-                type: 'string',
-                description: 'Exact dish name as mentioned in source',
-                nullable: true,
-              },
-              dish_attributes_selective: {
-                type: 'array',
-                description:
-                  'Selective attributes: help filter or categorize food options',
-                items: { type: 'string' },
-                nullable: true,
-              },
-              dish_attributes_descriptive: {
-                type: 'array',
-                description:
-                  'Descriptive attributes: characterize or describe specific food items',
-                items: { type: 'string' },
-                nullable: true,
-              },
-              dish_is_menu_item: {
-                type: 'boolean',
-                description:
-                  'True if specific menu item, false if general food type',
-                nullable: true,
-              },
-
-              // Sentiment (required)
-              general_praise: {
-                type: 'boolean',
-                description:
-                  'True if mention contains holistic restaurant praise, regardless of specific dish praise',
-              },
-
-              // Source metadata (all required)
-              source_type: {
-                type: 'string',
-                enum: ['post', 'comment'],
-                description: 'Whether content came from post or comment',
-              },
-              source_id: {
-                type: 'string',
-                description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
-              },
-              source_content: {
-                type: 'string',
-                description:
-                  'Complete source text content being analyzed for entity extraction',
-              },
-              source_ups: {
-                type: 'number',
-                minimum: 0,
-                description: 'Reddit upvote count for credibility weighting',
-              },
-              source_url: {
-                type: 'string',
-                description: 'Full Reddit URL to the source content',
-              },
-              source_created_at: {
-                type: 'string',
-                format: 'date-time',
-                description: 'ISO timestamp when content was created',
-              },
+              required: [
+                'temp_id',
+                'restaurant_temp_id',
+                'restaurant_normalized_name',
+                'restaurant_original_text',
+                'general_praise',
+                'source_type',
+                'source_id',
+                'source_content',
+                'source_ups',
+                'source_url',
+                'source_created_at',
+              ],
             },
-            required: [
-              'temp_id',
-              'restaurant_temp_id',
-              'restaurant_normalized_name',
-              'restaurant_original_text',
-              'general_praise',
-              'source_type',
-              'source_id',
-              'source_content',
-              'source_ups',
-              'source_url',
-              'source_created_at',
-            ],
           },
         },
+        required: ['mentions'],
       },
-      required: ['mentions'],
+      // Always include thinkingConfig for explicit control (Google's recommended approach)
+      thinkingConfig: {
+        thinkingBudget: this.llmConfig.thinking?.enabled
+          ? (this.llmConfig.thinking.budget || -1) // Dynamic thinking if no budget specified
+          : 0, // Explicitly disable thinking (Google's proper way)
+      },
     };
 
     // Debug logging to verify structured output config
-    this.logger.info('Generation config after adding structured output', {
+    this.logger.info('Generation config with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'call_llm_api',
-      hasResponseMimeType: !!(generationConfig as any).responseMimeType,
-      hasResponseSchema: !!(generationConfig as any).responseSchema,
+      hasResponseMimeType: !!generationConfig.responseMimeType,
+      hasResponseSchema: !!generationConfig.responseSchema,
       configKeys: Object.keys(generationConfig),
     });
 
-    const payload: GeminiApiRequest = {
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      generationConfig,
-    };
-
-    const url = `${this.llmConfig.baseUrl}/models/${this.llmConfig.model}:generateContent?key=${this.llmConfig.apiKey}`;
-
     try {
-      this.logger.info('Making LLM API request', {
+      this.logger.info('Making LLM API request via @google/genai', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
-        url: url.replace(/key=.*$/, 'key=***'),
         model: this.llmConfig.model,
         hasApiKey: !!this.llmConfig.apiKey,
         promptLength: prompt.length,
-        generationConfig: generationConfig,
-        payloadKeys: Object.keys(payload),
+        library: '@google/genai',
       });
 
-      const response = await firstValueFrom(
-        this.httpService.post(url, payload, {
-          headers,
-          timeout: this.llmConfig.timeout,
-        }),
-      );
+      const response = await this.genAI.models.generateContent({
+        model: this.llmConfig.model,
+        contents: prompt,
+        ...generationConfig,
+      });
 
-      this.logger.info('LLM API response received', {
+      this.logger.info('LLM API response received via @google/genai', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
-        status: response.status,
-        candidatesCount: response.data?.candidates?.length || 0,
-        hasContent: !!response.data?.candidates?.[0]?.content?.parts?.[0]?.text,
+        candidatesCount: response.candidates?.length || 0,
+        hasContent: !!response.candidates?.[0]?.content?.parts?.[0]?.text,
         contentLength:
-          response.data?.candidates?.[0]?.content?.parts?.[0]?.text?.length ||
-          0,
-        finishReason: response.data?.candidates?.[0]?.finishReason,
-        safetyRatings: response.data?.candidates?.[0]?.safetyRatings,
-        // rawResponse: JSON.stringify(response.data, null, 2), // Removed: Too verbose for performance monitoring
+          response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+        finishReason: response.candidates?.[0]?.finishReason,
+        safetyRatings: response.candidates?.[0]?.safetyRatings,
+        usageMetadata: response.usageMetadata,
       });
 
-      return response.data as LLMApiResponse;
+      // Convert @google/genai response format to our expected LLMApiResponse format
+      return {
+        candidates: response.candidates || [],
+        usageMetadata: response.usageMetadata,
+        promptFeedback: response.promptFeedback,
+      } as LLMApiResponse;
     } catch (error) {
-      // Enhanced error logging to diagnose Gemini API issues
-      // Handle various error types that might not be AxiosError
-      let errorDetails: any = {
+      // Enhanced error logging for @google/genai errors
+      const errorDetails = {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
-        requestURL: url.replace(/key=.*$/, 'key=***'),
+        library: '@google/genai',
         errorType: typeof error,
         errorConstructor: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
       };
 
+      this.logger.error('Detailed @google/genai API error', errorDetails);
+
+      // Map @google/genai errors to our custom exceptions
       if (error instanceof Error) {
-        errorDetails.errorMessage = error.message;
-        errorDetails.errorName = error.name;
-        errorDetails.errorStack = error.stack;
-      } else {
-        errorDetails.rawError = String(error);
-      }
-
-      // Check if it's an AxiosError specifically
-      const axiosError = error as AxiosError;
-      if (axiosError.isAxiosError) {
-        errorDetails.isAxiosError = true;
-        errorDetails.axiosCode = axiosError.code;
-        errorDetails.axiosConfig = {
-          method: axiosError.config?.method,
-          url: axiosError.config?.url?.replace(/key=.*$/, 'key=***'),
-          timeout: axiosError.config?.timeout,
-        };
+        const errorMessage = error.message.toLowerCase();
         
-        if (axiosError.response) {
-          errorDetails.responseStatus = axiosError.response.status;
-          errorDetails.responseStatusText = axiosError.response.statusText;
-          errorDetails.responseHeaders = axiosError.response.headers;
-          errorDetails.responseData = axiosError.response.data;
-        }
-        
-        if (axiosError.request) {
-          errorDetails.hasRequest = true;
-          errorDetails.requestReadyState = axiosError.request.readyState;
-          errorDetails.requestStatus = axiosError.request.status;
-        }
-      }
-
-      this.logger.error('Detailed Gemini API error', errorDetails);
-
-      // Check for specific error conditions with improved handling
-      if (axiosError.isAxiosError) {
-        if (
-          axiosError.response?.status === 401 ||
-          axiosError.response?.status === 403
-        ) {
+        if (errorMessage.includes('api key') || errorMessage.includes('authentication') || errorMessage.includes('unauthorized')) {
           throw new LLMAuthenticationError(
             'Invalid Gemini API key',
-            JSON.stringify(axiosError.response.data),
+            error.message,
           );
-        } else if (axiosError.response?.status === 429) {
-          throw new LLMRateLimitError(
-            parseInt(
-              String(axiosError.response.headers?.['retry-after'] || '60'),
-            ),
-          );
-        } else if (
-          axiosError.code === 'ENOTFOUND' ||
-          axiosError.code === 'ECONNREFUSED' ||
-          axiosError.code === 'ETIMEDOUT'
-        ) {
+        } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+          throw new LLMRateLimitError(60); // Default 60 second retry
+        } else if (errorMessage.includes('network') || errorMessage.includes('connection') || errorMessage.includes('timeout')) {
           throw new LLMNetworkError(
             'Network error during Gemini API request',
-            error as Error,
+            error,
           );
         } else {
           throw new LLMApiError(
-            `Gemini API request failed: ${axiosError.message}`,
-            axiosError.response?.status,
-            JSON.stringify(axiosError.response?.data),
+            `Gemini API request failed: ${error.message}`,
+            undefined,
+            error.message,
           );
         }
       } else {
-        // Handle non-Axios errors
         throw new LLMApiError(
-          `LLM request failed: ${error instanceof Error ? error.message : String(error)}`,
+          `LLM request failed: ${String(error)}`,
           undefined,
           JSON.stringify(errorDetails),
         );

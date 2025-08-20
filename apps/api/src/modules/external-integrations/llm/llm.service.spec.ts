@@ -1,8 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { of, throwError } from 'rxjs';
-import { AxiosResponse, AxiosError } from 'axios';
 import { LLMService } from './llm.service';
 import { LoggerService } from '../../../shared';
 import {
@@ -16,7 +13,6 @@ import { LLMInputStructure, LLMOutputStructure } from './llm.types';
 
 describe('LLMService', () => {
   let service: LLMService;
-  let httpService: HttpService;
   let loggerService: LoggerService;
 
   const mockLogger = {
@@ -31,9 +27,6 @@ describe('LLMService', () => {
     get: jest.fn(),
   };
 
-  const mockHttpService = {
-    post: jest.fn(),
-  };
 
   beforeEach(async () => {
     // Setup default config first
@@ -58,10 +51,6 @@ describe('LLMService', () => {
       providers: [
         LLMService,
         {
-          provide: HttpService,
-          useValue: mockHttpService,
-        },
-        {
           provide: ConfigService,
           useValue: mockConfigService,
         },
@@ -73,7 +62,6 @@ describe('LLMService', () => {
     }).compile();
 
     service = module.get<LLMService>(LLMService);
-    httpService = module.get<HttpService>(HttpService);
     loggerService = module.get<LoggerService>(LoggerService);
   });
 
@@ -101,7 +89,6 @@ describe('LLMService', () => {
 
       expect(() => {
         new LLMService(
-          httpService,
           /* eslint-disable-next-line @typescript-eslint/no-unsafe-argument */
           localMockConfigService as any,
           loggerService,
