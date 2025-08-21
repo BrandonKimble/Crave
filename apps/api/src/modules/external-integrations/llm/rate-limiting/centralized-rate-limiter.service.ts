@@ -6,7 +6,7 @@ import { LoggerService, CorrelationUtils } from '../../../../shared';
 /**
  * Centralized Redis-based Rate Limiter with Reservation System (Bulletproof Edition)
  * 
- * Guarantees ZERO rate limit violations for 24 workers through:
+ * Guarantees ZERO rate limit violations for 16 workers through:
  * 1. Request reservation system - workers reserve future time slots
  * 2. Adaptive burst control - dynamically adjusts based on current load
  * 3. Exponential backoff with guaranteed slots
@@ -332,8 +332,8 @@ export class CentralizedRateLimiter {
     const burstCapacity = this.safeRequestsPerSecond * 60; // 960 RPM theoretical (16 * 60)
     
     // Calculate optimal workers based on current load
-    const avgRequestsPerWorker = currentRPM > 0 ? currentRPM / 24 : 15; // assume 15 req/min per worker
-    const recommendedWorkers = Math.min(24, Math.floor(this.safeRPM / avgRequestsPerWorker));
+    const avgRequestsPerWorker = currentRPM > 0 ? currentRPM / 16 : 15; // assume 15 req/min per worker
+    const recommendedWorkers = Math.min(16, Math.floor(this.safeRPM / avgRequestsPerWorker));
     
     return {
       currentRPM,
@@ -445,7 +445,7 @@ export class CentralizedRateLimiter {
         },
         active: {
           current: active,
-          maxConcurrent: 24,
+          maxConcurrent: 16,
           recommendedWorkers: rpmAnalysis.recommendedWorkers
         },
         reservations: {
@@ -459,8 +459,8 @@ export class CentralizedRateLimiter {
         optimization: {
           currentBottleneck: tpmAnalysis.bottleneckType,
           utilizationRoom: Math.max(0, 80 - Math.max(rpmAnalysis.utilizationPercent, tpmAnalysis.utilizationPercent)),
-          canIncreaseWorkers: rpmAnalysis.recommendedWorkers > 24,
-          shouldReduceWorkers: rpmAnalysis.recommendedWorkers < 24
+          canIncreaseWorkers: rpmAnalysis.recommendedWorkers > 16,
+          shouldReduceWorkers: rpmAnalysis.recommendedWorkers < 16
         },
         health: {
           status: reservations < this.safeRPM * 0.9 ? 'healthy' : 'busy',

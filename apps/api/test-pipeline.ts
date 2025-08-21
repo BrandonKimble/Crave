@@ -475,7 +475,7 @@ async function testPipeline() {
         console.log(`   ✅ Well-utilized: ${rateLimitMetrics.optimization.utilizationRoom}% headroom remaining`);
       }
     }
-    console.log(`   👥 Worker count: 24 (optimized for current limits)`);
+    console.log(`   👥 Worker count: 16 (reduced from 24 to improve reliability)`);
     console.log(`   🎯 Cache efficiency: System instructions cached (saves ~2.7K tokens/request)`);
     console.log(`   ⚡ Processing mode: Direct service execution`);
 
@@ -525,7 +525,7 @@ ${llmMetrics ? `- **Total API Calls**: ${llmMetrics.requestCount}
 
 ## System Optimization
 ${rateLimitMetrics && !rateLimitMetrics.error ? `- **Utilization Status**: ${rateLimitMetrics.optimization.utilizationRoom > 20 ? `Underutilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : rateLimitMetrics.optimization.utilizationRoom < 5 ? `Near capacity (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : `Well-utilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)`}` : ''}
-- **Worker Configuration**: 24 workers (optimized for current limits)
+- **Worker Configuration**: 16 workers (reduced from 24 to improve reliability)
 - **Cache Efficiency**: System instructions cached (saves ~2.7K tokens/request)
 - **Processing Mode**: Direct service execution
 

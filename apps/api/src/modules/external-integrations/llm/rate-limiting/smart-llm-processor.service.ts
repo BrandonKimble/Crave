@@ -9,7 +9,7 @@ import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
  * 
  * Guarantees ZERO rate limit violations through reservation-based rate limiting.
  * Integrates seamlessly with existing LLMService while ensuring perfect compliance
- * with Gemini API limits for 24 concurrent workers.
+ * with Gemini API limits for 16 concurrent workers.
  * 
  * Key Features:
  * - Reservation-based slot allocation - no race conditions
@@ -40,7 +40,7 @@ export class SmartLLMProcessor implements OnModuleInit {
       correlationId: CorrelationUtils.getCorrelationId(),
       mode: 'reservation_based',
       guaranteedCompliance: true,
-      workers: 24,
+      workers: 16,
       limits: { maxRPM: 900, maxTPM: 1000000 }
     });
   }
@@ -53,7 +53,7 @@ export class SmartLLMProcessor implements OnModuleInit {
    */
   async processContent(input: any, llmService: LLMService, workerId?: string): Promise<any> {
     const startTime = Date.now();
-    const effectiveWorkerId = workerId || `worker-${Math.floor(Math.random() * 24)}`;
+    const effectiveWorkerId = workerId || `worker-${Math.floor(Math.random() * 16)}`;
     
     try {
       // 1. Reserve a guaranteed time slot

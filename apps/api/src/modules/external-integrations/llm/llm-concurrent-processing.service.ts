@@ -46,7 +46,7 @@ export interface ProcessingResult {
  * LLM Concurrent Processing Service
  *
  * Simplified concurrency coordinator that delegates to SmartLLMProcessor:
- * - Controls worker concurrency using p-limit (24 workers max)
+ * - Controls worker concurrency using p-limit (16 workers max)
  * - Distributes chunks to SmartLLMProcessor with worker IDs
  * - Aggregates results and provides metrics
  * - All rate limiting handled by SmartLLMProcessor
@@ -56,7 +56,7 @@ export interface ProcessingResult {
 export class LLMConcurrentProcessingService implements OnModuleInit {
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
-  private readonly concurrencyLimit: number = 24; // Max workers for memory/resource management
+  private readonly concurrencyLimit: number = 16; // Reduced from 24 to avoid rate limiting issues
   private readonly delayStrategy: 'none' | 'linear' = 'none'; // Simplified - no artificial delays
   private readonly delayMs: number = 0; // No delays - SmartLLMProcessor handles timing
 
@@ -166,7 +166,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
         try {
           // Use smart processor with worker ID for perfect rate limiting
-          const workerId = `worker-${index % 24}`; // Distribute across 24 worker IDs
+          const workerId = `worker-${index % 16}`; // Distribute across 16 worker IDs
           const result = await this.smartProcessor.processContent(chunk, llmService, workerId);
           const duration = (Date.now() - chunkStart) / 1000;
 
