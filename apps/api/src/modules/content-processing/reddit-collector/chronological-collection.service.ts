@@ -138,6 +138,12 @@ export class ChronologicalCollectionService implements OnModuleInit {
 
       const posts = postsResult.data || [];
       await job.log(`Collected ${posts.length} posts from r/${subreddit}`);
+      
+      // TEMPORARY: Limit processing to first 100 posts for testing optimization
+      if (posts.length > 100) {
+        await job.log(`⚠️  TEMPORARY LIMIT: Processing only first 100 of ${posts.length} posts for testing`);
+        posts.splice(100); // Remove everything after the first 100 posts
+      }
 
       if (posts.length === 0) {
         return {

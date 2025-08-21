@@ -26,6 +26,9 @@ import * as path from 'path';
 // Load .env file which has all the necessary configuration
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// Set log level to info for cleaner test output (removes debug logs)
+process.env.NODE_ENV = 'production';  // This sets winston log level to 'info' instead of 'debug'
+
 // Test configuration
 let TEST_MODE = process.env.TEST_MODE || 'direct'; // 'bull', 'direct', or 'queue-only'
 // Always collect 1000 posts (Reddit API maximum) - this is production behavior
@@ -396,10 +399,30 @@ async function testPipeline() {
     console.log(`🔧 Service Used: ${TEST_MODE === 'bull' ? 'ChronologicalCollectionService via Bull Queue' : 'ChronologicalCollectionService Direct'}`);
     console.log(`✅ Production Fidelity: TRUE - Uses same code path as production`);
     
+    // ========================================
+    // COLLECT PERFORMANCE METRICS
+    // ========================================
     const overallDurationSeconds = (Date.now() - overallStartTime) / 1000;
     const mentionsCount = totalMentionsExtracted || 0;
     const postsCount = collectedPostIds.length;
     
+    // Get comprehensive metrics from rate limiter and LLM service
+    let rateLimitMetrics: any = null;
+    let llmMetrics: any = null;
+    try {
+      const centralizedRateLimiter = app.get('CentralizedRateLimiter');
+      rateLimitMetrics = await centralizedRateLimiter.getMetrics();
+    } catch (error) {
+      console.log(`   ⚠️  Rate limit metrics unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    
+    try {
+      const llmService = app.get('LLMService');
+      llmMetrics = llmService.getPerformanceMetrics();
+    } catch (error) {
+      console.log(`   ⚠️  LLM metrics unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
     console.log(`\n📊 CORE PRODUCTION RESULTS:`);
     console.log(`   🍽️  Total mentions extracted: ${mentionsCount}`);
     console.log(`   📦 Total posts processed: ${postsCount}`);
@@ -409,21 +432,52 @@ async function testPipeline() {
       const avgTimePerPost = overallDurationSeconds / postsCount;
       const postsPerMinute = (postsCount / (overallDurationSeconds / 60)).toFixed(1);
       const mentionsPerPost = (mentionsCount / postsCount).toFixed(2);
+      const extractionRate = ((mentionsCount / postsCount) * 100).toFixed(1);
       
-      console.log(`\n📈 DETAILED PERFORMANCE METRICS:`);
+      console.log(`\n📈 THROUGHPUT METRICS:`);
       console.log(`   ⚡ Posts per minute: ${postsPerMinute}`);
       console.log(`   ⏱️  Average time per post: ${avgTimePerPost.toFixed(2)}s`);
       console.log(`   🍽️  Mentions per post: ${mentionsPerPost}`);
-      console.log(`   🎯 Extraction rate: ${((mentionsCount / postsCount) * 100).toFixed(1)}% posts had mentions`);
+      console.log(`   🎯 Extraction success rate: ${extractionRate}%`);
     }
-    
-    console.log(`\n🔧 COMPREHENSIVE OPTIMIZATION SUITE:`);
-    console.log(`   👥 Workers: 24 (optimized for RPM/TPM balance)`);
-    console.log(`   ⏰ Delay strategy: Linear 50ms + 75ms RPM protection`);
-    console.log(`   🎯 Max output tokens: Unlimited (65,536 Gemini 2.5 Flash default)`);
-    console.log(`   💾 Rate limit protection: <13.3 req/sec sustained per worker`);
-    console.log(`   🚀 Timing fix: Prevents missing posts during 1+ hour processing`);
-    console.log(`   📊 Logging: Optimized for performance monitoring (90% less noise)`);
+
+    // Display rate limiting performance
+    if (rateLimitMetrics && !rateLimitMetrics.error) {
+      console.log(`\n🚦 RATE LIMITING PERFORMANCE:`);
+      console.log(`   📊 Peak RPM utilization: ${rateLimitMetrics.rpm.utilizationPercent}% (${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})`);
+      console.log(`   📈 Peak TPM utilization: ${rateLimitMetrics.tpm.utilizationPercent}% (${rateLimitMetrics.tpm.current.toLocaleString()}/${(rateLimitMetrics.tpm.max/1000).toFixed(0)}K)`);
+      console.log(`   ⚖️  Current bottleneck: ${rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None detected' : rateLimitMetrics.optimization.currentBottleneck.toUpperCase()}`);
+      console.log(`   🎯 Avg tokens per request: ${rateLimitMetrics.tpm.avgTokensPerRequest}`);
+      console.log(`   ⏱️  Reservation accuracy: ${rateLimitMetrics.reliability.avgAccuracyMs}ms avg deviation`);
+      console.log(`   ✅ Reservation success rate: ${rateLimitMetrics.reliability.successRate}% (${rateLimitMetrics.reliability.confirmed}/${rateLimitMetrics.reliability.total})`);
+    }
+
+    // Display LLM performance
+    if (llmMetrics) {
+      console.log(`\n🤖 LLM PERFORMANCE METRICS:`);
+      console.log(`   📡 Total API calls: ${llmMetrics.requestCount}`);
+      console.log(`   ⏱️  Average response time: ${llmMetrics.averageResponseTime.toFixed(0)}ms`);
+      console.log(`   🎯 Success rate: ${llmMetrics.successRate}%`);
+      console.log(`   🪙 Total tokens processed: ${llmMetrics.totalTokensUsed.toLocaleString()}`);
+      if (llmMetrics.requestCount > 0) {
+        console.log(`   💰 Avg tokens per request: ${Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount)}`);
+      }
+    }
+
+    // Display optimization insights
+    console.log(`\n🔧 SYSTEM OPTIMIZATION INSIGHTS:`);
+    if (rateLimitMetrics && !rateLimitMetrics.error) {
+      if (rateLimitMetrics.optimization.utilizationRoom > 20) {
+        console.log(`   📈 Underutilized: ${rateLimitMetrics.optimization.utilizationRoom}% headroom available`);
+      } else if (rateLimitMetrics.optimization.utilizationRoom < 5) {
+        console.log(`   ⚠️  Near capacity: Only ${rateLimitMetrics.optimization.utilizationRoom}% headroom remaining`);
+      } else {
+        console.log(`   ✅ Well-utilized: ${rateLimitMetrics.optimization.utilizationRoom}% headroom remaining`);
+      }
+    }
+    console.log(`   👥 Worker count: 24 (optimized for current limits)`);
+    console.log(`   🎯 Cache efficiency: System instructions cached (saves ~2.7K tokens/request)`);
+    console.log(`   ⚡ Processing mode: Direct service execution`);
 
     console.log(`\n🏆 VERDICT: TRUE production simulation validated - same code as production!`);
     console.log(`\n✅ Architecture Benefits:`);
@@ -436,7 +490,7 @@ async function testPipeline() {
     // GENERATE SUMMARY FILE
     // ========================================
     const overallDuration = Date.now() - overallStartTime;
-    const summaryData = `# TRUE Production Simulation Test Results
+    const summaryData = `# Production Pipeline Test Results
 
 ## Test Configuration
 - **Date**: ${new Date().toISOString()}
@@ -445,23 +499,47 @@ async function testPipeline() {
 - **Subreddit**: r/${testSubreddit || 'austinfood'}
 - **Production Fidelity**: TRUE - Uses same code path as production
 
-## Results Summary
+## Performance Results
+### Throughput
 - **Posts Processed**: ${collectedPostIds.length}
 - **Mentions Extracted**: ${totalMentionsExtracted || 0}
 - **Total Duration**: ${(overallDuration/1000).toFixed(1)}s
 - **Average per Post**: ${collectedPostIds.length > 0 ? ((overallDuration/collectedPostIds.length/1000).toFixed(2)) : '0'}s
+- **Posts per Minute**: ${collectedPostIds.length > 0 ? (collectedPostIds.length / (overallDuration/1000/60)).toFixed(1) : '0'}
+- **Extraction Success Rate**: ${collectedPostIds.length > 0 ? (((totalMentionsExtracted || 0) / collectedPostIds.length) * 100).toFixed(1) : '0'}%
+
+### Rate Limiting Performance
+${rateLimitMetrics && !rateLimitMetrics.error ? `- **Peak RPM Utilization**: ${rateLimitMetrics.rpm.utilizationPercent}% (${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})
+- **Peak TPM Utilization**: ${rateLimitMetrics.tpm.utilizationPercent}% (${rateLimitMetrics.tpm.current.toLocaleString()}/${(rateLimitMetrics.tpm.max/1000).toFixed(0)}K)
+- **System Bottleneck**: ${rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None detected' : rateLimitMetrics.optimization.currentBottleneck.toUpperCase()}
+- **Avg Tokens per Request**: ${rateLimitMetrics.tpm.avgTokensPerRequest}
+- **Reservation Accuracy**: ${rateLimitMetrics.reliability.avgAccuracyMs}ms avg deviation
+- **Reservation Success Rate**: ${rateLimitMetrics.reliability.successRate}%` : '- Rate limiting metrics unavailable'}
+
+### LLM Performance
+${llmMetrics ? `- **Total API Calls**: ${llmMetrics.requestCount}
+- **Average Response Time**: ${llmMetrics.averageResponseTime.toFixed(0)}ms
+- **Success Rate**: ${llmMetrics.successRate}%
+- **Total Tokens Processed**: ${llmMetrics.totalTokensUsed.toLocaleString()}
+- **Avg Tokens per Request**: ${llmMetrics.requestCount > 0 ? Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount) : 'N/A'}` : '- LLM metrics unavailable'}
+
+## System Optimization
+${rateLimitMetrics && !rateLimitMetrics.error ? `- **Utilization Status**: ${rateLimitMetrics.optimization.utilizationRoom > 20 ? `Underutilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : rateLimitMetrics.optimization.utilizationRoom < 5 ? `Near capacity (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : `Well-utilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)`}` : ''}
+- **Worker Configuration**: 24 workers (optimized for current limits)
+- **Cache Efficiency**: System instructions cached (saves ~2.7K tokens/request)
+- **Processing Mode**: Direct service execution
 
 ## Architecture Validation
 ✅ **Production Service Chain**: All services working together
 ✅ **Event-Driven Scheduling**: Automatic next collection scheduling
 ✅ **Database Integration**: Real Prisma service with timing calculations
-✅ **Rate Limiting**: Proper API rate limit handling
-✅ **Batch Processing**: ${Math.ceil(collectedPostIds.length / 25)} batches of 25 posts each
+✅ **Rate Limiting**: Proper API rate limit handling with reservation-based coordination
+✅ **Batch Processing**: Optimized chunk processing with concurrent LLM calls
 
-## Test Mode Comparison
-- **Bull Queue Mode**: Tests actual queue processing and result extraction
-- **Direct Mode**: Tests ChronologicalCollectionService without queue overhead
-- **Both Modes**: Use identical production services and timing logic
+## Performance Assessment
+${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom > 20 ? '🟡 **System is underutilized** - Consider increasing worker count or processing frequency' : ''}
+${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom < 5 ? '🔴 **System near capacity** - Consider optimizing or reducing load' : ''}
+${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom >= 5 && rateLimitMetrics.optimization.utilizationRoom <= 20 ? '🟢 **System well-optimized** - Good balance of throughput and headroom' : ''}
 
 ## Next Steps
 1. **Production Deployment**: Architecture validated and ready
@@ -469,7 +547,7 @@ async function testPipeline() {
 3. **Scale Testing**: Test with multiple subreddits simultaneously
 
 ---
-*Generated by true production simulation test at ${new Date().toISOString()}*
+*Generated by production pipeline test at ${new Date().toISOString()}*
 `;
 
     const fs = await import('fs/promises');

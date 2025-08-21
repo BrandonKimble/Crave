@@ -253,7 +253,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       bullJobOptions,
     );
 
-    this.logger.debug('Scheduled delayed collection job', {
+    this.logger.info('Scheduled delayed collection job', {
       correlationId,
       jobId,
       subreddit,

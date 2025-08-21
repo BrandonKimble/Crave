@@ -39,6 +39,7 @@ export class LLMService implements OnModuleInit {
   };
 
   private genAI!: GoogleGenAI;
+  private systemInstructionCache: any = null; // Cache for system instructions
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -97,6 +98,52 @@ export class LLMService implements OnModuleInit {
       thinkingEnabled: this.llmConfig.thinking?.enabled,
       thinkingBudget: this.llmConfig.thinking?.budget,
     });
+
+    // Initialize explicit cache for system instructions (async, non-blocking)
+    this.initializeSystemInstructionCache().catch((error) => {
+      this.logger.warn('System instruction cache initialization failed, continuing with fallback', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'module_init',
+        error: { message: error instanceof Error ? error.message : String(error) },
+      });
+    });
+  }
+
+  /**
+   * Initialize explicit cache for system instructions to optimize token usage
+   */
+  private async initializeSystemInstructionCache(): Promise<void> {
+    try {
+      this.logger.info('Creating explicit cache for system instructions', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_system_cache',
+        systemPromptLength: this.systemPrompt.length,
+      });
+
+      // Create explicit cache with system instructions
+      this.systemInstructionCache = await this.genAI.caches.create({
+        model: this.llmConfig.model,
+        config: {
+          systemInstruction: this.systemPrompt,
+          ttl: '10800s', // 3 hour cache
+        },
+      });
+
+      this.logger.info('System instruction cache created successfully', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_system_cache',
+        cacheId: this.systemInstructionCache.name,
+        ttl: '10800s',
+      });
+    } catch (error) {
+      this.logger.warn('Failed to create explicit cache, falling back to implicit caching', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_system_cache',
+        error: { message: error instanceof Error ? error.message : String(error) },
+      });
+      // Continue without explicit caching - implicit caching will still work
+      this.systemInstructionCache = null;
+    }
   }
 
   private loadSystemPrompt(): string {
@@ -115,7 +162,7 @@ export class LLMService implements OnModuleInit {
         {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'load_system_prompt',
-          error: error instanceof Error ? error.message : String(error),
+          error: { message: error instanceof Error ? error.message : String(error) },
         },
       );
 
@@ -189,7 +236,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       this.logger.error('Content processing failed', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'process_content',
-        error: error instanceof Error ? error.message : String(error),
+        error: { message: error instanceof Error ? error.message : String(error) },
         responseTime,
       });
 
@@ -224,13 +271,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       throw new Error(`No valid posts found in LLM input. Total posts: ${input.posts.length}, valid: ${validPosts.length}`);
     }
 
-    const userPrompt = `Extract entities from this Reddit content:\n\n${JSON.stringify(
-      { posts: validPosts },
-      null,
-      2,
-    )}`;
-
-    return `${this.systemPrompt}\n\nUser: ${userPrompt}\n\nAssistant: `;
+    // Return only the data - system instructions are now cached separately
+    return JSON.stringify({ posts: validPosts }, null, 2);
   }
 
   /**
@@ -409,12 +451,25 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         hasApiKey: !!this.llmConfig.apiKey,
         promptLength: prompt.length,
         library: '@google/genai',
+        usingExplicitCache: !!this.systemInstructionCache,
+        cacheId: this.systemInstructionCache?.name || null,
       });
+
+      // Use explicit cache if available, otherwise fall back to system instruction in config
+      const requestConfig = this.systemInstructionCache 
+        ? {
+            ...generationConfig,
+            cachedContent: this.systemInstructionCache.name,
+          }
+        : {
+            ...generationConfig,
+            systemInstruction: this.systemPrompt,
+          };
 
       const response = await this.genAI.models.generateContent({
         model: this.llmConfig.model,
-        contents: prompt,
-        ...generationConfig,
+        contents: [{ parts: [{ text: prompt }] }],
+        config: requestConfig,
       });
 
       this.logger.info('LLM API response received via @google/genai', {
@@ -427,6 +482,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         finishReason: response.candidates?.[0]?.finishReason,
         safetyRatings: response.candidates?.[0]?.safetyRatings,
         usageMetadata: response.usageMetadata,
+        usingExplicitCache: !!this.systemInstructionCache,
+        cachedTokenCount: response.usageMetadata?.cachedContentTokenCount || 0,
       });
 
       // Convert @google/genai response format to our expected LLMApiResponse format

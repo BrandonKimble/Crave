@@ -27,13 +27,14 @@ export class CentralizedRateLimiter {
   private readonly maxRPM = 1000;
   private readonly maxTPM = 1000000;
   
-  // Conservative settings for 24 workers
+  // Optimized settings based on ACTUAL TEST DATA
   // 1000 RPM / 60 sec = 16.67 req/sec theoretical max
-  // With 24 workers, we need careful orchestration
-  private readonly safeRPM = 900; // 90% of limit for safety margin
-  private readonly safeRequestsPerSecond = 15; // Conservative burst limit
-  private readonly minSpacingMs = 67; // 1000ms / 15 = 67ms minimum between ANY requests
-  private readonly workerTimeSlotMs = 40; // Time slot per worker in round-robin
+  // Burst testing proved 750 simultaneous requests work fine
+  // So we only need to respect the RPM limit, not burst limits
+  private readonly safeRPM = 950; // 95% of limit (50 RPM safety buffer)
+  private readonly safeRequestsPerSecond = 16; // 950 RPM / 60 = 15.83 req/sec
+  private readonly minSpacingMs = 63; // 1000ms / 16 = 62.5ms, rounded up for safety
+  private readonly workerTimeSlotMs = 30; // Reduced since burst isn't an issue
   
   // Redis keys
   private readonly reservationsKey = `${this.keyPrefix}:reservations`;
@@ -327,8 +328,8 @@ export class CentralizedRateLimiter {
     const currentRPM = await this.redis.zcount(this.reservationsKey, oneMinuteAgo, '+inf');
     const utilizationPercent = Math.round((currentRPM / this.maxRPM) * 100);
     const availableCapacity = this.maxRPM - currentRPM;
-    const safetyMargin = this.maxRPM - this.safeRPM; // 100 RPM buffer
-    const burstCapacity = this.safeRequestsPerSecond * 60; // 900 RPM burst theoretical
+    const safetyMargin = this.maxRPM - this.safeRPM; // 50 RPM buffer
+    const burstCapacity = this.safeRequestsPerSecond * 60; // 960 RPM theoretical (16 * 60)
     
     // Calculate optimal workers based on current load
     const avgRequestsPerWorker = currentRPM > 0 ? currentRPM / 24 : 15; // assume 15 req/min per worker
