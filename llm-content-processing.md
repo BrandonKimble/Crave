@@ -220,14 +220,13 @@ Use this central guide to extract entities systematically, referencing the appro
 - For identified attributes, apply **Selective vs Descriptive Classification** (Section 1.2)
 - Ensure proper scope assignment (dish attributes vs restaurant attributes)
 
-#### Step 5: Normalization & Output
+#### Step 5: Name Normalization & Output
 
 - Convert to lowercase canonical forms
 - Remove unnecessary articles (the, a, an)
 - Standardize punctuation and spacing
-- Store original mention text separately for alias creation
-- Handle common abbreviations and nicknames
-- Output in standardized JSON structure
+- Fix obvious typos if detected
+- Output in standardized JSON structure as "*_name"
 
 #### Key Processing Examples
 
@@ -236,17 +235,22 @@ Use this central guide to extract entities systematically, referencing the appro
 ```json
 {
   "temp_id": "mention_1",
-  "restaurant_normalized_name": "restaurant_name_here",
-  "restaurant_temp_id": "rest_1", 
-  "dish_primary_category": "nashville hot chicken sandwich",
-  "dish_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
-  "dish_temp_id": "dish_1",
-  "dish_is_menu_item": true,
-  "dish_attributes": ["spicy", "nashville", "house-made"],
+  "restaurant_temp_id": "rest_1",
+  "restaurant_name": "restaurant_name_here",
+  "food_temp_id": "food_1",
+  "food_name": "nashville hot chicken sandwich",
+  "food_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
+  "is_menu_item": true,
+  "food_attributes_selective": ["spicy"],
+  "food_attributes_descriptive": ["nashville", "house-made"],
+  "restaurant_attributes": null,
   "general_praise": false,
   "source_type": "comment",
   "source_id": "t1_abc123",
-  "source_content": "House-made spicy Nashville hot chicken sandwich is amazing"
+  "source_content": "House-made spicy Nashville hot chicken sandwich is amazing",
+  "source_ups": 42,
+  "source_url": "/r/food/comments/...",
+  "source_created_at": "2024-01-15T10:30:00Z"
 }
 ```
 

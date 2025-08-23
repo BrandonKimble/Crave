@@ -72,6 +72,7 @@ export class ContextDeterminationService implements OnModuleInit {
           processingTimeMs: 0,
           averageConfidence: 0,
         },
+        entityDetails: new Map(),
       };
     }
 
@@ -107,32 +108,32 @@ export class ContextDeterminationService implements OnModuleInit {
         }
       }
 
-      // Extract selective dish attributes (dish scope)
+      // Extract selective food attributes (food scope)
       if (
-        mention.dish_attributes_selective &&
-        mention.dish_attributes_selective.length > 0
+        mention.food_attributes_selective &&
+        mention.food_attributes_selective.length > 0
       ) {
-        for (const dishAttr of mention.dish_attributes_selective) {
+        for (const foodAttr of mention.food_attributes_selective) {
           attributes.push({
-            tempId: `${mention.temp_id}_dish_attr_selective_${dishAttr}`,
-            attributeName: dishAttr,
-            originalText: dishAttr,
+            tempId: `${mention.temp_id}_food_attr_selective_${foodAttr}`,
+            attributeName: foodAttr,
+            originalText: foodAttr,
             scope: 'dish',
             aliases: [], // LLM normalization already done
           });
         }
       }
 
-      // Extract descriptive dish attributes (dish scope)
+      // Extract descriptive food attributes (food scope)
       if (
-        mention.dish_attributes_descriptive &&
-        mention.dish_attributes_descriptive.length > 0
+        mention.food_attributes_descriptive &&
+        mention.food_attributes_descriptive.length > 0
       ) {
-        for (const dishAttr of mention.dish_attributes_descriptive) {
+        for (const foodAttr of mention.food_attributes_descriptive) {
           attributes.push({
-            tempId: `${mention.temp_id}_dish_attr_descriptive_${dishAttr}`,
-            attributeName: dishAttr,
-            originalText: dishAttr,
+            tempId: `${mention.temp_id}_food_attr_descriptive_${foodAttr}`,
+            attributeName: foodAttr,
+            originalText: foodAttr,
             scope: 'dish',
             aliases: [], // LLM normalization already done
           });

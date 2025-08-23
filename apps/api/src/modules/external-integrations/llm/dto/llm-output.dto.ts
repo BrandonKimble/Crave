@@ -30,15 +30,9 @@ export class LLMDishAttributeDto {
  * DTO for LLM entity reference with validation
  */
 export class LLMEntityRefDto {
-  @IsOptional()
   @IsString()
   @IsSafeString()
-  normalized_name?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @IsSafeString()
-  original_text?: string | null;
+  name: string;
 
   @IsString()
   @IsSafeString()
@@ -80,41 +74,32 @@ export class LLMMentionDto {
   // Restaurant fields (REQUIRED)
   @IsString()
   @IsSafeString()
-  restaurant_normalized_name: string;
-
-  @IsString()
-  @IsSafeString()
-  restaurant_original_text: string;
+  restaurant_name: string;
 
   @IsString()
   @IsSafeString()
   restaurant_temp_id: string;
 
-  // Enhanced dish fields for compound term processing
+  // Enhanced food fields for compound term processing
   @IsOptional()
   @IsString()
   @IsSafeString()
-  dish_primary_category?: string | null;
+  food_name?: string | null;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
   @IsSafeString({ each: true })
-  dish_categories?: string[] | null;
+  food_categories?: string[] | null;
 
   @IsOptional()
   @IsString()
   @IsSafeString()
-  dish_original_text?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @IsSafeString()
-  dish_temp_id?: string | null;
+  food_temp_id?: string | null;
 
   @IsOptional()
   @IsBoolean()
-  dish_is_menu_item?: boolean | null;
+  is_menu_item?: boolean | null;
 
   // Attributes (simplified - all non-food descriptors)
   @IsOptional()
@@ -127,7 +112,13 @@ export class LLMMentionDto {
   @IsArray()
   @IsString({ each: true })
   @IsSafeString({ each: true })
-  dish_attributes?: string[] | null;
+  food_attributes_selective?: string[] | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  @IsSafeString({ each: true })
+  food_attributes_descriptive?: string[] | null;
 
   // Core processing fields (VITAL)
   @IsBoolean()

@@ -503,6 +503,7 @@ CREATE TABLE entities (
   -- Restaurant-specific columns (null for non-restaurant entities)
   restaurant_attributes UUID[] DEFAULT '{}',
   restaurant_quality_score DECIMAL(10,4) DEFAULT 0,
+  general_praise_upvotes INTEGER DEFAULT 0, -- Accumulated upvotes from general praise mentions
   -- Google Places data
   latitude DECIMAL(10, 8),
   longitude DECIMAL(11, 8),
@@ -1039,32 +1040,38 @@ The same entity resolution process applies during user queries, with scope deter
 
 ### 5.3 Quality Score Computation
 
-#### 5.3.1 Dish Quality Score (85-90%)
+#### 5.3.1 Dish Quality Score (87% + 13%)
 
-##### Primary component based on connection strength:
+##### Primary component (87%) - Connection strength:
 
 - **Connection strength metrics**:
   - Mention count with time decay
   - Total upvotes with time decay
   - Source diversity (unique discussion threads)
 
-##### Secondary component (10-15%):
+##### Secondary component (13%):
 
 - **Restaurant context factor**: Derived from the parent restaurant's quality score
   - Provides a small boost to dishes from generally excellent restaurants
   - Serves as effective tiebreaker
 
-#### 5.3.2 Restaurant Quality Score (80% + 20%)
+#### 5.3.2 Restaurant Quality Score (50% + 30% + 20%)
 
-##### Primary component (80%):
+##### Primary component (50%):
 
 - **Top dish connections**: 3-5 highest-scoring dishes at restaurant
   - Captures standout offerings that define restaurant
 
-##### Secondary component (20%):
+##### Secondary component (30%):
 
 - **Overall menu consistency**: Average quality across all mentioned dishes
   - Rewards restaurants with strong overall performance
+
+##### Tertiary component (20%):
+
+- **General praise factor**: Accumulated upvotes from general praise mentions
+  - Stored in `entities.generalPraiseUpvotes` column
+  - Captures holistic restaurant appreciation beyond specific dishes
 
 #### 5.3.3 Category/Attribute Performance Score
 
@@ -1139,7 +1146,7 @@ For restaurant ranking in category/attribute queries:
 **Step 4**: Consolidated Processing Phase (All-in-One)
 4a. Entity Resolution: Three-tier matching with in-memory ID mapping
 4b. Mention Scoring: Time-weighted scoring with activity level calculation
-4c. Component Processing: 6 parallel components handle all entity combinations
+4c. Sequential Processing: 6 sequential components handle all entity combinations
 
 **Step 5**: Single Bulk Database Transaction
 
@@ -1233,43 +1240,53 @@ _**Note**: Based on real Reddit API field analysis (NYC subreddit sample). Uses 
 
 #### 6.3.2 LLM Output Structure
 
-_**Note**: Structure will evolve during implementation. Key principles are entity normalization with original text preservation, attribute classification for processing guidance, and source traceability._
+_**Note**: This structure reflects the current production implementation. Key principles are entity normalization with original text preservation, flattened structure for LLM performance, and complete source traceability._
+
+**Current Production Structure** (Flattened for LLM Performance):
 
 ```json
 {
   "mentions": [
     {
       "temp_id": "string",
-      "restaurant": {
-        "normalized_name": "string" | null,
-        "original_text": "string" | null,
-        "temp_id": "string"
-      },
+      
+      // Restaurant fields (REQUIRED)
+      "restaurant_temp_id": "string",
+      "restaurant_name": "string",  // Normalized name only
+      
+      // Food entity fields (optional - null when no food mentioned)
+      "food_temp_id": "string" | null,
+      "food_name": "string" | null,  // Normalized name only
+      "food_categories": ["string"] | null,  // Hierarchical decomposition
+      "is_menu_item": boolean | null,
+      
+      // Attributes (preserved as arrays)
       "restaurant_attributes": ["string"] | null,
-      "dish_or_category": {
-        "normalized_name": "string" | null,
-        "original_text": "string" | null,
-        "temp_id": "string"
-      } | null,
-      "dish_attributes": [
-        {
-          "attribute": ["string"] | null,
-          "type": "selective|descriptive"
-        },
-      ] | null,
-      "is_menu_item": boolean,
+      "food_attributes_selective": ["string"] | null,
+      "food_attributes_descriptive": ["string"] | null,
+      
+      // Core processing fields
       "general_praise": boolean,
-      "source": {
-        "type": "post|comment",
-        "id": "string",
-        "url": "string",
-        "upvotes": number,
-        "created_at": "timestamp"
-      }
+      
+      // Source tracking (flattened for performance)
+      "source_type": "post" | "comment",
+      "source_id": "string",
+      "source_content": "string",
+      "source_ups": number,
+      "source_url": "string", 
+      "source_created_at": "string"
     }
   ]
 }
 ```
+
+**Key Design Decisions**:
+- **Flattened Structure**: Optimized for LLM parsing performance vs nested objects
+- **Normalized Names Only**: LLM provides normalized names; entity resolution handles variations as aliases
+- **food_ Prefix**: Clearer than dish_ since entities can be menu items OR category references
+- **Complete Source Attribution**: All source fields included for traceability
+- **Selective vs Descriptive Attributes**: Separate arrays for different processing logic
+- **Null-Safe Design**: Optional fields explicitly nullable for robust processing
 
 ### 6.4 Consolidated Processing Phase
 
@@ -1293,6 +1310,7 @@ _**Note**: see section 5.2 for detailed implementation_
 
 - **Three-tier resolution process**: Entity matching using exact, alias, and fuzzy matching
 - **In-memory ID mapping**: Build `{temp_id → db_id}` dictionary from resolution results
+- **No database operations**: Entity resolution only provides ID mappings; database operations handled in step 4c
 - **Batched processing**: All resolution operations performed in batches for optimal performance
 
 #### 6.4.2 Mention Scoring & Activity Calculation (step 4b):
@@ -1340,18 +1358,19 @@ _**Note**: see section 5.2 for detailed implementation_
 - **UI integration**: Simple conditional display based on stored activity_level enum
 - **Performance**: No additional API calls or real-time calculations required
 
-#### 6.4.3 Component-Based Processing (step 4c):
+#### 6.4.3 Sequential Processing (step 4c):
 
 _**Note**: see section 6.5 below for component details_
 
-- All 6 processing components execute in parallel using resolved entity IDs
-- Results accumulated in memory for single transaction
+- Sequential/additive processing through applicable components using resolved entity IDs
+- Each mention processed through relevant components in order
+- Database operations dynamically built and executed in single transaction
 
 ### 6.5 Component-Based DB Processing Guide
 
-#### 6.5.1 Modular Processing Components
+#### 6.5.1 Sequential Processing Components
 
-The system processes LLM output through independent components. All applicable components process independently for each mention.
+The system processes each LLM mention through a sequential pipeline. Each mention starts with required restaurant processing and then flows through applicable components based on mention content, building database operations additively.
 
 **Component 1: Restaurant Entity Processing**
 
@@ -1366,8 +1385,8 @@ The system processes LLM output through independent components. All applicable c
 **Component 3: General Praise Processing**
 
 - Processed when: general_praise is true (mentions containing holistic restaurant praise)
-- Action: Boost all existing dish connections for this restaurant
-- Note: Do not create dish connections if none exist
+- Action: Increment general_praise_upvotes on the restaurant entity
+- Note: This affects restaurant quality score calculation (20% weight) which implicitly boosts all dishes
 
 **Component 4: Specific Dish Processing**
 
@@ -1442,14 +1461,15 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 
 #### 6.5.4 Core Principles
 
-1. **Modular Processing:** All applicable components process independently
-2. **Additive Logic:** Multiple processing components can apply to the same mention
-3. **Selective = Filtering:** Find existing connections that match any of the selective attributes
-4. **Descriptive = Enhancement:** Add attributes to existing connections if not already present
-5. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
-6. **Create Specific Only:** Only create new connections for specific dishes (menu items)
-7. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
-8. **Restaurant Always Created:** Restaurant entities are always created if missing
+1. **Sequential Processing:** Each mention flows through applicable components in order
+2. **Additive Logic:** Components build database operations dynamically based on mention content
+3. **Dynamic Query Building:** Database operations accumulated and executed in single transaction
+4. **Selective = Filtering:** Find existing connections that match any of the selective attributes
+5. **Descriptive = Enhancement:** Add attributes to existing connections if not already present
+6. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
+7. **Create Specific Only:** Only create new connections for specific dishes (menu items)
+8. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
+9. **Restaurant Always Created:** Restaurant entities are always created if missing
 
 ### 6.6 Database Operations, Metrics, and Performance Optimizations
 
@@ -2523,8 +2543,8 @@ _Required for useful search results_
 
 #### 9.5.1 Core Tasks
 
-- **Dish quality score computation**: Connection strength-based algorithm (85-90% weighting)
-- **Restaurant quality score computation**: Combined dish performance + direct mentions (80% + 20% formula)
+- **Dish quality score computation**: Connection strength-based algorithm (87% connection strength + 13% restaurant context)
+- **Restaurant quality score computation**: Combined dish performance + menu consistency + general praise (50% + 30% + 20% formula)
 - **Category/attribute performance scoring**: Restaurant ranking for category/attribute queries
 - **Mention scoring system**: Time-weighted formula, activity indicators (trending/active status)
 - **Connection metrics aggregation**: Mention count, upvotes, source diversity, recency weighting

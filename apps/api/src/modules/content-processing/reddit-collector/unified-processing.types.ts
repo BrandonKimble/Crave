@@ -18,6 +18,7 @@ export interface UnifiedProcessingConfig {
   enableSourceAttribution: boolean;
   maxRetries: number;
   batchTimeout: number;
+  batchSize: number;
 }
 
 /**

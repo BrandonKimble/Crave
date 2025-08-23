@@ -16,6 +16,7 @@ model Entity {
   aliases                String[]     @default([])
   restaurantAttributes   String[]     @default([]) @map("restaurant_attributes") @db.Uuid
   restaurantQualityScore Decimal?     @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
+  generalPraiseUpvotes   Int          @default(0) @map("general_praise_upvotes")
   latitude               Decimal?     @db.Decimal(10, 8)
   longitude              Decimal?     @db.Decimal(11, 8)
   address                String?      @db.VarChar(500)
@@ -61,7 +62,7 @@ model Connection {
   restaurant         Entity        @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   mentions           Mention[]
 
-  @@unique([restaurantId, dishOrCategoryId, dishAttributes])
+  @@unique([restaurantId, dishOrCategoryId])
   @@index([restaurantId], map: "idx_connections_restaurant")
   @@index([dishOrCategoryId], map: "idx_connections_dish")
   @@index([categories], map: "idx_connections_categories_gin", type: Gin)

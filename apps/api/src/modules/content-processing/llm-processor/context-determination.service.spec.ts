@@ -80,6 +80,7 @@ describe('ContextDeterminationService', () => {
           processingTimeMs: 100,
           averageConfidence: 0.9,
         },
+        entityDetails: new Map(),
       };
 
       entityResolutionService.resolveContextualAttributes.mockResolvedValue(
@@ -162,6 +163,7 @@ describe('ContextDeterminationService', () => {
           processingTimeMs: 50,
           averageConfidence: 0.8,
         },
+        entityDetails: new Map(),
       };
 
       entityResolutionService.resolveContextualAttributes.mockResolvedValue(

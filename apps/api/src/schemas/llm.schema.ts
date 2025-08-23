@@ -50,7 +50,7 @@ export const LLMMentionSchema = z.object({
   // Identifiers
   temp_id: z.string(),
   restaurant_temp_id: z.string(),
-  dish_temp_id: z.string().optional(),
+  food_temp_id: z.string().optional(),
   attribute_temp_ids: z.array(z.string()).default([]),
 
   // Content
@@ -64,9 +64,9 @@ export const LLMMentionSchema = z.object({
   confidence_score: z.number().min(0).max(1),
   general_praise: z.boolean(),
 
-  // Dish specifics (when dish_temp_id exists)
-  dish_is_menu_item: z.boolean().optional(),
-  dish_category: z.string().optional(),
+  // Food specifics (when food_temp_id exists)
+  is_menu_item: z.boolean().optional(),
+  food_category: z.string().optional(),
 
   // Metadata
   reddit_post_id: z.string(),

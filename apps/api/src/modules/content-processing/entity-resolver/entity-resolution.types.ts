@@ -19,6 +19,7 @@ export interface EntityResolutionInput {
 
 /**
  * Resolution result with confidence scoring
+ * Updated for PRD approach - pure matching with transaction creation support
  */
 export interface EntityResolutionResult {
   tempId: string;
@@ -27,6 +28,12 @@ export interface EntityResolutionResult {
   resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'new' | 'unmatched';
   matchedName?: string;
   originalInput: EntityResolutionInput;
+  
+  // Additional fields for transaction-based entity creation (PRD approach)
+  isNewEntity?: boolean;           // Flag indicating entity needs creation in transaction
+  entityType?: EntityType;         // Entity type for transaction creation
+  normalizedName?: string;         // Normalized name for transaction creation
+  validatedAliases?: string[];     // Validated aliases for transaction creation
 }
 
 /**
@@ -37,6 +44,7 @@ export interface BatchResolutionResult {
   resolutionResults: EntityResolutionResult[];
   newEntitiesCreated: number;
   performanceMetrics: ResolutionPerformanceMetrics;
+  entityDetails: Map<string, any>; // ADDED: Entity details for validation
 }
 
 /**
@@ -99,13 +107,12 @@ export function llmEntityRefToResolutionInput(
 ): EntityResolutionInput {
   return {
     tempId: entityRef.temp_id,
-    normalizedName: entityRef.normalized_name || entityRef.original_text || '',
-    originalText: entityRef.original_text || entityRef.normalized_name || '',
+    normalizedName: entityRef.name,
+    originalText: entityRef.name, // Using same value since we only store normalized names now
     entityType,
     aliases: [
       ...aliases,
-      entityRef.original_text,
-      entityRef.normalized_name,
+      entityRef.name,
     ].filter(
       (alias): alias is string =>
         alias !== null && alias !== undefined && alias.trim().length > 0,

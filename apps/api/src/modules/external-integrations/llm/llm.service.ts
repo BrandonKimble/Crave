@@ -309,14 +309,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 },
 
                 // Restaurant info (required)
-                restaurant_normalized_name: {
+                restaurant_name: {
                   type: 'string',
                   description:
                     'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
-                },
-                restaurant_original_text: {
-                  type: 'string',
-                  description: 'Exact restaurant name as mentioned in source',
                 },
                 restaurant_attributes: {
                   type: 'array',
@@ -326,45 +322,40 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   nullable: true,
                 },
 
-                // Dish info (optional with nullable)
-                dish_temp_id: {
+                // Food info (optional with nullable)
+                food_temp_id: {
                   type: 'string',
-                  description: 'Unique identifier for dish if mentioned',
+                  description: 'Unique identifier for food if mentioned',
                   nullable: true,
                 },
-                dish_primary_category: {
+                food_name: {
                   type: 'string',
                   description:
-                    'Complete compound food term as primary category, singular form, excluding attributes',
+                    'Complete compound food term as primary name, singular form, excluding attributes',
                   nullable: true,
                 },
-                dish_categories: {
+                food_categories: {
                   type: 'array',
                   description:
                     'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
                   items: { type: 'string' },
                   nullable: true,
                 },
-                dish_original_text: {
-                  type: 'string',
-                  description: 'Exact dish name as mentioned in source',
-                  nullable: true,
-                },
-                dish_attributes_selective: {
+                food_attributes_selective: {
                   type: 'array',
                   description:
                     'Selective attributes: help filter or categorize food options',
                   items: { type: 'string' },
                   nullable: true,
                 },
-                dish_attributes_descriptive: {
+                food_attributes_descriptive: {
                   type: 'array',
                   description:
                     'Descriptive attributes: characterize or describe specific food items',
                   items: { type: 'string' },
                   nullable: true,
                 },
-                dish_is_menu_item: {
+                is_menu_item: {
                   type: 'boolean',
                   description:
                     'True if specific menu item, false if general food type',
@@ -411,8 +402,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               required: [
                 'temp_id',
                 'restaurant_temp_id',
-                'restaurant_normalized_name',
-                'restaurant_original_text',
+                'restaurant_name',
                 'general_praise',
                 'source_type',
                 'source_id',
@@ -630,10 +620,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           parsed.mentions.length > 0
             ? parsed.mentions.map((m) => ({
                 temp_id: m.temp_id,
-                restaurant:
-                  m.restaurant_normalized_name || m.restaurant_original_text,
-                dish: m.dish_primary_category || m.dish_original_text,
-                dish_categories: m.dish_categories,
+                restaurant: m.restaurant_name,
+                dish: m.food_name,
+                dish_categories: m.food_categories,
               }))
             : [],
       });

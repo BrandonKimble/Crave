@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { EntityType, Entity } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
+import * as crypto from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -99,11 +100,29 @@ export class EntityResolutionService implements OnModuleInit {
         ...metrics,
       });
 
+      // ADDED: Populate entity details for validation
+      const entityDetails = new Map<string, any>();
+      for (const result of results) {
+        if (result.entityId) {
+          // Fetch entity details for each resolved entity
+          const entity = await this.entityRepository.findById(result.entityId);
+          if (entity) {
+            entityDetails.set(result.entityId, {
+              entityId: entity.entityId,
+              name: entity.name,
+              type: entity.type,
+              aliases: entity.aliases || [],
+            });
+          }
+        }
+      }
+
       return {
         tempIdToEntityIdMap,
         resolutionResults: results,
         newEntitiesCreated,
         performanceMetrics: metrics,
+        entityDetails, // ADDED: Include entity details
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;
@@ -218,8 +237,8 @@ export class EntityResolutionService implements OnModuleInit {
       unmatched: unmatchedAfterFuzzy.length,
     });
 
-    // Create new entities for unmatched items
-    const newEntityResults = await this.createNewEntities(
+    // Mark unmatched entities for transaction-based creation (PRD approach)
+    const newEntityResults = this.markEntitiesForCreation(
       unmatchedAfterFuzzy,
       entityType,
     );
@@ -499,18 +518,17 @@ export class EntityResolutionService implements OnModuleInit {
   }
 
   /**
-   * Create new entities for unmatched inputs
+   * Mark entities for transaction-based creation (PRD approach)
+   * Generate UUIDs and prepare entity data for transaction creation
    */
-  private async createNewEntities(
+  private markEntitiesForCreation(
     entities: EntityResolutionInput[],
     entityType: EntityType,
-  ): Promise<EntityResolutionResult[]> {
+  ): EntityResolutionResult[] {
     const results: EntityResolutionResult[] = [];
 
     for (const entity of entities) {
       try {
-        let newEntity: Entity;
-
         // Prepare aliases using alias management service
         const aliasResult = this.aliasManagementService.addOriginalTextAsAlias(
           entity.aliases || [],
@@ -525,75 +543,60 @@ export class EntityResolutionService implements OnModuleInit {
           );
 
         if (scopeValidation.violations.length > 0) {
-          this.logger.warn('Scope violations detected during entity creation', {
+          this.logger.warn('Scope violations detected for entity creation', {
             entityType,
             entityName: entity.normalizedName,
             violations: scopeValidation.violations,
           });
         }
 
-        // Create entity based on type using existing repository methods
-        switch (entityType) {
-          case 'restaurant':
-            newEntity = await this.entityRepository.createRestaurant({
-              name: entity.normalizedName,
-              aliases: scopeValidation.validAliases,
-            });
-            break;
-          case 'dish_or_category':
-            newEntity = await this.entityRepository.createDishOrCategory({
-              name: entity.normalizedName,
-              aliases: scopeValidation.validAliases,
-            });
-            break;
-          case 'dish_attribute':
-            newEntity = await this.entityRepository.createDishAttribute({
-              name: entity.normalizedName,
-              aliases: scopeValidation.validAliases,
-            });
-            break;
-          case 'restaurant_attribute':
-            newEntity = await this.entityRepository.createRestaurantAttribute({
-              name: entity.normalizedName,
-              aliases: scopeValidation.validAliases,
-            });
-            break;
-          default:
-            throw new Error(`Unsupported entity type: ${entityType as string}`);
-        }
+        // Generate UUID for transaction-based creation
+        const entityId = this.generateEntityId();
 
         results.push({
           tempId: entity.tempId,
-          entityId: newEntity.entityId,
+          entityId: entityId,
           confidence: 1.0,
           resolutionTier: 'new',
-          matchedName: newEntity.name,
+          matchedName: entity.normalizedName,
           originalInput: entity,
+          isNewEntity: true, // Flag for transaction creation
+          entityType: entityType,
+          normalizedName: entity.normalizedName,
+          validatedAliases: scopeValidation.validAliases,
         });
 
-        this.logger.debug('Created new entity', {
-          entityId: newEntity.entityId,
+        this.logger.debug('Marked entity for transaction creation', {
+          entityId: entityId,
           entityType,
-          name: newEntity.name,
+          name: entity.normalizedName,
         });
       } catch (error) {
-        this.logger.error('Failed to create new entity', {
+        this.logger.error('Failed to prepare entity for creation', {
           error: error instanceof Error ? error.message : String(error),
           entityType,
           entityName: entity.normalizedName,
         });
 
+        // Add unmatched result for failed preparation
         results.push({
           tempId: entity.tempId,
           entityId: null,
           confidence: 0.0,
-          resolutionTier: 'new',
+          resolutionTier: 'unmatched',
           originalInput: entity,
         });
       }
     }
 
     return results;
+  }
+
+  /**
+   * Generate UUID for new entities (used in transaction creation)
+   */
+  private generateEntityId(): string {
+    return crypto.randomUUID();
   }
 
   /**

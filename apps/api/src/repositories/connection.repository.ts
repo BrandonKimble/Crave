@@ -624,4 +624,441 @@ export class ConnectionRepository extends BaseRepository<
       throw this.handlePrismaError(error, 'findTopRestaurantsForDish');
     }
   }
+
+  /**
+   * Find connections with selective attributes (OR logic for component processors)
+   * Used by SpecificDishProcessor and AttributeOnlyProcessor
+   */
+  async findConnectionsWithSelectiveAttributes(
+    restaurantId: string,
+    dishOrCategoryId: string,
+    selectiveAttributeIds: string[]
+  ): Promise<Array<{ connectionId: string; matchedAttributes: string[] }>> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding connections with selective attributes', {
+        restaurantId,
+        dishOrCategoryId,
+        selectiveAttributeIds,
+      });
+
+      const connections = await this.getDelegate().findMany({
+        where: {
+          restaurantId,
+          dishOrCategoryId,
+          isMenuItem: true,
+          dishAttributes: {
+            hasSome: selectiveAttributeIds,
+          },
+        },
+        select: {
+          connectionId: true,
+          dishAttributes: true,
+        },
+      });
+
+      const results = connections.map(conn => ({
+        connectionId: conn.connectionId,
+        matchedAttributes: conn.dishAttributes.filter(attr => 
+          selectiveAttributeIds.includes(attr)
+        ),
+      }));
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Found connections with selective attributes', {
+        duration,
+        restaurantId,
+        dishOrCategoryId,
+        selectiveAttributeIds,
+        matchingConnections: results.length,
+      });
+
+      return results;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find connections with selective attributes', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        dishOrCategoryId,
+        selectiveAttributeIds,
+      });
+
+      throw this.handlePrismaError(error, 'findConnectionsWithSelectiveAttributes');
+    }
+  }
+
+  /**
+   * Find all dish connections for a restaurant-dish pair
+   * Used by SpecificDishProcessor for descriptive attribute processing
+   */
+  async findAllDishConnections(
+    restaurantId: string,
+    dishOrCategoryId: string
+  ): Promise<Array<{ connectionId: string; dishAttributes: string[] }>> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding all dish connections', {
+        restaurantId,
+        dishOrCategoryId,
+      });
+
+      const connections = await this.getDelegate().findMany({
+        where: {
+          restaurantId,
+          dishOrCategoryId,
+          isMenuItem: true,
+        },
+        select: {
+          connectionId: true,
+          dishAttributes: true,
+        },
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Found all dish connections', {
+        duration,
+        restaurantId,
+        dishOrCategoryId,
+        connectionCount: connections.length,
+      });
+
+      return connections;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find all dish connections', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        dishOrCategoryId,
+      });
+
+      throw this.handlePrismaError(error, 'findAllDishConnections');
+    }
+  }
+
+  /**
+   * Find connections with a specific category
+   * Used by CategoryProcessor
+   */
+  async findConnectionsWithCategory(
+    restaurantId: string,
+    categoryEntityId: string
+  ): Promise<Array<{ connectionId: string; dishOrCategoryId: string; dishAttributes: string[] }>> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding connections with category', {
+        restaurantId,
+        categoryEntityId,
+      });
+
+      const connections = await this.getDelegate().findMany({
+        where: {
+          restaurantId,
+          categories: {
+            has: categoryEntityId,
+          },
+        },
+        select: {
+          connectionId: true,
+          dishOrCategoryId: true,
+          dishAttributes: true,
+        },
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Found connections with category', {
+        duration,
+        restaurantId,
+        categoryEntityId,
+        connectionCount: connections.length,
+      });
+
+      return connections;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find connections with category', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        categoryEntityId,
+      });
+
+      throw this.handlePrismaError(error, 'findConnectionsWithCategory');
+    }
+  }
+
+  /**
+   * Find connections by restaurant with ANY of the specified attributes
+   * Used by AttributeOnlyProcessor
+   */
+  async findConnectionsWithAnyAttributes(
+    restaurantId: string,
+    attributeIds: string[]
+  ): Promise<Array<{ connectionId: string; dishOrCategoryId: string; matchedAttributes: string[] }>> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding connections with any attributes', {
+        restaurantId,
+        attributeIds,
+      });
+
+      const connections = await this.getDelegate().findMany({
+        where: {
+          restaurantId,
+          dishAttributes: {
+            hasSome: attributeIds,
+          },
+        },
+        select: {
+          connectionId: true,
+          dishOrCategoryId: true,
+          dishAttributes: true,
+        },
+      });
+
+      const results = connections.map(conn => ({
+        connectionId: conn.connectionId,
+        dishOrCategoryId: conn.dishOrCategoryId,
+        matchedAttributes: conn.dishAttributes.filter(attr => 
+          attributeIds.includes(attr)
+        ),
+      }));
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Found connections with any attributes', {
+        duration,
+        restaurantId,
+        attributeIds,
+        matchingConnections: results.length,
+      });
+
+      return results;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find connections with any attributes', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        attributeIds,
+      });
+
+      throw this.handlePrismaError(error, 'findConnectionsWithAnyAttributes');
+    }
+  }
+
+  /**
+   * Find existing basic dish connection (without attribute filtering)
+   * Used by SpecificDishProcessor for simple dish mentions
+   */
+  async findBasicDishConnection(
+    restaurantId: string,
+    dishOrCategoryId: string
+  ): Promise<{ connectionId: string } | null> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding basic dish connection', {
+        restaurantId,
+        dishOrCategoryId,
+      });
+
+      const connection = await this.getDelegate().findFirst({
+        where: {
+          restaurantId,
+          dishOrCategoryId,
+          isMenuItem: true,
+        },
+        select: {
+          connectionId: true,
+        },
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Basic dish connection search completed', {
+        duration,
+        restaurantId,
+        dishOrCategoryId,
+        found: !!connection,
+      });
+
+      return connection;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find basic dish connection', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        dishOrCategoryId,
+      });
+
+      throw this.handlePrismaError(error, 'findBasicDishConnection');
+    }
+  }
+
+  /**
+   * Find all existing dish connections for a restaurant
+   * Used by GeneralPraiseProcessor to boost all connections
+   */
+  async findExistingDishConnections(
+    restaurantId: string
+  ): Promise<Array<{ connectionId: string; dishOrCategoryId: string; isMenuItem: boolean; mentionCount: number }>> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding existing dish connections for restaurant', {
+        restaurantId,
+      });
+
+      const connections = await this.getDelegate().findMany({
+        where: {
+          restaurantId,
+        },
+        select: {
+          connectionId: true,
+          dishOrCategoryId: true,
+          isMenuItem: true,
+          mentionCount: true,
+        },
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Found existing dish connections', {
+        duration,
+        restaurantId,
+        connectionCount: connections.length,
+        menuItems: connections.filter(c => c.isMenuItem).length,
+        categories: connections.filter(c => !c.isMenuItem).length,
+      });
+
+      return connections;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find existing dish connections', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+      });
+
+      throw this.handlePrismaError(error, 'findExistingDishConnections');
+    }
+  }
+
+  /**
+   * Find connections for dishes in a specific category
+   * Used for category performance score calculation (PRD 5.3.3)
+   */
+  async findConnectionsInCategory(
+    restaurantId: string,
+    category: string,
+    params?: {
+      where?: Prisma.ConnectionWhereInput;
+      orderBy?: Prisma.ConnectionOrderByWithRelationInput;
+      skip?: number;
+      take?: number;
+      include?: Prisma.ConnectionInclude;
+    },
+  ): Promise<Connection[]> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding connections in category', {
+        restaurantId,
+        category,
+      });
+
+      const whereClause: Prisma.ConnectionWhereInput = {
+        restaurantId,
+        categories: {
+          has: category,
+        },
+        ...params?.where,
+      };
+
+      const result = await this.getDelegate().findMany({
+        where: whereClause,
+        orderBy: params?.orderBy || { connectionQualityScore: 'desc' },
+        skip: params?.skip,
+        take: params?.take,
+        include: params?.include,
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Find connections in category completed', {
+        duration,
+        restaurantId,
+        category,
+        count: result.length,
+      });
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find connections in category', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        category,
+      });
+
+      throw this.handlePrismaError(error, 'findConnectionsInCategory');
+    }
+  }
+
+  /**
+   * Find connections that have ANY of the specified attributes
+   * Used for attribute performance score calculation (PRD 5.3.3)
+   */
+  async findConnectionsWithAttributes(
+    restaurantId: string,
+    attributeIds: string[],
+    params?: {
+      where?: Prisma.ConnectionWhereInput;
+      orderBy?: Prisma.ConnectionOrderByWithRelationInput;
+      skip?: number;
+      take?: number;
+      include?: Prisma.ConnectionInclude;
+    },
+  ): Promise<Connection[]> {
+    const startTime = Date.now();
+    try {
+      this.logger.debug('Finding connections with attributes', {
+        restaurantId,
+        attributeIds,
+      });
+
+      const whereClause: Prisma.ConnectionWhereInput = {
+        restaurantId,
+        dishAttributes: {
+          hasSome: attributeIds,
+        },
+        ...params?.where,
+      };
+
+      const result = await this.getDelegate().findMany({
+        where: whereClause,
+        orderBy: params?.orderBy || { connectionQualityScore: 'desc' },
+        skip: params?.skip,
+        take: params?.take,
+        include: params?.include,
+      });
+
+      const duration = Date.now() - startTime;
+      this.logger.debug('Find connections with attributes completed', {
+        duration,
+        restaurantId,
+        attributeIds,
+        count: result.length,
+      });
+
+      return result;
+    } catch (error) {
+      const duration = Date.now() - startTime;
+      this.logger.error('Failed to find connections with attributes', {
+        duration,
+        error: error instanceof Error ? error.message : String(error),
+        restaurantId,
+        attributeIds,
+      });
+
+      throw this.handlePrismaError(error, 'findConnectionsWithAttributes');
+    }
+  }
 }

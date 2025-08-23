@@ -66,21 +66,19 @@ export interface LLMMention {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
-  restaurant_normalized_name: string;
-  restaurant_original_text: string;
   restaurant_temp_id: string;
+  restaurant_name: string;  // Normalized name only
 
-  // Enhanced dish fields for compound term processing
-  dish_primary_category?: string | null;
-  dish_categories?: string[] | null;
-  dish_original_text?: string | null;
-  dish_temp_id?: string | null;
-  dish_is_menu_item?: boolean | null;
+  // Food entity fields (optional - null when no food mentioned)
+  food_temp_id?: string | null;
+  food_name?: string | null;  // Normalized name only
+  food_categories?: string[] | null;  // Hierarchical decomposition
+  is_menu_item?: boolean | null;
 
   // Attributes (preserved as arrays)
   restaurant_attributes?: string[] | null;
-  dish_attributes_selective?: string[] | null;
-  dish_attributes_descriptive?: string[] | null;
+  food_attributes_selective?: string[] | null;
+  food_attributes_descriptive?: string[] | null;
 
   // Core processing fields (VITAL)
   general_praise: boolean;
@@ -98,8 +96,7 @@ export interface LLMMention {
  * LLM Entity Reference type
  */
 export interface LLMEntityRef {
-  normalized_name?: string | null;
-  original_text?: string | null;
+  name: string;
   temp_id: string;
 }
 

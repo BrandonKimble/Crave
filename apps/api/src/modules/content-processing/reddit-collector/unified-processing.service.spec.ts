@@ -142,6 +142,7 @@ describe('UnifiedProcessingService', () => {
       processingTimeMs: 150,
       averageConfidence: 0.8,
     },
+    entityDetails: new Map(),
   };
 
   beforeEach(async () => {

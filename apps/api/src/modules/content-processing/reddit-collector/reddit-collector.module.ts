@@ -4,6 +4,7 @@ import { BullModule } from '@nestjs/bull';
 import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
+import { QualityScoreModule } from '../quality-score/quality-score.module';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { StreamProcessorService } from './stream-processor.service';
@@ -91,7 +92,8 @@ import { VolumeTrackingProcessor } from './volume-tracking.processor';
     PrismaModule, // Provides PrismaService for database access
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
-    RepositoryModule, // Provides BulkOperationsService for database operations
+    QualityScoreModule, // Provides QualityScoreService for PRD Section 5.3 compliance
+    RepositoryModule, // Provides repository services for database access
     BullModule.registerQueue({
       name: 'chronological-collection',
     }),
