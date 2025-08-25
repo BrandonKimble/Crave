@@ -2,11 +2,11 @@ import { Connection } from '@prisma/client';
 
 /**
  * Quality Score Types
- * 
+ *
  * Implements PRD Section 5.3 - Quality Score Computation
  * Defines interfaces for all three quality score types:
  * - Dish Quality Score (85-90% connection + 10-15% restaurant context)
- * - Restaurant Quality Score (80% top dishes + 20% overall average)  
+ * - Restaurant Quality Score (80% top dishes + 20% overall average)
  * - Category/Attribute Performance Score (weighted average of relevant dishes)
  */
 
@@ -18,16 +18,14 @@ export interface QualityScoreService {
    */
   calculateDishQualityScore(
     connection: Connection,
-    restaurantScore?: number
+    restaurantScore?: number,
   ): Promise<number>;
 
   /**
    * Calculate restaurant quality score (PRD 5.3.2)
    * 80% top 3-5 dishes + 20% overall menu consistency
    */
-  calculateRestaurantQualityScore(
-    restaurantId: string
-  ): Promise<number>;
+  calculateRestaurantQualityScore(restaurantId: string): Promise<number>;
 
   /**
    * Calculate category/attribute performance score (PRD 5.3.3)
@@ -35,7 +33,7 @@ export interface QualityScoreService {
    */
   calculateCategoryPerformanceScore(
     restaurantId: string,
-    category: string
+    category: string,
   ): Promise<number>;
 
   /**
@@ -44,7 +42,7 @@ export interface QualityScoreService {
    */
   calculateAttributePerformanceScore(
     restaurantId: string,
-    attributeId: string
+    attributeId: string,
   ): Promise<number>;
 
   /**
@@ -52,7 +50,7 @@ export interface QualityScoreService {
    * Called during component processing pipeline
    */
   updateQualityScoresForConnections(
-    connectionIds: string[]
+    connectionIds: string[],
   ): Promise<QualityScoreUpdateResult>;
 }
 
@@ -60,7 +58,6 @@ export interface QualityScoreService {
 export interface ConnectionStrengthMetrics {
   mentionCount: number;
   totalUpvotes: number;
-  sourceDiversity: number; // unique discussion threads
   lastMentionedAt: Date;
   averageMentionAge: number; // in days
   recentMentionRatio: number; // mentions within 30 days / total mentions
@@ -100,7 +97,6 @@ export interface TimeDecayConfig {
   mentionCountDecayDays: number; // Default: 180 days
   upvoteDecayDays: number; // Default: 120 days
   recentMentionThresholdDays: number; // Default: 30 days
-  sourceDiversityWeight: number; // Default: 0.3
 }
 
 // Quality score weights (configurable)
@@ -114,9 +110,8 @@ export interface QualityScoreWeights {
   restaurantOverallConsistency: number; // 0.20
 
   // Connection strength component weights
-  mentionCountWeight: number; // 0.40
-  upvoteWeight: number; // 0.40
-  sourceDiversityWeight: number; // 0.20
+  mentionCountWeight: number; // e.g., 0.60
+  upvoteWeight: number; // e.g., 0.40
 }
 
 // Default configuration values
@@ -125,7 +120,6 @@ export const DEFAULT_QUALITY_SCORE_CONFIG = {
     mentionCountDecayDays: 180,
     upvoteDecayDays: 120,
     recentMentionThresholdDays: 30,
-    sourceDiversityWeight: 0.3,
   } as TimeDecayConfig,
 
   weights: {
@@ -134,13 +128,12 @@ export const DEFAULT_QUALITY_SCORE_CONFIG = {
     dishRestaurantContext: 0.13,
 
     // PRD 5.3.2 - Restaurant quality (80% top dishes + 20% consistency)
-    restaurantTopDishes: 0.80,
-    restaurantOverallConsistency: 0.20,
+    restaurantTopDishes: 0.8,
+    restaurantOverallConsistency: 0.2,
 
-    // Connection strength components
-    mentionCountWeight: 0.40,
-    upvoteWeight: 0.40,
-    sourceDiversityWeight: 0.20,
+    // Connection strength components (source diversity removed)
+    mentionCountWeight: 0.6,
+    upvoteWeight: 0.4,
   } as QualityScoreWeights,
 };
 

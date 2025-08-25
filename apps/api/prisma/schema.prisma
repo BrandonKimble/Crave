@@ -50,7 +50,6 @@ model Connection {
   isMenuItem         Boolean       @default(true) @map("is_menu_item")
   mentionCount       Int           @default(0) @map("mention_count")
   totalUpvotes       Int           @default(0) @map("total_upvotes")
-  sourceDiversity    Int           @default(0) @map("source_diversity")
   recentMentionCount Int           @default(0) @map("recent_mention_count")
   lastMentionedAt    DateTime?     @map("last_mentioned_at")
   activityLevel      ActivityLevel @default(normal) @map("activity_level")
@@ -79,7 +78,6 @@ model Connection {
   @@index([dishOrCategoryId, mentionCount(sort: Desc)], map: "idx_connections_dish_mentions")
   @@index([lastUpdated(sort: Desc)], map: "idx_connections_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_connections_created_at")
-  @@index([sourceDiversity(sort: Desc)], map: "idx_connections_source_diversity")
   @@index([recentMentionCount(sort: Desc)], map: "idx_connections_recent_mentions")
   @@map("connections")
 }
@@ -98,6 +96,7 @@ model Mention {
   processedAt    DateTime      @default(now()) @map("processed_at")
   connection     Connection    @relation(fields: [connectionId], references: [connectionId])
 
+  @@unique([sourceType, sourceId, connectionId], map: "uniq_mentions_source_connection")
   @@index([connectionId], map: "idx_mentions_connection")
   @@index([upvotes(sort: Desc)], map: "idx_mentions_upvotes")
   @@index([sourceType, sourceId], map: "idx_mentions_source")

@@ -421,7 +421,6 @@ async function createConnections(
         activityLevel: data.activityLevel,
         lastMentionedAt: new Date(),
         topMentions: data.sampleMentions,
-        sourceDiversity: Math.min(data.mentionCount / 5, 10),
         recentMentionCount: Math.floor(data.mentionCount * 0.3),
       },
     });

@@ -67,12 +67,12 @@ export interface LLMMention {
 
   // Restaurant fields (REQUIRED)
   restaurant_temp_id: string;
-  restaurant_name: string;  // Normalized name only
+  restaurant_name: string; // Normalized name only
 
   // Food entity fields (optional - null when no food mentioned)
   food_temp_id?: string | null;
-  food_name?: string | null;  // Normalized name only
-  food_categories?: string[] | null;  // Hierarchical decomposition
+  food_name?: string | null; // Normalized name only
+  food_categories?: string[] | null; // Hierarchical decomposition
   is_menu_item?: boolean | null;
 
   // Attributes (preserved as arrays)

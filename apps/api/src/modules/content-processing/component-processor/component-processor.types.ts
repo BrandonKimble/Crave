@@ -2,7 +2,7 @@ import { EntityType, ActivityLevel } from '@prisma/client';
 
 /**
  * Component Processor Types
- * 
+ *
  * Implements PRD Section 6.5 - Component-Based DB Processing Guide
  * Provides type definitions for all 6 component processors that handle different
  * entity combinations from LLM output
@@ -11,28 +11,28 @@ import { EntityType, ActivityLevel } from '@prisma/client';
 // Input types for component processing
 export interface ProcessedMention {
   tempId: string;
-  
+
   // Restaurant data
   restaurantNormalizedName?: string;
   restaurantOriginalText?: string;
   restaurantTempId?: string;
   restaurantAttributes?: string[];
-  
+
   // Dish/Category data
   dishOrCategoryNormalizedName?: string;
   dishOrCategoryOriginalText?: string;
   dishOrCategoryTempId?: string;
   dishCategories?: string[];
   dishPrimaryCategory?: string;
-  
+
   // Dish attributes
   dishAttributesSelective?: string[];
   dishAttributesDescriptive?: string[];
-  
+
   // Processing flags
   isMenuItem?: boolean;
   generalPraise?: boolean;
-  
+
   // Source metadata
   sourceType: 'post' | 'comment';
   sourceId: string;
@@ -46,12 +46,15 @@ export interface ProcessedMention {
 
 export interface ResolvedEntities {
   tempIdToEntityIdMap: Map<string, string>;
-  entityDetails: Map<string, {
-    entityId: string;
-    name: string;
-    type: EntityType;
-    aliases: string[];
-  }>;
+  entityDetails: Map<
+    string,
+    {
+      entityId: string;
+      name: string;
+      type: EntityType;
+      aliases: string[];
+    }
+  >;
 }
 
 // Component processor results
@@ -70,7 +73,11 @@ export interface ComponentResult {
 }
 
 export interface ComponentOperation {
-  operationType: 'create_connection' | 'update_connection' | 'create_mention' | 'update_entity';
+  operationType:
+    | 'create_connection'
+    | 'update_connection'
+    | 'create_mention'
+    | 'update_entity';
   entityId?: string;
   connectionId?: string;
   mentionId?: string;
@@ -88,7 +95,6 @@ export interface ConnectionAttributes {
 export interface ConnectionMetrics {
   mentionCount: number;
   totalUpvotes: number;
-  sourceDiversity: number;
   recentMentionCount: number;
   lastMentionedAt: Date;
   activityLevel: ActivityLevel;
@@ -182,12 +188,15 @@ export interface ComponentProcessingResult {
 // Base processor interface
 export interface ComponentProcessor {
   readonly componentName: string;
-  
+
   /**
    * Check if this component should process the given mention
    */
-  shouldProcess(mention: ProcessedMention, context: ComponentProcessingContext): boolean;
-  
+  shouldProcess(
+    mention: ProcessedMention,
+    context: ComponentProcessingContext,
+  ): boolean;
+
   /**
    * Process the mention and return results
    */
@@ -230,7 +239,7 @@ export class ComponentProcessingError extends Error {
     public componentName: string,
     public operation: string,
     message: string,
-    public context?: any
+    public context?: any,
   ) {
     super(`[${componentName}] ${operation}: ${message}`);
     this.name = 'ComponentProcessingError';
@@ -243,7 +252,7 @@ export class AttributeProcessingError extends ComponentProcessingError {
     operation: string,
     message: string,
     public attributeType: 'selective' | 'descriptive',
-    context?: any
+    context?: any,
   ) {
     super(componentName, operation, message, context);
     this.name = 'AttributeProcessingError';

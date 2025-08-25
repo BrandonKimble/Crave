@@ -1,19 +1,19 @@
 /**
  * Smart Rate Limiting Types
- * 
+ *
  * Clean interfaces for coordinated RPM + TPM rate limiting
  */
 
 export interface RateLimitConfig {
   /** Requests per minute limit */
   maxRPM: number;
-  
+
   /** Tokens per minute limit */
   maxTPM: number;
-  
+
   /** Burst tolerance in seconds */
   burstSeconds: number;
-  
+
   /** TPM throttle threshold (0-1) */
   tpmThrottleAt: number;
 }
@@ -21,10 +21,10 @@ export interface RateLimitConfig {
 export interface TokenUsage {
   /** Input tokens consumed */
   inputTokens: number;
-  
-  /** Output tokens generated */  
+
+  /** Output tokens generated */
   outputTokens: number;
-  
+
   /** Total tokens */
   totalTokens: number;
 }
@@ -32,10 +32,10 @@ export interface TokenUsage {
 export interface RateLimitResult {
   /** Time waited for rate limit token */
   waitedMs: number;
-  
+
   /** Current TPM utilization */
   tpmUtilization: number;
-  
+
   /** Available rate limit tokens */
   tokensAvailable: number;
 }
@@ -49,7 +49,7 @@ export interface RateLimitMetrics {
     tokensAvailable?: number;
     utilizationPercent: number;
   };
-  
+
   /** TPM tracking */
   tpm: {
     current?: number;
@@ -60,7 +60,7 @@ export interface RateLimitMetrics {
     shouldThrottle?: boolean;
     recommendedDelayMs?: number;
   };
-  
+
   /** Performance stats */
   performance: {
     totalRequests: number;

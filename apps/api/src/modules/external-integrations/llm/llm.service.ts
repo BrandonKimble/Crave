@@ -77,7 +77,7 @@ export class LLMService implements OnModuleInit {
       },
     };
 
-    // Initialize GoogleGenAI client  
+    // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
 
     // Load system prompt from llm-content-processing.md
@@ -101,11 +101,16 @@ export class LLMService implements OnModuleInit {
 
     // Initialize explicit cache for system instructions (async, non-blocking)
     this.initializeSystemInstructionCache().catch((error) => {
-      this.logger.warn('System instruction cache initialization failed, continuing with fallback', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'module_init',
-        error: { message: error instanceof Error ? error.message : String(error) },
-      });
+      this.logger.warn(
+        'System instruction cache initialization failed, continuing with fallback',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'module_init',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
     });
   }
 
@@ -136,11 +141,16 @@ export class LLMService implements OnModuleInit {
         ttl: '10800s',
       });
     } catch (error) {
-      this.logger.warn('Failed to create explicit cache, falling back to implicit caching', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'init_system_cache',
-        error: { message: error instanceof Error ? error.message : String(error) },
-      });
+      this.logger.warn(
+        'Failed to create explicit cache, falling back to implicit caching',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'init_system_cache',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
       // Continue without explicit caching - implicit caching will still work
       this.systemInstructionCache = null;
     }
@@ -162,7 +172,9 @@ export class LLMService implements OnModuleInit {
         {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'load_system_prompt',
-          error: { message: error instanceof Error ? error.message : String(error) },
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
         },
       );
 
@@ -236,7 +248,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       this.logger.error('Content processing failed', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'process_content',
-        error: { message: error instanceof Error ? error.message : String(error) },
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
         responseTime,
       });
 
@@ -250,25 +264,32 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   private buildProcessingPrompt(input: LLMInputStructure): string {
     // Validate input structure first to prevent undefined access errors
     if (!input || !input.posts || !Array.isArray(input.posts)) {
-      throw new Error(`Invalid LLM input structure: ${JSON.stringify({ hasInput: !!input, hasPostsProperty: input && 'posts' in input, postsType: input && typeof input.posts })}`);
+      throw new Error(
+        `Invalid LLM input structure: ${JSON.stringify({ hasInput: !!input, hasPostsProperty: input && 'posts' in input, postsType: input && typeof input.posts })}`,
+      );
     }
 
     // Filter out any undefined or null posts
     const validPosts = input.posts.filter((post, index) => {
       if (!post) {
-        this.logger.warn(`Found undefined/null post at index ${index}, skipping`, {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'build_processing_prompt',
-          inputPostsLength: input.posts.length,
-          undefinedIndex: index
-        });
+        this.logger.warn(
+          `Found undefined/null post at index ${index}, skipping`,
+          {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'build_processing_prompt',
+            inputPostsLength: input.posts.length,
+            undefinedIndex: index,
+          },
+        );
         return false;
       }
       return true;
     });
 
     if (validPosts.length === 0) {
-      throw new Error(`No valid posts found in LLM input. Total posts: ${input.posts.length}, valid: ${validPosts.length}`);
+      throw new Error(
+        `No valid posts found in LLM input. Total posts: ${input.posts.length}, valid: ${validPosts.length}`,
+      );
     }
 
     // Return only the data - system instructions are now cached separately
@@ -288,11 +309,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       responseMimeType: 'application/json',
       responseSchema: {
         type: 'object',
-        description: 'Restaurant and dish mentions extracted from Reddit content',
+        description:
+          'Restaurant and dish mentions extracted from Reddit content',
         properties: {
           mentions: {
             type: 'array',
-            description: 'Array of restaurant/dish mentions with entity details',
+            description:
+              'Array of restaurant/dish mentions with entity details',
             items: {
               type: 'object',
               description:
@@ -419,7 +442,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       // Always include thinkingConfig for explicit control (Google's recommended approach)
       thinkingConfig: {
         thinkingBudget: this.llmConfig.thinking?.enabled
-          ? (this.llmConfig.thinking.budget || -1) // Dynamic thinking if no budget specified
+          ? this.llmConfig.thinking.budget || -1 // Dynamic thinking if no budget specified
           : 0, // Explicitly disable thinking (Google's proper way)
       },
     };
@@ -446,7 +469,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       });
 
       // Use explicit cache if available, otherwise fall back to system instruction in config
-      const requestConfig = this.systemInstructionCache 
+      const requestConfig = this.systemInstructionCache
         ? {
             ...generationConfig,
             cachedContent: this.systemInstructionCache.name,
@@ -498,15 +521,27 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       // Map @google/genai errors to our custom exceptions
       if (error instanceof Error) {
         const errorMessage = error.message.toLowerCase();
-        
-        if (errorMessage.includes('api key') || errorMessage.includes('authentication') || errorMessage.includes('unauthorized')) {
+
+        if (
+          errorMessage.includes('api key') ||
+          errorMessage.includes('authentication') ||
+          errorMessage.includes('unauthorized')
+        ) {
           throw new LLMAuthenticationError(
             'Invalid Gemini API key',
             error.message,
           );
-        } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit') || errorMessage.includes('429')) {
+        } else if (
+          errorMessage.includes('quota') ||
+          errorMessage.includes('rate limit') ||
+          errorMessage.includes('429')
+        ) {
           throw new LLMRateLimitError(60); // Default 60 second retry
-        } else if (errorMessage.includes('network') || errorMessage.includes('connection') || errorMessage.includes('timeout')) {
+        } else if (
+          errorMessage.includes('network') ||
+          errorMessage.includes('connection') ||
+          errorMessage.includes('timeout')
+        ) {
           throw new LLMNetworkError(
             'Network error during Gemini API request',
             error,

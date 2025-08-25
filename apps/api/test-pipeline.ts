@@ -3,10 +3,10 @@
  * 
  * Supports two TRUE production testing modes:
  * 1. TEST_MODE=bull - Complete Bull queue simulation with result extraction (RECOMMENDED)
- * 2. TEST_MODE=direct - Direct ChronologicalCollectionService execution (faster alternative)
+ * 2. TEST_MODE=direct - Direct ChronologicalCollectionWorker execution (faster alternative)
  * 
  * Key Features:
- * ✅ Uses actual ChronologicalCollectionService (same code as production)
+ * ✅ Uses actual ChronologicalCollectionWorker (same code as production)
  * ✅ Bull queue mode extracts real job results via Bull API
  * ✅ Database-driven timing calculations via CollectionJobSchedulerService
  * ✅ No manual orchestration - pure production service testing
@@ -44,8 +44,7 @@ import { Queue } from 'bull';
 import { AppModule } from './src/app.module';
 // Removed unused imports - now using production services directly
 import { CollectionJobSchedulerService } from './src/modules/content-processing/reddit-collector/collection-job-scheduler.service';
-import { CollectionJobMonitoringService } from './src/modules/content-processing/reddit-collector/collection-job-monitoring.service';
-import { ChronologicalCollectionService } from './src/modules/content-processing/reddit-collector/chronological-collection.service';
+import { ChronologicalCollectionWorker } from './src/modules/content-processing/reddit-collector/chronological-collection.worker';
 import { PrismaService } from './src/prisma/prisma.service';
 import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/rate-limiting/centralized-rate-limiter.service';
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';
@@ -63,7 +62,7 @@ async function testPipeline() {
   console.log(`   Test Mode: ${TEST_MODE}`);
   console.log(`   Subreddit: loaded dynamically from database`);
   console.log(`   API Request Limit: 1000 posts (Reddit maximum)`);
-  console.log(`   Production Services: ChronologicalCollectionService + Bull Queue`);
+  console.log(`   Production Services: ChronologicalCollectionWorker + Bull Queue`);
   console.log('');
 
   let app: NestFastifyApplication | null = null;
@@ -96,8 +95,7 @@ async function testPipeline() {
     const serviceStartTime = Date.now();
     // Get production services from DI container
     const collectionJobScheduler = app.get(CollectionJobSchedulerService);
-    const collectionJobMonitoring = app.get(CollectionJobMonitoringService);
-    const chronologicalCollectionService = app.get(ChronologicalCollectionService);
+    const chronologicalCollectionWorker = app.get(ChronologicalCollectionWorker);
     const chronologicalQueue = app.get<Queue>(getQueueToken('chronological-collection'));
     const prisma = app.get(PrismaService);
     // UnifiedProcessingService is in PHASE 4 - not active yet
@@ -106,7 +104,7 @@ async function testPipeline() {
     // const entityResolutionService = app.get(EntityResolutionService);
     const serviceDuration = Date.now() - serviceStartTime;
     console.log(`⏱️  Service retrieval: ${serviceDuration}ms`);
-    console.log('✅ Production services retrieved from DI container (ChronologicalCollectionService + Bull queue)');
+    console.log('✅ Production services retrieved from DI container (ChronologicalCollectionWorker + Bull queue)');
 
     const step1Duration = Date.now() - step1StartTime;
     console.log(`⏱️  Step 1 Total Duration: ${step1Duration}ms (${(step1Duration/1000).toFixed(1)}s)`);
@@ -231,11 +229,11 @@ async function testPipeline() {
     }
     
     if (TEST_MODE === 'direct') {
-      // TRUE PRODUCTION SIMULATION - Use actual ChronologicalCollectionService
+      // TRUE PRODUCTION SIMULATION - Use actual ChronologicalCollectionWorker
       console.log(`\n📦 Direct production service execution...`);
       console.log(`   Subreddit: ${testSubreddit}`);
       console.log(`   Limit: 1000 posts (service always requests maximum)`);
-      console.log(`   ✅ Using ChronologicalCollectionService (same as production Bull queue)`);
+      console.log(`   ✅ Using ChronologicalCollectionWorker (same as production Bull queue)`);
       
       try {
         // Execute the same service that production Bull queue uses
@@ -265,7 +263,7 @@ async function testPipeline() {
         } as any;
         
         console.log(`   🎯 Executing chronological collection with production service...`);
-        const collectionResult = await chronologicalCollectionService.processChronologicalCollection(mockJob);
+        const collectionResult = await chronologicalCollectionWorker.processChronologicalCollection(mockJob);
         
         console.log(`\n🎉 PRODUCTION SERVICE EXECUTION COMPLETED`);
         console.log(`════════════════════════════════════════════════════`);
@@ -424,7 +422,7 @@ async function testPipeline() {
       
       if (enhancedServicesAvailable) {
         console.log('\n✅ All enhanced services successfully integrated into production pipeline');
-        console.log('   🔄 The production ChronologicalCollectionService will automatically use:');
+        console.log('   🔄 The production ChronologicalCollectionWorker will automatically use:');
         console.log('      • Component Processing (6 processors per PRD Section 6.5)');
         console.log('      • Quality Score Computation (PRD Section 5.3)');
         console.log('      • Entity Resolution with three-tier matching (PRD Section 5.2)');
@@ -490,7 +488,7 @@ async function testPipeline() {
     console.log(`══════════════════════════════════════════════════════════════════`);
     console.log(`📅 Test Date: ${new Date().toISOString()}`);
     console.log(`🎯 Test Mode: ${TEST_MODE === 'bull' ? 'Bull Queue Production Simulation' : 'Direct Production Service'}`);
-    console.log(`🔧 Services Used: ChronologicalCollectionService (Enhanced with Component Processing)`);
+    console.log(`🔧 Services Used: ChronologicalCollectionWorker (Enhanced with Component Processing)`);
     console.log(`✅ Production Fidelity: TRUE - Uses exact same code path as production`);
     console.log(`🧪 Enhancement Validation: Component Processing + Quality Scores automatically integrated`);
     
@@ -577,7 +575,7 @@ async function testPipeline() {
     console.log(`\n🏆 VERDICT: TRUE production simulation validated - same code as production!`);
     console.log(`\n✅ Architecture Benefits:`);
     console.log(`   • Bull queue mode: Tests actual queue processing and result extraction`);
-    console.log(`   • Direct mode: Tests ChronologicalCollectionService without queue overhead`);
+    console.log(`   • Direct mode: Tests ChronologicalCollectionWorker without queue overhead`);
     console.log(`   • Both modes: Use identical production services and timing logic`);
     console.log(`   • Database integration: Real Prisma service with timing calculations`);
 
@@ -590,7 +588,7 @@ async function testPipeline() {
 ## Test Configuration
 - **Date**: ${new Date().toISOString()}
 - **Mode**: ${TEST_MODE === 'bull' ? 'Bull Queue Production Simulation' : 'Direct Production Service'}
-- **Service**: ChronologicalCollectionService ${TEST_MODE === 'bull' ? 'via Bull Queue' : 'Direct'}
+- **Service**: ChronologicalCollectionWorker ${TEST_MODE === 'bull' ? 'via Bull Queue' : 'Direct'}
 - **Subreddit**: r/${testSubreddit || 'austinfood'}
 - **Production Fidelity**: TRUE - Uses same code path as production
 

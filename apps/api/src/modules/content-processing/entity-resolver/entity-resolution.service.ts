@@ -519,7 +519,7 @@ export class EntityResolutionService implements OnModuleInit {
 
   /**
    * Mark entities for transaction-based creation (PRD approach)
-   * Generate UUIDs and prepare entity data for transaction creation
+   * Return null entity IDs to allow database auto-generation
    */
   private markEntitiesForCreation(
     entities: EntityResolutionInput[],
@@ -550,12 +550,10 @@ export class EntityResolutionService implements OnModuleInit {
           });
         }
 
-        // Generate UUID for transaction-based creation
-        const entityId = this.generateEntityId();
-
+        // PRD Architecture: Return null for new entities - let database auto-generate IDs
         results.push({
           tempId: entity.tempId,
-          entityId: entityId,
+          entityId: null, // Database will auto-generate UUID
           confidence: 1.0,
           resolutionTier: 'new',
           matchedName: entity.normalizedName,
@@ -567,7 +565,7 @@ export class EntityResolutionService implements OnModuleInit {
         });
 
         this.logger.debug('Marked entity for transaction creation', {
-          entityId: entityId,
+          tempId: entity.tempId,
           entityType,
           name: entity.normalizedName,
         });
@@ -590,13 +588,6 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     return results;
-  }
-
-  /**
-   * Generate UUID for new entities (used in transaction creation)
-   */
-  private generateEntityId(): string {
-    return crypto.randomUUID();
   }
 
   /**

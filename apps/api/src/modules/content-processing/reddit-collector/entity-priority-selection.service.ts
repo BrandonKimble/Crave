@@ -302,27 +302,16 @@ export class EntityPrioritySelectionService {
           (sum, conn) => sum + (conn.totalUpvotes || 0),
           0,
         );
-        const avgSourceDiversity =
-          connections.length > 0
-            ? connections.reduce(
-                (sum, conn) => sum + (conn.sourceDiversity || 0),
-                0,
-              ) / connections.length
-            : 0;
-
         // Normalize and combine metrics (0-1 scale)
         const normalizedRestaurantScore = Math.min(1.0, restaurantScore / 100); // Assume max score ~100
         const normalizedConnections = Math.min(1.0, connectionCount / 20); // 20+ connections = high quality
         const normalizedMentions = Math.min(1.0, totalMentions / 50); // 50+ mentions = high quality
         const normalizedUpvotes = Math.min(1.0, totalUpvotes / 100); // 100+ upvotes = high quality
-        const normalizedDiversity = Math.min(1.0, avgSourceDiversity / 10); // 10+ sources = high diversity
-
         return (
           normalizedRestaurantScore * 0.3 +
-          normalizedConnections * 0.2 +
-          normalizedMentions * 0.2 +
-          normalizedUpvotes * 0.2 +
-          normalizedDiversity * 0.1
+          normalizedConnections * 0.25 +
+          normalizedMentions * 0.25 +
+          normalizedUpvotes * 0.2
         );
       } else {
         // For dishes/attributes, use connection-based metrics
@@ -356,25 +345,16 @@ export class EntityPrioritySelectionService {
                 : Number(score || 0);
             return sum + numericScore;
           }, 0) / connections.length;
-        const avgSourceDiversity =
-          connections.reduce(
-            (sum, conn) => sum + (conn.sourceDiversity || 0),
-            0,
-          ) / connections.length;
-
         // Normalize metrics for dish/attribute entities
         const normalizedConnections = Math.min(1.0, connections.length / 10); // 10+ connections = high quality
         const normalizedMentions = Math.min(1.0, totalMentions / 30); // 30+ mentions = high quality
         const normalizedUpvotes = Math.min(1.0, totalUpvotes / 60); // 60+ upvotes = high quality
         const normalizedQualityScore = Math.min(1.0, avgQualityScore / 100); // Assume max score ~100
-        const normalizedDiversity = Math.min(1.0, avgSourceDiversity / 8); // 8+ sources = high diversity
-
         return (
-          normalizedConnections * 0.25 +
-          normalizedMentions * 0.25 +
+          normalizedConnections * 0.3 +
+          normalizedMentions * 0.3 +
           normalizedUpvotes * 0.2 +
-          normalizedQualityScore * 0.2 +
-          normalizedDiversity * 0.1
+          normalizedQualityScore * 0.2
         );
       }
     } catch (error: unknown) {

@@ -4,7 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { SharedModule } from '../../../shared/shared.module';
 import { SharedServicesModule } from '../shared/shared-services.module';
 import { RedditService } from './reddit.service';
-import { RedditHealthController } from './reddit-health.controller';
+
 @Module({
   imports: [
     SharedModule, // Import SharedModule first for LoggerService
@@ -16,7 +16,6 @@ import { RedditHealthController } from './reddit-health.controller';
     ConfigModule,
   ],
   providers: [RedditService],
-  controllers: [RedditHealthController],
   exports: [RedditService],
 })
 export class RedditModule {}

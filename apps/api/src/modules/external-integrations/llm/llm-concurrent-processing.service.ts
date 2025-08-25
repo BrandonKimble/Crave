@@ -62,7 +62,8 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-    @Inject(SmartLLMProcessor) private readonly smartProcessor: SmartLLMProcessor,
+    @Inject(SmartLLMProcessor)
+    private readonly smartProcessor: SmartLLMProcessor,
   ) {}
 
   onModuleInit() {
@@ -85,14 +86,17 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     options: {
       maxWorkers?: number;
       testDurationLimitMs?: number;
-    } = {}
+    } = {},
   ): Promise<void> {
-    this.logger.info('Concurrency optimization delegated to SmartLLMProcessor', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      operation: 'optimize_configuration',
-      concurrencyLimit: this.concurrencyLimit,
-      note: 'Rate limiting optimization handled by SmartLLMProcessor'
-    });
+    this.logger.info(
+      'Concurrency optimization delegated to SmartLLMProcessor',
+      {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'optimize_configuration',
+        concurrencyLimit: this.concurrencyLimit,
+        note: 'Rate limiting optimization handled by SmartLLMProcessor',
+      },
+    );
 
     // No-op: SmartLLMProcessor handles all rate limiting optimization
     // This service only manages concurrency via pLimit
@@ -150,7 +154,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       this.limit(async (): Promise<ChunkProcessingResult> => {
         // No artificial delays - SmartLLMProcessor handles all timing
         // Workers start immediately and wait for their reserved time slots
-        
+
         const chunkStart = Date.now();
         const meta = metadata[index];
 
@@ -167,7 +171,11 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         try {
           // Use smart processor with worker ID for perfect rate limiting
           const workerId = `worker-${index % 16}`; // Distribute across 16 worker IDs
-          const result = await this.smartProcessor.processContent(chunk, llmService, workerId);
+          const result = await this.smartProcessor.processContent(
+            chunk,
+            llmService,
+            workerId,
+          );
           const duration = (Date.now() - chunkStart) / 1000;
 
           // Validate all vital fields are present
@@ -347,10 +355,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     for (const mention of output.mentions) {
       // Check vital fields
-      if (
-        mention.food_name &&
-        mention.is_menu_item === undefined
-      ) {
+      if (mention.food_name && mention.is_menu_item === undefined) {
         this.logger.warn('Missing vital field: is_menu_item', {
           chunkId,
           mentionId: mention.temp_id,

@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bull';
+import { Queue } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   RedditService,
@@ -9,8 +11,8 @@ import {
   KeywordSearchSchedulerService,
   KeywordSearchSchedule,
 } from './keyword-search-scheduler.service';
-import { UnifiedProcessingService } from './unified-processing.service';
 import { EntityPriorityScore } from './entity-priority-selection.service';
+import { BatchJob } from './batch-processing-queue.types';
 
 /**
  * Keyword Search Orchestrator Service
@@ -20,11 +22,14 @@ import { EntityPriorityScore } from './entity-priority-selection.service';
  */
 @Injectable()
 export class KeywordSearchOrchestratorService {
+  // Legacy field retained to avoid compile errors in deprecated methods retained below
+  private unifiedProcessing: any = null;
   constructor(
     private readonly redditService: RedditService,
     private readonly keywordScheduler: KeywordSearchSchedulerService,
-    private readonly unifiedProcessing: UnifiedProcessingService,
-    private readonly logger: LoggerService,
+    @Inject(LoggerService) private readonly logger: LoggerService,
+    @InjectQueue('keyword-batch-processing-queue')
+    private readonly keywordQueue: Queue,
   ) {}
 
   /**
@@ -121,9 +126,10 @@ export class KeywordSearchOrchestratorService {
         totalComments: batchSearchResult.metadata.totalComments,
       });
 
-      // Process search results through unified processing pipeline
-      await this.processSearchResults(
-        results,
+      // Enqueue keyword search results as batches to async worker (mirrors chronological flow)
+      await this.enqueueKeywordBatches(
+        subreddit,
+        results.searchResults,
         correlationId || 'keyword-search',
       );
 
@@ -167,6 +173,65 @@ export class KeywordSearchOrchestratorService {
 
       throw error;
     }
+  }
+
+  /**
+   * Enqueue keyword search post IDs in batches for async processing.
+   */
+  private async enqueueKeywordBatches(
+    subreddit: string,
+    searchResults: Record<string, KeywordSearchResponse>,
+    correlationId: string,
+  ): Promise<void> {
+    const BATCH_SIZE = 25;
+    const postIdSet = new Set<string>();
+    for (const [, result] of Object.entries(searchResults)) {
+      for (const p of result.posts) postIdSet.add(p.id);
+      for (const c of result.comments) {
+        if (c.parentId && c.parentId.startsWith('t3_')) {
+          postIdSet.add(c.parentId.replace('t3_', ''));
+        }
+      }
+    }
+    const postIds = Array.from(postIdSet);
+    const batches: string[][] = [];
+    for (let i = 0; i < postIds.length; i += BATCH_SIZE) {
+      batches.push(postIds.slice(i, i + BATCH_SIZE));
+    }
+
+    this.logger.info('Enqueuing keyword batches', {
+      correlationId,
+      subreddit,
+      totalPosts: postIds.length,
+      batches: batches.length,
+    });
+
+    const jobGroupId = `${subreddit}-keyword-${Date.now()}`;
+    const enqueuePromises: Promise<any>[] = [];
+    batches.forEach((ids, idx) => {
+      const job: BatchJob = {
+        batchId: `${jobGroupId}-${idx + 1}`,
+        parentJobId: jobGroupId,
+        collectionType: 'keyword',
+        subreddit,
+        postIds: ids,
+        batchNumber: idx + 1,
+        totalBatches: batches.length,
+        createdAt: new Date(),
+        priority: 1,
+        options: { depth: 50 },
+      };
+      enqueuePromises.push(
+        this.keywordQueue.add('process-keyword-batch', job, {
+          priority: 1,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 2000 },
+          delay: idx * 250,
+        }),
+      );
+    });
+
+    await Promise.all(enqueuePromises);
   }
 
   /**
@@ -221,7 +286,7 @@ export class KeywordSearchOrchestratorService {
           mentionsCreated:
             processingResult.databaseOperations?.mentionsCreated || 0,
           processingTime:
-            (processingResult as any).performance?.totalProcessingTime || 0,
+            processingResult.performance?.totalProcessingTime || 0,
         };
 
         results.metadata.processedEntities++;

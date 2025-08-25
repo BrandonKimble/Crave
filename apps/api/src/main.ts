@@ -8,7 +8,6 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
-import { SecurityService } from './modules/infrastructure/security';
 
 async function bootstrap() {
   // Create with Fastify adapter
@@ -53,8 +52,20 @@ async function bootstrap() {
   });
 
   // Enhanced CORS configuration
-  const securityService = app.get(SecurityService);
-  app.enableCors(securityService.getCorsConfiguration());
+  app.enableCors({
+    origin: isProd ? false : true, // Disable CORS in prod, allow all in dev
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: [
+      'Origin',
+      'X-Requested-With',
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'X-Correlation-ID',
+    ],
+    credentials: false,
+    maxAge: 86400,
+  });
 
   // Enhanced validation with security settings
   app.useGlobalPipes(createValidationPipeConfig(isProd));

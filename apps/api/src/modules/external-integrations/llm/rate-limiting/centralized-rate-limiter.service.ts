@@ -5,13 +5,13 @@ import { LoggerService, CorrelationUtils } from '../../../../shared';
 
 /**
  * Centralized Redis-based Rate Limiter with Reservation System (Bulletproof Edition)
- * 
+ *
  * Guarantees ZERO rate limit violations for 16 workers through:
  * 1. Request reservation system - workers reserve future time slots
  * 2. Adaptive burst control - dynamically adjusts based on current load
  * 3. Exponential backoff with guaranteed slots
  * 4. Worker fairness queue - prevents starvation
- * 
+ *
  * Architecture:
  * - Token bucket with future reservations
  * - Sliding window for accurate rate tracking
@@ -22,11 +22,11 @@ import { LoggerService, CorrelationUtils } from '../../../../shared';
 export class CentralizedRateLimiter {
   private logger!: LoggerService;
   private readonly keyPrefix = 'llm-bulletproof';
-  
+
   // Gemini Tier 1 limits
   private readonly maxRPM = 1000;
   private readonly maxTPM = 1000000;
-  
+
   // Optimized settings based on ACTUAL TEST DATA
   // 1000 RPM / 60 sec = 16.67 req/sec theoretical max
   // Burst testing proved 750 simultaneous requests work fine
@@ -35,7 +35,7 @@ export class CentralizedRateLimiter {
   private readonly safeRequestsPerSecond = 16; // 950 RPM / 60 = 15.83 req/sec
   private readonly minSpacingMs = 63; // 1000ms / 16 = 62.5ms, rounded up for safety
   private readonly workerTimeSlotMs = 30; // Reduced since burst isn't an issue
-  
+
   // Redis keys
   private readonly reservationsKey = `${this.keyPrefix}:reservations`;
   private readonly activeRequestsKey = `${this.keyPrefix}:active`;
@@ -57,15 +57,15 @@ export class CentralizedRateLimiter {
    * Reserve a future time slot for making an LLM request
    * This guarantees the worker can proceed at the reserved time
    */
-  async reserveRequestSlot(workerId: string): Promise<{ 
-    reservationTime: number; 
-    waitMs: number; 
+  async reserveRequestSlot(workerId: string): Promise<{
+    reservationTime: number;
+    waitMs: number;
     guaranteed: boolean;
     metrics: any;
   }> {
     const now = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
-    
+
     try {
       // Lua script for atomic reservation with guaranteed slot allocation
       const luaScript = `
@@ -145,8 +145,8 @@ export class CentralizedRateLimiter {
           activeRequests
         }
       `;
-      
-      const result = await this.redis.eval(
+
+      const result = (await this.redis.eval(
         luaScript,
         4,
         this.reservationsKey,
@@ -157,53 +157,53 @@ export class CentralizedRateLimiter {
         workerId,
         this.safeRPM.toString(),
         this.minSpacingMs.toString(),
-        this.workerTimeSlotMs.toString()
-      ) as [number, number, number, number];
-      
-      const [reservationTime, waitMs, requestsInWindow, activeRequests] = result;
-      
+        this.workerTimeSlotMs.toString(),
+      )) as [number, number, number, number];
+
+      const [reservationTime, waitMs, requestsInWindow, activeRequests] =
+        result;
+
       const metrics = {
         currentRPM: requestsInWindow,
         utilizationPercent: Math.round((requestsInWindow / this.safeRPM) * 100),
         activeRequests,
         nextSlotIn: waitMs,
-        timestamp: now
+        timestamp: now,
       };
-      
+
       if (waitMs > 0) {
         this.logger.debug(`Reserved future slot for worker ${workerId}`, {
           correlationId,
           workerId,
           reservationTime: new Date(reservationTime).toISOString(),
           waitMs,
-          currentLoad: metrics.utilizationPercent
+          currentLoad: metrics.utilizationPercent,
         });
       }
-      
+
       return {
         reservationTime,
         waitMs,
         guaranteed: true, // This reservation is guaranteed
-        metrics
+        metrics,
       };
-      
     } catch (error) {
       this.logger.error('Error reserving request slot', {
         correlationId,
         workerId,
         error: {
           message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined
-        }
+          stack: error instanceof Error ? error.stack : undefined,
+        },
       });
-      
+
       // Fallback: wait with exponential backoff
       const fallbackWaitMs = 1000 + Math.random() * 1000;
       return {
         reservationTime: now + fallbackWaitMs,
         waitMs: fallbackWaitMs,
         guaranteed: false,
-        metrics: { error: 'reservation_failed', fallbackMode: true }
+        metrics: { error: 'reservation_failed', fallbackMode: true },
       };
     }
   }
@@ -212,9 +212,12 @@ export class CentralizedRateLimiter {
    * Confirm that a reserved slot is being used
    * This helps track actual vs reserved capacity
    */
-  async confirmReservation(workerId: string, reservationTime: number): Promise<void> {
+  async confirmReservation(
+    workerId: string,
+    reservationTime: number,
+  ): Promise<void> {
     const now = Date.now();
-    
+
     try {
       // Move from reservation to active
       const luaScript = `
@@ -238,7 +241,7 @@ export class CentralizedRateLimiter {
         
         return 1
       `;
-      
+
       await this.redis.eval(
         luaScript,
         2,
@@ -246,16 +249,15 @@ export class CentralizedRateLimiter {
         this.metricsKey,
         now.toString(),
         workerId,
-        reservationTime.toString()
+        reservationTime.toString(),
       );
-      
     } catch (error) {
       this.logger.error('Error confirming reservation', {
         workerId,
         reservationTime,
         error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
     }
   }
@@ -263,10 +265,13 @@ export class CentralizedRateLimiter {
   /**
    * Record token usage for TPM tracking
    */
-  async recordTokenUsage(inputTokens: number, outputTokens: number): Promise<void> {
+  async recordTokenUsage(
+    inputTokens: number,
+    outputTokens: number,
+  ): Promise<void> {
     const now = Date.now();
     const totalTokens = inputTokens + outputTokens;
-    
+
     try {
       const luaScript = `
         local tpmKey = KEYS[1]
@@ -288,16 +293,15 @@ export class CentralizedRateLimiter {
         
         return 1
       `;
-      
+
       await this.redis.eval(
         luaScript,
         2,
         this.tpmKey,
         this.metricsKey,
         now.toString(),
-        totalTokens.toString()
+        totalTokens.toString(),
       );
-      
     } catch (error) {
       this.logger.error('Error recording token usage', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -305,8 +309,8 @@ export class CentralizedRateLimiter {
         outputTokens,
         totalTokens,
         error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
     }
   }
@@ -324,24 +328,31 @@ export class CentralizedRateLimiter {
   }> {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
-    
-    const currentRPM = await this.redis.zcount(this.reservationsKey, oneMinuteAgo, '+inf');
+
+    const currentRPM = await this.redis.zcount(
+      this.reservationsKey,
+      oneMinuteAgo,
+      '+inf',
+    );
     const utilizationPercent = Math.round((currentRPM / this.maxRPM) * 100);
     const availableCapacity = this.maxRPM - currentRPM;
     const safetyMargin = this.maxRPM - this.safeRPM; // 50 RPM buffer
     const burstCapacity = this.safeRequestsPerSecond * 60; // 960 RPM theoretical (16 * 60)
-    
+
     // Calculate optimal workers based on current load
     const avgRequestsPerWorker = currentRPM > 0 ? currentRPM / 16 : 15; // assume 15 req/min per worker
-    const recommendedWorkers = Math.min(16, Math.floor(this.safeRPM / avgRequestsPerWorker));
-    
+    const recommendedWorkers = Math.min(
+      16,
+      Math.floor(this.safeRPM / avgRequestsPerWorker),
+    );
+
     return {
       currentRPM,
       utilizationPercent,
       availableCapacity,
       safetyMargin,
       burstCapacity,
-      recommendedWorkers
+      recommendedWorkers,
     };
   }
 
@@ -357,15 +368,15 @@ export class CentralizedRateLimiter {
   }> {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
-    
+
     // Get all token entries in the last minute
     const entries = await this.redis.zrangebyscore(
       this.tpmKey,
       oneMinuteAgo,
       now,
-      'WITHSCORES'
+      'WITHSCORES',
     );
-    
+
     // Sum tokens from entries (format: "timestamp-tokens")
     let currentTPM = 0;
     let requestCount = 0;
@@ -375,14 +386,15 @@ export class CentralizedRateLimiter {
       currentTPM += tokens;
       requestCount++;
     }
-    
+
     const utilizationPercent = Math.round((currentTPM / this.maxTPM) * 100);
-    const avgTokensPerRequest = requestCount > 0 ? Math.round(currentTPM / requestCount) : 0;
-    
+    const avgTokensPerRequest =
+      requestCount > 0 ? Math.round(currentTPM / requestCount) : 0;
+
     // Project TPM if we used full RPM capacity
     const rpmAnalysis = await this.getRPMAnalysis();
     const projectedTPM = avgTokensPerRequest * this.maxRPM;
-    
+
     // Determine bottleneck
     let bottleneckType: 'rpm' | 'tpm' | 'none' = 'none';
     if (rpmAnalysis.utilizationPercent > 80) {
@@ -390,13 +402,13 @@ export class CentralizedRateLimiter {
     } else if (utilizationPercent > 80) {
       bottleneckType = 'tpm';
     }
-    
+
     return {
       currentTPM,
       utilizationPercent,
       projectedTPM,
       avgTokensPerRequest,
-      bottleneckType
+      bottleneckType,
     };
   }
 
@@ -407,33 +419,37 @@ export class CentralizedRateLimiter {
     try {
       const now = Date.now();
       const oneMinuteAgo = now - 60000;
-      
-      const [reservations, active, metrics, rpmAnalysis, tpmAnalysis] = await Promise.all([
-        this.redis.zcount(this.reservationsKey, oneMinuteAgo, '+inf'),
-        this.redis.zcard(this.activeRequestsKey),
-        this.redis.hgetall(this.metricsKey),
-        this.getRPMAnalysis(),
-        this.getTPMAnalysis()
-      ]);
-      
+
+      const [reservations, active, metrics, rpmAnalysis, tpmAnalysis] =
+        await Promise.all([
+          this.redis.zcount(this.reservationsKey, oneMinuteAgo, '+inf'),
+          this.redis.zcard(this.activeRequestsKey),
+          this.redis.hgetall(this.metricsKey),
+          this.getRPMAnalysis(),
+          this.getTPMAnalysis(),
+        ]);
+
       const totalReservations = parseInt(metrics.total_reservations || '0', 10);
       const confirmedRequests = parseInt(metrics.confirmed_requests || '0', 10);
       const totalAccuracyMs = parseInt(metrics.total_accuracy_ms || '0', 10);
-      
-      const avgAccuracy = confirmedRequests > 0 
-        ? Math.round(totalAccuracyMs / confirmedRequests)
-        : 0;
-      
+
+      const avgAccuracy =
+        confirmedRequests > 0
+          ? Math.round(totalAccuracyMs / confirmedRequests)
+          : 0;
+
       return {
         rpm: {
           current: reservations,
           max: this.maxRPM,
           safe: this.safeRPM,
           utilizationPercent: Math.round((reservations / this.safeRPM) * 100),
-          actualUtilizationPercent: Math.round((reservations / this.maxRPM) * 100),
+          actualUtilizationPercent: Math.round(
+            (reservations / this.maxRPM) * 100,
+          ),
           availableCapacity: rpmAnalysis.availableCapacity,
           safetyMargin: rpmAnalysis.safetyMargin,
-          burstCapacity: rpmAnalysis.burstCapacity
+          burstCapacity: rpmAnalysis.burstCapacity,
         },
         tpm: {
           current: tpmAnalysis.currentTPM,
@@ -441,42 +457,49 @@ export class CentralizedRateLimiter {
           utilizationPercent: tpmAnalysis.utilizationPercent,
           projectedTPM: tpmAnalysis.projectedTPM,
           avgTokensPerRequest: tpmAnalysis.avgTokensPerRequest,
-          bottleneckType: tpmAnalysis.bottleneckType
+          bottleneckType: tpmAnalysis.bottleneckType,
         },
         active: {
           current: active,
           maxConcurrent: 16,
-          recommendedWorkers: rpmAnalysis.recommendedWorkers
+          recommendedWorkers: rpmAnalysis.recommendedWorkers,
         },
         reservations: {
           total: totalReservations,
           confirmed: confirmedRequests,
-          confirmationRate: totalReservations > 0 
-            ? Math.round((confirmedRequests / totalReservations) * 100)
-            : 0,
-          avgAccuracyMs: avgAccuracy
+          confirmationRate:
+            totalReservations > 0
+              ? Math.round((confirmedRequests / totalReservations) * 100)
+              : 0,
+          avgAccuracyMs: avgAccuracy,
         },
         optimization: {
           currentBottleneck: tpmAnalysis.bottleneckType,
-          utilizationRoom: Math.max(0, 80 - Math.max(rpmAnalysis.utilizationPercent, tpmAnalysis.utilizationPercent)),
+          utilizationRoom: Math.max(
+            0,
+            80 -
+              Math.max(
+                rpmAnalysis.utilizationPercent,
+                tpmAnalysis.utilizationPercent,
+              ),
+          ),
           canIncreaseWorkers: rpmAnalysis.recommendedWorkers > 16,
-          shouldReduceWorkers: rpmAnalysis.recommendedWorkers < 16
+          shouldReduceWorkers: rpmAnalysis.recommendedWorkers < 16,
         },
         health: {
           status: reservations < this.safeRPM * 0.9 ? 'healthy' : 'busy',
-          canAcceptMore: reservations < this.safeRPM
+          canAcceptMore: reservations < this.safeRPM,
         },
-        timestamp: now
+        timestamp: now,
       };
-      
     } catch (error) {
       this.logger.error('Error getting metrics', {
         correlationId: CorrelationUtils.getCorrelationId(),
         error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
-      
+
       return { error: 'metrics_unavailable' };
     }
   }
@@ -491,18 +514,18 @@ export class CentralizedRateLimiter {
         this.activeRequestsKey,
         this.tpmKey,
         this.metricsKey,
-        this.workerQueueKey
+        this.workerQueueKey,
       );
-      
+
       this.logger.info('Bulletproof rate limiting data reset', {
-        correlationId: CorrelationUtils.getCorrelationId()
+        correlationId: CorrelationUtils.getCorrelationId(),
       });
     } catch (error) {
       this.logger.error('Error resetting rate limiting data', {
         correlationId: CorrelationUtils.getCorrelationId(),
         error: {
-          message: error instanceof Error ? error.message : String(error)
-        }
+          message: error instanceof Error ? error.message : String(error),
+        },
       });
     }
   }

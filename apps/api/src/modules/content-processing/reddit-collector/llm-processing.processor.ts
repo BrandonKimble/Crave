@@ -2,7 +2,8 @@ import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { ContentRetrievalPipelineService } from './content-retrieval-pipeline.service';
+import { RedditService } from '../../external-integrations/reddit/reddit.service';
+import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking.service';
 import { LLMConcurrentProcessingService } from '../../external-integrations/llm/llm-concurrent-processing.service';
@@ -58,7 +59,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    private readonly contentRetrievalPipeline: ContentRetrievalPipelineService,
+    private readonly redditService: RedditService,
     private readonly llmService: LLMService,
     private readonly chunkingService: LLMChunkingService,
     private readonly concurrentService: LLMConcurrentProcessingService,
@@ -116,9 +117,10 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         subreddit,
       });
 
-      const content = await this.contentRetrievalPipeline.retrieveContentForLLM(
+      // Get Reddit content directly
+      const rawResult = await this.redditService.getCompletePostWithComments(
         subreddit,
-        [postId],
+        postId,
         {
           sort: 'top', // Ensures valuable content processes first
           limit: options.commentLimit || 1000,
@@ -126,13 +128,27 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         },
       );
 
-      if (!content.llmInput.posts || content.llmInput.posts.length === 0) {
+      if (!rawResult.rawResponse || rawResult.rawResponse.length === 0) {
         throw new Error(
           `No content retrieved for post ${postId} in subreddit ${subreddit}`,
         );
       }
 
-      const post = content.llmInput.posts[0];
+      // Transform to LLM format
+      const { post, comments } = filterAndTransformToLLM(
+        rawResult.rawResponse,
+        rawResult.attribution.postUrl,
+      );
+
+      if (!post) {
+        throw new Error(
+          `Failed to transform post ${postId} content for LLM processing`,
+        );
+      }
+
+      post.comments = comments;
+      const llmInput = { posts: [post] };
+
       this.logger.info('Content retrieved successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
         postId,
@@ -146,9 +162,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         totalComments: post.comments.length,
       });
 
-      const chunkData = this.chunkingService.createContextualChunks(
-        content.llmInput,
-      );
+      const chunkData = this.chunkingService.createContextualChunks(llmInput);
 
       if (chunkData.chunks.length === 0) {
         this.logger.warn(
@@ -162,7 +176,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
 
       // Validate chunking
       const validation = this.chunkingService.validateChunking(
-        content.llmInput,
+        llmInput,
         chunkData,
       );
       if (!validation.isValid) {

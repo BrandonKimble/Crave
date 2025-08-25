@@ -2,28 +2,25 @@ import { Injectable, Inject } from '@nestjs/common';
 import { Connection } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 import { ConnectionRepository } from '../../../repositories/connection.repository';
-import { EntityRepository } from '../../../repositories/entity.repository';
 import {
   QualityScoreService as IQualityScoreService,
   ConnectionStrengthMetrics,
   RestaurantQualityComponents,
   CategoryPerformanceData,
   QualityScoreUpdateResult,
-  QualityScoreWeights,
-  TimeDecayConfig,
   DEFAULT_QUALITY_SCORE_CONFIG,
 } from './quality-score.types';
 
 /**
  * Quality Score Service
- * 
+ *
  * Implements PRD Section 5.3 - Quality Score Computation
- * 
+ *
  * Provides comprehensive quality scoring for:
  * - Dish Quality Score (5.3.1): 85-90% connection strength + 10-15% restaurant context
  * - Restaurant Quality Score (5.3.2): 80% top dishes + 20% overall consistency
  * - Category/Attribute Performance (5.3.3): Weighted average of relevant dishes
- * 
+ *
  * All calculations use time decay and are optimized for production performance.
  */
 @Injectable()
@@ -33,8 +30,7 @@ export class QualityScoreService implements IQualityScoreService {
 
   constructor(
     private readonly connectionRepository: ConnectionRepository,
-    private readonly entityRepository: EntityRepository,
-    @Inject(LoggerService) private readonly loggerService: LoggerService,
+    @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('QualityScoreService');
   }
@@ -46,30 +42,38 @@ export class QualityScoreService implements IQualityScoreService {
    */
   async calculateDishQualityScore(
     connection: Connection,
-    restaurantScore?: number
+    restaurantScore?: number,
   ): Promise<number> {
     try {
       const startTime = Date.now();
 
       // Calculate connection strength metrics
       const strengthMetrics = this.calculateConnectionStrength(connection);
-      
+
       // Primary component: Connection strength (85-90%)
-      const connectionStrengthScore = this.calculateConnectionStrengthScore(strengthMetrics);
-      const primaryScore = connectionStrengthScore * this.config.weights.dishConnectionStrength;
+      const connectionStrengthScore =
+        this.calculateConnectionStrengthScore(strengthMetrics);
+      const primaryScore =
+        connectionStrengthScore * this.config.weights.dishConnectionStrength;
 
       // Secondary component: Restaurant context factor (10-15%)
       let secondaryScore = 0;
       if (restaurantScore !== undefined) {
         // Use provided restaurant score
-        secondaryScore = restaurantScore * this.config.weights.dishRestaurantContext;
+        secondaryScore =
+          restaurantScore * this.config.weights.dishRestaurantContext;
       } else {
         // Calculate restaurant score if not provided
-        const calculatedRestaurantScore = await this.calculateRestaurantQualityScore(connection.restaurantId);
-        secondaryScore = calculatedRestaurantScore * this.config.weights.dishRestaurantContext;
+        const calculatedRestaurantScore =
+          await this.calculateRestaurantQualityScore(connection.restaurantId);
+        secondaryScore =
+          calculatedRestaurantScore * this.config.weights.dishRestaurantContext;
       }
 
-      const finalScore = Math.min(100, Math.max(0, primaryScore + secondaryScore));
+      const finalScore = Math.min(
+        100,
+        Math.max(0, primaryScore + secondaryScore),
+      );
 
       this.logger.debug('Dish quality score calculated', {
         connectionId: connection.connectionId,
@@ -105,22 +109,32 @@ export class QualityScoreService implements IQualityScoreService {
       });
 
       if (connections.length === 0) {
-        this.logger.debug('No connections found for restaurant', { restaurantId });
+        this.logger.debug('No connections found for restaurant', {
+          restaurantId,
+        });
         return 0;
       }
 
       // Calculate quality components
-      const qualityComponents = await this.calculateRestaurantQualityComponents(connections);
+      const qualityComponents =
+        await this.calculateRestaurantQualityComponents(connections);
 
       // Primary component (80%): Top 3-5 dishes
-      const topDishesScore = this.calculateTopDishesScore(qualityComponents.topDishScores);
-      const primaryScore = topDishesScore * this.config.weights.restaurantTopDishes;
+      const topDishesScore = this.calculateTopDishesScore(
+        qualityComponents.topDishScores,
+      );
+      const primaryScore =
+        topDishesScore * this.config.weights.restaurantTopDishes;
 
       // Secondary component (20%): Overall menu consistency
       const consistencyScore = qualityComponents.averageMenuScore;
-      const secondaryScore = consistencyScore * this.config.weights.restaurantOverallConsistency;
+      const secondaryScore =
+        consistencyScore * this.config.weights.restaurantOverallConsistency;
 
-      const finalScore = Math.min(100, Math.max(0, primaryScore + secondaryScore));
+      const finalScore = Math.min(
+        100,
+        Math.max(0, primaryScore + secondaryScore),
+      );
 
       this.logger.debug('Restaurant quality score calculated', {
         restaurantId,
@@ -147,24 +161,29 @@ export class QualityScoreService implements IQualityScoreService {
    */
   async calculateCategoryPerformanceScore(
     restaurantId: string,
-    category: string
+    category: string,
   ): Promise<number> {
     try {
       const startTime = Date.now();
 
       // Find all connections for dishes in this category
-      const categoryConnections = await this.connectionRepository.findConnectionsInCategory(
-        restaurantId,
-        category
-      );
+      const categoryConnections =
+        await this.connectionRepository.findConnectionsInCategory(
+          restaurantId,
+          category,
+        );
 
       if (categoryConnections.length === 0) {
-        this.logger.debug('No category connections found', { restaurantId, category });
+        this.logger.debug('No category connections found', {
+          restaurantId,
+          category,
+        });
         return 0;
       }
 
       // Calculate performance data
-      const performanceData = this.calculateCategoryPerformanceData(categoryConnections);
+      const performanceData =
+        this.calculateCategoryPerformanceData(categoryConnections);
       const finalScore = performanceData.weightedAverage;
 
       this.logger.debug('Category performance score calculated', {
@@ -192,24 +211,29 @@ export class QualityScoreService implements IQualityScoreService {
    */
   async calculateAttributePerformanceScore(
     restaurantId: string,
-    attributeId: string
+    attributeId: string,
   ): Promise<number> {
     try {
       const startTime = Date.now();
 
       // Find all connections with this attribute
-      const attributeConnections = await this.connectionRepository.findConnectionsWithAttributes(
-        restaurantId,
-        [attributeId]
-      );
+      const attributeConnections =
+        await this.connectionRepository.findConnectionsWithAttributes(
+          restaurantId,
+          [attributeId],
+        );
 
       if (attributeConnections.length === 0) {
-        this.logger.debug('No attribute connections found', { restaurantId, attributeId });
+        this.logger.debug('No attribute connections found', {
+          restaurantId,
+          attributeId,
+        });
         return 0;
       }
 
       // Calculate performance data using the same logic as categories
-      const performanceData = this.calculateCategoryPerformanceData(attributeConnections);
+      const performanceData =
+        this.calculateCategoryPerformanceData(attributeConnections);
       const finalScore = performanceData.weightedAverage;
 
       this.logger.debug('Attribute performance score calculated', {
@@ -236,7 +260,7 @@ export class QualityScoreService implements IQualityScoreService {
    * Used during component processing to update affected connections
    */
   async updateQualityScoresForConnections(
-    connectionIds: string[]
+    connectionIds: string[],
   ): Promise<QualityScoreUpdateResult> {
     const startTime = Date.now();
     const errors: Array<{ connectionId: string; error: string }> = [];
@@ -252,7 +276,7 @@ export class QualityScoreService implements IQualityScoreService {
       const batchSize = 50;
       for (let i = 0; i < connectionIds.length; i += batchSize) {
         const batch = connectionIds.slice(i, i + batchSize);
-        
+
         // Get connections for this batch
         const connections = await this.connectionRepository.findMany({
           where: {
@@ -263,8 +287,9 @@ export class QualityScoreService implements IQualityScoreService {
         // Update quality scores for each connection
         for (const connection of connections) {
           try {
-            const newQualityScore = await this.calculateDishQualityScore(connection);
-            
+            const newQualityScore =
+              await this.calculateDishQualityScore(connection);
+
             // Update the connection with new quality score
             await this.connectionRepository.update(connection.connectionId, {
               dishQualityScore: newQualityScore,
@@ -274,7 +299,8 @@ export class QualityScoreService implements IQualityScoreService {
             connectionsUpdated++;
             updatedRestaurants.add(connection.restaurantId);
           } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
             errors.push({
               connectionId: connection.connectionId,
               error: errorMessage,
@@ -317,10 +343,13 @@ export class QualityScoreService implements IQualityScoreService {
   /**
    * Calculate connection strength metrics with time decay
    */
-  private calculateConnectionStrength(connection: Connection): ConnectionStrengthMetrics {
+  private calculateConnectionStrength(
+    connection: Connection,
+  ): ConnectionStrengthMetrics {
     const now = new Date();
     const lastMentionedAt = connection.lastMentionedAt || connection.createdAt;
-    const daysSinceLastMention = (now.getTime() - lastMentionedAt.getTime()) / (1000 * 60 * 60 * 24);
+    const daysSinceLastMention =
+      (now.getTime() - lastMentionedAt.getTime()) / (1000 * 60 * 60 * 24);
 
     // Calculate average mention age (approximate based on total mentions and last mentioned)
     const averageMentionAge = daysSinceLastMention / 2; // Simplified assumption
@@ -328,12 +357,12 @@ export class QualityScoreService implements IQualityScoreService {
     // Calculate recent mention ratio
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentMentionRatio = connection.recentMentionCount / Math.max(1, connection.mentionCount);
+    const recentMentionRatio =
+      connection.recentMentionCount / Math.max(1, connection.mentionCount);
 
     return {
       mentionCount: connection.mentionCount,
       totalUpvotes: connection.totalUpvotes,
-      sourceDiversity: connection.sourceDiversity,
       lastMentionedAt,
       averageMentionAge,
       recentMentionRatio,
@@ -343,27 +372,34 @@ export class QualityScoreService implements IQualityScoreService {
   /**
    * Calculate connection strength score from metrics
    */
-  private calculateConnectionStrengthScore(metrics: ConnectionStrengthMetrics): number {
+  private calculateConnectionStrengthScore(
+    metrics: ConnectionStrengthMetrics,
+  ): number {
     // Apply time decay to mention count and upvotes
-    const mentionDecayFactor = Math.exp(-metrics.averageMentionAge / this.config.timeDecay.mentionCountDecayDays);
-    const upvoteDecayFactor = Math.exp(-metrics.averageMentionAge / this.config.timeDecay.upvoteDecayDays);
+    const mentionDecayFactor = Math.exp(
+      -metrics.averageMentionAge / this.config.timeDecay.mentionCountDecayDays,
+    );
+    const upvoteDecayFactor = Math.exp(
+      -metrics.averageMentionAge / this.config.timeDecay.upvoteDecayDays,
+    );
 
     // Calculate decayed mention count (with recent boost)
-    const decayedMentionCount = metrics.mentionCount * mentionDecayFactor * (1 + metrics.recentMentionRatio);
-    
+    const decayedMentionCount =
+      metrics.mentionCount *
+      mentionDecayFactor *
+      (1 + metrics.recentMentionRatio);
+
     // Calculate decayed upvote score
     const decayedUpvotes = metrics.totalUpvotes * upvoteDecayFactor;
 
     // Normalize components (these would need tuning based on actual data distribution)
     const normalizedMentions = Math.min(100, decayedMentionCount * 2); // Scale mentions
     const normalizedUpvotes = Math.min(100, decayedUpvotes / 10); // Scale upvotes
-    const normalizedDiversity = Math.min(100, metrics.sourceDiversity * 10); // Scale diversity
 
     // Weighted combination
-    const strengthScore = 
-      (normalizedMentions * this.config.weights.mentionCountWeight) +
-      (normalizedUpvotes * this.config.weights.upvoteWeight) +
-      (normalizedDiversity * this.config.weights.sourceDiversityWeight);
+    const strengthScore =
+      normalizedMentions * this.config.weights.mentionCountWeight +
+      normalizedUpvotes * this.config.weights.upvoteWeight;
 
     return Math.min(100, Math.max(0, strengthScore));
   }
@@ -372,13 +408,16 @@ export class QualityScoreService implements IQualityScoreService {
    * Calculate restaurant quality components
    */
   private async calculateRestaurantQualityComponents(
-    connections: Connection[]
+    connections: Connection[],
   ): Promise<RestaurantQualityComponents> {
     // Calculate dish quality scores for all connections if not already calculated
     const dishScores: number[] = [];
-    
+
     for (const connection of connections) {
-      if (connection.dishQualityScore !== null && Number(connection.dishQualityScore) > 0) {
+      if (
+        connection.dishQualityScore !== null &&
+        Number(connection.dishQualityScore) > 0
+      ) {
         dishScores.push(Number(connection.dishQualityScore));
       } else {
         // Calculate on-demand if not available
@@ -389,12 +428,16 @@ export class QualityScoreService implements IQualityScoreService {
 
     // Get top 3-5 scores
     const sortedScores = dishScores.sort((a, b) => b - a);
-    const topDishScores = sortedScores.slice(0, Math.min(5, sortedScores.length));
+    const topDishScores = sortedScores.slice(
+      0,
+      Math.min(5, sortedScores.length),
+    );
 
     // Calculate average menu score
-    const averageMenuScore = dishScores.length > 0 
-      ? dishScores.reduce((sum, score) => sum + score, 0) / dishScores.length
-      : 0;
+    const averageMenuScore =
+      dishScores.length > 0
+        ? dishScores.reduce((sum, score) => sum + score, 0) / dishScores.length
+        : 0;
 
     return {
       topDishScores,
@@ -425,12 +468,18 @@ export class QualityScoreService implements IQualityScoreService {
   /**
    * Calculate category performance data
    */
-  private calculateCategoryPerformanceData(connections: Connection[]): CategoryPerformanceData {
-    const relevantConnections = connections.map(connection => {
+  private calculateCategoryPerformanceData(
+    connections: Connection[],
+  ): CategoryPerformanceData {
+    const relevantConnections = connections.map((connection) => {
       // Weight based on mention count and upvotes
-      const weight = Math.sqrt(connection.mentionCount * Math.log(connection.totalUpvotes + 1));
-      
-      const dishQualityScore = connection.dishQualityScore ? Number(connection.dishQualityScore) : 0;
+      const weight = Math.sqrt(
+        connection.mentionCount * Math.log(connection.totalUpvotes + 1),
+      );
+
+      const dishQualityScore = connection.dishQualityScore
+        ? Number(connection.dishQualityScore)
+        : 0;
 
       return {
         connectionId: connection.connectionId,
@@ -440,9 +489,15 @@ export class QualityScoreService implements IQualityScoreService {
     });
 
     // Calculate weighted average
-    const totalWeight = relevantConnections.reduce((sum, conn) => sum + conn.weight, 0);
-    const weightedSum = relevantConnections.reduce((sum, conn) => sum + (conn.dishQualityScore * conn.weight), 0);
-    
+    const totalWeight = relevantConnections.reduce(
+      (sum, conn) => sum + conn.weight,
+      0,
+    );
+    const weightedSum = relevantConnections.reduce(
+      (sum, conn) => sum + conn.dishQualityScore * conn.weight,
+      0,
+    );
+
     const weightedAverage = totalWeight > 0 ? weightedSum / totalWeight : 0;
 
     return {

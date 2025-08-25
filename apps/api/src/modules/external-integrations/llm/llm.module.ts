@@ -3,7 +3,6 @@ import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { RedisModule } from '@liaoliaots/nestjs-redis';
 import { LLMService } from './llm.service';
-import { LLMHealthController } from './llm-health.controller';
 import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
@@ -23,24 +22,23 @@ import { SharedModule } from '../../../shared/shared.module';
         port: parseInt(process.env.REDIS_PORT || '6379', 10),
         password: process.env.REDIS_PASSWORD,
         db: parseInt(process.env.REDIS_DB || '0', 10),
-      }
+      },
     }),
     SharedModule, // For LoggerService
   ],
   providers: [
-    LLMService, 
-    LLMChunkingService, 
-    LLMConcurrentProcessingService, 
+    LLMService,
+    LLMChunkingService,
+    LLMConcurrentProcessingService,
     CentralizedRateLimiter,
-    SmartLLMProcessor
+    SmartLLMProcessor,
   ],
-  controllers: [LLMHealthController],
   exports: [
-    LLMService, 
-    LLMChunkingService, 
-    LLMConcurrentProcessingService, 
+    LLMService,
+    LLMChunkingService,
+    LLMConcurrentProcessingService,
     CentralizedRateLimiter,
-    SmartLLMProcessor
+    SmartLLMProcessor,
   ],
 })
 export class LLMModule {}

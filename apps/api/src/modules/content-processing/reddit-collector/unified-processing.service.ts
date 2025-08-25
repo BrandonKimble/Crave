@@ -1,36 +1,29 @@
 /**
  * Unified Processing Service
  *
- * Main orchestrator for integrating Reddit API data collection with existing M02 LLM processing pipeline
- * as specified in PRD sections 5.1.2 and 6.1. Creates unified entity extraction for both historical and
- * real-time data sources while maintaining consistency with existing processing standards.
+ * Database operations service for processed LLM output in the async queue architecture.
+ * Handles entity resolution, database transactions, and quality score updates.
+ * Used by async batch workers that have already completed LLM processing.
  *
- * Implements the six-step unified pipeline:
- * 1. Data Source Selection (handled by DataMergeService)
- * 2. Content Retrieval (handled by collection services)
- * 3. LLM Content Processing (this service + existing LLMService)
- * 4. Consolidated Processing Phase (entity resolution + database updates)
- * 5. Database Transaction (bulk operations)
- * 6. Quality Score Updates (trigger existing M02 infrastructure)
+ * Core responsibilities:
+ * 1. Process pre-extracted LLM mentions and source metadata
+ * 2. Entity resolution and database updates via consolidated transactions
+ * 3. Component processing logic (dish, category, attribute, praise handling)
+ * 4. Quality score updates for affected connections
  */
 
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
-import { LLMService } from '../../external-integrations/llm/llm.service';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
-import { DataMergeService } from './data-merge.service';
 import { QualityScoreService } from '../quality-score/quality-score.service';
 import {
-  MergedLLMInputDto,
   ProcessingResult,
   UnifiedProcessingConfig,
   ProcessingPerformanceMetrics,
 } from './unified-processing.types';
-import {
-  LLMInputStructure,
-  LLMOutputStructure,
-} from '../../external-integrations/llm/llm.types';
+import { LLMOutputStructure } from '../../external-integrations/llm/llm.types';
 import {
   EntityResolutionInput,
   BatchResolutionResult,
@@ -39,7 +32,6 @@ import {
   UnifiedProcessingException,
   UnifiedProcessingExceptionFactory,
 } from './unified-processing.exceptions';
-import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class UnifiedProcessingService implements OnModuleInit {
@@ -57,9 +49,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   constructor(
     private readonly prismaService: PrismaService,
-    private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
-    private readonly dataMergeService: DataMergeService,
     private readonly qualityScoreService: QualityScoreService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
@@ -69,15 +59,43 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Process unified batch through complete pipeline with batching
-   * Implements PRD Section 6.1 - Six-step unified pipeline
-   * PRD 6.6.4: Batch processing (100-500 entities per batch)
+   * Process LLM output directly without additional LLM processing
+   * Clean interface for async queue workers that already have LLM output
+   *
+   * @param llmOutputData - Contains mentions and source metadata
+   * @param config - Optional processing configuration
+   * @returns Processing result with metrics
    */
-  async processUnifiedBatch(
-    mergedInput: MergedLLMInputDto,
+  async processLLMOutput(
+    llmOutputData: {
+      mentions: any[];
+      sourceMetadata: {
+        batchId: string;
+        collectionType?: string;
+        subreddit?: string;
+        searchEntity?: string;
+        sourceBreakdown: {
+          pushshift_archive: number;
+          reddit_api_chronological: number;
+          reddit_api_keyword_search: number;
+          reddit_api_on_demand: number;
+        };
+        temporalRange?: {
+          earliest: number;
+          latest: number;
+        };
+      };
+    },
     config?: Partial<UnifiedProcessingConfig>,
-  ): Promise<ProcessingResult> {
-    const batchId = uuidv4();
+  ): Promise<{
+    entitiesCreated: number;
+    connectionsCreated: number;
+    mentionsCreated: number;
+    affectedConnectionIds: string[];
+    createdEntityIds?: string[];
+  }> {
+    const { mentions, sourceMetadata } = llmOutputData;
+    const batchId = sourceMetadata.batchId;
     const startTime = Date.now();
 
     const DEFAULT_CONFIG: UnifiedProcessingConfig = {
@@ -91,39 +109,73 @@ export class UnifiedProcessingService implements OnModuleInit {
     const processingConfig = { ...DEFAULT_CONFIG, ...config };
 
     try {
-      this.logger.info(`Starting unified processing for batch ${batchId}`);
-      this.logger.debug(
-        `Processing ${mergedInput.posts.length} posts from sources: ${Object.keys(mergedInput.sourceMetadata.sourceBreakdown).join(', ')}`,
-      );
+      this.logger.info('Processing LLM output directly', {
+        batchId,
+        mentionsCount: mentions.length,
+        collectionType: sourceMetadata.collectionType,
+        subreddit: sourceMetadata.subreddit,
+      });
 
-      // Step 3: LLM Content Processing  
-      const llmInput = this.convertMergedInputToLLMStructure(mergedInput);
-      const llmOutput = await this.processWithLLM(llmInput, batchId);
+      // Create LLM output structure for existing pipeline
+      const llmOutput: LLMOutputStructure = { mentions };
 
       // PRD 6.6.4: Check if batch needs to be split
-      if (llmOutput.mentions.length > processingConfig.batchSize!) {
-        return await this.processMentionsInBatches(llmOutput, mergedInput.sourceMetadata, batchId, processingConfig);
+      if (mentions.length > processingConfig.batchSize) {
+        const batchResult = await this.processMentionsInBatches(
+          llmOutput,
+          sourceMetadata,
+          batchId,
+          processingConfig,
+        );
+
+        return {
+          entitiesCreated:
+            batchResult.entityResolution?.newEntitiesCreated || 0,
+          connectionsCreated:
+            batchResult.databaseOperations?.connectionsCreated || 0,
+          mentionsCreated: batchResult.databaseOperations?.mentionsCreated || 0,
+          affectedConnectionIds:
+            batchResult.databaseOperations?.affectedConnectionIds || [],
+        };
       }
 
-      // Process as single batch if under threshold
-      return await this.processSingleBatch(llmOutput, mergedInput.sourceMetadata, batchId, processingConfig, startTime);
+      // Process as single batch
+      const batchResult = await this.processSingleBatch(
+        llmOutput,
+        sourceMetadata,
+        batchId,
+        processingConfig,
+        startTime,
+      );
+
+      return {
+        entitiesCreated: batchResult.entityResolution?.newEntitiesCreated || 0,
+        connectionsCreated:
+          batchResult.databaseOperations?.connectionsCreated || 0,
+        mentionsCreated: batchResult.databaseOperations?.mentionsCreated || 0,
+        affectedConnectionIds:
+          batchResult.databaseOperations?.affectedConnectionIds || [],
+      };
     } catch (error) {
       const processingTime = Date.now() - startTime;
       this.updatePerformanceMetrics(processingTime, false);
 
-      this.logger.error(`Unified processing failed for batch ${batchId}`, {
-        error: error.message,
+      this.logger.error('LLM output processing failed', {
+        batchId,
+        mentionsCount: mentions.length,
+        error: error instanceof Error ? error.message : String(error),
         processingTime,
-        sourceBreakdown: mergedInput.sourceMetadata.sourceBreakdown,
+        sourceBreakdown: sourceMetadata.sourceBreakdown,
       });
 
       throw UnifiedProcessingExceptionFactory.createProcessingFailed(
-        `Unified processing failed for batch ${batchId}`,
+        `LLM output processing failed for batch ${batchId}`,
         error,
         {
           batchId,
+          mentionsCount: mentions.length,
           processingTime,
-          sourceBreakdown: mergedInput.sourceMetadata.sourceBreakdown,
+          sourceBreakdown: sourceMetadata.sourceBreakdown,
         },
       );
     }
@@ -140,13 +192,16 @@ export class UnifiedProcessingService implements OnModuleInit {
     config: UnifiedProcessingConfig,
   ): Promise<ProcessingResult> {
     const startTime = Date.now();
-    const batchSize = config.batchSize!;
+    const batchSize = config.batchSize;
     const totalMentions = llmOutput.mentions.length;
     const batchCount = Math.ceil(totalMentions / batchSize);
 
-    this.logger.info(`Splitting ${totalMentions} mentions into ${batchCount} batches of max ${batchSize}`, {
-      parentBatchId,
-    });
+    this.logger.info(
+      `Splitting ${totalMentions} mentions into ${batchCount} batches of max ${batchSize}`,
+      {
+        parentBatchId,
+      },
+    );
 
     let totalEntitiesCreated = 0;
     let totalConnectionsCreated = 0;
@@ -158,9 +213,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       const batchStart = i * batchSize;
       const batchEnd = Math.min(batchStart + batchSize, totalMentions);
       const batchMentions = llmOutput.mentions.slice(batchStart, batchEnd);
-      
+
       const subBatchId = `${parentBatchId}_batch_${i + 1}`;
-      
+
       this.logger.debug(`Processing sub-batch ${i + 1}/${batchCount}`, {
         subBatchId,
         mentionsCount: batchMentions.length,
@@ -169,18 +224,20 @@ export class UnifiedProcessingService implements OnModuleInit {
       try {
         const subLlmOutput = { mentions: batchMentions };
         const subResult = await this.processSingleBatch(
-          subLlmOutput, 
-          sourceMetadata, 
-          subBatchId, 
-          config, 
-          Date.now()
+          subLlmOutput,
+          sourceMetadata,
+          subBatchId,
+          config,
+          Date.now(),
         );
 
         totalEntitiesCreated += subResult.entityResolution.newEntitiesCreated;
-        totalConnectionsCreated += subResult.databaseOperations.connectionsCreated;
+        totalConnectionsCreated +=
+          subResult.databaseOperations.connectionsCreated;
         totalMentionsCreated += subResult.databaseOperations.mentionsCreated;
-        allAffectedConnectionIds.push(...(subResult.databaseOperations.affectedConnectionIds || []));
-
+        allAffectedConnectionIds.push(
+          ...(subResult.databaseOperations.affectedConnectionIds || []),
+        );
       } catch (error) {
         this.logger.error(`Sub-batch ${subBatchId} failed`, {
           error: error instanceof Error ? error.message : String(error),
@@ -231,8 +288,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     startTime: number,
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
-    const entityResolutionInput =
-      this.extractEntitiesFromLLMOutput(llmOutput);
+    const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput);
     const resolutionResult = await this.entityResolutionService.resolveBatch(
       entityResolutionInput,
       { batchSize: 100, enableFuzzyMatching: true },
@@ -248,8 +304,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
 
     // Step 6: Quality Score Updates (PRD Section 5.3)
-    if (processingConfig.enableQualityScores && databaseResult.affectedConnectionIds) {
-      await this.triggerQualityScoreUpdates(databaseResult.affectedConnectionIds);
+    if (
+      processingConfig.enableQualityScores &&
+      databaseResult.affectedConnectionIds
+    ) {
+      await this.triggerQualityScoreUpdates(
+        databaseResult.affectedConnectionIds,
+      );
     }
 
     const processingTime = Date.now() - startTime;
@@ -285,245 +346,6 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Convert MergedLLMInputDto to LLMInputStructure
-   * Implements PRD 6.3.1 - Uses exact Reddit field names per specification
-   * Lines 1176-1231: Reddit API field consistency requirements
-   */
-  private convertMergedInputToLLMStructure(
-    mergedInput: MergedLLMInputDto,
-  ): LLMInputStructure {
-    try {
-      return {
-        posts: mergedInput.posts.map((post) => ({
-          id: post.id,
-          title: post.title,
-          selftext: post.content || '', // PRD 6.3.1: Use Reddit field name
-          subreddit: post.subreddit,
-          author: post.author || 'unknown',
-          permalink: post.url, // PRD 6.3.1: Use Reddit field name
-          score: post.score,
-          created_utc: post.created_at ? new Date(post.created_at).getTime() / 1000 : Date.now() / 1000, // PRD 6.3.1: Unix timestamp
-          comments: mergedInput.comments
-            .filter(
-              (comment) =>
-                comment.parent_id === post.id || comment.parent_id === null,
-            )
-            .map((comment) => ({
-              id: comment.id,
-              body: comment.content, // PRD 6.3.1: Use Reddit field name
-              author: comment.author || 'unknown',
-              score: comment.score,
-              parent_id: comment.parent_id, // PRD 6.3.1: Reddit field name
-              permalink: comment.url, // PRD 6.3.1: Use Reddit field name
-              subreddit: comment.subreddit || post.subreddit,
-              created_utc: comment.created_at ? new Date(comment.created_at).getTime() / 1000 : Date.now() / 1000, // PRD 6.3.1: Unix timestamp
-            })),
-        })),
-        // PRD 6.3.1: Include standalone comments array for archive-only processing
-        comments: mergedInput.comments
-          .filter((comment) => 
-            !mergedInput.posts.some(post => comment.parent_id === post.id)
-          )
-          .map((comment) => ({
-            id: comment.id,
-            body: comment.content, // PRD 6.3.1: Use Reddit field name
-            author: comment.author || 'unknown',
-            score: comment.score,
-            parent_id: comment.parent_id,
-            permalink: comment.url, // PRD 6.3.1: Use Reddit field name
-            subreddit: comment.subreddit || 'unknown',
-            created_utc: comment.created_at ? new Date(comment.created_at).getTime() / 1000 : Date.now() / 1000, // PRD 6.3.1: Unix timestamp
-          })),
-      };
-    } catch (error) {
-      throw UnifiedProcessingExceptionFactory.createDataConversionFailed(
-        'Failed to convert MergedLLMInputDto to LLMInputStructure',
-        error,
-        { sourceMetadata: mergedInput.sourceMetadata },
-      );
-    }
-  }
-
-  /**
-   * Process content through existing LLM service
-   * Maintains compatibility with M02 LLM processing infrastructure
-   * Implements PRD 6.3.2 validation requirements
-   */
-  private async processWithLLM(
-    llmInput: LLMInputStructure,
-    batchId: string,
-  ): Promise<LLMOutputStructure> {
-    try {
-      this.logger.debug(`Processing batch ${batchId} through LLM service`);
-      const result = await this.llmService.processContent(llmInput);
-      
-      // PRD 6.3.2: Validate LLM output structure
-      this.validateLLMOutput(result, batchId);
-      
-      this.performanceMetrics.successfulLLMCalls++;
-      return result;
-    } catch (error) {
-      this.performanceMetrics.failedLLMCalls++;
-      throw UnifiedProcessingExceptionFactory.createLLMIntegrationFailed(
-        `LLM processing failed for batch ${batchId}`,
-        error,
-        { batchId, postsCount: llmInput.posts.length },
-      );
-    }
-  }
-
-  /**
-   * Validate LLM output structure matches PRD 6.3.2 specification
-   * Lines 1240-1283: Flattened structure with null-safe design
-   */
-  private validateLLMOutput(output: any, batchId: string): void {
-    if (!output || typeof output !== 'object') {
-      throw new Error(`Invalid LLM output structure for batch ${batchId}: not an object`);
-    }
-
-    if (!Array.isArray(output.mentions)) {
-      throw new Error(`Invalid LLM output structure for batch ${batchId}: mentions is not an array`);
-    }
-
-    for (const mention of output.mentions) {
-      // PRD 6.3.2: Required fields validation
-      if (!mention.temp_id || typeof mention.temp_id !== 'string') {
-        throw new Error(`Invalid mention: missing or invalid temp_id`);
-      }
-
-      // Restaurant fields (REQUIRED per PRD)
-      if (!mention.restaurant_name || typeof mention.restaurant_name !== 'string') {
-        throw new Error(`Invalid mention ${mention.temp_id}: missing restaurant_name`);
-      }
-      if (!mention.restaurant_temp_id || typeof mention.restaurant_temp_id !== 'string') {
-        throw new Error(`Invalid mention ${mention.temp_id}: missing restaurant_temp_id`);
-      }
-
-      // Optional food fields - validate if present
-      if (mention.food_name !== null && mention.food_name !== undefined) {
-        if (typeof mention.food_name !== 'string') {
-          throw new Error(`Invalid mention ${mention.temp_id}: food_name must be string or null`);
-        }
-        // If food is present, other food fields should be consistent
-        if (mention.is_menu_item !== true && mention.is_menu_item !== false && mention.is_menu_item !== null) {
-          throw new Error(`Invalid mention ${mention.temp_id}: is_menu_item must be boolean or null`);
-        }
-      }
-
-      // Source tracking fields (REQUIRED per PRD)
-      if (!['post', 'comment'].includes(mention.source_type)) {
-        throw new Error(`Invalid mention ${mention.temp_id}: source_type must be 'post' or 'comment'`);
-      }
-      if (!mention.source_id || typeof mention.source_id !== 'string') {
-        throw new Error(`Invalid mention ${mention.temp_id}: missing source_id`);
-      }
-      if (typeof mention.source_ups !== 'number') {
-        throw new Error(`Invalid mention ${mention.temp_id}: source_ups must be a number`);
-      }
-
-      // Validate arrays are arrays or null
-      const arrayFields = ['food_categories', 'restaurant_attributes', 'food_attributes_selective', 'food_attributes_descriptive'];
-      for (const field of arrayFields) {
-        if (mention[field] !== null && mention[field] !== undefined && !Array.isArray(mention[field])) {
-          throw new Error(`Invalid mention ${mention.temp_id}: ${field} must be array or null`);
-        }
-      }
-
-      // PRD 5.2.1: Context-dependent attribute validation
-      // Check for attributes that might be context-dependent (cuisine, dietary, value, etc.)
-      this.validateContextDependentAttributes(mention);
-    }
-
-    // PRD 5.2.1: Additional validation for context-dependent attributes
-    this.validateEntityScopes(output.mentions);
-  }
-
-  /**
-   * Validate context-dependent attributes (PRD 5.2.1)
-   * Ensure attributes are properly scoped to dish vs restaurant context
-   */
-  private validateContextDependentAttributes(mention: any): void {
-    const contextDependentKeywords = ['italian', 'vegan', 'gluten-free', 'spicy', 'authentic', 'casual', 'upscale'];
-    
-    // Check restaurant attributes for context-dependent keywords
-    if (mention.restaurant_attributes && Array.isArray(mention.restaurant_attributes)) {
-      for (const attr of mention.restaurant_attributes) {
-        if (typeof attr === 'string' && contextDependentKeywords.includes(attr.toLowerCase())) {
-          // This is acceptable - restaurant context for context-dependent attributes
-          this.logger.debug(`Context-dependent attribute '${attr}' correctly assigned to restaurant context`, {
-            mentionId: mention.temp_id,
-          });
-        }
-      }
-    }
-
-    // Check food attributes for context-dependent keywords
-    const allFoodAttributes = [
-      ...(mention.food_attributes_selective || []),
-      ...(mention.food_attributes_descriptive || [])
-    ];
-    
-    for (const attr of allFoodAttributes) {
-      if (typeof attr === 'string' && contextDependentKeywords.includes(attr.toLowerCase())) {
-        // This is acceptable - food context for context-dependent attributes
-        this.logger.debug(`Context-dependent attribute '${attr}' correctly assigned to food context`, {
-          mentionId: mention.temp_id,
-        });
-      }
-    }
-  }
-
-  /**
-   * Validate entity scopes across all mentions (PRD 5.2.1)
-   * Ensure consistent entity type assignments for context-dependent attributes
-   */
-  private validateEntityScopes(mentions: any[]): void {
-    const attributeContexts = new Map<string, Set<string>>(); // attribute -> contexts (dish/restaurant)
-    
-    for (const mention of mentions) {
-      // Track restaurant attributes
-      if (mention.restaurant_attributes && Array.isArray(mention.restaurant_attributes)) {
-        for (const attr of mention.restaurant_attributes) {
-          if (typeof attr === 'string') {
-            const normalizedAttr = attr.toLowerCase();
-            if (!attributeContexts.has(normalizedAttr)) {
-              attributeContexts.set(normalizedAttr, new Set());
-            }
-            attributeContexts.get(normalizedAttr)!.add('restaurant');
-          }
-        }
-      }
-
-      // Track food attributes
-      const allFoodAttributes = [
-        ...(mention.food_attributes_selective || []),
-        ...(mention.food_attributes_descriptive || [])
-      ];
-      
-      for (const attr of allFoodAttributes) {
-        if (typeof attr === 'string') {
-          const normalizedAttr = attr.toLowerCase();
-          if (!attributeContexts.has(normalizedAttr)) {
-            attributeContexts.set(normalizedAttr, new Set());
-          }
-          attributeContexts.get(normalizedAttr)!.add('food');
-        }
-      }
-    }
-
-    // Check for attributes appearing in both contexts (expected for context-dependent attributes)
-    for (const [attribute, contexts] of attributeContexts) {
-      if (contexts.size > 1) {
-        this.logger.debug(`Context-dependent attribute detected: '${attribute}' appears in both food and restaurant contexts`, {
-          contexts: Array.from(contexts),
-        });
-        // This is expected behavior per PRD 5.2.1 - no error thrown
-      }
-    }
-  }
-
-
-  /**
    * Extract entities from LLM output for resolution
    * Converts LLM mentions to entity resolution input format
    */
@@ -538,7 +360,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         if (mention.restaurant_name && mention.restaurant_temp_id) {
           entities.push({
             normalizedName: mention.restaurant_name,
-            originalText: mention.restaurant_name,  // Using normalized as original since we only have one
+            originalText: mention.restaurant_name, // Using normalized as original since we only have one
             entityType: 'restaurant' as const,
             tempId: mention.restaurant_temp_id,
           });
@@ -548,7 +370,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         if (mention.food_name && mention.food_temp_id) {
           entities.push({
             normalizedName: mention.food_name,
-            originalText: mention.food_name,  // Using normalized as original
+            originalText: mention.food_name, // Using normalized as original
             entityType: 'dish_or_category' as const,
             tempId: mention.food_temp_id,
           });
@@ -631,8 +453,6 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
   }
 
-
-
   /**
    * Single Consolidated Processing Phase - PRD Section 6.4
    * Performs all operations in-memory within one database transaction
@@ -650,7 +470,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     affectedConnectionIds: string[];
   }> {
     const startTime = Date.now();
-    
+
     try {
       this.logger.debug('Starting consolidated processing phase', {
         batchId,
@@ -661,8 +481,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.4: Single consolidated processing phase - all operations in-memory
       // Build temp_id to entity_id mapping from resolution result
       const tempIdToEntityIdMap = new Map<string, string>();
-      const entityDetails = resolutionResult.entityDetails || new Map<string, any>();
-      
+      const entityDetails =
+        resolutionResult.entityDetails || new Map<string, any>();
+
       for (const resolution of resolutionResult.resolutionResults) {
         if (resolution.entityId) {
           tempIdToEntityIdMap.set(resolution.tempId, resolution.entityId);
@@ -684,21 +505,26 @@ export class UnifiedProcessingService implements OnModuleInit {
           tempIdToEntityIdMap,
           entityDetails,
           batchId,
+          sourceMetadata?.subreddit,
         );
-        
+
         if (mentionResult.mentionOperation) {
           mentionOperations.push(mentionResult.mentionOperation);
           mentionsCreated++;
         }
-        
+
         connectionOperations.push(...mentionResult.connectionOperations);
         affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
         connectionsCreated += mentionResult.connectionOperations.length;
-        
+
         // Aggregate general praise upvotes by restaurant
         if (mentionResult.generalPraiseUpvotes > 0) {
-          const currentTotal = restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) || 0;
-          restaurantPraiseUpvotes.set(mentionResult.restaurantEntityId, currentTotal + mentionResult.generalPraiseUpvotes);
+          const currentTotal =
+            restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) || 0;
+          restaurantPraiseUpvotes.set(
+            mentionResult.restaurantEntityId,
+            currentTotal + mentionResult.generalPraiseUpvotes,
+          );
         }
       }
 
@@ -713,14 +539,18 @@ export class UnifiedProcessingService implements OnModuleInit {
         // PRD 6.6.2: Create any new entities from resolution within transaction
         // This ensures atomicity - if entity creation fails, entire batch fails
         let entitiesCreated = 0;
+        const createdEntityMapping = new Map<string, string>(); // tempId -> real entityId
+
         for (const resolution of resolutionResult.resolutionResults) {
-          if (resolution.isNewEntity && resolution.entityId) {
-            await tx.entity.create({
+          if (resolution.isNewEntity && resolution.entityId === null) {
+            // Let database auto-generate UUID by omitting entityId field
+            const createdEntity = await tx.entity.create({
               data: {
-                entityId: resolution.entityId,
-                name: resolution.normalizedName,
-                type: resolution.entityType,
-                aliases: resolution.validatedAliases || [resolution.originalInput.originalText],
+                name: resolution.normalizedName!,
+                type: resolution.entityType!,
+                aliases: resolution.validatedAliases || [
+                  resolution.originalInput.originalText,
+                ],
                 restaurantAttributes: [], // Initialize empty for all entity types
                 restaurantQualityScore: 0,
                 generalPraiseUpvotes: 0,
@@ -729,14 +559,22 @@ export class UnifiedProcessingService implements OnModuleInit {
                 lastUpdated: new Date(),
               },
             });
+
+            // Update the mapping with the database-generated ID
+            createdEntityMapping.set(resolution.tempId, createdEntity.entityId);
+            tempIdToEntityIdMap.set(resolution.tempId, createdEntity.entityId);
             entitiesCreated++;
-            
-            this.logger.debug('Created entity in transaction', {
-              batchId,
-              entityId: resolution.entityId,
-              entityType: resolution.entityType,
-              name: resolution.normalizedName,
-            });
+
+            this.logger.debug(
+              'Created entity in transaction with auto-generated ID',
+              {
+                batchId,
+                tempId: resolution.tempId,
+                generatedEntityId: createdEntity.entityId,
+                entityType: resolution.entityType,
+                name: resolution.normalizedName,
+              },
+            );
           }
         }
 
@@ -746,64 +584,84 @@ export class UnifiedProcessingService implements OnModuleInit {
         const additionalAffectedIds: string[] = [];
         for (const connectionOp of connectionOperations) {
           if (connectionOp.type === 'category_boost') {
-            const ids = await this.handleCategoryBoost(tx, connectionOp, batchId);
+            const ids = await this.handleCategoryBoost(
+              tx,
+              connectionOp,
+              batchId,
+            );
             additionalAffectedIds.push(...ids);
           } else if (connectionOp.type === 'attribute_boost') {
-            const ids = await this.handleAttributeBoost(tx, connectionOp, batchId);
+            const ids = await this.handleAttributeBoost(
+              tx,
+              connectionOp,
+              batchId,
+            );
             additionalAffectedIds.push(...ids);
-          } else if (connectionOp.type === 'dish_attribute_processing') {
-            const ids = await this.handleDishAttributeProcessing(tx, connectionOp, batchId);
+          } else if (connectionOp.type === 'food_attribute_processing') {
+            const ids = await this.handleFoodAttributeProcessing(
+              tx,
+              connectionOp,
+              batchId,
+            );
             additionalAffectedIds.push(...ids);
           } else if (connectionOp.type === 'restaurant_metadata_update') {
-            await this.handleRestaurantMetadataUpdate(tx, connectionOp, batchId);
+            await this.handleRestaurantMetadataUpdate(
+              tx,
+              connectionOp,
+              batchId,
+            );
+            // General praise no longer boosts connections; handled via entity-level upvote aggregation only
           } else if (connectionOp.type === 'general_praise_boost') {
-            const ids = await this.handleGeneralPraiseBoost(tx, connectionOp, batchId);
-            additionalAffectedIds.push(...ids);
+            // No-op by design. General praise is persisted on the restaurant entity only.
           } else if (connectionOp.type === 'mention_create') {
-            await tx.mention.create({ data: connectionOp.mentionData });
+            await this.createMentionSafe(tx, connectionOp.mentionData);
           } else {
             // Regular upsert operation
             await tx.connection.upsert(connectionOp);
           }
         }
-        
+
         // Combine all affected connection IDs
-        const allAffectedConnectionIds = [...new Set([...affectedConnectionIds, ...additionalAffectedIds])];
+        const allAffectedConnectionIds = [
+          ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
+        ];
 
         // PRD 6.4.2: Update top mentions for all affected connections
         await this.updateTopMentions(tx, allAffectedConnectionIds, batchId);
 
-        // Update restaurant entities with general praise upvotes
-        for (const [restaurantEntityId, praiseUpvotes] of restaurantPraiseUpvotes) {
-          await tx.entity.update({
-            where: { entityId: restaurantEntityId },
-            data: {
-              generalPraiseUpvotes: { increment: praiseUpvotes },
-              lastUpdated: new Date(),
-            },
-          });
+        // Update restaurant entities with aggregated general praise upvotes
+        for (const [restaurantEntityId, upvotes] of restaurantPraiseUpvotes) {
+          if (upvotes && upvotes > 0) {
+            await tx.entity.update({
+              where: { entityId: restaurantEntityId },
+              data: {
+                generalPraiseUpvotes: { increment: upvotes },
+                lastUpdated: new Date(),
+              },
+            });
+          }
         }
-
 
         return {
           entitiesCreated,
           connectionsCreated,
           mentionsCreated,
-          affectedConnectionIds: [...new Set([...affectedConnectionIds, ...additionalAffectedIds])],
+          affectedConnectionIds: [
+            ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
+          ],
         };
       });
 
       const processingTime = Date.now() - startTime;
       this.performanceMetrics.databaseOperations++;
-      
+
       this.logger.info('Consolidated processing phase completed', {
         batchId,
         processingTimeMs: processingTime,
         ...result,
       });
-      
-      return result;
 
+      return result;
     } catch (error) {
       const processingTime = Date.now() - startTime;
       this.logger.error('Consolidated processing phase failed', {
@@ -811,7 +669,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         processingTimeMs: processingTime,
         error: error instanceof Error ? error.message : String(error),
       });
-      
+
       throw UnifiedProcessingExceptionFactory.createDatabaseIntegrationFailed(
         `Database operations failed for batch ${batchId}`,
         error,
@@ -837,7 +695,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     affectedConnectionIds: string[];
   }> {
     let lastError: Error | undefined;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         this.logger.debug('Attempting consolidated processing', {
@@ -854,12 +712,19 @@ export class UnifiedProcessingService implements OnModuleInit {
         );
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
-        
+
         this.logger.warn('Consolidated processing attempt failed', {
           batchId,
           attempt,
           maxRetries,
-          error: lastError.message,
+          error: {
+            message:
+              lastError instanceof Error
+                ? lastError.message
+                : String(lastError),
+            stack: lastError instanceof Error ? lastError.stack : undefined,
+            name: lastError instanceof Error ? lastError.name : 'UnknownError',
+          },
         });
 
         // Don't retry on certain types of errors
@@ -867,7 +732,15 @@ export class UnifiedProcessingService implements OnModuleInit {
           this.logger.error('Non-retryable error encountered', {
             batchId,
             attempt,
-            error: lastError.message,
+            error: {
+              message:
+                lastError instanceof Error
+                  ? lastError.message
+                  : String(lastError),
+              stack: lastError instanceof Error ? lastError.stack : undefined,
+              name:
+                lastError instanceof Error ? lastError.name : 'UnknownError',
+            },
           });
           throw lastError;
         }
@@ -880,7 +753,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             attempt,
             delayMs,
           });
-          await new Promise(resolve => setTimeout(resolve, delayMs));
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
         }
       }
     }
@@ -904,9 +777,11 @@ export class UnifiedProcessingService implements OnModuleInit {
       'constraint violation',
       'duplicate key',
     ];
-    
+
     const errorMessage = error.message.toLowerCase();
-    return nonRetryablePatterns.some(pattern => errorMessage.includes(pattern));
+    return nonRetryablePatterns.some((pattern) =>
+      errorMessage.includes(pattern),
+    );
   }
 
   /**
@@ -918,6 +793,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     tempIdToEntityIdMap: Map<string, string>,
     entityDetails: Map<string, any>,
     batchId: string,
+    subredditFallback?: string,
   ): Promise<{
     mentionOperation: any | null;
     connectionOperations: any[];
@@ -930,30 +806,38 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     try {
       // Validate required restaurant data
-      const restaurantEntityId = tempIdToEntityIdMap.get(mention.restaurant_temp_id);
+      const restaurantEntityId = tempIdToEntityIdMap.get(
+        mention.restaurant_temp_id,
+      );
       if (!restaurantEntityId) {
         this.logger.warn('Restaurant entity not resolved, skipping mention', {
           batchId,
           mentionTempId: mention.temp_id,
           restaurantTempId: mention.restaurant_temp_id,
         });
-        return { mentionOperation: null, connectionOperations: [], affectedConnectionIds: [], generalPraiseUpvotes: 0, restaurantEntityId: '' };
+        return {
+          mentionOperation: null,
+          connectionOperations: [],
+          affectedConnectionIds: [],
+          generalPraiseUpvotes: 0,
+          restaurantEntityId: '',
+        };
       }
 
       // PRD 6.4.2: Calculate time-weighted mention score
       const mentionCreatedAt = new Date(mention.source_created_at);
-      const daysSince = (Date.now() - mentionCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
+      const daysSince =
+        (Date.now() - mentionCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
       const timeWeightedScore = mention.source_ups * Math.exp(-daysSince / 60);
-
 
       // Store mention data for later creation after connection is established
       const mentionData = {
-        mentionId: uuidv4(),
+        // mentionId will be auto-generated by database
         tempId: mention.temp_id,
         sourceType: mention.source_type,
         sourceId: mention.source_id,
         sourceUrl: mention.source_url,
-        subreddit: mention.subreddit || 'unknown',
+        subreddit: mention.subreddit || subredditFallback || 'unknown',
         contentExcerpt: mention.source_content.substring(0, 500), // Truncate for excerpt
         author: mention.author || null,
         upvotes: mention.source_ups,
@@ -968,7 +852,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       // Component 1: Restaurant Entity (always processed)
       // PRD 6.6.3: Implement proper metric aggregation
       const isRecent = daysSince <= 30; // Within last 30 days
-      
+
       // PRD 6.4.2: Activity level calculation
       let activityLevel = 'normal';
       if (daysSince <= 7) {
@@ -976,15 +860,18 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
       // Note: "trending" (🔥) requires checking if ALL top mentions are within 30 days
       // This will be calculated in Step 6 quality score updates
-      
-      // Component 1: Restaurant Entity (always processed) 
+
+      // Component 1: Restaurant Entity (always processed)
       // Note: Component 1 processes restaurant entities, not connections
       // Restaurant entity processing is handled by entity resolution
       // No restaurant→restaurant connections needed per PRD architecture
 
       // Component 2: Restaurant Attributes (when present)
       // PRD 6.5.1: Add restaurant_attribute entity IDs to restaurant entity's metadata
-      if (mention.restaurant_attributes && mention.restaurant_attributes.length > 0) {
+      if (
+        mention.restaurant_attributes &&
+        mention.restaurant_attributes.length > 0
+      ) {
         // Get restaurant attribute entity IDs from tempIdToEntityIdMap
         const restaurantAttributeIds: string[] = [];
         for (const attr of mention.restaurant_attributes) {
@@ -1003,37 +890,33 @@ export class UnifiedProcessingService implements OnModuleInit {
             attributeIds: restaurantAttributeIds,
             mentionData: mentionData,
           });
-          
-          this.logger.debug('Restaurant attributes queued for metadata update', {
-            batchId,
-            restaurantEntityId,
-            attributeIds: restaurantAttributeIds,
-          });
+
+          this.logger.debug(
+            'Restaurant attributes queued for metadata update',
+            {
+              batchId,
+              restaurantEntityId,
+              attributeIds: restaurantAttributeIds,
+            },
+          );
         }
       }
 
       // Component 3: General Praise (when general_praise is true)
-      // PRD 6.5.1: Boost all existing dish connections for this restaurant
-      // PRD lines 1376-1381: Do not create dish connections if none exist
+      // Updated design: Only increment restaurant.generalPraiseUpvotes (no connection boosts or mentions)
       if (mention.general_praise) {
-        const generalPraiseOperation = {
-          type: 'general_praise_boost',
-          restaurantEntityId: restaurantEntityId,
-          upvotes: mention.source_ups,
-          isRecent,
-          mentionCreatedAt,
-          activityLevel,
-          mentionData: mentionData,
-        };
-        connectionOperations.push(generalPraiseOperation);
-        
-        this.logger.debug('General praise boost queued for restaurant', {
-          batchId,
-          restaurantEntityId,
-          upvotes: mention.source_ups,
-        });
+        this.logger.debug(
+          'General praise detected; aggregating restaurant upvotes only',
+          {
+            batchId,
+            restaurantEntityId,
+            upvotes: mention.source_ups,
+          },
+        );
       }
-      const generalPraiseUpvotes = mention.general_praise ? mention.source_ups : 0;
+      const generalPraiseUpvotes = mention.general_praise
+        ? mention.source_ups
+        : 0;
 
       // Component 4: Specific Food Processing (when food + is_menu_item = true)
       // PRD 6.5.3: Complex attribute logic for specific foods
@@ -1041,14 +924,20 @@ export class UnifiedProcessingService implements OnModuleInit {
       if (mention.food_temp_id && mention.is_menu_item === true) {
         const foodEntityId = tempIdToEntityIdMap.get(mention.food_temp_id);
         if (foodEntityId) {
-          const hasSelectiveAttrs = mention.food_attributes_selective && mention.food_attributes_selective.length > 0;
-          const hasDescriptiveAttrs = mention.food_attributes_descriptive && mention.food_attributes_descriptive.length > 0;
+          const hasSelectiveAttrs =
+            mention.food_attributes_selective &&
+            mention.food_attributes_selective.length > 0;
+          const hasDescriptiveAttrs =
+            mention.food_attributes_descriptive &&
+            mention.food_attributes_descriptive.length > 0;
 
-          // Always use dish_attribute_processing for consistent handling
+          // Always use food_attribute_processing for consistent handling
+          // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
+          // The handler will check for existing connections and decide whether to boost or create
           const dishAttributeOperation = {
-            type: 'dish_attribute_processing',
+            type: 'food_attribute_processing',
             restaurantEntityId,
-            dishEntityId: foodEntityId,
+            foodEntityId: foodEntityId,
             upvotes: mention.source_ups,
             isRecent,
             mentionCreatedAt,
@@ -1058,8 +947,17 @@ export class UnifiedProcessingService implements OnModuleInit {
             hasSelectiveAttrs,
             hasDescriptiveAttrs,
             mentionData: mentionData, // Include mention data for creation
+            allowCreate: true, // Component 4 always allows creation of new connections
           };
           connectionOperations.push(dishAttributeOperation);
+
+          this.logger.debug('Component 4: Specific dish processing queued', {
+            batchId,
+            restaurantEntityId,
+            foodEntityId: foodEntityId,
+            hasSelectiveAttrs,
+            hasDescriptiveAttrs,
+          });
         }
       }
 
@@ -1069,7 +967,14 @@ export class UnifiedProcessingService implements OnModuleInit {
       else if (mention.food_temp_id && mention.is_menu_item === false) {
         const categoryEntityId = tempIdToEntityIdMap.get(mention.food_temp_id);
         if (categoryEntityId) {
-          // Add operation to find and boost existing connections with this category
+          const hasSelectiveAttrs =
+            mention.food_attributes_selective &&
+            mention.food_attributes_selective.length > 0;
+          const hasDescriptiveAttrs =
+            mention.food_attributes_descriptive &&
+            mention.food_attributes_descriptive.length > 0;
+
+          // PRD 6.5.1 lines 1409-1414: Category processing with attribute logic
           const categoryBoostOperation = {
             type: 'category_boost',
             restaurantEntityId,
@@ -1078,19 +983,37 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributes: mention.food_attributes_selective,
-            descriptiveAttributes: mention.food_attributes_descriptive,
+            selectiveAttributes: mention.food_attributes_selective || [],
+            descriptiveAttributes: mention.food_attributes_descriptive || [],
+            hasSelectiveAttrs,
+            hasDescriptiveAttrs,
             mentionData: mentionData, // Add mention data for Component 5
+            allowCreate: false, // Component 5 never creates new connections
           };
           connectionOperations.push(categoryBoostOperation);
+
+          this.logger.debug('Component 5: Category processing queued', {
+            batchId,
+            restaurantEntityId,
+            categoryEntityId,
+            hasSelectiveAttrs,
+            hasDescriptiveAttrs,
+          });
         }
       }
 
       // Component 6: Attribute-Only Processing (when no food but food_attributes present)
       // PRD 6.5.1: Find existing food connections with ANY of the selective attributes
       // PRD 6.5.2: Never create attribute connections - only boost existing ones
-      if (!mention.food_temp_id && (mention.food_attributes_selective || mention.food_attributes_descriptive)) {
-        if (mention.food_attributes_selective && mention.food_attributes_selective.length > 0) {
+      if (
+        !mention.food_temp_id &&
+        (mention.food_attributes_selective ||
+          mention.food_attributes_descriptive)
+      ) {
+        if (
+          mention.food_attributes_selective &&
+          mention.food_attributes_selective.length > 0
+        ) {
           // PRD 6.5.1: Only process selective attributes for attribute-only processing
           // Descriptive-only attributes are skipped (PRD 6.5.1 line 1416)
           const attributeBoostOperation = {
@@ -1118,15 +1041,20 @@ export class UnifiedProcessingService implements OnModuleInit {
         generalPraiseUpvotes,
         restaurantEntityId,
       };
-
     } catch (error) {
       this.logger.error('Failed to process consolidated mention', {
         batchId,
         mentionTempId: mention.temp_id,
         error: error instanceof Error ? error.message : String(error),
       });
-      
-      return { mentionOperation: null, connectionOperations: [], affectedConnectionIds: [], generalPraiseUpvotes: 0, restaurantEntityId: '' };
+
+      return {
+        mentionOperation: null,
+        connectionOperations: [],
+        affectedConnectionIds: [],
+        generalPraiseUpvotes: 0,
+        restaurantEntityId: '',
+      };
     }
   }
 
@@ -1134,7 +1062,11 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Update top mentions for connections (PRD 6.4.2)
    * Re-scores ALL existing mentions and maintains top 3-5 mentions array
    */
-  private async updateTopMentions(tx: any, connectionIds: string[], batchId: string): Promise<void> {
+  private async updateTopMentions(
+    tx: any,
+    connectionIds: string[],
+    batchId: string,
+  ): Promise<void> {
     for (const connectionId of connectionIds) {
       try {
         // Get all mentions for this connection
@@ -1147,9 +1079,11 @@ export class UnifiedProcessingService implements OnModuleInit {
 
         // PRD 6.4.2: Re-score ALL existing mentions using time-weighted formula
         const scoredMentions = mentions.map((mention: any) => {
-          const daysSince = (Date.now() - new Date(mention.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+          const daysSince =
+            (Date.now() - new Date(mention.createdAt).getTime()) /
+            (1000 * 60 * 60 * 24);
           const timeWeightedScore = mention.upvotes * Math.exp(-daysSince / 60);
-          
+
           return {
             mentionId: mention.mentionId,
             score: timeWeightedScore,
@@ -1165,17 +1099,33 @@ export class UnifiedProcessingService implements OnModuleInit {
           .sort((a, b) => b.score - a.score)
           .slice(0, 5);
 
-        // PRD 6.4.2: Calculate activity level based on top mentions
-        const allTopMentionsRecent = topMentions.every(m => {
-          const daysSince = (Date.now() - new Date(m.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+        // Compute trending based on top mentions recency
+        const allTopMentionsRecent = topMentions.every((m) => {
+          const daysSince =
+            (Date.now() - new Date(m.createdAt).getTime()) /
+            (1000 * 60 * 60 * 24);
           return daysSince <= 30;
         });
 
-        const activityLevel = allTopMentionsRecent && topMentions.length >= 3 ? 'trending' : 
-                             topMentions.some(m => {
-                               const daysSince = (Date.now() - new Date(m.createdAt).getTime()) / (1000 * 60 * 60 * 24);
-                               return daysSince <= 7;
-                             }) ? 'active' : 'normal';
+        // Fetch lastMentionedAt for activity determination per PRD (active = last_mentioned_at within 7 days)
+        const connectionRow = await tx.connection.findUnique({
+          where: { connectionId },
+          select: { lastMentionedAt: true },
+        });
+        let isActive = false;
+        if (connectionRow?.lastMentionedAt) {
+          const daysSinceLast =
+            (Date.now() - new Date(connectionRow.lastMentionedAt).getTime()) /
+            (1000 * 60 * 60 * 24);
+          isActive = daysSinceLast <= 7;
+        }
+
+        const activityLevel =
+          allTopMentionsRecent && topMentions.length >= 3
+            ? 'trending'
+            : isActive
+              ? 'active'
+              : 'normal';
 
         // Update connection with new top mentions and activity level
         await tx.connection.update({
@@ -1193,7 +1143,6 @@ export class UnifiedProcessingService implements OnModuleInit {
           topMentionsCount: topMentions.length,
           activityLevel,
         });
-
       } catch (error) {
         this.logger.error('Failed to update top mentions', {
           batchId,
@@ -1206,57 +1155,186 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
+   * Create mention with duplicate protection (unique by sourceType, sourceId, connectionId)
+   */
+  private async createMentionSafe(tx: any, mentionData: any): Promise<void> {
+    try {
+      await tx.mention.create({ data: mentionData });
+    } catch (e: any) {
+      const msg = typeof e?.message === 'string' ? e.message : '';
+      if (
+        msg.includes('Unique constraint') ||
+        msg.includes('uniq_mentions_source_connection') ||
+        e?.code === 'P2002'
+      ) {
+        // Duplicate mention for the same source + connection; ignore
+        return;
+      }
+      throw e;
+    }
+  }
+
+  /**
    * Handle Category Boost Operations (Component 5 - PRD 6.5.1)
-   * Find existing dish connections with category and boost them
+   * Find existing food connections with category and boost them
+   * PRD lines 1409-1414: Complex attribute logic for categories
    * Returns array of affected connection IDs for top mentions update
    */
-  private async handleCategoryBoost(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleCategoryBoost(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     try {
-      // PRD 6.5.1: Find existing dish connections with this category
-      const existingConnections = await tx.connection.findMany({
-        where: {
-          restaurantId: operation.restaurantEntityId,
-          categories: { has: operation.categoryEntityId },
-        },
-      });
+      let targetConnections: any[] = [];
 
-      if (existingConnections.length === 0) {
-        this.logger.debug('No existing connections found for category boost - skipping', {
-          batchId,
-          restaurantId: operation.restaurantEntityId,
-          categoryId: operation.categoryEntityId,
+      // PRD 6.5.1 Component 5: Different logic based on attribute combinations
+      if (operation.hasSelectiveAttrs && !operation.hasDescriptiveAttrs) {
+        // All Selective: Find connections with category AND filter by selective attributes
+        targetConnections = await tx.connection.findMany({
+          where: {
+            restaurantId: operation.restaurantEntityId,
+            categories: { has: operation.categoryEntityId },
+            foodAttributes: { hasSome: operation.selectiveAttributes }, // PRD: Filter to connections with ANY selective
+          },
         });
+
+        this.logger.debug(
+          'Component 5 All Selective: Filtered category connections',
+          {
+            batchId,
+            categoryId: operation.categoryEntityId,
+            selectiveAttributes: operation.selectiveAttributes,
+            connectionsFound: targetConnections.length,
+          },
+        );
+      } else if (
+        !operation.hasSelectiveAttrs &&
+        operation.hasDescriptiveAttrs
+      ) {
+        // All Descriptive: Find ALL connections with category (no attribute filtering)
+        targetConnections = await tx.connection.findMany({
+          where: {
+            restaurantId: operation.restaurantEntityId,
+            categories: { has: operation.categoryEntityId },
+          },
+        });
+
+        this.logger.debug(
+          'Component 5 All Descriptive: Found all category connections',
+          {
+            batchId,
+            categoryId: operation.categoryEntityId,
+            connectionsFound: targetConnections.length,
+          },
+        );
+      } else if (operation.hasSelectiveAttrs && operation.hasDescriptiveAttrs) {
+        // Mixed: Find connections with category AND filter by selective attributes
+        targetConnections = await tx.connection.findMany({
+          where: {
+            restaurantId: operation.restaurantEntityId,
+            categories: { has: operation.categoryEntityId },
+            foodAttributes: { hasSome: operation.selectiveAttributes }, // PRD: Filter by selective first
+          },
+        });
+
+        this.logger.debug(
+          'Component 5 Mixed: Filtered category connections by selective',
+          {
+            batchId,
+            categoryId: operation.categoryEntityId,
+            selectiveAttributes: operation.selectiveAttributes,
+            connectionsFound: targetConnections.length,
+          },
+        );
+      } else {
+        // No attributes: Find ALL connections with category
+        targetConnections = await tx.connection.findMany({
+          where: {
+            restaurantId: operation.restaurantEntityId,
+            categories: { has: operation.categoryEntityId },
+          },
+        });
+
+        this.logger.debug(
+          'Component 5 No Attributes: Found all category connections',
+          {
+            batchId,
+            categoryId: operation.categoryEntityId,
+            connectionsFound: targetConnections.length,
+          },
+        );
+      }
+
+      if (targetConnections.length === 0) {
+        this.logger.debug(
+          'No matching connections found for category boost - skipping per PRD',
+          {
+            batchId,
+            restaurantId: operation.restaurantEntityId,
+            categoryId: operation.categoryEntityId,
+          },
+        );
         return [];
       }
 
       const affectedIds: string[] = [];
-      // Apply boost to all found connections and create mentions
-      for (const connection of existingConnections) {
+
+      // Process each matching connection
+      for (const connection of targetConnections) {
         affectedIds.push(connection.connectionId);
+
+        // Build update data based on attribute logic
+        const updateData: any = {
+          mentionCount: { increment: 1 },
+          totalUpvotes: { increment: operation.upvotes },
+          recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
+          lastMentionedAt:
+            operation.mentionCreatedAt > connection.lastMentionedAt
+              ? operation.mentionCreatedAt
+              : undefined,
+          activityLevel: operation.activityLevel,
+          lastUpdated: new Date(),
+        };
+
+        // PRD 6.5.1: Add descriptive attributes if present (All Descriptive or Mixed cases)
+        if (operation.hasDescriptiveAttrs) {
+          const existingAttributes = connection.foodAttributes || [];
+          const mergedAttributes = [
+            ...new Set([
+              ...existingAttributes,
+              ...operation.descriptiveAttributes,
+            ]),
+          ];
+          updateData.foodAttributes = mergedAttributes;
+
+          this.logger.debug(
+            'Adding descriptive attributes to category connection',
+            {
+              batchId,
+              connectionId: connection.connectionId,
+              newDescriptiveAttributes: operation.descriptiveAttributes,
+              mergedAttributes,
+            },
+          );
+        }
+
         await tx.connection.update({
           where: { connectionId: connection.connectionId },
-          data: {
-            mentionCount: { increment: 1 },
-            totalUpvotes: { increment: operation.upvotes },
-            recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-            lastMentionedAt: operation.mentionCreatedAt > connection.lastMentionedAt ? operation.mentionCreatedAt : undefined,
-            activityLevel: operation.activityLevel,
-            lastUpdated: new Date(),
-          },
+          data: updateData,
         });
 
         // Create mention linked to this connection
-        await tx.mention.create({
-          data: {
-            ...operation.mentionData,
-            connectionId: connection.connectionId, // Link mention to boosted connection
-          },
+        await this.createMentionSafe(tx, {
+          ...operation.mentionData,
+          connectionId: connection.connectionId,
         });
 
-        this.logger.debug('Boosted existing category connection and created mention', {
+        this.logger.debug('Boosted category connection per Component 5 logic', {
           batchId,
           connectionId: connection.connectionId,
           categoryId: operation.categoryEntityId,
+          addedDescriptiveAttrs: operation.hasDescriptiveAttrs,
         });
       }
       return affectedIds;
@@ -1272,34 +1350,48 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   /**
    * Handle Attribute Boost Operations (Component 6 - PRD 6.5.1)
-   * Find existing dish connections with ANY of the selective attributes
+   * Find existing food connections with ANY of the selective attributes
    * Returns array of affected connection IDs for top mentions update
    */
-  private async handleAttributeBoost(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleAttributeBoost(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     try {
-      // PRD 6.5.1: Find existing dish connections with ANY of the selective attributes (OR logic)
+      // PRD 6.5.1: Find existing food connections with ANY of the selective attributes (OR logic)
       // Validate that selectiveAttributes is a non-empty array
-      if (!operation.selectiveAttributes || !Array.isArray(operation.selectiveAttributes) || operation.selectiveAttributes.length === 0) {
-        this.logger.debug('No selective attributes provided for attribute boost - skipping', {
-          batchId,
-          restaurantId: operation.restaurantEntityId,
-        });
+      if (
+        !operation.selectiveAttributes ||
+        !Array.isArray(operation.selectiveAttributes) ||
+        operation.selectiveAttributes.length === 0
+      ) {
+        this.logger.debug(
+          'No selective attributes provided for attribute boost - skipping',
+          {
+            batchId,
+            restaurantId: operation.restaurantEntityId,
+          },
+        );
         return [];
       }
 
       const existingConnections = await tx.connection.findMany({
         where: {
           restaurantId: operation.restaurantEntityId,
-          dishAttributes: { hasSome: operation.selectiveAttributes },
+          foodAttributes: { hasSome: operation.selectiveAttributes },
         },
       });
 
       if (existingConnections.length === 0) {
-        this.logger.debug('No existing connections found for attribute boost - skipping', {
-          batchId,
-          restaurantId: operation.restaurantEntityId,
-          attributes: operation.selectiveAttributes,
-        });
+        this.logger.debug(
+          'No existing connections found for attribute boost - skipping',
+          {
+            batchId,
+            restaurantId: operation.restaurantEntityId,
+            attributes: operation.selectiveAttributes,
+          },
+        );
         return [];
       }
 
@@ -1313,25 +1405,29 @@ export class UnifiedProcessingService implements OnModuleInit {
             mentionCount: { increment: 1 },
             totalUpvotes: { increment: operation.upvotes },
             recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-            lastMentionedAt: operation.mentionCreatedAt > connection.lastMentionedAt ? operation.mentionCreatedAt : undefined,
+            lastMentionedAt:
+              operation.mentionCreatedAt > connection.lastMentionedAt
+                ? operation.mentionCreatedAt
+                : undefined,
             activityLevel: operation.activityLevel,
             lastUpdated: new Date(),
           },
         });
 
         // Create mention linked to this connection
-        await tx.mention.create({
-          data: {
-            ...operation.mentionData,
-            connectionId: connection.connectionId, // Link mention to boosted connection
-          },
+        await this.createMentionSafe(tx, {
+          ...operation.mentionData,
+          connectionId: connection.connectionId,
         });
 
-        this.logger.debug('Boosted existing attribute connection and created mention', {
-          batchId,
-          connectionId: connection.connectionId,
-          attributes: operation.selectiveAttributes,
-        });
+        this.logger.debug(
+          'Boosted existing attribute connection and created mention',
+          {
+            batchId,
+            connectionId: connection.connectionId,
+            attributes: operation.selectiveAttributes,
+          },
+        );
       }
       return affectedIds;
     } catch (error) {
@@ -1345,29 +1441,57 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Handle Dish Attribute Processing (Component 4 - PRD 6.5.3)
+   * Handle Food Attribute Processing (Component 4 - PRD 6.5.3)
    * Implements complex OR/AND logic for selective/descriptive attributes
-   * PRD 6.5.2: Always creates connections for specific dishes (is_menu_item = true)
+   * PRD 6.5.2: Always creates connections for specific foods (is_menu_item = true)
    */
-  private async handleDishAttributeProcessing(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleFoodAttributeProcessing(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     try {
-      const { restaurantEntityId, dishEntityId, selectiveAttributes, descriptiveAttributes, hasSelectiveAttrs, hasDescriptiveAttrs, mentionData } = operation;
+      const {
+        restaurantEntityId,
+        foodEntityId,
+        selectiveAttributes,
+        descriptiveAttributes,
+        hasSelectiveAttrs,
+        hasDescriptiveAttrs,
+        mentionData,
+      } = operation;
 
       let affectedConnectionIds: string[] = [];
 
       // PRD 6.5.3: Complex attribute logic
       if (hasSelectiveAttrs && !hasDescriptiveAttrs) {
         // All Selective: Find existing connections with ANY selective attributes
-        affectedConnectionIds = await this.handleAllSelectiveAttributes(tx, operation, batchId);
+        affectedConnectionIds = await this.handleAllSelectiveAttributes(
+          tx,
+          operation,
+          batchId,
+        );
       } else if (!hasSelectiveAttrs && hasDescriptiveAttrs) {
         // All Descriptive: Find ANY existing connections and add descriptive attributes
-        affectedConnectionIds = await this.handleAllDescriptiveAttributes(tx, operation, batchId);
+        affectedConnectionIds = await this.handleAllDescriptiveAttributes(
+          tx,
+          operation,
+          batchId,
+        );
       } else if (hasSelectiveAttrs && hasDescriptiveAttrs) {
         // Mixed: Find connections with ANY selective + add descriptive attributes
-        affectedConnectionIds = await this.handleMixedAttributes(tx, operation, batchId);
+        affectedConnectionIds = await this.handleMixedAttributes(
+          tx,
+          operation,
+          batchId,
+        );
       } else {
-        // No attributes: Simple dish connection - find or create
-        affectedConnectionIds = await this.handleSimpleDishConnection(tx, operation, batchId);
+        // No attributes: Simple food connection - find or create
+        affectedConnectionIds = await this.handleSimpleDishConnection(
+          tx,
+          operation,
+          batchId,
+        );
       }
 
       return affectedConnectionIds;
@@ -1383,14 +1507,18 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   /**
    * Handle Simple Dish Connection without attributes (PRD 6.5.2)
-   * Find or create restaurant→dish connection and boost it
+   * Find or create restaurant→food connection and boost it
    */
-  private async handleSimpleDishConnection(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleSimpleDishConnection(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     const existingConnection = await tx.connection.findUnique({
       where: {
-        restaurantId_dishOrCategoryId: {
+        restaurantId_foodId: {
           restaurantId: operation.restaurantEntityId,
-          dishOrCategoryId: operation.dishEntityId,
+          foodId: operation.foodEntityId,
         },
       },
     });
@@ -1398,26 +1526,22 @@ export class UnifiedProcessingService implements OnModuleInit {
     if (existingConnection) {
       // Boost existing connection
       await this.boostConnection(tx, existingConnection, operation);
-      
+
       // Create mention linked to this connection
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: existingConnection.connectionId,
-        },
+      await this.createMentionSafe(tx, {
+        ...operation.mentionData,
+        connectionId: existingConnection.connectionId,
       });
-      
+
       return [existingConnection.connectionId];
     } else {
-      // Create new connection
-      const connectionId = uuidv4();
-      await tx.connection.create({
+      // Create new connection - let database auto-generate ID
+      const newConnection = await tx.connection.create({
         data: {
-          connectionId: connectionId,
           restaurantId: operation.restaurantEntityId,
-          dishOrCategoryId: operation.dishEntityId,
+          foodId: operation.foodEntityId,
           categories: [],
-          dishAttributes: [],
+          foodAttributes: [],
           isMenuItem: true,
           mentionCount: 1,
           totalUpvotes: operation.upvotes,
@@ -1432,66 +1556,99 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       // Create mention linked to new connection
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: connectionId,
-        },
+      await this.createMentionSafe(tx, {
+        ...operation.mentionData,
+        connectionId: newConnection.connectionId,
       });
 
-      this.logger.debug('Created new simple dish connection', {
+      this.logger.debug('Created new simple food connection', {
         batchId,
-        connectionId,
+        connectionId: newConnection.connectionId,
         restaurantId: operation.restaurantEntityId,
-        dishId: operation.dishEntityId,
+        foodId: operation.foodEntityId,
       });
-      
-      return [connectionId];
+
+      return [newConnection.connectionId];
     }
   }
 
   /**
    * Handle All Selective Attributes (PRD 6.5.3)
-   * Find existing restaurant→dish connections that have ANY of the selective attributes
+   * Find existing restaurant→food connections that have ANY of the selective attributes
    */
-  private async handleAllSelectiveAttributes(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleAllSelectiveAttributes(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     // Validate that selectiveAttributes is a non-empty array before using hasSome
-    if (!operation.selectiveAttributes || !Array.isArray(operation.selectiveAttributes) || operation.selectiveAttributes.length === 0) {
-      this.logger.debug('No selective attributes for dish processing - creating new connection', { batchId });
-      return await this.createNewDishConnection(tx, operation, []);
+    if (
+      !operation.selectiveAttributes ||
+      !Array.isArray(operation.selectiveAttributes) ||
+      operation.selectiveAttributes.length === 0
+    ) {
+      this.logger.debug(
+        'No selective attributes for dish processing - creating new connection',
+        { batchId },
+      );
+      return await this.createNewFoodConnection(tx, operation, []);
     }
 
+    // PRD: Find existing connections with ANY of the selective attributes (OR logic)
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
-        dishOrCategoryId: operation.dishEntityId,
-        dishAttributes: { hasSome: operation.selectiveAttributes },
+        foodId: operation.foodEntityId,
+        foodAttributes: { hasSome: operation.selectiveAttributes }, // OR logic: match ANY
       },
     });
 
     if (existingConnections.length > 0) {
-      // Boost existing connections
+      // PRD: If found, boost those connections
       const affectedIds: string[] = [];
       for (const connection of existingConnections) {
         affectedIds.push(connection.connectionId);
         await this.boostConnection(tx, connection, operation);
       }
+
+      this.logger.debug(
+        'Component 4 All Selective: Boosted existing connections',
+        {
+          batchId,
+          connectionsFound: existingConnections.length,
+          selectiveAttributes: operation.selectiveAttributes,
+        },
+      );
+
       return affectedIds;
     } else {
-      // Create new connection with all attributes
-      return await this.createNewDishConnection(tx, operation, operation.selectiveAttributes);
+      // PRD: If not found, create new connection with all attributes
+      this.logger.debug('Component 4 All Selective: Creating new connection', {
+        batchId,
+        selectiveAttributes: operation.selectiveAttributes,
+      });
+
+      return await this.createNewFoodConnection(
+        tx,
+        operation,
+        operation.selectiveAttributes,
+      );
     }
   }
 
   /**
    * Handle All Descriptive Attributes (PRD 6.5.3)
-   * Find ANY existing restaurant→dish connections and add descriptive attributes
+   * Find ANY existing restaurant→food connections and add descriptive attributes
    */
-  private async handleAllDescriptiveAttributes(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleAllDescriptiveAttributes(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
-        dishOrCategoryId: operation.dishEntityId,
+        foodId: operation.foodEntityId,
       },
     });
 
@@ -1500,12 +1657,21 @@ export class UnifiedProcessingService implements OnModuleInit {
       const affectedIds: string[] = [];
       for (const connection of existingConnections) {
         affectedIds.push(connection.connectionId);
-        await this.boostConnectionAndAddAttributes(tx, connection, operation, operation.descriptiveAttributes);
+        await this.boostConnectionAndAddAttributes(
+          tx,
+          connection,
+          operation,
+          operation.descriptiveAttributes,
+        );
       }
       return affectedIds;
     } else {
       // Create new connection with all attributes
-      return await this.createNewDishConnection(tx, operation, operation.descriptiveAttributes);
+      return await this.createNewFoodConnection(
+        tx,
+        operation,
+        operation.descriptiveAttributes,
+      );
     }
   }
 
@@ -1513,18 +1679,29 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Handle Mixed Attributes (PRD 6.5.3)
    * Find connections with ANY selective + add descriptive attributes
    */
-  private async handleMixedAttributes(tx: any, operation: any, batchId: string): Promise<string[]> {
+  private async handleMixedAttributes(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<string[]> {
     // Validate that selectiveAttributes is a non-empty array before using hasSome
-    if (!operation.selectiveAttributes || !Array.isArray(operation.selectiveAttributes) || operation.selectiveAttributes.length === 0) {
-      this.logger.debug('No selective attributes for mixed processing - handling as descriptive-only', { batchId });
+    if (
+      !operation.selectiveAttributes ||
+      !Array.isArray(operation.selectiveAttributes) ||
+      operation.selectiveAttributes.length === 0
+    ) {
+      this.logger.debug(
+        'No selective attributes for mixed processing - handling as descriptive-only',
+        { batchId },
+      );
       return await this.handleAllDescriptiveAttributes(tx, operation, batchId);
     }
 
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
-        dishOrCategoryId: operation.dishEntityId,
-        dishAttributes: { hasSome: operation.selectiveAttributes },
+        foodId: operation.foodEntityId,
+        foodAttributes: { hasSome: operation.selectiveAttributes },
       },
     });
 
@@ -1533,27 +1710,42 @@ export class UnifiedProcessingService implements OnModuleInit {
       const affectedIds: string[] = [];
       for (const connection of existingConnections) {
         affectedIds.push(connection.connectionId);
-        await this.boostConnectionAndAddAttributes(tx, connection, operation, operation.descriptiveAttributes);
+        await this.boostConnectionAndAddAttributes(
+          tx,
+          connection,
+          operation,
+          operation.descriptiveAttributes,
+        );
       }
       return affectedIds;
     } else {
       // Create new connection with all attributes
-      const allAttributes = [...operation.selectiveAttributes, ...operation.descriptiveAttributes];
-      return await this.createNewDishConnection(tx, operation, allAttributes);
+      const allAttributes = [
+        ...operation.selectiveAttributes,
+        ...operation.descriptiveAttributes,
+      ];
+      return await this.createNewFoodConnection(tx, operation, allAttributes);
     }
   }
 
   /**
    * Boost existing connection with metrics and create mention
    */
-  private async boostConnection(tx: any, connection: any, operation: any): Promise<void> {
+  private async boostConnection(
+    tx: any,
+    connection: any,
+    operation: any,
+  ): Promise<void> {
     await tx.connection.update({
       where: { connectionId: connection.connectionId },
       data: {
         mentionCount: { increment: 1 },
         totalUpvotes: { increment: operation.upvotes },
         recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-        lastMentionedAt: operation.mentionCreatedAt > connection.lastMentionedAt ? operation.mentionCreatedAt : undefined,
+        lastMentionedAt:
+          operation.mentionCreatedAt > connection.lastMentionedAt
+            ? operation.mentionCreatedAt
+            : undefined,
         activityLevel: operation.activityLevel,
         lastUpdated: new Date(),
       },
@@ -1561,11 +1753,9 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     // Create mention linked to this connection
     if (operation.mentionData) {
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: connection.connectionId,
-        },
+      await this.createMentionSafe(tx, {
+        ...operation.mentionData,
+        connectionId: connection.connectionId,
       });
     }
   }
@@ -1573,9 +1763,16 @@ export class UnifiedProcessingService implements OnModuleInit {
   /**
    * Boost connection and add new descriptive attributes with mention
    */
-  private async boostConnectionAndAddAttributes(tx: any, connection: any, operation: any, newAttributes: string[]): Promise<void> {
-    const existingAttributes = connection.dishAttributes || [];
-    const mergedAttributes = [...new Set([...existingAttributes, ...newAttributes])];
+  private async boostConnectionAndAddAttributes(
+    tx: any,
+    connection: any,
+    operation: any,
+    newAttributes: string[],
+  ): Promise<void> {
+    const existingAttributes = connection.foodAttributes || [];
+    const mergedAttributes = [
+      ...new Set([...existingAttributes, ...newAttributes]),
+    ];
 
     await tx.connection.update({
       where: { connectionId: connection.connectionId },
@@ -1583,36 +1780,40 @@ export class UnifiedProcessingService implements OnModuleInit {
         mentionCount: { increment: 1 },
         totalUpvotes: { increment: operation.upvotes },
         recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-        lastMentionedAt: operation.mentionCreatedAt > connection.lastMentionedAt ? operation.mentionCreatedAt : undefined,
+        lastMentionedAt:
+          operation.mentionCreatedAt > connection.lastMentionedAt
+            ? operation.mentionCreatedAt
+            : undefined,
         activityLevel: operation.activityLevel,
-        dishAttributes: mergedAttributes,
+        foodAttributes: mergedAttributes,
         lastUpdated: new Date(),
       },
     });
 
     // Create mention linked to this connection
     if (operation.mentionData) {
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: connection.connectionId,
-        },
+      await this.createMentionSafe(tx, {
+        ...operation.mentionData,
+        connectionId: connection.connectionId,
       });
     }
   }
 
   /**
-   * Create new dish connection with attributes and mention
+   * Create new food connection with attributes and mention
    */
-  private async createNewDishConnection(tx: any, operation: any, attributes: string[]): Promise<string[]> {
-    const dishConnectionId = uuidv4();
-    await tx.connection.create({
+  private async createNewFoodConnection(
+    tx: any,
+    operation: any,
+    attributes: string[],
+  ): Promise<string[]> {
+    // Let database auto-generate connection ID
+    const newConnection = await tx.connection.create({
       data: {
-        connectionId: dishConnectionId,
         restaurantId: operation.restaurantEntityId,
-        dishOrCategoryId: operation.dishEntityId,
+        foodId: operation.foodEntityId,
         categories: [],
-        dishAttributes: attributes,
+        foodAttributes: attributes,
         isMenuItem: true,
         mentionCount: 1,
         totalUpvotes: operation.upvotes,
@@ -1628,22 +1829,24 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     // Create mention linked to new connection
     if (operation.mentionData) {
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: dishConnectionId,
-        },
+      await this.createMentionSafe(tx, {
+        ...operation.mentionData,
+        connectionId: newConnection.connectionId,
       });
     }
-    
-    return [dishConnectionId];
+
+    return [newConnection.connectionId];
   }
 
   /**
    * Handle restaurant metadata updates - Component 2 implementation
    * PRD 6.5.1: Add restaurant_attribute entity IDs to restaurant entity's metadata
    */
-  private async handleRestaurantMetadataUpdate(tx: any, operation: any, batchId: string): Promise<void> {
+  private async handleRestaurantMetadataUpdate(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<void> {
     try {
       // Get current restaurant metadata
       const restaurant = await tx.entity.findUnique({
@@ -1660,9 +1863,11 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       // Parse current metadata and add restaurant attribute IDs
-      const currentMetadata = restaurant.restaurantMetadata as any || {};
+      const currentMetadata = restaurant.restaurantMetadata || {};
       const existingAttributeIds = currentMetadata.restaurantAttributeIds || [];
-      const updatedAttributeIds = [...new Set([...existingAttributeIds, ...operation.attributeIds])];
+      const updatedAttributeIds = [
+        ...new Set([...existingAttributeIds, ...operation.attributeIds]),
+      ];
 
       // Update restaurant metadata with attribute IDs
       await tx.entity.update({
@@ -1676,20 +1881,11 @@ export class UnifiedProcessingService implements OnModuleInit {
         },
       });
 
-      // Create mention for this component
-      await tx.mention.create({
-        data: {
-          ...operation.mentionData,
-          connectionId: null, // Component 2 doesn't create connections, only mentions
-        },
-      });
-
       this.logger.debug('Restaurant metadata updated with attributes', {
         batchId,
         restaurantEntityId: operation.restaurantEntityId,
         attributeIds: operation.attributeIds,
       });
-
     } catch (error) {
       this.logger.error('Failed to handle restaurant metadata update', {
         batchId,
@@ -1702,86 +1898,18 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   /**
    * Handle General Praise Boost Operations (Component 3 - PRD 6.5.1)
-   * Boost all existing dish connections for this restaurant
-   * PRD lines 1376-1381: Do not create dish connections if none exist
+   * Boost all existing food connections for this restaurant
+   * PRD lines 1376-1381: Do not create food connections if none exist
    */
-  private async handleGeneralPraiseBoost(tx: any, operation: any, batchId: string): Promise<void> {
-    try {
-      // Find all existing dish connections for this restaurant
-      const existingConnections = await tx.connection.findMany({
-        where: {
-          restaurantId: operation.restaurantEntityId,
-          isMenuItem: true, // Only boost actual dish connections, not categories
-        },
-      });
-
-      if (existingConnections.length === 0) {
-        this.logger.debug('No existing dish connections found for general praise boost - skipping', {
-          batchId,
-          restaurantId: operation.restaurantEntityId,
-        });
-        
-        // Still create a mention for tracking but no connection to link it to
-        await tx.mention.create({
-          data: {
-            ...operation.mentionData,
-            connectionId: null, // No connection for general praise without dishes
-          },
-        });
-        return;
-      }
-
-      // Boost all found dish connections
-      for (const connection of existingConnections) {
-        await tx.connection.update({
-          where: { connectionId: connection.connectionId },
-          data: {
-            mentionCount: { increment: 1 },
-            totalUpvotes: { increment: operation.upvotes },
-            recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-            lastMentionedAt: operation.mentionCreatedAt > connection.lastMentionedAt ? operation.mentionCreatedAt : undefined,
-            activityLevel: operation.activityLevel,
-            lastUpdated: new Date(),
-          },
-        });
-
-        // Create mention linked to each boosted connection
-        await tx.mention.create({
-          data: {
-            ...operation.mentionData,
-            mentionId: uuidv4(), // New ID for each mention link
-            connectionId: connection.connectionId,
-          },
-        });
-
-        this.logger.debug('Boosted dish connection with general praise', {
-          batchId,
-          connectionId: connection.connectionId,
-          restaurantId: operation.restaurantEntityId,
-        });
-      }
-
-      this.logger.info(`General praise applied to ${existingConnections.length} dish connections`, {
-        batchId,
-        restaurantId: operation.restaurantEntityId,
-        upvotes: operation.upvotes,
-      });
-
-    } catch (error) {
-      this.logger.error('Failed to handle general praise boost', {
-        batchId,
-        restaurantId: operation.restaurantEntityId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
-  }
+  // General praise handler removed by design; persistence handled at entity level
 
   /**
    * Trigger quality score updates using QualityScoreService (PRD Section 5.3)
    * Updates quality scores for all affected connections from component processing
    */
-  private async triggerQualityScoreUpdates(affectedConnectionIds: string[]): Promise<void> {
+  private async triggerQualityScoreUpdates(
+    affectedConnectionIds: string[],
+  ): Promise<void> {
     try {
       if (affectedConnectionIds.length === 0) {
         this.logger.debug('No connections to update quality scores for');
@@ -1792,9 +1920,10 @@ export class UnifiedProcessingService implements OnModuleInit {
         `Triggering quality score updates for ${affectedConnectionIds.length} connections`,
       );
 
-      const updateResult = await this.qualityScoreService.updateQualityScoresForConnections(
-        affectedConnectionIds
-      );
+      const updateResult =
+        await this.qualityScoreService.updateQualityScoresForConnections(
+          affectedConnectionIds,
+        );
 
       this.logger.info('Quality score updates completed', {
         connectionsUpdated: updateResult.connectionsUpdated,
@@ -1822,7 +1951,9 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Extract connection IDs from component processing results
    * Used to trigger quality score updates for affected connections
    */
-  private extractConnectionIdsFromComponentResults(componentResults: any[]): string[] {
+  private extractConnectionIdsFromComponentResults(
+    componentResults: any[],
+  ): string[] {
     const connectionIds = new Set<string>();
 
     for (const result of componentResults) {
