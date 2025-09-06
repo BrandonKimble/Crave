@@ -42,8 +42,8 @@ export function IsSafeString(validationOptions?: ValidationOptions) {
 export function IsEntityType(validationOptions?: ValidationOptions) {
   const validTypes = [
     'restaurant',
-    'dish_or_category',
-    'dish_attribute',
+    'food',
+    'food_attribute',
     'restaurant_attribute',
   ];
 

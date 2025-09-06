@@ -35,6 +35,22 @@ export interface ChronologicalCollectionJobResult {
   error?: string;
   nextScheduledCollection?: Date;
   latestTimestamp?: number;
+  componentProcessing?: {
+    restaurantsProcessed?: number;
+    connectionsCreated?: number;
+    connectionsUpdated?: number;
+    mentionsCreated?: number;
+    componentsExecuted?: string;
+    successRate?: number;
+    totalTime?: number;
+  };
+  qualityScores?: {
+    connectionsUpdated?: number;
+    restaurantsUpdated?: number;
+    averageTimeMs?: number;
+    errors?: number;
+    totalTime?: number;
+  };
 }
 
 // Helper function to chunk arrays
@@ -150,8 +166,10 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         1000, // Always request Reddit's maximum to never miss posts
       );
 
-      const posts = postsResult.data || [];
-      await job.log(`Collected ${posts.length} posts from r/${subreddit}`);
+      const allPosts = postsResult.data || [];
+      // TEMPORARY: Limit to 50 posts for testing
+      const posts = allPosts.slice(0, 50);
+      await job.log(`Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`);
 
       // Process all collected posts - async queue handles batching and rate limiting
 

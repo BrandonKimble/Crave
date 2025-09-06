@@ -31,8 +31,8 @@ export interface TopMention {
  */
 export enum EntityType {
   RESTAURANT = 'restaurant',
-  DISH_OR_CATEGORY = 'dish_or_category',
-  DISH_ATTRIBUTE = 'dish_attribute', 
+  FOOD = 'food',
+  FOOD_ATTRIBUTE = 'food_attribute',
   RESTAURANT_ATTRIBUTE = 'restaurant_attribute',
 }
 
@@ -63,9 +63,9 @@ export interface Entity {
 export interface Connection {
   connectionId: string;
   restaurantId: string;
-  dishOrCategoryId: string;
+  foodId: string;
   categories: string[];
-  dishAttributes: string[];
+  foodAttributes: string[];
   isMenuItem: boolean;
   mentionCount: number;
   totalUpvotes: number;
@@ -74,7 +74,7 @@ export interface Connection {
   lastMentionedAt?: Date;
   activityLevel: 'low' | 'normal' | 'high' | 'trending';
   topMentions: TopMention[];
-  dishQualityScore: number;
+  foodQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;
 }
@@ -157,7 +157,7 @@ export interface PaginatedResponse<T> extends ApiResponse<T[]> {
  * Search and filter types
  */
 export type EntityUsageType = 'menu_item' | 'category' | 'both';
-export type AttributeScope = 'dish' | 'restaurant';
+export type AttributeScope = 'food' | 'restaurant';
 
 export interface EntityFilter {
   usageContext?: EntityUsageType;

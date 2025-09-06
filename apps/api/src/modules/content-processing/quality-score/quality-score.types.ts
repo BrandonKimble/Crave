@@ -5,31 +5,31 @@ import { Connection } from '@prisma/client';
  *
  * Implements PRD Section 5.3 - Quality Score Computation
  * Defines interfaces for all three quality score types:
- * - Dish Quality Score (85-90% connection + 10-15% restaurant context)
- * - Restaurant Quality Score (80% top dishes + 20% overall average)
- * - Category/Attribute Performance Score (weighted average of relevant dishes)
+ * - Food Quality Score (85-90% connection + 10-15% restaurant context)
+ * - Restaurant Quality Score (80% top food + 20% overall average)
+ * - Category/Attribute Performance Score (weighted average of relevant food)
  */
 
 // Core quality score computation interfaces
 export interface QualityScoreService {
   /**
-   * Calculate dish quality score (PRD 5.3.1)
+   * Calculate food quality score (PRD 5.3.1)
    * 85-90% connection strength + 10-15% restaurant context factor
    */
-  calculateDishQualityScore(
+  calculateFoodQualityScore(
     connection: Connection,
     restaurantScore?: number,
   ): Promise<number>;
 
   /**
    * Calculate restaurant quality score (PRD 5.3.2)
-   * 80% top 3-5 dishes + 20% overall menu consistency
+   * 80% top 3-5 food + 20% overall menu consistency
    */
   calculateRestaurantQualityScore(restaurantId: string): Promise<number>;
 
   /**
    * Calculate category/attribute performance score (PRD 5.3.3)
-   * Weighted average of relevant dish quality scores
+   * Weighted average of relevant food quality scores
    */
   calculateCategoryPerformanceScore(
     restaurantId: string,
@@ -38,7 +38,7 @@ export interface QualityScoreService {
 
   /**
    * Calculate attribute performance score (PRD 5.3.3)
-   * Weighted average of dishes with specific attribute
+   * Weighted average of food with specific attribute
    */
   calculateAttributePerformanceScore(
     restaurantId: string,
@@ -54,7 +54,7 @@ export interface QualityScoreService {
   ): Promise<QualityScoreUpdateResult>;
 }
 
-// Connection strength metrics for dish quality calculation
+// Connection strength metrics for food quality calculation
 export interface ConnectionStrengthMetrics {
   mentionCount: number;
   totalUpvotes: number;
@@ -65,16 +65,16 @@ export interface ConnectionStrengthMetrics {
 
 // Restaurant quality components
 export interface RestaurantQualityComponents {
-  topDishScores: number[]; // 3-5 highest scoring dishes
-  averageMenuScore: number; // average across all dishes
-  totalDishConnections: number;
+  topFoodScores: number[]; // 3-5 highest scoring food
+  averageMenuScore: number; // average across all food
+  totalFoodConnections: number;
 }
 
 // Category/Attribute performance data
 export interface CategoryPerformanceData {
   relevantConnections: Array<{
     connectionId: string;
-    dishQualityScore: number;
+    foodQualityScore: number;
     weight: number; // based on mention count, upvotes, etc.
   }>;
   weightedAverage: number;
@@ -101,12 +101,12 @@ export interface TimeDecayConfig {
 
 // Quality score weights (configurable)
 export interface QualityScoreWeights {
-  // Dish quality score weights (PRD 5.3.1)
-  dishConnectionStrength: number; // 0.85-0.90
-  dishRestaurantContext: number; // 0.10-0.15
+  // Food quality score weights (PRD 5.3.1)
+  foodConnectionStrength: number; // 0.85-0.90
+  foodRestaurantContext: number; // 0.10-0.15
 
   // Restaurant quality score weights (PRD 5.3.2)
-  restaurantTopDishes: number; // 0.80
+  restaurantTopFood: number; // 0.80
   restaurantOverallConsistency: number; // 0.20
 
   // Connection strength component weights
@@ -123,12 +123,12 @@ export const DEFAULT_QUALITY_SCORE_CONFIG = {
   } as TimeDecayConfig,
 
   weights: {
-    // PRD 5.3.1 - Dish quality (85-90% connection + 10-15% restaurant)
-    dishConnectionStrength: 0.87,
-    dishRestaurantContext: 0.13,
+    // PRD 5.3.1 - Food quality (85-90% connection + 10-15% restaurant)
+    foodConnectionStrength: 0.87,
+    foodRestaurantContext: 0.13,
 
-    // PRD 5.3.2 - Restaurant quality (80% top dishes + 20% consistency)
-    restaurantTopDishes: 0.8,
+    // PRD 5.3.2 - Restaurant quality (80% top food + 20% consistency)
+    restaurantTopFood: 0.8,
     restaurantOverallConsistency: 0.2,
 
     // Connection strength components (source diversity removed)

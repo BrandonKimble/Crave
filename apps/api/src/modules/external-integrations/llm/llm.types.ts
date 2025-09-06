@@ -86,7 +86,7 @@ export interface LLMMention {
   // Source tracking with enhanced fields
   source_type: 'post' | 'comment';
   source_id: string;
-  source_content: string;
+  source_content?: string;
   source_ups: number;
   source_url: string;
   source_created_at: string;
@@ -101,9 +101,9 @@ export interface LLMEntityRef {
 }
 
 /**
- * LLM Dish Attribute type
+ * LLM Food Attribute type
  */
-export interface LLMDishAttribute {
+export interface LLMFoodAttribute {
   attribute: string;
   type: 'selective' | 'descriptive';
 }

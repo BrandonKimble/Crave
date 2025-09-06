@@ -14,9 +14,9 @@ import {
 import { IsSafeString } from '../../../../shared/pipes/custom-validators';
 
 /**
- * DTO for LLM dish attribute with validation
+ * DTO for LLM food attribute with validation
  */
-export class LLMDishAttributeDto {
+export class LLMFoodAttributeDto {
   @IsString()
   @IsSafeString()
   attribute: string;
@@ -133,9 +133,10 @@ export class LLMMentionDto {
   @IsSafeString()
   source_id: string;
 
+  @IsOptional()
   @IsString()
   @IsSafeString()
-  source_content: string;
+  source_content?: string;
 
   @IsNumber()
   @Min(0)

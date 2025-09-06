@@ -26,20 +26,20 @@ export class CentralizedRateLimiter {
   // Gemini Tier 1 limits
   private readonly maxRPM = 1000;
   private readonly maxTPM = 1000000;
+  private readonly headroom: number; // 0–1
+  private readonly safeTPM: number;
 
-  // Optimized settings based on ACTUAL TEST DATA
-  // 1000 RPM / 60 sec = 16.67 req/sec theoretical max
-  // Burst testing proved 750 simultaneous requests work fine
-  // So we only need to respect the RPM limit, not burst limits
-  private readonly safeRPM = 950; // 95% of limit (50 RPM safety buffer)
-  private readonly safeRequestsPerSecond = 16; // 950 RPM / 60 = 15.83 req/sec
-  private readonly minSpacingMs = 63; // 1000ms / 16 = 62.5ms, rounded up for safety
+  // Optimized settings derived from configured headroom
+  private readonly safeRPM: number; // floor(maxRPM * headroom)
+  private readonly safeRequestsPerSecond: number; // floor(safeRPM/60)
+  private readonly minSpacingMs: number; // ceil(1000/safeRPS)
   private readonly workerTimeSlotMs = 30; // Reduced since burst isn't an issue
 
   // Redis keys
   private readonly reservationsKey = `${this.keyPrefix}:reservations`;
   private readonly activeRequestsKey = `${this.keyPrefix}:active`;
   private readonly tpmKey = `${this.keyPrefix}:tpm`;
+  private readonly tpmReservationsKey = `${this.keyPrefix}:tpm_reservations`;
   private readonly metricsKey = `${this.keyPrefix}:metrics`;
   private readonly workerQueueKey = `${this.keyPrefix}:worker-queue`;
 
@@ -51,17 +51,29 @@ export class CentralizedRateLimiter {
   ) {
     this.logger = this.loggerService.setContext('CentralizedRateLimiter');
     this.redis = this.redisService.getOrThrow();
+
+    // Headroom (applies to both RPM and TPM). Defaults to 0.95.
+    const envHeadroom = parseFloat(process.env.LLM_RATE_HEADROOM || '');
+    this.headroom = !isNaN(envHeadroom) && envHeadroom > 0 && envHeadroom <= 1 ? envHeadroom : 0.95;
+    this.safeRPM = Math.floor(this.maxRPM * this.headroom);
+    this.safeTPM = Math.floor(this.maxTPM * this.headroom);
+    this.safeRequestsPerSecond = Math.max(1, Math.floor(this.safeRPM / 60));
+    this.minSpacingMs = Math.ceil(1000 / this.safeRequestsPerSecond);
   }
 
   /**
    * Reserve a future time slot for making an LLM request
    * This guarantees the worker can proceed at the reserved time
    */
-  async reserveRequestSlot(workerId: string): Promise<{
+  async reserveRequestSlot(
+    workerId: string,
+    estimatedTokens?: number,
+  ): Promise<{
     reservationTime: number;
     waitMs: number;
     guaranteed: boolean;
     metrics: any;
+    reservationMember: string;
   }> {
     const now = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
@@ -73,16 +85,22 @@ export class CentralizedRateLimiter {
         local activeKey = KEYS[2]
         local metricsKey = KEYS[3]
         local workerQueueKey = KEYS[4]
+        local tpmKey = KEYS[5]
+        local tpmReservationsKey = KEYS[6]
         
         local now = tonumber(ARGV[1])
         local workerId = ARGV[2]
         local safeRPM = tonumber(ARGV[3])
         local minSpacingMs = tonumber(ARGV[4])
         local workerTimeSlotMs = tonumber(ARGV[5])
+        local safeTPM = tonumber(ARGV[6])
+        local estTokens = tonumber(ARGV[7])
         
         -- Clean up old reservations (> 2 minutes old)
         redis.call('ZREMRANGEBYSCORE', reservationsKey, 0, now - 120000)
         redis.call('ZREMRANGEBYSCORE', activeKey, 0, now - 60000)
+        redis.call('ZREMRANGEBYSCORE', tpmKey, 0, now - 60000)
+        redis.call('ZREMRANGEBYSCORE', tpmReservationsKey, 0, now - 60000)
         
         -- Get current reservations and active requests
         local allReservations = redis.call('ZRANGE', reservationsKey, 0, -1, 'WITHSCORES')
@@ -112,6 +130,44 @@ export class CentralizedRateLimiter {
             nextAvailableTime = tonumber(oldestInWindow[2]) + 60000 + minSpacingMs
           end
         end
+
+        -- TPM guard: sum used + reserved tokens in last minute window
+        local usedEntries = redis.call('ZRANGEBYSCORE', tpmKey, oneMinuteAgo, '+inf')
+        local reservedEntries = redis.call('ZRANGEBYSCORE', tpmReservationsKey, oneMinuteAgo, '+inf')
+
+        local function sumTokens(entries)
+          local total = 0
+          for i = 1, #entries do
+            local entry = tostring(entries[i])
+            local dash = string.find(entry, '-')
+            if dash then
+              local tok = tonumber(string.sub(entry, dash + 1)) or 0
+              total = total + tok
+            end
+          end
+          return total
+        end
+
+        local usedTokens = sumTokens(usedEntries)
+        local reservedTokens = sumTokens(reservedEntries)
+        local windowTokens = usedTokens + reservedTokens
+
+        if (windowTokens + estTokens) > safeTPM then
+          -- Not enough token budget; schedule after earliest token expires from window
+          local earliestUsed = redis.call('ZRANGEBYSCORE', tpmKey, oneMinuteAgo, '+inf', 'LIMIT', 0, 1, 'WITHSCORES')
+          local earliestReserved = redis.call('ZRANGEBYSCORE', tpmReservationsKey, oneMinuteAgo, '+inf', 'LIMIT', 0, 1, 'WITHSCORES')
+          local earliestTime = now
+          if #earliestUsed > 0 then
+            earliestTime = tonumber(earliestUsed[2])
+          end
+          if #earliestReserved > 0 then
+            local rtime = tonumber(earliestReserved[2])
+            if rtime < earliestTime then
+              earliestTime = rtime
+            end
+          end
+          nextAvailableTime = math.max(nextAvailableTime, earliestTime + 60000 + minSpacingMs)
+        end
         
         -- Worker fairness: Check if this worker has a recent reservation
         local workerKey = workerId .. ':' .. math.floor(now / 1000)
@@ -125,6 +181,11 @@ export class CentralizedRateLimiter {
         local reservationId = workerId .. ':' .. nextAvailableTime .. ':' .. math.random(1000000)
         redis.call('ZADD', reservationsKey, nextAvailableTime, reservationId)
         redis.call('EXPIRE', reservationsKey, 180) -- 3 minute expiry
+        
+        -- Reserve TPM budget at reservation start time
+        local tokenMember = tostring(nextAvailableTime) .. '-' .. tostring(estTokens)
+        redis.call('ZADD', tpmReservationsKey, nextAvailableTime, tokenMember)
+        redis.call('EXPIRE', tpmReservationsKey, 180)
         
         -- Track worker fairness
         redis.call('ZADD', workerQueueKey, now, workerKey)
@@ -142,25 +203,32 @@ export class CentralizedRateLimiter {
           nextAvailableTime,
           waitMs,
           requestsInWindow,
-          activeRequests
+          activeRequests,
+          windowTokens,
+          reservedTokens,
+          estTokens
         }
       `;
 
       const result = (await this.redis.eval(
         luaScript,
-        4,
+        6,
         this.reservationsKey,
         this.activeRequestsKey,
         this.metricsKey,
         this.workerQueueKey,
+        this.tpmKey,
+        this.tpmReservationsKey,
         now.toString(),
         workerId,
         this.safeRPM.toString(),
         this.minSpacingMs.toString(),
         this.workerTimeSlotMs.toString(),
-      )) as [number, number, number, number];
+        this.safeTPM.toString(),
+        String(Math.max(1, estimatedTokens ?? 0)),
+      )) as [number, number, number, number, number, number, number];
 
-      const [reservationTime, waitMs, requestsInWindow, activeRequests] =
+      const [reservationTime, waitMs, requestsInWindow, activeRequests, windowTokens, reservedTokens, estTokens] =
         result;
 
       const metrics = {
@@ -169,16 +237,33 @@ export class CentralizedRateLimiter {
         activeRequests,
         nextSlotIn: waitMs,
         timestamp: now,
+        tpm: {
+          windowTokens,
+          reservedTokens,
+          estTokens,
+          safeTPM: this.safeTPM,
+        },
       };
 
+      const logPayload = {
+        correlationId,
+        workerId,
+        reservationTime: new Date(reservationTime).toISOString(),
+        waitMs,
+        rpmWindowCount: requestsInWindow,
+        currentLoad: metrics.utilizationPercent,
+        activeRequests,
+        minSpacingMs: this.minSpacingMs,
+        safeRPM: this.safeRPM,
+        tpmWindowTokens: windowTokens,
+        tpmReservedTokens: reservedTokens,
+        tpmEstTokens: estTokens,
+        safeTPM: this.safeTPM,
+      };
       if (waitMs > 0) {
-        this.logger.debug(`Reserved future slot for worker ${workerId}`, {
-          correlationId,
-          workerId,
-          reservationTime: new Date(reservationTime).toISOString(),
-          waitMs,
-          currentLoad: metrics.utilizationPercent,
-        });
+        this.logger.debug(`Reserved future slot for worker ${workerId}`, logPayload);
+      } else {
+        this.logger.debug(`Immediate slot granted for worker ${workerId}`, logPayload);
       }
 
       return {
@@ -186,6 +271,7 @@ export class CentralizedRateLimiter {
         waitMs,
         guaranteed: true, // This reservation is guaranteed
         metrics,
+        reservationMember: `${reservationTime}-${estTokens}`,
       };
     } catch (error) {
       this.logger.error('Error reserving request slot', {
@@ -204,6 +290,7 @@ export class CentralizedRateLimiter {
         waitMs: fallbackWaitMs,
         guaranteed: false,
         metrics: { error: 'reservation_failed', fallbackMode: true },
+        reservationMember: '',
       };
     }
   }
@@ -267,10 +354,10 @@ export class CentralizedRateLimiter {
    */
   async recordTokenUsage(
     inputTokens: number,
-    outputTokens: number,
+    _outputTokens: number,
   ): Promise<void> {
     const now = Date.now();
-    const totalTokens = inputTokens + outputTokens;
+    const totalTokens = inputTokens; // INPUT-ONLY accounting for TPM
 
     try {
       const luaScript = `
@@ -288,7 +375,7 @@ export class CentralizedRateLimiter {
         redis.call('EXPIRE', tpmKey, 120)
         
         -- Update metrics
-        redis.call('HINCRBY', metricsKey, 'total_tokens', tokens)
+        redis.call('HINCRBY', metricsKey, 'total_input_tokens', tokens)
         redis.call('EXPIRE', metricsKey, 300)
         
         return 1
@@ -306,8 +393,29 @@ export class CentralizedRateLimiter {
       this.logger.error('Error recording token usage', {
         correlationId: CorrelationUtils.getCorrelationId(),
         inputTokens,
-        outputTokens,
         totalTokens,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  /**
+   * Finalize a previously reserved TPM token budget once actual usage is recorded.
+   */
+  async finalizeTokenReservation(reservationMember: string): Promise<void> {
+    try {
+      if (!reservationMember) return;
+      await this.redis.zrem(this.tpmReservationsKey, reservationMember);
+      this.logger.debug('Finalized token reservation', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        reservationMember,
+      });
+    } catch (error) {
+      this.logger.error('Error finalizing token reservation', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        reservationMember,
         error: {
           message: error instanceof Error ? error.message : String(error),
         },
@@ -360,8 +468,10 @@ export class CentralizedRateLimiter {
    * Get comprehensive TPM utilization analysis
    */
   async getTPMAnalysis(): Promise<{
-    currentTPM: number;
-    utilizationPercent: number;
+    currentTPM: number; // used tokens last minute
+    reservedTPM: number; // reserved tokens last minute
+    windowTokens: number; // used + reserved
+    utilizationPercent: number; // against safeTPM
     projectedTPM: number;
     avgTokensPerRequest: number;
     bottleneckType: 'rpm' | 'tpm' | 'none';
@@ -370,10 +480,11 @@ export class CentralizedRateLimiter {
     const oneMinuteAgo = now - 60000;
 
     // Get all token entries in the last minute
-    const entries = await this.redis.zrangebyscore(
-      this.tpmKey,
+    const entries = await this.redis.zrangebyscore(this.tpmKey, oneMinuteAgo, now, 'WITHSCORES');
+    const reservedEntries = await this.redis.zrangebyscore(
+      this.tpmReservationsKey,
       oneMinuteAgo,
-      now,
+      '+inf',
       'WITHSCORES',
     );
 
@@ -387,7 +498,15 @@ export class CentralizedRateLimiter {
       requestCount++;
     }
 
-    const utilizationPercent = Math.round((currentTPM / this.maxTPM) * 100);
+    let reservedTPM = 0;
+    for (let i = 0; i < reservedEntries.length; i += 2) {
+      const entry = reservedEntries[i];
+      const tokens = parseInt(entry.split('-')[1] || '0', 10);
+      reservedTPM += tokens;
+    }
+    const windowTokens = currentTPM + reservedTPM;
+
+    const utilizationPercent = Math.round((windowTokens / this.safeTPM) * 100);
     const avgTokensPerRequest =
       requestCount > 0 ? Math.round(currentTPM / requestCount) : 0;
 
@@ -405,6 +524,8 @@ export class CentralizedRateLimiter {
 
     return {
       currentTPM,
+      reservedTPM,
+      windowTokens,
       utilizationPercent,
       projectedTPM,
       avgTokensPerRequest,
@@ -458,6 +579,8 @@ export class CentralizedRateLimiter {
           projectedTPM: tpmAnalysis.projectedTPM,
           avgTokensPerRequest: tpmAnalysis.avgTokensPerRequest,
           bottleneckType: tpmAnalysis.bottleneckType,
+          reserved: tpmAnalysis.reservedTPM,
+          windowTokens: tpmAnalysis.windowTokens,
         },
         active: {
           current: active,
@@ -513,6 +636,7 @@ export class CentralizedRateLimiter {
         this.reservationsKey,
         this.activeRequestsKey,
         this.tpmKey,
+        this.tpmReservationsKey,
         this.metricsKey,
         this.workerQueueKey,
       );

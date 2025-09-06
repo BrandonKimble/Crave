@@ -43,7 +43,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
    * Calculate volumes for all active subreddits
    * This method is designed to be called by Bull queue processor
    */
-  async calculateAllActiveVolumes(sampleDays = 30): Promise<SubredditVolume[]> {
+  async calculateAllActiveVolumes(sampleDays = 7): Promise<SubredditVolume[]> {
     const activeSubreddits = await this.prisma.subreddit.findMany({
       where: { isActive: true },
       select: { name: true },

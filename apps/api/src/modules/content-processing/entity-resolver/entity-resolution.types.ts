@@ -93,7 +93,7 @@ export interface ContextualAttributeInput {
   tempId: string;
   attributeName: string;
   originalText: string;
-  scope: 'dish' | 'restaurant';
+  scope: 'food' | 'restaurant';
   aliases?: string[];
 }
 
@@ -124,7 +124,7 @@ export function contextualAttributeToResolutionInput(
   attributeInput: ContextualAttributeInput,
 ): EntityResolutionInput {
   const entityType: EntityType =
-    attributeInput.scope === 'dish' ? 'dish_attribute' : 'restaurant_attribute';
+    attributeInput.scope === 'food' ? 'food_attribute' : 'restaurant_attribute';
 
   return {
     tempId: attributeInput.tempId,

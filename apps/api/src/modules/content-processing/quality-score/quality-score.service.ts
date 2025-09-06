@@ -17,9 +17,9 @@ import {
  * Implements PRD Section 5.3 - Quality Score Computation
  *
  * Provides comprehensive quality scoring for:
- * - Dish Quality Score (5.3.1): 85-90% connection strength + 10-15% restaurant context
- * - Restaurant Quality Score (5.3.2): 80% top dishes + 20% overall consistency
- * - Category/Attribute Performance (5.3.3): Weighted average of relevant dishes
+ * - Food Quality Score (5.3.1): 85-90% connection strength + 10-15% restaurant context
+ * - Restaurant Quality Score (5.3.2): 80% top food + 20% overall consistency
+ * - Category/Attribute Performance (5.3.3): Weighted average of relevant food
  *
  * All calculations use time decay and are optimized for production performance.
  */
@@ -36,11 +36,11 @@ export class QualityScoreService implements IQualityScoreService {
   }
 
   /**
-   * Calculate dish quality score (PRD 5.3.1)
+   * Calculate food quality score (PRD 5.3.1)
    * Primary component (85-90%): Connection strength metrics with time decay
    * Secondary component (10-15%): Restaurant context factor
    */
-  async calculateDishQualityScore(
+  async calculateFoodQualityScore(
     connection: Connection,
     restaurantScore?: number,
   ): Promise<number> {
@@ -54,20 +54,20 @@ export class QualityScoreService implements IQualityScoreService {
       const connectionStrengthScore =
         this.calculateConnectionStrengthScore(strengthMetrics);
       const primaryScore =
-        connectionStrengthScore * this.config.weights.dishConnectionStrength;
+        connectionStrengthScore * this.config.weights.foodConnectionStrength;
 
       // Secondary component: Restaurant context factor (10-15%)
       let secondaryScore = 0;
       if (restaurantScore !== undefined) {
         // Use provided restaurant score
         secondaryScore =
-          restaurantScore * this.config.weights.dishRestaurantContext;
+          restaurantScore * this.config.weights.foodRestaurantContext;
       } else {
         // Calculate restaurant score if not provided
         const calculatedRestaurantScore =
           await this.calculateRestaurantQualityScore(connection.restaurantId);
         secondaryScore =
-          calculatedRestaurantScore * this.config.weights.dishRestaurantContext;
+          calculatedRestaurantScore * this.config.weights.foodRestaurantContext;
       }
 
       const finalScore = Math.min(
@@ -75,7 +75,7 @@ export class QualityScoreService implements IQualityScoreService {
         Math.max(0, primaryScore + secondaryScore),
       );
 
-      this.logger.debug('Dish quality score calculated', {
+      this.logger.debug('Food quality score calculated', {
         connectionId: connection.connectionId,
         primaryScore,
         secondaryScore,
@@ -85,7 +85,7 @@ export class QualityScoreService implements IQualityScoreService {
 
       return finalScore;
     } catch (error) {
-      this.logger.error('Failed to calculate dish quality score', {
+      this.logger.error('Failed to calculate food quality score', {
         connectionId: connection.connectionId,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -95,17 +95,17 @@ export class QualityScoreService implements IQualityScoreService {
 
   /**
    * Calculate restaurant quality score (PRD 5.3.2)
-   * Primary component (80%): Top 3-5 highest-scoring dishes
+   * Primary component (80%): Top 3-5 highest-scoring food
    * Secondary component (20%): Overall menu consistency
    */
   async calculateRestaurantQualityScore(restaurantId: string): Promise<number> {
     try {
       const startTime = Date.now();
 
-      // Get all dish connections for this restaurant
+      // Get all food connections for this restaurant
       const connections = await this.connectionRepository.findMany({
         where: { restaurantId },
-        orderBy: { dishQualityScore: 'desc' },
+        orderBy: { foodQualityScore: 'desc' },
       });
 
       if (connections.length === 0) {
@@ -119,12 +119,11 @@ export class QualityScoreService implements IQualityScoreService {
       const qualityComponents =
         await this.calculateRestaurantQualityComponents(connections);
 
-      // Primary component (80%): Top 3-5 dishes
-      const topDishesScore = this.calculateTopDishesScore(
-        qualityComponents.topDishScores,
+      // Primary component (80%): Top 3-5 food
+      const topFoodScore = this.calculateTopFoodScore(
+        qualityComponents.topFoodScores,
       );
-      const primaryScore =
-        topDishesScore * this.config.weights.restaurantTopDishes;
+      const primaryScore = topFoodScore * this.config.weights.restaurantTopFood;
 
       // Secondary component (20%): Overall menu consistency
       const consistencyScore = qualityComponents.averageMenuScore;
@@ -138,7 +137,7 @@ export class QualityScoreService implements IQualityScoreService {
 
       this.logger.debug('Restaurant quality score calculated', {
         restaurantId,
-        topDishesScore,
+        topFoodScore,
         consistencyScore,
         finalScore,
         totalConnections: connections.length,
@@ -157,7 +156,7 @@ export class QualityScoreService implements IQualityScoreService {
 
   /**
    * Calculate category performance score (PRD 5.3.3)
-   * Find all restaurant's dishes in category and calculate weighted average
+   * Find all restaurant's food in category and calculate weighted average
    */
   async calculateCategoryPerformanceScore(
     restaurantId: string,
@@ -166,7 +165,7 @@ export class QualityScoreService implements IQualityScoreService {
     try {
       const startTime = Date.now();
 
-      // Find all connections for dishes in this category
+      // Find all connections for food in this category
       const categoryConnections =
         await this.connectionRepository.findConnectionsInCategory(
           restaurantId,
@@ -207,7 +206,7 @@ export class QualityScoreService implements IQualityScoreService {
 
   /**
    * Calculate attribute performance score (PRD 5.3.3)
-   * Find all restaurant's dishes with specific attribute and calculate weighted average
+   * Find all restaurant's food with specific attribute and calculate weighted average
    */
   async calculateAttributePerformanceScore(
     restaurantId: string,
@@ -288,11 +287,11 @@ export class QualityScoreService implements IQualityScoreService {
         for (const connection of connections) {
           try {
             const newQualityScore =
-              await this.calculateDishQualityScore(connection);
+              await this.calculateFoodQualityScore(connection);
 
             // Update the connection with new quality score
             await this.connectionRepository.update(connection.connectionId, {
-              dishQualityScore: newQualityScore,
+              foodQualityScore: newQualityScore,
               lastUpdated: new Date(),
             });
 
@@ -410,53 +409,53 @@ export class QualityScoreService implements IQualityScoreService {
   private async calculateRestaurantQualityComponents(
     connections: Connection[],
   ): Promise<RestaurantQualityComponents> {
-    // Calculate dish quality scores for all connections if not already calculated
-    const dishScores: number[] = [];
+    // Calculate food quality scores for all connections if not already calculated
+    const foodScores: number[] = [];
 
     for (const connection of connections) {
       if (
-        connection.dishQualityScore !== null &&
-        Number(connection.dishQualityScore) > 0
+        connection.foodQualityScore !== null &&
+        Number(connection.foodQualityScore) > 0
       ) {
-        dishScores.push(Number(connection.dishQualityScore));
+        foodScores.push(Number(connection.foodQualityScore));
       } else {
         // Calculate on-demand if not available
-        const score = await this.calculateDishQualityScore(connection, 50); // Use average restaurant score
-        dishScores.push(score);
+        const score = await this.calculateFoodQualityScore(connection, 50); // Use average restaurant score
+        foodScores.push(score);
       }
     }
 
     // Get top 3-5 scores
-    const sortedScores = dishScores.sort((a, b) => b - a);
-    const topDishScores = sortedScores.slice(
+    const sortedScores = foodScores.sort((a, b) => b - a);
+    const topFoodScores = sortedScores.slice(
       0,
       Math.min(5, sortedScores.length),
     );
 
     // Calculate average menu score
     const averageMenuScore =
-      dishScores.length > 0
-        ? dishScores.reduce((sum, score) => sum + score, 0) / dishScores.length
+      foodScores.length > 0
+        ? foodScores.reduce((sum, score) => sum + score, 0) / foodScores.length
         : 0;
 
     return {
-      topDishScores,
+      topFoodScores,
       averageMenuScore,
-      totalDishConnections: connections.length,
+      totalFoodConnections: connections.length,
     };
   }
 
   /**
-   * Calculate top dishes score from individual dish scores
+   * Calculate top food score from individual food scores
    */
-  private calculateTopDishesScore(topDishScores: number[]): number {
-    if (topDishScores.length === 0) return 0;
+  private calculateTopFoodScore(topFoodScores: number[]): number {
+    if (topFoodScores.length === 0) return 0;
 
-    // Weight scores with diminishing returns for more dishes
+    // Weight scores with diminishing returns for more food
     let weightedSum = 0;
     let totalWeight = 0;
 
-    topDishScores.forEach((score, index) => {
+    topFoodScores.forEach((score, index) => {
       const weight = 1 / (index + 1); // 1.0, 0.5, 0.33, 0.25, 0.2
       weightedSum += score * weight;
       totalWeight += weight;
@@ -477,13 +476,13 @@ export class QualityScoreService implements IQualityScoreService {
         connection.mentionCount * Math.log(connection.totalUpvotes + 1),
       );
 
-      const dishQualityScore = connection.dishQualityScore
-        ? Number(connection.dishQualityScore)
+      const foodQualityScore = connection.foodQualityScore
+        ? Number(connection.foodQualityScore)
         : 0;
 
       return {
         connectionId: connection.connectionId,
-        dishQualityScore,
+        foodQualityScore,
         weight,
       };
     });
@@ -494,7 +493,7 @@ export class QualityScoreService implements IQualityScoreService {
       0,
     );
     const weightedSum = relevantConnections.reduce(
-      (sum, conn) => sum + conn.dishQualityScore * conn.weight,
+      (sum, conn) => sum + conn.foodQualityScore * conn.weight,
       0,
     );
 

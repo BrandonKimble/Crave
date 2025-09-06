@@ -24,6 +24,15 @@ import {
  * - Workers pick up jobs and process them independently
  * - Full content retrieval → LLM processing → database operations
  * - Results tracked and aggregated per collection
+ *
+ * TODO: REFACTOR OPPORTUNITY - Common LLM Processing Pipeline
+ * Once all collection type workers are implemented, steps 2-5 (filter/transform,
+ * chunk, LLM processing, UnifiedProcessingService) will likely be identical across
+ * all workers. Consider extracting shared processing method to reduce duplication:
+ * - ChronologicalBatchProcessingWorker: postIds → Reddit API → common pipeline
+ * - ArchiveBatchProcessingWorker: postData → skip API → common pipeline
+ * - KeywordBatchProcessingWorker: keywords → search API → common pipeline
+ * - OnDemandBatchProcessingWorker: requests → various APIs → common pipeline
  */
 @Processor('chronological-batch-processing-queue')
 @Injectable()
@@ -254,15 +263,52 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
           this.llmService,
         );
 
-      // Step 3: Consolidate results (same as original)
+      // Step 3: Consolidate results
+      const flatMentions = processingResult.results.flatMap((r) => r.mentions);
+
+      // Prevent large outputs at the source by not asking LLM for source_content.
+      // Enrich mentions with source_content from our own inputs using source_id mapping.
+      const contentById = new Map<string, string>();
+      // Map each source (post/comment) id to its parent post id for sampling
+      const idToPostId = new Map<string, string>();
+      for (const p of llmPosts) {
+        if (p?.id && typeof p.content === 'string') {
+          contentById.set(p.id, p.content);
+          idToPostId.set(p.id, p.id);
+        }
+        const comments = Array.isArray(p?.comments) ? p.comments : [];
+        for (const c of comments) {
+          if (c?.id && typeof c.content === 'string') {
+            contentById.set(c.id, c.content);
+            idToPostId.set(c.id, p.id);
+          }
+        }
+      }
+
       const llmOutput = {
-        mentions: processingResult.results.flatMap((r) => r.mentions),
+        mentions: flatMentions.map((m: any) => {
+          if (m && !m.source_content) {
+            const text = contentById.get(m.source_id);
+            return { ...m, source_content: text || '' };
+          }
+          return m;
+        }),
       };
+
+      // Build a limited raw mentions sample to aid debugging without huge payloads
+      const RAW_POSTS_LIMIT = 3; // include mentions from first N posts in this batch
+      const selectedPostIds = llmPosts.slice(0, RAW_POSTS_LIMIT).map((p: any) => p.id);
+      const rawMentionsSample = llmOutput.mentions.filter((m: any) => {
+        const postId = idToPostId.get(m?.source_id);
+        return postId ? selectedPostIds.includes(postId) : false;
+      });
 
       const llmProcessingTime = Date.now() - llmStartTime;
       const dbStartTime = Date.now();
 
       // Step 4: Use clean interface - pass LLM output directly to database service
+      // TEMPORARILY DISABLED FOR TEST PIPELINE - uncomment when ready for full processing
+      /*
       const dbResult = await this.unifiedProcessingService.processLLMOutput({
         mentions: llmOutput.mentions,
         sourceMetadata: {
@@ -285,9 +331,27 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
           },
         },
       });
+      */
+
+      // MOCK DATA for test pipeline - replace with real dbResult when uncommenting above
+      const dbResult = {
+        entitiesCreated: 0,
+        connectionsCreated: 0,
+        mentionsCreated: llmOutput.mentions.length,
+        affectedConnectionIds: [],
+        createdEntityIds: [], // Add missing property for test pipeline
+      };
+
+      this.logger.info('Database processing SKIPPED for test pipeline', {
+        batchId,
+        mentionsExtracted: llmOutput.mentions.length,
+        note: 'Using mock database result - no actual database operations performed',
+      });
 
       const dbProcessingTime = Date.now() - dbStartTime;
 
+      // NOTE: Temporary QA instrumentation below to sample raw LLM mentions for analysis.
+      // Temporary until LLM extraction is fully optimized.
       return {
         batchId,
         parentJobId,
@@ -307,6 +371,7 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
           createdEntityIds: dbResult.createdEntityIds || [],
           updatedConnectionIds: dbResult.affectedConnectionIds || [],
         },
+        rawMentionsSample, // unchanged mention objects, limited subset for analysis
       };
     } catch (error) {
       const processingTime = Date.now() - llmStartTime;

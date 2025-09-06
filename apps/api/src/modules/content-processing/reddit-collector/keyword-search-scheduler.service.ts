@@ -36,7 +36,7 @@ export interface KeywordSearchSchedule {
  * - Schedule monthly keyword searches with proper offset from chronological collection
  * - Select top 20-30 entities monthly using priority scoring algorithm
  * - Coordinate with chronological collection to distribute API usage
- * - Handle entity type coverage (restaurants, dishes, attributes)
+ * - Handle entity type coverage (restaurants, food, attributes)
  * - Track enrichment history and effectiveness
  *
  * Note: This service provides the foundation for keyword search scheduling.

@@ -119,8 +119,8 @@ export default () => ({
       ? parseInt(process.env.LLM_MAX_TOKENS, 10)
       : 0, // 0 = Use Gemini 2.5 Flash default 65,536 tokens maximum
     temperature: parseFloat(process.env.LLM_TEMPERATURE || '0.1'),
-    topP: parseFloat(process.env.LLM_TOP_P || '0.95'),
-    topK: parseInt(process.env.LLM_TOP_K || '40', 10),
+    topP: parseFloat(process.env.LLM_TOP_P || '0.5'),
+    topK: parseInt(process.env.LLM_TOP_K || '30', 10),
     candidateCount: parseInt(process.env.LLM_CANDIDATE_COUNT || '1', 10),
     thinking: {
       enabled: process.env.LLM_THINKING_ENABLED === 'true',

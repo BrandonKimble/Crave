@@ -27,7 +27,7 @@ import * as path from 'path';
 dotenv.config({ path: path.join(__dirname, '.env') });
 
 // Set log level to info for cleaner test output (removes debug logs)
-process.env.NODE_ENV = 'production';  // This sets winston log level to 'info' instead of 'debug'
+// process.env.NODE_ENV = 'production';  // This sets winston log level to 'info' instead of 'debug'
 
 // Test configuration
 let TEST_MODE = process.env.TEST_MODE || 'direct'; // 'bull', 'direct', or 'queue-only'
@@ -48,6 +48,7 @@ import { ChronologicalCollectionWorker } from './src/modules/content-processing/
 import { PrismaService } from './src/prisma/prisma.service';
 import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/rate-limiting/centralized-rate-limiter.service';
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';
+import { SmartLLMProcessor } from './src/modules/external-integrations/llm/rate-limiting/smart-llm-processor.service';
 // Enhanced services are accessed via DI container - no direct imports needed for production simulation
 
 // Removed chunk function - no longer needed since production services handle batching
@@ -55,14 +56,13 @@ import { LLMService } from './src/modules/external-integrations/llm/llm.service'
 async function testPipeline() {
   const overallStartTime = Date.now();
   
-  console.log(`🚀 PRODUCTION BATCH PROCESSING TEST - ${TEST_MODE.toUpperCase()} MODE`);
-  console.log('==========================================================');
-  console.log(`⏰ Test started at: ${new Date().toISOString()}`);
-  console.log(`📋 Configuration:`);
-  console.log(`   Test Mode: ${TEST_MODE}`);
-  console.log(`   Subreddit: loaded dynamically from database`);
-  console.log(`   API Request Limit: 1000 posts (Reddit maximum)`);
-  console.log(`   Production Services: ChronologicalCollectionWorker + Bull Queue`);
+  console.log(`Crave API • Production Batch Test (${TEST_MODE.toUpperCase()})`);
+  console.log(`Started: ${new Date().toISOString()}`);
+  console.log('Configuration:');
+  console.log(`- Mode: ${TEST_MODE}`);
+  console.log(`- Subreddit: dynamic (DB-driven)`);
+  console.log(`- Reddit API limit: 1000 posts`);
+  console.log(`- Services: ChronologicalCollectionWorker + Bull Queue`);
   console.log('');
 
   let app: NestFastifyApplication | null = null;
@@ -71,7 +71,7 @@ async function testPipeline() {
     // ========================================
     // STEP 1: Initialize NestJS Application (NO COMPROMISES)
     // ========================================
-    console.log('\n🏗️  STEP 1: Initializing NestJS Application...');
+    console.log('\nStep 1 • Initialize NestJS application');
     const step1StartTime = Date.now();
     
     // Use create with Fastify adapter (same as main.ts)
@@ -83,15 +83,15 @@ async function testPipeline() {
       }
     );
     const appCreateTime = Date.now();
-    console.log(`⏱️  App creation: ${appCreateTime - step1StartTime}ms`);
+    console.log(`- App create: ${appCreateTime - step1StartTime} ms`);
     
     await app.init();
     const appInitTime = Date.now();
-    console.log(`⏱️  App initialization: ${appInitTime - appCreateTime}ms`);
-    console.log('✅ Application initialized with full NestJS lifecycle');
+    console.log(`- App init: ${appInitTime - appCreateTime} ms`);
+    console.log('OK • Application initialized');
 
     // Get ONLY the actual infrastructure services
-    console.log('\n🔧 Retrieving services from DI container...');
+    console.log('\nStep 1a • Retrieve services from DI');
     const serviceStartTime = Date.now();
     // Get production services from DI container
     const collectionJobScheduler = app.get(CollectionJobSchedulerService);
@@ -103,11 +103,11 @@ async function testPipeline() {
     // EntityResolutionService is in EntityResolverModule - not imported in PHASE 1
     // const entityResolutionService = app.get(EntityResolutionService);
     const serviceDuration = Date.now() - serviceStartTime;
-    console.log(`⏱️  Service retrieval: ${serviceDuration}ms`);
-    console.log('✅ Production services retrieved from DI container (ChronologicalCollectionWorker + Bull queue)');
+    console.log(`- DI retrieval: ${serviceDuration} ms`);
+    console.log('OK • Production services retrieved (ChronologicalCollectionWorker + Bull queue)');
 
     const step1Duration = Date.now() - step1StartTime;
-    console.log(`⏱️  Step 1 Total Duration: ${step1Duration}ms (${(step1Duration/1000).toFixed(1)}s)`);
+    console.log(`Step 1 total: ${step1Duration} ms (${(step1Duration/1000).toFixed(1)} s)`);
 
     // ========================================
     // MANUAL KEYWORD SEARCH APPROACH (PRESERVED FOR KEYWORD COLLECTION PHASE)
@@ -137,27 +137,27 @@ async function testPipeline() {
     // ========================================
     // STEP 2: Collect Posts (Bull Queue vs Direct Service)
     // ========================================
-    console.log(`\n🚀 STEP 2: Collecting posts via ${TEST_MODE.toUpperCase()} mode...`);
-    console.log(`⏰ Step 2 started at: ${new Date().toISOString()}`);
+    console.log(`\nStep 2 • Collect posts via ${TEST_MODE.toUpperCase()} mode`);
+    console.log(`- Started: ${new Date().toISOString()}`);
     const step2StartTime = Date.now();
 
     // Test subreddit (services handle all database queries and timing internally)
     const testSubreddit = 'foodnyc';
-    console.log(`\n📊 Test Configuration:`);
-    console.log(`   Test subreddit: r/${testSubreddit}`);
-    console.log(`   Services will determine timing automatically from database`);
+    console.log(`- Test subreddit: r/${testSubreddit}`);
+    console.log(`- Timing: DB-driven (scheduler)`);
     
     let collectedPostIds: string[] = [];
     
     // Track production metrics from services
     let totalMentionsExtracted = 0;
+    let aggregatedRawMentions: any[] = [];
     
     if (TEST_MODE === 'bull') {
       // PRODUCTION SIMULATION - Test with actual Bull queue
-      console.log(`\n🎯 Testing Bull queue production orchestrator...`);
-      console.log(`   Subreddit: ${testSubreddit}`);
-      console.log(`   Limit: 1000 posts (service always requests maximum)`);
-      console.log(`   Scheduler will determine timing from database automatically`);
+      console.log(`\nBull queue production orchestrator`);
+      console.log(`- Subreddit: ${testSubreddit}`);
+      console.log(`- Limit: 1000 posts (service default)`);
+      console.log(`- Scheduler timing: DB-driven`);
 
       try {
         const jobId = await collectionJobScheduler.scheduleManualCollection(
@@ -167,7 +167,7 @@ async function testPipeline() {
             priority: 10
           }
         );
-        console.log(`✅ Bull queue job scheduled: ${jobId}`);
+        console.log(`OK • Bull job scheduled: ${jobId}`);
         
         // Monitor job completion and extract actual results
         let jobComplete = false;
@@ -189,13 +189,13 @@ async function testPipeline() {
             
             // Extract actual production results from Bull job
             const jobResult = bullJob.returnvalue;
-            console.log(`✅ Bull queue job completed successfully`);
-            console.log(`   📊 Production results extracted:`);
-            console.log(`      Success: ${jobResult?.success}`);
-            console.log(`      Posts processed: ${jobResult?.postsProcessed || 0}`);
-            console.log(`      Batches processed: ${jobResult?.batchesProcessed || 0}`);
-            console.log(`      Mentions extracted: ${jobResult?.mentionsExtracted || 0}`);
-            console.log(`      Processing time: ${jobResult?.processingTime || 0}ms`);
+            console.log(`OK • Bull job completed`);
+            console.log(`Result:`);
+            console.log(`- Success: ${jobResult?.success}`);
+            console.log(`- Posts processed: ${jobResult?.postsProcessed || 0}`);
+            console.log(`- Batches processed: ${jobResult?.batchesProcessed || 0}`);
+            console.log(`- Mentions extracted: ${jobResult?.mentionsExtracted || 0}`);
+            console.log(`- Processing time: ${jobResult?.processingTime || 0} ms`);
             
             // Use actual production metrics
             if (jobResult?.success) {
@@ -207,9 +207,7 @@ async function testPipeline() {
             
           } else if (bullJob && bullJob.processedOn && !bullJob.finishedOn) {
             // Job is still processing
-            if (attempts % 10 === 0) {
-              console.log(`   🔄 Job is processing... (${attempts}s elapsed)`);
-            }
+            if (attempts % 10 === 0) console.log(`- Job processing... (${attempts}s)`);
           }
           
           attempts++;
@@ -221,7 +219,7 @@ async function testPipeline() {
           TEST_MODE = 'direct' as any;
         }
       } catch (error) {
-        console.log(`⚠️  Bull queue test failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.log(`WARN • Bull queue test failed: ${error instanceof Error ? error.message : String(error)}`);
         console.log(`   Falling back to direct service testing`);
         // Fall through to direct service mode
         TEST_MODE = 'direct' as any;
@@ -265,16 +263,88 @@ async function testPipeline() {
         console.log(`   🎯 Executing chronological collection with production service...`);
         const collectionResult = await chronologicalCollectionWorker.processChronologicalCollection(mockJob);
         
-        console.log(`\n🎉 PRODUCTION SERVICE EXECUTION COMPLETED`);
-        console.log(`════════════════════════════════════════════════════`);
+        console.log(`\n⏳ Waiting for batch processing to complete (${collectionResult.batchesProcessed || 0} batches queued)...`);
         
-        console.log(`\n📊 CORE RESULTS:`);
-        console.log(`   ✅ Success: ${collectionResult.success ? '✅ TRUE' : '❌ FALSE'}`);
-        console.log(`   📦 Posts processed: ${collectionResult.postsProcessed || 0}`);
-        console.log(`   🔄 Batches processed: ${collectionResult.batchesProcessed || 0}`);
-        console.log(`   🍽️  Mentions extracted: ${collectionResult.mentionsExtracted || 0}`);
-        console.log(`   ⏱️  Processing time: ${(collectionResult.processingTime || 0)}ms (${((collectionResult.processingTime || 0) / 1000).toFixed(1)}s)`);
-        console.log(`   📅 Latest timestamp: ${collectionResult.latestTimestamp || 'N/A'}`);
+        // Get the batch processing queue to monitor completion
+        const batchQueue = app.get('BullQueue_chronological-batch-processing-queue');
+        
+        // Wait for all batch jobs to complete
+        let waitingCount = 0;
+        let allJobsComplete = false;
+        const maxWaitTimeMs = 300000; // 5 minutes max wait
+        const startWaitTime = Date.now();
+        // aggregation declared at function scope
+        
+        while (!allJobsComplete && (Date.now() - startWaitTime) < maxWaitTimeMs) {
+          // Check queue status
+          const waiting = await batchQueue.getWaiting();
+          const active = await batchQueue.getActive();
+          const completedAll = await batchQueue.getCompleted();
+          const failedAll = await batchQueue.getFailed();
+          // Focus on jobs from this run only
+          const completed = completedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
+          const failed = failedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
+          
+          const totalPending = waiting.length + active.length;
+          
+          if (totalPending === 0) {
+            allJobsComplete = true;
+            console.log(`✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`);
+            
+            // Collect results from completed batch jobs (this run only)
+            let totalBatchMentions = 0;
+            for (const completedJob of completed) {
+              const rv = completedJob.returnvalue || {};
+              // Back-compat: mentions count may live at root or under metrics
+              const mCount =
+                typeof rv.mentionsExtracted === 'number'
+                  ? rv.mentionsExtracted
+                  : typeof rv.metrics?.mentionsExtracted === 'number'
+                  ? rv.metrics.mentionsExtracted
+                  : 0;
+              totalBatchMentions += mCount;
+              const sample = completedJob.returnvalue?.rawMentionsSample;
+              if (Array.isArray(sample) && sample.length > 0) {
+                aggregatedRawMentions.push(...sample);
+              }
+            }
+            
+            // Update the collection result with actual batch results
+            collectionResult.mentionsExtracted = totalBatchMentions;
+            totalMentionsExtracted = totalBatchMentions;
+            console.log(`- Mentions extracted across batches: ${totalBatchMentions}`);
+            
+            break;
+          }
+          
+          // Log progress every 10 seconds (reduced frequency)
+          if (waitingCount % 50 === 0) {
+            const elapsedSeconds = Math.round((Date.now() - startWaitTime) / 1000);
+            console.log(`   📊 Queue status (${elapsedSeconds}s): ${waiting.length} waiting, ${active.length} active, ${completed.length} completed, ${failed.length} failed`);
+            
+            // Try to get more details about the active job
+            if (active.length > 0) {
+              const activeJob = active[0];
+              console.log(`   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${activeJob.data?.postCount || 'unknown'} posts)`);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, 200)); // Check every 200ms
+          waitingCount++;
+        }
+        
+        if (!allJobsComplete) {
+          console.log(`WARN • Batch processing timeout after ${maxWaitTimeMs/1000}s`);
+          console.log(`- Final status: ${(await batchQueue.getWaiting()).length} waiting, ${(await batchQueue.getActive()).length} active`);
+        }
+
+        console.log(`\nProduction service execution completed`);
+        console.log(`- Success: ${collectionResult.success ? 'TRUE' : 'FALSE'}`);
+        console.log(`- Posts processed: ${collectionResult.postsProcessed || 0}`);
+        console.log(`- Batches processed: ${collectionResult.batchesProcessed || 0}`);
+        console.log(`- Mentions extracted: ${collectionResult.mentionsExtracted || 0}`);
+        console.log(`- Processing time: ${(collectionResult.processingTime || 0)} ms (${((collectionResult.processingTime || 0) / 1000).toFixed(1)} s)`);
+        console.log(`- Latest timestamp: ${collectionResult.latestTimestamp || 'N/A'}`);
         
         // Component Processing & Quality Score Results (NEW - PRD Section 6.5 & 5.3)
         if (collectionResult.componentProcessing) {
@@ -287,78 +357,13 @@ async function testPipeline() {
           console.log(`   🎯 Processing success rate: ${collectionResult.componentProcessing.successRate || 'N/A'}%`);
         }
         
-        if (collectionResult.qualityScores) {
-          console.log(`\n⭐ QUALITY SCORE UPDATES (PRD 5.3):`);
-          console.log(`   🔢 Quality scores calculated: ${collectionResult.qualityScores.connectionsUpdated || 0}`);
-          console.log(`   🏪 Restaurants scored: ${collectionResult.qualityScores.restaurantsUpdated || 0}`);
-          console.log(`   ⏱️  Avg scoring time: ${collectionResult.qualityScores.averageTimeMs || 'N/A'}ms`);
-          console.log(`   ❌ Scoring errors: ${collectionResult.qualityScores.errors || 0}`);
-        }
-        
-        // Enhanced performance metrics
-        if (collectionResult.postsProcessed && collectionResult.processingTime) {
-          const avgTimePerPost = collectionResult.processingTime / collectionResult.postsProcessed;
-          const postsPerSecond = (collectionResult.postsProcessed / (collectionResult.processingTime / 1000)).toFixed(2);
-          const mentionsPerPost = collectionResult.mentionsExtracted ? (collectionResult.mentionsExtracted / collectionResult.postsProcessed).toFixed(2) : '0';
-          
-          console.log(`\n📈 PERFORMANCE METRICS:`);
-          console.log(`   ⚡ Posts per second: ${postsPerSecond}`);
-          console.log(`   ⏱️  Average per post: ${avgTimePerPost.toFixed(0)}ms`);
-          console.log(`   🍽️  Mentions per post: ${mentionsPerPost}`);
-          console.log(`   📦 Batch size: ${collectionResult.batchesProcessed ? Math.ceil(collectionResult.postsProcessed / collectionResult.batchesProcessed) : 'N/A'}`);
-          
-          // Component processing performance (if available)
-          if (collectionResult.componentProcessing?.totalTime) {
-            const componentPercentage = ((collectionResult.componentProcessing.totalTime / collectionResult.processingTime) * 100).toFixed(1);
-            console.log(`   🧩 Component processing: ${collectionResult.componentProcessing.totalTime}ms (${componentPercentage}% of total)`);
-          }
-          
-          // Quality scoring performance (if available) 
-          if (collectionResult.qualityScores?.totalTime) {
-            const qualityPercentage = ((collectionResult.qualityScores.totalTime / collectionResult.processingTime) * 100).toFixed(1);
-            console.log(`   ⭐ Quality scoring: ${collectionResult.qualityScores.totalTime}ms (${qualityPercentage}% of total)`);
-          }
-        }
-        
-        // Enhanced configuration display
-        console.log(`\n🔧 PRODUCTION PIPELINE CONFIGURATION:`);
-        console.log(`   👥 Workers: 24 (optimized for RPM/TPM limits)`);
-        console.log(`   ⏰ Delay strategy: Linear 50ms + RPM protection`);
-        console.log(`   🎯 Max output tokens: Unlimited (65,536 Gemini default)`);
-        console.log(`   💾 RPM protection: 75ms minimum (max 13.3 req/sec/worker)`);
-        console.log(`   🚀 Timing fix: Collection start time prevents missing posts`);
-        console.log(`   🧩 Component processing: All 6 processors enabled (PRD 6.5)`);
-        console.log(`   ⭐ Quality scoring: Real-time calculation enabled (PRD 5.3)`);
-        console.log(`   🔄 Transaction atomicity: Single consolidated processing (PRD 6.6)`);
-        console.log(`   📊 Mention scoring: Time-weighted formula active (PRD 6.4.2)`);
-        
+        // Intermediate metrics and configuration logs suppressed; focus on final summary only
+
         // Use actual production results
         totalMentionsExtracted = collectionResult.mentionsExtracted;
         // Generate mock post IDs based on actual processed count
         collectedPostIds = Array.from({ length: collectionResult.postsProcessed }, (_, i) => `direct-post-${i}`);
-        
-        if (collectionResult.error) {
-          console.log(`   ⚠️  Service reported error: ${collectionResult.error}`);
-        }
-        
-        // PRD Compliance Validation (NEW)
-        console.log(`\n✅ PRD COMPLIANCE VALIDATION:`);
-        const hasComponentData = collectionResult.componentProcessing?.connectionsCreated > 0 || collectionResult.componentProcessing?.connectionsUpdated > 0;
-        const hasQualityScores = collectionResult.qualityScores?.connectionsUpdated > 0;
-        const hasMentions = collectionResult.mentionsExtracted > 0;
-        
-        console.log(`   🧩 Component Processing (6.5): ${hasComponentData ? '✅ ACTIVE' : '⚠️  No data'}`);
-        console.log(`   ⭐ Quality Scoring (5.3): ${hasQualityScores ? '✅ ACTIVE' : '⚠️  No scores'}`);
-        console.log(`   📊 Mention Extraction: ${hasMentions ? '✅ ACTIVE' : '❌ FAILED'}`);
-        console.log(`   🎯 Pipeline Integration: ${hasComponentData && hasMentions ? '✅ SUCCESS' : '⚠️  PARTIAL'}`);
-        
-        if (hasComponentData && hasQualityScores && hasMentions) {
-          console.log(`   🏆 FULL PRD PIPELINE: ✅ 95% COMPLIANT AND OPERATIONAL`);
-        } else if (hasComponentData && hasMentions) {
-          console.log(`   🔄 CORE PIPELINE: ✅ OPERATIONAL (Quality scores pending)`);
-        } else {
-          console.log(`   ⚠️  PIPELINE STATUS: Partial functionality detected`);
-        }
+        if (collectionResult.error) console.log(`WARN • Service reported error: ${collectionResult.error}`);
         
       } catch (error) {
         console.log(`   ❌ Production service failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -383,77 +388,7 @@ async function testPipeline() {
     }
 
     const step2Duration = Date.now() - step2StartTime;
-    console.log(`⏱️  Step 2 Total Duration: ${step2Duration}ms (${(step2Duration/1000).toFixed(1)}s)`);
-    
-    // Both modes now use production services and provide their own metrics
-    console.log('\n✅ Production service execution completed for both modes');
-
-
-    // ========================================
-    // STEP 9: Enhanced Production Validation [NEW - PASSIVE MONITORING]
-    // ========================================
-    console.log('\n🧪 STEP 9: Enhanced Production Pipeline Validation...');
-    console.log('⏰ Started at: ' + new Date().toISOString());
-    
-    const step9StartTime = Date.now();
-    
-    try {
-      // Validate that enhanced services are available in the production pipeline
-      console.log('\n🔧 Validating enhanced services integration in production pipeline...');
-      
-      // Check if enhanced services are registered (non-intrusive)
-      let enhancedServicesAvailable = true;
-      const enhancedServiceNames = [
-        'UnifiedProcessingService',
-        'ComponentProcessorService', 
-        'QualityScoreService',
-        'EntityResolutionService'
-      ];
-      
-      for (const serviceName of enhancedServiceNames) {
-        try {
-          app.get(serviceName);
-          console.log(`   ✅ ${serviceName} - Available`);
-        } catch (error) {
-          console.log(`   ❌ ${serviceName} - Not Available: ${error instanceof Error ? error.message : String(error)}`);
-          enhancedServicesAvailable = false;
-        }
-      }
-      
-      if (enhancedServicesAvailable) {
-        console.log('\n✅ All enhanced services successfully integrated into production pipeline');
-        console.log('   🔄 The production ChronologicalCollectionWorker will automatically use:');
-        console.log('      • Component Processing (6 processors per PRD Section 6.5)');
-        console.log('      • Quality Score Computation (PRD Section 5.3)');
-        console.log('      • Entity Resolution with three-tier matching (PRD Section 5.2)');
-        console.log('      • Mention scoring with time-weighted formulas (PRD Section 6.4.2)');
-        
-        console.log('\n📊 PRODUCTION PIPELINE ENHANCEMENT STATUS:');
-        console.log('   🎯 Component-Based Processing: ✅ INTEGRATED');
-        console.log('   ⭐ Quality Score Updates: ✅ INTEGRATED');
-        console.log('   🔗 Enhanced Entity Resolution: ✅ INTEGRATED');
-        console.log('   💬 Mention Scoring & Activity: ✅ INTEGRATED');
-        
-        console.log('\n🎉 PRODUCTION ENHANCEMENT: ✅ COMPLETE');
-        console.log('   📝 The existing production test (Steps 1-8) now automatically exercises:');
-        console.log('      • All 6 component processors according to PRD specifications');
-        console.log('      • Quality score computation for dish/restaurant/category ranking');
-        console.log('      • Time-weighted mention scoring and activity level calculation');
-        console.log('      • Single transaction orchestration with proper error handling');
-        
-      } else {
-        console.log('\n⚠️  Some enhanced services not available - production pipeline may not be fully enhanced');
-      }
-      
-    } catch (error) {
-      const processingTime = Date.now() - step9StartTime;
-      console.log(`\n❌ Enhanced service validation error after ${processingTime}ms:`);
-      console.log(`   Error: ${error instanceof Error ? error.message : String(error)}`);
-      console.log(`\n💡 Note: This validation is non-intrusive - production testing continues regardless`);
-    }
-    
-    const step9Duration = Date.now() - step9StartTime;
-    console.log(`\n⏱️  Step 9 Total Duration: ${step9Duration}ms (${(step9Duration/1000).toFixed(1)}s)`);
+    console.log(`Step 2 Total Duration: ${step2Duration}ms (${(step2Duration/1000).toFixed(1)}s)`);
 
 
     // ========================================
@@ -484,13 +419,9 @@ async function testPipeline() {
     // ========================================
     // FINAL SUMMARY
     // ========================================
-    console.log(`\n🏆 COMPREHENSIVE TEST RESULTS SUMMARY`);
-    console.log(`══════════════════════════════════════════════════════════════════`);
-    console.log(`📅 Test Date: ${new Date().toISOString()}`);
-    console.log(`🎯 Test Mode: ${TEST_MODE === 'bull' ? 'Bull Queue Production Simulation' : 'Direct Production Service'}`);
-    console.log(`🔧 Services Used: ChronologicalCollectionWorker (Enhanced with Component Processing)`);
-    console.log(`✅ Production Fidelity: TRUE - Uses exact same code path as production`);
-    console.log(`🧪 Enhancement Validation: Component Processing + Quality Scores automatically integrated`);
+    console.log(`\n=== Test Summary ===`);
+    console.log(`Date: ${new Date().toISOString()}`);
+    console.log(`Mode: ${TEST_MODE === 'bull' ? 'Bull Queue Simulation' : 'Direct Service'}`);
     
     // ========================================
     // COLLECT PERFORMANCE METRICS
@@ -516,10 +447,10 @@ async function testPipeline() {
       console.log(`   ⚠️  LLM metrics unavailable: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    console.log(`\n📊 CORE PRODUCTION RESULTS:`);
-    console.log(`   🍽️  Total mentions extracted: ${mentionsCount}`);
-    console.log(`   📦 Total posts processed: ${postsCount}`);
-    console.log(`   ⏱️  Total test duration: ${overallDurationSeconds.toFixed(1)}s`);
+    console.log(`\nCore Results:`);
+    console.log(`- Mentions: ${mentionsCount}`);
+    console.log(`- Posts: ${postsCount}`);
+    console.log(`- Duration: ${overallDurationSeconds.toFixed(1)} s`);
     
     if (postsCount > 0) {
       const avgTimePerPost = overallDurationSeconds / postsCount;
@@ -527,126 +458,126 @@ async function testPipeline() {
       const mentionsPerPost = (mentionsCount / postsCount).toFixed(2);
       const extractionRate = ((mentionsCount / postsCount) * 100).toFixed(1);
       
-      console.log(`\n📈 THROUGHPUT METRICS:`);
-      console.log(`   ⚡ Posts per minute: ${postsPerMinute}`);
-      console.log(`   ⏱️  Average time per post: ${avgTimePerPost.toFixed(2)}s`);
-      console.log(`   🍽️  Mentions per post: ${mentionsPerPost}`);
-      console.log(`   🎯 Extraction success rate: ${extractionRate}%`);
+      console.log(`\nThroughput:`);
+      console.log(`- Posts/min: ${postsPerMinute}`);
+      console.log(`- Avg time/post: ${avgTimePerPost.toFixed(2)} s`);
+      console.log(`- Mentions/post: ${mentionsPerPost}`);
     }
 
-    // Display rate limiting performance
+    // Rate limiting performance summary
+    const concurrencyCfg = parseInt(process.env.CONCURRENCY || '16', 10);
     if (rateLimitMetrics && !rateLimitMetrics.error) {
-      console.log(`\n🚦 RATE LIMITING PERFORMANCE:`);
-      console.log(`   📊 Peak RPM utilization: ${rateLimitMetrics.rpm.utilizationPercent}% (${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})`);
-      console.log(`   📈 Peak TPM utilization: ${rateLimitMetrics.tpm.utilizationPercent}% (${rateLimitMetrics.tpm.current.toLocaleString()}/${(rateLimitMetrics.tpm.max/1000).toFixed(0)}K)`);
-      console.log(`   ⚖️  Current bottleneck: ${rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None detected' : rateLimitMetrics.optimization.currentBottleneck.toUpperCase()}`);
-      console.log(`   🎯 Avg tokens per request: ${rateLimitMetrics.tpm.avgTokensPerRequest}`);
-      console.log(`   ⏱️  Reservation accuracy: ${rateLimitMetrics.reliability.avgAccuracyMs}ms avg deviation`);
-      console.log(`   ✅ Reservation success rate: ${rateLimitMetrics.reliability.successRate}% (${rateLimitMetrics.reliability.confirmed}/${rateLimitMetrics.reliability.total})`);
+      const bottleneck = rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None' : String(rateLimitMetrics.optimization.currentBottleneck).toUpperCase();
+      console.log(`\nRate Limiting:`);
+      console.log(`- RPM utilization: ${rateLimitMetrics.rpm.actualUtilizationPercent}% (current ${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})`);
+      console.log(`- TPM(input) utilization: ${rateLimitMetrics.tpm.utilizationPercent}% (used ${rateLimitMetrics.tpm.current.toLocaleString()}, reserved ${(rateLimitMetrics.tpm as any).reserved?.toLocaleString?.() || 0})`);
+      console.log(`- Bottleneck: ${bottleneck}`);
+      console.log(`- Reservation accuracy (avg): ${rateLimitMetrics.reservations.avgAccuracyMs} ms`);
+      console.log(`- Reservation confirmation: ${rateLimitMetrics.reservations.confirmationRate}% (${rateLimitMetrics.reservations.confirmed}/${rateLimitMetrics.reservations.total})`);
     }
 
-    // Display LLM performance
-    if (llmMetrics) {
-      console.log(`\n🤖 LLM PERFORMANCE METRICS:`);
-      console.log(`   📡 Total API calls: ${llmMetrics.requestCount}`);
-      console.log(`   ⏱️  Average response time: ${llmMetrics.averageResponseTime.toFixed(0)}ms`);
-      console.log(`   🎯 Success rate: ${llmMetrics.successRate}%`);
-      console.log(`   🪙 Total tokens processed: ${llmMetrics.totalTokensUsed.toLocaleString()}`);
-      if (llmMetrics.requestCount > 0) {
-        console.log(`   💰 Avg tokens per request: ${Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount)}`);
+    // Aggregated per-request diagnostics (from SmartLLMProcessor)
+    try {
+      const smart = app.get(SmartLLMProcessor);
+      const diag = smart.getAggregatedDiagnostics();
+      console.log(`\nPer-Request Aggregates:`);
+      console.log(`- Requests observed: ${diag.requests}`);
+      if (typeof diag.mentionYield?.withMentions === 'number') {
+        console.log(`- Requests with mentions: ${diag.mentionYield.withMentions} (${diag.mentionYield.percent}%)`);
       }
-    }
-
-    // Display optimization insights
-    console.log(`\n🔧 SYSTEM OPTIMIZATION INSIGHTS:`);
-    if (rateLimitMetrics && !rateLimitMetrics.error) {
-      if (rateLimitMetrics.optimization.utilizationRoom > 20) {
-        console.log(`   📈 Underutilized: ${rateLimitMetrics.optimization.utilizationRoom}% headroom available`);
-      } else if (rateLimitMetrics.optimization.utilizationRoom < 5) {
-        console.log(`   ⚠️  Near capacity: Only ${rateLimitMetrics.optimization.utilizationRoom}% headroom remaining`);
-      } else {
-        console.log(`   ✅ Well-utilized: ${rateLimitMetrics.optimization.utilizationRoom}% headroom remaining`);
-      }
-    }
-    console.log(`   👥 Worker count: 16 (reduced from 24 to improve reliability)`);
-    console.log(`   🎯 Cache efficiency: System instructions cached (saves ~2.7K tokens/request)`);
-    console.log(`   ⚡ Processing mode: Direct service execution`);
-
-    console.log(`\n🏆 VERDICT: TRUE production simulation validated - same code as production!`);
-    console.log(`\n✅ Architecture Benefits:`);
-    console.log(`   • Bull queue mode: Tests actual queue processing and result extraction`);
-    console.log(`   • Direct mode: Tests ChronologicalCollectionWorker without queue overhead`);
-    console.log(`   • Both modes: Use identical production services and timing logic`);
-    console.log(`   • Database integration: Real Prisma service with timing calculations`);
+      console.log(`- Wait(ms): avg ${diag.waits.avgMs}, min ${diag.waits.minMs}, max ${diag.waits.maxMs}`);
+      console.log(`- RPM util(%): avg ${diag.rpmUtilization.avg}, min ${diag.rpmUtilization.min}, max ${diag.rpmUtilization.max}`);
+      console.log(`- TPM(input) util(%): avg ${diag.tpmUtilization.avg}, min ${diag.tpmUtilization.min}, max ${diag.tpmUtilization.max}`);
+      console.log(`- RPM window count: avg ${diag.rpmWindowCount.avg}, min ${diag.rpmWindowCount.min}, max ${diag.rpmWindowCount.max}`);
+      console.log(`- TPM window tokens: avg ${diag.tpmWindowTokens.avg}, min ${diag.tpmWindowTokens.min}, max ${diag.tpmWindowTokens.max}`);
+      console.log(`- Input tokens (estimated): avg ${diag.inputTokens.estimated.avg}, min ${diag.inputTokens.estimated.min}, max ${diag.inputTokens.estimated.max}`);
+      console.log(`- Input tokens (actual): avg ${diag.inputTokens.actual.avg}, min ${diag.inputTokens.actual.min}, max ${diag.inputTokens.actual.max}`);
+      console.log(`- Estimation error(tokens): avg ${diag.inputTokens.estimationError.avg}, avgAbs ${diag.inputTokens.estimationError.avgAbs}, min ${diag.inputTokens.estimationError.min}, max ${diag.inputTokens.estimationError.max}`);
+      if (diag.noUsageMetadataCount > 0) console.log(`- Missing usageMetadata count: ${diag.noUsageMetadataCount}`);
+    } catch {}
 
     // ========================================
-    // GENERATE SUMMARY FILE
+    // GENERATE STRUCTURED JSON RESULTS FILE
     // ========================================
     const overallDuration = Date.now() - overallStartTime;
-    const summaryData = `# Production Pipeline Test Results
-
-## Test Configuration
-- **Date**: ${new Date().toISOString()}
-- **Mode**: ${TEST_MODE === 'bull' ? 'Bull Queue Production Simulation' : 'Direct Production Service'}
-- **Service**: ChronologicalCollectionWorker ${TEST_MODE === 'bull' ? 'via Bull Queue' : 'Direct'}
-- **Subreddit**: r/${testSubreddit || 'austinfood'}
-- **Production Fidelity**: TRUE - Uses same code path as production
-
-## Performance Results
-### Throughput
-- **Posts Processed**: ${collectedPostIds.length}
-- **Mentions Extracted**: ${totalMentionsExtracted || 0}
-- **Total Duration**: ${(overallDuration/1000).toFixed(1)}s
-- **Average per Post**: ${collectedPostIds.length > 0 ? ((overallDuration/collectedPostIds.length/1000).toFixed(2)) : '0'}s
-- **Posts per Minute**: ${collectedPostIds.length > 0 ? (collectedPostIds.length / (overallDuration/1000/60)).toFixed(1) : '0'}
-- **Extraction Success Rate**: ${collectedPostIds.length > 0 ? (((totalMentionsExtracted || 0) / collectedPostIds.length) * 100).toFixed(1) : '0'}%
-
-### Rate Limiting Performance
-${rateLimitMetrics && !rateLimitMetrics.error ? `- **Peak RPM Utilization**: ${rateLimitMetrics.rpm.utilizationPercent}% (${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})
-- **Peak TPM Utilization**: ${rateLimitMetrics.tpm.utilizationPercent}% (${rateLimitMetrics.tpm.current.toLocaleString()}/${(rateLimitMetrics.tpm.max/1000).toFixed(0)}K)
-- **System Bottleneck**: ${rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None detected' : rateLimitMetrics.optimization.currentBottleneck.toUpperCase()}
-- **Avg Tokens per Request**: ${rateLimitMetrics.tpm.avgTokensPerRequest}
-- **Reservation Accuracy**: ${rateLimitMetrics.reliability.avgAccuracyMs}ms avg deviation
-- **Reservation Success Rate**: ${rateLimitMetrics.reliability.successRate}%` : '- Rate limiting metrics unavailable'}
-
-### LLM Performance
-${llmMetrics ? `- **Total API Calls**: ${llmMetrics.requestCount}
-- **Average Response Time**: ${llmMetrics.averageResponseTime.toFixed(0)}ms
-- **Success Rate**: ${llmMetrics.successRate}%
-- **Total Tokens Processed**: ${llmMetrics.totalTokensUsed.toLocaleString()}
-- **Avg Tokens per Request**: ${llmMetrics.requestCount > 0 ? Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount) : 'N/A'}` : '- LLM metrics unavailable'}
-
-## System Optimization
-${rateLimitMetrics && !rateLimitMetrics.error ? `- **Utilization Status**: ${rateLimitMetrics.optimization.utilizationRoom > 20 ? `Underutilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : rateLimitMetrics.optimization.utilizationRoom < 5 ? `Near capacity (${rateLimitMetrics.optimization.utilizationRoom}% headroom)` : `Well-utilized (${rateLimitMetrics.optimization.utilizationRoom}% headroom)`}` : ''}
-- **Worker Configuration**: 16 workers (reduced from 24 to improve reliability)
-- **Cache Efficiency**: System instructions cached (saves ~2.7K tokens/request)
-- **Processing Mode**: Direct service execution
-
-## Architecture Validation
-✅ **Production Service Chain**: All services working together
-✅ **Event-Driven Scheduling**: Automatic next collection scheduling
-✅ **Database Integration**: Real Prisma service with timing calculations
-✅ **Rate Limiting**: Proper API rate limit handling with reservation-based coordination
-✅ **Batch Processing**: Optimized chunk processing with concurrent LLM calls
-
-## Performance Assessment
-${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom > 20 ? '🟡 **System is underutilized** - Consider increasing worker count or processing frequency' : ''}
-${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom < 5 ? '🔴 **System near capacity** - Consider optimizing or reducing load' : ''}
-${rateLimitMetrics && !rateLimitMetrics.error && rateLimitMetrics.optimization.utilizationRoom >= 5 && rateLimitMetrics.optimization.utilizationRoom <= 20 ? '🟢 **System well-optimized** - Good balance of throughput and headroom' : ''}
-
-## Next Steps
-1. **Production Deployment**: Architecture validated and ready
-2. **Monitoring Setup**: Track job completion and performance metrics
-3. **Scale Testing**: Test with multiple subreddits simultaneously
-
----
-*Generated by production pipeline test at ${new Date().toISOString()}*
-`;
+    
+    // Calculate comprehensive stats
+    const avgTimePerPost = collectedPostIds.length > 0 ? overallDuration / collectedPostIds.length : 0;
+    const postsPerSecond = collectedPostIds.length > 0 ? collectedPostIds.length / (overallDuration / 1000) : 0;
+    const mentionsPerPost = collectedPostIds.length > 0 ? (totalMentionsExtracted || 0) / collectedPostIds.length : 0;
+    
+    // Build structured results (revamped)
+    const headroom = parseFloat(process.env.LLM_RATE_HEADROOM || '0.95');
+    const perReqAgg = (() => {
+      try {
+        const smart = app.get(SmartLLMProcessor);
+        return smart.getAggregatedDiagnostics();
+      } catch {
+        return null;
+      }
+    })();
+    const structuredResults = {
+      testMetadata: {
+        testName: `Production Orchestration - ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Direct'} Mode`,
+        timestamp: new Date().toISOString(),
+        durationMs: overallDuration,
+        mode: TEST_MODE === 'bull' ? 'Bull Queue Simulation' : 'Direct Service',
+        subreddit: testSubreddit || 'foodnyc',
+        productionFidelity: true,
+        concurrency: isNaN(concurrencyCfg) ? 16 : concurrencyCfg,
+        headroom: isNaN(headroom) ? 0.95 : headroom,
+      },
+      throughput: {
+        posts: collectedPostIds.length,
+        mentions: totalMentionsExtracted || 0,
+        postsPerSecond: Number(postsPerSecond.toFixed(2)),
+        postsPerMinute: collectedPostIds.length > 0 ? Number((collectedPostIds.length / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
+        avgTimePerPostMs: Math.round(avgTimePerPost),
+        mentionsPerPost: collectedPostIds.length > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
+        extractionSuccessRate: collectedPostIds.length > 0 ? Number((((totalMentionsExtracted || 0) / collectedPostIds.length) * 100).toFixed(1)) : 0,
+      },
+      rateLimiting: rateLimitMetrics && !rateLimitMetrics.error ? {
+        rpm: {
+          current: rateLimitMetrics.rpm?.current,
+          safe: rateLimitMetrics.rpm?.safe,
+          utilizationPercent: rateLimitMetrics.rpm?.actualUtilizationPercent,
+        },
+        tpmInput: {
+          used: rateLimitMetrics.tpm?.current,
+          reserved: (rateLimitMetrics.tpm as any)?.reserved || 0,
+          windowTokens: (rateLimitMetrics.tpm as any)?.windowTokens || 0,
+          utilizationPercent: rateLimitMetrics.tpm?.utilizationPercent,
+          avgTokensPerRequest: rateLimitMetrics.tpm?.avgTokensPerRequest || 0,
+        },
+        reservations: {
+          avgAccuracyMs: rateLimitMetrics.reservations?.avgAccuracyMs || 0,
+          confirmationRate: rateLimitMetrics.reservations?.confirmationRate || 0,
+          confirmed: rateLimitMetrics.reservations?.confirmed || 0,
+          total: rateLimitMetrics.reservations?.total || 0,
+        },
+        bottleneck: rateLimitMetrics.optimization?.currentBottleneck || 'unknown',
+      } : null,
+      llmPerformance: llmMetrics ? {
+        totalCalls: llmMetrics.requestCount,
+        avgResponseTimeMs: Math.round(llmMetrics.averageResponseTime),
+        successRate: llmMetrics.successRate,
+        totalTokensProcessed: llmMetrics.totalTokensUsed,
+        avgTokensPerRequest: llmMetrics.requestCount > 0 ? Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount) : 0,
+      } : null,
+      perRequestAggregates: perReqAgg,
+      output: {
+        testMode: TEST_MODE,
+        rawMentionsSample: aggregatedRawMentions,
+      },
+    };
 
     const fs = await import('fs/promises');
-    const summaryPath = '/Users/brandonkimble/crave-search/apps/api/test-results-summary.md';
-    await fs.writeFile(summaryPath, summaryData);
-    console.log(`\n📄 Summary file generated: ${summaryPath}`);
+    // Write output JSON consistently to the API package logs directory
+    const resultsDir = path.resolve(__dirname, 'logs');
+    const resultsPath = path.join(resultsDir, 'test-pipeline-output.json');
+    await fs.mkdir(resultsDir, { recursive: true });
+    await fs.writeFile(resultsPath, JSON.stringify(structuredResults, null, 2));
+    console.log(`\nStructured results file: ${resultsPath}`);
 
     // Overall timing summary
     console.log(`\n⏰ OVERALL TEST TIMING:`);

@@ -58,16 +58,16 @@ ADD CONSTRAINT check_recent_mention_count_positive
 CHECK (recent_mention_count >= 0);
 
 ALTER TABLE connections 
-ADD CONSTRAINT check_dish_quality_score_range 
-CHECK (dish_quality_score >= 0 AND dish_quality_score <= 100);
+ADD CONSTRAINT check_food_quality_score_range 
+CHECK (food_quality_score >= 0 AND food_quality_score <= 100);
 
 ALTER TABLE connections 
 ADD CONSTRAINT check_categories_exist 
 CHECK (validate_entity_references(categories));
 
 ALTER TABLE connections 
-ADD CONSTRAINT check_dish_attributes_exist 
-CHECK (validate_entity_references(dish_attributes));
+ADD CONSTRAINT check_food_attributes_exist 
+CHECK (validate_entity_references(food_attributes));
 
 -- Note: Entity type relationship validation will be enforced through foreign key constraints
 -- and application-level validation, as PostgreSQL doesn't support subqueries in check constraints
@@ -113,8 +113,8 @@ COMMENT ON CONSTRAINT check_location_consistency ON entities IS 'Ensures latitud
 COMMENT ON CONSTRAINT check_restaurant_specific_fields ON entities IS 'Ensures location/address fields only populated for restaurant entities';
 COMMENT ON CONSTRAINT check_restaurant_attributes_exist ON entities IS 'Validates all restaurant attribute UUIDs reference existing entities';
 COMMENT ON CONSTRAINT check_mention_count_positive ON connections IS 'Ensures mention counts are non-negative';
-COMMENT ON CONSTRAINT check_dish_quality_score_range ON connections IS 'Ensures dish quality scores are within valid 0-100 range';
-COMMENT ON CONSTRAINT check_categories_exist ON connections IS 'Validates all category UUIDs reference existing dish_or_category entities';
-COMMENT ON CONSTRAINT check_dish_attributes_exist ON connections IS 'Validates all dish attribute UUIDs reference existing dish_attribute entities';
+COMMENT ON CONSTRAINT check_food_quality_score_range ON connections IS 'Ensures food quality scores are within valid 0-100 range';
+COMMENT ON CONSTRAINT check_categories_exist ON connections IS 'Validates all category UUIDs reference existing food entities';
+COMMENT ON CONSTRAINT check_food_attributes_exist ON connections IS 'Validates all food attribute UUIDs reference existing food_attribute entities';
 -- Entity type relationship validation comment removed due to constraint removal
 COMMENT ON FUNCTION validate_entity_references(UUID[]) IS 'Validates that all UUIDs in array reference existing entities';

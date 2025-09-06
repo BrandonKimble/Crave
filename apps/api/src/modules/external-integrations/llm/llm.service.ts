@@ -179,12 +179,12 @@ export class LLMService implements OnModuleInit {
       );
 
       // Fallback to basic prompt if file cannot be loaded
-      return `You are an expert entity extraction system for a food discovery app. Your task is to extract structured information about restaurants, dishes, and attributes from Reddit food community content.
+      return `You are an expert entity extraction system for a food discovery app. Your task is to extract structured information about restaurants, food, and attributes from Reddit food community content.
 
 EXTRACTION GUIDELINES:
 1. Only process content with positive sentiment about food/restaurant quality
-2. Extract entities: restaurants, dishes/categories, dish attributes, restaurant attributes
-3. Apply context-dependent attribute scoping (dish vs restaurant)
+2. Extract entities: restaurants, food/categories, food attributes, restaurant attributes
+3. Apply context-dependent attribute scoping (food vs restaurant)
 4. Use hierarchical category decomposition for food terms
 5. Set is_menu_item based on specificity and context
 6. Mark general_praise for holistic restaurant praise
@@ -226,6 +226,16 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       const prompt = this.buildProcessingPrompt(input);
       const response = await this.callLLMApi(prompt);
       const parsed = this.parseResponse(response);
+      // Attach usage metadata to parsed output for downstream TPM tracking
+      try {
+        Object.defineProperty(parsed as any, 'usageMetadata', {
+          value: response.usageMetadata || null,
+          enumerable: false,
+          writable: false,
+        });
+      } catch (_) {
+        // Non-fatal if property cannot be defined
+      }
 
       const responseTime = Date.now() - startTime;
       this.recordSuccessMetrics(
@@ -293,7 +303,30 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
 
     // Return only the data - system instructions are now cached separately
-    return JSON.stringify({ posts: validPosts }, null, 2);
+    const promptData = JSON.stringify({ posts: validPosts }, null, 2);
+    
+    // DEBUG LOGGING: Track input size for massive token generation issue
+    const totalComments = validPosts.reduce((sum, post) => sum + (post.comments?.length || 0), 0);
+    const avgCommentLength = validPosts.reduce((sum, post) => {
+      const commentText = post.comments?.map(c => (c.content || '').length).reduce((a, b) => a + b, 0) || 0;
+      return sum + commentText;
+    }, 0) / Math.max(totalComments, 1);
+    
+    this.logger.info('🔍 INPUT SIZE DEBUG - LLM prompt built', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'build_processing_prompt',
+      inputStats: {
+        postsCount: validPosts.length,
+        totalComments,
+        promptCharacters: promptData.length,
+        avgCommentLength: Math.round(avgCommentLength),
+        postIds: validPosts.map(p => p.id),
+        commentCounts: validPosts.map(p => p.comments?.length || 0)
+      },
+      warning: totalComments > 50 ? 'HIGH_COMMENT_COUNT' : 'NORMAL'
+    });
+    
+    return promptData;
   }
 
   /**
@@ -310,16 +343,16 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       responseSchema: {
         type: 'object',
         description:
-          'Restaurant and dish mentions extracted from Reddit content',
+          'Restaurant and food mentions extracted from Reddit content',
         properties: {
           mentions: {
             type: 'array',
             description:
-              'Array of restaurant/dish mentions with entity details',
+              'Array of restaurant/food mentions with entity details',
             items: {
               type: 'object',
               description:
-                'Single mention of restaurant or dish with complete metadata',
+                'Single mention of restaurant or food with complete metadata',
               properties: {
                 // Core identifiers (shortened names for complexity reduction)
                 temp_id: {
@@ -389,7 +422,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 general_praise: {
                   type: 'boolean',
                   description:
-                    'True if mention contains holistic restaurant praise, regardless of specific dish praise',
+                    'True if mention contains holistic restaurant praise, regardless of specific food praise',
                 },
 
                 // Source metadata (all required)
@@ -402,11 +435,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   type: 'string',
                   description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
                 },
-                source_content: {
-                  type: 'string',
-                  description:
-                    'Complete source text content being analyzed for entity extraction',
-                },
+                // Removed source_content from schema to prevent the model from echoing long texts
                 source_ups: {
                   type: 'number',
                   minimum: 0,
@@ -429,7 +458,24 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 'general_praise',
                 'source_type',
                 'source_id',
-                'source_content',
+                'source_ups',
+                'source_url',
+                'source_created_at',
+              ],
+              propertyOrdering: [
+                'temp_id',
+                'restaurant_temp_id',
+                'restaurant_name',
+                'restaurant_attributes',
+                'food_temp_id',
+                'food_name',
+                'food_categories',
+                'is_menu_item',
+                'food_attributes_selective',
+                'food_attributes_descriptive',
+                'general_praise',
+                'source_type',
+                'source_id',
                 'source_ups',
                 'source_url',
                 'source_created_at',
@@ -438,6 +484,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           },
         },
         required: ['mentions'],
+        propertyOrdering: ['mentions'],
       },
       // Always include thinkingConfig for explicit control (Google's recommended approach)
       thinkingConfig: {
@@ -485,6 +532,50 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         config: requestConfig,
       });
 
+      const finishReason = response.candidates?.[0]?.finishReason;
+      const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
+      const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+
+      // Enhanced logging for token limit issues
+      if (finishReason === 'MAX_TOKENS') {
+        this.logger.warn('🚨 TOKEN LIMIT HIT - Response truncated!', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'call_llm_api',
+          finishReason,
+          outputTokens,
+          totalTokens: tokensUsed,
+          tokenLimit: 65536,
+          contentLength:
+            response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+          warning:
+            'JSON response may be incomplete - chunk too large for processing',
+        });
+      }
+      
+      // DEBUG LOGGING: Track response size for massive token generation issue
+      const contentLength = response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0;
+      const outputTokenCount = outputTokens || 0;
+      
+      if (outputTokenCount > 20000 || contentLength > 30000) {
+        this.logger.warn('🔍 MASSIVE RESPONSE DEBUG - Unexpectedly large LLM output', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'call_llm_api',
+          responseAnalysis: {
+            outputTokens: outputTokenCount,
+            contentLength,
+            tokensPerChar: contentLength > 0 ? (outputTokenCount / contentLength).toFixed(3) : 'N/A',
+            promptLength: prompt.length,
+            inputToOutputRatio: prompt.length > 0 ? (contentLength / prompt.length).toFixed(2) : 'N/A',
+          },
+          flags: {
+            isTokenLimit: finishReason === 'MAX_TOKENS',
+            isMassiveOutput: outputTokenCount > 50000,
+            isHugeContent: contentLength > 50000
+          },
+          responsePreview: response.candidates?.[0]?.content?.parts?.[0]?.text || 'NO_CONTENT'
+        });
+      }
+
       this.logger.info('LLM API response received via @google/genai', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'call_llm_api',
@@ -492,7 +583,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         hasContent: !!response.candidates?.[0]?.content?.parts?.[0]?.text,
         contentLength:
           response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
-        finishReason: response.candidates?.[0]?.finishReason,
+        finishReason,
         safetyRatings: response.candidates?.[0]?.safetyRatings,
         usageMetadata: response.usageMetadata,
         usingExplicitCache: !!this.systemInstructionCache,
@@ -656,8 +747,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
             ? parsed.mentions.map((m) => ({
                 temp_id: m.temp_id,
                 restaurant: m.restaurant_name,
-                dish: m.food_name,
-                dish_categories: m.food_categories,
+                food: m.food_name,
+                food_categories: m.food_categories,
               }))
             : [],
       });
@@ -672,6 +763,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
   }
+
+  
 
   /**
    * Test Gemini connectivity and authentication

@@ -16,14 +16,14 @@ async function main() {
   // 2. Create restaurant entities with Austin food scene data
   const restaurants = await createRestaurantEntities();
 
-  // 3. Create dish/category entities with realistic food items
-  const dishes = await createDishEntities();
+  // 3. Create food/category entities with realistic food items
+  const food = await createFoodEntities();
 
-  // 4. Create attribute entities (both dish and restaurant scoped)
+  // 4. Create attribute entities (both food and restaurant scoped)
   const attributes = await createAttributeEntities();
 
   // 5. Establish connections with quality scores and mentions
-  await createConnections(restaurants, dishes, attributes);
+  await createConnections(restaurants, food, attributes);
 
   // 6. Validate data integrity and relationships
   await validateDataIntegrity();
@@ -112,12 +112,12 @@ async function createRestaurantEntities() {
             data.name.includes('Barbecue') || data.name.includes('BBQ')
               ? 'BBQ'
               : data.name.includes('Ramen')
-              ? 'Japanese'
-              : data.name.includes('Tacos')
-              ? 'Mexican'
-              : data.name.includes('Uchi')
-              ? 'Japanese'
-              : 'American',
+                ? 'Japanese'
+                : data.name.includes('Tacos')
+                  ? 'Mexican'
+                  : data.name.includes('Uchi')
+                    ? 'Japanese'
+                    : 'American',
         },
       },
     });
@@ -128,11 +128,11 @@ async function createRestaurantEntities() {
   return restaurants;
 }
 
-async function createDishEntities() {
-  console.log('🍜 Creating dish/category entities...');
+async function createFoodEntities() {
+  console.log('🍜 Creating food/category entities...');
 
-  const dishData = [
-    // Specific dishes
+  const foodData = [
+    // Specific food
     {
       name: 'Brisket',
       aliases: ['Texas Brisket', 'Smoked Brisket', 'BBQ Brisket'],
@@ -163,66 +163,66 @@ async function createDishEntities() {
     { name: 'Mexican', aliases: ['Mexican Cuisine', 'Tex-Mex'] },
   ];
 
-  const dishes: any[] = [];
+  const food: any[] = [];
 
-  for (const data of dishData) {
-    const dish = await prisma.entity.create({
+  for (const data of foodData) {
+    const foodEntity = await prisma.entity.create({
       data: {
         name: data.name,
-        type: EntityType.dish_or_category,
+        type: EntityType.food,
         aliases: data.aliases,
       },
     });
-    dishes.push(dish);
+    food.push(foodEntity);
   }
 
-  console.log(`✅ Created ${dishes.length} dish/category entities`);
-  return dishes;
+  console.log(`✅ Created ${food.length} food/category entities`);
+  return food;
 }
 
 async function createAttributeEntities() {
   console.log('🏷️ Creating attribute entities...');
 
   const attributeData = [
-    // Dish attributes
+    // Food attributes
     {
       name: 'Spicy',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Hot', 'Fiery', 'Spiced'],
     },
     {
       name: 'Smoky',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Smoked', 'Wood-fired'],
     },
     {
       name: 'Tender',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Soft', 'Juicy', 'Moist'],
     },
     {
       name: 'Crispy',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Crunchy', 'Crisp'],
     },
     {
       name: 'Rich',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Heavy', 'Indulgent'],
     },
     {
       name: 'Fresh',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Light', 'Clean-tasting'],
     },
     {
       name: 'Vegan',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['Plant-based', 'Dairy-free'],
     },
     {
       name: 'Gluten-free',
-      type: EntityType.dish_attribute,
+      type: EntityType.food_attribute,
       aliases: ['GF', 'No gluten'],
     },
 
@@ -283,7 +283,7 @@ async function createAttributeEntities() {
 
 async function createConnections(
   restaurants: any[],
-  dishes: any[],
+  food: any[],
   attributes: any[],
 ) {
   console.log('🔗 Creating connections with mentions...');
@@ -292,14 +292,14 @@ async function createConnections(
   const findEntity = (entities: any[], name: string): any =>
     entities.find((e: any) => e.name === name);
 
-  const getDishAttributes = (attributeNames: string[]): string[] =>
+  const getFoodAttributes = (attributeNames: string[]): string[] =>
     attributeNames
       .map((name) => findEntity(attributes, name)?.entityId)
       .filter((id): id is string => Boolean(id));
 
   const getCategories = (categoryNames: string[]): string[] =>
     categoryNames
-      .map((name) => findEntity(dishes, name)?.entityId)
+      .map((name) => findEntity(food, name)?.entityId)
       .filter((id): id is string => Boolean(id));
 
   // Connection data with realistic Austin food scene relationships
@@ -307,13 +307,13 @@ async function createConnections(
     // Franklin Barbecue connections
     {
       restaurant: 'Franklin Barbecue',
-      dish: 'Brisket',
+      food: 'Brisket',
       categories: ['BBQ'],
-      dishAttributes: ['Smoky', 'Tender'],
+      foodAttributes: ['Smoky', 'Tender'],
       isMenuItem: true,
       mentionCount: 89,
       totalUpvotes: 1247,
-      dishQualityScore: 9.8,
+      foodQualityScore: 9.8,
       activityLevel: ActivityLevel.trending,
       sampleMentions: [
         {
@@ -330,13 +330,13 @@ async function createConnections(
     },
     {
       restaurant: 'Franklin Barbecue',
-      dish: 'Pork Ribs',
+      food: 'Pork Ribs',
       categories: ['BBQ'],
-      dishAttributes: ['Smoky', 'Tender'],
+      foodAttributes: ['Smoky', 'Tender'],
       isMenuItem: true,
       mentionCount: 34,
       totalUpvotes: 421,
-      dishQualityScore: 9.1,
+      foodQualityScore: 9.1,
       activityLevel: ActivityLevel.active,
       sampleMentions: [],
     },
@@ -344,13 +344,13 @@ async function createConnections(
     // Ramen Tatsu-Ya connections
     {
       restaurant: 'Ramen Tatsu-Ya',
-      dish: 'Tonkotsu Ramen',
+      food: 'Tonkotsu Ramen',
       categories: ['Ramen', 'Japanese'],
-      dishAttributes: ['Rich', 'Tender'],
+      foodAttributes: ['Rich', 'Tender'],
       isMenuItem: true,
       mentionCount: 67,
       totalUpvotes: 892,
-      dishQualityScore: 8.9,
+      foodQualityScore: 8.9,
       activityLevel: ActivityLevel.trending,
       sampleMentions: [
         {
@@ -368,13 +368,13 @@ async function createConnections(
     // Torchy's Tacos connections
     {
       restaurant: "Torchy's Tacos",
-      dish: 'Trailer Park Taco',
+      food: 'Trailer Park Taco',
       categories: ['Tacos', 'Mexican'],
-      dishAttributes: ['Crispy', 'Spicy'],
+      foodAttributes: ['Crispy', 'Spicy'],
       isMenuItem: true,
       mentionCount: 123,
       totalUpvotes: 1456,
-      dishQualityScore: 8.4,
+      foodQualityScore: 8.4,
       activityLevel: ActivityLevel.trending,
       sampleMentions: [],
     },
@@ -382,13 +382,13 @@ async function createConnections(
     // Uchi connections
     {
       restaurant: 'Uchi',
-      dish: 'Hama Chili',
+      food: 'Hama Chili',
       categories: ['Sushi', 'Japanese'],
-      dishAttributes: ['Fresh', 'Spicy'],
+      foodAttributes: ['Fresh', 'Spicy'],
       isMenuItem: true,
       mentionCount: 45,
       totalUpvotes: 623,
-      dishQualityScore: 9.3,
+      foodQualityScore: 9.3,
       activityLevel: ActivityLevel.active,
       sampleMentions: [],
     },
@@ -399,11 +399,11 @@ async function createConnections(
 
   for (const data of connectionData) {
     const restaurant = findEntity(restaurants, data.restaurant);
-    const dish = findEntity(dishes, data.dish);
+    const foodEntity = findEntity(food, data.food);
 
-    if (!restaurant || !dish) {
+    if (!restaurant || !foodEntity) {
       console.warn(
-        `Skipping connection: ${data.restaurant} -> ${data.dish} (entities not found)`,
+        `Skipping connection: ${data.restaurant} -> ${data.food} (entities not found)`,
       );
       continue;
     }
@@ -411,13 +411,13 @@ async function createConnections(
     const connection = await prisma.connection.create({
       data: {
         restaurantId: restaurant.entityId,
-        dishOrCategoryId: dish.entityId,
+        foodId: foodEntity.entityId,
         categories: getCategories(data.categories),
-        dishAttributes: getDishAttributes(data.dishAttributes),
+        foodAttributes: getFoodAttributes(data.foodAttributes),
         isMenuItem: data.isMenuItem,
         mentionCount: data.mentionCount,
         totalUpvotes: data.totalUpvotes,
-        dishQualityScore: data.dishQualityScore,
+        foodQualityScore: data.foodQualityScore,
         activityLevel: data.activityLevel,
         lastMentionedAt: new Date(),
         topMentions: data.sampleMentions,
@@ -460,7 +460,7 @@ async function validateDataIntegrity() {
   const orphanedConnections = await prisma.$queryRaw`
     SELECT COUNT(*) as count FROM connections c
     LEFT JOIN entities r ON c.restaurant_id = r.entity_id
-    LEFT JOIN entities d ON c.dish_or_category_id = d.entity_id
+    LEFT JOIN entities d ON c.food_id = d.entity_id
     WHERE r.entity_id IS NULL OR d.entity_id IS NULL;
   `;
 
@@ -471,10 +471,10 @@ async function validateDataIntegrity() {
     WHERE r.type != 'restaurant';
   `;
 
-  const invalidDishConnections = await prisma.$queryRaw`
+  const invalidFoodConnections = await prisma.$queryRaw`
     SELECT COUNT(*) as count FROM connections c
-    JOIN entities d ON c.dish_or_category_id = d.entity_id
-    WHERE d.type != 'dish_or_category';
+    JOIN entities d ON c.food_id = d.entity_id
+    WHERE d.type != 'food';
   `;
 
   // Count final data
@@ -498,13 +498,13 @@ async function validateDataIntegrity() {
   const invalidRestaurantCount = Number(
     (invalidRestaurantConnections as any)[0]?.count || 0,
   );
-  const invalidDishCount = Number(
-    (invalidDishConnections as any)[0]?.count || 0,
+  const invalidFoodCount = Number(
+    (invalidFoodConnections as any)[0]?.count || 0,
   );
 
-  if (orphanCount > 0 || invalidRestaurantCount > 0 || invalidDishCount > 0) {
+  if (orphanCount > 0 || invalidRestaurantCount > 0 || invalidFoodCount > 0) {
     throw new Error(
-      `Data integrity issues found: ${orphanCount} orphaned connections, ${invalidRestaurantCount} invalid restaurant connections, ${invalidDishCount} invalid dish connections`,
+      `Data integrity issues found: ${orphanCount} orphaned connections, ${invalidRestaurantCount} invalid restaurant connections, ${invalidFoodCount} invalid food connections`,
     );
   }
 

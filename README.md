@@ -148,8 +148,8 @@ pnpm build                    # Build all apps
 ### Database Schema
 
 Core tables:
-- `entities`: Unified storage for restaurants, dishes, categories, attributes
-- `connections`: Relationships between restaurants and dishes with quality scores
+- `entities`: Unified storage for restaurants, food, categories, attributes
+- `connections`: Relationships between restaurants and food with quality scores
 - `mentions`: Reddit community evidence with attribution
 
 ### Mobile (apps/mobile)

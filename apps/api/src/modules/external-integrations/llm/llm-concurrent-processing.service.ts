@@ -56,7 +56,7 @@ export interface ProcessingResult {
 export class LLMConcurrentProcessingService implements OnModuleInit {
   private logger!: LoggerService;
   private limit!: ReturnType<typeof pLimit>;
-  private readonly concurrencyLimit: number = 16; // Reduced from 24 to avoid rate limiting issues
+  private concurrencyLimit: number = 16; // default; can be overridden by CONCURRENCY env
   private readonly delayStrategy: 'none' | 'linear' = 'none'; // Simplified - no artificial delays
   private readonly delayMs: number = 0; // No delays - SmartLLMProcessor handles timing
 
@@ -68,6 +68,10 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
   onModuleInit() {
     this.logger = this.loggerService.setContext('LlmConcurrentProcessing');
+    const envConc = parseInt(process.env.CONCURRENCY || '', 10);
+    if (!isNaN(envConc) && envConc > 0) {
+      this.concurrencyLimit = envConc;
+    }
     this.limit = pLimit(this.concurrencyLimit);
 
     this.logger.info('LLM Concurrent Processing Service initialized', {
@@ -158,7 +162,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         const chunkStart = Date.now();
         const meta = metadata[index];
 
-        this.logger.debug('Starting chunk processing', {
+        this.logger.info('Starting chunk processing', {
           correlationId: CorrelationUtils.getCorrelationId(),
           chunkId: meta.chunkId,
           position: index + 1,
@@ -166,6 +170,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           commentCount: meta.commentCount,
           rootScore: meta.rootCommentScore,
           estimatedTime: meta.estimatedProcessingTime,
+          chunkSize: `${meta.commentCount} comments`,
         });
 
         try {
@@ -181,7 +186,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           // Validate all vital fields are present
           this.validateOutputStructure(result, meta.chunkId);
 
-          this.logger.debug('Chunk processing completed', {
+          this.logger.info('Chunk processing completed', {
             correlationId: CorrelationUtils.getCorrelationId(),
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,

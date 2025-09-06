@@ -173,7 +173,7 @@ export class AliasManagementService implements OnModuleInit {
 
   /**
    * Check for scope violations based on entity type
-   * PRD Section 4.2.2 - Separate entities by scope (dish vs restaurant attributes)
+   * PRD Section 4.2.2 - Separate entities by scope (food vs restaurant attributes)
    */
   private checkScopeViolation(
     alias: string,
@@ -184,7 +184,7 @@ export class AliasManagementService implements OnModuleInit {
 
     const lowercaseAlias = alias.toLowerCase().trim();
 
-    // Restaurant-specific terms that shouldn't be in dish attributes
+    // Restaurant-specific terms that shouldn't be in food attributes
     const restaurantTerms = [
       'patio',
       'romantic',
@@ -197,8 +197,8 @@ export class AliasManagementService implements OnModuleInit {
       'fast casual',
     ];
 
-    // Dish-specific terms that shouldn't be in restaurant attributes
-    const dishTerms = [
+    // Food-specific terms that shouldn't be in restaurant attributes
+    const foodTerms = [
       'spicy',
       'mild',
       'crispy',
@@ -211,20 +211,20 @@ export class AliasManagementService implements OnModuleInit {
     ];
 
     switch (entityType) {
-      case 'dish_attribute':
+      case 'food_attribute':
         if (restaurantTerms.some((term) => lowercaseAlias.includes(term))) {
-          return `Restaurant-specific term "${alias}" not allowed in dish_attribute`;
+          return `Restaurant-specific term "${alias}" not allowed in food_attribute`;
         }
         break;
 
       case 'restaurant_attribute':
-        if (dishTerms.some((term) => lowercaseAlias.includes(term))) {
-          return `Dish-specific term "${alias}" not allowed in restaurant_attribute`;
+        if (foodTerms.some((term) => lowercaseAlias.includes(term))) {
+          return `Food-specific term "${alias}" not allowed in restaurant_attribute`;
         }
         break;
 
       case 'restaurant':
-      case 'dish_or_category':
+      case 'food':
         // No cross-scope restrictions for main entity types
         break;
 

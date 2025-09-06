@@ -8,7 +8,7 @@
  * Core responsibilities:
  * 1. Process pre-extracted LLM mentions and source metadata
  * 2. Entity resolution and database updates via consolidated transactions
- * 3. Component processing logic (dish, category, attribute, praise handling)
+ * 3. Component processing logic (food, category, attribute, praise handling)
  * 4. Quality score updates for affected connections
  */
 
@@ -366,12 +366,12 @@ export class UnifiedProcessingService implements OnModuleInit {
           });
         }
 
-        // Food entity (dish or category)
+        // Food entity (food or category)
         if (mention.food_name && mention.food_temp_id) {
           entities.push({
             normalizedName: mention.food_name,
             originalText: mention.food_name, // Using normalized as original
-            entityType: 'dish_or_category' as const,
+            entityType: 'food' as const,
             tempId: mention.food_temp_id,
           });
         }
@@ -383,7 +383,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               entities.push({
                 normalizedName: category,
                 originalText: category,
-                entityType: 'dish_or_category' as const,
+                entityType: 'food' as const,
                 tempId: uuidv4(),
               });
             }
@@ -400,7 +400,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
-                entityType: 'dish_attribute' as const,
+                entityType: 'food_attribute' as const,
                 tempId: `food_attr_selective_${attr}_${mention.temp_id}`, // FIXED: Predictable temp_id
               });
             }
@@ -417,7 +417,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
-                entityType: 'dish_attribute' as const,
+                entityType: 'food_attribute' as const,
                 tempId: `food_attr_descriptive_${attr}_${mention.temp_id}`, // FIXED: Predictable temp_id
               });
             }
@@ -838,7 +838,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         sourceId: mention.source_id,
         sourceUrl: mention.source_url,
         subreddit: mention.subreddit || subredditFallback || 'unknown',
-        contentExcerpt: mention.source_content.substring(0, 500), // Truncate for excerpt
+        contentExcerpt: (mention.source_content || '').substring(0, 500), // Truncate for excerpt
         author: mention.author || null,
         upvotes: mention.source_ups,
         createdAt: mentionCreatedAt,
@@ -934,7 +934,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           // Always use food_attribute_processing for consistent handling
           // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
           // The handler will check for existing connections and decide whether to boost or create
-          const dishAttributeOperation = {
+          const foodAttributeOperation = {
             type: 'food_attribute_processing',
             restaurantEntityId,
             foodEntityId: foodEntityId,
@@ -949,9 +949,9 @@ export class UnifiedProcessingService implements OnModuleInit {
             mentionData: mentionData, // Include mention data for creation
             allowCreate: true, // Component 4 always allows creation of new connections
           };
-          connectionOperations.push(dishAttributeOperation);
+          connectionOperations.push(foodAttributeOperation);
 
-          this.logger.debug('Component 4: Specific dish processing queued', {
+          this.logger.debug('Component 4: Specific food processing queued', {
             batchId,
             restaurantEntityId,
             foodEntityId: foodEntityId,
@@ -1487,7 +1487,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         );
       } else {
         // No attributes: Simple food connection - find or create
-        affectedConnectionIds = await this.handleSimpleDishConnection(
+        affectedConnectionIds = await this.handleSimpleFoodConnection(
           tx,
           operation,
           batchId,
@@ -1496,7 +1496,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       return affectedConnectionIds;
     } catch (error) {
-      this.logger.error('Failed to handle dish attribute processing', {
+      this.logger.error('Failed to handle food attribute processing', {
         batchId,
         operation,
         error: error instanceof Error ? error.message : String(error),
@@ -1506,10 +1506,10 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Handle Simple Dish Connection without attributes (PRD 6.5.2)
+   * Handle Simple Food Connection without attributes (PRD 6.5.2)
    * Find or create restaurant→food connection and boost it
    */
-  private async handleSimpleDishConnection(
+  private async handleSimpleFoodConnection(
     tx: any,
     operation: any,
     batchId: string,
@@ -1549,7 +1549,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           lastMentionedAt: operation.mentionCreatedAt,
           activityLevel: operation.activityLevel,
           topMentions: [],
-          dishQualityScore: operation.upvotes * 0.1,
+          foodQualityScore: operation.upvotes * 0.1,
           lastUpdated: new Date(),
           createdAt: new Date(),
         },
@@ -1588,7 +1588,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       operation.selectiveAttributes.length === 0
     ) {
       this.logger.debug(
-        'No selective attributes for dish processing - creating new connection',
+        'No selective attributes for food processing - creating new connection',
         { batchId },
       );
       return await this.createNewFoodConnection(tx, operation, []);
@@ -1821,7 +1821,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         lastMentionedAt: operation.mentionCreatedAt,
         activityLevel: operation.activityLevel,
         topMentions: [],
-        dishQualityScore: operation.upvotes * 0.1,
+        foodQualityScore: operation.upvotes * 0.1,
         lastUpdated: new Date(),
         createdAt: new Date(),
       },

@@ -1,34 +1,91 @@
 # Crave App: Comprehensive System Design & Implementation Guide
 
-## Section 1: LLM Context & Processing Guidelines
+## Central Entity Extraction & Processing Guide
 
-_These sections function together as a logical processing flow for the LLM: first establishing data structures, then classification frameworks and processing rules, then providing step-by-step extraction and processing instructions._
+**CRITICAL: Follow this step-by-step processing flow to extract entities systematically, referencing the appropriate section for each step.**
 
-### 1.1 Core Comment & Post Processing Criteria
+### Step 1: Initial Content Assessment → Use Section 1
+- Apply **Core Comment & Post Processing Criteria** (Section 1) to determine if content should be processed
+- **Entity Inheritance:** Check if entities can be inherited from parent comment/post when connection is unambiguous
+- **Short Affirmations:** Handle "+1", "seconded", "this", "agreed" by automatically inheriting all entities and sentiment from parent
+- **General Praise Identification:** Determine if mention contains holistic restaurant praise
 
-#### Post Extraction Control
+### Step 2: Entity Identification & Classification → Use Section 2
+- Extract restaurant mentions (explicit or contextually inferred)
+- Apply **Entity Types & Classification Rules** (Section 2) to identify:
+  - Which terms are food entities (food nouns)
+  - Which terms are food_attributes based on context (preparation, cuisine when applied to food, etc.)
+  - Which terms are restaurant_attributes based on context (ambiance, features, cuisine when applied to restaurants, etc.)
+- **Context-dependent attributes**: Determine scope based on usage
+
+### Step 3: Food Term Processing → Use Section 3
+- Apply **Compound Term Processing Rules** (Section 3):
+  - Exclude attribute terms identified in Step 2
+  - Apply hierarchical decomposition to remaining food substance terms
+  - Create parent-child category relationships
+
+### Step 4: Menu Item Classification → Use Section 4
+- Apply **Menu Item Identification Rules** (Section 4) to determine is_menu_item flag
+- Apply **Selective vs Descriptive Classification** for attributes
+
+### Step 5: Name Normalization & Output
+- Convert to lowercase canonical forms
+- Remove unnecessary articles (the, a, an)
+- Standardize punctuation and spacing
+- Fix obvious typos if detected
+
+
+#### Key Processing Example
+
+**Example for "The house-made spicy Nashville hot chicken sandwich is amazing":**
+
+```json
+{
+  "temp_id": "mention_1",
+  "restaurant_temp_id": "rest_1", 
+  "restaurant_name": "inferred_restaurant_name_here",
+  "food_temp_id": "food_1",
+  "food_name": "nashville hot chicken sandwich",
+  "food_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
+  "is_menu_item": true,
+  "food_attributes_selective": ["spicy"],
+  "food_attributes_descriptive": ["nashville", "house-made"],
+  "restaurant_attributes": null,
+  "general_praise": false,
+  "source_type": "comment",
+  "source_id": "t1_abc123",
+  "source_content": "The house-made spicy Nashville hot chicken sandwich is amazing",
+  "source_ups": 42,
+  "source_url": "/r/food/comments/...",
+  "source_created_at": "2024-01-15T10:30:00Z"
+}
+```
+
+## Section 1: Core Comment & Post Processing Criteria
+
+### Post Extraction Control
 
 **CRITICAL RULE - MUST BE FOLLOWED**: Check the `extract_from_post` flag in each input:
 - If `extract_from_post: true` → Extract entities from both the post content AND comments
 - If `extract_from_post: false` → **DO NOT EXTRACT ANY ENTITIES FROM THE POST CONTENT** - Extract entities ONLY from comments
 - The post is always provided for context to understand references in comments
-- **IMPORTANT**: When `extract_from_post: false`, even if the post mentions restaurants and dishes, you MUST NOT create mentions from the post content itself - only use it as context for understanding comment references
+- **IMPORTANT**: When `extract_from_post: false`, even if the post mentions restaurants and food, you MUST NOT create mentions from the post content itself - only use it as context for understanding comment references
 
-#### Entity Inheritance Principle
+### Entity Inheritance Principle
 
-Comments may inherit entities (restaurants, dishes, attributes) from parent comment/post when connection is unambiguous. Short affirmations ("+1", "seconded", "this", "agreed", etc.) automatically inherit all entities and sentiment from the parent comment.
+Comments may inherit entities (restaurants, food , attributes) from parent comment/post when connection is unambiguous. Short affirmations ("+1", "seconded", "this", "agreed", etc.) automatically inherit all entities and sentiment from the parent comment.
 
-#### Core Processing Criteria - Process ONLY When ALL Are Met
+### Core Processing Criteria - Process ONLY When ALL Are Met
 
 1. **Sentiment Criterion:** Content expresses or affirms positive sentiment about food/restaurant quality from first-hand experience (having personally visited, eaten, or tasted)
 2. **Entity Criterion:** Content can be linked to:
    - Restaurant entity AND EITHER:
-     - Dish/category entity, OR
+     - Food entity, OR
      - Restaurant attribute, OR
      - Clear general praise for the restaurant
 3. **Relevance Criterion:** Content appears to describe current offerings
 
-#### Skip Conditions (Overrides All Other Rules)
+### Skip Conditions (Overrides All Other Rules)
 
 - Content fails to meet ANY of the core requirements above
 - Focused exclusively on non-food/restaurant aspects  
@@ -36,7 +93,7 @@ Comments may inherit entities (restaurants, dishes, attributes) from parent comm
 - Any request for recommendations, suggestions, or opinions from others
 - Secondhand information or hearsay
 
-#### General Praise Identification
+### General Praise Identification
 
 **General Praise (general_praise: true):**
 Set to true when mention contains any holistic restaurant praise, regardless of whether it also contains specific praise.
@@ -47,26 +104,26 @@ Examples:
 - "Franklin BBQ is amazing and their brisket is great" → true
 - "Their brisket is great" → false
 
-#### Context and Entity Inference Note
+### Context and Entity Inference Note
 
 **For posts/comments that don't contain directly processable information:** Even if content doesn't meet the core processing criteria, it can still provide valuable context for entity inheritance, restaurant identification, or setting up context for subsequent comments in the thread.
 
-### 1.2 Entity Types & Classification Rules
+## Section 2: Entity Types & Classification Rules
 
-#### Entity Types
+### Entity Types
 
 - **restaurant**: Physical dining establishments
-- **dish_or_category**: Food items that can serve as both specific menu items and general categories
-- **dish_attribute**: Descriptive terms that apply to dishes (connection-scoped)
+- **food**: Food items that can serve as both specific menu items and general categories
+- **food_attribute**: Descriptive terms that apply to food items (connection-scoped)
 - **restaurant_attribute**: Descriptive terms that apply to restaurants (restaurant-scoped)
 
-#### Context-Driven Attribute Classification
+### Context-Driven Attribute Classification
 
-**ONLY dish types can be categories:**
+**ONLY food types can be categories:**
 
 - Nouns representing food items: pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert
 
-**Primarily dish-scoped attributes:**
+**Primarily food-scoped attributes:**
 
 - **Preparation methods**: grilled, fried, crispy, raw, smoked, house-made, steamed, baked, roasted
 - **Texture/consistency**: tender, juicy, flaky, smooth, chunky, crisp, creamy
@@ -91,37 +148,36 @@ Examples:
 - **Occasion**: comfort food, celebration, special occasion, happy hour, daily specials, weekend specials
 - **Service quality**: friendly, attentive, quick service, great service
 
-**Scope Determination Principle**: The same attribute concept (e.g., "Italian") exists as separate entities based on context - "Italian pasta" creates a dish_attribute entity, while "Italian restaurant" creates a restaurant_attribute entity.
+**Scope Determination Principle**: The same attribute concept (e.g., "Italian") exists as separate entities based on context - "Italian pasta" creates a food_attribute entity, while "Italian restaurant" creates a restaurant_attribute entity.
 
-#### Selective vs Descriptive Classification
+### Selective vs Descriptive Classification
 
 **Selective attributes:** Help filter or categorize options
 
-- "great vegan choices" → vegan is selective
+- "great vegan sandwiches" → vegan is selective
 - "best Italian restaurants" → Italian is selective
 - "good breakfast spots" → breakfast is selective
 
 **Descriptive attributes:** Characterize or describe specific items
 
-- "this pasta is very vegan" → vegan is descriptive
-- "their sandwich is so Italian" → Italian is descriptive
-- "feels breakfast-y" → breakfast is descriptive
+- "this pasta is very fresh" → fresh is descriptive
+- "their sandwich is so big" → big is descriptive
 
 **Principle:** Is it about what type of thing it is (selective) or how that thing is (descriptive)?
 
-### 1.3 Compound Term Processing Rules (Food Terms Only)
+## Section 3: Compound Term Processing Rules (Food Terms Only)
 
 _Apply these rules only to food-related compound terms, not restaurant names or other entities._
 
-#### Attribute Exclusion Principle
+### Attribute Exclusion Principle
 
 Before applying compound term processing to food mentions, exclude any terms that are preparation methods, cooking styles, dietary restrictions, cuisines meal periods, or serving formats. Apply compound term processing only to remaining food substance terms.
 
-#### Complete Preservation Rule
+### Complete Preservation Rule
 
 Always store the complete compound food term as primary category in singular form, **excluding any terms identified as attributes**.
 
-#### Hierarchical Decomposition Rule
+### Hierarchical Decomposition Rule
 
 Create all meaningful food noun combinations as additional categories:
 
@@ -136,35 +192,35 @@ Examples:
 - "breakfast burrito" → Extract "breakfast" as attribute, process only "burrito" for compound terms
 - "house-made carnitas taco" → Extract "house-made" as preparation attribute, process "carnitas taco" for compound terms
 
-#### Inference Rules
+### Inference Rules
 
-- Infer parent categories for specific dish subtypes even when not explicitly mentioned
+- Infer parent categories for specific food subtypes even when not explicitly mentioned
 - Derive broader cuisine attributes from specific ones
 - Apply known culinary relationships
 
-### 1.4 Menu Item Identification Rules
+## Section 4: Menu Item Identification Rules
 
-When setting the is_menu_item flag on restaurant→dish connections (applied to clean food terms after attribute extraction):
+When setting the is_menu_item flag on restaurant→food connections (applied to clean food terms after attribute extraction):
 
-#### Specificity
+### Specificity
 
-- More specific dishes are likely menu items
+- More specific food items are likely menu items
 - Example: "brisket" at Franklin BBQ (is_menu_item = true)
 - Example: "BBQ" (is_menu_item = false)
 
-#### Plurality
+### Plurality
 
 - Singular forms often indicate menu items
 - Example: "the burger" (is_menu_item = true)
 - Example: "burgers" (is_menu_item = false)
 
-#### Modifiers
+### Modifiers
 
 - Specific preparation details suggest menu items
 - Example: "house-made carnitas taco" (is_menu_item = true)
 - Example: "seafood" (is_menu_item = false)
 
-#### Context
+### Context
 
 - "Try their X" typically indicates menu item
 - "Known for X" typically indicates menu item
@@ -172,89 +228,15 @@ When setting the is_menu_item flag on restaurant→dish connections (applied to 
 - Example: "Try their migas taco" (is_menu_item = true)
 - Example: "They have all types of tacos" (is_menu_item = false)
 
-#### Hierarchical Position
+### Hierarchical Position
 
 - If entity is mentioned alongside more specific versions, likely a category
 - Example: In "great ramen, especially the tonkotsu"
   "tonkotsu ramen" (is_menu_item = true)
   "ramen" (is_menu_item = false)
 
-#### Default Case
+### Default Case
 
-- If uncertain, check if dish is mentioned as something specifically ordered
+- If uncertain, check if food is mentioned as something specifically ordered
 - Example: "I ordered the pad thai" (is_menu_item = true)
 - Example: "They specialize in Thai food" (is_menu_item = false)
-
-### 1.5 Central Entity Extraction & Processing Guide
-
-#### Processing Flow Overview
-
-Use this central guide to extract entities systematically, referencing the appropriate classification rules and processing guidelines at each step:
-
-#### Step 1: Initial Content Assessment
-
-- Apply **Core Comment & Post Processing Criteria** (Section 1.1) to determine if content should be processed
-- **Entity Inheritance:** Check if entities can be inherited from parent comment/post when connection is unambiguous
-- **Short Affirmations:** Handle "+1", "seconded", "this", "agreed" by automatically inheriting all entities and sentiment from parent
-- **General Praise Identification:** Determine if mention contains holistic restaurant praise using guidelines from Section 1.1
-
-#### Step 2: Entity Identification & Classification
-
-- Extract restaurant mentions (explicit or contextually inferred)
-- For food mentions, apply **Entity Types & Classification Rules** (Section 1.2) to identify:
-  - Which terms are dish_or_category entities (food nouns)
-  - Which terms are dish_attributes based on context (preparation, cuisine when applied to dishes, etc.)
-  - Which terms are restaurant_attributes based on context (ambiance, features, cuisine when applied to restaurants, etc.)
-- **Context-dependent attributes**: Determine scope based on usage - same attribute concept may create separate entities for different scopes
-
-#### Step 3: Food Term Processing
-
-- For food mentions, apply **Compound Term Processing Rules** (Section 1.3):
-  - Exclude attribute terms identified in Step 2
-  - Apply hierarchical decomposition to remaining food substance terms
-  - Create parent-child category relationships
-- Apply **Menu Item Identification Rules** (Section 1.4) to determine is_menu_item flag
-
-#### Step 4: Attribute Classification
-
-- For identified attributes, apply **Selective vs Descriptive Classification** (Section 1.2)
-- Ensure proper scope assignment (dish attributes vs restaurant attributes)
-
-#### Step 5: Name Normalization & Output
-
-- Convert to lowercase canonical forms
-- Remove unnecessary articles (the, a, an)
-- Standardize punctuation and spacing
-- Fix obvious typos if detected
-- Output in standardized JSON structure as "*_name"
-
-#### Key Processing Examples
-
-**Flat Schema Example for "House-made spicy Nashville hot chicken sandwich is amazing":**
-
-```json
-{
-  "temp_id": "mention_1",
-  "restaurant_temp_id": "rest_1",
-  "restaurant_name": "restaurant_name_here",
-  "food_temp_id": "food_1",
-  "food_name": "nashville hot chicken sandwich",
-  "food_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
-  "is_menu_item": true,
-  "food_attributes_selective": ["spicy"],
-  "food_attributes_descriptive": ["nashville", "house-made"],
-  "restaurant_attributes": null,
-  "general_praise": false,
-  "source_type": "comment",
-  "source_id": "t1_abc123",
-  "source_content": "House-made spicy Nashville hot chicken sandwich is amazing",
-  "source_ups": 42,
-  "source_url": "/r/food/comments/...",
-  "source_created_at": "2024-01-15T10:30:00Z"
-}
-```
-
-**Traditional Examples:**
-- "Their tonkotsu ramen is amazing" → Create restaurant→"tonkotsu ramen" connection with "ramen" in categories
-- "Great breakfast tacos here" → Find/boost taco dishes with "breakfast" in dish_attributes
-- "Great patio dining at Uchiko" → Add "patio" entity ID to Uchiko's restaurant_attributes array in metadata

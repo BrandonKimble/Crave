@@ -54,8 +54,8 @@ export class EntityPrioritySelectionService {
     maxEntities: 25, // Mid-range of 20-30 specified in PRD
     entityTypes: [
       'restaurant',
-      'dish_or_category',
-      'dish_attribute',
+      'food',
+      'food_attribute',
       'restaurant_attribute',
     ],
     recencyWeight: 0.4, // 40% - Data recency is key factor per PRD
@@ -314,13 +314,13 @@ export class EntityPrioritySelectionService {
           normalizedUpvotes * 0.2
         );
       } else {
-        // For dishes/attributes, use connection-based metrics
+        // For food/attributes, use connection-based metrics
         const connections = await this.connectionRepository.findMany({
           where:
-            entityType === 'dish_or_category'
-              ? { dishOrCategoryId: entityId }
-              : entityType === 'dish_attribute'
-                ? { dishAttributes: { has: entityId } }
+            entityType === 'food'
+              ? { foodId: entityId }
+              : entityType === 'food_attribute'
+                ? { foodAttributes: { has: entityId } }
                 : { restaurant: { restaurantAttributes: { has: entityId } } },
         });
 
@@ -338,14 +338,14 @@ export class EntityPrioritySelectionService {
         );
         const avgQualityScore =
           connections.reduce((sum, conn) => {
-            const score = conn.dishQualityScore;
+            const score = conn.foodQualityScore;
             const numericScore =
               score instanceof Prisma.Decimal
                 ? score.toNumber()
                 : Number(score || 0);
             return sum + numericScore;
           }, 0) / connections.length;
-        // Normalize metrics for dish/attribute entities
+        // Normalize metrics for food/attribute entities
         const normalizedConnections = Math.min(1.0, connections.length / 10); // 10+ connections = high quality
         const normalizedMentions = Math.min(1.0, totalMentions / 30); // 30+ mentions = high quality
         const normalizedUpvotes = Math.min(1.0, totalUpvotes / 60); // 60+ upvotes = high quality
@@ -392,10 +392,10 @@ export class EntityPrioritySelectionService {
         where:
           entityType === 'restaurant'
             ? { restaurantId: entityId }
-            : entityType === 'dish_or_category'
-              ? { dishOrCategoryId: entityId }
-              : entityType === 'dish_attribute'
-                ? { dishAttributes: { has: entityId } }
+            : entityType === 'food'
+              ? { foodId: entityId }
+              : entityType === 'food_attribute'
+                ? { foodAttributes: { has: entityId } }
                 : { restaurant: { restaurantAttributes: { has: entityId } } },
         orderBy: { lastMentionedAt: 'desc' },
         take: 10, // Look at top 10 connections for this entity
@@ -511,8 +511,8 @@ export class EntityPrioritySelectionService {
 
       const entityTypes: EntityType[] = [
         'restaurant',
-        'dish_or_category',
-        'dish_attribute',
+        'food',
+        'food_attribute',
         'restaurant_attribute',
       ];
       const now = new Date();

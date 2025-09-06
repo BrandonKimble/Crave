@@ -13,7 +13,7 @@
 
 ## Project Overview
 
-**Crave Search**: Food discovery app providing evidence-based restaurant/dish recommendations from Reddit community knowledge.
+**Crave Search**: Food discovery app providing evidence-based restaurant/food recommendations from Reddit community knowledge.
 
 **Architecture**: NestJS modular monolith + React Native mobile + PostgreSQL graph-based entity model
 
@@ -71,7 +71,7 @@ turbo run lint && turbo run type-check
 - **Code Cleanup**: Always remove unused, refactored, or replaced code as we go. Don't leave deprecated methods or dead code paths.
 
 ## Database Schema (Key Tables)
-- **entities**: Restaurants, dishes_or_categories, attributes (unified with `entity_type`)
+- **entities**: Restaurants, food, attributes (unified with `entity_type`)
 - **connections**: Entity relationships with quality scores  
 - **mentions**: Reddit community evidence with attribution
 

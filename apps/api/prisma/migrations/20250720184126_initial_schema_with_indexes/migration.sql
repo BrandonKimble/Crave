@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS "btree_gin";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
 -- CreateEnum
-CREATE TYPE "entity_type" AS ENUM ('restaurant', 'dish_or_category', 'dish_attribute', 'restaurant_attribute');
+CREATE TYPE "entity_type" AS ENUM ('restaurant', 'food', 'food_attribute', 'restaurant_attribute');
 
 -- CreateEnum
 CREATE TYPE "activity_level" AS ENUM ('trending', 'active', 'normal');
@@ -39,9 +39,9 @@ CREATE TABLE "entities" (
 CREATE TABLE "connections" (
     "connection_id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "restaurant_id" UUID NOT NULL,
-    "dish_or_category_id" UUID NOT NULL,
+    "food_id" UUID NOT NULL,
     "categories" UUID[] DEFAULT ARRAY[]::UUID[],
-    "dish_attributes" UUID[] DEFAULT ARRAY[]::UUID[],
+    "food_attributes" UUID[] DEFAULT ARRAY[]::UUID[],
     "is_menu_item" BOOLEAN NOT NULL DEFAULT true,
     "mention_count" INTEGER NOT NULL DEFAULT 0,
     "total_upvotes" INTEGER NOT NULL DEFAULT 0,
@@ -50,7 +50,7 @@ CREATE TABLE "connections" (
     "last_mentioned_at" TIMESTAMP(3),
     "activity_level" "activity_level" NOT NULL DEFAULT 'normal',
     "top_mentions" JSONB NOT NULL DEFAULT '[]',
-    "dish_quality_score" DECIMAL(10,4) NOT NULL DEFAULT 0,
+    "food_quality_score" DECIMAL(10,4) NOT NULL DEFAULT 0,
     "last_updated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -155,13 +155,13 @@ CREATE UNIQUE INDEX "entities_name_type_key" ON "entities"("name", "type");
 CREATE INDEX "idx_connections_restaurant" ON "connections"("restaurant_id");
 
 -- CreateIndex
-CREATE INDEX "idx_connections_dish" ON "connections"("dish_or_category_id");
+CREATE INDEX "idx_connections_food" ON "connections"("food_id");
 
 -- CreateIndex
 CREATE INDEX "idx_connections_categories_gin" ON "connections" USING GIN ("categories");
 
 -- CreateIndex
-CREATE INDEX "idx_connections_attributes_gin" ON "connections" USING GIN ("dish_attributes");
+CREATE INDEX "idx_connections_attributes_gin" ON "connections" USING GIN ("food_attributes");
 
 -- CreateIndex
 CREATE INDEX "idx_connections_menu_item" ON "connections"("is_menu_item");
@@ -173,7 +173,7 @@ CREATE INDEX "idx_connections_mention_count" ON "connections"("mention_count" DE
 CREATE INDEX "idx_connections_total_upvotes" ON "connections"("total_upvotes" DESC);
 
 -- CreateIndex
-CREATE INDEX "idx_connections_quality_score" ON "connections"("dish_quality_score" DESC);
+CREATE INDEX "idx_connections_quality_score" ON "connections"("food_quality_score" DESC);
 
 -- CreateIndex
 CREATE INDEX "idx_connections_last_mentioned" ON "connections"("last_mentioned_at" DESC);
@@ -182,16 +182,16 @@ CREATE INDEX "idx_connections_last_mentioned" ON "connections"("last_mentioned_a
 CREATE INDEX "idx_connections_activity" ON "connections"("activity_level");
 
 -- CreateIndex
-CREATE INDEX "idx_connections_restaurant_quality" ON "connections"("restaurant_id", "dish_quality_score" DESC);
+CREATE INDEX "idx_connections_restaurant_quality" ON "connections"("restaurant_id", "food_quality_score" DESC);
 
 -- CreateIndex
-CREATE INDEX "idx_connections_dish_quality" ON "connections"("dish_or_category_id", "dish_quality_score" DESC);
+CREATE INDEX "idx_connections_food_quality" ON "connections"("food_id", "food_quality_score" DESC);
 
 -- CreateIndex
 CREATE INDEX "idx_connections_restaurant_mentions" ON "connections"("restaurant_id", "mention_count" DESC);
 
 -- CreateIndex
-CREATE INDEX "idx_connections_dish_mentions" ON "connections"("dish_or_category_id", "mention_count" DESC);
+CREATE INDEX "idx_connections_food_mentions" ON "connections"("food_id", "mention_count" DESC);
 
 -- CreateIndex
 CREATE INDEX "idx_connections_last_updated" ON "connections"("last_updated" DESC);
@@ -206,7 +206,7 @@ CREATE INDEX "idx_connections_source_diversity" ON "connections"("source_diversi
 CREATE INDEX "idx_connections_recent_mentions" ON "connections"("recent_mention_count" DESC);
 
 -- CreateIndex
-CREATE UNIQUE INDEX "connections_restaurant_id_dish_or_category_id_dish_attribut_key" ON "connections"("restaurant_id", "dish_or_category_id", "dish_attributes");
+CREATE UNIQUE INDEX "connections_restaurant_id_food_id_food_attribut_key" ON "connections"("restaurant_id", "food_id", "food_attributes");
 
 -- CreateIndex
 CREATE INDEX "idx_mentions_connection" ON "mentions"("connection_id");
@@ -296,7 +296,7 @@ CREATE INDEX "idx_user_events_user_created" ON "user_events"("user_id", "created
 ALTER TABLE "connections" ADD CONSTRAINT "connections_restaurant_id_fkey" FOREIGN KEY ("restaurant_id") REFERENCES "entities"("entity_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "connections" ADD CONSTRAINT "connections_dish_or_category_id_fkey" FOREIGN KEY ("dish_or_category_id") REFERENCES "entities"("entity_id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "connections" ADD CONSTRAINT "connections_food_id_fkey" FOREIGN KEY ("food_id") REFERENCES "entities"("entity_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "mentions" ADD CONSTRAINT "mentions_connection_id_fkey" FOREIGN KEY ("connection_id") REFERENCES "connections"("connection_id") ON DELETE RESTRICT ON UPDATE CASCADE;

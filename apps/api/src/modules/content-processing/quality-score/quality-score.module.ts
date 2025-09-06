@@ -9,8 +9,8 @@ import { RepositoryModule } from '../../../repositories/repository.module';
  * Implements PRD Section 5.3 - Quality Score Computation
  *
  * Provides comprehensive quality scoring services for:
- * - Dish Quality Scores (connection strength + restaurant context)
- * - Restaurant Quality Scores (top dishes + menu consistency)
+ * - Food Quality Scores (connection strength + restaurant context)
+ * - Restaurant Quality Scores (top food + menu consistency)
  * - Category/Attribute Performance Scores (contextual relevance)
  *
  * This module integrates with the component processing pipeline to ensure

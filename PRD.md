@@ -8,12 +8,12 @@
 
 ### 1.1 Product Vision
 
-This app enables users to quickly make confident dining decisions by surfacing evidence-based dish and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific dishes and dining experiences.
+This app enables users to quickly make confident dining decisions by surfacing evidence-based food and restaurant recommendations from community knowledge. It transforms scattered social proof into actionable insights about specific food and dining experiences.
 
 ### 1.2 Core Value Proposition
 
 - **Evidence-Based Discovery**: Every recommendation backed by specific community mentions and upvotes
-- **Dish-Centric Focus**: Find the best version of what you're craving, not just good restaurants
+- **Food-Centric Focus**: Find the best version of what you're craving, not just good restaurants
 - **Community-Powered**: Leverages authentic discussions from Reddit food communities
 - **Mobile-First Experience**: Optimized for quick decisions with detailed evidence when needed
 
@@ -56,13 +56,13 @@ Single Database Transaction → Quality Score Computation
 
 #### 1.5.1 Community Content Processing
 
-- **Reddit discussion analysis**: Extract dish-restaurant connections, attributes, and sentiment from food community posts/comments
+- **Reddit discussion analysis**: Extract food-restaurant connections, attributes, and sentiment from food community posts/comments
 - **Organic category emergence**: Food categories develop naturally from community language patterns rather than predetermined hierarchies
 - **Multi-source mention aggregation**: Combine mentions across posts, comments, and discussion threads for comprehensive evidence
 
 #### 1.5.2 Dynamic Ranking & Relevance
 
-- **Quality score evolution**: Dish and restaurant rankings improve with additional community evidence over time
+- **Quality score evolution**: Food and restaurant rankings improve with additional community evidence over time
 - **Activity indicators**: Real-time trending (🔥) and active (🕐) status based on mention recency patterns
 - **Contextual performance scoring**: Restaurant rankings adapt based on query context (category/attribute-specific performance vs. global scores)
 
@@ -297,7 +297,7 @@ apps/api/src/
 │   │
 │   ├── user-experience/            # Domain: User interactions & features
 │   │   ├── user-management/        # Authentication, subscriptions, preferences
-│   │   ├── bookmark-system/        # Dish saving, list management, sharing
+│   │   ├── bookmark-system/        # Food saving, list management, sharing
 │   │   ├── search-api/            # Public search endpoints, result formatting
 │   │   └── reddit-community/       # Attribution, sharing, community features
 │   │
@@ -329,15 +329,15 @@ apps/api/src/
 ```
 apps/mobile/src/
 ├── components/
-│   ├── cards/                     # Dish and restaurant cards
+│   ├── cards/                     # Food and restaurant cards
 │   ├── layout/                    # Layout components
 │   └── ui/                        # Reusable UI components
 │
 ├── screens/
 │   ├── Home/                      # Main search and discovery
 │   ├── Search/                    # Search results and filters
-│   ├── Details/                   # Dish/restaurant details
-│   ├── Bookmarks/                 # Saved dishes and lists
+│   ├── Details/                   # Food/restaurant details
+│   ├── Bookmarks/                 # Saved food and lists
 │   └── Profile/                   # User account and settings
 │
 ├── services/
@@ -489,7 +489,7 @@ Manages query processing and result delivery using pre-computed data
 
 #### 4.1.1 Graph-Based Model
 
-_**Note**: This design uses a unified entity-relationship model where all entities (restaurants, dishes, categories, attributes) are stored in a single `entities` table differentiated by type, with relationships modeled through the `connections` table. This approach enables flexible many-to-many relationships while maintaining referential integrity and query performance. These schemas may evolve during implementation as requirements are refined._
+_**Note**: This design uses a unified entity-relationship model where all entities (restaurants, food, categories, attributes) are stored in a single `entities` table differentiated by type, with relationships modeled through the `connections` table. This approach enables flexible many-to-many relationships while maintaining referential integrity and query performance. These schemas may evolve during implementation as requirements are refined._
 
 ##### Entities Table
 
@@ -497,7 +497,7 @@ _**Note**: This design uses a unified entity-relationship model where all entiti
 CREATE TABLE entities (
   entity_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL, -- Canonical normalized name
-  type entity_type NOT NULL, -- 'restaurant', 'dish_or_category', 'dish_attribute', 'restaurant_attribute'
+  type entity_type NOT NULL, -- 'restaurant', 'food', 'food_attribute', 'restaurant_attribute'
   aliases TEXT[] DEFAULT '{}', -- Original texts and known variations
 
   -- Restaurant-specific columns (null for non-restaurant entities)
@@ -527,8 +527,8 @@ CREATE TABLE entities (
 
 CREATE TYPE entity_type AS ENUM (
   'restaurant',
-  'dish_or_category',
-  'dish_attribute',
+  'food',
+  'food_attribute',
   'restaurant_attribute'
 );
 ```
@@ -551,9 +551,9 @@ CREATE TYPE entity_type AS ENUM (
 CREATE TABLE connections (
   connection_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID NOT NULL REFERENCES entities(entity_id),
-  dish_or_category_id UUID NOT NULL REFERENCES entities(entity_id),
-  categories UUID[] DEFAULT '{}', -- dish_or_category entity IDs (connection-scoped)
-  dish_attributes UUID[] DEFAULT '{}', -- dish_attribute entity IDs (connection-scoped)
+  food_id UUID NOT NULL REFERENCES entities(entity_id),
+  categories UUID[] DEFAULT '{}', -- food entity IDs (connection-scoped)
+  food_attributes UUID[] DEFAULT '{}', -- food_attribute entity IDs (connection-scoped)
   is_menu_item BOOLEAN NOT NULL DEFAULT true, -- Specific menu item vs general category reference
   mention_count INTEGER DEFAULT 0,
   total_upvotes INTEGER DEFAULT 0,
@@ -562,15 +562,15 @@ CREATE TABLE connections (
   last_mentioned_at TIMESTAMP,
   activity_level activity_level DEFAULT 'normal',
   top_mentions JSONB DEFAULT '[]',
-  dish_quality_score DECIMAL(10,4) DEFAULT 0,
+  food_quality_score DECIMAL(10,4) DEFAULT 0,
   last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-  UNIQUE(restaurant_id, dish_or_category_id, dish_attributes), -- Prevent duplicate connections
+  UNIQUE(restaurant_id, food_id, food_attributes), -- Prevent duplicate connections
   INDEX idx_connections_restaurant (restaurant_id),
-  INDEX idx_connections_dish (dish_or_category_id),
+  INDEX idx_connections_food (food_id),
   INDEX idx_connections_categories_gin (categories),
-  INDEX idx_connections_attributes_gin (dish_attributes),
+  INDEX idx_connections_attributes_gin (food_attributes),
   INDEX idx_connections_menu_item (is_menu_item),
   INDEX idx_connections_mention_count (mention_count DESC),
   INDEX idx_connections_total_upvotes (total_upvotes DESC),
@@ -578,9 +578,9 @@ CREATE TABLE connections (
   INDEX idx_connections_recent_mention_count (recent_mention_count DESC),
   INDEX idx_connections_last_mentioned (last_mentioned_at DESC),
   INDEX idx_connections_activity (activity_level),
-  INDEX idx_connections_dish_quality_score (dish_quality_score DESC),
-  INDEX idx_connections_restaurant_dish_quality (restaurant_id, dish_quality_score DESC),
-  INDEX idx_connections_dish_quality (dish_or_category_id, dish_quality_score DESC)
+  INDEX idx_connections_food_quality_score (food_quality_score DESC),
+  INDEX idx_connections_restaurant_food_quality (restaurant_id, food_quality_score DESC),
+  INDEX idx_connections_food_quality (food_id, food_quality_score DESC)
 );
 
 CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
@@ -681,24 +681,24 @@ CREATE TABLE user_events (
 
 #### 4.2.1 Graph-Based Unified Entity Model
 
-- **Unified dish_or_category entities**: Serve dual purposes as specific menu items AND general food categories
-- **Connection-scoped relationships**: Categories and dish attributes exist only within restaurant→dish connections
+- **Unified food entities**: Serve dual purposes as specific menu items AND general food categories
+- **Connection-scoped relationships**: Categories and food attributes exist only within restaurant→food connections
 - **Restaurant-scoped attributes**: Ambiance, features, and service qualities stored directly on restaurant entities
 - **Evidence-driven connections**: All relationships backed by trackable community mentions with scoring
-- **All connections are restaurant→dish**: No direct category or attribute connections
+- **All connections are restaurant→food**: No direct category or attribute connections
 
 #### 4.2.2 Entity Type Definitions
 
 - **restaurant**: Physical dining establishments with location and operational data
-- **dish_or_category**: Food items that can be both menu items and general categories
-- **dish_attribute**: Connection-scoped descriptors that apply to dishes (spicy, vegan, house-made, Italian when describing dishes)
+- **food**: Food items that can be both menu items and general categories
+- **food_attribute**: Connection-scoped descriptors that apply to food (spicy, vegan, house-made, Italian when describing food)
 - **restaurant_attribute**: Restaurant-scoped descriptors that apply to restaurants (patio, romantic, family-friendly, Italian when describing restaurants)
 
-**Context-Dependent Attributes**: Many attributes exist as separate entities based on their contextual scope. For example, "Italian" exists as both a dish_attribute entity (for Italian dishes) and a restaurant_attribute entity (for Italian restaurants), enabling precise query targeting and flexible cross-scope analysis.
+**Context-Dependent Attributes**: Many attributes exist as separate entities based on their contextual scope. For example, "Italian" exists as both a food_attribute entity (for Italian food) and a restaurant_attribute entity (for Italian restaurants), enabling precise query targeting and flexible cross-scope analysis.
 
 ### 4.3 Data Model Architecture
 
-#### 4.3.1 Unified dish_or_category Entity Approach
+#### 4.3.1 Unified Food Entity Approach
 
 - **Single entity type serves dual purposes**:
   - Node entity (when is_menu_item = true)
@@ -710,20 +710,20 @@ CREATE TABLE user_events (
 
 - **Separate entities by scope**: Context-dependent attributes (cuisine, dietary, value, etc.) exist as separate entities based on their scope
 - **Scope-aware entity resolution**: Entity resolution matches by name AND scope to find the correct entity
-- **Flexible query capabilities**: Enables precise filtering by restaurant attributes vs dish attributes
-- **Examples**: "Italian" exists as both dish_attribute and restaurant_attribute entities with different IDs
+- **Flexible query capabilities**: Enables precise filtering by restaurant attributes vs food attributes
+- **Examples**: "Italian" exists as both food_attribute and restaurant_attribute entities with different IDs
 
-#### 4.3.3 All Connections are Restaurant-to-dish_or_category
+#### 4.3.3 All Connections are Restaurant-to-Food
 
 - **Restaurant attributes**: Stored as entity IDs in restaurant entity's metadata (restaurant_attributes: uuid[])
-- **Dish attributes**: Connection-scoped entity IDs stored in dish_attributes array
+- **Food attributes**: Connection-scoped entity IDs stored in food_attributes array
 - **Categories**: Connection-scoped entity IDs stored in categories array
-- **Only restaurant-to-dish_or_category connections** exist in the connections table
+- **Only restaurant-to-food connections** exist in the connections table
 
 #### 4.3.4 Categories in Connection Scope Only
 
-- **Categories stored as entity ID references** in restaurant→dish_or_category connections
-- **Restaurant-category mentions boost scores** of all related dish_or_category items
+- **Categories stored as entity ID references** in restaurant→food connections
+- **Restaurant-category mentions boost scores** of all related food items
 - **Enables flexible categorization** without entity proliferation
 
 ---
@@ -777,7 +777,7 @@ Maintain real-time updates and capture new community content post-2024 using Red
   - Data recency (days since last enrichment, new entity status)
   - Data quality (mention count, source diversity)
   - User demand (query frequency, high-potential entities)
-- **Multi-Entity Coverage**: Searches all entity types (restaurants, dishes, attributes) creating comprehensive semantic net
+- **Multi-Entity Coverage**: Searches all entity types (restaurants, food, attributes) creating comprehensive semantic net
 - **Implementation**: Select top 20-30 entities monthly, fetch all comments for relevant posts
 
 **Gap Minimization Strategy**
@@ -896,13 +896,13 @@ Fill knowledge gaps in real-time when user queries return insufficient data from
 - **Bidirectional Connection Strengthening**:
   - **Historical context**: Keyword searches provide deep historical context for recently discovered entities
   - **Real-time validation**: Chronological collection validates and updates historical entity relevance
-  - **Attribute-driven discovery**: Restaurant and dish attribute searches uncover indirect entity mentions
+  - **Attribute-driven discovery**: Restaurant and food attribute searches uncover indirect entity mentions
   - **Quality evolution**: Connections strengthen through diverse mention sources and cross-validation
   - **Comprehensive coverage**: Full timeline knowledge from archives + real-time updates creates robust entity relationships
 
 ### 5.2 Shared Entity Resolution System
 
-To ensure accurate metrics and search functionality, the system employs a multi-phase approach to handle name variations of all entity types: restaurants, dish_or_category, dish_attribute, and restaurant_attribute:
+To ensure accurate metrics and search functionality, the system employs a multi-phase approach to handle name variations of all entity types: restaurants, food, food_attribute, and restaurant_attribute:
 
 #### 5.2.1 Resolution Process Flow
 
@@ -918,18 +918,18 @@ During data collection, the LLM:
 
 **Scope-Aware Resolution Process**
 
-**Standard Entity Resolution Process**: The system resolves all entity types through name matching with type constraints. Most entities have unambiguous types and resolve directly (restaurants and dish_or_categories). For context-dependent attributes that can exist in both dish and restaurant contexts (cuisine, dietary, value, etc.), the system creates separate entities based on scope and matches by both **name AND entity type** to ensure accurate targeting.
+**Standard Entity Resolution Process**: The system resolves all entity types through name matching with type constraints. Most entities have unambiguous types and resolve directly (restaurants and food). For context-dependent attributes that can exist in both food and restaurant contexts (cuisine, dietary, value, etc.), the system creates separate entities based on scope and matches by both **name AND entity type** to ensure accurate targeting.
 
 **Standard entity resolution examples:**
 
 - "Franklin BBQ" → Resolves to Franklin BBQ restaurant entity
-- "ramen" → Resolves to ramen dish_or_category entity
+- "ramen" → Resolves to ramen food entity
 
 **Context-dependent attribute resolution (special case):**
 
-- "Italian pasta" → LLM determines dish context → Resolves to Italian dish_attribute entity (ID: 123)
+- "Italian pasta" → LLM determines food context → Resolves to Italian food_attribute entity (ID: 123)
 - "Italian restaurant" → LLM determines restaurant context → Resolves to Italian restaurant_attribute entity (ID: 456)
-- "vegan burger" → LLM determines dish context → Resolves to vegan dish_attribute entity
+- "vegan burger" → LLM determines food context → Resolves to vegan food_attribute entity
 - "vegan restaurant" → LLM determines restaurant context → Resolves to vegan restaurant_attribute entity
 
 This enables precise query targeting while maintaining normal operation for all standard entity types.
@@ -999,16 +999,16 @@ The same entity resolution process applies during user queries, with scope deter
 **Standard entity resolution examples:**
 
 - User searches: "best food at tatsuyas" → "tatsuyas" resolves to "Ramen Tatsu-Ya" restaurant entity
-- User searches: "best reuben" → "reuben" resolves to reuben dish_or_category entity
+- User searches: "best reuben" → "reuben" resolves to reuben food entity
 
 **Context-dependent attribute resolution examples:**
 
-- User searches: "crispy chicken" → "crispy" resolves to crispy dish_attribute, "chicken" to chicken dish_or_category
+- User searches: "crispy chicken" → "crispy" resolves to crispy food_attribute, "chicken" to chicken food
 - User searches: "restaurants with patio" → "patio" resolves to patio restaurant_attribute entity
-- User searches: "spicy ramen" → "spicy" resolves to spicy dish_attribute, "ramen" to ramen dish_or_category
-- User searches: "best Italian food" → "Italian" resolves to Italian dish_attribute entity (context-dependent)
+- User searches: "spicy ramen" → "spicy" resolves to spicy food_attribute, "ramen" to ramen food
+- User searches: "best Italian food" → "Italian" resolves to Italian food_attribute entity (context-dependent)
 - User searches: "Italian restaurants" → "Italian" resolves to Italian restaurant_attribute entity (context-dependent)
-- User searches: "vegan ramen" → "vegan" resolves to vegan dish_attribute, "ramen" to ramen dish_or_category (context-dependent)
+- User searches: "vegan ramen" → "vegan" resolves to vegan food_attribute, "ramen" to ramen food (context-dependent)
 
 ##### Key Differences from Data Collection Resolution
 
@@ -1040,7 +1040,7 @@ The same entity resolution process applies during user queries, with scope deter
 
 ### 5.3 Quality Score Computation
 
-#### 5.3.1 Dish Quality Score (87% + 13%)
+#### 5.3.1 Food Quality Score (87% + 13%)
 
 ##### Primary component (87%) - Connection strength:
 
@@ -1052,33 +1052,33 @@ The same entity resolution process applies during user queries, with scope deter
 ##### Secondary component (13%):
 
 - **Restaurant context factor**: Derived from the parent restaurant's quality score
-  - Provides a small boost to dishes from generally excellent restaurants
+  - Provides a small boost to food from generally excellent restaurants
   - Serves as effective tiebreaker
 
 #### 5.3.2 Restaurant Quality Score (50% + 30% + 20%)
 
 ##### Primary component (50%):
 
-- **Top dish connections**: 3-5 highest-scoring dishes at restaurant
+- **Top food connections**: 3-5 highest-scoring food at restaurant
   - Captures standout offerings that define restaurant
 
 ##### Secondary component (30%):
 
-- **Overall menu consistency**: Average quality across all mentioned dishes
+- **Overall menu consistency**: Average quality across all mentioned food
   - Rewards restaurants with strong overall performance
 
 ##### Tertiary component (20%):
 
 - **General praise factor**: Accumulated upvotes from general praise mentions
   - Stored in `entities.generalPraiseUpvotes` column
-  - Captures holistic restaurant appreciation beyond specific dishes
+  - Captures holistic restaurant appreciation beyond specific food
 
 #### 5.3.3 Category/Attribute Performance Score
 
 For restaurant ranking in category/attribute queries:
 
-- **Find relevant dishes**: All restaurant's dishes in queried category or with attribute
-- **Contextual score**: Calculate weighted average of dish quality scores for those relevant dishes
+- **Find relevant food**: All restaurant's food in queried category or with attribute
+- **Contextual score**: Calculate weighted average of food quality scores for those relevant food
 - **Replace restaurant score**: Use contextual score instead of restaurant quality score for relevance
 
 ---
@@ -1164,8 +1164,8 @@ For restaurant ranking in category/attribute queries:
 
 **Key Processing Rules** (see `llm-content-processing.md` for full details):
 
-- **Entity Extraction**: All 4 entity types (restaurant, dish_or_category, dish_attribute, restaurant_attribute)
-- **Scope Determination**: Context-dependent attributes assigned to correct scope (dish vs restaurant)
+- **Entity Extraction**: All 4 entity types (restaurant, food, food_attribute, restaurant_attribute)
+- **Scope Determination**: Context-dependent attributes assigned to correct scope (food vs restaurant)
 - **Sentiment Filtering**: Only positive mentions processed
 - **Category Hierarchy**: Create specific → general food categories naturally
 - **Entity Normalization**: Handle variations, standardize references
@@ -1283,7 +1283,7 @@ _**Note**: This structure reflects the current production implementation. Key pr
 **Key Design Decisions**:
 - **Flattened Structure**: Optimized for LLM parsing performance vs nested objects
 - **Normalized Names Only**: LLM provides normalized names; entity resolution handles variations as aliases
-- **food_ Prefix**: Clearer than dish_ since entities can be menu items OR category references
+- **food_ Prefix**: Clearer than food_ since entities can be menu items OR category references
 - **Complete Source Attribution**: All source fields included for traceability
 - **Selective vs Descriptive Attributes**: Separate arrays for different processing logic
 - **Null-Safe Design**: Optional fields explicitly nullable for robust processing
@@ -1386,65 +1386,65 @@ The system processes each LLM mention through a sequential pipeline. Each mentio
 
 - Processed when: general_praise is true (mentions containing holistic restaurant praise)
 - Action: Increment general_praise_upvotes on the restaurant entity
-- Note: This affects restaurant quality score calculation (20% weight) which implicitly boosts all dishes
+- Note: This affects restaurant quality score calculation (20% weight) which implicitly boosts all food
 
-**Component 4: Specific Dish Processing**
+**Component 4: Specific Food Processing**
 
-- Processed when: dish_or_category is present AND is_menu_item is true
+- Processed when: food is present AND is_menu_item is true
 
-With Dish Attributes:
+With Food Attributes:
 
-- **All Selective:** Find existing restaurant→dish connections for the same dish that have ANY of the selective attributes; If found: boost those connections; If not found: create new connection with all attributes
-- **All Descriptive:** Find ANY existing restaurant→dish connections for the same dish; If found: boost connections + add descriptive attributes if not already present; If not found: create new connection with all attributes
-- **Mixed:** Find existing connections for the same dish that have ANY of the selective attributes; If found: boost + add descriptive attributes if not already present; If not found: create new connection with all attributes
+- **All Selective:** Find existing restaurant→food connections for the same food that have ANY of the selective attributes; If found: boost those connections; If not found: create new connection with all attributes
+- **All Descriptive:** Find ANY existing restaurant→food connections for the same food; If found: boost connections + add descriptive attributes if not already present; If not found: create new connection with all attributes
+- **Mixed:** Find existing connections for the same food that have ANY of the selective attributes; If found: boost + add descriptive attributes if not already present; If not found: create new connection with all attributes
 
-Without Dish Attributes:
+Without Food Attributes:
 
-- Action: Find/create restaurant→dish connection and boost it
+- Action: Find/create restaurant→food connection and boost it
 
 **Component 5: Category Processing**
 
-- Processed when: dish_or_category is present AND is_menu_item is false
+- Processed when: food is present AND is_menu_item is false
 
-With Dish Attributes:
+With Food Attributes:
 
-- **All Selective:** Find existing dish connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections; Do not create if no matches found
-- **All Descriptive:** Find existing dish connections with category; Boost all found connections; Add descriptive attributes to those connections if not already present; Do not create if no category dishes exist
-- **Mixed:** Find existing dish connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections + add descriptive attributes if not already present; Do not create if no matches found
+- **All Selective:** Find existing food connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections; Do not create if no matches found
+- **All Descriptive:** Find existing food connections with category; Boost all found connections; Add descriptive attributes to those connections if not already present; Do not create if no category food exist
+- **Mixed:** Find existing food connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections + add descriptive attributes if not already present; Do not create if no matches found
 
-Without Dish Attributes:
+Without Food Attributes:
 
-- Action: Find existing dish connections with category and boost them
-- Do not create if no category dishes exist
+- Action: Find existing food connections with category and boost them
+- Do not create if no category food exist
 
 **Component 6: Attribute-Only Processing**
 
-- Processed when: dish_or_category is null AND dish_attributes is present
+- Processed when: food is null AND food_attributes is present
 
-- **All Selective:** Find existing dish connections with ANY of the selective attributes; Boost those connections; Do not create if no matches found
+- **All Selective:** Find existing food connections with ANY of the selective attributes; Boost those connections; Do not create if no matches found
 - **All Descriptive:** Skip processing (no target for descriptive attributes)
-- **Mixed:** Find existing dish connections with ANY of the selective attributes; Boost those connections; Ignore descriptive attributes
+- **Mixed:** Find existing food connections with ANY of the selective attributes; Boost those connections; Ignore descriptive attributes
 
 #### 6.5.2 Entity Creation Rules
 
 **Always Create:**
 
 - Restaurant entities: When restaurant is missing from database
-- Specific dish connections: When is_menu_item: true and no matching connection exists
+- Specific food connections: When is_menu_item: true and no matching connection exists
 
 **Never Create (Skip Processing):**
 
-- Category dishes: When category mentioned but no dishes with that category exist
-- Attribute matches: When attribute filtering finds no existing dishes
-- General praise dish connections: When general_praise: true but no dish connections exist
-- Descriptive-only attributes: When no dish_or_category is present
+- Category food: When category mentioned but no food with that category exist
+- Attribute matches: When attribute filtering finds no existing food
+- General praise food connections: When general_praise: true but no food connections exist
+- Descriptive-only attributes: When no food is present
 
 #### 6.5.3 Attribute Processing Logic
 
 **Selective Attributes (OR Logic):**
 When finding existing connections with selective attributes, use OR logic (match ANY of the selective attributes):
 
-- "great vegan and gluten-free options" → Boost dishes that are vegan OR gluten-free
+- "great vegan and gluten-free options" → Boost food that are vegan OR gluten-free
 - "spicy reuben is amazing" → Find reuben connections that have spicy OR any other selective attributes
 
 **Descriptive Attributes (AND Logic):**
@@ -1456,7 +1456,7 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 **Why This Logic:**
 
 - Selective attributes represent filtering criteria - users want options that satisfy any of their dietary/preference needs
-- Descriptive attributes describe specific characteristics of individual items - they all describe the same dish
+- Descriptive attributes describe specific characteristics of individual items - they all describe the same food
 - OR logic for selective maximizes relevant results; AND logic for descriptive ensures complete characterization
 
 #### 6.5.4 Core Principles
@@ -1467,8 +1467,8 @@ When adding descriptive attributes to connections, ALL descriptive attributes ar
 4. **Selective = Filtering:** Find existing connections that match any of the selective attributes
 5. **Descriptive = Enhancement:** Add attributes to existing connections if not already present
 6. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
-7. **Create Specific Only:** Only create new connections for specific dishes (menu items)
-8. **No Placeholder Creation:** Never create category dishes or attribute matches that don't exist
+7. **Create Specific Only:** Only create new connections for specific food (menu items)
+8. **No Placeholder Creation:** Never create category food or attribute matches that don't exist
 9. **Restaurant Always Created:** Restaurant entities are always created if missing
 
 ### 6.6 Database Operations, Metrics, and Performance Optimizations
@@ -1614,17 +1614,17 @@ The system processes queries through LLM analysis (see llm_query_processing.md) 
 **Entity Types Processed:**
 
 - **restaurants**: Physical dining establishments referenced by name
-- **dish_or_category**: Specific dishes or food categories mentioned
-- **dish_attributes**: Connection-scoped descriptors (spicy, vegan, house-made, crispy)
+- **food**: Specific food or food categories mentioned
+- **food_attributes**: Connection-scoped descriptors (spicy, vegan, house-made, crispy)
 - **restaurant_attributes**: Restaurant-scoped descriptors (patio, romantic, family-friendly, authentic)
 
 ##### Examples of Entity-Driven Query Processing:
 
-- **"best ramen"** → dish_or_category: ["ramen"] → Find all ramen connections, return dual lists
-- **"best dishes at Franklin BBQ"** → restaurant: ["Franklin BBQ"] → Find all connections for this restaurant, return single list
-- **"best spicy ramen with patio"** → dish_or_category: ["ramen"], dish_attributes: ["spicy"], restaurant_attributes: ["patio"] → Filter connections by all criteria, return dual lists
+- **"best ramen"** → food: ["ramen"] → Find all ramen connections, return dual lists
+- **"best food at Franklin BBQ"** → restaurant: ["Franklin BBQ"] → Find all connections for this restaurant, return single list
+- **"best spicy ramen with patio"** → food: ["ramen"], food_attributes: ["spicy"], restaurant_attributes: ["patio"] → Filter connections by all criteria, return dual lists
 - **"best vegan restaurants"** → restaurant_attributes: ["vegan"] → Find restaurants with vegan attribute, return dual lists
-- **"best Italian food at romantic restaurants"** → dish_attributes: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
+- **"best Italian food at romantic restaurants"** → food_attributes: ["Italian"], restaurant_attributes: ["romantic"] → Combine filters, return dual lists
 
 #### 7.3.2 Query Analysis & Processing
 
@@ -1634,9 +1634,9 @@ _Important: This process maps queries to existing entities and relationships for
 
 Simplified Processing Tasks (see llm_query_processing.md for more details):
 
-- **Entity extraction**: Extract all relevant entities (restaurants, dish_or_category, dish_attribute, restaurant_attribute)
+- **Entity extraction**: Extract all relevant entities (restaurants, food, food_attribute, restaurant_attribute)
 - **Term normalization and entity resolution**: Handle entity variations and standardize references
-- **Attribute scope classification**: Distinguish between dish-scoped and restaurant-scoped attributes
+- **Attribute scope classification**: Distinguish between food-scoped and restaurant-scoped attributes
 - **Location and availability requirements**: Identify geographic and temporal constraints
 - **Output standardized format**: Structure extracted entities for dynamic query building
 
@@ -1669,21 +1669,21 @@ _**Note**: Structure may evolve during implementation. The key principles are en
 ```json
 {
   "entities": {
-    "restaurants": [
+    "restaurant": [
       {
         "normalized_name": "string",
         "original_text": "string" | null, // original user text
         "entity_ids": ["uuid"] // resolved database IDs
       }
     ],
-    "dish_or_categories": [
+    "food": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
         "entity_ids": ["uuid"]
       }
     ],
-    "dish_attributes": [
+    "food_attributes": [
       {
         "normalized_name": "string",
         "original_text": "string" | null,
@@ -1716,9 +1716,9 @@ The system uses a **single dynamic query builder** that adapts its SQL structure
 
 **Query Building Flexibility:**
 
-- **Multiple entities of same type**: Natural OR logic handling (`WHERE dish_or_category_id = ANY($entity_ids)`)
+- **Multiple entities of same type**: Natural OR logic handling (`WHERE food_id = ANY($entity_ids)`)
 - **Mixed entity types**: Combines filters across entity scopes seamlessly
-- **Attribute scope processing**: Automatic tier-based filtering for dish_attributes vs restaurant_attributes
+- **Attribute scope processing**: Automatic tier-based filtering for food_attributes vs restaurant_attributes
 - **Missing entities**: Graceful handling when certain entity types are not provided
 
 #### 7.5.2 Dynamic Query Building Logic
@@ -1740,8 +1740,8 @@ The system constructs adaptive database queries through a multi-stage filtering 
 
 **Stage 2: Connection Filtering**
 
-- **dish_or_category matching**: Array operations for specific dishes/categories mentioned
-- **Dish attributes**: Array intersection for connection-scoped attributes ("spicy", "vegan")
+- **food matching**: Array operations for specific food/categories mentioned
+- **Food attributes**: Array intersection for connection-scoped attributes ("spicy", "vegan")
 - **Applied to**: Eligible restaurant set from Stage 1
 
 **Adaptive Execution Logic:**
@@ -1753,7 +1753,7 @@ The system constructs adaptive database queries through a multi-stage filtering 
 
 **Result Processing:**
 
-- **Ranking**: Leverages pre-computed `dish_quality_score` or `restaurant_quality_score` values, ranked in descending order in real-time
+- **Ranking**: Leverages pre-computed `food_quality_score` or `restaurant_quality_score` values, ranked in descending order in real-time
 
 #### 7.5.3 Attribute Scope Processing
 
@@ -1766,11 +1766,11 @@ The system automatically applies the correct filtering logic based on attribute 
 - Filter: `WHERE restaurant_attributes && ARRAY[attribute_ids]`
 - Examples: patio, romantic, family-friendly, authentic
 
-**Connection-Scoped Filtering (dish_attributes)**
+**Connection-Scoped Filtering (food_attributes)**
 
 - Applied to connections table in the `filtered_connections` CTE
-- Affects which dish-restaurant pairs are returned
-- Filter: `WHERE dish_attributes && ARRAY[attribute_ids]`
+- Affects which food-restaurant pairs are returned
+- Filter: `WHERE food_attributes && ARRAY[attribute_ids]`
 - Examples: spicy, vegan, house-made, crispy
 
 #### 7.5.4 Query Building Process
@@ -1788,30 +1788,30 @@ Following **step 5** in the query pipeline, the system:
 
 **Query: "best spicy ramen with patio seating"**
 
-- **Entities extracted**: dish_or_category ("ramen") + dish_attribute ("spicy") + restaurant_attribute ("patio")
+- **Entities extracted**: food ("ramen") + food_attribute ("spicy") + restaurant_attribute ("patio")
 - **Processing order**:
   1. Filter restaurants with "patio" attribute
   2. Find ramen connections at those restaurants
   3. Filter connections with "spicy" attribute
-- **Result**: Dual lists of spicy ramen dishes at restaurants with patios
+- **Result**: Dual lists of spicy ramen food at restaurants with patios
 
-**Query: "best dishes at Franklin BBQ"**
+**Query: "best food at Franklin BBQ"**
 
 - **Entities extracted**: restaurant ("Franklin BBQ") only
 - **Processing order**:
   1. Filter to Franklin BBQ specifically
   2. Retrieve all connections for that restaurant
-  3. No additional dish/attribute filtering
+  3. No additional food/attribute filtering
 - **Result**: Single list of all Franklin's menu items (restaurant context known)
 
 **Query: "best vegan Italian food"**
 
-- **Entities extracted**: dish_or_category ("Italian") + dish_attribute ("vegan")
+- **Entities extracted**: food ("Italian") + food_attribute ("vegan")
 - **Processing order**:
   1. No restaurant-level filtering (all eligible)
   2. Filter connections for Italian food AND vegan attribute
   3. Array intersection logic for both criteria
-- **Result**: Dual lists → vegan Italian dishes + restaurants excelling in this combo
+- **Result**: Dual lists → vegan Italian food + restaurants excelling in this combo
 
 **Processing Adaptation Logic:**
 
@@ -1831,7 +1831,7 @@ Following **step 5** in the query pipeline, the system:
 
 **Query Performance Features:**
 
-- **Pre-computed rankings**: Leverages stored `dish_quality_score` and `restaurant_quality_score` fields
+- **Pre-computed rankings**: Leverages stored `food_quality_score` and `restaurant_quality_score` fields
 - **Geographic index usage**: ST_Contains operations use spatial indexes for fast location filtering
 - **Conditional execution**: NULL checks prevent unnecessary filtering when entities not present
 - **Bulk parameter binding**: Array parameters enable efficient OR logic for multiple entities
@@ -1858,7 +1858,7 @@ Enabled by Google Maps/Places API integration and attribute-based filtering
   - Uses structured operating hours data from Google Places API
 - **Attribute-based Time Filtering**: System finds restaurants with connections to time/occasion attribute entities
   - Examples: "brunch", "happy hour", "late night", "weekend specials"
-  - Processed as dish_attribute or restaurant_attribute entities through natural language
+  - Processed as food_attribute or restaurant_attribute entities through natural language
   - Applied using existing dynamic query filtering
 
 ### 7.7 Return Format Determination
@@ -1879,8 +1879,8 @@ The system determines return format based on the **entity composition** of the q
 
 ```
 IF restaurants.length > 0
-AND dish_or_categories.length = 0
-AND dish_attributes.length = 0
+AND food.length = 0
+AND food_attributes.length = 0
 AND restaurant_attributes.length = 0
 → RETURN single_list
 ```
@@ -1889,13 +1889,13 @@ AND restaurant_attributes.length = 0
 
 - User already knows the restaurant
 - Intent = menu discovery within that establishment
-- Examples: "best dishes at Franklin BBQ", "menu at Tatsu-Ya"
+- Examples: "best food at Franklin BBQ", "menu at Tatsu-Ya"
 
 **Dual List Default:**
 
 - **All other entity combinations** → dual_list format
 - **Philosophy**: Users benefit from both specific items + venue discovery
-- **Includes**: dish_or_category only, attributes only, mixed combinations
+- **Includes**: food only, attributes only, mixed combinations
 
 **Restaurant + Other Entities:**
 
@@ -1913,29 +1913,29 @@ AND restaurant_attributes.length = 0
 
 **Single List Returns**
 
-- **Criteria**: Specific restaurants mentioned without dish or attribute context
-- **Content**: dish_or_category list scoped to the specified restaurant(s)
+- **Criteria**: Specific restaurants mentioned without food or attribute context
+- **Content**: food list scoped to the specified restaurant(s)
 - **Rationale**: Users already know the restaurant, want to discover menu items
 - **Examples**:
-  - "best dishes at Franklin BBQ" → Franklin's top dishes
-  - "menu at Ramen Tatsu-Ya" → Tatsu-Ya's dish list
+  - "best food at Franklin BBQ" → Franklin's top food
+  - "menu at Ramen Tatsu-Ya" → Tatsu-Ya's food list
 
 **Dual List Returns**
 
 - **Criteria**: All other entity combinations
-- **Content**: Both dish_or_category list and restaurant list with contextual rankings
+- **Content**: Both food list and restaurant list with contextual rankings
 - **Rationale**: Users benefit from seeing both specific options and venue recommendations
 - **Examples**:
-  - "best ramen" → Top ramen dishes + restaurants known for ramen
-  - "best spicy food with patio" → Spicy dishes + restaurants with patios serving great spicy food
-  - "best vegan restaurants" → Top vegan dishes + restaurants ranked by vegan offerings
+  - "best ramen" → Top ramen food + restaurants known for ramen
+  - "best spicy food with patio" → Spicy food + restaurants with patios serving great spicy food
+  - "best vegan restaurants" → Top vegan food + restaurants ranked by vegan offerings
 
 #### 7.7.4 Restaurant Ranking Methodology
 
 For dual list returns, restaurant rankings are **contextually calculated** based on query entities:
 
-- **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant dish_or_category quality scores
-- **Entity-specific relevance**: Only dish_or_category items matching the query entities contribute to restaurant ranking
+- **Aggregated performance scoring**: Restaurant rankings based on weighted average of relevant food quality scores
+- **Entity-specific relevance**: Only food items matching the query entities contribute to restaurant ranking
 - **Attribute-driven scoring**: Restaurant performance calculated from connections that match specified attributes
 - **Recency weighting**: Recent performance weighted more heavily than historical data
 
@@ -1950,8 +1950,8 @@ For dual list returns, restaurant rankings are **contextually calculated** based
 
 Each result format maintains consistent data structure for seamless UI integration:
 
-- Dish results always include restaurant context and performance metrics
-- Restaurant results always include relevant dish examples and performance metrics
+- Food results always include restaurant context and performance metrics
+- Restaurant results always include relevant food examples and performance metrics
 - Evidence attribution present across all result types
 
 ### 7.8 Post-Processing Result Structure
@@ -1963,8 +1963,8 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
   "return_format": "single_list|dual_list",
   "entity_composition": {
     "restaurants": ["Franklin BBQ"],
-    "dish_or_categories": ["ramen"],
-    "dish_attributes": ["spicy"],
+    "food": ["ramen"],
+    "food_attributes": ["spicy"],
     "restaurant_attributes": ["patio"]
   },
   "applied_filters": {
@@ -1973,10 +1973,10 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
     },
     "temporal": "open_now"
   },
-  "dish_or_category_results": [
+  "food_results": [
     {
-      "dish_or_category_name": "Tonkotsu Ramen",
-      "dish_or_category_id": "uuid",
+      "food_name": "Tonkotsu Ramen",
+      "food_id": "uuid",
       "restaurant_name": "Ramen Tatsu-Ya",
       "restaurant_id": "uuid",
       "connection_id": "uuid",
@@ -2003,7 +2003,7 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
         {
           "name": "rich broth",
           "attribute_id": "uuid",
-          "scope": "dish"
+          "scope": "food"
         }
       ],
       "restaurant_info": {
@@ -2024,10 +2024,10 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
       "restaurant_name": "Ramen Tatsu-Ya",
       "restaurant_id": "uuid",
       "contextual_performance_score": 85.2,
-      "relevant_dish_or_categories": [
+      "relevant_food": [
         {
-          "dish_or_category_name": "Tonkotsu Ramen",
-          "dish_or_category_id": "uuid",
+          "food_name": "Tonkotsu Ramen",
+          "food_id": "uuid",
           "connection_id": "uuid",
           "quality_score": 87.5,
           "activity_level": "trending"
@@ -2073,32 +2073,32 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 
 **Key Principles:**
 
-- **Pre-computed scores drive ranking**: All `dish_quality_score` and `restaurant_quality_score` values calculated during data processing
-- **Attributes filter, don't rank**: dish_attributes and restaurant_attributes reduce result sets but don't modify scores
-- **Contextual restaurant scoring**: Restaurant rankings calculated from relevant dish performance, not global restaurant scores
+- **Pre-computed scores drive ranking**: All `food_quality_score` and `restaurant_quality_score` values calculated during data processing
+- **Attributes filter, don't rank**: food_attributes and restaurant_attributes reduce result sets but don't modify scores
+- **Contextual restaurant scoring**: Restaurant rankings calculated from relevant food performance, not global restaurant scores
 - **Activity indicators enhance relevance**: trending/active status provides recency signals without affecting core ranking
 
 ##### Ranking Application Logic
 
 **Single List Queries (Restaurant-Specific)**
 
-- **Primary ranking**: `dish_quality_score DESC` for all connections at the specified restaurant
-- **No attribute ranking**: Attributes filter eligible dishes but don't modify their pre-computed scores
-- **Result**: Restaurant's top dishes ordered by their individual quality scores
+- **Primary ranking**: `food_quality_score DESC` for all connections at the specified restaurant
+- **No attribute ranking**: Attributes filter eligible food but don't modify their pre-computed scores
+- **Result**: Restaurant's top food ordered by their individual quality scores
 
 **Dual List Queries (Discovery Format)**
 
-**Dish Rankings:**
+**Food Rankings:**
 
-- **Primary ranking**: `dish_quality_score DESC` across all eligible connections
-- **Attribute filtering**: dish_attributes reduce eligible connections before ranking
+- **Primary ranking**: `food_quality_score DESC` across all eligible connections
+- **Attribute filtering**: food_attributes reduce eligible connections before ranking
 - **Geographic filtering**: Applied before ranking to eligible restaurant set
-- **Result**: Top dishes globally, filtered by query criteria
+- **Result**: Top food globally, filtered by query criteria
 
 **Restaurant Rankings:**
 
-- **Contextual performance calculation**: Weighted average of `dish_quality_score` values for dishes matching query entities
-- **Entity-specific relevance**: Only dishes matching dish_or_category or dish_attributes contribute to restaurant ranking
+- **Contextual performance calculation**: Weighted average of `food_quality_score` values for food matching query entities
+- **Entity-specific relevance**: Only food matching food or food_attributes contribute to restaurant ranking
 - **No global restaurant score**: Restaurant rankings always contextual to query content
 - **Result**: Restaurants ranked by their performance in the queried category/attributes
 
@@ -2106,16 +2106,16 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 
 **Score Utilization:**
 
-- **Direct database ordering**: `ORDER BY dish_quality_score DESC` leverages database indexes
+- **Direct database ordering**: `ORDER BY food_quality_score DESC` leverages database indexes
 - **No real-time computation**: All ranking values pre-calculated during data processing
 - **Consistent sorting**: Same entity combinations produce identical ranking order
 - **Sub-second response**: Ranking logic optimized for < 100ms execution time
 
 **Contextual Restaurant Scoring:**
 
-- **Query-time calculation**: Restaurant scores calculated from eligible dish scores during query execution
-- **Attribute-specific performance**: Restaurant ranking reflects query-relevant dish performance only
-- **Fallback logic**: Global restaurant score used when no matching dishes exist
+- **Query-time calculation**: Restaurant scores calculated from eligible food scores during query execution
+- **Attribute-specific performance**: Restaurant ranking reflects query-relevant food performance only
+- **Fallback logic**: Global restaurant score used when no matching food exist
 
 ##### Ranking Consistency
 
@@ -2137,14 +2137,14 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 
 ##### List View: Scrollable results with:
 
-- Name of dish-restaurant pair
+- Name of food-restaurant pair
 - Global quality score representation
 - Supporting evidence (top mentions, connection metrics)
 - Open/closed status
 
 ##### Detail View: Expanded information on selection
 
-- Name of dish-restaurant pair
+- Name of food-restaurant pair
 - Complete evidence display
 - All connected entities, top mentions, connection metrics
 - Operating hours
@@ -2160,7 +2160,7 @@ The system uses **pre-computed global quality scores** for all ranking decisions
 
 #### 8.1.1 UI Implementation
 
-The attribution system creates clear, compelling links between dishes and their Reddit community discussions, driving engagement while providing proper attribution.
+The attribution system creates clear, compelling links between food and their Reddit community discussions, driving engagement while providing proper attribution.
 
 **Display Format:**
 
@@ -2220,8 +2220,8 @@ The attribution system creates clear, compelling links between dishes and their 
 
 **Display Strategy**:
 
-- **🔥 "Trending"**: Visual indicator for dishes with multiple recent mentions
-- **🕐 "Active"**: Visual indicator for recently discussed dishes
+- **🔥 "Trending"**: Visual indicator for food with multiple recent mentions
+- **🕐 "Active"**: Visual indicator for recently discussed food
 - **No indicator**: Default state for normal discussion levels
 
 **User Experience Benefits**:
@@ -2255,12 +2255,12 @@ The share feature extends the existing bookmark functionality to encourage user-
 **UI Flow:**
 
 ```
-[Existing saved dishes/restaurants list]
+[Existing saved food/restaurants list]
 
 [Share/Contribute Your Discovery] (prominent button)
 ↓ Opens modal with:
 - Text area with optional template:
-  "Just tried [dish] at [restaurant] - found through community
+  "Just tried [food] at [restaurant] - found through community
    recommendations. [Your experience here]. Thanks r/austinfood!"
 - "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
 
@@ -2268,8 +2268,8 @@ OR
 
 [Share your Bookmarks] (prominent button)
 ↓ Opens modal with:
-- Info graphic of top 10 bookmarked dish-restaurant pairs with subtle branding:
-  [top 5-10 bookmarked dish-restaurant pairs] + "found through reddit community
+- Info graphic of top 10 bookmarked food-restaurant pairs with subtle branding:
+  [top 5-10 bookmarked food-restaurant pairs] + "found through reddit community
    recommendations using the Crave app. Thanks r/austinfood!"
 - "Post to r/austinfood" button OR share to other social media platforms → create post with pre-filled content
 ```
@@ -2287,7 +2287,7 @@ OR
 
 **Smart Templates:**
 
-- **Dynamic dish/restaurant insertion**: Pull from user's recently saved items
+- **Dynamic food/restaurant insertion**: Pull from user's recently saved items
 - **Community context**: Reference specific subreddit communities
 - **Gratitude expression**: Built-in thanks to community for recommendations
 - **Customization**: User can modify template before posting
@@ -2335,8 +2335,8 @@ _Note: Core database schema defined in section 4.1. This section covers Reddit-s
 **UTM Parameter Strategy:**
 
 - **Source tracking**: `utm_source=crave-app&utm_medium=attribution`
-- **Campaign identification**: `utm_campaign=dish-attribution`
-- **Content tracking**: `utm_content=dish-[dish_id]-restaurant-[restaurant_id]`
+- **Campaign identification**: `utm_campaign=food-attribution`
+- **Content tracking**: `utm_content=food-[food_id]-restaurant-[restaurant_id]`
 - **Geographic tagging**: Include city/region data for expansion insights
 
 **Technical Implementation:**
@@ -2432,7 +2432,7 @@ _Required for any content processing and location services_
 - **LLM integration**: API connectivity, structured input/output handling (see llm-content-processing.md for LLM details)
 - **Complete entity resolution system**: Three-phase system with LLM normalization, database matching (exact, alias, fuzzy), and batched processing pipeline
 - **Alias management**: Automatic alias creation, duplicate prevention, scope-aware resolution
-- **Context-dependent attribute handling**: Separate entities by scope (dish vs restaurant attributes), referencing section 4.2.2's entity type definitions
+- **Context-dependent attribute handling**: Separate entities by scope (food vs restaurant attributes), referencing section 4.2.2's entity type definitions
 - **Bulk operations pipeline**: Multi-row inserts/updates, transaction management
 - **Google Places API integration**: Restaurant data enrichment, location services setup
 - **External integrations module**: Centralized API management, basic rate limiting for google-places, reddit-api, llm-api
@@ -2514,7 +2514,7 @@ _Core search architecture - required for MVP_
 
 - **LLM query processing**: Natural language query analysis, entity extraction, and intent understanding
 - **Dynamic query builder**: Single adaptive SQL query system that responds to any entity combination
-- **Entity-based filtering**: Automatic scope-aware filtering for restaurant vs dish attributes
+- **Entity-based filtering**: Automatic scope-aware filtering for restaurant vs food attributes
 - **Result standardization**: Entity-driven single/dual list returns, consistent formatting
 - **Query pipeline integration**: Cache check → LLM analysis → entity resolution → SQL generation
 
@@ -2543,8 +2543,8 @@ _Required for useful search results_
 
 #### 9.5.1 Core Tasks
 
-- **Dish quality score computation**: Connection strength-based algorithm (87% connection strength + 13% restaurant context)
-- **Restaurant quality score computation**: Combined dish performance + menu consistency + general praise (50% + 30% + 20% formula)
+- **Food quality score computation**: Connection strength-based algorithm (87% connection strength + 13% restaurant context)
+- **Restaurant quality score computation**: Combined food performance + menu consistency + general praise (50% + 30% + 20% formula)
 - **Category/attribute performance scoring**: Restaurant ranking for category/attribute queries
 - **Mention scoring system**: Time-weighted formula, activity indicators (trending/active status)
 - **Connection metrics aggregation**: Mention count, upvotes, source diversity, recency weighting
@@ -2553,7 +2553,7 @@ _Required for useful search results_
 
 #### 9.5.2 Success Criteria
 
-- Quality scores accurately reflect community consensus (dish rankings align with popular mentions)
+- Quality scores accurately reflect community consensus (food rankings align with popular mentions)
 - Activity indicators (trending 🔥, active 🕐) correctly identify recent discussion patterns
 - Score computation completes in <100ms per connection (meets performance target)
 - Full dataset refresh completes in <10 minutes (meets data processing requirement)
@@ -2613,7 +2613,7 @@ _MVP user experience with essential filtering_
 **Backend Implementation:**
 
 - **Search functionality**: Natural language input, LLM query processing, with explicit trigger for on-demand data collection if query results are insufficient (referencing section 5.1.2)
-- **Result display**: Dish-restaurant pairs, basic evidence cards
+- **Result display**: Food-restaurant pairs, basic evidence cards
 - **Map integration**: Location selection, viewport boundary filtering
 - **Open now filtering**: Real-time availability toggle using Google Places hours
 - **Basic user analytics**: Search query tracking, result interaction logging
@@ -2782,7 +2782,7 @@ _Core user engagement foundation_
 
 **Backend Implementation:**
 
-- **Dish-centric bookmarking**: Save dishes with restaurant context
+- **Food-centric bookmarking**: Save food with restaurant context
 - **List management**: Create, edit, delete personal lists
 - **Bookmark organization**: Categories, tags, search within bookmarks
 
@@ -3177,7 +3177,7 @@ _Personalized notification system (Post-MVP)_
 #### 10.5.1 Core Tasks
 
 - **Smart alerts**: Personalized notifications, custom alert creation
-- **Trending notifications**: Alert users to trending dishes in their area
+- **Trending notifications**: Alert users to trending food in their area
 - **Personal recommendations**: AI-driven suggestions based on history
 - **Alert management**: User control over notification frequency and types
 
@@ -3243,7 +3243,7 @@ _Advanced recommendation engine (lowest priority)_
 
 - **Discovery feed**: Recently discussed, quick bites, hidden gems
 - **Advanced discovery**: Trending analysis, neighborhood insights, category reports
-- **Recommendation engine**: AI-driven dish discovery algorithms
+- **Recommendation engine**: AI-driven food discovery algorithms
 - **Personalized feeds**: Custom discovery based on user preferences
 
 #### 10.7.2 Success Criteria

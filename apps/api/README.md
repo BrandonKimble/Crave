@@ -145,15 +145,15 @@ apps/api/
 
 ### Core Tables
 
-- **entities**: Unified storage for restaurants, dishes, categories, attributes
-- **connections**: Restaurant-dish relationships with quality scores
+- **entities**: Unified storage for restaurants, food, categories, attributes
+- **connections**: Restaurant-food relationships with quality scores
 - **mentions**: Reddit community evidence with attribution
 
 ### Entity Types
 
 - `restaurant`: Physical dining establishments
-- `dish_or_category`: Food items (dual purpose as dishes and categories)
-- `dish_attribute`: Dish-scoped attributes (spicy, vegan, etc.)
+- `food`: Food items (dual purpose as dishes and categories)
+- `food_attribute`: Food-scoped attributes (spicy, vegan, etc.)
 - `restaurant_attribute`: Restaurant-scoped attributes (patio, family-friendly, etc.)
 
 ## Testing

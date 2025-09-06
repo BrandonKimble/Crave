@@ -1,7 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { EntityType, Entity } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
-import * as crypto from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -609,8 +608,8 @@ export class EntityResolutionService implements OnModuleInit {
       tempId: attr.tempId,
       normalizedName: attr.attributeName,
       originalText: attr.originalText,
-      entityType: (attr.scope === 'dish'
-        ? 'dish_attribute'
+      entityType: (attr.scope === 'food'
+        ? 'food_attribute'
         : 'restaurant_attribute') as EntityType,
       aliases: attr.aliases || [],
     }));

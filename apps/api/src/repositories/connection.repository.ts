@@ -41,7 +41,7 @@ export class ConnectionRepository {
   }
 
   /**
-   * Find connections for dishes in a specific category at a restaurant
+   * Find connections for food in a specific category at a restaurant
    * Used by QualityScoreService.calculateCategoryPerformanceScore()
    */
   async findConnectionsInCategory(
@@ -71,7 +71,7 @@ export class ConnectionRepository {
 
       return await this.prisma.connection.findMany({
         where: whereClause,
-        orderBy: params?.orderBy || { dishQualityScore: 'desc' },
+        orderBy: params?.orderBy || { foodQualityScore: 'desc' },
         skip: params?.skip,
         take: params?.take,
         include: params?.include,
@@ -109,7 +109,7 @@ export class ConnectionRepository {
 
       const whereClause: Prisma.ConnectionWhereInput = {
         restaurantId,
-        dishAttributes: {
+        foodAttributes: {
           hasSome: attributeIds,
         },
         ...params?.where,
@@ -117,7 +117,7 @@ export class ConnectionRepository {
 
       return await this.prisma.connection.findMany({
         where: whereClause,
-        orderBy: params?.orderBy || { dishQualityScore: 'desc' },
+        orderBy: params?.orderBy || { foodQualityScore: 'desc' },
         skip: params?.skip,
         take: params?.take,
         include: params?.include,

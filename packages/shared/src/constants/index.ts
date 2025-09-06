@@ -3,8 +3,8 @@
 // Entity types from PRD Section 4.1
 export const ENTITY_TYPES = {
   RESTAURANT: 'restaurant',
-  DISH_OR_CATEGORY: 'dish_or_category',
-  DISH_ATTRIBUTE: 'dish_attribute',
+  FOOD: 'food',
+  FOOD_ATTRIBUTE: 'food_attribute',
   RESTAURANT_ATTRIBUTE: 'restaurant_attribute',
 } as const;
 

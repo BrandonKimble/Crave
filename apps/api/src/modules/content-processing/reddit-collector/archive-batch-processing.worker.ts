@@ -12,6 +12,13 @@ import {
  *
  * Extensible worker for processing archive collection batches.
  * Stub implementation for future archive processing integration.
+ *
+ * TODO: REFACTOR OPPORTUNITY - Common LLM Processing Pipeline
+ * Once implemented, this worker will likely share steps 2-5 with other collection
+ * workers (filter/transform, chunk, LLM processing, UnifiedProcessingService).
+ * The key difference: Archive workers start with full post data from archive files,
+ * skipping the Reddit API fetch step that chronological/keyword workers need.
+ * Consider extracting shared processing method once all workers are complete.
  */
 @Processor('archive-batch-processing-queue')
 @Injectable()

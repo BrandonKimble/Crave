@@ -46,6 +46,8 @@ export interface BatchJob {
  * Batch Processing Result
  * Returned by workers after processing a batch
  */
+import type { LLMMention } from '../../external-integrations/llm/llm.types';
+
 export interface BatchProcessingResult {
   /** The job that was processed */
   batchId: string;
@@ -86,6 +88,9 @@ export interface BatchProcessingResult {
     /** Any processing warnings */
     warnings?: string[];
   };
+
+  /** Optional raw mentions sample for debugging (unchanged objects) */
+  rawMentionsSample?: LLMMention[];
 }
 
 /**

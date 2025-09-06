@@ -27,13 +27,13 @@ export function isValidRestaurantData(
 }
 
 /**
- * Type guard for dish or category entity data
+ * Type guard for food or category entity data
  */
-export function isValidDishOrCategoryData(
+export function isValidFoodData(
   data: Prisma.EntityCreateInput | Prisma.EntityUpdateInput,
 ): boolean {
-  // Dish/category entities should have name and optionally description
-  if ('type' in data && data.type === 'dish_or_category') {
+  // Food/category entities should have name and optionally description
+  if ('type' in data && data.type === 'food') {
     return (
       'name' in data && typeof data.name === 'string' && data.name.length > 0
     );
@@ -42,13 +42,13 @@ export function isValidDishOrCategoryData(
 }
 
 /**
- * Type guard for dish attribute entity data
+ * Type guard for food attribute entity data
  */
-export function isValidDishAttributeData(
+export function isValidFoodAttributeData(
   data: Prisma.EntityCreateInput | Prisma.EntityUpdateInput,
 ): boolean {
-  // Dish attributes should have minimal requirements
-  if ('type' in data && data.type === 'dish_attribute') {
+  // Food attributes should have minimal requirements
+  if ('type' in data && data.type === 'food_attribute') {
     return (
       'name' in data && typeof data.name === 'string' && data.name.length > 0
     );
@@ -81,10 +81,10 @@ export function validateEntityTypeData(
   switch (type) {
     case 'restaurant':
       return isValidRestaurantData(data);
-    case 'dish_or_category':
-      return isValidDishOrCategoryData(data);
-    case 'dish_attribute':
-      return isValidDishAttributeData(data);
+    case 'food':
+      return isValidFoodData(data);
+    case 'food_attribute':
+      return isValidFoodAttributeData(data);
     case 'restaurant_attribute':
       return isValidRestaurantAttributeData(data);
     default:
@@ -98,8 +98,8 @@ export function validateEntityTypeData(
 export function isValidEntityType(type: string): type is EntityType {
   return [
     'restaurant',
-    'dish_or_category',
-    'dish_attribute',
+    'food',
+    'food_attribute',
     'restaurant_attribute',
   ].includes(type);
 }
@@ -163,8 +163,8 @@ export function validateEssentialEntityFields(
       missingFields.push(...restaurantValidation.missingFields);
       break;
     }
-    case 'dish_or_category':
-    case 'dish_attribute':
+    case 'food':
+    case 'food_attribute':
     case 'restaurant_attribute':
       // These only need name, which is already validated above
       break;
