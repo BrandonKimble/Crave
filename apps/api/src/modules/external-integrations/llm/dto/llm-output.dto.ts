@@ -124,30 +124,9 @@ export class LLMMentionDto {
   @IsBoolean()
   general_praise: boolean;
 
-  // Source tracking with enhanced fields
-  @IsString()
-  @IsIn(['post', 'comment'])
-  source_type: 'post' | 'comment';
-
   @IsString()
   @IsSafeString()
   source_id: string;
-
-  @IsOptional()
-  @IsString()
-  @IsSafeString()
-  source_content?: string;
-
-  @IsNumber()
-  @Min(0)
-  source_ups: number;
-
-  @IsString()
-  @IsSafeString()
-  source_url: string;
-
-  @IsDateString()
-  source_created_at: string;
 }
 
 /**

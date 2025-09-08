@@ -837,9 +837,8 @@ export class UnifiedProcessingService implements OnModuleInit {
         sourceType: mention.source_type,
         sourceId: mention.source_id,
         sourceUrl: mention.source_url,
-        subreddit: mention.subreddit || subredditFallback || 'unknown',
+        subreddit: mention.subreddit,
         contentExcerpt: (mention.source_content || '').substring(0, 500), // Truncate for excerpt
-        author: mention.author || null,
         upvotes: mention.source_ups,
         createdAt: mentionCreatedAt,
         processedAt: new Date(),

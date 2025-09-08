@@ -534,7 +534,6 @@ async function testPipeline() {
         postsPerMinute: collectedPostIds.length > 0 ? Number((collectedPostIds.length / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
         avgTimePerPostMs: Math.round(avgTimePerPost),
         mentionsPerPost: collectedPostIds.length > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
-        extractionSuccessRate: collectedPostIds.length > 0 ? Number((((totalMentionsExtracted || 0) / collectedPostIds.length) * 100).toFixed(1)) : 0,
       },
       rateLimiting: rateLimitMetrics && !rateLimitMetrics.error ? {
         rpm: {

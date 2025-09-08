@@ -83,9 +83,11 @@ export interface LLMMention {
   // Core processing fields (VITAL)
   general_praise: boolean;
 
-  // Source tracking with enhanced fields
-  source_type: 'post' | 'comment';
+  // Source tracking
   source_id: string;
+  // The following are injected server-side (LLM should not emit in raw output),
+  // but are required in the enriched mention shape used downstream.
+  source_type: 'post' | 'comment';
   source_content?: string;
   source_ups: number;
   source_url: string;

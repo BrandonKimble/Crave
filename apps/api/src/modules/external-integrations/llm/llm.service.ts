@@ -302,26 +302,41 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
 
-    // Return only the data - system instructions are now cached separately
-    const promptData = JSON.stringify({ posts: validPosts }, null, 2);
+    // Return only the minimal data needed by the LLM (lightweight projection)
+    const lightweightPosts = validPosts.map((post) => {
+      const comments = Array.isArray(post.comments) ? post.comments : [];
+      return {
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        extract_from_post: !!post.extract_from_post,
+        comments: comments.map((c) => ({
+          id: c.id,
+          content: c.content,
+          parent_id: c.parent_id ?? null,
+        })),
+      };
+    });
+
+    const promptData = JSON.stringify({ posts: lightweightPosts }, null, 2);
     
     // DEBUG LOGGING: Track input size for massive token generation issue
-    const totalComments = validPosts.reduce((sum, post) => sum + (post.comments?.length || 0), 0);
-    const avgCommentLength = validPosts.reduce((sum, post) => {
-      const commentText = post.comments?.map(c => (c.content || '').length).reduce((a, b) => a + b, 0) || 0;
+    const totalComments = lightweightPosts.reduce((sum, post: any) => sum + (post.comments?.length || 0), 0);
+    const avgCommentLength = lightweightPosts.reduce((sum: number, post: any) => {
+      const commentText = post.comments?.map((c: any) => (c.content || '').length).reduce((a: number, b: number) => a + b, 0) || 0;
       return sum + commentText;
     }, 0) / Math.max(totalComments, 1);
-    
+
     this.logger.info('🔍 INPUT SIZE DEBUG - LLM prompt built', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'build_processing_prompt',
       inputStats: {
-        postsCount: validPosts.length,
+        postsCount: lightweightPosts.length,
         totalComments,
         promptCharacters: promptData.length,
         avgCommentLength: Math.round(avgCommentLength),
-        postIds: validPosts.map(p => p.id),
-        commentCounts: validPosts.map(p => p.comments?.length || 0)
+        postIds: lightweightPosts.map((p: any) => p.id),
+        commentCounts: lightweightPosts.map((p: any) => p.comments?.length || 0)
       },
       warning: totalComments > 50 ? 'HIGH_COMMENT_COUNT' : 'NORMAL'
     });
@@ -425,42 +440,18 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                     'True if mention contains holistic restaurant praise, regardless of specific food praise',
                 },
 
-                // Source metadata (all required)
-                source_type: {
-                  type: 'string',
-                  enum: ['post', 'comment'],
-                  description: 'Whether content came from post or comment',
-                },
                 source_id: {
                   type: 'string',
                   description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
                 },
-                // Removed source_content from schema to prevent the model from echoing long texts
-                source_ups: {
-                  type: 'number',
-                  minimum: 0,
-                  description: 'Reddit upvote count for credibility weighting',
-                },
-                source_url: {
-                  type: 'string',
-                  description: 'Full Reddit URL to the source content',
-                },
-                source_created_at: {
-                  type: 'string',
-                  format: 'date-time',
-                  description: 'ISO timestamp when content was created',
-                },
+                // Note: other source_* fields (type, ups, url, created_at) are injected server-side
               },
               required: [
                 'temp_id',
                 'restaurant_temp_id',
                 'restaurant_name',
                 'general_praise',
-                'source_type',
                 'source_id',
-                'source_ups',
-                'source_url',
-                'source_created_at',
               ],
               propertyOrdering: [
                 'temp_id',
@@ -474,11 +465,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 'food_attributes_selective',
                 'food_attributes_descriptive',
                 'general_praise',
-                'source_type',
                 'source_id',
-                'source_ups',
-                'source_url',
-                'source_created_at',
               ],
             },
           },

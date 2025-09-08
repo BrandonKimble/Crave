@@ -34,7 +34,6 @@
 - Standardize punctuation and spacing
 - Fix obvious typos if detected
 
-
 #### Key Processing Example
 
 **Example for "The house-made spicy Nashville hot chicken sandwich is amazing":**
@@ -42,22 +41,23 @@
 ```json
 {
   "temp_id": "mention_1",
-  "restaurant_temp_id": "rest_1", 
+  "restaurant_temp_id": "rest_1",
   "restaurant_name": "inferred_restaurant_name_here",
   "food_temp_id": "food_1",
   "food_name": "nashville hot chicken sandwich",
-  "food_categories": ["nashville hot chicken sandwich", "hot chicken sandwich", "chicken sandwich", "sandwich", "chicken"],
+  "food_categories": [
+    "nashville hot chicken sandwich",
+    "hot chicken sandwich",
+    "chicken sandwich",
+    "sandwich",
+    "chicken"
+  ],
   "is_menu_item": true,
   "food_attributes_selective": ["spicy"],
   "food_attributes_descriptive": ["nashville", "house-made"],
   "restaurant_attributes": null,
   "general_praise": false,
-  "source_type": "comment",
-  "source_id": "t1_abc123",
-  "source_content": "The house-made spicy Nashville hot chicken sandwich is amazing",
-  "source_ups": 42,
-  "source_url": "/r/food/comments/...",
-  "source_created_at": "2024-01-15T10:30:00Z"
+  "source_id": "t1_abc123"
 }
 ```
 
@@ -73,11 +73,11 @@
 
 ### Entity Inheritance Principle
 
-Comments may inherit entities (restaurants, food , attributes) from parent comment/post when connection is unambiguous. Short affirmations ("+1", "seconded", "this", "agreed", etc.) automatically inherit all entities and sentiment from the parent comment.
+Comments may inherit entities (restaurants, food, attributes) from parent comment/post when connection is unambiguous. Short affirmations ("+1", "seconded", "this", "agreed", etc.) automatically inherit all entities and sentiment from the parent comment.
 
 ### Core Processing Criteria - Process ONLY When ALL Are Met
 
-1. **Sentiment Criterion:** Content expresses or affirms positive sentiment about food/restaurant quality from first-hand experience (having personally visited, eaten, or tasted)
+1. **Sentiment Criterion:** Content contains either explicit positive sentiment about food/restaurant quality from first‑hand experience, or an implied endorsement when a reply lists places in response to a request for recommendations/options.
 2. **Entity Criterion:** Content can be linked to:
    - Restaurant entity AND EITHER:
      - Food entity, OR
@@ -90,19 +90,31 @@ Comments may inherit entities (restaurants, food , attributes) from parent comme
 - Content fails to meet ANY of the core requirements above
 - Focused exclusively on non-food/restaurant aspects  
 - Promotional or marketing content
-- Any request for recommendations, suggestions, or opinions from others
+- Any request for recommendations, suggestions, or opinions from others (the request itself is context; process the replies to it as usual)
 - Secondhand information or hearsay
 
-### General Praise Identification
+### Recommendation Replies & General Praise
 
-**General Praise (general_praise: true):**
-Set to true when mention contains any holistic restaurant praise, regardless of whether it also contains specific praise.
+When processing replies to requests for recommendations/options:
+
+- If the request is NOT item‑specific: mentioning one or more restaurants implies positive endorsement. Emit a restaurant‑only mention per restaurant with `general_praise: true` (unless explicitly negative).
+- If the request IS item‑specific (e.g., “best burger in EV?”):
+  - If the reply explicitly ties a dish to a restaurant, emit a restaurant+food mention per restaurant-food connection with normal `is_menu_item` inference.
+  - Otherwise, emit a restaurant+food mention per restaurant-food connection using the request’s target item as `food_name` and set `is_menu_item: false`. Do not set `general_praise` unless there is holistic praise; when it does co‑occur, set `general_praise: true` on the same restaurant→food mention (do not emit a separate general‑praise‑only mention).
+
+Notes and exceptions:
+
+- Restaurant‑only validity: Emit a restaurant‑only mention (food_name = null, general_praise = false) only when the content positively attributes a restaurant feature (e.g., patio, rooftop). If there is neither dish‑specific praise nor holistic praise and no positive/neutral restaurant attribute is mentioned, skip the mention.
+- Do not require explicit first‑hand language in recommendation replies; listing a place in response counts as an endorsement unless explicitly negative (e.g., “avoid”, “don’t go”, “worst”, “bad”).
+- Neutral/negative caveats (e.g., “sides suck”, “long wait”, “pricey”) should be ignored — do not extract negative attributes.
+- If the original ask is for “bad/avoid/worst” places, skip processing for those replies (do not create mentions).
 
 Examples:
 
-- "This place is amazing" → true
-- "Franklin BBQ is amazing and their brisket is great" → true
-- "Their brisket is great" → false
+- “This place is amazing” → general_praise: true
+- “Franklin BBQ is amazing and their brisket is great” → single restaurant→food mention (Franklin BBQ + brisket) with `general_praise: true`
+- Post: “Where should I eat?” Reply: “Yafa Deli\nCrispy Burger” → two restaurant‑only mentions with `general_praise: true`
+- Post: “Best burger in EV?” Reply: “Crispy Burger — sides suck” → restaurant→food mention with `restaurant_name: "crispy burger"`, `food_name: "burger"`, `is_menu_item: false`, `general_praise: false`; ignore the caveat for extraction
 
 ### Context and Entity Inference Note
 
@@ -119,34 +131,36 @@ Examples:
 
 ### Context-Driven Attribute Classification
 
-**ONLY food types can be categories:**
+Note on scope and examples: The category labels and example lists below are illustrative, not exhaustive. Use them as guidance (e.g., not a closed set) and apply context to map terms appropriately.
 
-- Nouns representing food items: pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert
+**Only food types can be categories:**
+
+- Nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert)
 
 **Primarily food-scoped attributes:**
 
-- **Preparation methods**: grilled, fried, crispy, raw, smoked, house-made, steamed, baked, roasted
-- **Texture/consistency**: tender, juicy, flaky, smooth, chunky, crisp, creamy
-- **Flavor profiles**: sweet, savory, tangy, rich, mild, hot, umami, spicy, tart, bitter
-- **Portion context**: generous portions, shareable, bite-sized
+- **Preparation methods** (e.g., grilled, fried, smoked, steamed, baked, roasted, house‑made, raw)
+- **Texture/consistency** (e.g., tender, juicy, flaky, smooth, chunky, crisp/crunchy, creamy)
+- **Flavor profiles** (e.g., sweet, savory, tangy, rich, mild, spicy, umami, tart, bitter)
+- **Portion context** (e.g., generous portions, shareable, bite‑sized)
 
 **Primarily restaurant-scoped attributes:**
 
-- **Physical features**: patio, rooftop, outdoor, bar seating, view, fireplace, drive-through
-- **Ambiance**: romantic, quiet, lively, cozy, intimate, upscale, casual
-- **Service model**: counter service, full service, fast casual, fine dining, quick service
-- **Operational**: BYOB, reservations required, walk-ins only, takeout friendly, delivery available
-- **Group dynamics**: family-friendly, date night spot, business lunch venue, large groups, communal seating
+- **Physical features** (e.g., patio, rooftop, outdoor, bar seating, view, fireplace, drive‑through)
+- **Ambiance** (e.g., romantic, quiet, lively, cozy, intimate, upscale, casual)
+- **Service model** (e.g., counter service, full service, fast casual, fine dining, quick service)
+- **Operational** (e.g., BYOB, reservations required, walk‑ins only, takeout friendly, delivery available)
+- **Group dynamics** (e.g., family‑friendly, date night spot, business lunch venue, large groups, communal seating)
 
 **Context-dependent attributes (LLM determines scope based on usage):**
 
-- **Cuisine**: Italian, Mexican, Thai, Chinese, Japanese, Mediterranean, Indian, French, Korean, Vietnamese
-- **Dietary**: vegan, vegetarian, gluten-free, halal, kosher, keto, low-carb, dairy-free, nut-free, shellfish-free
-- **Value**: expensive, cheap, budget-friendly, worth-it, great value, affordable
-- **Quality descriptors**: authentic, fresh, best, amazing, incredible, worth-the-splurge
-- **Meal timing**: breakfast, lunch, dinner, brunch, late night, sunday brunch
-- **Occasion**: comfort food, celebration, special occasion, happy hour, daily specials, weekend specials
-- **Service quality**: friendly, attentive, quick service, great service
+- **Cuisine** (e.g., Italian, Mexican, Thai, Chinese, Japanese, Mediterranean, Indian, French, Korean, Vietnamese)
+- **Dietary** (e.g., vegan, vegetarian, gluten‑free, halal, kosher, keto, low‑carb, dairy‑free, nut‑free, shellfish‑free)
+- **Value** (e.g., expensive, cheap, budget‑friendly, worth‑it, great value, affordable)
+- **Quality descriptors** (e.g., authentic, fresh, best, amazing, incredible, worth‑the‑splurge)
+- **Meal timing** (e.g., breakfast, lunch, dinner, brunch, late night, Sunday brunch)
+- **Occasion** (e.g., comfort food, celebration, special occasion, happy hour, daily specials, weekend specials)
+- **Service quality** (e.g., friendly, attentive, quick service, great service)
 
 **Scope Determination Principle**: The same attribute concept (e.g., "Italian") exists as separate entities based on context - "Italian pasta" creates a food_attribute entity, while "Italian restaurant" creates a restaurant_attribute entity.
 

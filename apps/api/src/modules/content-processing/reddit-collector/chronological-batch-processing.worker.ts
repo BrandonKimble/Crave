@@ -271,27 +271,49 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
       const contentById = new Map<string, string>();
       // Map each source (post/comment) id to its parent post id for sampling
       const idToPostId = new Map<string, string>();
+      // Map each source id to metadata for server-side enrichment
+      const idToMeta = new Map<string, { type: 'post' | 'comment'; ups: number; url: string; created_at: string; subreddit: string }>();
       for (const p of llmPosts) {
         if (p?.id && typeof p.content === 'string') {
           contentById.set(p.id, p.content);
           idToPostId.set(p.id, p.id);
+          idToMeta.set(p.id, {
+            type: 'post',
+            ups: typeof (p as any).score === 'number' ? (p as any).score : 0,
+            url: typeof (p as any).url === 'string' ? (p as any).url : '',
+            created_at: typeof (p as any).created_at === 'string' ? (p as any).created_at : new Date().toISOString(),
+            subreddit: typeof (p as any).subreddit === 'string' ? (p as any).subreddit : 'unknown',
+          });
         }
         const comments = Array.isArray(p?.comments) ? p.comments : [];
         for (const c of comments) {
           if (c?.id && typeof c.content === 'string') {
             contentById.set(c.id, c.content);
             idToPostId.set(c.id, p.id);
+            idToMeta.set(c.id, {
+              type: 'comment',
+              ups: typeof (c as any).score === 'number' ? (c as any).score : 0,
+              url: typeof (c as any).url === 'string' ? (c as any).url : '',
+              created_at: typeof (c as any).created_at === 'string' ? (c as any).created_at : new Date().toISOString(),
+              subreddit: typeof (p as any).subreddit === 'string' ? (p as any).subreddit : 'unknown',
+            });
           }
         }
       }
 
       const llmOutput = {
         mentions: flatMentions.map((m: any) => {
-          if (m && !m.source_content) {
-            const text = contentById.get(m.source_id);
-            return { ...m, source_content: text || '' };
-          }
-          return m;
+          const meta = idToMeta.get(m?.source_id);
+          const text = contentById.get(m?.source_id);
+          return {
+            ...m,
+            source_content: text || m?.source_content || '',
+            source_type: meta?.type ?? m?.source_type,
+            source_ups: typeof meta?.ups === 'number' ? meta?.ups : m?.source_ups ?? 0,
+            source_url: meta?.url ?? m?.source_url ?? '',
+            source_created_at: meta?.created_at ?? m?.source_created_at ?? '',
+            subreddit: meta?.subreddit ?? (m as any)?.subreddit ?? 'unknown',
+          };
         }),
       };
 
