@@ -1,6 +1,7 @@
 import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
@@ -272,17 +273,30 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
       // Map each source (post/comment) id to its parent post id for sampling
       const idToPostId = new Map<string, string>();
       // Map each source id to metadata for server-side enrichment
-      const idToMeta = new Map<string, { type: 'post' | 'comment'; ups: number; url: string; created_at: string; subreddit: string }>();
+      const idToMeta = new Map<
+        string,
+        {
+          type: 'post' | 'comment';
+          ups: number;
+          url: string;
+          created_at: string;
+          subreddit: string;
+        }
+      >();
       for (const p of llmPosts) {
         if (p?.id && typeof p.content === 'string') {
           contentById.set(p.id, p.content);
           idToPostId.set(p.id, p.id);
           idToMeta.set(p.id, {
             type: 'post',
-            ups: typeof (p as any).score === 'number' ? (p as any).score : 0,
-            url: typeof (p as any).url === 'string' ? (p as any).url : '',
-            created_at: typeof (p as any).created_at === 'string' ? (p as any).created_at : new Date().toISOString(),
-            subreddit: typeof (p as any).subreddit === 'string' ? (p as any).subreddit : 'unknown',
+            ups: typeof p.score === 'number' ? p.score : 0,
+            url: typeof p.url === 'string' ? p.url : '',
+            created_at:
+              typeof p.created_at === 'string'
+                ? p.created_at
+                : new Date().toISOString(),
+            subreddit:
+              typeof p.subreddit === 'string' ? p.subreddit : 'unknown',
           });
         }
         const comments = Array.isArray(p?.comments) ? p.comments : [];
@@ -292,10 +306,14 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
             idToPostId.set(c.id, p.id);
             idToMeta.set(c.id, {
               type: 'comment',
-              ups: typeof (c as any).score === 'number' ? (c as any).score : 0,
-              url: typeof (c as any).url === 'string' ? (c as any).url : '',
-              created_at: typeof (c as any).created_at === 'string' ? (c as any).created_at : new Date().toISOString(),
-              subreddit: typeof (p as any).subreddit === 'string' ? (p as any).subreddit : 'unknown',
+              ups: typeof c.score === 'number' ? c.score : 0,
+              url: typeof c.url === 'string' ? c.url : '',
+              created_at:
+                typeof c.created_at === 'string'
+                  ? c.created_at
+                  : new Date().toISOString(),
+              subreddit:
+                typeof p.subreddit === 'string' ? p.subreddit : 'unknown',
             });
           }
         }
@@ -305,21 +323,232 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
         mentions: flatMentions.map((m: any) => {
           const meta = idToMeta.get(m?.source_id);
           const text = contentById.get(m?.source_id);
+          const parentPostId = idToPostId.get(m?.source_id);
+          const postContext = parentPostId
+            ? contentById.get(parentPostId)
+            : undefined;
           return {
             ...m,
+            // Injected source metadata
             source_content: text || m?.source_content || '',
             source_type: meta?.type ?? m?.source_type,
-            source_ups: typeof meta?.ups === 'number' ? meta?.ups : m?.source_ups ?? 0,
+            source_ups:
+              typeof meta?.ups === 'number' ? meta?.ups : (m?.source_ups ?? 0),
             source_url: meta?.url ?? m?.source_url ?? '',
             source_created_at: meta?.created_at ?? m?.source_created_at ?? '',
-            subreddit: meta?.subreddit ?? (m as any)?.subreddit ?? 'unknown',
+            subreddit: meta?.subreddit ?? m?.subreddit ?? 'unknown',
+            // TEMP: Debug-only field to aid LLM QA — remove after debugging
+            post_context: postContext || '',
           };
         }),
       };
 
+      // Post-level normalization: if restaurant_name shares tokens with its own food_name,
+      // strip food tokens and harmonize to a brand form already observed in this post.
+      try {
+        const byPost = new Map<string, any[]>();
+        for (const m of llmOutput.mentions) {
+          const pid = idToPostId.get(m?.source_id);
+          if (!pid) continue;
+          if (!byPost.has(pid)) byPost.set(pid, []);
+          byPost.get(pid)!.push(m);
+        }
+
+        const tokenize = (s: string | null | undefined): string[] => {
+          if (!s || typeof s !== 'string') return [];
+          return s
+            .toLowerCase()
+            .split(/[^a-z0-9]+/g)
+            .filter(Boolean);
+        };
+        const keyFromTokens = (tokens: string[]) => tokens.join(' ');
+        const isSubset = (small: Set<string>, big: Set<string>) => {
+          for (const t of small) if (!big.has(t)) return false;
+          return true;
+        };
+        const stableRestId = (postId: string, name: string) =>
+          `rest_${createHash('sha1').update(`${postId}|${name}`).digest('hex').slice(0, 12)}`;
+
+        for (const [postId, mentions] of byPost.entries()) {
+          const nameCounts = new Map<
+            string,
+            { count: number; upvotes: number; tokens: string[] }
+          >();
+          for (const m of mentions) {
+            const tokens = tokenize(m.restaurant_name);
+            const k = keyFromTokens(tokens);
+            if (!k) continue;
+            const prev = nameCounts.get(k) || { count: 0, upvotes: 0, tokens };
+            nameCounts.set(k, {
+              count: prev.count + 1,
+              upvotes:
+                prev.upvotes +
+                (typeof m.source_ups === 'number' ? m.source_ups : 0),
+              tokens,
+            });
+          }
+
+          // Collect unique dish token sets observed in this post (for cross-mention overlap)
+          const dishSets: string[][] = [];
+          const dishKeys = new Set<string>();
+          for (const m of mentions) {
+            const d = tokenize(m.food_name);
+            if (d.length === 0) continue;
+            const dk = keyFromTokens(d);
+            if (!dishKeys.has(dk)) {
+              dishKeys.add(dk);
+              dishSets.push(d);
+            }
+          }
+
+          for (const m of mentions) {
+            const rTokens = tokenize(m.restaurant_name);
+            if (rTokens.length === 0) continue;
+            let rewritten = false;
+
+            // Case A: Same-mention dish overlap
+            const fTokens = tokenize(m.food_name);
+            if (fTokens.length > 0) {
+              const rSetA = new Set(rTokens);
+              const fSetA = new Set(fTokens);
+              let overlapA = false;
+              for (const t of fSetA) {
+                if (rSetA.has(t)) {
+                  overlapA = true;
+                  break;
+                }
+              }
+              if (overlapA) {
+                const remainderA = rTokens.filter((t) => !fSetA.has(t));
+                if (remainderA.length > 0) {
+                  const remSetA = new Set(remainderA);
+                  let bestA: {
+                    key: string;
+                    count: number;
+                    upvotes: number;
+                    tokens: string[];
+                  } | null = null;
+                  for (const [k, info] of nameCounts.entries()) {
+                    const kSet = new Set(info.tokens);
+                    if (isSubset(kSet, remSetA)) {
+                      if (
+                        !bestA ||
+                        info.count > bestA.count ||
+                        (info.count === bestA.count &&
+                          info.upvotes > bestA.upvotes) ||
+                        (info.count === bestA.count &&
+                          info.upvotes === bestA.upvotes &&
+                          info.tokens.length > bestA.tokens.length)
+                      ) {
+                        bestA = {
+                          key: k,
+                          count: info.count,
+                          upvotes: info.upvotes,
+                          tokens: info.tokens,
+                        };
+                      }
+                    }
+                  }
+                  if (bestA && bestA.key !== keyFromTokens(rTokens)) {
+                    const oldName = m.restaurant_name;
+                    m.restaurant_name = bestA.key; // normalized lowercase
+                    m.restaurant_temp_id = stableRestId(
+                      postId,
+                      m.restaurant_name,
+                    );
+                    this.logger.debug(
+                      'Post-level normalization (same-mention): restaurant_name rewritten',
+                      {
+                        correlationId: CorrelationUtils.getCorrelationId(),
+                        postId,
+                        sourceId: m.source_id,
+                        from: oldName,
+                        to: m.restaurant_name,
+                      },
+                    );
+                    rewritten = true;
+                  }
+                }
+              }
+            }
+
+            // Case B: Cross-mention dish overlap (if not rewritten and some dishes exist)
+            if (!rewritten && dishSets.length > 0) {
+              const rSetB = new Set(rTokens);
+              let bestB: {
+                key: string;
+                count: number;
+                upvotes: number;
+                tokens: string[];
+              } | null = null;
+              for (const dTokens of dishSets) {
+                const dSet = new Set(dTokens);
+                if (!isSubset(dSet, rSetB)) continue;
+                const remainderB = rTokens.filter((t) => !dSet.has(t));
+                if (remainderB.length === 0) continue;
+
+                const remSetB = new Set(remainderB);
+                for (const [k, info] of nameCounts.entries()) {
+                  const kSet = new Set(info.tokens);
+                  if (isSubset(kSet, remSetB)) {
+                    if (
+                      !bestB ||
+                      info.count > bestB.count ||
+                      (info.count === bestB.count &&
+                        info.upvotes > bestB.upvotes) ||
+                      (info.count === bestB.count &&
+                        info.upvotes === bestB.upvotes &&
+                        info.tokens.length > bestB.tokens.length)
+                    ) {
+                      bestB = {
+                        key: k,
+                        count: info.count,
+                        upvotes: info.upvotes,
+                        tokens: info.tokens,
+                      };
+                    }
+                  }
+                }
+              }
+              if (bestB && bestB.key !== keyFromTokens(rTokens)) {
+                const oldName = m.restaurant_name;
+                m.restaurant_name = bestB.key;
+                m.restaurant_temp_id = stableRestId(postId, m.restaurant_name);
+                this.logger.debug(
+                  'Post-level normalization (cross-mention): restaurant_name rewritten',
+                  {
+                    correlationId: CorrelationUtils.getCorrelationId(),
+                    postId,
+                    sourceId: m.source_id,
+                    from: oldName,
+                    to: m.restaurant_name,
+                  },
+                );
+              }
+            }
+          }
+
+          // Assign stable post-scoped restaurant_temp_id for ALL mentions (not only rewritten)
+          for (const m of mentions) {
+            const nameForId = (m.restaurant_name || '')
+              .toString()
+              .toLowerCase();
+            if (!nameForId) continue;
+            m.restaurant_temp_id = stableRestId(postId, nameForId);
+          }
+        }
+      } catch (e) {
+        this.logger.debug('Post-level normalization skipped due to error', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          error: { message: e instanceof Error ? e.message : String(e) },
+        });
+      }
+
       // Build a limited raw mentions sample to aid debugging without huge payloads
       const RAW_POSTS_LIMIT = 3; // include mentions from first N posts in this batch
-      const selectedPostIds = llmPosts.slice(0, RAW_POSTS_LIMIT).map((p: any) => p.id);
+      const selectedPostIds = llmPosts
+        .slice(0, RAW_POSTS_LIMIT)
+        .map((p: any) => p.id);
       const rawMentionsSample = llmOutput.mentions.filter((m: any) => {
         const postId = idToPostId.get(m?.source_id);
         return postId ? selectedPostIds.includes(postId) : false;

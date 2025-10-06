@@ -319,13 +319,20 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     });
 
     const promptData = JSON.stringify({ posts: lightweightPosts }, null, 2);
-    
+
     // DEBUG LOGGING: Track input size for massive token generation issue
-    const totalComments = lightweightPosts.reduce((sum, post: any) => sum + (post.comments?.length || 0), 0);
-    const avgCommentLength = lightweightPosts.reduce((sum: number, post: any) => {
-      const commentText = post.comments?.map((c: any) => (c.content || '').length).reduce((a: number, b: number) => a + b, 0) || 0;
-      return sum + commentText;
-    }, 0) / Math.max(totalComments, 1);
+    const totalComments = lightweightPosts.reduce(
+      (sum, post: any) => sum + (post.comments?.length || 0),
+      0,
+    );
+    const avgCommentLength =
+      lightweightPosts.reduce((sum: number, post: any) => {
+        const commentText =
+          post.comments
+            ?.map((c: any) => (c.content || '').length)
+            .reduce((a: number, b: number) => a + b, 0) || 0;
+        return sum + commentText;
+      }, 0) / Math.max(totalComments, 1);
 
     this.logger.info('🔍 INPUT SIZE DEBUG - LLM prompt built', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -336,11 +343,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         promptCharacters: promptData.length,
         avgCommentLength: Math.round(avgCommentLength),
         postIds: lightweightPosts.map((p: any) => p.id),
-        commentCounts: lightweightPosts.map((p: any) => p.comments?.length || 0)
+        commentCounts: lightweightPosts.map(
+          (p: any) => p.comments?.length || 0,
+        ),
       },
-      warning: totalComments > 50 ? 'HIGH_COMMENT_COUNT' : 'NORMAL'
+      warning: totalComments > 50 ? 'HIGH_COMMENT_COUNT' : 'NORMAL',
     });
-    
+
     return promptData;
   }
 
@@ -348,6 +357,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
    * Make authenticated API call to Gemini service using @google/genai library
    */
   private async callLLMApi(prompt: string): Promise<LLMApiResponse> {
+    const maxRetries = this.llmConfig.retryOptions?.maxRetries ?? 3;
+    const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
+    const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
+
     const generationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
@@ -490,155 +503,246 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       configKeys: Object.keys(generationConfig),
     });
 
-    try {
-      this.logger.info('Making LLM API request via @google/genai', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'call_llm_api',
-        model: this.llmConfig.model,
-        hasApiKey: !!this.llmConfig.apiKey,
-        promptLength: prompt.length,
-        library: '@google/genai',
-        usingExplicitCache: !!this.systemInstructionCache,
-        cacheId: this.systemInstructionCache?.name || null,
-      });
-
-      // Use explicit cache if available, otherwise fall back to system instruction in config
-      const requestConfig = this.systemInstructionCache
-        ? {
-            ...generationConfig,
-            cachedContent: this.systemInstructionCache.name,
-          }
-        : {
-            ...generationConfig,
-            systemInstruction: this.systemPrompt,
-          };
-
-      const response = await this.genAI.models.generateContent({
-        model: this.llmConfig.model,
-        contents: [{ parts: [{ text: prompt }] }],
-        config: requestConfig,
-      });
-
-      const finishReason = response.candidates?.[0]?.finishReason;
-      const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
-      const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
-
-      // Enhanced logging for token limit issues
-      if (finishReason === 'MAX_TOKENS') {
-        this.logger.warn('🚨 TOKEN LIMIT HIT - Response truncated!', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'call_llm_api',
-          finishReason,
-          outputTokens,
-          totalTokens: tokensUsed,
-          tokenLimit: 65536,
-          contentLength:
-            response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
-          warning:
-            'JSON response may be incomplete - chunk too large for processing',
-        });
-      }
-      
-      // DEBUG LOGGING: Track response size for massive token generation issue
-      const contentLength = response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0;
-      const outputTokenCount = outputTokens || 0;
-      
-      if (outputTokenCount > 20000 || contentLength > 30000) {
-        this.logger.warn('🔍 MASSIVE RESPONSE DEBUG - Unexpectedly large LLM output', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'call_llm_api',
-          responseAnalysis: {
-            outputTokens: outputTokenCount,
-            contentLength,
-            tokensPerChar: contentLength > 0 ? (outputTokenCount / contentLength).toFixed(3) : 'N/A',
-            promptLength: prompt.length,
-            inputToOutputRatio: prompt.length > 0 ? (contentLength / prompt.length).toFixed(2) : 'N/A',
-          },
-          flags: {
-            isTokenLimit: finishReason === 'MAX_TOKENS',
-            isMassiveOutput: outputTokenCount > 50000,
-            isHugeContent: contentLength > 50000
-          },
-          responsePreview: response.candidates?.[0]?.content?.parts?.[0]?.text || 'NO_CONTENT'
-        });
-      }
-
-      this.logger.info('LLM API response received via @google/genai', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'call_llm_api',
-        candidatesCount: response.candidates?.length || 0,
-        hasContent: !!response.candidates?.[0]?.content?.parts?.[0]?.text,
-        contentLength:
-          response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
-        finishReason,
-        safetyRatings: response.candidates?.[0]?.safetyRatings,
-        usageMetadata: response.usageMetadata,
-        usingExplicitCache: !!this.systemInstructionCache,
-        cachedTokenCount: response.usageMetadata?.cachedContentTokenCount || 0,
-      });
-
-      // Convert @google/genai response format to our expected LLMApiResponse format
-      return {
-        candidates: response.candidates || [],
-        usageMetadata: response.usageMetadata,
-        promptFeedback: response.promptFeedback,
-      } as LLMApiResponse;
-    } catch (error) {
-      // Enhanced error logging for @google/genai errors
-      const errorDetails = {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'call_llm_api',
-        library: '@google/genai',
-        errorType: typeof error,
-        errorConstructor: error?.constructor?.name,
-        errorMessage: error instanceof Error ? error.message : String(error),
-      };
-
-      this.logger.error('Detailed @google/genai API error', errorDetails);
-
-      // Map @google/genai errors to our custom exceptions
-      if (error instanceof Error) {
-        const errorMessage = error.message.toLowerCase();
+    // Simple helper to classify transient errors from Gemini
+    const isRetryable = (err: any): { retry: boolean; reason: string } => {
+      try {
+        const msg = (err?.message || String(err) || '').toLowerCase();
+        // Try to parse JSON error bodies of the shape { error: { code, status, message } }
+        let code = 0;
+        let status = '';
+        const jsonMatch = String(err?.message || '').match(
+          /\{\"error\":\{[^}]*\}\}/,
+        );
+        if (jsonMatch) {
+          try {
+            const parsed = JSON.parse(jsonMatch[0]);
+            code = parsed?.error?.code || 0;
+            status = String(parsed?.error?.status || '').toLowerCase();
+          } catch {}
+        }
 
         if (
-          errorMessage.includes('api key') ||
-          errorMessage.includes('authentication') ||
-          errorMessage.includes('unauthorized')
+          code === 503 ||
+          status === 'unavailable' ||
+          msg.includes('service is currently unavailable') ||
+          msg.includes('model is overloaded') ||
+          msg.includes('temporarily unavailable') ||
+          msg.includes('unavailable') ||
+          msg.includes('503')
         ) {
-          throw new LLMAuthenticationError(
-            'Invalid Gemini API key',
-            error.message,
-          );
-        } else if (
-          errorMessage.includes('quota') ||
-          errorMessage.includes('rate limit') ||
-          errorMessage.includes('429')
+          return { retry: true, reason: 'gemini_unavailable' };
+        }
+        if (msg.includes('timeout') || msg.includes('timed out')) {
+          return { retry: true, reason: 'timeout' };
+        }
+        if (msg.includes('ecconnreset') || msg.includes('econnrefused')) {
+          return { retry: true, reason: 'network' };
+        }
+        if (
+          msg.includes('rate limit') ||
+          msg.includes('quota') ||
+          msg.includes('429')
         ) {
-          throw new LLMRateLimitError(60); // Default 60 second retry
-        } else if (
-          errorMessage.includes('network') ||
-          errorMessage.includes('connection') ||
-          errorMessage.includes('timeout')
-        ) {
-          throw new LLMNetworkError(
-            'Network error during Gemini API request',
-            error,
-          );
-        } else {
-          throw new LLMApiError(
-            `Gemini API request failed: ${error.message}`,
-            undefined,
-            error.message,
+          return { retry: true, reason: 'rate_limit' };
+        }
+      } catch {}
+      return { retry: false, reason: 'non_retryable' };
+    };
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.info('Making LLM API request via @google/genai', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'call_llm_api',
+          model: this.llmConfig.model,
+          hasApiKey: !!this.llmConfig.apiKey,
+          promptLength: prompt.length,
+          library: '@google/genai',
+          usingExplicitCache: !!this.systemInstructionCache,
+          cacheId: this.systemInstructionCache?.name || null,
+          attempt: attempt + 1,
+          maxRetries,
+        });
+
+        // Use explicit cache if available, otherwise fall back to system instruction in config
+        const requestConfig = this.systemInstructionCache
+          ? {
+              ...generationConfig,
+              cachedContent: this.systemInstructionCache.name,
+            }
+          : {
+              ...generationConfig,
+              systemInstruction: this.systemPrompt,
+            };
+
+        const response = await this.genAI.models.generateContent({
+          model: this.llmConfig.model,
+          contents: [{ parts: [{ text: prompt }] }],
+          config: requestConfig,
+        });
+
+        const finishReason = response.candidates?.[0]?.finishReason;
+        const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
+        const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
+
+        if (finishReason === 'MAX_TOKENS') {
+          this.logger.warn('🚨 TOKEN LIMIT HIT - Response truncated!', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'call_llm_api',
+            finishReason,
+            outputTokens,
+            totalTokens: tokensUsed,
+            tokenLimit: 65536,
+            contentLength:
+              response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+            warning:
+              'JSON response may be incomplete - chunk too large for processing',
+          });
+        }
+
+        // DEBUG LOGGING: Track response size for massive token generation issue
+        const contentLength =
+          response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0;
+        const outputTokenCount = outputTokens || 0;
+
+        if (outputTokenCount > 20000 || contentLength > 30000) {
+          this.logger.warn(
+            '🔍 MASSIVE RESPONSE DEBUG - Unexpectedly large LLM output',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              operation: 'call_llm_api',
+              responseAnalysis: {
+                outputTokens: outputTokenCount,
+                contentLength,
+                tokensPerChar:
+                  contentLength > 0
+                    ? (outputTokenCount / contentLength).toFixed(3)
+                    : 'N/A',
+                promptLength: prompt.length,
+                inputToOutputRatio:
+                  prompt.length > 0
+                    ? (contentLength / prompt.length).toFixed(2)
+                    : 'N/A',
+              },
+              flags: {
+                isTokenLimit: finishReason === 'MAX_TOKENS',
+                isMassiveOutput: outputTokenCount > 50000,
+                isHugeContent: contentLength > 50000,
+              },
+              responsePreview:
+                response.candidates?.[0]?.content?.parts?.[0]?.text ||
+                'NO_CONTENT',
+            },
           );
         }
-      } else {
-        throw new LLMApiError(
-          `LLM request failed: ${String(error)}`,
-          undefined,
-          JSON.stringify(errorDetails),
-        );
+
+        this.logger.info('LLM API response received via @google/genai', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'call_llm_api',
+          candidatesCount: response.candidates?.length || 0,
+          hasContent: !!response.candidates?.[0]?.content?.parts?.[0]?.text,
+          contentLength:
+            response.candidates?.[0]?.content?.parts?.[0]?.text?.length || 0,
+          finishReason,
+          safetyRatings: response.candidates?.[0]?.safetyRatings,
+          usageMetadata: response.usageMetadata,
+          usingExplicitCache: !!this.systemInstructionCache,
+          cachedTokenCount:
+            response.usageMetadata?.cachedContentTokenCount || 0,
+          attempt: attempt + 1,
+        });
+
+        return {
+          candidates: response.candidates || [],
+          usageMetadata: response.usageMetadata,
+          promptFeedback: response.promptFeedback,
+        } as LLMApiResponse;
+      } catch (error) {
+        const errorDetails = {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'call_llm_api',
+          library: '@google/genai',
+          errorType: typeof error,
+          errorConstructor: error?.constructor?.name,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          attempt: attempt + 1,
+          maxRetries,
+        };
+
+        this.logger.error('Detailed @google/genai API error', errorDetails);
+
+        const { retry, reason } = isRetryable(error);
+        if (retry && attempt < maxRetries) {
+          // Exponential backoff with jitter
+          const delay = Math.floor(baseDelay * Math.pow(backoff, attempt));
+          const jitter = Math.floor(
+            Math.random() * Math.max(250, Math.floor(delay * 0.2)),
+          );
+          const waitMs = delay + jitter;
+          this.logger.warn('Transient Gemini error; retrying with backoff', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            reason,
+            attempt: attempt + 1,
+            nextAttemptInMs: waitMs,
+          });
+          await new Promise((r) => setTimeout(r, waitMs));
+          continue; // retry loop
+        }
+
+        // Map @google/genai errors to our custom exceptions (non-retryable or out of retries)
+        if (error instanceof Error) {
+          const errorMessage = error.message.toLowerCase();
+          if (
+            errorMessage.includes('api key') ||
+            errorMessage.includes('authentication') ||
+            errorMessage.includes('unauthorized')
+          ) {
+            throw new LLMAuthenticationError(
+              'Invalid Gemini API key',
+              error.message,
+            );
+          } else if (
+            errorMessage.includes('quota') ||
+            errorMessage.includes('rate limit') ||
+            errorMessage.includes('429')
+          ) {
+            throw new LLMRateLimitError(60);
+          } else if (
+            errorMessage.includes('network') ||
+            errorMessage.includes('connection') ||
+            errorMessage.includes('timeout')
+          ) {
+            throw new LLMNetworkError(
+              'Network error during Gemini API request',
+              error,
+            );
+          } else {
+            throw new LLMApiError(
+              `Gemini API request failed: ${error.message}`,
+              undefined,
+              error.message,
+            );
+          }
+        } else {
+          throw new LLMApiError(
+            `LLM request failed: ${String(error)}`,
+            undefined,
+            JSON.stringify(errorDetails),
+          );
+        }
       }
     }
+    // Should be unreachable: loop either returned or threw
+    throw new LLMApiError(
+      'Gemini API request failed after all retry attempts',
+      undefined,
+      'retry_exhausted',
+    );
+  }
+
+  // Local helper for sleep (used in retry)
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
@@ -750,8 +854,6 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
   }
-
-  
 
   /**
    * Test Gemini connectivity and authentication

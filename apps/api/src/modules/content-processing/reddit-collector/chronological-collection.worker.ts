@@ -169,7 +169,36 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const allPosts = postsResult.data || [];
       // TEMPORARY: Limit to 50 posts for testing
       const posts = allPosts.slice(0, 50);
-      await job.log(`Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`);
+      await job.log(
+        `Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`,
+      );
+
+      // TEMPORARY INJECTION: Ensure a specific post ID is processed first if provided
+      // Set env INJECT_FIRST_POST_ID=t3_1nadf05 (or plain 1nadf05)
+      const injectIdRaw = process.env.INJECT_FIRST_POST_ID || '';
+      const injectId = injectIdRaw.replace(/^t3_/i, '').trim();
+      // Build IDs list (Reddit API post.data.id is the base id without t3_)
+      const ids: string[] = posts
+        .map((p: any) =>
+          typeof p?.id === 'string' ? p.id : String(p?.id || ''),
+        )
+        .filter((id: string) => !!id);
+      if (injectId) {
+        // If already present, move to front; otherwise, prepend
+        const existingIndex = ids.indexOf(injectId);
+        if (existingIndex >= 0) {
+          ids.splice(existingIndex, 1);
+          ids.unshift(injectId);
+          await job.log(
+            `🔧 Injection: moved post ${injectIdRaw} to first slot`,
+          );
+        } else {
+          ids.unshift(injectId);
+          await job.log(
+            `🔧 Injection: added post ${injectIdRaw} to first slot`,
+          );
+        }
+      }
 
       // Process all collected posts - async queue handles batching and rate limiting
 
@@ -187,10 +216,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       }
 
       // PHASE 2: Queue batches for async processing
-      const batches = chunk(
-        posts.map((p: any) => p.id),
-        this.BATCH_SIZE,
-      );
+      const batches = chunk(ids, this.BATCH_SIZE);
       let latestTimestamp = 0;
 
       // Queue all batches for async processing

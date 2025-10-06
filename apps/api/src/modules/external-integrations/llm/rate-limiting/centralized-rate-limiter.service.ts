@@ -54,7 +54,10 @@ export class CentralizedRateLimiter {
 
     // Headroom (applies to both RPM and TPM). Defaults to 0.95.
     const envHeadroom = parseFloat(process.env.LLM_RATE_HEADROOM || '');
-    this.headroom = !isNaN(envHeadroom) && envHeadroom > 0 && envHeadroom <= 1 ? envHeadroom : 0.95;
+    this.headroom =
+      !isNaN(envHeadroom) && envHeadroom > 0 && envHeadroom <= 1
+        ? envHeadroom
+        : 0.95;
     this.safeRPM = Math.floor(this.maxRPM * this.headroom);
     this.safeTPM = Math.floor(this.maxTPM * this.headroom);
     this.safeRequestsPerSecond = Math.max(1, Math.floor(this.safeRPM / 60));
@@ -228,8 +231,15 @@ export class CentralizedRateLimiter {
         String(Math.max(1, estimatedTokens ?? 0)),
       )) as [number, number, number, number, number, number, number];
 
-      const [reservationTime, waitMs, requestsInWindow, activeRequests, windowTokens, reservedTokens, estTokens] =
-        result;
+      const [
+        reservationTime,
+        waitMs,
+        requestsInWindow,
+        activeRequests,
+        windowTokens,
+        reservedTokens,
+        estTokens,
+      ] = result;
 
       const metrics = {
         currentRPM: requestsInWindow,
@@ -261,9 +271,15 @@ export class CentralizedRateLimiter {
         safeTPM: this.safeTPM,
       };
       if (waitMs > 0) {
-        this.logger.debug(`Reserved future slot for worker ${workerId}`, logPayload);
+        this.logger.debug(
+          `Reserved future slot for worker ${workerId}`,
+          logPayload,
+        );
       } else {
-        this.logger.debug(`Immediate slot granted for worker ${workerId}`, logPayload);
+        this.logger.debug(
+          `Immediate slot granted for worker ${workerId}`,
+          logPayload,
+        );
       }
 
       return {
@@ -480,7 +496,12 @@ export class CentralizedRateLimiter {
     const oneMinuteAgo = now - 60000;
 
     // Get all token entries in the last minute
-    const entries = await this.redis.zrangebyscore(this.tpmKey, oneMinuteAgo, now, 'WITHSCORES');
+    const entries = await this.redis.zrangebyscore(
+      this.tpmKey,
+      oneMinuteAgo,
+      now,
+      'WITHSCORES',
+    );
     const reservedEntries = await this.redis.zrangebyscore(
       this.tpmReservationsKey,
       oneMinuteAgo,

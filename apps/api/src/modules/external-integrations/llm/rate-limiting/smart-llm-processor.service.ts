@@ -37,7 +37,12 @@ export class SmartLLMProcessor implements OnModuleInit {
     tpmWindowTokens: { sum: 0, min: Number.POSITIVE_INFINITY, max: 0 },
     estInputTokens: { sum: 0, min: Number.POSITIVE_INFINITY, max: 0 },
     actualInputTokens: { sum: 0, min: Number.POSITIVE_INFINITY, max: 0 },
-    estError: { sum: 0, absSum: 0, min: Number.POSITIVE_INFINITY, max: Number.NEGATIVE_INFINITY },
+    estError: {
+      sum: 0,
+      absSum: 0,
+      min: Number.POSITIVE_INFINITY,
+      max: Number.NEGATIVE_INFINITY,
+    },
     noUsageCount: 0,
     mentionfulCount: 0,
   };
@@ -52,13 +57,16 @@ export class SmartLLMProcessor implements OnModuleInit {
     this.logger = this.loggerService.setContext('SmartLLMProcessor');
     this.rateLimiter = this.centralizedRateLimiter;
 
-    this.logger.info('LLM Processor initialized with reservation-based rate limiting', {
-      correlationId: CorrelationUtils.getCorrelationId(),
-      mode: 'reservation_based',
-      guaranteedCompliance: true,
-      workers: 16,
-      headroom: '95%',
-    });
+    this.logger.info(
+      'LLM Processor initialized with reservation-based rate limiting',
+      {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        mode: 'reservation_based',
+        guaranteedCompliance: true,
+        workers: 16,
+        headroom: '95%',
+      },
+    );
   }
 
   /**
@@ -81,8 +89,10 @@ export class SmartLLMProcessor implements OnModuleInit {
       const estimatedTokens = await this.estimateInputTokens(input);
 
       // 2. Reserve a guaranteed time slot with TPM-aware budgeting
-      const reservation =
-        await this.rateLimiter.reserveRequestSlot(effectiveWorkerId, estimatedTokens);
+      const reservation = await this.rateLimiter.reserveRequestSlot(
+        effectiveWorkerId,
+        estimatedTokens,
+      );
 
       // 3. Wait until the reserved time if necessary
       if (reservation.waitMs > 0) {
@@ -117,10 +127,15 @@ export class SmartLLMProcessor implements OnModuleInit {
       const tokenUsage = this.extractTokenUsage(result);
       let tpmUtilization = 0;
       if (tokenUsage) {
-        await this.rateLimiter.recordTokenUsage(tokenUsage.inputTokens, tokenUsage.outputTokens);
+        await this.rateLimiter.recordTokenUsage(
+          tokenUsage.inputTokens,
+          tokenUsage.outputTokens,
+        );
         // Remove the reserved token placeholder now that actual usage is recorded
         try {
-          await this.rateLimiter.finalizeTokenReservation(reservation.reservationMember);
+          await this.rateLimiter.finalizeTokenReservation(
+            reservation.reservationMember,
+          );
         } catch (e) {
           this.logger.debug('Failed to finalize token reservation', {
             correlationId: CorrelationUtils.getCorrelationId(),
@@ -138,21 +153,29 @@ export class SmartLLMProcessor implements OnModuleInit {
             tpmSnapshot: tpm,
           });
         } catch (e) {
-          this.logger.debug('Failed to retrieve TPM analysis after recording usage', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            error: { message: e instanceof Error ? e.message : String(e) },
-          });
+          this.logger.debug(
+            'Failed to retrieve TPM analysis after recording usage',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              error: { message: e instanceof Error ? e.message : String(e) },
+            },
+          );
         }
       } else {
         // Fallback: record estimated INPUT tokens so reservations don't linger
         try {
           await this.rateLimiter.recordTokenUsage(estimatedTokens, 0);
-          await this.rateLimiter.finalizeTokenReservation(reservation.reservationMember);
-          this.logger.debug('No usage metadata; recorded estimated input tokens', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            workerId: effectiveWorkerId,
-            estimatedTokens,
-          });
+          await this.rateLimiter.finalizeTokenReservation(
+            reservation.reservationMember,
+          );
+          this.logger.debug(
+            'No usage metadata; recorded estimated input tokens',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              workerId: effectiveWorkerId,
+              estimatedTokens,
+            },
+          );
           this.agg.noUsageCount++;
         } catch (e) {
           this.logger.debug('No usage metadata and failed to record estimate', {
@@ -172,7 +195,9 @@ export class SmartLLMProcessor implements OnModuleInit {
         const rpmUtil = reservation.metrics?.utilizationPercent ?? 0;
         const tpmUtil = tpmUtilization ?? 0;
         const waitMs = reservation.waitMs || 0;
-        const mentionsLen = Array.isArray((result as any)?.mentions) ? (result as any).mentions.length : 0;
+        const mentionsLen = Array.isArray((result as any)?.mentions)
+          ? (result as any).mentions.length
+          : 0;
 
         this.agg.count++;
         if (mentionsLen > 0) this.agg.mentionfulCount++;
@@ -190,19 +215,43 @@ export class SmartLLMProcessor implements OnModuleInit {
         this.agg.tpmUtil.max = Math.max(this.agg.tpmUtil.max, tpmUtil);
         // rpm window count
         this.agg.rpmWindow.sum += rpmWindowCount;
-        this.agg.rpmWindow.min = Math.min(this.agg.rpmWindow.min, rpmWindowCount);
-        this.agg.rpmWindow.max = Math.max(this.agg.rpmWindow.max, rpmWindowCount);
+        this.agg.rpmWindow.min = Math.min(
+          this.agg.rpmWindow.min,
+          rpmWindowCount,
+        );
+        this.agg.rpmWindow.max = Math.max(
+          this.agg.rpmWindow.max,
+          rpmWindowCount,
+        );
         // tpm window tokens
         this.agg.tpmWindowTokens.sum += tpmWindowTokens;
-        this.agg.tpmWindowTokens.min = Math.min(this.agg.tpmWindowTokens.min, tpmWindowTokens);
-        this.agg.tpmWindowTokens.max = Math.max(this.agg.tpmWindowTokens.max, tpmWindowTokens);
+        this.agg.tpmWindowTokens.min = Math.min(
+          this.agg.tpmWindowTokens.min,
+          tpmWindowTokens,
+        );
+        this.agg.tpmWindowTokens.max = Math.max(
+          this.agg.tpmWindowTokens.max,
+          tpmWindowTokens,
+        );
         // estimates vs actual
         this.agg.estInputTokens.sum += estInput;
-        this.agg.estInputTokens.min = Math.min(this.agg.estInputTokens.min, estInput);
-        this.agg.estInputTokens.max = Math.max(this.agg.estInputTokens.max, estInput);
+        this.agg.estInputTokens.min = Math.min(
+          this.agg.estInputTokens.min,
+          estInput,
+        );
+        this.agg.estInputTokens.max = Math.max(
+          this.agg.estInputTokens.max,
+          estInput,
+        );
         this.agg.actualInputTokens.sum += actualInput;
-        this.agg.actualInputTokens.min = Math.min(this.agg.actualInputTokens.min, actualInput);
-        this.agg.actualInputTokens.max = Math.max(this.agg.actualInputTokens.max, actualInput);
+        this.agg.actualInputTokens.min = Math.min(
+          this.agg.actualInputTokens.min,
+          actualInput,
+        );
+        this.agg.actualInputTokens.max = Math.max(
+          this.agg.actualInputTokens.max,
+          actualInput,
+        );
         const err = estInput - actualInput;
         this.agg.estError.sum += err;
         this.agg.estError.absSum += Math.abs(err);
@@ -244,7 +293,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           name: error instanceof Error ? error.name : undefined,
         },
         reservation: {
-          waitMs: typeof (error as any)?.waitMs === 'number' ? (error as any).waitMs : undefined,
+          waitMs: typeof error?.waitMs === 'number' ? error.waitMs : undefined,
         },
       });
 
@@ -364,18 +413,24 @@ export class SmartLLMProcessor implements OnModuleInit {
       },
       tpmWindowTokens: {
         avg: avg(this.agg.tpmWindowTokens.sum),
-        min: isFinite(this.agg.tpmWindowTokens.min) ? this.agg.tpmWindowTokens.min : 0,
+        min: isFinite(this.agg.tpmWindowTokens.min)
+          ? this.agg.tpmWindowTokens.min
+          : 0,
         max: this.agg.tpmWindowTokens.max,
       },
       inputTokens: {
         estimated: {
           avg: avg(this.agg.estInputTokens.sum),
-          min: isFinite(this.agg.estInputTokens.min) ? this.agg.estInputTokens.min : 0,
+          min: isFinite(this.agg.estInputTokens.min)
+            ? this.agg.estInputTokens.min
+            : 0,
           max: this.agg.estInputTokens.max,
         },
         actual: {
           avg: avg(this.agg.actualInputTokens.sum),
-          min: isFinite(this.agg.actualInputTokens.min) ? this.agg.actualInputTokens.min : 0,
+          min: isFinite(this.agg.actualInputTokens.min)
+            ? this.agg.actualInputTokens.min
+            : 0,
           max: this.agg.actualInputTokens.max,
         },
         estimationError: {
@@ -401,7 +456,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           process.env.LLM_TPM_INCLUDE_CACHED === 'true' ||
           process.env.LLM_TPM_INCLUDE_CACHED === '1';
         const cached = includeCached
-          ? (usageMetadata as any).cachedContentTokenCount || 0
+          ? usageMetadata.cachedContentTokenCount || 0
           : 0;
         return {
           inputTokens: usageMetadata.promptTokenCount + cached,

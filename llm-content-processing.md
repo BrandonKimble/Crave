@@ -1,256 +1,544 @@
-# Crave App: Comprehensive System Design & Implementation Guide
+# Crave App: LLM Content Processing Guide
 
-## Central Entity Extraction & Processing Guide
+### Processing Loop
 
-**CRITICAL: Follow this step-by-step processing flow to extract entities systematically, referencing the appropriate section for each step.**
+- Run Steps 1-6 separately for each source within the provided input payload: the post body (once, only when `extract_from_post: true`) and every individual comment, whether top-level or nested. Each run produces output for just that source, while still using the surrounding content for context according to the later step instructions.
 
-### Step 1: Initial Content Assessment → Use Section 1
-- Apply **Core Comment & Post Processing Criteria** (Section 1) to determine if content should be processed
-- **Entity Inheritance:** Check if entities can be inherited from parent comment/post when connection is unambiguous
-- **Short Affirmations:** Handle "+1", "seconded", "this", "agreed" by automatically inheriting all entities and sentiment from parent
-- **General Praise Identification:** Determine if mention contains holistic restaurant praise
+### Pipeline Snapshot (read before diving into the step sections)
 
-### Step 2: Entity Identification & Classification → Use Section 2
-- Extract restaurant mentions (explicit or contextually inferred)
-- Apply **Entity Types & Classification Rules** (Section 2) to identify:
-  - Which terms are food entities (food nouns)
-  - Which terms are food_attributes based on context (preparation, cuisine when applied to food, etc.)
-  - Which terms are restaurant_attributes based on context (ambiance, features, cuisine when applied to restaurants, etc.)
-- **Context-dependent attributes**: Determine scope based on usage
+- Step 1 - Eligibility & intent check; inputs: in-scope text; outputs: `shouldProcess`, `resolvedRestaurants`.
+- Step 2 - Canonicalize restaurant names; inputs: `resolvedRestaurants`; outputs: `canonicalRestaurants`.
+- Step 3 - Classify food/restaurant attributes and prepare tokens; inputs: `canonicalRestaurants`, source text; outputs: `classifiedAttributes`, `foodTokensClean`, `attributeLinks`.
+- Step 4 - Compose dish terms per restaurant connection; inputs: `foodTokensClean`, contextual anchors; outputs: `composedFoods`.
+- Step 5 - Decide item vs category vs restaurant-only; inputs: `composedFoods`, context cues; outputs: `itemDecisions`.
+- Step 6 - Apply sentiment gate and emit mentions; inputs: prior outputs plus sentiment cues; outputs: final `mentions` JSON.
 
-### Step 3: Food Term Processing → Use Section 3
-- Apply **Compound Term Processing Rules** (Section 3):
-  - Exclude attribute terms identified in Step 2
-  - Apply hierarchical decomposition to remaining food substance terms
-  - Create parent-child category relationships
+### Data Contracts (owned outputs per step)
 
-### Step 4: Menu Item Classification → Use Section 4
-- Apply **Menu Item Identification Rules** (Section 4) to determine is_menu_item flag
-- Apply **Selective vs Descriptive Classification** for attributes
+- Step 1 -> `shouldProcess: boolean`, `resolvedRestaurants: string[]`
+- Step 2 -> `canonicalRestaurants: Array<{ restaurant_name: string, restaurant_temp_id: string }>`
+- Step 3 -> `classifiedAttributes`, `foodTokensClean`, `attributeLinks`
+- Step 4 -> `composedFoods`
+- Step 5 -> `itemDecisions`
+- Step 6 -> `mentions`
 
-### Step 5: Name Normalization & Output
-- Convert to lowercase canonical forms
-- Remove unnecessary articles (the, a, an)
-- Standardize punctuation and spacing
-- Fix obvious typos if detected
+Each step’s section below is authoritative for how to populate these structures. Nothing in this preface replaces the detailed instructions; it only orients you before reading them.
 
-#### Key Processing Example
+### Core Concepts & Terminology
 
-**Example for "The house-made spicy Nashville hot chicken sandwich is amazing":**
+- **In-scope context**: strictly the text provided in the current input payload (post title/body subject to `extract_from_post`, the active comment, and any parent/earlier lines included).
+- **Anchor types** discovered in-scope:
+  - `restaurant anchors`: explicit restaurant names.
+  - `food anchors`: explicit dishes/categories or inherited food references.
+  - `attribute anchors`: modifiers tied to restaurants or foods.
+- **Anchor handling across steps** (orientation only—follow each step’s detailed rules before acting):
+  - Step 1 resolves restaurant anchors and decides whether to continue; it does not collect food or attribute anchors.
+  - Step 3 classifies food and attribute anchors after Step 1/Step 2 have supplied the restaurant context.
+  - Steps 4-6 reuse the anchored outputs from Steps 1-3; they never introduce new anchors.
+- **References**: pronouns, deictics, definites, possessives, ellipsis, and short affirmations that point back to anchors.
+- **Depth-aware resolution order** (applies whenever a step calls for it):
+  - Replies: current comment (closest clause first) -> parent comment -> earlier lines in this input -> post title/body.
+  - Top-level comments: current comment -> post title/body -> earlier lines in this input.
 
-```json
-{
-  "temp_id": "mention_1",
-  "restaurant_temp_id": "rest_1",
-  "restaurant_name": "inferred_restaurant_name_here",
-  "food_temp_id": "food_1",
-  "food_name": "nashville hot chicken sandwich",
-  "food_categories": [
-    "nashville hot chicken sandwich",
-    "hot chicken sandwich",
-    "chicken sandwich",
-    "sandwich",
-    "chicken"
-  ],
-  "is_menu_item": true,
-  "food_attributes_selective": ["spicy"],
-  "food_attributes_descriptive": ["nashville", "house-made"],
-  "restaurant_attributes": null,
-  "general_praise": false,
-  "source_id": "t1_abc123"
-}
-```
+### Global Example Note
 
-## Section 1: Core Comment & Post Processing Criteria
+- Every example in this guide is illustrative. When an example seems to diverge, follow the principles and rules in the relevant step.
 
-### Post Extraction Control
+## Step 1: Eligibility & Intent
+
+Scope & Goal
+- Scope: Resolve restaurant references using in-scope context; infer recommendation intent; decide whether to continue processing this post/comment.
+- Goal: Produce `resolvedRestaurants` and `shouldProcess` without canonicalizing names, composing dishes, or assigning `general_praise`.
+
+Inputs & Dependencies
+- Inputs: in-scope text per the Global Principle (post title/body per `extract_from_post`, current comment, parent/earlier lines included in this input).
+- Dependencies: depth-aware reference resolution order from the Global Principle; Step 1.1 `extract_from_post` semantics; Step 1.3 recommendation-reply interpretation.
+
+Outputs
+- `resolvedRestaurants: string[]` - resolved restaurant names (not yet canonicalized) referenced by this post/comment.
+- `shouldProcess: boolean` - whether to proceed to Step 2.
+
+### Execution order summary (apply after reading 1.1-1.5)
+1. Apply `extract_from_post` semantics (scope sources)
+2. Discover anchors and resolve references in the current comment (depth-aware order)
+3. Interpret recommendation replies for intent (positive unless explicitly negative)
+4. Evaluate the Eligibility Gate (1.4) and Skip Conditions (1.5); derive `shouldProcess`
+Outcome: `{ shouldProcess: boolean, resolvedRestaurants: string[] }` (continue to Step 2 if true)
+
+### 1.1 Post Extraction Control
 
 **CRITICAL RULE - MUST BE FOLLOWED**: Check the `extract_from_post` flag in each input:
-- If `extract_from_post: true` → Extract entities from both the post content AND comments
-- If `extract_from_post: false` → **DO NOT EXTRACT ANY ENTITIES FROM THE POST CONTENT** - Extract entities ONLY from comments
+
+- If `extract_from_post: true` -> Extract entities from both the post content AND comments
+- If `extract_from_post: false` -> **DO NOT EXTRACT ANY ENTITIES FROM THE POST CONTENT** - Extract entities ONLY from comments
 - The post is always provided for context to understand references in comments
-- **IMPORTANT**: When `extract_from_post: false`, even if the post mentions restaurants and food, you MUST NOT create mentions from the post content itself - only use it as context for understanding comment references
+- extract_from_post semantics: When `extract_from_post` is false, do not emit mentions from the post body. Still use the post title and content to disambiguate and canonicalize restaurant and food names in replies. The flag only controls emitting mentions from the post body; it does not reduce the use of post context for resolving names in comments.
 
-### Entity Inheritance Principle
+### 1.2 Anchor Discovery & Reference Resolution
 
-Comments may inherit entities (restaurants, food, attributes) from parent comment/post when connection is unambiguous. Short affirmations ("+1", "seconded", "this", "agreed", etc.) automatically inherit all entities and sentiment from the parent comment.
+Extract explicit restaurant names from the in-scope text (anchors).
 
-### Core Processing Criteria - Process ONLY When ALL Are Met
+- Scan these in-scope sources for anchors (order depends on depth):
+  - For replies (has parent): current comment (same sentence/clause first), then the parent comment, then any earlier lines included in this input, then the post title/body (subject to `extract_from_post`).
+  - For top-level comments (no parent): current comment first, then the post title/body, then any earlier lines included in this input.
+- Resolve references in the current comment (pronouns, deictics, definite descriptions, possessives, ellipsis) to the nearest viable anchor per the depth-aware order.
+- If the current comment lacks an explicit name, still discover anchors from surrounding in-scope text and resolve the current comment's references to those anchors here.
+- If no anchors are found after scanning all in-scope sources, set `shouldProcess = false` and skip. If irreducible ambiguity remains after applying the depth-aware order (two anchors equally likely), skip here rather than carrying ambiguity forward.
+- Hand off the resolved restaurant names to Step 2 for canonicalization & alias unification.
 
-1. **Sentiment Criterion:** Content contains either explicit positive sentiment about food/restaurant quality from first‑hand experience, or an implied endorsement when a reply lists places in response to a request for recommendations/options.
-2. **Entity Criterion:** Content can be linked to:
-   - Restaurant entity AND EITHER:
-     - Food entity, OR
-     - Restaurant attribute, OR
-     - Clear general praise for the restaurant
-3. **Relevance Criterion:** Content appears to describe current offerings
+### 1.3 Recommendation Replies - Interpretation (intent only)
 
-### Skip Conditions (Overrides All Other Rules)
+Interpret ask/response patterns to set intent; do not modify `resolvedRestaurants` here (anchor discovery and reference resolution happen in 1.2). Final emission and `general_praise` are decided in Step 6.
 
-- Content fails to meet ANY of the core requirements above
-- Focused exclusively on non-food/restaurant aspects  
-- Promotional or marketing content
-- Any request for recommendations, suggestions, or opinions from others (the request itself is context; process the replies to it as usual)
-- Secondhand information or hearsay
+- Non item-specific asks (e.g., "Where should I eat?"): listing one or more restaurants implies positive intent unless explicitly negative about that place.
+- Item-specific asks (e.g., "best burger in EV?"):
+  - If the reply ties a dish to a restaurant, intent is positive for that link.
+  - If the reply names a restaurant without tying a dish, intent is positive for the named restaurant; do not force itemhood.
+- Do not require explicit first-hand language; listing a place counts as endorsement unless explicitly negative (e.g., "avoid", "don't go", "worst", "bad").
+- When a reply only names the restaurant, Steps 5-6 will reuse the ask's target category as `food_name`/`food_categories` with `is_menu_item: false`; Step 1 still refrains from emitting from the ask itself.
 
-### Recommendation Replies & General Praise
+### 1.4 Eligibility Gate (lightweight)
 
-When processing replies to requests for recommendations/options:
+Decide whether to continue to Steps 2-6. Do not prove dish/itemhood or assign general_praise here - Sections 3-4 compose/classify; Step 5 judges itemhood; Step 6 governs emission.
 
-- If the request is NOT item‑specific: mentioning one or more restaurants implies positive endorsement. Emit a restaurant‑only mention per restaurant with `general_praise: true` (unless explicitly negative).
-- If the request IS item‑specific (e.g., “best burger in EV?”):
-  - If the reply explicitly ties a dish to a restaurant, emit a restaurant+food mention per restaurant-food connection with normal `is_menu_item` inference.
-  - Otherwise, emit a restaurant+food mention per restaurant-food connection using the request’s target item as `food_name` and set `is_menu_item: false`. Do not set `general_praise` unless there is holistic praise; when it does co‑occur, set `general_praise: true` on the same restaurant→food mention (do not emit a separate general‑praise‑only mention).
+Proceed only when all are true:
+- Link present: at least one resolved restaurant is available from 1.2.
+- Source permitted: this text is allowed by 1.1 (`extract_from_post` semantics for post/comment).
+- Positive signal: either a recommendation-listing reply was detected in 1.3, or the current comment contains a clear positive quality signal (restaurant-level or dish-level) in local context.
+- Timeliness not contradicted: there is no strong evidence the content is past-only/defunct. When uncertain, continue (soft gate) and let Step 6 apply the final sentiment gate.
 
-Notes and exceptions:
+#### 1.4.1 Timeliness cues
+- Clearly not current (prefer stop unless contradicted in the same text): "RIP/closed", "permanently closed", "used to", "I miss ...".
+- Suggests current: present-tense dining language and menu references (e.g., "had", "got", "we ordered", "their X is great", "they do amazing Y").
+- If unclear, continue; Step 6 may still withhold emission if nothing positive/qualifying materializes.
 
-- Restaurant‑only validity: Emit a restaurant‑only mention (food_name = null, general_praise = false) only when the content positively attributes a restaurant feature (e.g., patio, rooftop). If there is neither dish‑specific praise nor holistic praise and no positive/neutral restaurant attribute is mentioned, skip the mention.
-- Do not require explicit first‑hand language in recommendation replies; listing a place in response counts as an endorsement unless explicitly negative (e.g., “avoid”, “don’t go”, “worst”, “bad”).
-- Neutral/negative caveats (e.g., “sides suck”, “long wait”, “pricey”) should be ignored — do not extract negative attributes.
-- If the original ask is for “bad/avoid/worst” places, skip processing for those replies (do not create mentions).
+### 1.5 Skip Conditions (overrides)
 
-Examples:
+- Fails the Eligibility Gate (1.4).
+- Purely non-food/restaurant content (no quality or attribute signal, no recommendation intent).
+- Promotional/marketing content.
+- The ask itself (requests/questions) - record intent in 1.3; do not emit from the ask.
+- Secondhand information or hearsay.
+- Explicitly negative listing asks ("bad/avoid/worst"): treat replies as negative intent; Step 6 will withhold emission.
 
-- “This place is amazing” → general_praise: true
-- “Franklin BBQ is amazing and their brisket is great” → single restaurant→food mention (Franklin BBQ + brisket) with `general_praise: true`
-- Post: “Where should I eat?” Reply: “Yafa Deli\nCrispy Burger” → two restaurant‑only mentions with `general_praise: true`
-- Post: “Best burger in EV?” Reply: “Crispy Burger — sides suck” → restaurant→food mention with `restaurant_name: "crispy burger"`, `food_name: "burger"`, `is_menu_item: false`, `general_praise: false`; ignore the caveat for extraction
+## Step 2: Canonicalization & Alias Unification
 
-### Context and Entity Inference Note
+Scope & Goal
+- Scope: Normalize and unify the restaurant names resolved in Step 1 for this input. Do not perform reference resolution or eligibility checks.
+- Goal: Choose a single canonical `restaurant_name` per establishment (from observed variants only) and assign a consistent `restaurant_temp_id` for reuse in this input.
 
-**For posts/comments that don't contain directly processable information:** Even if content doesn't meet the core processing criteria, it can still provide valuable context for entity inheritance, restaurant identification, or setting up context for subsequent comments in the thread.
+Inputs & Dependencies
+- Inputs: `resolvedRestaurants` from Step 1.
+- Dependencies: Global Principle (in-scope evidence only); safe alias unification rules; canonical selection rules.
 
-## Section 2: Entity Types & Classification Rules
+Outputs
+- `canonicalRestaurants: Array<{ restaurant_name: string, restaurant_temp_id: string }>` - canonicalized names and IDs for use in Steps 3-6.
 
-### Entity Types
+### Execution order summary (apply after reading 2.1-2.7)
+1. Canonicalize names produced by Step 1 (no pronoun/deictic resolution)
+2. Unify aliases/short forms only when safe (equal after normalization, or strict superset with no subset collisions)
+3. Choose the canonical from observed variants only; never synthesize new tokens
+4. Include branch/location only when needed to disambiguate within this input
+5. Assign and reuse `restaurant_temp_id` per canonical form in this input
+Outcome: canonical `restaurant_name` values and `restaurant_temp_id`s for downstream steps
 
-- **restaurant**: Physical dining establishments
-- **food**: Food items that can serve as both specific menu items and general categories
-- **food_attribute**: Descriptive terms that apply to food items (connection-scoped)
-- **restaurant_attribute**: Descriptive terms that apply to restaurants (restaurant-scoped)
+### 2.1 Inputs & Constraints
 
-### Context-Driven Attribute Classification
+- Input: the `resolvedRestaurants` produced by Step 1 (reference resolution already done there).
+- Use only in-scope evidence (this input payload) to choose canonical forms.
+- Do not fabricate names. The canonical restaurant_name MUST be chosen from the observed surface forms in this input after normalization. Never synthesize or expand a name with tokens not present in any observed form.
+- This step does not skip in normal cases. If a canonicalization conflict cannot be unified using the criteria below (rare), apply canonical selection rules to choose one.
 
-Note on scope and examples: The category labels and example lists below are illustrative, not exhaustive. Use them as guidance (e.g., not a closed set) and apply context to map terms appropriately.
+### 2.2 Canonicalization Rules (restaurant_name)
 
-**Only food types can be categories:**
+Normalize each resolved restaurant name into a canonical string to avoid duplicates:
 
-- Nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert)
-
-**Primarily food-scoped attributes:**
-
-- **Preparation methods** (e.g., grilled, fried, smoked, steamed, baked, roasted, house‑made, raw)
-- **Texture/consistency** (e.g., tender, juicy, flaky, smooth, chunky, crisp/crunchy, creamy)
-- **Flavor profiles** (e.g., sweet, savory, tangy, rich, mild, spicy, umami, tart, bitter)
-- **Portion context** (e.g., generous portions, shareable, bite‑sized)
-
-**Primarily restaurant-scoped attributes:**
-
-- **Physical features** (e.g., patio, rooftop, outdoor, bar seating, view, fireplace, drive‑through)
-- **Ambiance** (e.g., romantic, quiet, lively, cozy, intimate, upscale, casual)
-- **Service model** (e.g., counter service, full service, fast casual, fine dining, quick service)
-- **Operational** (e.g., BYOB, reservations required, walk‑ins only, takeout friendly, delivery available)
-- **Group dynamics** (e.g., family‑friendly, date night spot, business lunch venue, large groups, communal seating)
-
-**Context-dependent attributes (LLM determines scope based on usage):**
-
-- **Cuisine** (e.g., Italian, Mexican, Thai, Chinese, Japanese, Mediterranean, Indian, French, Korean, Vietnamese)
-- **Dietary** (e.g., vegan, vegetarian, gluten‑free, halal, kosher, keto, low‑carb, dairy‑free, nut‑free, shellfish‑free)
-- **Value** (e.g., expensive, cheap, budget‑friendly, worth‑it, great value, affordable)
-- **Quality descriptors** (e.g., authentic, fresh, best, amazing, incredible, worth‑the‑splurge)
-- **Meal timing** (e.g., breakfast, lunch, dinner, brunch, late night, Sunday brunch)
-- **Occasion** (e.g., comfort food, celebration, special occasion, happy hour, daily specials, weekend specials)
-- **Service quality** (e.g., friendly, attentive, quick service, great service)
-
-**Scope Determination Principle**: The same attribute concept (e.g., "Italian") exists as separate entities based on context - "Italian pasta" creates a food_attribute entity, while "Italian restaurant" creates a restaurant_attribute entity.
-
-### Selective vs Descriptive Classification
-
-**Selective attributes:** Help filter or categorize options
-
-- "great vegan sandwiches" → vegan is selective
-- "best Italian restaurants" → Italian is selective
-- "good breakfast spots" → breakfast is selective
-
-**Descriptive attributes:** Characterize or describe specific items
-
-- "this pasta is very fresh" → fresh is descriptive
-- "their sandwich is so big" → big is descriptive
-
-**Principle:** Is it about what type of thing it is (selective) or how that thing is (descriptive)?
-
-## Section 3: Compound Term Processing Rules (Food Terms Only)
-
-_Apply these rules only to food-related compound terms, not restaurant names or other entities._
-
-### Attribute Exclusion Principle
-
-Before applying compound term processing to food mentions, exclude any terms that are preparation methods, cooking styles, dietary restrictions, cuisines meal periods, or serving formats. Apply compound term processing only to remaining food substance terms.
-
-### Complete Preservation Rule
-
-Always store the complete compound food term as primary category in singular form, **excluding any terms identified as attributes**.
-
-### Hierarchical Decomposition Rule
-
-Create all meaningful food noun combinations as additional categories:
-
-- Include significant ingredients as standalone categories
-- Convert all category terms to singular form
-- Include parent categories when term represents specific subtype
-- **Exclude any terms identified as attributes from decomposition**
+- Lowercase everything.
+- Remove leading English articles: "the", "a", "an".
+- Collapse repeated whitespace to a single space; trim leading/trailing spaces.
+- Standardize punctuation and symbols:
+  - Replace ampersand "&" with the word "and".
+  - Remove trailing punctuation (commas, periods, quotes) that are not part of the name.
+  - Normalize apostrophes to plain ASCII when present (e.g., "joe's" -> "joes").
+- Keep brand tokens intact (e.g., "bbq", "deli", "bakery", "taqueria"). Do not drop generic words if they are integral to the brand's written name.
+- Preserve multi-word brand tokens and ordering as written after normalization.
 
 Examples:
 
-- "spicy ramen" → Extract "spicy" as attribute, process only "ramen" for compound terms
-- "breakfast burrito" → Extract "breakfast" as attribute, process only "burrito" for compound terms
-- "house-made carnitas taco" → Extract "house-made" as preparation attribute, process "carnitas taco" for compound terms
+- "Franklin BBQ" -> "franklin bbq"
+- "The Smith" -> "smith"
+- "Joe's Pizza" -> "joes pizza"
+- "Pho & Co." -> "pho and co"
 
-### Inference Rules
+### 2.3 Alias & Short Forms (unification only)
 
-- Infer parent categories for specific food subtypes even when not explicitly mentioned
-- Derive broader cuisine attributes from specific ones
-- Apply known culinary relationships
+- Unify only when safe, using observed variants in this input:
 
-## Section 4: Menu Item Identification Rules
+- Equal after normalization: two observed forms are identical after applying 2.2.
+- Strict superset: one observed form is a strict token-superset of another AND no other anchor in this input shares the subset tokens (prevents accidental merges).
+- Otherwise, keep forms distinct in this input (do not merge across distinct places).
+- Pronouns and deictics are resolved in Step 1 and are not handled here.
+- Chains and brands: If a chain name is mentioned without a specific location, use the brand-level canonical name (e.g., "mcdonalds") as observed. Do not add neighborhood/city unless it appears as part of the brand's written name in this input.
+- Location-neutral mentions: When multiple branches exist but the text stays generic, prefer the location-free canonical form. Let downstream systems or users pick a branch rather than inventing a qualifier here.
+- Eligibility happens here; the surviving canonical string still comes from the normalization rules in 2.2, and when several survivors remain, defer to the canonical selection scoring in 2.5 to choose the one to keep.
 
-When setting the is_menu_item flag on restaurant→food connections (applied to clean food terms after attribute extraction):
+### 2.4 Ambiguity & Safety
 
-### Specificity
+- This step does not skip in normal cases. If a canonicalization conflict cannot be unified using 2.2 and 2.5 (e.g., two non-equivalent observed variants assert different canonicals for the same place), apply canonical selection rules (2.5) to choose one. Step 1 has already resolved references; only pathological conflicts should remain.
+- Never emit placeholders like "unknown restaurant", "that place", or partial names without a clear brand token.
 
-- More specific food items are likely menu items
-- Example: "brisket" at Franklin BBQ (is_menu_item = true)
-- Example: "BBQ" (is_menu_item = false)
+### 2.5 Canonical Selection (scoring)
 
-### Plurality
+When multiple observed variants exist for the same establishment in this input, pick one canonical from those observed variants, then stick to it:
 
-- Singular forms often indicate menu items
-- Example: "the burger" (is_menu_item = true)
-- Example: "burgers" (is_menu_item = false)
+- Variant gathering: Consider only name variants present in the in-scope text; normalize variants per 2.2. Never synthesize a new form.
+- Scoring criteria (apply in order):
+  - Completeness: prefer names that include full brand tokens (e.g., "katz's delicatessen" over "katz's") when unambiguous.
+  - Disambiguation: include branch/location tokens only if multiple branches are clearly referenced in this input; otherwise omit location suffixes.
+  - Specificity over brevity: prefer the more informative name if unambiguous in context.
+  - Tie-breakers: higher frequency in this input's text; if still tied, prefer the longer informative token set.
+- Canonical output: For all mentions of the same place within this post, emit `restaurant_name` as the chosen canonical; do not switch to a shorter alias once established. Reuse the same `restaurant_temp_id` for that place across mentions. Avoid emitting multiple normalized names that are token-subsets of one another for the same establishment.
+- Do not infer location qualifiers unless explicitly included in the text as part of the brand (e.g., avoid appending "nyc", "ev", "austin" to names unless it's part of the written name).
 
-### Modifiers
+### 2.6 Temporary IDs (restaurant_temp_id)
 
-- Specific preparation details suggest menu items
-- Example: "house-made carnitas taco" (is_menu_item = true)
-- Example: "seafood" (is_menu_item = false)
+- Assign `restaurant_temp_id` as `r1`, `r2`, `r3`, ... in first-mention order within this output.
+- Reuse the same `restaurant_temp_id` for all subsequent mentions that resolve to the same canonical `restaurant_name` in this output.
 
-### Context
+### 2.7 Examples
 
-- "Try their X" typically indicates menu item
-- "Known for X" typically indicates menu item
-- "Type of X" typically indicates category
-- Example: "Try their migas taco" (is_menu_item = true)
-- Example: "They have all types of tacos" (is_menu_item = false)
+- Post: "Best tacos at Nixta?" -> canonical `restaurant_name: "nixta"`; `restaurant_temp_id: r1`.
+- Comment: "Franklin is insane. Their brisket slaps." (thread clearly about Franklin BBQ) -> unify short form to canonical "franklin bbq" only if "franklin bbq" (or equivalent) appears as an observed variant in this input; otherwise keep "franklin".
+- Comment: "Nixta was packed last night." (no observed "nixta taqueria" etc. in this input) -> keep canonical as "nixta".
+- Comment: "Yafa Deli\nCrispy Burger" (reply to "Where should I eat?") -> two restaurants: "yafa deli" and "crispy burger", each with its own `restaurant_temp_id`.
 
-### Hierarchical Position
+## Step 3: Entity & Attribute Classification
 
-- If entity is mentioned alongside more specific versions, likely a category
-- Example: In "great ramen, especially the tonkotsu"
-  "tonkotsu ramen" (is_menu_item = true)
-  "ramen" (is_menu_item = false)
+Scope & Goal
+- Scope: Identify entity types in the current comment and classify modifiers as `restaurant_attributes`, `food_attributes_selective`, and `food_attributes_descriptive`. Do not compose `food_name` or decide item/category/emission here.
+- Goal: Produce normalized attribute arrays and a clean set of food substance tokens for composition.
 
-### Default Case
+Inputs & Dependencies
+- Inputs: current comment text; in-scope context (title/body per `extract_from_post`, parent/earlier lines) for implicit references; `canonicalRestaurants` (Step 2) for disambiguation.
+- Dependencies: Global Principle depth-aware reference resolution (applies to food/attribute references when implicit in the current comment).
 
-- If uncertain, check if food is mentioned as something specifically ordered
-- Example: "I ordered the pad thai" (is_menu_item = true)
-- Example: "They specialize in Thai food" (is_menu_item = false)
+Outputs
+- `classifiedAttributes: { restaurant_attributes: string[] | null, food_attributes_selective: string[] | null, food_attributes_descriptive: string[] | null }` - normalized, comment-scoped attribute arrays for reuse across mentions.
+- `foodTokensClean: string[]` - food substance tokens (attributes removed) to be used as inputs to Step 4 composition.
+- `attributeLinks: Array<{ restaurant_temp_id: string, food_name: string | null, restaurant_attributes: string[], food_attributes_selective: string[], food_attributes_descriptive: string[] }>` - mention-level linkage objects that point each attribute to the restaurant->food pair(s) it modifies.
+
+### Execution order summary (apply after reading 3.1-3.7)
+1. Surface candidate food spans and modifiers in the current comment.
+2. Apply the Attribute Exclusion Principle (3.2) so attributes are separated from food substance tokens.
+3. Resolve implicit references (definites, pronouns, deictics) to nearby anchors using the depth-aware order.
+4. Classify remaining tokens into restaurant vs food vs attribute; split food attributes into selective vs descriptive.
+5. Normalize (lowercase, dedupe, natural singular) and emit `classifiedAttributes`, the cleaned food tokens for composition, and the `attributeLinks` map for downstream steps.
+Outcome: `classifiedAttributes`, `attributeLinks`, and `foodTokensClean` ready for Step 4 and Step 6
+
+### 3.1 Candidate harvesting
+
+- Parse the current comment for nouns/noun phrases that could represent food items, restaurant descriptors, or attributes.
+- Include inherited anchors from the parent/post when the current text uses pronouns or ellipsis.
+- Keep the raw span plus any leading modifiers so the next step can decide which tokens stay with the dish vs peel off as attributes.
+
+### 3.2 Attribute Exclusion Principle
+
+Before handing tokens to composition, peel away modifiers that are attributes rather than core food substance terms.
+
+- Remove preparation styles, cuisines-as-adjectives, dietary labels, serving periods, texture descriptors, and other modifiers that would better live in attribute arrays.
+- Exclude multi-word modifiers as a unit when they behave as a single attribute (e.g., "house-made", "very spicy", "gluten free").
+- Keep anchor words that define the food identity (e.g., protein, dish type) with the food tokens.
+- Examples (non-exhaustive):
+  - "spicy ramen" -> attribute "spicy"; food tokens keep "ramen".
+  - "breakfast burrito" -> attribute "breakfast"; food tokens keep "burrito".
+  - "house-made carnitas taco" -> attribute "house-made"; food tokens keep "carnitas taco".
+
+### 3.3 Entity types
+
+- `restaurant`: named establishments (e.g., "hui", "franklin bbq", "joe's pizza").
+- `food`: food items that can be specific prepared items and broader categories (e.g., "ramen", "sesame noodles", "duck carnitas tacos").
+- `food_attribute`: descriptive terms that apply to food items (connection-scoped), split into selective vs descriptive.
+- `restaurant_attribute`: descriptive terms that apply to restaurants (restaurant-scoped).
+
+### 3.4 Context-Driven Attribute Classification
+
+Use local context to decide whether a term is a category (food) or an attribute (food/restaurant). Lists highlight patterns; rely on context, not keyword matching.
+
+- Only food types can be categories: nouns representing food items (e.g., pizza, taco, burger, sandwich, soup, salad, pasta, ramen, sushi, noodles, dessert).
+- Primarily food-scoped attributes (examples):
+  - Preparation methods (e.g., grilled, fried, smoked, steamed, baked, roasted, house-made, raw)
+  - Texture/consistency (e.g., tender, juicy, flaky, smooth, chunky, crisp/crunchy, creamy)
+  - Flavor profiles (e.g., sweet, savory, tangy, rich, mild, spicy, umami, tart, bitter)
+  - Portion context (e.g., generous portions, shareable, bite-sized)
+- Primarily restaurant-scoped attributes (examples):
+  - Physical features (e.g., patio, rooftop, outdoor, bar seating, view, fireplace, drive-through)
+  - Ambiance (e.g., romantic, quiet, lively, cozy, intimate, upscale, casual)
+  - Service model (e.g., counter service, full service, fast casual, fine dining, quick service)
+  - Operational (e.g., BYOB, reservations required, walk-ins only, takeout friendly, delivery available)
+  - Group dynamics (e.g., family-friendly, date night spot, business lunch venue, large groups, communal seating)
+
+### 3.5 Scope Determination Principle
+
+Determine scope by usage:
+- "Italian pasta" -> `food_attribute`; "Italian restaurant" -> `restaurant_attribute`.
+- "house-made" or "spicy" about a dish -> `food_attribute`; "great service", "cozy" -> `restaurant_attribute`.
+
+### 3.6 Selective vs Descriptive (food-level)
+
+- Selective attributes filter or categorize options (e.g., "great vegan sandwiches" -> `vegan`; "best Italian restaurants" -> `italian`; "good breakfast spots" -> `breakfast`).
+- Descriptive attributes characterize specific items (e.g., "this pasta is very fresh" -> `fresh`; "their sandwich is so big" -> `big`).
+
+### 3.7 Normalization & Outputs
+
+- Lowercase everything; use natural singulars when it preserves meaning ("noodles" -> "noodle" is awkward, keep plural).
+- Deduplicate within each attribute list while preserving selective vs descriptive separation.
+- Emit `foodTokensClean` as the remaining food substance terms in reading order; these feed Step 4 composition.
+
+### 3.8 Mention-level Attribute Linking
+
+- Emit one `attributeLinks` entry per restaurant->food connection using the normalized strings from `classifiedAttributes`. Keep a separate entry with `food_name: null` whenever an attribute is restaurant-scoped so downstream steps can fan it out to every mention tied to that restaurant.
+- Apply restaurant attributes to every mention for that restaurant, and attach food attributes only to the dish (restaurant->food pair) they modify. When text clearly scopes an attribute to multiple dishes, create a link for each pair.
+- Example: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version is smoky, and Nixta's patio is gorgeous." -> Step 3 should output three `attributeLinks` entries: `{ restaurant_temp_id: r1, food_name: "duck carnitas tacos", restaurant_attributes: [], food_attributes_selective: [], food_attributes_descriptive: ["rich"] }`, `{ restaurant_temp_id: r2, food_name: "duck carnitas tacos", restaurant_attributes: [], food_attributes_selective: [], food_attributes_descriptive: ["smoky"] }`, and `{ restaurant_temp_id: r1, food_name: null, restaurant_attributes: ["patio"], food_attributes_selective: [], food_attributes_descriptive: [] }`. Step 6 will then emit the appropriate subsets on each mention while still reusing the normalized attribute strings.
+
+## Step 4: Food Term Composition
+
+Scope & Goal
+- Scope: From the current comment's food language, compose a single dish per mention (`food_name` + `food_categories`) without ingredient fan-out. Do not decide item vs category or emission.
+- Goal: Produce stable food terms for Step 5. When food/attribute references are implicit (definites/pronouns/deictics), resolve them to nearby food/attribute anchors using the Global Principle's depth-aware order.
+
+Inputs & Dependencies
+- Inputs: current comment text; `foodTokensClean` (Step 3); resolved/canonical restaurant context from Steps 1-2 for disambiguation; in-scope context (title/body, parent/earlier lines) for food/attribute reference resolution when needed.
+- Dependencies: Global Principle depth-aware reference resolution (applied to food/attributes when the current comment's food reference is implicit); classification outputs from Step 3.
+
+Outputs
+- `composedFoods: Array<{ restaurant_temp_id: string, food_name: string, food_categories: string[] }>` - one or more composed dish objects (each tied to a canonical restaurant) for Steps 5-6.
+
+### Execution order summary (apply after reading 4.1-4.5)
+1. Start from `foodTokensClean` (Step 3) and confirm the dish is tied to the correct canonical `restaurant_temp_id` when context is implicit.
+2. Compose a single `food_name` using the head food noun plus identity-changing specifiers; avoid ingredient fan-out.
+3. Build concise `food_categories` (ingredients + parent categories), 3-6 salient terms, deduped and singular where natural.
+4. Validate invariants (readable name, aligned categories) and emit `composedFoods` entries, each carrying the linked `restaurant_temp_id`, for Steps 5-6.
+Outcome: structured `food_name` with complementary `food_categories` for use in Steps 5-6
+
+### 4.1 Single-Mention Composition Principle
+
+Represent a composed dish as one mention. Do not emit separate mentions for component ingredients or related nouns; capture them under `food_categories` for the same dish mention.
+- Carry forward the `restaurant_temp_id` that the dish inherits from Step 1/Step 2 resolution so downstream steps can join decisions unambiguously.
+
+### 4.2 Primary `food_name` Formation
+
+- Use the head food noun plus essential specifiers that change dish identity (e.g., protein, style, subtype): "duck carnitas tacos", "sesame noodles", "tonkotsu ramen".
+- If the phrase includes additive lists introduced by "with/and" (e.g., "with burrata, chanterelle mushrooms, and pesto"), keep `food_name` concise and push the additive list into `food_categories`.
+- Do not reattach attributes stripped in Step 3; rely on the attribute arrays produced there.
+- Normalize: lowercase; singularize where natural (avoid awkward singulars that reduce clarity); keep punctuation minimal and human-readable.
+
+### 4.3 Hierarchical Decomposition to `food_categories`
+
+Create a concise, meaningful set of categories to support search, filtering, and aggregation:
+
+- Include component ingredients and related nouns from the dish context (e.g., burrata, chanterelle mushrooms, pesto).
+- Include parent categories when a term is a subtype (e.g., "carnitas taco" -> "taco"; "tonkotsu ramen" -> "ramen").
+- Exclude attributes; convert to singular; deduplicate.
+- Bound the set to the most salient 3-6 terms - avoid combinatorial n-grams.
+
+### 4.4 Inference Rules
+
+- Infer reasonable parent categories for specific subtypes even when not explicitly mentioned.
+- Derive broader cuisine/parent categories when they are food categories (not attributes already excluded above).
+- Apply known culinary relationships conservatively to avoid over-generation.
+
+### 4.5 Examples
+
+- "house-made carnitas taco" ->
+  - `food_name`: "carnitas taco"
+  - `food_categories`: ["taco", "carnitas"]
+  - attributes: ["house-made"]
+- "spicy ramen" ->
+  - `food_name`: "ramen"
+  - `food_categories`: ["ramen"]
+  - attributes: ["spicy"]
+- "pasta with burrata, chanterelle mushrooms, and pesto" ->
+  - `food_name`: "pasta"
+  - `food_categories`: ["pasta", "burrata", "chanterelle mushrooms", "pesto"]
+  - One mention only; ingredients captured as categories.
+- Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `food_name`/`food_categories` but distinct `restaurant_temp_id` values so later steps can keep the pairs separate.
+## Step 5: Menu Item Identification
+
+Scope & Goal
+- Scope: Decide `is_menu_item` for each composed dish (or choose restaurant-only) using in-scope context; do not re-split composed dishes or assign `general_praise`.
+- Goal: Produce conservative item/category decisions for Step 6 emission.
+
+Inputs & Dependencies
+- Inputs: `canonicalRestaurants` from Step 2; `composedFoods` from Step 4; in-scope context signals (local tie, specificity, coherence).
+- Dependencies: Respect Step 4 (no re-split); respect Step 2's canonical restaurant names.
+
+Outputs
+- `itemDecisions: Array<{ restaurant_temp_id: string, food_name: string | null, food_categories: string[] | null, is_menu_item: boolean }>` for use in Step 6. For true restaurant-only recommendations (no dish mention and no inherited ask category), set both `food_name` and `food_categories` to null with `is_menu_item: false`. When the reply comes from an item-specific ask and only names the restaurant, keep the inherited category in `food_name`/`food_categories` (per 5.2) and still set `is_menu_item: false`.
+
+### Execution order summary (apply after reading 5.1-5.4)
+1. Aggregate context (local tie, specificity, coherence)
+2. Align each decision with the correct `composedFood` entry (matching `restaurant_temp_id` and `food_name` when present) or, for item-specific asks without a dish mention, inherit the ask's target category.
+3. Set `is_menu_item: true` only with strong evidence; else category/restaurant-only
+4. Respect Step 4.1 (Single-Mention Composition): reuse the composed dish as emitted
+Outcome: decide `is_menu_item` (true/false) or restaurant-only when no clear dish applies
+
+### 5.1 Principles
+
+- Context scope: Use all in-scope text - post title, post body, the current comment, and any earlier text included in this same input/chunk.
+- No placeholders: Never emit fabricated or placeholder restaurant names. If the restaurant cannot be resolved with high confidence, skip the mention instead of inventing a name.
+- Sentiment alignment: Step 1 ensures there is a positive or recommendatory intent before you reach this step, and Step 6 performs the final positive-only gate. Step 5 should remain neutral - do not override the pipeline with additional sentiment heuristics here, but avoid forwarding obviously negative dish mentions.
+- Canonicalization alignment: Within a post, use the single canonical `restaurant_name` and `restaurant_temp_id` chosen in Step 2. Short forms must align with that canonical name; do not produce multiple variants for the same establishment.
+- Food linking: Match `food_name` and `restaurant_temp_id` to one of the `composedFoods` produced in Step 4 so downstream steps can merge decisions without guessing.
+- Respect Step 4.1: Reuse the composed dish as emitted; do not re-split dishes or ingredients already locked in.
+
+### 5.2 Decision Framework (apply in order)
+
+1. Confirm link to canonical restaurant (from Step 2)
+
+   - If this composed dish has no confirmed link for this source, skip (do not emit placeholders).
+
+2. Confirm composed dish terms (from Step 4)
+
+  - Use the `food_name`/`food_categories` produced by Step 4 as-is (per Step 4.1); do not re-split or re-compose here.
+   - When Step 4 has no composed dish because the reply only names the restaurant, inherit the ask's target category as `food_name` and set `food_categories` to a minimal list (e.g., `["burger"]`). Keep `is_menu_item: false` in this scenario.
+
+3. Assess itemhood evidence (aggregate; do not rely on a single cue)
+
+   - Local tie: Dish and restaurant are linked in the same clause/sentence or an immediately adjacent reference (e.g., "at [restaurant]", "from here", "their/this/that [dish]", clear ordering verbs like "got/ordered/had/tried"). A clear combination suffices; not all signals are required.
+   - Specificity: The dish is specific enough that a typical diner could order it without additional specification (e.g., "duck carnitas tacos", "sesame noodles"), not just a broad type ("sushi", "pizza", "shawarma") unless the context makes it specific.
+   - Coherence: If earlier text in the same input has already established a dish->restaurant pairing, concise follow-ups (e.g., "the tacos are insane", "this was incredible") may inherit itemhood when unambiguous.
+
+4. Decide outcome (be conservative when uncertain)
+   - `is_menu_item: true` when itemhood evidence is sufficiently strong (as above) in the local context.
+   - `is_menu_item: false` when the food reference reads as a category or when evidence is weak/ambiguous after aggregating context.
+   - Restaurant-only when the reply lists restaurants without a clear dish, or when sentiment applies holistically to the restaurant.
+
+### 5.3 Examples
+
+- Specific prepared item (`is_menu_item: true`)
+  - "Duck carnitas tacos at Nixta were insane." -> `restaurant_name`: "nixta"; `food_name`: "duck carnitas tacos".
+  - "Their sesame noodles are fantastic." (thread already about that restaurant) -> `food_name`: "sesame noodles".
+- Category or skip (`is_menu_item: false` or no dish mention)
+  - "The sushi roll was pretty good." (no clear restaurant tie in local context) -> either skip, or treat as category if the restaurant is otherwise clearly in scope but the dish remains generic.
+  - "Mixed shawarma platter. Maybe add falafel." (no restaurant tie, generic discussion) -> skip.
+- Mixed sentiment (emit only positive dish)
+  - "PSA: the ribs suck. The brisket is good." -> emit "brisket" (positive); do not emit "ribs".
+- Inherited itemhood in concise follow-ups (when unambiguous)
+  - Post: "Best dishes at Nixta?" Reply: "Duck carnitas tacos." -> itemhood inherited; `is_menu_item: true`.
+- Item-specific ask with restaurant-only reply
+  - Post: "Best burger in EV?" Reply: "Check out Royale." -> emit `food_name: "burger"`, `is_menu_item: false`, linked to Royale with the ask's target category.
+
+### 5.4 Notes
+
+- When producing pure restaurant-only recommendations (e.g., "Great patio at X"), set both `food_name` and `food_categories` to null with `is_menu_item: false` so Step 6 can emit a restaurant-only mention while still attaching attributes.
+- When inheriting an ask's target category, supply that term as `food_name`, keep `food_categories` minimal, and leave `is_menu_item: false`.
+- When multiple dishes tie to the same restaurant in one source, emit one `itemDecisions` entry per distinct `food_name`.
+
+
+## Step 6: Sentiment & Output Assembly
+
+Scope & Goal
+- Scope: Apply the positive-only sentiment gate, determine `general_praise`, and assemble the final JSON mentions; do not re-resolve references or re-split composition (see Step 4.1).
+- Goal: Emit one high-quality mention per valid connection, with canonical restaurant fields (Step 2), composed food (Step 4), and item/category decision (Step 5).
+
+Inputs & Dependencies
+- Inputs: `canonicalRestaurants` (Step 2), `classifiedAttributes` + `attributeLinks` (Step 3), `composedFoods` (Step 4), `itemDecisions` (Step 5), and in-scope sentiment signals.
+- Dependencies: General Praise & Emission Rules (6.1); Field Population Rules (6.2); Output Format (6.3).
+
+Outputs
+- `mentions: Array<...>` - final JSON objects for downstream consumers.
+
+### Execution order summary (apply after reading 6.1-6.4)
+1. Apply the positive-only gate; determine `general_praise` using 6.1
+2. Assemble one mention per valid connection with: canonical `restaurant_name` (Step 2); attribute arrays from Step 3; composed `food_name`/`food_categories` (Step 4); `is_menu_item` (Step 5); and required source fields
+Outcome: one consolidated, high-quality mention per valid connection, ready for downstream processing
+
+### 6.1 General Praise & Emission Rules
+
+- Holistic restaurant praise (explicit):
+  - Set `general_praise: true` on every mention for that restaurant (restaurant-only and restaurant->food) when the text clearly praises the establishment overall (e.g., "this place is amazing", "they're fantastic").
+  - Do not emit an extra general-praise-only mention if a dish mention already exists; reuse the existing mention(s) and carry `general_praise: true` through them.
+
+- Recommendation replies (implicit intent):
+  - Non item-specific asks (e.g., "Where should I eat?"): listing one or more restaurants implies endorsement -> emit restaurant-only mentions with `general_praise: true` for each, unless the listing includes explicit negative language for that specific place.
+  - Item-specific asks (e.g., "best burger in EV?"):
+    - If the reply ties a dish to a restaurant -> emit the restaurant->food mention using normal item vs category rules (Step 5). Set `general_praise: true` on that mention (and any sibling mention for the same restaurant) only when there is clear holistic praise.
+    - If the reply names a restaurant but does not tie a dish -> you may emit a restaurant->food mention using the ask's target as `food_name` (category) with `food_categories` kept minimal (often a single-category list) and `is_menu_item: false`. Set `general_praise: true` across that restaurant's mentions only when there is clear holistic praise. Merely naming a place in an item-specific reply is not by itself a holistic praise signal.
+
+- Restaurant-only (no food, no general_praise):
+  - When the text positively attributes a specific restaurant feature (e.g., patio, view, "great service") but does not express holistic praise and does not justify a dish mention, you may emit a restaurant-only mention with `general_praise: false`.
+
+- Mixed/negative cues (Step 1's eligibility gate may still pass mixed replies when at least one positive signal exists; apply these mention-level checks before emission):
+  - Do not emit negative dish mentions (e.g., "the ribs suck"). If another dish or the restaurant overall is clearly praised in the same local context (e.g., "the brisket is good"; "this place is amazing"), you may emit that positive dish and/or set `general_praise: true` accordingly.
+  - Non-quality chatter (price, wait, ads) without positive quality signal -> do not set `general_praise`. Restaurant-only mentions are allowed only when a positive/neutral restaurant attribute is present (and then `general_praise: false`).
+
+- Inherited praise in short/elliptical replies:
+  - Short affirmations ("+1", "agreed", "this") inherit the parent's `general_praise` when the referent is unambiguous (per Step 1 resolution).
+  - Elliptical/definite replies ("the sundae is the best") inherit the restaurant first; set `general_praise` only when the local text contains holistic praise.
+
+- Duplicates:
+  - If you emit a dish mention and holistic praise also applies, set `general_praise: true` on that same mention - do not create a second general-praise-only mention for the same source.
+
+### 6.2 Field Population Rules
+
+For every mention, populate fields as follows:
+
+- Identifiers
+  - `temp_id`: `m1`, `m2`, ... unique per mention object in this output.
+  - `restaurant_temp_id`: reference the resolved restaurant's temp ID (from Step 2).
+- Restaurant
+  - `restaurant_name`: canonicalized per Step 2.
+  - `restaurant_attributes`: array of restaurant-scoped attributes (or omit/null if none).
+- Food (optional)
+  - If a food is present: set `food_name` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5), apply the `is_menu_item` decision from Step 5, and assign a `food_temp_id`.
+  - If no food (and no inherited ask category): set `food_name`, `food_categories`, `food_temp_id`, and `is_menu_item` to null (or omit when allowed by schema). Item-specific asks that only yield a restaurant still count as having food data via the inherited category, so do not null them out.
+  - `food_temp_id`: assign `f1`, `f2`, ... in first-mention order per unique normalized `food_name` within this output. Reuse the same `food_temp_id` wherever the same `food_name` repeats.
+- Attributes
+  - Split food attributes into `food_attributes_selective` vs `food_attributes_descriptive` (see Entity Types & Attribute Classification section) and keep them as arrays. Omit or set to null when none.
+  - Look up the matching `attributeLinks` entry from Step 3 (same `restaurant_temp_id` and `food_name` null vs populated) and copy the arrays into this mention. The strings must stay identical to the normalized values in `classifiedAttributes`.
+- Restaurant attributes apply to every mention for that restaurant in this source, while food attributes attach only to the dish they modified. First copy the arrays from the `attributeLinks` entry that matches both `restaurant_temp_id` and `food_name`; then, merge in any restaurant-level entry for the same `restaurant_temp_id` where `food_name` is null (dedupe strings). For example, if the comment says "Nixta's duck carnitas tacos are incredibly rich and the patio is great," emit `food_attributes_descriptive: ["rich"]` on the tacos mention, and include `restaurant_attributes: ["patio"]` on that mention (with `food_name` populated) as well as on any restaurant-only mention for Nixta in this source.
+- Core flags
+  - `general_praise`: boolean as defined above.
+- Source attribution
+  - `source_id`: the Reddit ID of the exact source text for this mention.
+    - For post-derived mentions (only when `extract_from_post: true`): use the post's `id`.
+    - For comment-derived mentions: use that comment's `id` (even when sentiment/entities are inherited from the parent).
+  - Do not include `source_type`, `source_url`, `source_created_at`, or upvote fields - these are injected server-side.
+
+Additional rules:
+
+- Names and attributes must be lowercase; collapse repeated spaces; avoid leading/trailing spaces.
+- Do not emit duplicate mention objects for the same restaurant->food pair from the same source text. If the same pair is referenced multiple times in the same comment/post, emit a single mention for that source.
+- It is valid for one source to emit multiple mentions when it references multiple restaurants and/or multiple distinct dishes.
+
+### 6.3 Output Format
+
+- Output must be valid JSON matching the schema: a single object with a `mentions` array.
+- Do not wrap output in markdown code fences; no explanations or commentary - JSON only.
+- When a property has no values, either omit it or set it to `null` if the schema marks it as nullable. Do not emit empty strings.
+
+### 6.4 Example
+
+"The tonkotsu ramen at Ramen Tatsu-ya is incredibly rich":
+
+{
+  "mentions": [
+    {
+      "temp_id": "m1",
+      "restaurant_temp_id": "r1",
+      "restaurant_name": "ramen tatsu-ya",
+      "food_temp_id": "f1",
+      "food_name": "tonkotsu ramen",
+      "food_categories": [
+        "ramen",
+        "tonkotsu"
+      ],
+      "is_menu_item": true,
+      "food_attributes_selective": null,
+      "food_attributes_descriptive": ["rich"],
+      "restaurant_attributes": null,
+      "general_praise": false,
+      "source_id": "t1_abc123"
+    }
+  ]
+}
