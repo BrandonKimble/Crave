@@ -174,6 +174,16 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         });
 
         try {
+          const throttleDelay = this.smartProcessor.getThrottleDelayMs();
+          if (throttleDelay > 0) {
+            this.logger.warn('Applying backpressure before launching chunk', {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              chunkId: meta.chunkId,
+              delayMs: throttleDelay,
+            });
+            await new Promise((resolve) => setTimeout(resolve, throttleDelay));
+          }
+
           // Use smart processor with worker ID for perfect rate limiting
           const workerId = `worker-${index % 16}`; // Distribute across 16 worker IDs
           const result = await this.smartProcessor.processContent(

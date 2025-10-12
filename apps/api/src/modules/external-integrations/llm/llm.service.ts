@@ -673,7 +673,15 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
         const { retry, reason } = isRetryable(error);
         if (retry && attempt < maxRetries) {
-          // Exponential backoff with jitter
+          if (reason === 'rate_limit') {
+            this.logger.warn('Transient Gemini rate limit; handing back to processor for rescheduling', {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              attempt: attempt + 1,
+            });
+            throw new LLMRateLimitError(60);
+          }
+
+          // Exponential backoff with jitter for other transient errors
           const delay = Math.floor(baseDelay * Math.pow(backoff, attempt));
           const jitter = Math.floor(
             Math.random() * Math.max(250, Math.floor(delay * 0.2)),

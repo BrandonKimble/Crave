@@ -271,72 +271,63 @@ async function testPipeline() {
         // Wait for all batch jobs to complete
         let waitingCount = 0;
         let allJobsComplete = false;
-        const maxWaitTimeMs = 300000; // 5 minutes max wait
+        const expectedBatchCount = collectionResult.batchesProcessed || 0;
         const startWaitTime = Date.now();
-        // aggregation declared at function scope
-        
-        while (!allJobsComplete && (Date.now() - startWaitTime) < maxWaitTimeMs) {
-          // Check queue status
+        let completed: any[] = [];
+        let failed: any[] = [];
+
+        while (!allJobsComplete) {
           const waiting = await batchQueue.getWaiting();
           const active = await batchQueue.getActive();
           const completedAll = await batchQueue.getCompleted();
           const failedAll = await batchQueue.getFailed();
-          // Focus on jobs from this run only
-          const completed = completedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
-          const failed = failedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
-          
+          completed = completedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
+          failed = failedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
+
+          const ourBatchTotal = completed.length + failed.length;
           const totalPending = waiting.length + active.length;
-          
-          if (totalPending === 0) {
+
+          if (
+            (expectedBatchCount > 0 && ourBatchTotal >= expectedBatchCount && totalPending === 0) ||
+            (expectedBatchCount === 0 && totalPending === 0)
+          ) {
             allJobsComplete = true;
             console.log(`✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`);
-            
-            // Collect results from completed batch jobs (this run only)
-            let totalBatchMentions = 0;
-            for (const completedJob of completed) {
-              const rv = completedJob.returnvalue || {};
-              // Back-compat: mentions count may live at root or under metrics
-              const mCount =
-                typeof rv.mentionsExtracted === 'number'
-                  ? rv.mentionsExtracted
-                  : typeof rv.metrics?.mentionsExtracted === 'number'
-                  ? rv.metrics.mentionsExtracted
-                  : 0;
-              totalBatchMentions += mCount;
-              const sample = completedJob.returnvalue?.rawMentionsSample;
-              if (Array.isArray(sample) && sample.length > 0) {
-                aggregatedRawMentions.push(...sample);
-              }
-            }
-            
-            // Update the collection result with actual batch results
-            collectionResult.mentionsExtracted = totalBatchMentions;
-            totalMentionsExtracted = totalBatchMentions;
-            console.log(`- Mentions extracted across batches: ${totalBatchMentions}`);
-            
             break;
           }
-          
-          // Log progress every 10 seconds (reduced frequency)
+
           if (waitingCount % 50 === 0) {
             const elapsedSeconds = Math.round((Date.now() - startWaitTime) / 1000);
             console.log(`   📊 Queue status (${elapsedSeconds}s): ${waiting.length} waiting, ${active.length} active, ${completed.length} completed, ${failed.length} failed`);
-            
-            // Try to get more details about the active job
             if (active.length > 0) {
               const activeJob = active[0];
               console.log(`   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${activeJob.data?.postCount || 'unknown'} posts)`);
             }
           }
-          
-          await new Promise(resolve => setTimeout(resolve, 200)); // Check every 200ms
+
+          await new Promise((resolve) => setTimeout(resolve, 200));
           waitingCount++;
         }
-        
-        if (!allJobsComplete) {
-          console.log(`WARN • Batch processing timeout after ${maxWaitTimeMs/1000}s`);
-          console.log(`- Final status: ${(await batchQueue.getWaiting()).length} waiting, ${(await batchQueue.getActive()).length} active`);
+
+        let totalBatchMentions = 0;
+        for (const completedJob of completed) {
+          const rv = completedJob.returnvalue || {};
+          const mCount =
+            typeof rv.mentionsExtracted === 'number'
+              ? rv.mentionsExtracted
+              : typeof rv.metrics?.mentionsExtracted === 'number'
+              ? rv.metrics.mentionsExtracted
+              : 0;
+          totalBatchMentions += mCount;
+          const sample = completedJob.returnvalue?.rawMentionsSample;
+          if (Array.isArray(sample) && sample.length > 0) {
+            aggregatedRawMentions.push(...sample);
+          }
         }
+
+        collectionResult.mentionsExtracted = totalBatchMentions;
+        totalMentionsExtracted = totalBatchMentions;
+        console.log(`- Mentions extracted across batches: ${totalBatchMentions}`);
 
         console.log(`\nProduction service execution completed`);
         console.log(`- Success: ${collectionResult.success ? 'TRUE' : 'FALSE'}`);

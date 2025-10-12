@@ -156,7 +156,7 @@ export class CentralizedRateLimiter {
         local windowTokens = usedTokens + reservedTokens
 
         if (windowTokens + estTokens) > safeTPM then
-          -- Not enough token budget; schedule after earliest token expires from window
+          -- Not enough token budget; schedule after earliest token expires from window and apply proportional backoff
           local earliestUsed = redis.call('ZRANGEBYSCORE', tpmKey, oneMinuteAgo, '+inf', 'LIMIT', 0, 1, 'WITHSCORES')
           local earliestReserved = redis.call('ZRANGEBYSCORE', tpmReservationsKey, oneMinuteAgo, '+inf', 'LIMIT', 0, 1, 'WITHSCORES')
           local earliestTime = now
@@ -169,7 +169,13 @@ export class CentralizedRateLimiter {
               earliestTime = rtime
             end
           end
-          nextAvailableTime = math.max(nextAvailableTime, earliestTime + 60000 + minSpacingMs)
+          local windowDelay = math.max(0, (earliestTime + 60000 + minSpacingMs) - now)
+          local overflow = (windowTokens + estTokens) - safeTPM
+          if overflow < 0 then overflow = 0 end
+          local ratio = overflow / math.max(1, safeTPM)
+          local proportionalDelay = math.max(minSpacingMs, math.floor(ratio * 60000))
+          local delay = math.max(windowDelay, proportionalDelay)
+          nextAvailableTime = math.max(nextAvailableTime, now + delay)
         end
         
         -- Worker fairness: Check if this worker has a recent reservation
@@ -370,10 +376,12 @@ export class CentralizedRateLimiter {
    */
   async recordTokenUsage(
     inputTokens: number,
-    _outputTokens: number,
+    outputTokens: number,
   ): Promise<void> {
     const now = Date.now();
-    const totalTokens = inputTokens; // INPUT-ONLY accounting for TPM
+    const safeInput = Number.isFinite(inputTokens) ? inputTokens : 0;
+    const safeOutput = Number.isFinite(outputTokens) ? outputTokens : 0;
+    const totalTokens = Math.max(0, Math.round(safeInput + safeOutput));
 
     try {
       const luaScript = `
@@ -408,7 +416,8 @@ export class CentralizedRateLimiter {
     } catch (error) {
       this.logger.error('Error recording token usage', {
         correlationId: CorrelationUtils.getCorrelationId(),
-        inputTokens,
+        inputTokens: safeInput,
+        outputTokens: safeOutput,
         totalTokens,
         error: {
           message: error instanceof Error ? error.message : String(error),
