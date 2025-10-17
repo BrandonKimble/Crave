@@ -50,12 +50,13 @@ export class SmartLLMProcessor implements OnModuleInit {
 
   // Default to 10k overhead until we observe the cached instruction token count
   private cachedInstructionTokens = 10000;
-  private readonly usageWindowSize = 20;
+  private readonly usageWindowSize = 10;
   private readonly promptCeilingBuffer = 2000;
   private readonly hardTokenCap = 80000; // protects TPM if an estimate goes wild
   private recentPromptTokens: number[] = [];
   private recentTotalTokens: number[] = [];
   private recentOutputTokens: number[] = [];
+  private recentTpmUtilizations: number[] = [];
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -164,14 +165,18 @@ export class SmartLLMProcessor implements OnModuleInit {
               error: { message: e instanceof Error ? e.message : String(e) },
             });
           }
-          try {
-            const tpm = await this.rateLimiter.getTPMAnalysis();
-            tpmUtilization = tpm.utilizationPercent || 0;
-            this.logger.debug('LLM token usage recorded', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              workerId: effectiveWorkerId,
-              tokens: tokenUsage,
-              tpmSnapshot: tpm,
+        try {
+          const tpm = await this.rateLimiter.getTPMAnalysis();
+          tpmUtilization = tpm.utilizationPercent || 0;
+          this.recentTpmUtilizations.push(tpmUtilization);
+          while (this.recentTpmUtilizations.length > this.usageWindowSize) {
+            this.recentTpmUtilizations.shift();
+          }
+          this.logger.debug('LLM token usage recorded', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            workerId: effectiveWorkerId,
+            tokens: tokenUsage,
+            tpmSnapshot: tpm,
             });
           } catch (e) {
             this.logger.debug(
@@ -428,6 +433,14 @@ export class SmartLLMProcessor implements OnModuleInit {
   getAggregatedDiagnostics() {
     const n = this.agg.count || 1;
     const avg = (x: number) => Math.round(x / n);
+    const recentTpm = this.recentTpmUtilizations;
+    const tpmAvg = recentTpm.length
+      ? Math.round(
+          recentTpm.reduce((sum, value) => sum + value, 0) / recentTpm.length,
+        )
+      : 0;
+    const tpmMin = recentTpm.length ? Math.min(...recentTpm) : 0;
+    const tpmMax = recentTpm.length ? Math.max(...recentTpm) : 0;
     return {
       requests: this.agg.count,
       mentionYield: {
@@ -445,9 +458,9 @@ export class SmartLLMProcessor implements OnModuleInit {
         max: this.agg.rpmUtil.max,
       },
       tpmUtilization: {
-        avg: avg(this.agg.tpmUtil.sum),
-        min: isFinite(this.agg.tpmUtil.min) ? this.agg.tpmUtil.min : 0,
-        max: this.agg.tpmUtil.max,
+        avg: tpmAvg,
+        min: tpmMin,
+        max: tpmMax,
       },
       rpmWindowCount: {
         avg: avg(this.agg.rpmWindow.sum),
@@ -493,18 +506,20 @@ export class SmartLLMProcessor implements OnModuleInit {
     }
     const diag = this.getAggregatedDiagnostics();
     const avgUtil = diag.tpmUtilization?.avg ?? 0;
-    const maxUtil = diag.tpmUtilization?.max ?? 0;
-    const avgExcess = Math.max(0, avgUtil - 90);
-    const peakExcess = Math.max(0, maxUtil - 105);
+    const latestUtil = this.recentTpmUtilizations.length
+      ? this.recentTpmUtilizations[this.recentTpmUtilizations.length - 1]
+      : 0;
+    const avgExcess = Math.max(0, avgUtil - 85);
+    const peakExcess = Math.max(0, latestUtil - 95);
     if (avgExcess <= 0 && peakExcess <= 0) {
       return 0;
     }
 
-    const delayFromAvg = avgExcess * 120;
-    const delayFromPeak = peakExcess * 150;
+    const delayFromAvg = avgExcess * 300;
+    const delayFromPeak = peakExcess * 400;
     const delay = Math.min(
       20000,
-      Math.max(750, Math.round(Math.max(delayFromAvg, delayFromPeak))),
+      Math.max(1000, Math.round(Math.max(delayFromAvg, delayFromPeak))),
     );
     return delay;
   }
@@ -585,6 +600,7 @@ export class SmartLLMProcessor implements OnModuleInit {
     this.recentPromptTokens = [];
     this.recentTotalTokens = [];
     this.recentOutputTokens = [];
+    this.recentTpmUtilizations = [];
 
     this.logger.info('Metrics reset', {
       correlationId: CorrelationUtils.getCorrelationId(),

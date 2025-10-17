@@ -59,6 +59,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
   private concurrencyLimit: number = 16; // default; can be overridden by CONCURRENCY env
   private readonly delayStrategy: 'none' | 'linear' = 'none'; // Simplified - no artificial delays
   private readonly delayMs: number = 0; // No delays - SmartLLMProcessor handles timing
+  private backpressureUntil = 0;
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -162,6 +163,23 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         const chunkStart = Date.now();
         const meta = metadata[index];
 
+        await this.waitForGlobalCooldown(meta);
+
+        const throttleDelay = this.smartProcessor.getThrottleDelayMs();
+        if (throttleDelay > 0) {
+          const proposedUntil = Date.now() + throttleDelay;
+          if (proposedUntil > this.backpressureUntil) {
+            this.backpressureUntil = proposedUntil;
+          }
+          this.logger.warn('Global backpressure triggered before dispatch', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            chunkId: meta.chunkId,
+            delayMs: throttleDelay,
+            backpressureUntil: new Date(this.backpressureUntil).toISOString(),
+          });
+          await this.waitForGlobalCooldown(meta);
+        }
+
         this.logger.info('Starting chunk processing', {
           correlationId: CorrelationUtils.getCorrelationId(),
           chunkId: meta.chunkId,
@@ -174,15 +192,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         });
 
         try {
-          const throttleDelay = this.smartProcessor.getThrottleDelayMs();
-          if (throttleDelay > 0) {
-            this.logger.warn('Applying backpressure before launching chunk', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              chunkId: meta.chunkId,
-              delayMs: throttleDelay,
-            });
-            await new Promise((resolve) => setTimeout(resolve, throttleDelay));
-          }
 
           // Use smart processor with worker ID for perfect rate limiting
           const workerId = `worker-${index % 16}`; // Distribute across 16 worker IDs
@@ -350,6 +359,28 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       pendingCount: this.limit.pendingCount,
       concurrencyLimit: this.concurrencyLimit,
     };
+  }
+
+  private async waitForGlobalCooldown(meta: ChunkMetadata): Promise<void> {
+    let logged = false;
+    while (true) {
+      const remaining = this.backpressureUntil - Date.now();
+      if (remaining <= 0) return;
+      const sleepMs = Math.min(remaining, 2000);
+      if (!logged) {
+        this.logger.warn('Global backpressure active; delaying chunk dispatch', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          chunkId: meta.chunkId,
+          remainingMs: remaining,
+        });
+        logged = true;
+      }
+      await this.sleep(sleepMs);
+    }
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**
