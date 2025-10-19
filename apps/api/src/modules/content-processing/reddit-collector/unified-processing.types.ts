@@ -26,6 +26,14 @@ export interface UnifiedProcessingConfig {
   batchSize: number;
 }
 
+export interface CreatedEntitySummary {
+  entityId: string;
+  name: string;
+  entityType: string;
+  primaryTempId: string;
+  tempIds: string[];
+}
+
 /**
  * Batch processing structure for unified pipeline
  */
@@ -60,6 +68,16 @@ export interface ProcessingResult {
     connectionsCreated: number;
     mentionsCreated: number;
     affectedConnectionIds: string[];
+    createdEntityIds?: string[];
+    createdEntitySummaries?: CreatedEntitySummary[];
+    reusedEntitySummaries?: {
+      tempId: string;
+      entityId: string;
+      entityType: string;
+      normalizedName?: string;
+      originalText?: string;
+      canonicalName?: string;
+    }[];
   };
   qualityScoreUpdates: number;
   error?: {

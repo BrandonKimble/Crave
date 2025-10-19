@@ -167,8 +167,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       );
 
       const allPosts = postsResult.data || [];
-      // TEMPORARY: Limit to 50 posts for testing
-      const posts = allPosts.slice(0, 50);
+      // TEMPORARY: Limit to 10 posts for testing
+      const posts = allPosts.slice(0, 10);
       await job.log(
         `Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`,
       );

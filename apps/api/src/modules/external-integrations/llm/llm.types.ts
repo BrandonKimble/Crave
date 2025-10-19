@@ -66,11 +66,9 @@ export interface LLMMention {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
-  restaurant_temp_id: string;
   restaurant_name: string; // Normalized name only
 
   // Food entity fields (optional - null when no food mentioned)
-  food_temp_id?: string | null;
   food_name?: string | null; // Normalized name only
   food_categories?: string[] | null; // Hierarchical decomposition
   is_menu_item?: boolean | null;
@@ -85,13 +83,18 @@ export interface LLMMention {
 
   // Source tracking
   source_id: string;
-  // The following are injected server-side (LLM should not emit in raw output),
+  // The following are injected server-side (LLM should not emit them),
   // but are required in the enriched mention shape used downstream.
   source_type: 'post' | 'comment';
   source_content?: string;
   source_ups: number;
   source_url: string;
   source_created_at: string;
+
+  // Internal processing fields populated server-side
+  __restaurantTempId?: string | null;
+  __foodEntityTempId?: string | null;
+  __foodCategoryTempIds?: Array<{ name: string; tempId: string }>;
 }
 
 /**
@@ -99,7 +102,6 @@ export interface LLMMention {
  */
 export interface LLMEntityRef {
   name: string;
-  temp_id: string;
 }
 
 /**

@@ -420,7 +420,6 @@ async function createConnections(
         foodQualityScore: data.foodQualityScore,
         activityLevel: data.activityLevel,
         lastMentionedAt: new Date(),
-        topMentions: data.sampleMentions,
         recentMentionCount: Math.floor(data.mentionCount * 0.3),
       },
     });

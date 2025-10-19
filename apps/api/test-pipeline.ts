@@ -22,6 +22,8 @@
 // Load environment variables explicitly first
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as fsSync from 'fs';
+import { format } from 'util';
 
 // Load .env file which has all the necessary configuration
 dotenv.config({ path: path.join(__dirname, '.env') });
@@ -50,6 +52,56 @@ import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';
 import { SmartLLMProcessor } from './src/modules/external-integrations/llm/rate-limiting/smart-llm-processor.service';
 // Enhanced services are accessed via DI container - no direct imports needed for production simulation
+
+/**
+ * Persist console output for post-run inspection.
+ */
+const logsDir = path.join(__dirname, 'logs');
+fsSync.mkdirSync(logsDir, { recursive: true });
+const logTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+const runLogPath = path.join(logsDir, `test-pipeline-run-${logTimestamp}.log`);
+const runLogStream = fsSync.createWriteStream(runLogPath, { flags: 'a' });
+
+type ConsoleMethod = 'log' | 'info' | 'warn' | 'error' | 'debug';
+const originalConsole = {
+  log: console.log.bind(console),
+  info: console.info.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  debug: console.debug.bind(console),
+};
+
+const mirrorToLog = (level: ConsoleMethod) =>
+  (...args: any[]) => {
+    try {
+      const message = format(...args);
+      const line = `${new Date().toISOString()} [${level.toUpperCase()}] ${message}\n`;
+      runLogStream.write(line);
+    } catch (streamError) {
+      originalConsole.error('Failed to write to test pipeline log stream', streamError);
+    }
+    originalConsole[level](...args);
+  };
+
+console.log = mirrorToLog('log');
+console.info = mirrorToLog('info');
+console.warn = mirrorToLog('warn');
+console.error = mirrorToLog('error');
+console.debug = mirrorToLog('debug');
+
+const closeRunLogStream = (onClosed?: () => void) => {
+  if (runLogStream.closed) {
+    onClosed?.();
+    return;
+  }
+  runLogStream.end(onClosed);
+};
+
+process.once('exit', () => closeRunLogStream());
+process.once('SIGINT', () => closeRunLogStream(() => process.exit(1)));
+process.once('SIGTERM', () => closeRunLogStream(() => process.exit(1)));
+
+console.log(`Test pipeline console output mirrored to ${runLogPath}`);
 
 // Removed chunk function - no longer needed since production services handle batching
 
@@ -97,6 +149,9 @@ async function testPipeline() {
     const collectionJobScheduler = app.get(CollectionJobSchedulerService);
     const chronologicalCollectionWorker = app.get(ChronologicalCollectionWorker);
     const chronologicalQueue = app.get<Queue>(getQueueToken('chronological-collection'));
+    const chronologicalBatchQueue = app.get<Queue>(
+      getQueueToken('chronological-batch-processing-queue'),
+    );
     const prisma = app.get(PrismaService);
     // UnifiedProcessingService is in PHASE 4 - not active yet
     // const unifiedProcessingService = app.get(UnifiedProcessingService);
@@ -108,6 +163,100 @@ async function testPipeline() {
 
     const step1Duration = Date.now() - step1StartTime;
     console.log(`Step 1 total: ${step1Duration} ms (${(step1Duration/1000).toFixed(1)} s)`);
+
+    const seenBatchIds = new Set<string>();
+    const batchSummaries: any[] = [];
+    let latestCollectionResult: any = null;
+    let aggregatedRawMentions: any[] = [];
+
+    const addBatchSummary = (
+      job: any,
+      result: any,
+      success: boolean,
+    ): boolean => {
+      const batchId =
+        (job?.data?.batchId as string | undefined) ??
+        (job?.id as string | undefined) ??
+        null;
+
+      if (batchId && seenBatchIds.has(batchId)) {
+        return false;
+      }
+      if (batchId) {
+        seenBatchIds.add(batchId);
+      }
+
+      batchSummaries.push({
+        batchId,
+        collectionType:
+          (result?.collectionType as string | undefined) ??
+          (job?.data?.collectionType as string | undefined) ??
+          'chronological',
+        success,
+        metrics: result?.metrics ?? null,
+        details: result?.details ?? null,
+        createdEntityIds:
+          (result?.details?.createdEntityIds as string[] | undefined) ??
+          (result?.createdEntityIds as string[] | undefined) ??
+          null,
+        createdEntities:
+          (result?.details?.createdEntities as any[] | undefined) ??
+          (result?.createdEntitySummaries as any[] | undefined) ??
+          null,
+        reusedEntities:
+          (result?.details?.reusedEntities as any[] | undefined) ??
+          (result?.reusedEntitySummaries as any[] | undefined) ??
+          null,
+        entitiesCreated:
+          (result?.metrics?.entitiesCreated as number | undefined) ??
+          (result?.entitiesCreated as number | undefined) ??
+          null,
+        connectionsCreated:
+          (result?.metrics?.connectionsCreated as number | undefined) ??
+          (result?.connectionsCreated as number | undefined) ??
+          null,
+        mentionsExtracted:
+          (result?.metrics?.mentionsExtracted as number | undefined) ??
+          (result?.mentionsExtracted as number | undefined) ??
+          null,
+        error: success
+          ? null
+          : (result?.error as string | undefined) ??
+            (job?.failedReason as string | undefined) ??
+            null,
+      });
+
+      return true;
+    };
+
+    const collectBatchSummariesForJob = async (parentJobId: string) => {
+      if (!chronologicalBatchQueue) {
+        return;
+      }
+
+      const completedJobs = (await chronologicalBatchQueue.getCompleted(0, -1)).filter(
+        (job: any) => job?.data?.parentJobId === parentJobId,
+      );
+      const failedJobs = (await chronologicalBatchQueue.getFailed(0, -1)).filter(
+        (job: any) => job?.data?.parentJobId === parentJobId,
+      );
+
+      for (const job of completedJobs) {
+        const rv = job?.returnvalue || {};
+        const added = addBatchSummary(job, rv, rv?.success !== false);
+        if (
+          added &&
+          Array.isArray(rv.rawMentionsSample) &&
+          rv.rawMentionsSample.length > 0
+        ) {
+          aggregatedRawMentions.push(...rv.rawMentionsSample);
+        }
+      }
+
+      for (const job of failedJobs) {
+        addBatchSummary(job, job?.returnvalue || {}, false);
+      }
+    };
 
     // ========================================
     // MANUAL KEYWORD SEARCH APPROACH (PRESERVED FOR KEYWORD COLLECTION PHASE)
@@ -150,8 +299,6 @@ async function testPipeline() {
     
     // Track production metrics from services
     let totalMentionsExtracted = 0;
-    let aggregatedRawMentions: any[] = [];
-    
     if (TEST_MODE === 'bull') {
       // PRODUCTION SIMULATION - Test with actual Bull queue
       console.log(`\nBull queue production orchestrator`);
@@ -189,6 +336,7 @@ async function testPipeline() {
             
             // Extract actual production results from Bull job
             const jobResult = bullJob.returnvalue;
+            latestCollectionResult = jobResult;
             console.log(`OK • Bull job completed`);
             console.log(`Result:`);
             console.log(`- Success: ${jobResult?.success}`);
@@ -204,6 +352,8 @@ async function testPipeline() {
               // For now, we'll use the processed count as a proxy
               collectedPostIds = Array.from({ length: jobResult.postsProcessed || 0 }, (_, i) => `bull-post-${i}`);
             }
+
+            await collectBatchSummariesForJob(jobId);
             
           } else if (bullJob && bullJob.processedOn && !bullJob.finishedOn) {
             // Job is still processing
@@ -266,7 +416,10 @@ async function testPipeline() {
         console.log(`\n⏳ Waiting for batch processing to complete (${collectionResult.batchesProcessed || 0} batches queued)...`);
         
         // Get the batch processing queue to monitor completion
-        const batchQueue = app.get('BullQueue_chronological-batch-processing-queue');
+        const batchQueue = chronologicalBatchQueue;
+        if (!batchQueue) {
+          throw new Error('Chronological batch processing queue not available');
+        }
         
         // Wait for all batch jobs to complete
         let waitingCount = 0;
@@ -319,14 +472,24 @@ async function testPipeline() {
               ? rv.metrics.mentionsExtracted
               : 0;
           totalBatchMentions += mCount;
-          const sample = completedJob.returnvalue?.rawMentionsSample;
-          if (Array.isArray(sample) && sample.length > 0) {
-            aggregatedRawMentions.push(...sample);
+          const summaryAdded = addBatchSummary(completedJob, rv, rv?.success !== false);
+          if (
+            summaryAdded &&
+            Array.isArray(rv.rawMentionsSample) &&
+            rv.rawMentionsSample.length > 0
+          ) {
+            aggregatedRawMentions.push(...rv.rawMentionsSample);
           }
+        }
+
+        for (const failedJob of failed) {
+          const rv = failedJob.returnvalue || {};
+          addBatchSummary(failedJob, rv, false);
         }
 
         collectionResult.mentionsExtracted = totalBatchMentions;
         totalMentionsExtracted = totalBatchMentions;
+        latestCollectionResult = { ...collectionResult };
         console.log(`- Mentions extracted across batches: ${totalBatchMentions}`);
 
         console.log(`\nProduction service execution completed`);
@@ -555,18 +718,36 @@ async function testPipeline() {
         avgTokensPerRequest: llmMetrics.requestCount > 0 ? Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount) : 0,
       } : null,
       perRequestAggregates: perReqAgg,
+      collection: latestCollectionResult
+        ? {
+            success: latestCollectionResult.success ?? false,
+            postsProcessed: latestCollectionResult.postsProcessed ?? 0,
+            batchesProcessed:
+              latestCollectionResult.batchesProcessed ?? batchSummaries.length,
+            mentionsExtracted: latestCollectionResult.mentionsExtracted ?? 0,
+            processingTimeMs: latestCollectionResult.processingTime ?? 0,
+            nextScheduledCollection:
+              latestCollectionResult.nextScheduledCollection ?? null,
+            latestTimestamp: latestCollectionResult.latestTimestamp ?? null,
+            componentProcessing:
+              latestCollectionResult.componentProcessing ?? null,
+            qualityScores: latestCollectionResult.qualityScores ?? null,
+            error: latestCollectionResult.error ?? null,
+          }
+        : null,
+      batches: batchSummaries,
       output: {
         testMode: TEST_MODE,
         rawMentionsSample: aggregatedRawMentions,
       },
     };
 
-    const fs = await import('fs/promises');
+    const fsPromises = await import('fs/promises');
     // Write output JSON consistently to the API package logs directory
     const resultsDir = path.resolve(__dirname, 'logs');
     const resultsPath = path.join(resultsDir, 'test-pipeline-output.json');
-    await fs.mkdir(resultsDir, { recursive: true });
-    await fs.writeFile(resultsPath, JSON.stringify(structuredResults, null, 2));
+    await fsPromises.mkdir(resultsDir, { recursive: true });
+    await fsPromises.writeFile(resultsPath, JSON.stringify(structuredResults, null, 2));
     console.log(`\nStructured results file: ${resultsPath}`);
 
     // Overall timing summary

@@ -1251,11 +1251,9 @@ _**Note**: This structure reflects the current production implementation. Key pr
       "temp_id": "string",
       
       // Restaurant fields (REQUIRED)
-      "restaurant_temp_id": "string",
       "restaurant_name": "string",  // Normalized name only
       
       // Food entity fields (optional - null when no food mentioned)
-      "food_temp_id": "string" | null,
       "food_name": "string" | null,  // Normalized name only
       "food_categories": ["string"] | null,  // Hierarchical decomposition
       "is_menu_item": boolean | null,

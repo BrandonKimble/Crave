@@ -83,6 +83,23 @@ export interface BatchProcessingResult {
   details?: {
     /** IDs of entities that were created */
     createdEntityIds?: string[];
+    /** Detailed entity summaries that were created */
+    createdEntities?: {
+      entityId: string;
+      name: string;
+      entityType: string;
+      primaryTempId: string;
+      tempIds: string[];
+    }[];
+    /** Resolver reuse summaries for reference */
+    reusedEntities?: {
+      tempId: string;
+      entityId: string;
+      entityType: string;
+      normalizedName?: string;
+      originalText?: string;
+      canonicalName?: string;
+    }[];
     /** IDs of connections that were updated */
     updatedConnectionIds?: string[];
     /** Any processing warnings */

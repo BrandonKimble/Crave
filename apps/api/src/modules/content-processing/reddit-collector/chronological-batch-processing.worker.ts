@@ -319,6 +319,29 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
         }
       }
 
+      const tokenize = (s: string | null | undefined): string[] => {
+        if (!s || typeof s !== 'string') return [];
+        return s
+          .toLowerCase()
+          .split(/[^a-z0-9]+/g)
+          .filter(Boolean);
+      };
+      const keyFromTokens = (tokens: string[]) => tokens.join(' ');
+      const isSubset = (small: Set<string>, big: Set<string>) => {
+        for (const t of small) if (!big.has(t)) return false;
+        return true;
+      };
+      const postNormalizationStats = new Map<
+        string,
+        {
+          nameCounts: Map<
+            string,
+            { count: number; upvotes: number; tokens: string[] }
+          >;
+          dishSets: string[][];
+        }
+      >();
+
       const llmOutput = {
         mentions: flatMentions.map((m: any) => {
           const meta = idToMeta.get(m?.source_id);
@@ -354,21 +377,6 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
           byPost.get(pid)!.push(m);
         }
 
-        const tokenize = (s: string | null | undefined): string[] => {
-          if (!s || typeof s !== 'string') return [];
-          return s
-            .toLowerCase()
-            .split(/[^a-z0-9]+/g)
-            .filter(Boolean);
-        };
-        const keyFromTokens = (tokens: string[]) => tokens.join(' ');
-        const isSubset = (small: Set<string>, big: Set<string>) => {
-          for (const t of small) if (!big.has(t)) return false;
-          return true;
-        };
-        const stableRestId = (postId: string, name: string) =>
-          `rest_${createHash('sha1').update(`${postId}|${name}`).digest('hex').slice(0, 12)}`;
-
         for (const [postId, mentions] of byPost.entries()) {
           const nameCounts = new Map<
             string,
@@ -400,6 +408,11 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
               dishSets.push(d);
             }
           }
+
+          postNormalizationStats.set(postId, {
+            nameCounts,
+            dishSets,
+          });
 
           for (const m of mentions) {
             const rTokens = tokenize(m.restaurant_name);
@@ -452,10 +465,6 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
                   if (bestA && bestA.key !== keyFromTokens(rTokens)) {
                     const oldName = m.restaurant_name;
                     m.restaurant_name = bestA.key; // normalized lowercase
-                    m.restaurant_temp_id = stableRestId(
-                      postId,
-                      m.restaurant_name,
-                    );
                     this.logger.debug(
                       'Post-level normalization (same-mention): restaurant_name rewritten',
                       {
@@ -513,7 +522,6 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
               if (bestB && bestB.key !== keyFromTokens(rTokens)) {
                 const oldName = m.restaurant_name;
                 m.restaurant_name = bestB.key;
-                m.restaurant_temp_id = stableRestId(postId, m.restaurant_name);
                 this.logger.debug(
                   'Post-level normalization (cross-mention): restaurant_name rewritten',
                   {
@@ -528,14 +536,6 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
             }
           }
 
-          // Assign stable post-scoped restaurant_temp_id for ALL mentions (not only rewritten)
-          for (const m of mentions) {
-            const nameForId = (m.restaurant_name || '')
-              .toString()
-              .toLowerCase();
-            if (!nameForId) continue;
-            m.restaurant_temp_id = stableRestId(postId, nameForId);
-          }
         }
       } catch (e) {
         this.logger.debug('Post-level normalization skipped due to error', {
@@ -544,22 +544,81 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
         });
       }
 
-      // Build a limited raw mentions sample to aid debugging without huge payloads
-      const RAW_POSTS_LIMIT = 3; // include mentions from first N posts in this batch
-      const selectedPostIds = llmPosts
-        .slice(0, RAW_POSTS_LIMIT)
-        .map((p: any) => p.id);
-      const rawMentionsSample = llmOutput.mentions.filter((m: any) => {
-        const postId = idToPostId.get(m?.source_id);
-        return postId ? selectedPostIds.includes(postId) : false;
+      // Drop mentions whose restaurant_name collapses to the same tokens as the food/category
+      llmOutput.mentions = llmOutput.mentions.filter((mention) => {
+        const restaurantTokens = tokenize(mention.restaurant_name);
+        if (restaurantTokens.length === 0) {
+          this.logger.debug(
+            'Dropping mention with empty restaurant name tokens',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              sourceId: mention?.source_id,
+              originalRestaurantName: mention?.restaurant_name,
+            },
+          );
+          return false;
+        }
+
+        const foodTokenSet = new Set<string>();
+        for (const token of tokenize(mention.food_name)) {
+          foodTokenSet.add(token);
+        }
+        if (Array.isArray(mention.food_categories)) {
+          for (const cat of mention.food_categories) {
+            tokenize(cat).forEach((token) => foodTokenSet.add(token));
+          }
+        }
+
+        if (foodTokenSet.size === 0) {
+          return true;
+        }
+
+        const restSet = new Set(restaurantTokens);
+        if (restSet.size !== foodTokenSet.size) {
+          return true;
+        }
+        for (const t of restSet) {
+          if (!foodTokenSet.has(t)) {
+            return true;
+          }
+        }
+
+        const postId = idToPostId.get(mention?.source_id);
+        const stats = postId ? postNormalizationStats.get(postId) : null;
+        const hasLongerVariant = stats?.nameCounts
+          ? Array.from(stats.nameCounts.values()).some((info) => {
+              if (info.tokens.length <= restaurantTokens.length) {
+                return false;
+              }
+              const infoSet = new Set(info.tokens);
+              return restaurantTokens.every((token) => infoSet.has(token));
+            })
+          : false;
+
+        if (hasLongerVariant) {
+          return true;
+        }
+
+        this.logger.debug(
+          'Dropping mention with restaurant name identical to food/category tokens',
+          {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            sourceId: mention?.source_id,
+            restaurantName: mention.restaurant_name,
+            foodName: mention.food_name,
+            foodCategories: mention.food_categories,
+          },
+        );
+        return false;
       });
+
+      // Provide the full mention set for downstream analysis
+      const rawMentionsSample = [...llmOutput.mentions];
 
       const llmProcessingTime = Date.now() - llmStartTime;
       const dbStartTime = Date.now();
 
       // Step 4: Use clean interface - pass LLM output directly to database service
-      // TEMPORARILY DISABLED FOR TEST PIPELINE - uncomment when ready for full processing
-      /*
       const dbResult = await this.unifiedProcessingService.processLLMOutput({
         mentions: llmOutput.mentions,
         sourceMetadata: {
@@ -581,22 +640,6 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
             ),
           },
         },
-      });
-      */
-
-      // MOCK DATA for test pipeline - replace with real dbResult when uncommenting above
-      const dbResult = {
-        entitiesCreated: 0,
-        connectionsCreated: 0,
-        mentionsCreated: llmOutput.mentions.length,
-        affectedConnectionIds: [],
-        createdEntityIds: [], // Add missing property for test pipeline
-      };
-
-      this.logger.info('Database processing SKIPPED for test pipeline', {
-        batchId,
-        mentionsExtracted: llmOutput.mentions.length,
-        note: 'Using mock database result - no actual database operations performed',
       });
 
       const dbProcessingTime = Date.now() - dbStartTime;
@@ -621,6 +664,8 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
         details: {
           createdEntityIds: dbResult.createdEntityIds || [],
           updatedConnectionIds: dbResult.affectedConnectionIds || [],
+          createdEntities: dbResult.createdEntitySummaries || [],
+          reusedEntities: dbResult.reusedEntitySummaries || [],
         },
         rawMentionsSample, // unchanged mention objects, limited subset for analysis
       };

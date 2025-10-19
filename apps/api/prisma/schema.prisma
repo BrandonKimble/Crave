@@ -53,7 +53,6 @@ model Connection {
   recentMentionCount Int           @default(0) @map("recent_mention_count")
   lastMentionedAt    DateTime?     @map("last_mentioned_at")
   activityLevel      ActivityLevel @default(normal) @map("activity_level")
-  topMentions        Json          @default("[]") @map("top_mentions")
   foodQualityScore   Decimal       @default(0) @map("food_quality_score") @db.Decimal(10, 4)
   lastUpdated        DateTime      @default(now()) @map("last_updated")
   createdAt          DateTime      @default(now()) @map("created_at")

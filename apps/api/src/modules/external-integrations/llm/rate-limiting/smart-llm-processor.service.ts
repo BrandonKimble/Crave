@@ -165,18 +165,18 @@ export class SmartLLMProcessor implements OnModuleInit {
               error: { message: e instanceof Error ? e.message : String(e) },
             });
           }
-        try {
-          const tpm = await this.rateLimiter.getTPMAnalysis();
-          tpmUtilization = tpm.utilizationPercent || 0;
-          this.recentTpmUtilizations.push(tpmUtilization);
-          while (this.recentTpmUtilizations.length > this.usageWindowSize) {
-            this.recentTpmUtilizations.shift();
-          }
-          this.logger.debug('LLM token usage recorded', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            workerId: effectiveWorkerId,
-            tokens: tokenUsage,
-            tpmSnapshot: tpm,
+          try {
+            const tpm = await this.rateLimiter.getTPMAnalysis();
+            tpmUtilization = tpm.utilizationPercent || 0;
+            this.recentTpmUtilizations.push(tpmUtilization);
+            while (this.recentTpmUtilizations.length > this.usageWindowSize) {
+              this.recentTpmUtilizations.shift();
+            }
+            this.logger.debug('LLM token usage recorded', {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              workerId: effectiveWorkerId,
+              tokens: tokenUsage,
+              tpmSnapshot: tpm,
             });
           } catch (e) {
             this.logger.debug(
@@ -204,11 +204,14 @@ export class SmartLLMProcessor implements OnModuleInit {
             );
             this.agg.noUsageCount++;
           } catch (e) {
-            this.logger.debug('No usage metadata and failed to record estimate', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              workerId: effectiveWorkerId,
-              error: { message: e instanceof Error ? e.message : String(e) },
-            });
+            this.logger.debug(
+              'No usage metadata and failed to record estimate',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                workerId: effectiveWorkerId,
+                error: { message: e instanceof Error ? e.message : String(e) },
+              },
+            );
           }
         }
 
@@ -216,7 +219,8 @@ export class SmartLLMProcessor implements OnModuleInit {
         try {
           const rpmWindowCount = reservation.metrics?.currentRPM ?? 0;
           const tpmWindowTokens = reservation.metrics?.tpm?.windowTokens ?? 0;
-          const estTokens = reservation.metrics?.tpm?.estTokens ?? estimatedTokens;
+          const estTokens =
+            reservation.metrics?.tpm?.estTokens ?? estimatedTokens;
           const actualTokens = tokenUsage?.totalTokens ?? estTokens;
           const rpmUtil = reservation.metrics?.utilizationPercent ?? 0;
           const tpmUtil = tpmUtilization ?? 0;
@@ -323,10 +327,13 @@ export class SmartLLMProcessor implements OnModuleInit {
         }
 
         if (error instanceof LLMRateLimitError) {
-          this.logger.warn('Rate limit encountered; rescheduling via reservation system', {
-            correlationId: CorrelationUtils.getCorrelationId(),
-            workerId: effectiveWorkerId,
-          });
+          this.logger.warn(
+            'Rate limit encountered; rescheduling via reservation system',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              workerId: effectiveWorkerId,
+            },
+          );
           continue; // reserve a new slot and retry
         }
 
@@ -385,7 +392,10 @@ export class SmartLLMProcessor implements OnModuleInit {
     // Choose conservative estimate: max(char-based, moving average)
     const estimate = Math.max(charEstimate, avg);
     // Clamp to reasonable bounds to avoid pathological reservations
-    const minFloor = Math.max(1500, this.cachedInstructionTokens + expectedOutputTokens);
+    const minFloor = Math.max(
+      1500,
+      this.cachedInstructionTokens + expectedOutputTokens,
+    );
     const adaptiveCeiling = this.getAdaptiveCeiling(minFloor, estimate);
     const clamped = Math.max(minFloor, Math.min(estimate, adaptiveCeiling));
     return clamped;
@@ -607,7 +617,11 @@ export class SmartLLMProcessor implements OnModuleInit {
     });
   }
 
-  private trackTokenUsage(promptTokens: number, totalTokens: number, outputTokens: number): void {
+  private trackTokenUsage(
+    promptTokens: number,
+    totalTokens: number,
+    outputTokens: number,
+  ): void {
     if (Number.isFinite(promptTokens) && promptTokens > 0) {
       this.recentPromptTokens.push(Math.round(promptTokens));
       while (this.recentPromptTokens.length > this.usageWindowSize) {
@@ -630,7 +644,10 @@ export class SmartLLMProcessor implements OnModuleInit {
     }
   }
 
-  private getAdaptiveCeiling(minFloor: number, currentEstimate: number): number {
+  private getAdaptiveCeiling(
+    minFloor: number,
+    currentEstimate: number,
+  ): number {
     if (this.recentTotalTokens.length === 0) {
       const defaultCeiling = Math.max(
         minFloor + this.promptCeilingBuffer,

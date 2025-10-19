@@ -70,12 +70,17 @@ export class EntityResolutionService implements OnModuleInit {
     try {
       const results: EntityResolutionResult[] = [];
       const tempIdToEntityIdMap = new Map<string, string>();
+      const globalNewEntityMap = new Map<string, EntityResolutionResult>();
       let newEntitiesCreated = 0;
 
       // Process entities in batches for optimal performance
       for (let i = 0; i < entities.length; i += resolveConfig.batchSize) {
         const batch = entities.slice(i, i + resolveConfig.batchSize);
-        const batchResults = await this.processBatch(batch, resolveConfig);
+        const batchResults = await this.processBatch(
+          batch,
+          resolveConfig,
+          globalNewEntityMap,
+        );
 
         results.push(...batchResults.results);
 
@@ -116,6 +121,44 @@ export class EntityResolutionService implements OnModuleInit {
         }
       }
 
+      // Automatically add observed aliases for matched entities (PRD Section 9.2.1)
+      const aliasUpdates = new Map<string, Set<string>>();
+      for (const result of results) {
+        if (!result.entityId) continue;
+        if (!result.originalInput?.originalText) continue;
+        if (result.resolutionTier === 'new') continue;
+
+        const originalText = result.originalInput.originalText.trim();
+        if (!originalText) continue;
+
+        const matchedName = result.matchedName || '';
+        if (matchedName.toLowerCase() === originalText.toLowerCase()) continue;
+
+        if (!aliasUpdates.has(result.entityId)) {
+          aliasUpdates.set(result.entityId, new Set());
+        }
+        aliasUpdates.get(result.entityId)!.add(originalText);
+      }
+
+      for (const [entityId, aliases] of aliasUpdates.entries()) {
+        for (const alias of aliases) {
+          try {
+            await this.addAliasToEntity(entityId, alias);
+          } catch (aliasError) {
+            this.logger.warn('Alias enrichment failed', {
+              entityId,
+              alias,
+              error: {
+                message:
+                  aliasError instanceof Error
+                    ? aliasError.message
+                    : String(aliasError),
+              },
+            });
+          }
+        }
+      }
+
       return {
         tempIdToEntityIdMap,
         resolutionResults: results,
@@ -142,6 +185,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async processBatch(
     entities: EntityResolutionInput[],
     config: EntityResolutionConfig,
+    globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<{
     results: EntityResolutionResult[];
     newEntitiesCreated: number;
@@ -157,12 +201,13 @@ export class EntityResolutionService implements OnModuleInit {
         typeEntities,
         entityType,
         config,
+        globalNewEntityMap,
       );
       results.push(...typeResults);
 
       // Count new entities created
       newEntitiesCreated += typeResults.filter(
-        (r) => r.resolutionTier === 'new',
+        (r) => r.resolutionTier === 'new' && r.isNewEntity,
       ).length;
     }
 
@@ -176,6 +221,7 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     config: EntityResolutionConfig,
+    globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<EntityResolutionResult[]> {
     this.logger.debug('Resolving entities by type', {
       entityType,
@@ -237,9 +283,16 @@ export class EntityResolutionService implements OnModuleInit {
     });
 
     // Mark unmatched entities for transaction-based creation (PRD approach)
+    const primaryNewEntityMap = globalNewEntityMap;
     const newEntityResults = this.markEntitiesForCreation(
       unmatchedAfterFuzzy,
       entityType,
+      {
+        exactMatches: exactMatchResults,
+        aliasMatches: aliasMatchResults,
+        fuzzyMatches: fuzzyMatchResults,
+      },
+      primaryNewEntityMap,
     );
 
     // Combine results from all tiers
@@ -523,6 +576,12 @@ export class EntityResolutionService implements OnModuleInit {
   private markEntitiesForCreation(
     entities: EntityResolutionInput[],
     entityType: EntityType,
+    context: {
+      exactMatches: EntityResolutionResult[];
+      aliasMatches: EntityResolutionResult[];
+      fuzzyMatches: EntityResolutionResult[];
+    },
+    primaryNewEntityMap: Map<string, EntityResolutionResult>,
   ): EntityResolutionResult[] {
     const results: EntityResolutionResult[] = [];
 
@@ -549,18 +608,83 @@ export class EntityResolutionService implements OnModuleInit {
           });
         }
 
-        // PRD Architecture: Return null for new entities - let database auto-generate IDs
-        results.push({
+        const normalizedKey = `${entityType}:${entity.normalizedName
+          .toLowerCase()
+          .trim()}`;
+        const existingPrimary = primaryNewEntityMap.get(normalizedKey);
+
+        if (existingPrimary) {
+          const duplicateResult: EntityResolutionResult = {
+            tempId: entity.tempId,
+            entityId: existingPrimary.entityId ?? null,
+            confidence: 1.0,
+            resolutionTier: 'new',
+            matchedName: entity.normalizedName,
+            originalInput: entity,
+            isNewEntity: false,
+            entityType: entityType,
+            normalizedName: entity.normalizedName,
+            validatedAliases: scopeValidation.validAliases,
+            primaryTempId: existingPrimary.tempId,
+          };
+
+          results.push(duplicateResult);
+
+          this.logger.debug('Resolver reused primary new entity within batch', {
+            entityType,
+            normalizedName: entity.normalizedName,
+            primaryTempId: existingPrimary.tempId,
+            duplicateTempId: entity.tempId,
+          });
+
+          continue;
+        }
+
+        const primaryResult: EntityResolutionResult = {
           tempId: entity.tempId,
-          entityId: null, // Database will auto-generate UUID
+          entityId: null,
           confidence: 1.0,
           resolutionTier: 'new',
           matchedName: entity.normalizedName,
           originalInput: entity,
-          isNewEntity: true, // Flag for transaction creation
+          isNewEntity: true,
           entityType: entityType,
           normalizedName: entity.normalizedName,
           validatedAliases: scopeValidation.validAliases,
+        };
+
+        results.push(primaryResult);
+        primaryNewEntityMap.set(normalizedKey, primaryResult);
+
+        const closestFuzzyMatch = context.fuzzyMatches
+          .filter((r) => r.entityId)
+          .reduce<{
+            entityId: string;
+            confidence: number;
+            matchedName?: string;
+          } | null>((best, current) => {
+            if (!current.entityId) return best;
+            if (!best || (current.confidence || 0) > best.confidence) {
+              return {
+                entityId: current.entityId,
+                confidence: current.confidence || 0,
+                matchedName: current.matchedName,
+              };
+            }
+            return best;
+          }, null);
+
+        this.logger.warn('Resolver created new entity', {
+          entityType,
+          normalizedName: entity.normalizedName,
+          originalText: entity.originalText,
+          aliases: entity.aliases,
+          searchTerms: [
+            entity.normalizedName,
+            entity.originalText,
+            ...(entity.aliases || []),
+          ],
+          closestFuzzyMatch,
         });
 
         this.logger.debug('Marked entity for transaction creation', {

@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { EntityType } from '@prisma/client';
 import { LLMEntityRef } from '../../external-integrations/llm/llm.types';
 
@@ -34,6 +35,7 @@ export interface EntityResolutionResult {
   entityType?: EntityType; // Entity type for transaction creation
   normalizedName?: string; // Normalized name for transaction creation
   validatedAliases?: string[]; // Validated aliases for transaction creation
+  primaryTempId?: string; // When duplicate of another new entity within same batch
 }
 
 /**
@@ -100,13 +102,36 @@ export interface ContextualAttributeInput {
 /**
  * Helper function to convert LLM entity reference to resolution input
  */
+const slugifyForTempId = (value: string): string =>
+  value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+const buildEntityRefTempId = (
+  entityRef: LLMEntityRef,
+  entityType: EntityType,
+): string => {
+  const normalized = entityRef.name ? slugifyForTempId(entityRef.name) : '';
+  if (normalized) {
+    return `${entityType.toLowerCase()}::${normalized}`;
+  }
+
+  const fallbackSource = `${entityType}::${entityRef.name ?? 'unknown'}`;
+  return `${entityType.toLowerCase()}::${createHash('sha256')
+    .update(fallbackSource)
+    .digest('hex')
+    .substring(0, 12)}`;
+};
+
 export function llmEntityRefToResolutionInput(
   entityRef: LLMEntityRef,
   entityType: EntityType,
   aliases: string[] = [],
 ): EntityResolutionInput {
   return {
-    tempId: entityRef.temp_id,
+    tempId: buildEntityRefTempId(entityRef, entityType),
     normalizedName: entityRef.name,
     originalText: entityRef.name, // Using same value since we only store normalized names now
     entityType,

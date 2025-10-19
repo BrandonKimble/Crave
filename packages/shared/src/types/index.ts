@@ -13,19 +13,6 @@ export interface RestaurantMetadata {
 }
 
 /**
- * Top Mention structure
- * PRD 4.1.1: Top mentions metadata structure for connections
- */
-export interface TopMention {
-  mention_id: string;
-  score: number;
-  upvotes: number;
-  content_excerpt: string;
-  source_url: string;
-  created_at: string;
-}
-
-/**
  * Entity Types for unified entity model
  * PRD 4.2: All food-related entities stored in single table differentiated by type
  */
@@ -72,8 +59,7 @@ export interface Connection {
   sourceDiversity: number;
   recentMentionCount: number;
   lastMentionedAt?: Date;
-  activityLevel: 'low' | 'normal' | 'high' | 'trending';
-  topMentions: TopMention[];
+  activityLevel: 'normal' | 'active' | 'trending';
   foodQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;

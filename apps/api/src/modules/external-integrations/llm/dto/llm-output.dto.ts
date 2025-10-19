@@ -33,10 +33,6 @@ export class LLMEntityRefDto {
   @IsString()
   @IsSafeString()
   name: string;
-
-  @IsString()
-  @IsSafeString()
-  temp_id: string;
 }
 
 /**
@@ -76,10 +72,6 @@ export class LLMMentionDto {
   @IsSafeString()
   restaurant_name: string;
 
-  @IsString()
-  @IsSafeString()
-  restaurant_temp_id: string;
-
   // Enhanced food fields for compound term processing
   @IsOptional()
   @IsString()
@@ -91,11 +83,6 @@ export class LLMMentionDto {
   @IsString({ each: true })
   @IsSafeString({ each: true })
   food_categories?: string[] | null;
-
-  @IsOptional()
-  @IsString()
-  @IsSafeString()
-  food_temp_id?: string | null;
 
   @IsOptional()
   @IsBoolean()

@@ -192,7 +192,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         });
 
         try {
-
           // Use smart processor with worker ID for perfect rate limiting
           const workerId = `worker-${index % 16}`; // Distribute across 16 worker IDs
           const result = await this.smartProcessor.processContent(
@@ -368,11 +367,14 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       if (remaining <= 0) return;
       const sleepMs = Math.min(remaining, 2000);
       if (!logged) {
-        this.logger.warn('Global backpressure active; delaying chunk dispatch', {
-          correlationId: CorrelationUtils.getCorrelationId(),
-          chunkId: meta.chunkId,
-          remainingMs: remaining,
-        });
+        this.logger.warn(
+          'Global backpressure active; delaying chunk dispatch',
+          {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            chunkId: meta.chunkId,
+            remainingMs: remaining,
+          },
+        );
         logged = true;
       }
       await this.sleep(sleepMs);
@@ -412,12 +414,6 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       if (mention.general_praise === undefined) {
         throw new Error(
           `Missing vital field: general_praise in chunk ${chunkId}, mention ${mention.temp_id}`,
-        );
-      }
-
-      if (!mention.restaurant_temp_id) {
-        throw new Error(
-          `Missing vital field: restaurant_temp_id in chunk ${chunkId}, mention ${mention.temp_id}`,
         );
       }
 

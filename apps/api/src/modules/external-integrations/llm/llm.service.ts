@@ -387,11 +387,6 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   type: 'string',
                   description: 'Unique identifier for this mention',
                 },
-                restaurant_temp_id: {
-                  type: 'string',
-                  description: 'Unique identifier for the restaurant entity',
-                },
-
                 // Restaurant info (required)
                 restaurant_name: {
                   type: 'string',
@@ -407,11 +402,6 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 },
 
                 // Food info (optional with nullable)
-                food_temp_id: {
-                  type: 'string',
-                  description: 'Unique identifier for food if mentioned',
-                  nullable: true,
-                },
                 food_name: {
                   type: 'string',
                   description:
@@ -461,17 +451,14 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               },
               required: [
                 'temp_id',
-                'restaurant_temp_id',
                 'restaurant_name',
                 'general_praise',
                 'source_id',
               ],
               propertyOrdering: [
                 'temp_id',
-                'restaurant_temp_id',
                 'restaurant_name',
                 'restaurant_attributes',
-                'food_temp_id',
                 'food_name',
                 'food_categories',
                 'is_menu_item',
@@ -674,10 +661,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         const { retry, reason } = isRetryable(error);
         if (retry && attempt < maxRetries) {
           if (reason === 'rate_limit') {
-            this.logger.warn('Transient Gemini rate limit; handing back to processor for rescheduling', {
-              correlationId: CorrelationUtils.getCorrelationId(),
-              attempt: attempt + 1,
-            });
+            this.logger.warn(
+              'Transient Gemini rate limit; handing back to processor for rescheduling',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                attempt: attempt + 1,
+              },
+            );
             throw new LLMRateLimitError(60);
           }
 
@@ -988,7 +978,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
    * Validate LLM output structure using custom validators
    */
   async validateOutput(output: LLMOutputStructure): Promise<string[]> {
-    const outputDto = plainToClass(LLMOutputDto, output);
+    const outputDto = plainToClass(LLMOutputDto, output as object);
     const errors = await validate(outputDto);
 
     return errors.flatMap((error) =>

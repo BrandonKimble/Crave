@@ -13,7 +13,7 @@
  */
 
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { v4 as uuidv4 } from 'uuid';
+import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -22,6 +22,7 @@ import {
   ProcessingResult,
   UnifiedProcessingConfig,
   ProcessingPerformanceMetrics,
+  CreatedEntitySummary,
 } from './unified-processing.types';
 import { LLMOutputStructure } from '../../external-integrations/llm/llm.types';
 import {
@@ -32,6 +33,28 @@ import {
   UnifiedProcessingException,
   UnifiedProcessingExceptionFactory,
 } from './unified-processing.exceptions';
+
+type OperationSummary = {
+  affectedConnectionIds: string[];
+  newConnectionIds: string[];
+  mentionsCreated: number;
+};
+
+const createEmptySummary = (): OperationSummary => ({
+  affectedConnectionIds: [],
+  newConnectionIds: [],
+  mentionsCreated: 0,
+});
+
+const mergeIntoSummary = (
+  target: OperationSummary,
+  addition: OperationSummary | null | undefined,
+) => {
+  if (!addition) return;
+  target.affectedConnectionIds.push(...addition.affectedConnectionIds);
+  target.newConnectionIds.push(...addition.newConnectionIds);
+  target.mentionsCreated += addition.mentionsCreated;
+};
 
 @Injectable()
 export class UnifiedProcessingService implements OnModuleInit {
@@ -93,6 +116,15 @@ export class UnifiedProcessingService implements OnModuleInit {
     mentionsCreated: number;
     affectedConnectionIds: string[];
     createdEntityIds?: string[];
+    createdEntitySummaries?: CreatedEntitySummary[];
+    reusedEntitySummaries?: {
+      tempId: string;
+      entityId: string;
+      entityType: string;
+      normalizedName?: string;
+      originalText?: string;
+      canonicalName?: string;
+    }[];
   }> {
     const { mentions, sourceMetadata } = llmOutputData;
     const batchId = sourceMetadata.batchId;
@@ -136,6 +168,12 @@ export class UnifiedProcessingService implements OnModuleInit {
           mentionsCreated: batchResult.databaseOperations?.mentionsCreated || 0,
           affectedConnectionIds:
             batchResult.databaseOperations?.affectedConnectionIds || [],
+          createdEntityIds:
+            batchResult.databaseOperations?.createdEntityIds || [],
+          createdEntitySummaries:
+            batchResult.databaseOperations?.createdEntitySummaries || [],
+          reusedEntitySummaries:
+            batchResult.databaseOperations?.reusedEntitySummaries || [],
         };
       }
 
@@ -155,6 +193,12 @@ export class UnifiedProcessingService implements OnModuleInit {
         mentionsCreated: batchResult.databaseOperations?.mentionsCreated || 0,
         affectedConnectionIds:
           batchResult.databaseOperations?.affectedConnectionIds || [],
+        createdEntityIds:
+          batchResult.databaseOperations?.createdEntityIds || [],
+        createdEntitySummaries:
+          batchResult.databaseOperations?.createdEntitySummaries || [],
+        reusedEntitySummaries:
+          batchResult.databaseOperations?.reusedEntitySummaries || [],
       };
     } catch (error) {
       const processingTime = Date.now() - startTime;
@@ -204,9 +248,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
 
     let totalEntitiesCreated = 0;
-    let totalConnectionsCreated = 0;
-    let totalMentionsCreated = 0;
-    const allAffectedConnectionIds: string[] = [];
+   let totalConnectionsCreated = 0;
+   let totalMentionsCreated = 0;
+   const allAffectedConnectionIds: string[] = [];
+    const createdEntityIds: string[] = [];
+    const createdEntitySummaries: CreatedEntitySummary[] = [];
+    const reusedEntitySummaries: {
+      tempId: string;
+      entityId: string;
+      entityType: string;
+      normalizedName?: string;
+      originalText?: string;
+      canonicalName?: string;
+    }[] = [];
 
     // Process each batch sequentially for robust error handling
     for (let i = 0; i < batchCount; i++) {
@@ -238,6 +292,21 @@ export class UnifiedProcessingService implements OnModuleInit {
         allAffectedConnectionIds.push(
           ...(subResult.databaseOperations.affectedConnectionIds || []),
         );
+        if (subResult.databaseOperations.createdEntityIds?.length) {
+          createdEntityIds.push(
+            ...subResult.databaseOperations.createdEntityIds,
+          );
+        }
+        if (subResult.databaseOperations.createdEntitySummaries?.length) {
+          createdEntitySummaries.push(
+            ...subResult.databaseOperations.createdEntitySummaries,
+          );
+        }
+        if (subResult.databaseOperations.reusedEntitySummaries?.length) {
+          reusedEntitySummaries.push(
+            ...subResult.databaseOperations.reusedEntitySummaries,
+          );
+        }
       } catch (error) {
         this.logger.error(`Sub-batch ${subBatchId} failed`, {
           error: error instanceof Error ? error.message : String(error),
@@ -250,6 +319,31 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     const processingTime = Date.now() - startTime;
     this.updatePerformanceMetrics(processingTime, true);
+
+    const uniqueCreatedEntityIds = Array.from(new Set(createdEntityIds));
+    const createdEntitySummaryMap = new Map<string, CreatedEntitySummary>();
+    for (const summary of createdEntitySummaries) {
+      if (!createdEntitySummaryMap.has(summary.entityId)) {
+        createdEntitySummaryMap.set(summary.entityId, summary);
+      }
+    }
+    const uniqueCreatedEntitySummaries = Array.from(
+      createdEntitySummaryMap.values(),
+    );
+
+    const reusedEntitySummaryMap = new Map<
+      string,
+      (typeof reusedEntitySummaries)[number]
+    >();
+    for (const summary of reusedEntitySummaries) {
+      const key = `${summary.entityId}:${summary.tempId}`;
+      if (!reusedEntitySummaryMap.has(key)) {
+        reusedEntitySummaryMap.set(key, summary);
+      }
+    }
+    const uniqueReusedEntitySummaries = Array.from(
+      reusedEntitySummaryMap.values(),
+    );
 
     return {
       batchId: parentBatchId,
@@ -270,6 +364,9 @@ export class UnifiedProcessingService implements OnModuleInit {
         connectionsCreated: totalConnectionsCreated,
         mentionsCreated: totalMentionsCreated,
         affectedConnectionIds: [...new Set(allAffectedConnectionIds)],
+        createdEntityIds: uniqueCreatedEntityIds,
+        createdEntitySummaries: uniqueCreatedEntitySummaries,
+        reusedEntitySummaries: uniqueReusedEntitySummaries,
       },
       qualityScoreUpdates: config.enableQualityScores
         ? [...new Set(allAffectedConnectionIds)].length
@@ -356,37 +453,63 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     try {
       for (const mention of llmOutput.mentions) {
-        // Restaurant entities
-        if (mention.restaurant_name && mention.restaurant_temp_id) {
+        // Restaurant entities (deterministic temp IDs)
+        if (mention.restaurant_name) {
+          const restaurantTempId = this.buildRestaurantTempId(mention);
+          mention.__restaurantTempId = restaurantTempId;
           entities.push({
             normalizedName: mention.restaurant_name,
-            originalText: mention.restaurant_name, // Using normalized as original since we only have one
+            originalText: mention.restaurant_name,
             entityType: 'restaurant' as const,
-            tempId: mention.restaurant_temp_id,
+            tempId: restaurantTempId,
           });
+        } else {
+          mention.__restaurantTempId = null;
         }
 
-        // Food entity (food or category)
-        if (mention.food_name && mention.food_temp_id) {
+        // Food entity (menu item)
+        if (mention.food_name) {
+          const foodEntityTempId = this.buildFoodEntityTempId(mention);
+          mention.__foodEntityTempId = foodEntityTempId;
           entities.push({
             normalizedName: mention.food_name,
-            originalText: mention.food_name, // Using normalized as original
+            originalText: mention.food_name,
             entityType: 'food' as const,
-            tempId: mention.food_temp_id,
+            tempId: foodEntityTempId,
           });
+        } else {
+          mention.__foodEntityTempId = null;
         }
 
-        // Also process food_categories array if present
+        // Also process food_categories array if present (deterministic IDs)
         if (mention.food_categories && Array.isArray(mention.food_categories)) {
+          if (!Array.isArray(mention.__foodCategoryTempIds)) {
+            mention.__foodCategoryTempIds = [];
+          }
+          const seenCategoryIds = new Set<string>();
           for (const category of mention.food_categories) {
-            if (category && category !== mention.food_name) {
-              entities.push({
-                normalizedName: category,
-                originalText: category,
-                entityType: 'food' as const,
-                tempId: uuidv4(),
-              });
+            if (!category) {
+              continue;
             }
+            const categoryTempId = this.buildFoodCategoryTempId(category);
+            if (seenCategoryIds.has(categoryTempId)) {
+              continue;
+            }
+            seenCategoryIds.add(categoryTempId);
+
+            entities.push({
+              normalizedName: category,
+              originalText: category,
+              entityType: 'food' as const,
+              tempId: categoryTempId,
+            });
+            mention.__foodCategoryTempIds.push({
+              name: category,
+              tempId: categoryTempId,
+            });
+          }
+          if (mention.__foodCategoryTempIds.length === 0) {
+            delete mention.__foodCategoryTempIds;
           }
         }
 
@@ -395,13 +518,22 @@ export class UnifiedProcessingService implements OnModuleInit {
           mention.food_attributes_selective &&
           Array.isArray(mention.food_attributes_selective)
         ) {
+          const seenSelectiveIds = new Set<string>();
           for (const attr of mention.food_attributes_selective) {
             if (typeof attr === 'string' && attr) {
+              const attributeTempId = this.buildAttributeTempId(
+                'food_selective',
+                attr,
+              );
+              if (seenSelectiveIds.has(attributeTempId)) {
+                continue;
+              }
+              seenSelectiveIds.add(attributeTempId);
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
                 entityType: 'food_attribute' as const,
-                tempId: `food_attr_selective_${attr}_${mention.temp_id}`, // FIXED: Predictable temp_id
+                tempId: attributeTempId,
               });
             }
           }
@@ -412,13 +544,22 @@ export class UnifiedProcessingService implements OnModuleInit {
           mention.food_attributes_descriptive &&
           Array.isArray(mention.food_attributes_descriptive)
         ) {
+          const seenDescriptiveIds = new Set<string>();
           for (const attr of mention.food_attributes_descriptive) {
             if (typeof attr === 'string' && attr) {
+              const attributeTempId = this.buildAttributeTempId(
+                'food_descriptive',
+                attr,
+              );
+              if (seenDescriptiveIds.has(attributeTempId)) {
+                continue;
+              }
+              seenDescriptiveIds.add(attributeTempId);
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
                 entityType: 'food_attribute' as const,
-                tempId: `food_attr_descriptive_${attr}_${mention.temp_id}`, // FIXED: Predictable temp_id
+                tempId: attributeTempId,
               });
             }
           }
@@ -429,13 +570,22 @@ export class UnifiedProcessingService implements OnModuleInit {
           mention.restaurant_attributes &&
           Array.isArray(mention.restaurant_attributes)
         ) {
+          const seenRestaurantAttrIds = new Set<string>();
           for (const attr of mention.restaurant_attributes) {
             if (typeof attr === 'string' && attr) {
+              const attributeTempId = this.buildAttributeTempId(
+                'restaurant',
+                attr,
+              );
+              if (seenRestaurantAttrIds.has(attributeTempId)) {
+                continue;
+              }
+              seenRestaurantAttrIds.add(attributeTempId);
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
                 entityType: 'restaurant_attribute' as const,
-                tempId: `restaurant_attr_${attr}_${mention.temp_id}`, // FIXED: Predictable temp_id
+                tempId: attributeTempId,
               });
             }
           }
@@ -451,6 +601,119 @@ export class UnifiedProcessingService implements OnModuleInit {
         { mentionsCount: llmOutput.mentions.length },
       );
     }
+  }
+
+  private normalizeForId(value: unknown): string {
+    if (value === undefined || value === null) {
+      return '';
+    }
+    return value
+      .toString()
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  private stableHash(value: string): string {
+    return createHash('sha256').update(value).digest('hex').substring(0, 12);
+  }
+
+  private createFallbackId(scope: string, mention?: any, subject?: string): string {
+    const parts = [
+      scope,
+      subject ?? '',
+      mention?.source_id ?? '',
+      mention?.temp_id ?? '',
+      mention?.restaurant_name ?? '',
+      mention?.food_name ?? '',
+    ];
+    return `${scope}-${this.stableHash(parts.join('|'))}`;
+  }
+
+  private buildRestaurantTempId(mention: any): string {
+    const normalized = this.normalizeForId(mention?.restaurant_name);
+    if (normalized) {
+      return `restaurant::${normalized}`;
+    }
+    return this.createFallbackId('restaurant', mention);
+  }
+
+  private buildFoodEntityTempId(mention: any): string {
+    const restaurantTempId =
+      typeof mention?.__restaurantTempId === 'string' &&
+      mention.__restaurantTempId
+        ? mention.__restaurantTempId
+        : this.buildRestaurantTempId(mention);
+
+    const normalizedFoodName = this.normalizeForId(mention?.food_name);
+    if (normalizedFoodName) {
+      return `${restaurantTempId}::food::${normalizedFoodName}`;
+    }
+    return `${restaurantTempId}::${this.createFallbackId('food', mention)}`;
+  }
+
+  private buildFoodCategoryTempId(categoryName: string): string {
+    const normalized = this.normalizeForId(categoryName);
+    if (normalized) {
+      return `food-category::${normalized}`;
+    }
+    return `food-category::${this.stableHash(categoryName ?? '')}`;
+  }
+
+  private buildAttributeTempId(
+    scope: 'food_selective' | 'food_descriptive' | 'restaurant',
+    attributeName: string,
+  ): string {
+    const normalized = this.normalizeForId(attributeName);
+    const prefix =
+      scope === 'restaurant'
+        ? 'restaurant-attr'
+        : scope === 'food_selective'
+          ? 'food-attr-selective'
+          : 'food-attr-descriptive';
+
+    if (normalized) {
+      return `${prefix}::${normalized}`;
+    }
+
+    return `${prefix}::${this.stableHash(attributeName ?? '')}`;
+  }
+
+  private getRestaurantEntityLookupKey(mention: any): string | null {
+    if (
+      mention &&
+      typeof mention.__restaurantTempId === 'string' &&
+      mention.__restaurantTempId.trim().length > 0
+    ) {
+      return mention.__restaurantTempId.trim();
+    }
+
+    if (mention && mention.restaurant_name) {
+      const generatedId = this.buildRestaurantTempId(mention);
+      mention.__restaurantTempId = generatedId;
+      return generatedId;
+    }
+
+    return null;
+  }
+
+  private getFoodEntityLookupKey(mention: any): string | null {
+    if (
+      mention &&
+      typeof mention.__foodEntityTempId === 'string' &&
+      mention.__foodEntityTempId.trim().length > 0
+    ) {
+      return mention.__foodEntityTempId.trim();
+    }
+
+    if (mention && mention.food_name) {
+      const generatedId = this.buildFoodEntityTempId(mention);
+      mention.__foodEntityTempId = generatedId;
+      return generatedId;
+    }
+
+    return null;
   }
 
   /**
@@ -483,6 +746,27 @@ export class UnifiedProcessingService implements OnModuleInit {
       const tempIdToEntityIdMap = new Map<string, string>();
       const entityDetails =
         resolutionResult.entityDetails || new Map<string, any>();
+      const newEntityTempGroups = new Map<string, Set<string>>();
+
+      for (const resolution of resolutionResult.resolutionResults) {
+        if (resolution.resolutionTier !== 'new') {
+          continue;
+        }
+
+        const primaryTempId = resolution.isNewEntity
+          ? resolution.tempId
+          : resolution.primaryTempId;
+
+        if (!primaryTempId) {
+          continue;
+        }
+
+        if (!newEntityTempGroups.has(primaryTempId)) {
+          newEntityTempGroups.set(primaryTempId, new Set());
+        }
+
+        newEntityTempGroups.get(primaryTempId)!.add(resolution.tempId);
+      }
 
       for (const resolution of resolutionResult.resolutionResults) {
         if (resolution.entityId) {
@@ -490,68 +774,110 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      // Accumulate operations in-memory (PRD 6.4 requirement)
-      const mentionOperations: any[] = [];
-      const connectionOperations: any[] = [];
-      const affectedConnectionIds: string[] = [];
-      const restaurantPraiseUpvotes = new Map<string, number>(); // Aggregate general praise by restaurant
-      let connectionsCreated = 0;
-      let mentionsCreated = 0;
-
-      // Process each mention with consolidated component logic
-      for (const mention of llmOutput.mentions) {
-        const mentionResult = await this.processConsolidatedMention(
-          mention,
-          tempIdToEntityIdMap,
-          entityDetails,
-          batchId,
-          sourceMetadata?.subreddit,
-        );
-
-        if (mentionResult.mentionOperation) {
-          mentionOperations.push(mentionResult.mentionOperation);
-          mentionsCreated++;
-        }
-
-        connectionOperations.push(...mentionResult.connectionOperations);
-        affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
-        connectionsCreated += mentionResult.connectionOperations.length;
-
-        // Aggregate general praise upvotes by restaurant
-        if (mentionResult.generalPraiseUpvotes > 0) {
-          const currentTotal =
-            restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) || 0;
-          restaurantPraiseUpvotes.set(
-            mentionResult.restaurantEntityId,
-            currentTotal + mentionResult.generalPraiseUpvotes,
-          );
-        }
-      }
-
       // PRD 6.6.2: Single atomic transaction
       const result = await this.prismaService.$transaction(async (tx) => {
         this.logger.debug('Executing consolidated database transaction', {
           batchId,
-          mentionOperations: mentionOperations.length,
-          connectionOperations: connectionOperations.length,
+          mentionsProcessed: llmOutput.mentions.length,
         });
 
         // PRD 6.6.2: Create any new entities from resolution within transaction
         // This ensures atomicity - if entity creation fails, entire batch fails
         let entitiesCreated = 0;
-        const createdEntityMapping = new Map<string, string>(); // tempId -> real entityId
-
+        const createdEntitySummaries: CreatedEntitySummary[] = [];
+        const createdEntityIds: string[] = [];
+        const reusedEntitySummaries: {
+          tempId: string;
+          entityId: string;
+          entityType: string;
+          normalizedName?: string;
+          originalText?: string;
+          canonicalName?: string;
+        }[] = [];
         for (const resolution of resolutionResult.resolutionResults) {
-          if (resolution.isNewEntity && resolution.entityId === null) {
-            // Let database auto-generate UUID by omitting entityId field
+          if (!resolution.isNewEntity) {
+            continue;
+          }
+
+          const existing = await tx.entity.findUnique({
+            where: {
+              name_type: {
+                name: resolution.normalizedName!,
+                type: resolution.entityType!,
+              },
+            },
+            select: {
+              entityId: true,
+              aliases: true,
+              name: true,
+            },
+          });
+
+          let entityId: string | null = null;
+          let createdNew = false;
+
+          if (existing) {
+            entityId = existing.entityId;
+
+            this.logger.warn(
+              'Resolver indicated new entity but canonical record already exists',
+              {
+                batchId,
+                tempId: resolution.tempId,
+                entityId,
+                entityType: resolution.entityType,
+                normalizedName: resolution.normalizedName,
+                originalText: resolution.originalInput.originalText,
+                canonicalName: existing.name,
+              },
+            );
+
+            if (
+              resolution.validatedAliases &&
+              resolution.validatedAliases.length > 0
+            ) {
+              const mergedAliases = Array.from(
+                new Set([
+                  ...(existing.aliases || []),
+                  ...resolution.validatedAliases,
+                ]),
+              );
+
+              const aliasesChanged =
+                mergedAliases.length !== (existing.aliases || []).length;
+
+              if (aliasesChanged) {
+                await tx.entity.update({
+                  where: { entityId },
+                  data: {
+                    aliases: mergedAliases,
+                    lastUpdated: new Date(),
+                  },
+                });
+              }
+            }
+
+            this.logger.debug(
+              'Entity already existed; reusing canonical record',
+              {
+                batchId,
+                tempId: resolution.tempId,
+                entityId,
+                entityType: resolution.entityType,
+                name: resolution.normalizedName,
+              },
+            );
+          } else {
             const createdEntity = await tx.entity.create({
               data: {
                 name: resolution.normalizedName!,
                 type: resolution.entityType!,
-                aliases: resolution.validatedAliases || [
-                  resolution.originalInput.originalText,
-                ],
-                restaurantAttributes: [], // Initialize empty for all entity types
+                aliases:
+                  resolution.validatedAliases &&
+                  resolution.validatedAliases.length > 0
+                    ? resolution.validatedAliases
+                    : [resolution.originalInput.originalText],
+                restaurantAttributes: [],
                 restaurantQualityScore: 0,
                 generalPraiseUpvotes: 0,
                 restaurantMetadata: {},
@@ -560,50 +886,138 @@ export class UnifiedProcessingService implements OnModuleInit {
               },
             });
 
-            // Update the mapping with the database-generated ID
-            createdEntityMapping.set(resolution.tempId, createdEntity.entityId);
-            tempIdToEntityIdMap.set(resolution.tempId, createdEntity.entityId);
-            entitiesCreated++;
+            entityId = createdEntity.entityId;
+            createdNew = true;
 
-            this.logger.debug(
-              'Created entity in transaction with auto-generated ID',
+            this.logger.debug('Created new entity during batch processing', {
+              batchId,
+              tempId: resolution.tempId,
+              entityId,
+              entityType: resolution.entityType,
+              name: resolution.normalizedName,
+            });
+
+            const tempGroup = Array.from(
+              newEntityTempGroups.get(resolution.tempId) ??
+                new Set<string>([resolution.tempId]),
+            );
+
+            createdEntitySummaries.push({
+              entityId,
+              name: resolution.normalizedName!,
+              entityType: resolution.entityType!,
+              primaryTempId: resolution.tempId,
+              tempIds: tempGroup,
+            });
+            createdEntityIds.push(entityId);
+          }
+
+          if (!entityId) {
+            throw UnifiedProcessingExceptionFactory.createEntityProcessingFailed(
+              'Failed to resolve entity ID for new entity',
+              undefined,
               {
                 batchId,
                 tempId: resolution.tempId,
-                generatedEntityId: createdEntity.entityId,
+                normalizedName: resolution.normalizedName,
                 entityType: resolution.entityType,
-                name: resolution.normalizedName,
               },
+            );
+          }
+
+          tempIdToEntityIdMap.set(resolution.tempId, entityId);
+          resolution.entityId = entityId;
+
+          if (createdNew) {
+            entitiesCreated++;
+          }
+        }
+
+        // Propagate entity IDs to duplicates that reference a primary temp ID
+        for (const resolution of resolutionResult.resolutionResults) {
+          if (!resolution.entityId && resolution.primaryTempId) {
+            const primaryEntityId = tempIdToEntityIdMap.get(
+              resolution.primaryTempId,
+            );
+            if (primaryEntityId) {
+              tempIdToEntityIdMap.set(resolution.tempId, primaryEntityId);
+              resolution.entityId = primaryEntityId;
+              this.logger.debug(
+                'Resolved duplicate new entity to primary entity ID',
+                {
+                  batchId,
+                  tempId: resolution.tempId,
+                  primaryTempId: resolution.primaryTempId,
+                  entityId: primaryEntityId,
+                },
+              );
+            }
+          }
+        }
+
+        const connectionOperations: any[] = [];
+        const affectedConnectionIds: string[] = [];
+        const restaurantPraiseUpvotes = new Map<string, number>();
+
+        for (const mention of llmOutput.mentions) {
+          const mentionResult = await this.processConsolidatedMention(
+            mention,
+            tempIdToEntityIdMap,
+            entityDetails,
+            batchId,
+            sourceMetadata?.subreddit,
+          );
+
+          connectionOperations.push(...mentionResult.connectionOperations);
+          affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
+
+          if (mentionResult.generalPraiseUpvotes > 0) {
+            const currentTotal =
+              restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) ||
+              0;
+            restaurantPraiseUpvotes.set(
+              mentionResult.restaurantEntityId,
+              currentTotal + mentionResult.generalPraiseUpvotes,
             );
           }
         }
 
-        // Mentions are now created as part of connection operations
-
         // Execute all connection operations and collect affected connection IDs
         const additionalAffectedIds: string[] = [];
+        let mentionsCreated = 0;
+        let newConnectionsCreated = 0;
+
+        const mergeSummaries = (
+          summary: OperationSummary | null | undefined,
+        ) => {
+          if (!summary) return;
+          additionalAffectedIds.push(...summary.affectedConnectionIds);
+          mentionsCreated += summary.mentionsCreated;
+          newConnectionsCreated += summary.newConnectionIds.length;
+        };
+
         for (const connectionOp of connectionOperations) {
           if (connectionOp.type === 'category_boost') {
-            const ids = await this.handleCategoryBoost(
+            const summary = await this.handleCategoryBoost(
               tx,
               connectionOp,
               batchId,
             );
-            additionalAffectedIds.push(...ids);
+            mergeSummaries(summary);
           } else if (connectionOp.type === 'attribute_boost') {
-            const ids = await this.handleAttributeBoost(
+            const summary = await this.handleAttributeBoost(
               tx,
               connectionOp,
               batchId,
             );
-            additionalAffectedIds.push(...ids);
+            mergeSummaries(summary);
           } else if (connectionOp.type === 'food_attribute_processing') {
-            const ids = await this.handleFoodAttributeProcessing(
+            const summary = await this.handleFoodAttributeProcessing(
               tx,
               connectionOp,
               batchId,
             );
-            additionalAffectedIds.push(...ids);
+            mergeSummaries(summary);
           } else if (connectionOp.type === 'restaurant_metadata_update') {
             await this.handleRestaurantMetadataUpdate(
               tx,
@@ -614,20 +1028,18 @@ export class UnifiedProcessingService implements OnModuleInit {
           } else if (connectionOp.type === 'general_praise_boost') {
             // No-op by design. General praise is persisted on the restaurant entity only.
           } else if (connectionOp.type === 'mention_create') {
-            await this.createMentionSafe(tx, connectionOp.mentionData);
+            const created = await this.createMentionSafe(
+              tx,
+              connectionOp.mentionData,
+            );
+            if (created) {
+              mentionsCreated += 1;
+            }
           } else {
             // Regular upsert operation
             await tx.connection.upsert(connectionOp);
           }
         }
-
-        // Combine all affected connection IDs
-        const allAffectedConnectionIds = [
-          ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
-        ];
-
-        // PRD 6.4.2: Update top mentions for all affected connections
-        await this.updateTopMentions(tx, allAffectedConnectionIds, batchId);
 
         // Update restaurant entities with aggregated general praise upvotes
         for (const [restaurantEntityId, upvotes] of restaurantPraiseUpvotes) {
@@ -644,11 +1056,14 @@ export class UnifiedProcessingService implements OnModuleInit {
 
         return {
           entitiesCreated,
-          connectionsCreated,
+          connectionsCreated: newConnectionsCreated,
           mentionsCreated,
           affectedConnectionIds: [
             ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
           ],
+          createdEntityIds,
+          createdEntitySummaries,
+          reusedEntitySummaries,
         };
       });
 
@@ -660,6 +1075,24 @@ export class UnifiedProcessingService implements OnModuleInit {
         processingTimeMs: processingTime,
         ...result,
       });
+
+      if (result.createdEntitySummaries?.length) {
+        this.logger.debug('New entities persisted during batch', {
+          batchId,
+          count: result.createdEntitySummaries.length,
+          names: result.createdEntitySummaries.map((summary) => summary.name),
+        });
+      }
+
+      if (result.reusedEntitySummaries?.length) {
+        this.logger.debug('Resolver reuse summaries', {
+          batchId,
+          count: result.reusedEntitySummaries.length,
+          names: result.reusedEntitySummaries.map(
+            (summary) => summary.canonicalName ?? summary.normalizedName,
+          ),
+        });
+      }
 
       return result;
     } catch (error) {
@@ -806,14 +1239,27 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     try {
       // Validate required restaurant data
-      const restaurantEntityId = tempIdToEntityIdMap.get(
-        mention.restaurant_temp_id,
-      );
+      const restaurantLookupKey = this.getRestaurantEntityLookupKey(mention);
+      if (!restaurantLookupKey) {
+        this.logger.warn('Restaurant entity key missing, skipping mention', {
+          batchId,
+          mentionTempId: mention.temp_id,
+        });
+        return {
+          mentionOperation: null,
+          connectionOperations: [],
+          affectedConnectionIds: [],
+          generalPraiseUpvotes: 0,
+          restaurantEntityId: '',
+        };
+      }
+
+      const restaurantEntityId = tempIdToEntityIdMap.get(restaurantLookupKey);
       if (!restaurantEntityId) {
         this.logger.warn('Restaurant entity not resolved, skipping mention', {
           batchId,
           mentionTempId: mention.temp_id,
-          restaurantTempId: mention.restaurant_temp_id,
+          restaurantTempId: restaurantLookupKey,
         });
         return {
           mentionOperation: null,
@@ -828,12 +1274,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       const mentionCreatedAt = new Date(mention.source_created_at);
       const daysSince =
         (Date.now() - mentionCreatedAt.getTime()) / (1000 * 60 * 60 * 24);
-      const timeWeightedScore = mention.source_ups * Math.exp(-daysSince / 60);
-
       // Store mention data for later creation after connection is established
       const mentionData = {
         // mentionId will be auto-generated by database
-        tempId: mention.temp_id,
         sourceType: mention.source_type,
         sourceId: mention.source_id,
         sourceUrl: mention.source_url,
@@ -842,9 +1285,73 @@ export class UnifiedProcessingService implements OnModuleInit {
         upvotes: mention.source_ups,
         createdAt: mentionCreatedAt,
         processedAt: new Date(),
-        timeWeightedScore: timeWeightedScore, // For later use
         // connectionId will be set when connection is created
       };
+
+      const foodEntityLookupKey = this.getFoodEntityLookupKey(mention);
+
+      // Resolve category entity IDs emitted by the LLM for this mention
+      const categoryEntityIds: string[] = [];
+      if (Array.isArray(mention.__foodCategoryTempIds)) {
+        for (const categoryRef of mention.__foodCategoryTempIds) {
+          if (categoryRef?.tempId) {
+            const categoryEntityId = tempIdToEntityIdMap.get(
+              categoryRef.tempId,
+            );
+            if (categoryEntityId) {
+              categoryEntityIds.push(categoryEntityId);
+            }
+          }
+        }
+      }
+
+      // Resolve attribute entity IDs emitted by the LLM for this mention
+      const selectiveAttributeNames: string[] = Array.isArray(
+        mention.food_attributes_selective,
+      )
+        ? mention.food_attributes_selective
+        : [];
+      const descriptiveAttributeNames: string[] = Array.isArray(
+        mention.food_attributes_descriptive,
+      )
+        ? mention.food_attributes_descriptive
+        : [];
+
+      const selectiveAttributeIds: string[] = [];
+      const descriptiveAttributeIds: string[] = [];
+
+      for (const attr of selectiveAttributeNames) {
+        const tempId = this.buildAttributeTempId('food_selective', attr);
+        const attributeEntityId = tempIdToEntityIdMap.get(tempId);
+        if (attributeEntityId) {
+          selectiveAttributeIds.push(attributeEntityId);
+        } else {
+          this.logger.debug('Selective attribute entity not resolved', {
+            batchId,
+            tempId,
+            attribute: attr,
+            mentionTempId: mention.temp_id,
+          });
+        }
+      }
+
+      for (const attr of descriptiveAttributeNames) {
+        const tempId = this.buildAttributeTempId('food_descriptive', attr);
+        const attributeEntityId = tempIdToEntityIdMap.get(tempId);
+        if (attributeEntityId) {
+          descriptiveAttributeIds.push(attributeEntityId);
+        } else {
+          this.logger.debug('Descriptive attribute entity not resolved', {
+            batchId,
+            tempId,
+            attribute: attr,
+            mentionTempId: mention.temp_id,
+          });
+        }
+      }
+
+      const hasSelectiveAttrs = selectiveAttributeIds.length > 0;
+      const hasDescriptiveAttrs = descriptiveAttributeIds.length > 0;
 
       // PRD 6.5 Component Processing Logic (inline implementation)
 
@@ -874,7 +1381,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         // Get restaurant attribute entity IDs from tempIdToEntityIdMap
         const restaurantAttributeIds: string[] = [];
         for (const attr of mention.restaurant_attributes) {
-          const tempId = `restaurant_attr_${attr}_${mention.temp_id}`;
+          const tempId = this.buildAttributeTempId('restaurant', attr);
           const attributeEntityId = tempIdToEntityIdMap.get(tempId);
           if (attributeEntityId) {
             restaurantAttributeIds.push(attributeEntityId);
@@ -920,16 +1427,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       // Component 4: Specific Food Processing (when food + is_menu_item = true)
       // PRD 6.5.3: Complex attribute logic for specific foods
       // PRD 6.5.2: Always create connections for specific foods
-      if (mention.food_temp_id && mention.is_menu_item === true) {
-        const foodEntityId = tempIdToEntityIdMap.get(mention.food_temp_id);
+      if (foodEntityLookupKey && mention.is_menu_item === true) {
+        const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
         if (foodEntityId) {
-          const hasSelectiveAttrs =
-            mention.food_attributes_selective &&
-            mention.food_attributes_selective.length > 0;
-          const hasDescriptiveAttrs =
-            mention.food_attributes_descriptive &&
-            mention.food_attributes_descriptive.length > 0;
-
           // Always use food_attribute_processing for consistent handling
           // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
           // The handler will check for existing connections and decide whether to boost or create
@@ -941,12 +1441,15 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributes: mention.food_attributes_selective || [],
-            descriptiveAttributes: mention.food_attributes_descriptive || [],
+            selectiveAttributeIds: [...selectiveAttributeIds],
+            selectiveAttributeNames: [...selectiveAttributeNames],
+            descriptiveAttributeIds: [...descriptiveAttributeIds],
+            descriptiveAttributeNames: [...descriptiveAttributeNames],
             hasSelectiveAttrs,
             hasDescriptiveAttrs,
             mentionData: mentionData, // Include mention data for creation
             allowCreate: true, // Component 4 always allows creation of new connections
+            categoryEntityIds,
           };
           connectionOperations.push(foodAttributeOperation);
 
@@ -963,16 +1466,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       // Component 5: Category Processing (when food + is_menu_item = false)
       // PRD 6.5.1: Find existing food connections with category and boost them
       // PRD 6.5.2: Never create category connections - only boost existing ones
-      else if (mention.food_temp_id && mention.is_menu_item === false) {
-        const categoryEntityId = tempIdToEntityIdMap.get(mention.food_temp_id);
+      else if (foodEntityLookupKey && mention.is_menu_item === false) {
+        const categoryEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
         if (categoryEntityId) {
-          const hasSelectiveAttrs =
-            mention.food_attributes_selective &&
-            mention.food_attributes_selective.length > 0;
-          const hasDescriptiveAttrs =
-            mention.food_attributes_descriptive &&
-            mention.food_attributes_descriptive.length > 0;
-
           // PRD 6.5.1 lines 1409-1414: Category processing with attribute logic
           const categoryBoostOperation = {
             type: 'category_boost',
@@ -982,12 +1478,15 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributes: mention.food_attributes_selective || [],
-            descriptiveAttributes: mention.food_attributes_descriptive || [],
+            selectiveAttributeIds: [...selectiveAttributeIds],
+            selectiveAttributeNames: [...selectiveAttributeNames],
+            descriptiveAttributeIds: [...descriptiveAttributeIds],
+            descriptiveAttributeNames: [...descriptiveAttributeNames],
             hasSelectiveAttrs,
             hasDescriptiveAttrs,
             mentionData: mentionData, // Add mention data for Component 5
             allowCreate: false, // Component 5 never creates new connections
+            categoryEntityIds,
           };
           connectionOperations.push(categoryBoostOperation);
 
@@ -1005,14 +1504,11 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.5.1: Find existing food connections with ANY of the selective attributes
       // PRD 6.5.2: Never create attribute connections - only boost existing ones
       if (
-        !mention.food_temp_id &&
+        !foodEntityLookupKey &&
         (mention.food_attributes_selective ||
           mention.food_attributes_descriptive)
       ) {
-        if (
-          mention.food_attributes_selective &&
-          mention.food_attributes_selective.length > 0
-        ) {
+        if (hasSelectiveAttrs) {
           // PRD 6.5.1: Only process selective attributes for attribute-only processing
           // Descriptive-only attributes are skipped (PRD 6.5.1 line 1416)
           const attributeBoostOperation = {
@@ -1022,8 +1518,10 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributes: mention.food_attributes_selective,
+            selectiveAttributeIds: [...selectiveAttributeIds],
+            selectiveAttributeNames: [...selectiveAttributeNames],
             mentionData: mentionData, // Add mention data for Component 6
+            categoryEntityIds,
             // Note: Ignore descriptive attributes for attribute-only processing per PRD
           };
           connectionOperations.push(attributeBoostOperation);
@@ -1058,107 +1556,28 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Update top mentions for connections (PRD 6.4.2)
-   * Re-scores ALL existing mentions and maintains top 3-5 mentions array
-   */
-  private async updateTopMentions(
-    tx: any,
-    connectionIds: string[],
-    batchId: string,
-  ): Promise<void> {
-    for (const connectionId of connectionIds) {
-      try {
-        // Get all mentions for this connection
-        const mentions = await tx.mention.findMany({
-          where: { connectionId: connectionId },
-          orderBy: { createdAt: 'desc' },
-        });
-
-        if (mentions.length === 0) continue;
-
-        // PRD 6.4.2: Re-score ALL existing mentions using time-weighted formula
-        const scoredMentions = mentions.map((mention: any) => {
-          const daysSince =
-            (Date.now() - new Date(mention.createdAt).getTime()) /
-            (1000 * 60 * 60 * 24);
-          const timeWeightedScore = mention.upvotes * Math.exp(-daysSince / 60);
-
-          return {
-            mentionId: mention.mentionId,
-            score: timeWeightedScore,
-            upvotes: mention.upvotes,
-            createdAt: mention.createdAt,
-            sourceUrl: mention.sourceUrl,
-            contentExcerpt: mention.contentExcerpt,
-          };
-        });
-
-        // Sort by score descending and take top 5
-        const topMentions = scoredMentions
-          .sort((a, b) => b.score - a.score)
-          .slice(0, 5);
-
-        // Compute trending based on top mentions recency
-        const allTopMentionsRecent = topMentions.every((m) => {
-          const daysSince =
-            (Date.now() - new Date(m.createdAt).getTime()) /
-            (1000 * 60 * 60 * 24);
-          return daysSince <= 30;
-        });
-
-        // Fetch lastMentionedAt for activity determination per PRD (active = last_mentioned_at within 7 days)
-        const connectionRow = await tx.connection.findUnique({
-          where: { connectionId },
-          select: { lastMentionedAt: true },
-        });
-        let isActive = false;
-        if (connectionRow?.lastMentionedAt) {
-          const daysSinceLast =
-            (Date.now() - new Date(connectionRow.lastMentionedAt).getTime()) /
-            (1000 * 60 * 60 * 24);
-          isActive = daysSinceLast <= 7;
-        }
-
-        const activityLevel =
-          allTopMentionsRecent && topMentions.length >= 3
-            ? 'trending'
-            : isActive
-              ? 'active'
-              : 'normal';
-
-        // Update connection with new top mentions and activity level
-        await tx.connection.update({
-          where: { connectionId: connectionId },
-          data: {
-            topMentions: topMentions,
-            activityLevel: activityLevel,
-            lastUpdated: new Date(),
-          },
-        });
-
-        this.logger.debug('Updated top mentions for connection', {
-          batchId,
-          connectionId,
-          topMentionsCount: topMentions.length,
-          activityLevel,
-        });
-      } catch (error) {
-        this.logger.error('Failed to update top mentions', {
-          batchId,
-          connectionId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        // Don't throw - continue processing other connections
-      }
-    }
-  }
-
-  /**
    * Create mention with duplicate protection (unique by sourceType, sourceId, connectionId)
    */
-  private async createMentionSafe(tx: any, mentionData: any): Promise<void> {
+  private async createMentionSafe(tx: any, mentionData: any): Promise<boolean> {
+    if (!mentionData) {
+      return false;
+    }
+
+    const { tempId: _tempId, sourceType, ...rest } = mentionData;
+
+    const normalizedSourceType =
+      typeof sourceType === 'string' && sourceType.toLowerCase() === 'post'
+        ? 'post'
+        : 'comment';
+
+    const sanitizedMention = {
+      ...rest,
+      sourceType: normalizedSourceType,
+    };
+
     try {
-      await tx.mention.create({ data: mentionData });
+      await tx.mention.create({ data: sanitizedMention });
+      return true;
     } catch (e: any) {
       const msg = typeof e?.message === 'string' ? e.message : '';
       if (
@@ -1166,8 +1585,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         msg.includes('uniq_mentions_source_connection') ||
         e?.code === 'P2002'
       ) {
-        // Duplicate mention for the same source + connection; ignore
-        return;
+        return false;
       }
       throw e;
     }
@@ -1183,86 +1601,46 @@ export class UnifiedProcessingService implements OnModuleInit {
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     try {
       let targetConnections: any[] = [];
 
       // PRD 6.5.1 Component 5: Different logic based on attribute combinations
       if (operation.hasSelectiveAttrs && !operation.hasDescriptiveAttrs) {
-        // All Selective: Find connections with category AND filter by selective attributes
         targetConnections = await tx.connection.findMany({
           where: {
             restaurantId: operation.restaurantEntityId,
             categories: { has: operation.categoryEntityId },
-            foodAttributes: { hasSome: operation.selectiveAttributes }, // PRD: Filter to connections with ANY selective
+            foodAttributes: { hasSome: operation.selectiveAttributeIds },
           },
         });
-
-        this.logger.debug(
-          'Component 5 All Selective: Filtered category connections',
-          {
-            batchId,
-            categoryId: operation.categoryEntityId,
-            selectiveAttributes: operation.selectiveAttributes,
-            connectionsFound: targetConnections.length,
-          },
-        );
       } else if (
         !operation.hasSelectiveAttrs &&
         operation.hasDescriptiveAttrs
       ) {
-        // All Descriptive: Find ALL connections with category (no attribute filtering)
         targetConnections = await tx.connection.findMany({
           where: {
             restaurantId: operation.restaurantEntityId,
             categories: { has: operation.categoryEntityId },
           },
         });
-
-        this.logger.debug(
-          'Component 5 All Descriptive: Found all category connections',
-          {
-            batchId,
-            categoryId: operation.categoryEntityId,
-            connectionsFound: targetConnections.length,
-          },
-        );
       } else if (operation.hasSelectiveAttrs && operation.hasDescriptiveAttrs) {
-        // Mixed: Find connections with category AND filter by selective attributes
         targetConnections = await tx.connection.findMany({
           where: {
             restaurantId: operation.restaurantEntityId,
             categories: { has: operation.categoryEntityId },
-            foodAttributes: { hasSome: operation.selectiveAttributes }, // PRD: Filter by selective first
+            foodAttributes: { hasSome: operation.selectiveAttributeIds },
           },
         });
-
-        this.logger.debug(
-          'Component 5 Mixed: Filtered category connections by selective',
-          {
-            batchId,
-            categoryId: operation.categoryEntityId,
-            selectiveAttributes: operation.selectiveAttributes,
-            connectionsFound: targetConnections.length,
-          },
-        );
       } else {
-        // No attributes: Find ALL connections with category
         targetConnections = await tx.connection.findMany({
           where: {
             restaurantId: operation.restaurantEntityId,
             categories: { has: operation.categoryEntityId },
           },
         });
-
-        this.logger.debug(
-          'Component 5 No Attributes: Found all category connections',
-          {
-            batchId,
-            categoryId: operation.categoryEntityId,
-            connectionsFound: targetConnections.length,
-          },
-        );
       }
 
       if (targetConnections.length === 0) {
@@ -1274,16 +1652,12 @@ export class UnifiedProcessingService implements OnModuleInit {
             categoryId: operation.categoryEntityId,
           },
         );
-        return [];
+        return summary;
       }
 
-      const affectedIds: string[] = [];
-
-      // Process each matching connection
       for (const connection of targetConnections) {
-        affectedIds.push(connection.connectionId);
+        summary.affectedConnectionIds.push(connection.connectionId);
 
-        // Build update data based on attribute logic
         const updateData: any = {
           mentionCount: { increment: 1 },
           totalUpvotes: { increment: operation.upvotes },
@@ -1296,26 +1670,15 @@ export class UnifiedProcessingService implements OnModuleInit {
           lastUpdated: new Date(),
         };
 
-        // PRD 6.5.1: Add descriptive attributes if present (All Descriptive or Mixed cases)
         if (operation.hasDescriptiveAttrs) {
           const existingAttributes = connection.foodAttributes || [];
           const mergedAttributes = [
             ...new Set([
               ...existingAttributes,
-              ...operation.descriptiveAttributes,
+              ...operation.descriptiveAttributeIds,
             ]),
           ];
           updateData.foodAttributes = mergedAttributes;
-
-          this.logger.debug(
-            'Adding descriptive attributes to category connection',
-            {
-              batchId,
-              connectionId: connection.connectionId,
-              newDescriptiveAttributes: operation.descriptiveAttributes,
-              mergedAttributes,
-            },
-          );
         }
 
         await tx.connection.update({
@@ -1323,27 +1686,31 @@ export class UnifiedProcessingService implements OnModuleInit {
           data: updateData,
         });
 
-        // Create mention linked to this connection
-        await this.createMentionSafe(tx, {
+        const mentionCreated = await this.createMentionSafe(tx, {
           ...operation.mentionData,
           connectionId: connection.connectionId,
         });
-
+        if (mentionCreated) {
+          summary.mentionsCreated += 1;
+        }
         this.logger.debug('Boosted category connection per Component 5 logic', {
           batchId,
           connectionId: connection.connectionId,
           categoryId: operation.categoryEntityId,
           addedDescriptiveAttrs: operation.hasDescriptiveAttrs,
+          selectiveAttributeNames: operation.selectiveAttributeNames,
+          descriptiveAttributeNames: operation.descriptiveAttributeNames,
         });
       }
-      return affectedIds;
+
+      return summary;
     } catch (error) {
       this.logger.error('Failed to handle category boost', {
         batchId,
         operation,
         error: error instanceof Error ? error.message : String(error),
       });
-      return [];
+      return summary;
     }
   }
 
@@ -1356,14 +1723,14 @@ export class UnifiedProcessingService implements OnModuleInit {
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     try {
-      // PRD 6.5.1: Find existing food connections with ANY of the selective attributes (OR logic)
-      // Validate that selectiveAttributes is a non-empty array
       if (
-        !operation.selectiveAttributes ||
-        !Array.isArray(operation.selectiveAttributes) ||
-        operation.selectiveAttributes.length === 0
+        !operation.selectiveAttributeIds ||
+        !Array.isArray(operation.selectiveAttributeIds) ||
+        operation.selectiveAttributeIds.length === 0
       ) {
         this.logger.debug(
           'No selective attributes provided for attribute boost - skipping',
@@ -1372,13 +1739,13 @@ export class UnifiedProcessingService implements OnModuleInit {
             restaurantId: operation.restaurantEntityId,
           },
         );
-        return [];
+        return summary;
       }
 
       const existingConnections = await tx.connection.findMany({
         where: {
           restaurantId: operation.restaurantEntityId,
-          foodAttributes: { hasSome: operation.selectiveAttributes },
+          foodAttributes: { hasSome: operation.selectiveAttributeIds },
         },
       });
 
@@ -1388,16 +1755,15 @@ export class UnifiedProcessingService implements OnModuleInit {
           {
             batchId,
             restaurantId: operation.restaurantEntityId,
-            attributes: operation.selectiveAttributes,
+            attributes: operation.selectiveAttributeNames,
           },
         );
-        return [];
+        return summary;
       }
 
-      const affectedIds: string[] = [];
-      // Apply boost to all found connections and create mentions
       for (const connection of existingConnections) {
-        affectedIds.push(connection.connectionId);
+        summary.affectedConnectionIds.push(connection.connectionId);
+
         await tx.connection.update({
           where: { connectionId: connection.connectionId },
           data: {
@@ -1413,29 +1779,28 @@ export class UnifiedProcessingService implements OnModuleInit {
           },
         });
 
-        // Create mention linked to this connection
-        await this.createMentionSafe(tx, {
+        const mentionCreated = await this.createMentionSafe(tx, {
           ...operation.mentionData,
           connectionId: connection.connectionId,
         });
-
-        this.logger.debug(
-          'Boosted existing attribute connection and created mention',
-          {
-            batchId,
-            connectionId: connection.connectionId,
-            attributes: operation.selectiveAttributes,
-          },
-        );
+        if (mentionCreated) {
+          summary.mentionsCreated += 1;
+        }
+        this.logger.debug('Boosted existing attribute connection', {
+          batchId,
+          connectionId: connection.connectionId,
+          attributes: operation.selectiveAttributeNames,
+        });
       }
-      return affectedIds;
+
+      return summary;
     } catch (error) {
       this.logger.error('Failed to handle attribute boost', {
         batchId,
         operation,
         error: error instanceof Error ? error.message : String(error),
       });
-      return [];
+      return summary;
     }
   }
 
@@ -1448,59 +1813,42 @@ export class UnifiedProcessingService implements OnModuleInit {
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     try {
-      const {
-        restaurantEntityId,
-        foodEntityId,
-        selectiveAttributes,
-        descriptiveAttributes,
-        hasSelectiveAttrs,
-        hasDescriptiveAttrs,
-        mentionData,
-      } = operation;
+      const { hasSelectiveAttrs, hasDescriptiveAttrs } = operation;
 
-      let affectedConnectionIds: string[] = [];
-
-      // PRD 6.5.3: Complex attribute logic
       if (hasSelectiveAttrs && !hasDescriptiveAttrs) {
-        // All Selective: Find existing connections with ANY selective attributes
-        affectedConnectionIds = await this.handleAllSelectiveAttributes(
-          tx,
-          operation,
-          batchId,
+        mergeIntoSummary(
+          summary,
+          await this.handleAllSelectiveAttributes(tx, operation, batchId),
         );
       } else if (!hasSelectiveAttrs && hasDescriptiveAttrs) {
-        // All Descriptive: Find ANY existing connections and add descriptive attributes
-        affectedConnectionIds = await this.handleAllDescriptiveAttributes(
-          tx,
-          operation,
-          batchId,
+        mergeIntoSummary(
+          summary,
+          await this.handleAllDescriptiveAttributes(tx, operation, batchId),
         );
       } else if (hasSelectiveAttrs && hasDescriptiveAttrs) {
-        // Mixed: Find connections with ANY selective + add descriptive attributes
-        affectedConnectionIds = await this.handleMixedAttributes(
-          tx,
-          operation,
-          batchId,
+        mergeIntoSummary(
+          summary,
+          await this.handleMixedAttributes(tx, operation, batchId),
         );
       } else {
-        // No attributes: Simple food connection - find or create
-        affectedConnectionIds = await this.handleSimpleFoodConnection(
-          tx,
-          operation,
-          batchId,
+        mergeIntoSummary(
+          summary,
+          await this.handleSimpleFoodConnection(tx, operation, batchId),
         );
       }
 
-      return affectedConnectionIds;
+      return summary;
     } catch (error) {
       this.logger.error('Failed to handle food attribute processing', {
         batchId,
         operation,
         error: error instanceof Error ? error.message : String(error),
       });
-      return [];
+      return summary;
     }
   }
 
@@ -1512,138 +1860,114 @@ export class UnifiedProcessingService implements OnModuleInit {
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
-    const existingConnection = await tx.connection.findUnique({
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
+    const existingConnection = await tx.connection.findFirst({
       where: {
-        restaurantId_foodId: {
-          restaurantId: operation.restaurantEntityId,
-          foodId: operation.foodEntityId,
-        },
+        restaurantId: operation.restaurantEntityId,
+        foodId: operation.foodEntityId,
+        isMenuItem: true,
       },
     });
 
     if (existingConnection) {
-      // Boost existing connection
-      await this.boostConnection(tx, existingConnection, operation);
-
-      // Create mention linked to this connection
-      await this.createMentionSafe(tx, {
-        ...operation.mentionData,
-        connectionId: existingConnection.connectionId,
-      });
-
-      return [existingConnection.connectionId];
+      summary.affectedConnectionIds.push(existingConnection.connectionId);
+      const mentionCreated = await this.boostConnection(
+        tx,
+        existingConnection,
+        operation,
+      );
+      if (mentionCreated) {
+        summary.mentionsCreated += 1;
+      }
     } else {
-      // Create new connection - let database auto-generate ID
-      const newConnection = await tx.connection.create({
-        data: {
-          restaurantId: operation.restaurantEntityId,
-          foodId: operation.foodEntityId,
-          categories: [],
-          foodAttributes: [],
-          isMenuItem: true,
-          mentionCount: 1,
-          totalUpvotes: operation.upvotes,
-          recentMentionCount: operation.isRecent ? 1 : 0,
-          lastMentionedAt: operation.mentionCreatedAt,
-          activityLevel: operation.activityLevel,
-          topMentions: [],
-          foodQualityScore: operation.upvotes * 0.1,
-          lastUpdated: new Date(),
-          createdAt: new Date(),
-        },
-      });
-
-      // Create mention linked to new connection
-      await this.createMentionSafe(tx, {
-        ...operation.mentionData,
-        connectionId: newConnection.connectionId,
-      });
+      mergeIntoSummary(
+        summary,
+        await this.createNewFoodConnection(tx, operation, []),
+      );
 
       this.logger.debug('Created new simple food connection', {
         batchId,
-        connectionId: newConnection.connectionId,
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
       });
-
-      return [newConnection.connectionId];
     }
+
+    return summary;
   }
 
-  /**
-   * Handle All Selective Attributes (PRD 6.5.3)
-   * Find existing restaurant→food connections that have ANY of the selective attributes
-   */
   private async handleAllSelectiveAttributes(
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
-    // Validate that selectiveAttributes is a non-empty array before using hasSome
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     if (
-      !operation.selectiveAttributes ||
-      !Array.isArray(operation.selectiveAttributes) ||
-      operation.selectiveAttributes.length === 0
+      !operation.selectiveAttributeIds ||
+      !Array.isArray(operation.selectiveAttributeIds) ||
+      operation.selectiveAttributeIds.length === 0
     ) {
       this.logger.debug(
         'No selective attributes for food processing - creating new connection',
         { batchId },
       );
-      return await this.createNewFoodConnection(tx, operation, []);
+      mergeIntoSummary(
+        summary,
+        await this.createNewFoodConnection(tx, operation, []),
+      );
+      return summary;
     }
 
-    // PRD: Find existing connections with ANY of the selective attributes (OR logic)
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        foodAttributes: { hasSome: operation.selectiveAttributes }, // OR logic: match ANY
+        foodAttributes: { hasSome: operation.selectiveAttributeIds },
       },
     });
 
     if (existingConnections.length > 0) {
-      // PRD: If found, boost those connections
-      const affectedIds: string[] = [];
       for (const connection of existingConnections) {
-        affectedIds.push(connection.connectionId);
-        await this.boostConnection(tx, connection, operation);
+        summary.affectedConnectionIds.push(connection.connectionId);
+        const mentionCreated = await this.boostConnection(
+          tx,
+          connection,
+          operation,
+        );
+        if (mentionCreated) {
+          summary.mentionsCreated += 1;
+        }
       }
 
-      this.logger.debug(
-        'Component 4 All Selective: Boosted existing connections',
-        {
-          batchId,
-          connectionsFound: existingConnections.length,
-          selectiveAttributes: operation.selectiveAttributes,
-        },
-      );
+      return summary;
+    }
 
-      return affectedIds;
-    } else {
-      // PRD: If not found, create new connection with all attributes
-      this.logger.debug('Component 4 All Selective: Creating new connection', {
-        batchId,
-        selectiveAttributes: operation.selectiveAttributes,
-      });
+    this.logger.debug('Component 4 All Selective: Creating new connection', {
+      batchId,
+      selectiveAttributes: operation.selectiveAttributeNames,
+    });
 
-      return await this.createNewFoodConnection(
+    mergeIntoSummary(
+      summary,
+      await this.createNewFoodConnection(
         tx,
         operation,
-        operation.selectiveAttributes,
-      );
-    }
+        operation.selectiveAttributeIds,
+      ),
+    );
+
+    return summary;
   }
 
-  /**
-   * Handle All Descriptive Attributes (PRD 6.5.3)
-   * Find ANY existing restaurant→food connections and add descriptive attributes
-   */
   private async handleAllDescriptiveAttributes(
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
@@ -1652,189 +1976,196 @@ export class UnifiedProcessingService implements OnModuleInit {
     });
 
     if (existingConnections.length > 0) {
-      // Boost connections and add descriptive attributes
-      const affectedIds: string[] = [];
       for (const connection of existingConnections) {
-        affectedIds.push(connection.connectionId);
-        await this.boostConnectionAndAddAttributes(
+        summary.affectedConnectionIds.push(connection.connectionId);
+        const mentionCreated = await this.boostConnection(
           tx,
           connection,
           operation,
-          operation.descriptiveAttributes,
+          { additionalAttributeIds: operation.descriptiveAttributeIds },
         );
+        if (mentionCreated) {
+          summary.mentionsCreated += 1;
+        }
       }
-      return affectedIds;
-    } else {
-      // Create new connection with all attributes
-      return await this.createNewFoodConnection(
+      return summary;
+    }
+
+    mergeIntoSummary(
+      summary,
+      await this.createNewFoodConnection(
         tx,
         operation,
-        operation.descriptiveAttributes,
-      );
-    }
+        operation.descriptiveAttributeIds,
+      ),
+    );
+    return summary;
   }
 
-  /**
-   * Handle Mixed Attributes (PRD 6.5.3)
-   * Find connections with ANY selective + add descriptive attributes
-   */
   private async handleMixedAttributes(
     tx: any,
     operation: any,
     batchId: string,
-  ): Promise<string[]> {
-    // Validate that selectiveAttributes is a non-empty array before using hasSome
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+
     if (
-      !operation.selectiveAttributes ||
-      !Array.isArray(operation.selectiveAttributes) ||
-      operation.selectiveAttributes.length === 0
+      !operation.selectiveAttributeIds ||
+      !Array.isArray(operation.selectiveAttributeIds) ||
+      operation.selectiveAttributeIds.length === 0
     ) {
       this.logger.debug(
         'No selective attributes for mixed processing - handling as descriptive-only',
         { batchId },
       );
-      return await this.handleAllDescriptiveAttributes(tx, operation, batchId);
+      mergeIntoSummary(
+        summary,
+        await this.handleAllDescriptiveAttributes(tx, operation, batchId),
+      );
+      return summary;
     }
 
     const existingConnections = await tx.connection.findMany({
       where: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        foodAttributes: { hasSome: operation.selectiveAttributes },
+        foodAttributes: { hasSome: operation.selectiveAttributeIds },
       },
     });
 
     if (existingConnections.length > 0) {
-      // Boost connections and add descriptive attributes
-      const affectedIds: string[] = [];
       for (const connection of existingConnections) {
-        affectedIds.push(connection.connectionId);
-        await this.boostConnectionAndAddAttributes(
+        summary.affectedConnectionIds.push(connection.connectionId);
+        const mentionCreated = await this.boostConnection(
           tx,
           connection,
           operation,
-          operation.descriptiveAttributes,
+          { additionalAttributeIds: operation.descriptiveAttributeIds },
         );
+        if (mentionCreated) {
+          summary.mentionsCreated += 1;
+        }
       }
-      return affectedIds;
-    } else {
-      // Create new connection with all attributes
-      const allAttributes = [
-        ...operation.selectiveAttributes,
-        ...operation.descriptiveAttributes,
-      ];
-      return await this.createNewFoodConnection(tx, operation, allAttributes);
+      return summary;
     }
+
+    const allAttributes = [
+      ...operation.selectiveAttributeIds,
+      ...operation.descriptiveAttributeIds,
+    ];
+    mergeIntoSummary(
+      summary,
+      await this.createNewFoodConnection(tx, operation, allAttributes),
+    );
+    return summary;
   }
 
-  /**
-   * Boost existing connection with metrics and create mention
-   */
   private async boostConnection(
     tx: any,
     connection: any,
     operation: any,
-  ): Promise<void> {
+    options: { additionalAttributeIds?: string[] } = {},
+  ): Promise<boolean> {
+    const updateData: any = {
+      mentionCount: { increment: 1 },
+      totalUpvotes: { increment: operation.upvotes },
+      recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
+      lastMentionedAt:
+        operation.mentionCreatedAt > connection.lastMentionedAt
+          ? operation.mentionCreatedAt
+          : undefined,
+      activityLevel: operation.activityLevel,
+      lastUpdated: new Date(),
+    };
+
+    if (
+      Array.isArray(operation.categoryEntityIds) &&
+      operation.categoryEntityIds.length > 0
+    ) {
+      const existingCategories = connection.categories || [];
+      const mergedCategories = [
+        ...new Set([...existingCategories, ...operation.categoryEntityIds]),
+      ];
+      updateData.categories = mergedCategories;
+    }
+
+    if (
+      Array.isArray(options.additionalAttributeIds) &&
+      options.additionalAttributeIds.length > 0
+    ) {
+      const existingAttributes = connection.foodAttributes || [];
+      const mergedAttributes = [
+        ...new Set([...existingAttributes, ...options.additionalAttributeIds]),
+      ];
+      updateData.foodAttributes = mergedAttributes;
+    }
+
     await tx.connection.update({
       where: { connectionId: connection.connectionId },
-      data: {
-        mentionCount: { increment: 1 },
-        totalUpvotes: { increment: operation.upvotes },
-        recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-        lastMentionedAt:
-          operation.mentionCreatedAt > connection.lastMentionedAt
-            ? operation.mentionCreatedAt
-            : undefined,
-        activityLevel: operation.activityLevel,
-        lastUpdated: new Date(),
-      },
+      data: updateData,
     });
 
-    // Create mention linked to this connection
     if (operation.mentionData) {
-      await this.createMentionSafe(tx, {
+      return await this.createMentionSafe(tx, {
         ...operation.mentionData,
         connectionId: connection.connectionId,
       });
     }
+
+    return false;
   }
 
-  /**
-   * Boost connection and add new descriptive attributes with mention
-   */
-  private async boostConnectionAndAddAttributes(
-    tx: any,
-    connection: any,
-    operation: any,
-    newAttributes: string[],
-  ): Promise<void> {
-    const existingAttributes = connection.foodAttributes || [];
-    const mergedAttributes = [
-      ...new Set([...existingAttributes, ...newAttributes]),
-    ];
-
-    await tx.connection.update({
-      where: { connectionId: connection.connectionId },
-      data: {
-        mentionCount: { increment: 1 },
-        totalUpvotes: { increment: operation.upvotes },
-        recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-        lastMentionedAt:
-          operation.mentionCreatedAt > connection.lastMentionedAt
-            ? operation.mentionCreatedAt
-            : undefined,
-        activityLevel: operation.activityLevel,
-        foodAttributes: mergedAttributes,
-        lastUpdated: new Date(),
-      },
-    });
-
-    // Create mention linked to this connection
-    if (operation.mentionData) {
-      await this.createMentionSafe(tx, {
-        ...operation.mentionData,
-        connectionId: connection.connectionId,
-      });
-    }
-  }
-
-  /**
-   * Create new food connection with attributes and mention
-   */
   private async createNewFoodConnection(
     tx: any,
     operation: any,
     attributes: string[],
-  ): Promise<string[]> {
-    // Let database auto-generate connection ID
+  ): Promise<OperationSummary> {
+    const summary = createEmptySummary();
+    const uniqueCategories = Array.isArray(operation.categoryEntityIds)
+      ? Array.from(new Set(operation.categoryEntityIds))
+      : [];
+    const uniqueAttributes = Array.from(new Set(attributes));
+
     const newConnection = await tx.connection.create({
       data: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        categories: [],
-        foodAttributes: attributes,
+        categories: uniqueCategories,
+        foodAttributes: uniqueAttributes,
         isMenuItem: true,
         mentionCount: 1,
         totalUpvotes: operation.upvotes,
         recentMentionCount: operation.isRecent ? 1 : 0,
         lastMentionedAt: operation.mentionCreatedAt,
         activityLevel: operation.activityLevel,
-        topMentions: [],
         foodQualityScore: operation.upvotes * 0.1,
         lastUpdated: new Date(),
         createdAt: new Date(),
       },
     });
 
-    // Create mention linked to new connection
+    this.logger.debug('Created new food connection', {
+      restaurantId: operation.restaurantEntityId,
+      foodId: operation.foodEntityId,
+      attributeIds: uniqueAttributes,
+      selectiveAttributeNames: operation.selectiveAttributeNames || [],
+      descriptiveAttributeNames: operation.descriptiveAttributeNames || [],
+    });
+
+    summary.affectedConnectionIds.push(newConnection.connectionId);
+    summary.newConnectionIds.push(newConnection.connectionId);
+
     if (operation.mentionData) {
-      await this.createMentionSafe(tx, {
+      const mentionCreated = await this.createMentionSafe(tx, {
         ...operation.mentionData,
         connectionId: newConnection.connectionId,
       });
+      if (mentionCreated) {
+        summary.mentionsCreated += 1;
+      }
     }
 
-    return [newConnection.connectionId];
+    return summary;
   }
 
   /**
