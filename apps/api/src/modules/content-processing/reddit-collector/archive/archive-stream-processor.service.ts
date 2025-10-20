@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
-import { LoggerService } from '../../../shared';
+import { LoggerService } from '../../../../shared';
 import { ArchiveZstdDecompressor } from './archive-zstd-decompressor.service';
 
 /**

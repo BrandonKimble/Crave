@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { LoggerService, CorrelationUtils } from '../../../shared';
-import { RedditService } from '../../external-integrations/reddit/reddit.service';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
+import { RedditService } from '../../../external-integrations/reddit/reddit.service';
 
 export interface SubredditVolume {
   name: string;

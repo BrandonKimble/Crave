@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
 import {
   ArchiveStreamProcessorService,
   ProcessingResult,
@@ -12,7 +12,7 @@ import {
   RedditSubmission,
   isRedditComment,
   isRedditSubmission,
-} from './reddit-data.types';
+} from '../reddit-data.types';
 
 // Re-export types for test files
 export { RedditComment, RedditSubmission };
@@ -22,9 +22,9 @@ import { createHash } from 'crypto';
 import type {
   LLMPost,
   LLMComment,
-} from '../../external-integrations/llm/llm.types';
+} from '../../../external-integrations/llm/llm.types';
 import { ArchiveProcessingMetricsService } from './archive-processing-metrics.service';
-import { BatchJob } from './batch-processing-queue.types';
+import { BatchJob } from '../batch-processing-queue.types';
 
 export interface PushshiftProcessingConfig {
   baseDirectory: string;

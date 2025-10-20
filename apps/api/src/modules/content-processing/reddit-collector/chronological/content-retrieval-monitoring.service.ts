@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
 
 /**
  * Content Retrieval Performance Metrics

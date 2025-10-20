@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
 import {
   ArchiveEnqueueOptions,
   ArchiveProcessedFileSummary,

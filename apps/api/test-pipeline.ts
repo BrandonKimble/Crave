@@ -74,11 +74,11 @@ import { getQueueToken } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { AppModule } from './src/app.module';
 // Removed unused imports - now using production services directly
-import { CollectionJobSchedulerService } from './src/modules/content-processing/reddit-collector/collection-job-scheduler.service';
+import { CollectionJobSchedulerService } from './src/modules/content-processing/reddit-collector/chronological/collection-job-scheduler.service';
 import type {
   ArchiveCollectionJobData,
   ArchiveCollectionJobResult,
-} from './src/modules/content-processing/reddit-collector/archive-collection.worker';
+} from './src/modules/content-processing/reddit-collector/archive/archive-collection.worker';
 import { PrismaService } from './src/prisma/prisma.service';
 import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/rate-limiting/centralized-rate-limiter.service';
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';

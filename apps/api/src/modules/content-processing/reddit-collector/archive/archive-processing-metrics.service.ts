@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
-import { LoggerService } from '../../../shared';
+import { LoggerService } from '../../../../shared';
 import { ProcessingMetrics } from './archive-stream-processor.service';
 
 /**

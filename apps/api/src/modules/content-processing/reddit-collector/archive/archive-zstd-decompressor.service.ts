@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline';
-import { LoggerService } from '../../../shared';
+import { LoggerService } from '../../../../shared';
 
 /**
  * Archive ZSTD Decompression Service

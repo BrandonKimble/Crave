@@ -2,7 +2,7 @@ import { Process, Processor } from '@nestjs/bull';
 import { Job } from 'bull';
 import { OnModuleInit, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { SubredditVolumeTrackingService } from './subreddit-volume-tracking.service';
 
 export interface VolumeTrackingJobData {

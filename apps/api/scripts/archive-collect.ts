@@ -7,7 +7,7 @@ import { AppModule } from '../src/app.module';
 import type {
   ArchiveCollectionJobData,
   ArchiveCollectionJobResult,
-} from '../src/modules/content-processing/reddit-collector/archive-collection.worker';
+} from '../src/modules/content-processing/reddit-collector/archive/archive-collection.worker';
 
 interface CliOptions {
   subreddit: string;

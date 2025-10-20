@@ -1,12 +1,12 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { Processor, Process } from '@nestjs/bull';
 import { Job } from 'bull';
-import { LoggerService, CorrelationUtils } from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
 import {
   BatchJob,
   BatchProcessingResult,
-} from './batch-processing-queue.types';
-import { RedditBatchProcessingService } from './reddit-batch-processing.service';
+} from '../batch-processing-queue.types';
+import { RedditBatchProcessingService } from '../reddit-batch-processing.service';
 
 @Processor('archive-batch-processing-queue')
 @Injectable()

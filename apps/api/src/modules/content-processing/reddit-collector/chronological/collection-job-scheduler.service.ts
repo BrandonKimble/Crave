@@ -2,8 +2,8 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
-import { LoggerService, CorrelationUtils } from '../../../shared';
-import { PrismaService } from '../../../prisma/prisma.service';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
+import { PrismaService } from '../../../../prisma/prisma.service';
 import {
   ChronologicalCollectionJobData,
   ChronologicalCollectionJobResult,
@@ -11,7 +11,7 @@ import {
 import {
   ScheduledCollectionExceptionFactory,
   JobSchedulingException,
-} from './scheduled-collection.exceptions';
+} from '../scheduled-collection.exceptions';
 
 export interface JobScheduleConfig {
   enabled: boolean;

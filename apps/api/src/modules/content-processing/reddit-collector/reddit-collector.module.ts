@@ -7,24 +7,24 @@ import { EntityResolverModule } from '../entity-resolver/entity-resolver.module'
 import { QualityScoreModule } from '../quality-score/quality-score.module';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
-import { ArchiveStreamProcessorService } from './archive-stream-processor.service';
-import { ArchiveZstdDecompressor } from './archive-zstd-decompressor.service';
-import { ArchiveIngestionService } from './archive-ingestion.service';
-import { ArchiveProcessingMetricsService } from './archive-processing-metrics.service';
+import { ArchiveStreamProcessorService } from './archive/archive-stream-processor.service';
+import { ArchiveZstdDecompressor } from './archive/archive-zstd-decompressor.service';
+import { ArchiveIngestionService } from './archive/archive-ingestion.service';
+import { ArchiveProcessingMetricsService } from './archive/archive-processing-metrics.service';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';
-import { ChronologicalCollectionWorker } from './chronological-collection.worker';
-import { ContentRetrievalMonitoringService } from './content-retrieval-monitoring.service';
-import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
+import { ChronologicalCollectionWorker } from './chronological/chronological-collection.worker';
+import { ContentRetrievalMonitoringService } from './chronological/content-retrieval-monitoring.service';
+import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { EntityPrioritySelectionService } from './entity-priority-selection.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { UnifiedProcessingService } from './unified-processing.service';
-import { SubredditVolumeTrackingService } from './subreddit-volume-tracking.service';
-import { VolumeTrackingProcessor } from './volume-tracking.processor';
-import { ChronologicalBatchProcessingWorker } from './chronological-batch.worker';
+import { SubredditVolumeTrackingService } from './chronological/subreddit-volume-tracking.service';
+import { VolumeTrackingProcessor } from './chronological/volume-tracking.processor';
+import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
-import { ArchiveBatchProcessingWorker } from './archive-batch.worker';
-import { ArchiveCollectionWorker } from './archive-collection.worker';
+import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
+import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 
 /**

@@ -2,11 +2,11 @@ import { Process, Processor, InjectQueue } from '@nestjs/bull';
 import { Job, Queue } from 'bull';
 import { OnModuleInit, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import { LoggerService, CorrelationUtils } from '../../../shared';
-import { PrismaService } from '../../../prisma/prisma.service';
-import { RedditService } from '../../external-integrations/reddit/reddit.service';
+import { LoggerService, CorrelationUtils } from '../../../../shared';
+import { PrismaService } from '../../../../prisma/prisma.service';
+import { RedditService } from '../../../external-integrations/reddit/reddit.service';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
-import { BatchJob } from './batch-processing-queue.types';
+import { BatchJob } from '../batch-processing-queue.types';
 
 export interface ChronologicalCollectionJobData {
   subreddit: string; // Changed from subreddits array to single subreddit
