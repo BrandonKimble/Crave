@@ -85,7 +85,7 @@
 #### Component 4: Specific Food Processing
 
 - **Processed when**: food_temp_id present AND is_menu_item is true
-- **With Attributes**: Complex selective/descriptive logic per PRD 6.5.3
+- **With Attributes**: Unified attribute matching per PRD 6.5.3 (OR logic across the food attribute list)
 - **Without Attributes**: Find/create restaurant→food connection
 - **Current**: ✅ **IMPLEMENTED** - Full attribute processing logic
 
@@ -99,8 +99,8 @@
 #### Component 6: Attribute-Only Processing
 
 - **Processed when**: food_temp_id is null AND food_attributes present
-- **Action**: Find and boost existing connections with selective attributes only
-- **Current**: ✅ **IMPLEMENTED** - Selective attribute matching logic
+- **Action**: Find and boost existing connections that share any emitted attributes
+- **Current**: ✅ **IMPLEMENTED** - Unified attribute matching logic
 
 ---
 
@@ -120,19 +120,21 @@
 
 **Impact**: Basic connection creation works, but sophisticated mention scoring and activity indicators are simplified.
 
-### 2. **MEDIUM PRIORITY**: Attribute Processing Complexity
+### 2. **MEDIUM PRIORITY**: Unified Attribute Processing Follow-Up
 
 **PRD Reference**: Section 6.5.3 - Attribute Processing Logic  
-**Current Status**: ⚠️ **BASIC IMPLEMENTATION**
+**Current Status**: ✅ **UPDATED**
 
-**Attribute Logic Gaps**:
+**Completed Enhancements**:
 
-- ❌ Full OR logic implementation for selective attributes
-- ❌ Complete AND logic for descriptive attribute addition
-- ❌ Complex mixed attribute scenarios (selective + descriptive combinations)
-- ❌ Attribute deduplication and normalization
+- ✅ Single `food_attributes` array implemented across pipeline
+- ✅ OR matching and attribute union on boosts/new connections
+- ✅ Attribute deduplication and normalization during ingestion
 
-**Current**: Basic attribute handling exists but lacks the sophisticated logic described in PRD 6.5.3.
+**Remaining Considerations**:
+
+- ⚠️ Monitor LLM output quality for attribute noise/drift
+- ⚠️ Evaluate need for future sub-typing heuristics once new use cases emerge
 
 ### 3. **LOW PRIORITY**: Test Coverage
 
@@ -160,35 +162,33 @@
 | **Component 1: Restaurant Entity**         | **6.5.1**   | ✅ **COMPLETE**   | ✅ **95%**  | Working correctly                |
 | **Component 2: Restaurant Attributes**     | **6.5.1**   | ✅ **COMPLETE**   | ✅ **90%**  | Basic implementation             |
 | **Component 3: General Praise (NEW)**      | **6.5.1**   | ✅ **COMPLETE**   | ✅ **95%**  | New logic implemented            |
-| **Component 4: Specific Food**             | **6.5.1**   | ⚠️ **BASIC**      | ⚠️ **75%**  | Needs attribute logic refinement |
+| **Component 4: Specific Food**             | **6.5.1**   | ✅ **COMPLETE**   | ✅ **90%**  | Unified attribute matching live  |
 | **Component 5: Category Processing**       | **6.5.1**   | ✅ **COMPLETE**   | ✅ **85%**  | Boost logic implemented          |
-| **Component 6: Attribute-Only**            | **6.5.1**   | ✅ **COMPLETE**   | ✅ **80%**  | Selective matching basic         |
+| **Component 6: Attribute-Only**            | **6.5.1**   | ✅ **COMPLETE**   | ✅ **90%**  | Shares unified attribute logic   |
 | **Single Atomic Transaction**              | **6.6.2**   | ✅ **COMPLETE**   | ✅ **95%**  | Working with Prisma              |
 | **Mention Scoring Formula**                | **6.4.2**   | ⚠️ **SIMPLIFIED** | ⚠️ **60%**  | Basic time weighting only        |
 | **Activity Level Calculation**             | **6.4.2**   | ⚠️ **BASIC**      | ⚠️ **65%**  | Simple logic implemented         |
-| **Advanced Attribute Processing**          | **6.5.3**   | ⚠️ **PARTIAL**    | ⚠️ **70%**  | OR/AND logic needs work          |
+| **Advanced Attribute Processing**          | **6.5.3**   | ✅ **UPDATED**    | ✅ **85%**  | Unified attribute pipeline shipped |
 
 ---
 
 ## 🔧 **RECOMMENDED NEXT STEPS**
 
-### **Phase 1: Attribute Processing Refinement (2-3 days)**
+### **Phase 1: Attribute Processing Monitoring (1-2 days)**
 
-**Priority**: High for PRD compliance
+**Priority**: Medium for data quality
 
-1. **Implement Full OR Logic for Selective Attributes**
-   - Find existing connections with ANY of the selective attributes
-   - Proper SQL queries with OR conditions on dishAttributes arrays
-   - Handle complex attribute combinations correctly
+1. **Instrument Attribute Coverage Metrics**
+   - Track attribute frequency per restaurant/food connection
+   - Alert on high-variance attributes to surface noisy outputs
 
-2. **Implement Full AND Logic for Descriptive Attributes**
-   - Add ALL descriptive attributes to connections if not already present
-   - Attribute deduplication and normalization
-   - Proper array merging in database operations
+2. **Qualitative QA Loop**
+   - Sample recent batches for attribute accuracy
+   - Feed issues back into prompt/guardrail updates for the LLM
 
-3. **Mixed Attribute Scenario Handling**
-   - Combined selective (OR) + descriptive (AND) processing
-   - Complex logic per PRD 6.5.3 requirements
+3. **Plan Future Sub-Typing**
+   - Document triggers that might require reintroducing attribute categories
+   - Outline automated heuristics (e.g., dietary keyword list) if demand resurfaces
 
 ### **Phase 2: Mention Scoring Enhancement (1-2 days)**
 

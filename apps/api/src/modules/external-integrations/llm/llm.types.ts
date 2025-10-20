@@ -75,8 +75,7 @@ export interface LLMMention {
 
   // Attributes (preserved as arrays)
   restaurant_attributes?: string[] | null;
-  food_attributes_selective?: string[] | null;
-  food_attributes_descriptive?: string[] | null;
+  food_attributes?: string[] | null;
 
   // Core processing fields (VITAL)
   general_praise: boolean;
@@ -102,14 +101,6 @@ export interface LLMMention {
  */
 export interface LLMEntityRef {
   name: string;
-}
-
-/**
- * LLM Food Attribute type
- */
-export interface LLMFoodAttribute {
-  attribute: string;
-  type: 'selective' | 'descriptive';
 }
 
 /**

@@ -415,17 +415,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   items: { type: 'string' },
                   nullable: true,
                 },
-                food_attributes_selective: {
+                food_attributes: {
                   type: 'array',
                   description:
-                    'Selective attributes: help filter or categorize food options',
-                  items: { type: 'string' },
-                  nullable: true,
-                },
-                food_attributes_descriptive: {
-                  type: 'array',
-                  description:
-                    'Descriptive attributes: characterize or describe specific food items',
+                    'Food attributes: dietary filters, preparation styles, textures, flavors, or other descriptors applied to the dish',
                   items: { type: 'string' },
                   nullable: true,
                 },
@@ -462,8 +455,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 'food_name',
                 'food_categories',
                 'is_menu_item',
-                'food_attributes_selective',
-                'food_attributes_descriptive',
+                'food_attributes',
                 'general_praise',
                 'source_id',
               ],

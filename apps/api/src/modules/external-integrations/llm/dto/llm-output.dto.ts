@@ -14,19 +14,6 @@ import {
 import { IsSafeString } from '../../../../shared/pipes/custom-validators';
 
 /**
- * DTO for LLM food attribute with validation
- */
-export class LLMFoodAttributeDto {
-  @IsString()
-  @IsSafeString()
-  attribute: string;
-
-  @IsString()
-  @IsIn(['selective', 'descriptive'])
-  type: 'selective' | 'descriptive';
-}
-
-/**
  * DTO for LLM entity reference with validation
  */
 export class LLMEntityRefDto {
@@ -99,13 +86,7 @@ export class LLMMentionDto {
   @IsArray()
   @IsString({ each: true })
   @IsSafeString({ each: true })
-  food_attributes_selective?: string[] | null;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @IsSafeString({ each: true })
-  food_attributes_descriptive?: string[] | null;
+  food_attributes?: string[] | null;
 
   // Core processing fields (VITAL)
   @IsBoolean()

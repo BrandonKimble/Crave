@@ -1274,8 +1274,7 @@ _**Note**: This structure reflects the current production implementation. Key pr
       
       // Attributes (preserved as arrays)
       "restaurant_attributes": ["string"] | null,
-      "food_attributes_selective": ["string"] | null,
-      "food_attributes_descriptive": ["string"] | null,
+      "food_attributes": ["string"] | null,
       
       // Core processing fields
       "general_praise": boolean,
@@ -1406,9 +1405,8 @@ The system processes each LLM mention through a sequential pipeline. Each mentio
 
 With Food Attributes:
 
-- **All Selective:** Find existing restaurant→food connections for the same food that have ANY of the selective attributes; If found: boost those connections; If not found: create new connection with all attributes
-- **All Descriptive:** Find ANY existing restaurant→food connections for the same food; If found: boost connections + add descriptive attributes if not already present; If not found: create new connection with all attributes
-- **Mixed:** Find existing connections for the same food that have ANY of the selective attributes; If found: boost + add descriptive attributes if not already present; If not found: create new connection with all attributes
+- Find existing restaurant→food connections for the same food that share ANY of the provided attributes; boost matches and merge the attribute list (deduplicated).
+- If no matching connections exist, create a new connection seeded with all provided attributes.
 
 Without Food Attributes:
 
@@ -1420,9 +1418,9 @@ Without Food Attributes:
 
 With Food Attributes:
 
-- **All Selective:** Find existing food connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections; Do not create if no matches found
-- **All Descriptive:** Find existing food connections with category; Boost all found connections; Add descriptive attributes to those connections if not already present; Do not create if no category food exist
-- **Mixed:** Find existing food connections with category; Filter to connections with ANY of the selective attributes; Boost filtered connections + add descriptive attributes if not already present; Do not create if no matches found
+- Find existing food connections with the category. If attributes were emitted, filter to connections that share ANY of those attributes; otherwise consider all category connections.
+- Boost the matched connections and merge any new attributes into their attribute arrays.
+- Do not create new connections when no category connections match.
 
 Without Food Attributes:
 
@@ -1434,9 +1432,8 @@ Without Food Attributes:
 
 - Processed when: food is null AND food_attributes is present
 
-- **All Selective:** Find existing food connections with ANY of the selective attributes; Boost those connections; Do not create if no matches found
-- **All Descriptive:** Skip processing (no target for descriptive attributes)
-- **Mixed:** Find existing food connections with ANY of the selective attributes; Boost those connections; Ignore descriptive attributes
+- Find existing food connections that share ANY of the provided attributes; boost those connections and merge attributes.
+- Skip processing when no connections match (no creation path).
 
 #### 6.5.2 Entity Creation Rules
 
@@ -1450,36 +1447,22 @@ Without Food Attributes:
 - Category food: When category mentioned but no food with that category exist
 - Attribute matches: When attribute filtering finds no existing food
 - General praise food connections: When general_praise: true but no food connections exist
-- Descriptive-only attributes: When no food is present
 
-#### 6.5.3 Attribute Processing Logic
+#### 6.5.3 Unified Attribute Processing Logic
 
-**Selective Attributes (OR Logic):**
-When finding existing connections with selective attributes, use OR logic (match ANY of the selective attributes):
-
-- "great vegan and gluten-free options" → Boost food that are vegan OR gluten-free
-- "spicy reuben is amazing" → Find reuben connections that have spicy OR any other selective attributes
-
-**Descriptive Attributes (AND Logic):**
-When adding descriptive attributes to connections, ALL descriptive attributes are added together:
-
-- "this pasta is very creamy and rich" → Add both "creamy" AND "rich" to the pasta connection
-- Descriptive attributes characterize the specific item, so they all apply simultaneously
-
-**Why This Logic:**
-
-- Selective attributes represent filtering criteria - users want options that satisfy any of their dietary/preference needs
-- Descriptive attributes describe specific characteristics of individual items - they all describe the same food
-- OR logic for selective maximizes relevant results; AND logic for descriptive ensures complete characterization
+- The LLM emits a single `food_attributes` array for each mention.
+- When attributes are present, use OR logic (match ANY attribute) to locate related connections so dietary, preparation, and descriptive tags all surface relevant items.
+- When boosting or creating connections, merge the provided attributes into the existing connection attribute array with deduplication.
+- Example: “amazing spicy, crispy chicken sandwich” → locate connections tagged with `spicy` OR `crispy`; boost matches and ensure both tags persist on the connection. If none exist, create a connection seeded with `[\"spicy\", \"crispy\"]`.
 
 #### 6.5.4 Core Principles
 
 1. **Sequential Processing:** Each mention flows through applicable components in order
 2. **Additive Logic:** Components build database operations dynamically based on mention content
 3. **Dynamic Query Building:** Database operations accumulated and executed in single transaction
-4. **Selective = Filtering:** Find existing connections that match any of the selective attributes
-5. **Descriptive = Enhancement:** Add attributes to existing connections if not already present
-6. **OR Logic:** Multiple selective attributes use OR logic (any match qualifies)
+4. **Unified Attributes:** Treat every food attribute as a first-class tag carried in a single array
+5. **OR Matching:** Use OR logic across attributes when locating connections to boost
+6. **Attribute Union:** Merge new attributes into existing connections to preserve descriptors
 7. **Create Specific Only:** Only create new connections for specific food (menu items)
 8. **No Placeholder Creation:** Never create category food or attribute matches that don't exist
 9. **Restaurant Always Created:** Restaurant entities are always created if missing

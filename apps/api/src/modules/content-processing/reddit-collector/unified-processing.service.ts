@@ -248,9 +248,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     );
 
     let totalEntitiesCreated = 0;
-   let totalConnectionsCreated = 0;
-   let totalMentionsCreated = 0;
-   const allAffectedConnectionIds: string[] = [];
+    let totalConnectionsCreated = 0;
+    let totalMentionsCreated = 0;
+    const allAffectedConnectionIds: string[] = [];
     const createdEntityIds: string[] = [];
     const createdEntitySummaries: CreatedEntitySummary[] = [];
     const reusedEntitySummaries: {
@@ -513,48 +513,16 @@ export class UnifiedProcessingService implements OnModuleInit {
           }
         }
 
-        // Selective food attributes
-        if (
-          mention.food_attributes_selective &&
-          Array.isArray(mention.food_attributes_selective)
-        ) {
-          const seenSelectiveIds = new Set<string>();
-          for (const attr of mention.food_attributes_selective) {
+        // Food attributes
+        if (mention.food_attributes && Array.isArray(mention.food_attributes)) {
+          const seenFoodAttrIds = new Set<string>();
+          for (const attr of mention.food_attributes) {
             if (typeof attr === 'string' && attr) {
-              const attributeTempId = this.buildAttributeTempId(
-                'food_selective',
-                attr,
-              );
-              if (seenSelectiveIds.has(attributeTempId)) {
+              const attributeTempId = this.buildAttributeTempId('food', attr);
+              if (seenFoodAttrIds.has(attributeTempId)) {
                 continue;
               }
-              seenSelectiveIds.add(attributeTempId);
-              entities.push({
-                normalizedName: attr,
-                originalText: attr,
-                entityType: 'food_attribute' as const,
-                tempId: attributeTempId,
-              });
-            }
-          }
-        }
-
-        // Descriptive food attributes
-        if (
-          mention.food_attributes_descriptive &&
-          Array.isArray(mention.food_attributes_descriptive)
-        ) {
-          const seenDescriptiveIds = new Set<string>();
-          for (const attr of mention.food_attributes_descriptive) {
-            if (typeof attr === 'string' && attr) {
-              const attributeTempId = this.buildAttributeTempId(
-                'food_descriptive',
-                attr,
-              );
-              if (seenDescriptiveIds.has(attributeTempId)) {
-                continue;
-              }
-              seenDescriptiveIds.add(attributeTempId);
+              seenFoodAttrIds.add(attributeTempId);
               entities.push({
                 normalizedName: attr,
                 originalText: attr,
@@ -619,7 +587,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     return createHash('sha256').update(value).digest('hex').substring(0, 12);
   }
 
-  private createFallbackId(scope: string, mention?: any, subject?: string): string {
+  private createFallbackId(
+    scope: string,
+    mention?: any,
+    subject?: string,
+  ): string {
     const parts = [
       scope,
       subject ?? '',
@@ -662,16 +634,11 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private buildAttributeTempId(
-    scope: 'food_selective' | 'food_descriptive' | 'restaurant',
+    scope: 'food' | 'restaurant',
     attributeName: string,
   ): string {
     const normalized = this.normalizeForId(attributeName);
-    const prefix =
-      scope === 'restaurant'
-        ? 'restaurant-attr'
-        : scope === 'food_selective'
-          ? 'food-attr-selective'
-          : 'food-attr-descriptive';
+    const prefix = scope === 'restaurant' ? 'restaurant-attr' : 'food-attr';
 
     if (normalized) {
       return `${prefix}::${normalized}`;
@@ -1311,27 +1278,21 @@ export class UnifiedProcessingService implements OnModuleInit {
       );
 
       // Resolve attribute entity IDs emitted by the LLM for this mention
-      const selectiveAttributeNames: string[] = Array.isArray(
-        mention.food_attributes_selective,
+      const foodAttributeNames: string[] = Array.isArray(
+        mention.food_attributes,
       )
-        ? mention.food_attributes_selective
-        : [];
-      const descriptiveAttributeNames: string[] = Array.isArray(
-        mention.food_attributes_descriptive,
-      )
-        ? mention.food_attributes_descriptive
+        ? mention.food_attributes
         : [];
 
-      const selectiveAttributeIds: string[] = [];
-      const descriptiveAttributeIds: string[] = [];
+      const foodAttributeIds: string[] = [];
 
-      for (const attr of selectiveAttributeNames) {
-        const tempId = this.buildAttributeTempId('food_selective', attr);
+      for (const attr of foodAttributeNames) {
+        const tempId = this.buildAttributeTempId('food', attr);
         const attributeEntityId = tempIdToEntityIdMap.get(tempId);
         if (attributeEntityId) {
-          selectiveAttributeIds.push(attributeEntityId);
+          foodAttributeIds.push(attributeEntityId);
         } else {
-          this.logger.debug('Selective attribute entity not resolved', {
+          this.logger.debug('Food attribute entity not resolved', {
             batchId,
             tempId,
             attribute: attr,
@@ -1340,23 +1301,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
-      for (const attr of descriptiveAttributeNames) {
-        const tempId = this.buildAttributeTempId('food_descriptive', attr);
-        const attributeEntityId = tempIdToEntityIdMap.get(tempId);
-        if (attributeEntityId) {
-          descriptiveAttributeIds.push(attributeEntityId);
-        } else {
-          this.logger.debug('Descriptive attribute entity not resolved', {
-            batchId,
-            tempId,
-            attribute: attr,
-            mentionTempId: mention.temp_id,
-          });
-        }
-      }
-
-      const hasSelectiveAttrs = selectiveAttributeIds.length > 0;
-      const hasDescriptiveAttrs = descriptiveAttributeIds.length > 0;
+      const hasFoodAttrs = foodAttributeIds.length > 0;
 
       // PRD 6.5 Component Processing Logic (inline implementation)
 
@@ -1446,12 +1391,9 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributeIds: [...selectiveAttributeIds],
-            selectiveAttributeNames: [...selectiveAttributeNames],
-            descriptiveAttributeIds: [...descriptiveAttributeIds],
-            descriptiveAttributeNames: [...descriptiveAttributeNames],
-            hasSelectiveAttrs,
-            hasDescriptiveAttrs,
+            foodAttributeIds: [...foodAttributeIds],
+            foodAttributeNames: [...foodAttributeNames],
+            hasFoodAttrs,
             mentionData: mentionData, // Include mention data for creation
             allowCreate: true, // Component 4 always allows creation of new connections
             categoryEntityIds,
@@ -1462,8 +1404,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             batchId,
             restaurantEntityId,
             foodEntityId: foodEntityId,
-            hasSelectiveAttrs,
-            hasDescriptiveAttrs,
+            hasFoodAttrs,
           });
         }
       }
@@ -1483,12 +1424,9 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-            selectiveAttributeIds: [...selectiveAttributeIds],
-            selectiveAttributeNames: [...selectiveAttributeNames],
-            descriptiveAttributeIds: [...descriptiveAttributeIds],
-            descriptiveAttributeNames: [...descriptiveAttributeNames],
-            hasSelectiveAttrs,
-            hasDescriptiveAttrs,
+            foodAttributeIds: [...foodAttributeIds],
+            foodAttributeNames: [...foodAttributeNames],
+            hasFoodAttrs,
             mentionData: mentionData, // Add mention data for Component 5
             allowCreate: false, // Component 5 never creates new connections
             categoryEntityIds,
@@ -1499,8 +1437,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             batchId,
             restaurantEntityId,
             categoryEntityId,
-            hasSelectiveAttrs,
-            hasDescriptiveAttrs,
+            hasFoodAttrs,
           });
         }
       }
@@ -1519,31 +1456,22 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
 
       // Component 6: Attribute-Only Processing (when no food but food_attributes present)
-      // PRD 6.5.1: Find existing food connections with ANY of the selective attributes
+      // PRD 6.5.1: Find existing food connections with ANY overlapping attributes
       // PRD 6.5.2: Never create attribute connections - only boost existing ones
-      if (
-        !foodEntityLookupKey &&
-        (mention.food_attributes_selective ||
-          mention.food_attributes_descriptive)
-      ) {
-        if (hasSelectiveAttrs) {
-          // PRD 6.5.1: Only process selective attributes for attribute-only processing
-          // Descriptive-only attributes are skipped (PRD 6.5.1 line 1416)
-          const attributeBoostOperation = {
-            type: 'attribute_boost',
-            restaurantEntityId,
-            upvotes: mention.source_ups,
-            isRecent,
-            mentionCreatedAt,
-            activityLevel,
-            selectiveAttributeIds: [...selectiveAttributeIds],
-            selectiveAttributeNames: [...selectiveAttributeNames],
-            mentionData: mentionData, // Add mention data for Component 6
-            categoryEntityIds,
-            // Note: Ignore descriptive attributes for attribute-only processing per PRD
-          };
-          connectionOperations.push(attributeBoostOperation);
-        }
+      if (!foodEntityLookupKey && hasFoodAttrs) {
+        const attributeBoostOperation = {
+          type: 'attribute_boost',
+          restaurantEntityId,
+          upvotes: mention.source_ups,
+          isRecent,
+          mentionCreatedAt,
+          activityLevel,
+          foodAttributeIds: [...foodAttributeIds],
+          foodAttributeNames: [...foodAttributeNames],
+          mentionData: mentionData, // Add mention data for Component 6
+          categoryEntityIds,
+        };
+        connectionOperations.push(attributeBoostOperation);
       }
 
       // Store general praise upvotes for later restaurant entity update
@@ -1680,7 +1608,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   /**
    * Handle Category Boost Operations (Component 5 - PRD 6.5.1)
    * Find existing food connections with category and boost them
-   * PRD lines 1409-1414: Complex attribute logic for categories
+   * Applies optional attribute filtering per unified attribute logic
    * Returns array of affected connection IDs for top mentions update
    */
   private async handleCategoryBoost(
@@ -1691,43 +1619,16 @@ export class UnifiedProcessingService implements OnModuleInit {
     const summary = createEmptySummary();
 
     try {
-      let targetConnections: any[] = [];
-
-      // PRD 6.5.1 Component 5: Different logic based on attribute combinations
-      if (operation.hasSelectiveAttrs && !operation.hasDescriptiveAttrs) {
-        targetConnections = await tx.connection.findMany({
-          where: {
-            restaurantId: operation.restaurantEntityId,
-            categories: { has: operation.categoryEntityId },
-            foodAttributes: { hasSome: operation.selectiveAttributeIds },
-          },
-        });
-      } else if (
-        !operation.hasSelectiveAttrs &&
-        operation.hasDescriptiveAttrs
-      ) {
-        targetConnections = await tx.connection.findMany({
-          where: {
-            restaurantId: operation.restaurantEntityId,
-            categories: { has: operation.categoryEntityId },
-          },
-        });
-      } else if (operation.hasSelectiveAttrs && operation.hasDescriptiveAttrs) {
-        targetConnections = await tx.connection.findMany({
-          where: {
-            restaurantId: operation.restaurantEntityId,
-            categories: { has: operation.categoryEntityId },
-            foodAttributes: { hasSome: operation.selectiveAttributeIds },
-          },
-        });
-      } else {
-        targetConnections = await tx.connection.findMany({
-          where: {
-            restaurantId: operation.restaurantEntityId,
-            categories: { has: operation.categoryEntityId },
-          },
-        });
-      }
+      const targetConnections = await tx.connection.findMany({
+        where: {
+          restaurantId: operation.restaurantEntityId,
+          categories: { has: operation.categoryEntityId },
+          ...(operation.hasFoodAttrs &&
+          Array.isArray(operation.foodAttributeIds)
+            ? { foodAttributes: { hasSome: operation.foodAttributeIds } }
+            : {}),
+        },
+      });
 
       if (targetConnections.length === 0) {
         this.logger.debug(
@@ -1756,13 +1657,14 @@ export class UnifiedProcessingService implements OnModuleInit {
           lastUpdated: new Date(),
         };
 
-        if (operation.hasDescriptiveAttrs) {
+        if (
+          operation.hasFoodAttrs &&
+          Array.isArray(operation.foodAttributeIds) &&
+          operation.foodAttributeIds.length > 0
+        ) {
           const existingAttributes = connection.foodAttributes || [];
           const mergedAttributes = [
-            ...new Set([
-              ...existingAttributes,
-              ...operation.descriptiveAttributeIds,
-            ]),
+            ...new Set([...existingAttributes, ...operation.foodAttributeIds]),
           ];
           updateData.foodAttributes = mergedAttributes;
         }
@@ -1783,9 +1685,8 @@ export class UnifiedProcessingService implements OnModuleInit {
           batchId,
           connectionId: connection.connectionId,
           categoryId: operation.categoryEntityId,
-          addedDescriptiveAttrs: operation.hasDescriptiveAttrs,
-          selectiveAttributeNames: operation.selectiveAttributeNames,
-          descriptiveAttributeNames: operation.descriptiveAttributeNames,
+          hasFoodAttrs: operation.hasFoodAttrs,
+          foodAttributeNames: operation.foodAttributeNames,
         });
       }
 
@@ -1802,7 +1703,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   /**
    * Handle Attribute Boost Operations (Component 6 - PRD 6.5.1)
-   * Find existing food connections with ANY of the selective attributes
+   * Find existing food connections with matching attributes
    * Returns array of affected connection IDs for top mentions update
    */
   private async handleAttributeBoost(
@@ -1814,12 +1715,12 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     try {
       if (
-        !operation.selectiveAttributeIds ||
-        !Array.isArray(operation.selectiveAttributeIds) ||
-        operation.selectiveAttributeIds.length === 0
+        !operation.foodAttributeIds ||
+        !Array.isArray(operation.foodAttributeIds) ||
+        operation.foodAttributeIds.length === 0
       ) {
         this.logger.debug(
-          'No selective attributes provided for attribute boost - skipping',
+          'No food attributes provided for attribute boost - skipping',
           {
             batchId,
             restaurantId: operation.restaurantEntityId,
@@ -1831,7 +1732,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const existingConnections = await tx.connection.findMany({
         where: {
           restaurantId: operation.restaurantEntityId,
-          foodAttributes: { hasSome: operation.selectiveAttributeIds },
+          foodAttributes: { hasSome: operation.foodAttributeIds },
         },
       });
 
@@ -1841,7 +1742,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           {
             batchId,
             restaurantId: operation.restaurantEntityId,
-            attributes: operation.selectiveAttributeNames,
+            attributes: operation.foodAttributeNames,
           },
         );
         return summary;
@@ -1862,6 +1763,17 @@ export class UnifiedProcessingService implements OnModuleInit {
                 : undefined,
             activityLevel: operation.activityLevel,
             lastUpdated: new Date(),
+            ...(Array.isArray(operation.foodAttributeIds) &&
+            operation.foodAttributeIds.length > 0
+              ? {
+                  foodAttributes: [
+                    ...new Set([
+                      ...(connection.foodAttributes || []),
+                      ...operation.foodAttributeIds,
+                    ]),
+                  ],
+                }
+              : {}),
           },
         });
 
@@ -1875,7 +1787,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         this.logger.debug('Boosted existing attribute connection', {
           batchId,
           connectionId: connection.connectionId,
-          attributes: operation.selectiveAttributeNames,
+          attributes: operation.foodAttributeNames,
         });
       }
 
@@ -1892,7 +1804,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   /**
    * Handle Food Attribute Processing (Component 4 - PRD 6.5.3)
-   * Implements complex OR/AND logic for selective/descriptive attributes
+   * Uses unified OR-matching logic for food attributes
    * PRD 6.5.2: Always creates connections for specific foods (is_menu_item = true)
    */
   private async handleFoodAttributeProcessing(
@@ -1903,22 +1815,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     const summary = createEmptySummary();
 
     try {
-      const { hasSelectiveAttrs, hasDescriptiveAttrs } = operation;
+      const { hasFoodAttrs } = operation;
 
-      if (hasSelectiveAttrs && !hasDescriptiveAttrs) {
+      if (hasFoodAttrs) {
         mergeIntoSummary(
           summary,
-          await this.handleAllSelectiveAttributes(tx, operation, batchId),
-        );
-      } else if (!hasSelectiveAttrs && hasDescriptiveAttrs) {
-        mergeIntoSummary(
-          summary,
-          await this.handleAllDescriptiveAttributes(tx, operation, batchId),
-        );
-      } else if (hasSelectiveAttrs && hasDescriptiveAttrs) {
-        mergeIntoSummary(
-          summary,
-          await this.handleMixedAttributes(tx, operation, batchId),
+          await this.handleFoodAttributes(tx, operation, batchId),
         );
       } else {
         mergeIntoSummary(
@@ -1982,7 +1884,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return summary;
   }
 
-  private async handleAllSelectiveAttributes(
+  private async handleFoodAttributes(
     tx: any,
     operation: any,
     batchId: string,
@@ -1990,17 +1892,17 @@ export class UnifiedProcessingService implements OnModuleInit {
     const summary = createEmptySummary();
 
     if (
-      !operation.selectiveAttributeIds ||
-      !Array.isArray(operation.selectiveAttributeIds) ||
-      operation.selectiveAttributeIds.length === 0
+      !operation.foodAttributeIds ||
+      !Array.isArray(operation.foodAttributeIds) ||
+      operation.foodAttributeIds.length === 0
     ) {
       this.logger.debug(
-        'No selective attributes for food processing - creating new connection',
+        'No food attributes provided for attribute processing - falling back to simple handling',
         { batchId },
       );
       mergeIntoSummary(
         summary,
-        await this.createNewFoodConnection(tx, operation, []),
+        await this.handleSimpleFoodConnection(tx, operation, batchId),
       );
       return summary;
     }
@@ -2009,7 +1911,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       where: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        foodAttributes: { hasSome: operation.selectiveAttributeIds },
+        foodAttributes: { hasSome: operation.foodAttributeIds },
       },
     });
 
@@ -2020,54 +1922,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           tx,
           connection,
           operation,
-        );
-        if (mentionCreated) {
-          summary.mentionsCreated += 1;
-        }
-      }
-
-      return summary;
-    }
-
-    this.logger.debug('Component 4 All Selective: Creating new connection', {
-      batchId,
-      selectiveAttributes: operation.selectiveAttributeNames,
-    });
-
-    mergeIntoSummary(
-      summary,
-      await this.createNewFoodConnection(
-        tx,
-        operation,
-        operation.selectiveAttributeIds,
-      ),
-    );
-
-    return summary;
-  }
-
-  private async handleAllDescriptiveAttributes(
-    tx: any,
-    operation: any,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    const existingConnections = await tx.connection.findMany({
-      where: {
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-      },
-    });
-
-    if (existingConnections.length > 0) {
-      for (const connection of existingConnections) {
-        summary.affectedConnectionIds.push(connection.connectionId);
-        const mentionCreated = await this.boostConnection(
-          tx,
-          connection,
-          operation,
-          { additionalAttributeIds: operation.descriptiveAttributeIds },
+          { additionalAttributeIds: operation.foodAttributeIds },
         );
         if (mentionCreated) {
           summary.mentionsCreated += 1;
@@ -2081,66 +1936,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       await this.createNewFoodConnection(
         tx,
         operation,
-        operation.descriptiveAttributeIds,
+        operation.foodAttributeIds,
       ),
-    );
-    return summary;
-  }
-
-  private async handleMixedAttributes(
-    tx: any,
-    operation: any,
-    batchId: string,
-  ): Promise<OperationSummary> {
-    const summary = createEmptySummary();
-
-    if (
-      !operation.selectiveAttributeIds ||
-      !Array.isArray(operation.selectiveAttributeIds) ||
-      operation.selectiveAttributeIds.length === 0
-    ) {
-      this.logger.debug(
-        'No selective attributes for mixed processing - handling as descriptive-only',
-        { batchId },
-      );
-      mergeIntoSummary(
-        summary,
-        await this.handleAllDescriptiveAttributes(tx, operation, batchId),
-      );
-      return summary;
-    }
-
-    const existingConnections = await tx.connection.findMany({
-      where: {
-        restaurantId: operation.restaurantEntityId,
-        foodId: operation.foodEntityId,
-        foodAttributes: { hasSome: operation.selectiveAttributeIds },
-      },
-    });
-
-    if (existingConnections.length > 0) {
-      for (const connection of existingConnections) {
-        summary.affectedConnectionIds.push(connection.connectionId);
-        const mentionCreated = await this.boostConnection(
-          tx,
-          connection,
-          operation,
-          { additionalAttributeIds: operation.descriptiveAttributeIds },
-        );
-        if (mentionCreated) {
-          summary.mentionsCreated += 1;
-        }
-      }
-      return summary;
-    }
-
-    const allAttributes = [
-      ...operation.selectiveAttributeIds,
-      ...operation.descriptiveAttributeIds,
-    ];
-    mergeIntoSummary(
-      summary,
-      await this.createNewFoodConnection(tx, operation, allAttributes),
     );
     return summary;
   }
@@ -2232,8 +2029,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       restaurantId: operation.restaurantEntityId,
       foodId: operation.foodEntityId,
       attributeIds: uniqueAttributes,
-      selectiveAttributeNames: operation.selectiveAttributeNames || [],
-      descriptiveAttributeNames: operation.descriptiveAttributeNames || [],
+      foodAttributeNames: operation.foodAttributeNames || [],
     });
 
     summary.affectedConnectionIds.push(newConnection.connectionId);

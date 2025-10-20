@@ -212,7 +212,7 @@ When multiple observed variants exist for the same establishment in this input, 
 ## Step 3: Entity & Attribute Classification
 
 Scope & Goal
-- Scope: Identify entity types in the current comment and classify modifiers as `restaurant_attributes`, `food_attributes_selective`, and `food_attributes_descriptive`. Do not compose `food_name` or decide item/category/emission here.
+- Scope: Identify entity types in the current comment and classify modifiers as `restaurant_attributes` and `food_attributes`. Do not compose `food_name` or decide item/category/emission here.
 - Goal: Produce normalized attribute arrays and a clean set of food substance tokens for composition.
 
 Inputs & Dependencies
@@ -220,15 +220,15 @@ Inputs & Dependencies
 - Dependencies: Global Principle depth-aware reference resolution (applies to food/attribute references when implicit in the current comment).
 
 Outputs
-- `classifiedAttributes: { restaurant_attributes: string[] | null, food_attributes_selective: string[] | null, food_attributes_descriptive: string[] | null }` - normalized, comment-scoped attribute arrays for reuse across mentions.
+- `classifiedAttributes: { restaurant_attributes: string[] | null, food_attributes: string[] | null }` - normalized, comment-scoped attribute arrays for reuse across mentions.
 - `foodTokensClean: string[]` - food substance tokens (attributes removed) to be used as inputs to Step 4 composition.
-- `attributeLinks: Array<{ restaurant_name: string, food_name: string | null, restaurant_attributes: string[], food_attributes_selective: string[], food_attributes_descriptive: string[] }>` - mention-level linkage objects that point each attribute to the restaurant->food pair(s) it modifies.
+- `attributeLinks: Array<{ restaurant_name: string, food_name: string | null, restaurant_attributes: string[], food_attributes: string[] }>` - mention-level linkage objects that point each attribute to the restaurant->food pair(s) it modifies.
 
 ### Execution order summary (apply after reading 3.1-3.7)
 1. Surface candidate food spans and modifiers in the current comment.
 2. Apply the Attribute Exclusion Principle (3.2) so attributes are separated from food substance tokens.
 3. Resolve implicit references (definites, pronouns, deictics) to nearby anchors using the depth-aware order.
-4. Classify remaining tokens into restaurant vs food vs attribute; split food attributes into selective vs descriptive.
+4. Classify remaining tokens into restaurant vs food vs attribute.
 5. Normalize (lowercase, dedupe, natural singular) and emit `classifiedAttributes`, the cleaned food tokens for composition, and the `attributeLinks` map for downstream steps.
 Outcome: `classifiedAttributes`, `attributeLinks`, and `foodTokensClean` ready for Step 4 and Step 6
 
@@ -254,7 +254,7 @@ Before handing tokens to composition, peel away modifiers that are attributes ra
 
 - `restaurant`: named establishments (e.g., "hui", "franklin bbq", "joe's pizza").
 - `food`: food items that can be specific prepared items and broader categories (e.g., "ramen", "sesame noodles", "duck carnitas tacos").
-- `food_attribute`: descriptive terms that apply to food items (connection-scoped), split into selective vs descriptive.
+- `food_attribute`: dietary, preparation, sensory, or contextual terms that apply to food items (connection-scoped).
 - `restaurant_attribute`: descriptive terms that apply to restaurants (restaurant-scoped).
 
 ### 3.4 Context-Driven Attribute Classification
@@ -280,15 +280,16 @@ Determine scope by usage:
 - "Italian pasta" -> `food_attribute`; "Italian restaurant" -> `restaurant_attribute`.
 - "house-made" or "spicy" about a dish -> `food_attribute`; "great service", "cozy" -> `restaurant_attribute`.
 
-### 3.6 Selective vs Descriptive (food-level)
+### 3.6 Food Attribute Guidance
 
-- Selective attributes filter or categorize options (e.g., "great vegan sandwiches" -> `vegan`; "best Italian restaurants" -> `italian`; "good breakfast spots" -> `breakfast`).
-- Descriptive attributes characterize specific items (e.g., "this pasta is very fresh" -> `fresh`; "their sandwich is so big" -> `big`).
+- Capture both preference-oriented signals (dietary/cuisine/filter words like "vegan", "gluten free", "breakfast") and descriptive language ("crispy", "rich", "smoky") in the single `food_attributes` array.
+- Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens; only peel off adjectives/adverbs that describe qualities, techniques, context, or filters.
+- When multiple attributes apply, include each one separately so downstream systems can match on any of them.
 
 ### 3.7 Normalization & Outputs
 
 - Lowercase everything; use natural singulars when it preserves meaning ("noodles" -> "noodle" is awkward, keep plural).
-- Deduplicate within each attribute list while preserving selective vs descriptive separation.
+- Deduplicate within each attribute list so each attribute appears at most once.
 - Emit `foodTokensClean` as the remaining food substance terms in reading order; these feed Step 4 composition.
 
 ### 3.8 Mention-level Attribute Linking
@@ -303,19 +304,19 @@ Determine scope by usage:
     "restaurant_name": "nixta",
     "food_name": "duck carnitas tacos",
     "restaurant_attributes": [],
-    "food_attributes_descriptive": ["rich"]
+    "food_attributes": ["rich"]
   },
   {
     "restaurant_name": "suerte",
     "food_name": "duck carnitas tacos",
     "restaurant_attributes": [],
-    "food_attributes_descriptive": ["smoky"]
+    "food_attributes": ["smoky"]
   },
   {
     "restaurant_name": "nixta",
     "food_name": null,
     "restaurant_attributes": ["patio"],
-    "food_attributes_descriptive": []
+    "food_attributes": []
   }
 ]
 ```
@@ -356,19 +357,18 @@ Represent each restaurant->food connection as one composed dish. Do not emit sep
 
 ### 4.3 Hierarchical Decomposition to `food_categories`
 
-Create a concise, meaningful set of categories to support search, filtering, and aggregation:
+Create a concise, meaningful set of categories to support search, filtering, and aggregation. Work from the cleaned food tokens produced in Step 3 (after attribute removal):
 
-- Include component ingredients and related nouns from the dish context (e.g., burrata, chanterelle mushrooms, pesto).
-- Include parent categories when a term is a subtype (e.g., "carnitas taco" -> "taco"; "tonkotsu ramen" -> "ramen").
-- Include broader cuisine or service-style categories that diners expect (e.g., BBQ, Indian, Italian, seafood) whenever context makes the association clear.
-- Exclude attributes; convert to singular; deduplicate.
-- Bound the set to the most salient 3-6 terms - avoid combinatorial n-grams.
+- **Dish nouns only**: Categories must remain food nouns or ingredient nouns. Do not include preparation styles, dietary flags, cuisines, or service periods—those belong in the attribute arrays.
+- Include component ingredients and related food nouns from the dish context (e.g., burrata, chanterelle mushrooms, pesto).
+- Include parent dish categories when a term is a subtype (e.g., "carnitas taco" → "taco"; "tonkotsu ramen" → "ramen").
+- Keep terms singular, lowercase, deduplicated; cap the list at ~3-6 salient entries to avoid combinatorial expansion.
 
 ### 4.4 Inference Rules
 
-- Infer reasonable parent categories for specific subtypes even when not explicitly mentioned.
-- Derive broader cuisine/parent categories when they are food categories (not attributes already excluded above).
-- Apply known culinary relationships conservatively to avoid over-generation.
+- Infer reasonable parent dish categories even when not explicitly mentioned (e.g., "al pastor" implies "taco").
+- Only derive broader terms when the result is still a food noun. If the broader term is really a cuisine/service attribute (BBQ, Indian, brunch, mexican, etc.), keep it out of `food_categories` and treat it as a food attribute.
+- Apply these inferences conservatively so categories stay focused and high-signal.
 
 ### 4.5 Examples
 
@@ -396,7 +396,7 @@ Inputs & Dependencies
 - Dependencies: Respect Step 4 (no re-split); respect Step 2's canonical restaurant names.
 
 Outputs
-- `itemDecisions: Array<{ restaurant_name: string, food_name: string | null, food_categories: string[] | null, is_menu_item: boolean }>` for use in Step 6. For true restaurant-only recommendations (no dish mention and no inherited ask category), set both `food_name` and `food_categories` to null with `is_menu_item: false`. For item-specific replies that only name the restaurant, follow the Ask Handling guidance below.
+- `itemDecisions: Array<{ restaurant_name: string, food_name: string | null, food_categories: string[] | null, is_menu_item: boolean }>` for use in Step 6. For true restaurant-only recommendations (no dish mention and no inherited ask category), set both `food_name` and `food_categories` to null with `is_menu_item: false`. For item-specific replies that only name the restaurant, follow the Ask Handling guidance below. Remember: cuisines/dietary flags belong in attributes, not in `food_categories`.
 
 ### Execution order summary (apply after reading 5.1-5.4)
 1. Aggregate context (local tie, specificity, coherence)
@@ -501,11 +501,11 @@ For every mention, populate fields as follows:
   - `restaurant_name`: canonicalized per Step 2.
   - `restaurant_attributes`: array of restaurant-scoped attributes (or omit/null if none).
 - Food (optional)
-  - If a food is present: set `food_name` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5) and apply the `is_menu_item` decision from Step 5.
+  - If a food is present: set `food_name` from the aligned `composedFood` (Step 4) or, when inheriting an ask's target, from the category supplied in Step 5. Pair it with `food_categories` from the same source (Step 4 or the inherited list in Step 5)—these must stay dish nouns/ingredients—and apply the `is_menu_item` decision from Step 5.
   - If no food (and no inherited ask category): set `food_name`, `food_categories`, and `is_menu_item` to null (or omit when allowed by schema). Item-specific asks that only yield a restaurant still count as having food data via the inherited category, so do not null them out.
 - Attributes
-  - Split food attributes into `food_attributes_selective` vs `food_attributes_descriptive` and keep them as arrays. Omit or set to null when none.
-  - Look up the matching `attributeLinks` entry from Step 3 (same canonical `restaurant_name` and `food_name` null vs populated) and copy the arrays into this mention. The strings must stay identical to the normalized values in `classifiedAttributes`.
+  - Populate `food_attributes` with the array from the matching `attributeLinks` entry in Step 3 (same canonical `restaurant_name` and `food_name` null vs populated). Omit or set to null when none.
+  - The strings must stay identical to the normalized values in `classifiedAttributes`.
   - Do not broadcast restaurant-level attributes to every mention. Only merge the `food_name: null` entry when this specific mention was linked to it in Step 3. If the resulting mention has no food fields, no attributes, and `general_praise` remains false, skip emitting it.
 - Core flags
   - `general_praise`: boolean as defined above.
@@ -533,38 +533,35 @@ Source text: "Nixta's duck carnitas tacos are incredibly rich, Suerte's version 
 
 {
   "mentions": [
-    {
-      "restaurant_name": "nixta",
-      "food_name": "duck carnitas tacos",
-      "food_categories": ["tacos", "carnitas"],
-      "is_menu_item": true,
-      "food_attributes_selective": null,
-      "food_attributes_descriptive": ["rich"],
-      "restaurant_attributes": null,
-      "general_praise": false,
-      "source_id": "t1_comment"
-    },
-    {
-      "restaurant_name": "suerte",
-      "food_name": "duck carnitas tacos",
-      "food_categories": ["tacos", "carnitas"],
-      "is_menu_item": true,
-      "food_attributes_selective": null,
-      "food_attributes_descriptive": ["smoky"],
-      "restaurant_attributes": null,
-      "general_praise": false,
-      "source_id": "t1_comment"
-    },
-    {
-      "restaurant_name": "nixta",
-      "food_name": null,
-      "food_categories": null,
-      "is_menu_item": null,
-      "food_attributes_selective": null,
-      "food_attributes_descriptive": null,
-      "restaurant_attributes": ["patio"],
-      "general_praise": true,
-      "source_id": "t1_comment"
-    }
-  ]
+  {
+    "restaurant_name": "nixta",
+    "food_name": "duck carnitas tacos",
+    "food_categories": ["tacos", "carnitas"],
+    "is_menu_item": true,
+    "food_attributes": ["rich"],
+    "restaurant_attributes": null,
+    "general_praise": false,
+    "source_id": "t1_comment"
+  },
+  {
+    "restaurant_name": "suerte",
+    "food_name": "duck carnitas tacos",
+    "food_categories": ["tacos", "carnitas"],
+    "is_menu_item": true,
+    "food_attributes": ["smoky"],
+    "restaurant_attributes": null,
+    "general_praise": false,
+    "source_id": "t1_comment"
+  },
+  {
+    "restaurant_name": "nixta",
+    "food_name": null,
+    "food_categories": null,
+    "is_menu_item": null,
+    "food_attributes": null,
+    "restaurant_attributes": ["patio"],
+    "general_praise": true,
+    "source_id": "t1_comment"
+  }
+]
 }
