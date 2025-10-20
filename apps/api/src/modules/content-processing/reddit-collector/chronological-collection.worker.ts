@@ -79,7 +79,14 @@ function chunk<T>(array: T[], size: number): T[][] {
 @Processor('chronological-collection')
 export class ChronologicalCollectionWorker implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly BATCH_SIZE = 25; // Optimal batch size from testing
+  private readonly BATCH_SIZE =
+    process.env.TEST_CHRONO_BATCH_SIZE &&
+    !Number.isNaN(Number(process.env.TEST_CHRONO_BATCH_SIZE))
+      ? Math.max(
+          1,
+          Number.parseInt(process.env.TEST_CHRONO_BATCH_SIZE, 10),
+        )
+      : 25; // Default batch size
 
   constructor(
     private readonly moduleRef: ModuleRef,
@@ -167,15 +174,27 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       );
 
       const allPosts = postsResult.data || [];
-      // TEMPORARY: Limit to 10 posts for testing
-      const posts = allPosts.slice(0, 10);
+      const maxPostsOverride =
+        process.env.TEST_CHRONO_MAX_POSTS &&
+        !Number.isNaN(Number(process.env.TEST_CHRONO_MAX_POSTS))
+          ? Math.max(
+              0,
+              Number.parseInt(
+                process.env.TEST_CHRONO_MAX_POSTS,
+                10,
+              ),
+            )
+          : null;
+      const posts =
+        typeof maxPostsOverride === 'number' && maxPostsOverride > 0
+          ? allPosts.slice(0, maxPostsOverride)
+          : allPosts;
       await job.log(
         `Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`,
       );
 
       // TEMPORARY INJECTION: Ensure a specific post ID is processed first if provided
-      // Set env INJECT_FIRST_POST_ID=t3_1nadf05 (or plain 1nadf05)
-      const injectIdRaw = process.env.INJECT_FIRST_POST_ID || '';
+      const injectIdRaw = process.env.TEST_INJECT_FIRST_POST_ID || '';
       const injectId = injectIdRaw.replace(/^t3_/i, '').trim();
       // Build IDs list (Reddit API post.data.id is the base id without t3_)
       const ids: string[] = posts

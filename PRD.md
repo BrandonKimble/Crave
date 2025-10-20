@@ -554,7 +554,6 @@ CREATE TABLE connections (
   food_id UUID NOT NULL REFERENCES entities(entity_id),
   categories UUID[] DEFAULT '{}', -- food entity IDs (connection-scoped)
   food_attributes UUID[] DEFAULT '{}', -- food_attribute entity IDs (connection-scoped)
-  is_menu_item BOOLEAN NOT NULL DEFAULT true, -- Specific menu item vs general category reference
   mention_count INTEGER DEFAULT 0,
   total_upvotes INTEGER DEFAULT 0,
   source_diversity INTEGER DEFAULT 0,
@@ -571,7 +570,6 @@ CREATE TABLE connections (
   INDEX idx_connections_food (food_id),
   INDEX idx_connections_categories_gin (categories),
   INDEX idx_connections_attributes_gin (food_attributes),
-  INDEX idx_connections_menu_item (is_menu_item),
   INDEX idx_connections_mention_count (mention_count DESC),
   INDEX idx_connections_total_upvotes (total_upvotes DESC),
   INDEX idx_connections_source_diversity (source_diversity DESC),
@@ -587,6 +585,22 @@ CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
 ```
 
 ##### Top Mentions Metadata Structure
+
+##### Restaurant Category Signals
+
+```sql
+CREATE TABLE restaurant_category_signals (
+  restaurant_id UUID NOT NULL REFERENCES entities(entity_id),
+  category_id UUID NOT NULL REFERENCES entities(entity_id),
+  mentions_count INTEGER DEFAULT 0,
+  total_upvotes INTEGER DEFAULT 0,
+  first_mentioned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_mentioned_at TIMESTAMP,
+  PRIMARY KEY (restaurant_id, category_id),
+  INDEX idx_category_signal_category (category_id),
+  INDEX idx_category_signal_restaurant (restaurant_id, total_upvotes DESC)
+);
+```
 
 ```json
 [
@@ -701,7 +715,7 @@ CREATE TABLE user_events (
 #### 4.3.1 Unified Food Entity Approach
 
 - **Single entity type serves dual purposes**:
-  - Node entity (when is_menu_item = true)
+  - Node entity (when we have direct menu-item evidence)
   - Connection-scope metadata (stored in categories array)
 - **Same entity ID can represent both menu item and category**
 - **Eliminates redundancy and ambiguity** in food terminology
@@ -715,7 +729,7 @@ CREATE TABLE user_events (
 
 #### 4.3.3 All Connections are Restaurant-to-Food
 
-- **Restaurant attributes**: Stored as entity IDs in restaurant entity's metadata (restaurant_attributes: uuid[])
+- **Restaurant attributes**: Stored as entity IDs on the restaurant entity (`restaurant_attributes` UUID array)
 - **Food attributes**: Connection-scoped entity IDs stored in food_attributes array
 - **Categories**: Connection-scoped entity IDs stored in categories array
 - **Only restaurant-to-food connections** exist in the connections table
@@ -1378,7 +1392,7 @@ The system processes each LLM mention through a sequential pipeline. Each mentio
 **Component 2: Restaurant Attributes Processing**
 
 - Processed when: restaurant_attributes is present
-- Action: Add restaurant_attribute entity IDs to restaurant entity's metadata if not already present
+- Action: Add restaurant_attribute entity IDs to the restaurant entity's `restaurant_attributes` array if not already present
 
 **Component 3: General Praise Processing**
 
@@ -1414,6 +1428,7 @@ Without Food Attributes:
 
 - Action: Find existing food connections with category and boost them
 - Do not create if no category food exist
+- Category-only mentions are also tallied in `restaurant_category_signals` to provide fallback evidence for future menu-item edges
 
 **Component 6: Attribute-Only Processing**
 

@@ -97,6 +97,13 @@ Run the archive integrity validation script:
 npx ts-node scripts/validate-archive-integrity.ts
 ```
 
+### Queueing Archive Ingestion
+To enqueue archive data into the shared batch pipeline (jobs remain paused for inspection):
+```bash
+pnpm --dir apps/api ts-node scripts/archive-smoke-test.ts
+```
+This script validates the environment, chunks archive posts into Bull jobs, and reports queue counts and archive metrics without triggering downstream LLM processing.
+
 ### Expected Results
 - ✅ All 4 archive files present and accessible
 - ✅ Valid zstd compression format

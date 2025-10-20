@@ -17,8 +17,8 @@ async function jobControl() {
     console.log('Commands:');
     console.log('  status   - Show current job status and settings');
     console.log('  clear    - Clear all queued jobs (emergency stop)');
-    console.log('  enable   - Enable background jobs (set COLLECTION_JOBS_ENABLED=true)');
-    console.log('  disable  - Disable background jobs (set COLLECTION_JOBS_ENABLED=false)');
+    console.log('  enable   - Enable background jobs (set TEST_COLLECTION_JOBS_ENABLED=true)');
+    console.log('  disable  - Disable background jobs (set TEST_COLLECTION_JOBS_ENABLED=false)');
     return;
   }
 
@@ -52,8 +52,10 @@ async function showStatus(redis: Redis) {
   console.log('========================\n');
 
   // Check environment setting
-  const jobsEnabled = process.env.COLLECTION_JOBS_ENABLED?.toLowerCase() === 'true';
-  console.log(`🔧 Environment Setting: COLLECTION_JOBS_ENABLED=${process.env.COLLECTION_JOBS_ENABLED || 'true'} (${jobsEnabled ? 'ENABLED' : 'DISABLED'})`);
+  const jobsEnabled = process.env.TEST_COLLECTION_JOBS_ENABLED?.toLowerCase() === 'true';
+  console.log(
+    `🔧 Environment Setting: TEST_COLLECTION_JOBS_ENABLED=${process.env.TEST_COLLECTION_JOBS_ENABLED || 'true'} (${jobsEnabled ? 'ENABLED' : 'DISABLED'})`,
+  );
 
   // Check detailed queue status
   console.log(`\n📋 DETAILED QUEUE STATUS:`);
@@ -198,17 +200,17 @@ async function toggleJobs(enable: boolean) {
   const envPath = path.join(__dirname, '.env');
   let envContent = fs.readFileSync(envPath, 'utf8');
 
-  if (envContent.includes('COLLECTION_JOBS_ENABLED=')) {
+  if (envContent.includes('TEST_COLLECTION_JOBS_ENABLED=')) {
     envContent = envContent.replace(
-      /COLLECTION_JOBS_ENABLED=.*/,
-      `COLLECTION_JOBS_ENABLED=${enable}`
+      /TEST_COLLECTION_JOBS_ENABLED=.*/,
+      `TEST_COLLECTION_JOBS_ENABLED=${enable}`
     );
   } else {
-    envContent += `\nCOLLECTION_JOBS_ENABLED=${enable}\n`;
+    envContent += `\nTEST_COLLECTION_JOBS_ENABLED=${enable}\n`;
   }
 
   fs.writeFileSync(envPath, envContent);
-  console.log(`✅ Updated .env: COLLECTION_JOBS_ENABLED=${enable}`);
+  console.log(`✅ Updated .env: TEST_COLLECTION_JOBS_ENABLED=${enable}`);
   console.log(`   Restart the application for changes to take effect`);
   
   if (!enable) {

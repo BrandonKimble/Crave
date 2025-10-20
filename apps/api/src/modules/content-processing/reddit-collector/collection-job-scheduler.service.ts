@@ -680,14 +680,9 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    */
   private loadConfiguration(): JobScheduleConfig {
     // Load configuration from environment variables
-    const enabled =
-      this.configService
-        .get<string>('COLLECTION_JOBS_ENABLED', 'true')
-        .toLowerCase() === 'true';
-
     return {
       ...this.DEFAULT_CONFIG,
-      enabled,
+      enabled: true,
     };
   }
 }

@@ -49,6 +49,8 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
       totalBatches,
     } = job.data;
 
+    const ids = postIds ?? [];
+
     if (collectionType !== 'keyword') {
       return {
         batchId,
@@ -74,7 +76,7 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
       batchId,
       subreddit,
       batch: `${batchNumber}/${totalBatches}`,
-      posts: postIds.length,
+      posts: ids.length,
     });
 
     // PSEUDOCODE for future implementation:
@@ -90,7 +92,7 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
       success: false,
       error: 'Keyword batch processing not implemented yet',
       metrics: {
-        postsProcessed: postIds.length,
+        postsProcessed: ids.length,
         mentionsExtracted: 0,
         entitiesCreated: 0,
         connectionsCreated: 0,

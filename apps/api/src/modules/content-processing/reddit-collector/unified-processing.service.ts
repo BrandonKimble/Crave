@@ -1025,6 +1025,8 @@ export class UnifiedProcessingService implements OnModuleInit {
               batchId,
             );
             // General praise no longer boosts connections; handled via entity-level upvote aggregation only
+          } else if (connectionOp.type === 'category_signal') {
+            await this.handleCategorySignal(tx, connectionOp, batchId);
           } else if (connectionOp.type === 'general_praise_boost') {
             // No-op by design. General praise is persisted on the restaurant entity only.
           } else if (connectionOp.type === 'mention_create') {
@@ -1304,6 +1306,9 @@ export class UnifiedProcessingService implements OnModuleInit {
           }
         }
       }
+      const uniqueCategoryEntityIds = Array.from(
+        new Set(categoryEntityIds.filter(Boolean)),
+      );
 
       // Resolve attribute entity IDs emitted by the LLM for this mention
       const selectiveAttributeNames: string[] = Array.isArray(
@@ -1500,6 +1505,19 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
       }
 
+      if (
+        uniqueCategoryEntityIds.length > 0 &&
+        (mention.is_menu_item === false || !foodEntityLookupKey)
+      ) {
+        connectionOperations.push({
+          type: 'category_signal',
+          restaurantEntityId,
+          categoryEntityIds: uniqueCategoryEntityIds,
+          upvotes: mention.source_ups,
+          mentionCreatedAt,
+        });
+      }
+
       // Component 6: Attribute-Only Processing (when no food but food_attributes present)
       // PRD 6.5.1: Find existing food connections with ANY of the selective attributes
       // PRD 6.5.2: Never create attribute connections - only boost existing ones
@@ -1589,6 +1607,74 @@ export class UnifiedProcessingService implements OnModuleInit {
       }
       throw e;
     }
+  }
+
+  /**
+   * Record category-only mentions for later boosting
+   */
+  private async handleCategorySignal(
+    tx: any,
+    operation: any,
+    batchId: string,
+  ): Promise<void> {
+    const uniqueCategoryIds = Array.isArray(operation.categoryEntityIds)
+      ? Array.from(new Set(operation.categoryEntityIds.filter(Boolean)))
+      : [];
+
+    if (uniqueCategoryIds.length === 0) {
+      this.logger.debug('Skipping category signal with no category IDs', {
+        batchId,
+        restaurantEntityId: operation.restaurantEntityId,
+      });
+      return;
+    }
+
+    const upvotes =
+      typeof operation.upvotes === 'number' && !Number.isNaN(operation.upvotes)
+        ? operation.upvotes
+        : 0;
+    let mentionCreatedAt =
+      operation.mentionCreatedAt instanceof Date
+        ? operation.mentionCreatedAt
+        : new Date(
+            operation.mentionCreatedAt
+              ? Date.parse(operation.mentionCreatedAt)
+              : Date.now(),
+          );
+    if (Number.isNaN(mentionCreatedAt.getTime())) {
+      mentionCreatedAt = new Date();
+    }
+
+    for (const categoryId of uniqueCategoryIds) {
+      await tx.restaurantCategorySignal.upsert({
+        where: {
+          restaurantId_categoryId: {
+            restaurantId: operation.restaurantEntityId,
+            categoryId,
+          },
+        },
+        update: {
+          mentionsCount: { increment: 1 },
+          totalUpvotes: { increment: upvotes },
+          lastMentionedAt: mentionCreatedAt,
+        },
+        create: {
+          restaurantId: operation.restaurantEntityId,
+          categoryId,
+          mentionsCount: 1,
+          totalUpvotes: upvotes,
+          firstMentionedAt: mentionCreatedAt,
+          lastMentionedAt: mentionCreatedAt,
+        },
+      });
+    }
+
+    this.logger.debug('Category-only mention recorded', {
+      batchId,
+      restaurantEntityId: operation.restaurantEntityId,
+      categoryIds: uniqueCategoryIds,
+      upvotes,
+    });
   }
 
   /**
@@ -1867,7 +1953,6 @@ export class UnifiedProcessingService implements OnModuleInit {
       where: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        isMenuItem: true,
       },
     });
 
@@ -2132,7 +2217,6 @@ export class UnifiedProcessingService implements OnModuleInit {
         foodId: operation.foodEntityId,
         categories: uniqueCategories,
         foodAttributes: uniqueAttributes,
-        isMenuItem: true,
         mentionCount: 1,
         totalUpvotes: operation.upvotes,
         recentMentionCount: operation.isRecent ? 1 : 0,
@@ -2169,8 +2253,8 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   /**
-   * Handle restaurant metadata updates - Component 2 implementation
-   * PRD 6.5.1: Add restaurant_attribute entity IDs to restaurant entity's metadata
+   * Handle restaurant attribute updates (Component 2 - PRD 6.5.1)
+   * Stores restaurant_attribute entity IDs directly on the restaurant entity
    */
   private async handleRestaurantMetadataUpdate(
     tx: any,
@@ -2181,7 +2265,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       // Get current restaurant metadata
       const restaurant = await tx.entity.findUnique({
         where: { entityId: operation.restaurantEntityId },
-        select: { restaurantMetadata: true },
+        select: { restaurantAttributes: true },
       });
 
       if (!restaurant) {
@@ -2192,26 +2276,21 @@ export class UnifiedProcessingService implements OnModuleInit {
         return;
       }
 
-      // Parse current metadata and add restaurant attribute IDs
-      const currentMetadata = restaurant.restaurantMetadata || {};
-      const existingAttributeIds = currentMetadata.restaurantAttributeIds || [];
+      const existingAttributeIds = restaurant.restaurantAttributes || [];
       const updatedAttributeIds = [
         ...new Set([...existingAttributeIds, ...operation.attributeIds]),
       ];
 
-      // Update restaurant metadata with attribute IDs
+      // Update restaurant entity with attribute IDs
       await tx.entity.update({
         where: { entityId: operation.restaurantEntityId },
         data: {
-          restaurantMetadata: {
-            ...currentMetadata,
-            restaurantAttributeIds: updatedAttributeIds,
-          },
+          restaurantAttributes: updatedAttributeIds,
           lastUpdated: new Date(),
         },
       });
 
-      this.logger.debug('Restaurant metadata updated with attributes', {
+      this.logger.debug('Restaurant attributes updated', {
         batchId,
         restaurantEntityId: operation.restaurantEntityId,
         attributeIds: operation.attributeIds,

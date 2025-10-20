@@ -3,7 +3,7 @@
  * 
  * Supports two TRUE production testing modes:
  * 1. TEST_MODE=bull - Complete Bull queue simulation with result extraction (RECOMMENDED)
- * 2. TEST_MODE=direct - Direct ChronologicalCollectionWorker execution (faster alternative)
+ * 2. TEST_MODE=observe - Observation mode (monitor queue status without scheduling new work)
  * 
  * Key Features:
  * ✅ Uses actual ChronologicalCollectionWorker (same code as production)
@@ -13,7 +13,7 @@
  * 
  * Production Fidelity: TRUE - Both modes use identical code paths as production
  * 
- * IMPORTANT: Set COLLECTION_JOBS_ENABLED=false in .env to prevent background jobs
+ * IMPORTANT: Set TEST_COLLECTION_JOBS_ENABLED=false in .env to prevent background jobs
  * from automatically starting and consuming quota while testing.
  * 
  * Goal: Validate that production services work end-to-end with real data
@@ -32,9 +32,38 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 // process.env.NODE_ENV = 'production';  // This sets winston log level to 'info' instead of 'debug'
 
 // Test configuration
-let TEST_MODE = process.env.TEST_MODE || 'direct'; // 'bull', 'direct', or 'queue-only'
-// Always collect 1000 posts (Reddit API maximum) - this is production behavior
-// Subreddit will be loaded dynamically from database
+const parsePositiveInt = (value?: string | null): number | null => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+};
+
+const PIPELINE_COLLECTION = (process.env.TEST_COLLECTION ?? 'chronological').toLowerCase() as
+  | 'chronological'
+  | 'archive';
+const EXECUTION_MODE = (process.env.TEST_EXECUTION_MODE ?? process.env.TEST_MODE ?? 'bull').toLowerCase();
+const SUPPORTED_MODES = new Set(['bull', 'observe']);
+let TEST_MODE = (SUPPORTED_MODES.has(EXECUTION_MODE) ? EXECUTION_MODE : 'bull') as 'bull' | 'observe';
+
+const SHOULD_RESET_DB = process.env.TEST_RESET_DB === 'true';
+
+const CHRONO_SUBREDDIT = process.env.TEST_CHRONO_SUBREDDIT ?? 'foodnyc';
+const ARCHIVE_SUBREDDIT = process.env.TEST_ARCHIVE_SUBREDDIT ?? 'austinfood';
+
+const CHRONO_MAX_POSTS_OVERRIDE = parsePositiveInt(process.env.TEST_CHRONO_MAX_POSTS);
+const ARCHIVE_MAX_POSTS_OVERRIDE = parsePositiveInt(process.env.TEST_ARCHIVE_MAX_POSTS);
+const ARCHIVE_BATCH_SIZE_OVERRIDE = parsePositiveInt(process.env.TEST_ARCHIVE_BATCH_SIZE);
+const LLM_POST_SAMPLE_COUNT = parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
+const LLM_POST_SAMPLE_COMMENT_LIMIT =
+  parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COMMENT_COUNT) ?? 2;
+
+// Always collect 1000 posts (Reddit API maximum) unless overridden for testing
+// Subreddit will be loaded dynamically from database or environment selection
 
 import { NestFactory } from '@nestjs/core';
 import {
@@ -46,7 +75,10 @@ import { Queue } from 'bull';
 import { AppModule } from './src/app.module';
 // Removed unused imports - now using production services directly
 import { CollectionJobSchedulerService } from './src/modules/content-processing/reddit-collector/collection-job-scheduler.service';
-import { ChronologicalCollectionWorker } from './src/modules/content-processing/reddit-collector/chronological-collection.worker';
+import type {
+  ArchiveCollectionJobData,
+  ArchiveCollectionJobResult,
+} from './src/modules/content-processing/reddit-collector/archive-collection.worker';
 import { PrismaService } from './src/prisma/prisma.service';
 import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/rate-limiting/centralized-rate-limiter.service';
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';
@@ -111,13 +143,76 @@ async function testPipeline() {
   console.log(`Crave API • Production Batch Test (${TEST_MODE.toUpperCase()})`);
   console.log(`Started: ${new Date().toISOString()}`);
   console.log('Configuration:');
+  const pipelineLabel = PIPELINE_COLLECTION === 'archive' ? 'Archive' : 'Chronological';
+  const targetSubreddit =
+    PIPELINE_COLLECTION === 'archive' ? ARCHIVE_SUBREDDIT : CHRONO_SUBREDDIT;
   console.log(`- Mode: ${TEST_MODE}`);
-  console.log(`- Subreddit: dynamic (DB-driven)`);
-  console.log(`- Reddit API limit: 1000 posts`);
-  console.log(`- Services: ChronologicalCollectionWorker + Bull Queue`);
-  console.log('');
+  console.log(`- Pipeline: ${pipelineLabel}`);
+  console.log(`- Subreddit: r/${targetSubreddit}`);
+  if (PIPELINE_COLLECTION === 'archive') {
+    if (ARCHIVE_BATCH_SIZE_OVERRIDE) {
+      console.log(`- Archive batch size override: ${ARCHIVE_BATCH_SIZE_OVERRIDE}`);
+    }
+    if (ARCHIVE_MAX_POSTS_OVERRIDE) {
+      console.log(`- Archive max posts override: ${ARCHIVE_MAX_POSTS_OVERRIDE}`);
+    }
+  } else {
+    if (process.env.TEST_CHRONO_BATCH_SIZE) {
+      console.log(
+        `- Chronological batch size override: ${process.env.TEST_CHRONO_BATCH_SIZE}`,
+      );
+    }
+    if (CHRONO_MAX_POSTS_OVERRIDE) {
+      console.log(`- Chronological max posts override: ${CHRONO_MAX_POSTS_OVERRIDE}`);
+    }
+    console.log(`- Reddit API limit: 1000 posts`);
+  }
+  console.log(`- Reset DB before run: ${SHOULD_RESET_DB ? 'yes' : 'no'}`);
+  if (LLM_POST_SAMPLE_COUNT > 0) {
+    console.log(
+      `- LLM post sample: ${LLM_POST_SAMPLE_COUNT} posts (comment preview: ${LLM_POST_SAMPLE_COMMENT_LIMIT})`,
+    );
+  }
+  console.log(`- Shared services: chronological/archive batch pipeline`);
 
   let app: NestFastifyApplication | null = null;
+  let chronologicalQueue: Queue | null = null;
+  let chronologicalBatchQueue: Queue | null = null;
+  let archiveBatchQueue: Queue | null = null;
+  let archiveCollectionQueue: Queue | null = null;
+
+  const shouldCleanupQueues = process.env.TEST_COLLECTION_JOBS_ENABLED !== 'true';
+
+  const cleanQueue = async (queue: Queue | null | undefined, label: string): Promise<void> => {
+    if (!queue) {
+      return;
+    }
+
+    try {
+      await queue.pause(true);
+      if (typeof (queue as any).obliterate === 'function') {
+        await queue.obliterate({ force: true });
+      } else {
+        await queue.empty();
+        await Promise.allSettled([
+          queue.clean(0, 'completed'),
+          queue.clean(0, 'wait'),
+          queue.clean(0, 'delayed'),
+          queue.clean(0, 'failed'),
+        ]);
+      }
+    } catch (error) {
+      console.log(`   ⚠️  Unable to fully clean ${label} queue: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      try {
+        await queue.resume(true);
+      } catch {
+        // ignore resume errors
+      }
+    }
+  };
+
+  
   
   try {
     // ========================================
@@ -147,10 +242,15 @@ async function testPipeline() {
     const serviceStartTime = Date.now();
     // Get production services from DI container
     const collectionJobScheduler = app.get(CollectionJobSchedulerService);
-    const chronologicalCollectionWorker = app.get(ChronologicalCollectionWorker);
-    const chronologicalQueue = app.get<Queue>(getQueueToken('chronological-collection'));
-    const chronologicalBatchQueue = app.get<Queue>(
+    chronologicalQueue = app.get<Queue>(getQueueToken('chronological-collection'));
+    chronologicalBatchQueue = app.get<Queue>(
       getQueueToken('chronological-batch-processing-queue'),
+    );
+    archiveBatchQueue = app.get<Queue>(
+      getQueueToken('archive-batch-processing-queue'),
+    );
+    archiveCollectionQueue = app.get<Queue>(
+      getQueueToken('archive-collection'),
     );
     const prisma = app.get(PrismaService);
     // UnifiedProcessingService is in PHASE 4 - not active yet
@@ -159,7 +259,27 @@ async function testPipeline() {
     // const entityResolutionService = app.get(EntityResolutionService);
     const serviceDuration = Date.now() - serviceStartTime;
     console.log(`- DI retrieval: ${serviceDuration} ms`);
-    console.log('OK • Production services retrieved (ChronologicalCollectionWorker + Bull queue)');
+    console.log('OK • Production services retrieved (shared batch pipeline)');
+
+
+
+    if (SHOULD_RESET_DB) {
+      console.log('\nStep 1b • Resetting database state for test run');
+      await prisma.$executeRawUnsafe('TRUNCATE TABLE mentions, connections, entities CASCADE');
+      await prisma.$executeRawUnsafe('UPDATE subreddits SET last_processed = NULL');
+      await cleanQueue(chronologicalQueue, 'chronological collection');
+      await cleanQueue(chronologicalBatchQueue, 'chronological batch');
+      await cleanQueue(archiveBatchQueue, 'archive batch');
+      await cleanQueue(archiveCollectionQueue, 'archive collection');
+      console.log('OK • Database and queues reset complete');
+    } else if (shouldCleanupQueues) {
+      console.log('\nStep 1b • Clearing queues (TEST_COLLECTION_JOBS_ENABLED=false)');
+      await cleanQueue(chronologicalQueue, 'chronological collection');
+      await cleanQueue(chronologicalBatchQueue, 'chronological batch');
+      await cleanQueue(archiveBatchQueue, 'archive batch');
+      await cleanQueue(archiveCollectionQueue, 'archive collection');
+      console.log('OK • Queues cleared for testing');
+    }
 
     const step1Duration = Date.now() - step1StartTime;
     console.log(`Step 1 total: ${step1Duration} ms (${(step1Duration/1000).toFixed(1)} s)`);
@@ -168,6 +288,11 @@ async function testPipeline() {
     const batchSummaries: any[] = [];
     let latestCollectionResult: any = null;
     let aggregatedRawMentions: any[] = [];
+    const aggregatedLlmPostSamples: any[] = [];
+    let batchesProcessed = 0;
+    let collectedPostIds: string[] = [];
+    let totalMentionsExtracted = 0;
+
 
     const addBatchSummary = (
       job: any,
@@ -185,6 +310,10 @@ async function testPipeline() {
       if (batchId) {
         seenBatchIds.add(batchId);
       }
+
+      const llmPostSample = Array.isArray(result?.details?.llmPostSample)
+        ? result.details.llmPostSample
+        : null;
 
       batchSummaries.push({
         batchId,
@@ -219,6 +348,7 @@ async function testPipeline() {
           (result?.metrics?.mentionsExtracted as number | undefined) ??
           (result?.mentionsExtracted as number | undefined) ??
           null,
+        llmPostSample,
         error: success
           ? null
           : (result?.error as string | undefined) ??
@@ -226,37 +356,71 @@ async function testPipeline() {
             null,
       });
 
+      if (llmPostSample) {
+        aggregatedLlmPostSamples.push(...llmPostSample);
+      }
+
       return true;
-    };
-
-    const collectBatchSummariesForJob = async (parentJobId: string) => {
-      if (!chronologicalBatchQueue) {
-        return;
+    }
+    const waitForChildBatches = async (
+      queue: Queue | null | undefined,
+      parentJobId: string,
+      expectedBatchCount: number,
+    ): Promise<{ completed: any[]; failed: any[] }> => {
+      if (!queue) {
+        return { completed: [], failed: [] };
       }
 
-      const completedJobs = (await chronologicalBatchQueue.getCompleted(0, -1)).filter(
-        (job: any) => job?.data?.parentJobId === parentJobId,
-      );
-      const failedJobs = (await chronologicalBatchQueue.getFailed(0, -1)).filter(
-        (job: any) => job?.data?.parentJobId === parentJobId,
-      );
+      let iterations = 0;
+      const maxIterations = 600; // 600 * 200ms ~= 120s
+      let completed: any[] = [];
+      let failed: any[] = [];
+      const startWaitTime = Date.now();
 
-      for (const job of completedJobs) {
-        const rv = job?.returnvalue || {};
-        const added = addBatchSummary(job, rv, rv?.success !== false);
-        if (
-          added &&
-          Array.isArray(rv.rawMentionsSample) &&
-          rv.rawMentionsSample.length > 0
-        ) {
-          aggregatedRawMentions.push(...rv.rawMentionsSample);
+      while (iterations < maxIterations) {
+        const [waiting, active, completedAll, failedAll] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getCompleted(),
+          queue.getFailed(),
+        ]);
+
+        completed = completedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+        failed = failedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+
+        const totalPending = waiting.length + active.length;
+        const ourBatchTotal = completed.length + failed.length;
+        const expected = expectedBatchCount > 0 ? expectedBatchCount : ourBatchTotal;
+
+        if (totalPending === 0 && ourBatchTotal >= expected) {
+          console.log(`✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`);
+          return { completed, failed };
         }
+
+        if (iterations % 50 === 0) {
+          const elapsedSeconds = Math.round((Date.now() - startWaitTime) / 1000);
+          console.log(
+            `   📊 Queue status (${elapsedSeconds}s): ${waiting.length} waiting, ${active.length} active, ${completed.length} completed, ${failed.length} failed`,
+          );
+          if (active.length > 0) {
+            const activeJob = active[0];
+            console.log(
+              `   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${activeJob.data?.postCount || 'unknown'} posts)`,
+            );
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        iterations += 1;
       }
 
-      for (const job of failedJobs) {
-        addBatchSummary(job, job?.returnvalue || {}, false);
-      }
+      console.log('⚠️  Timed out waiting for batch jobs to complete');
+      return { completed, failed };
     };
+
+;
+
+;
 
     // ========================================
     // MANUAL KEYWORD SEARCH APPROACH (PRESERVED FOR KEYWORD COLLECTION PHASE)
@@ -284,268 +448,285 @@ async function testPipeline() {
     // [Full implementation preserved in git history for reference]
 
     // ========================================
-    // STEP 2: Collect Posts (Bull Queue vs Direct Service)
+    // STEP 2: Collect Posts (Chronological or Archive)
     // ========================================
-    console.log(`\nStep 2 • Collect posts via ${TEST_MODE.toUpperCase()} mode`);
+    console.log(`\nStep 2 • Collect posts via ${pipelineLabel} pipeline (${TEST_MODE.toUpperCase()} mode)`);
     console.log(`- Started: ${new Date().toISOString()}`);
+    console.log(`- Target subreddit: r/${targetSubreddit}`);
     const step2StartTime = Date.now();
 
-    // Test subreddit (services handle all database queries and timing internally)
-    const testSubreddit = 'foodnyc';
-    console.log(`- Test subreddit: r/${testSubreddit}`);
-    console.log(`- Timing: DB-driven (scheduler)`);
-    
-    let collectedPostIds: string[] = [];
-    
-    // Track production metrics from services
-    let totalMentionsExtracted = 0;
-    if (TEST_MODE === 'bull') {
-      // PRODUCTION SIMULATION - Test with actual Bull queue
-      console.log(`\nBull queue production orchestrator`);
-      console.log(`- Subreddit: ${testSubreddit}`);
-      console.log(`- Limit: 1000 posts (service default)`);
-      console.log(`- Scheduler timing: DB-driven`);
+    const targetQueue = PIPELINE_COLLECTION === 'archive' ? archiveBatchQueue : chronologicalBatchQueue;
+    const queueLabel = PIPELINE_COLLECTION === 'archive' ? 'Archive batch' : 'Chronological batch';
+
+    collectedPostIds = [];
+    totalMentionsExtracted = 0;
+    batchesProcessed = 0;
+
+    const waitForBatches = async (
+      queue: Queue | null | undefined,
+      label: string,
+      parentJobId: string,
+      expectedTotal: number,
+    ): Promise<{ completedJobs: any[]; failedJobs: any[] }> => {
+      if (!queue) {
+        console.log(`⚠️  ${label} queue not available`);
+        return { completedJobs: [], failedJobs: [] };
+      }
+
+      let attempts = 0;
+      const startWait = Date.now();
+
+      while (true) {
+        const [waiting, active, completedAll, failedAll] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getCompleted(0, -1),
+          queue.getFailed(0, -1),
+        ]);
+
+        const completedJobs = completedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+        const failedJobs = failedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+        const totalHandled = completedJobs.length + failedJobs.length;
+        const pending = waiting.length + active.length;
+
+        if ((expectedTotal > 0 && totalHandled >= expectedTotal && pending === 0) || (expectedTotal === 0 && pending === 0)) {
+          console.log(`✅ ${label} jobs completed: ${completedJobs.length} completed, ${failedJobs.length} failed`);
+          return { completedJobs, failedJobs };
+        }
+
+        if (attempts % 50 === 0) {
+          const elapsed = Math.round((Date.now() - startWait) / 1000);
+          console.log(`   ⏳ ${label} queue (${elapsed}s): waiting=${waiting.length}, active=${active.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`);
+          if (active.length > 0) {
+            const activeJob = active[0];
+            console.log(`   🔄 Active job: ${activeJob.data?.batchId || activeJob.id}`);
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        attempts += 1;
+      }
+    };
+
+    const observeQueue = async (queue: Queue | null | undefined, label: string): Promise<void> => {
+      if (!queue) {
+        console.log(`⚠️  ${label} queue not available`);
+        return;
+      }
+
+      console.log(`\n👀 Observing ${label} queue... (press Ctrl+C to exit)`);
+      while (true) {
+        const [waiting, active, delayed] = await Promise.all([
+          queue.getWaiting(),
+          queue.getActive(),
+          queue.getDelayed(),
+        ]);
+        const [completedCount, failedCount] = await Promise.all([
+          queue.getCompletedCount(),
+          queue.getFailedCount(),
+        ]);
+
+        console.log(
+          `   status: waiting=${waiting.length}, active=${active.length}, delayed=${delayed.length}, completed=${completedCount}, failed=${failedCount}`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    };
+
+    if (TEST_MODE === 'observe') {
+      await observeQueue(targetQueue, queueLabel);
+      console.log('Observer mode active. Exiting after observation.');
+      return;
+    }
+
+    if (PIPELINE_COLLECTION === 'archive') {
+      if (!archiveCollectionQueue) {
+        throw new Error('Archive collection queue not available');
+      }
+
+      const archiveJobData: ArchiveCollectionJobData = {
+        jobId: `archive-${targetSubreddit}-${Date.now()}`,
+        subreddit: targetSubreddit,
+        triggeredBy: 'test_pipeline',
+        options: {
+          batchSize: ARCHIVE_BATCH_SIZE_OVERRIDE ?? undefined,
+          maxPosts: ARCHIVE_MAX_POSTS_OVERRIDE ?? undefined,
+        },
+      };
+
+      console.log('\n📦 Scheduling archive collection job...');
+      const archiveJob = await archiveCollectionQueue.add(
+        'execute-archive-collection',
+        archiveJobData,
+        {
+          removeOnComplete: 25,
+          removeOnFail: 25,
+        },
+      );
+      console.log(`- Archive collection job queued: ${archiveJob.id}`);
+
+      let archiveResult: ArchiveCollectionJobResult;
+      try {
+        archiveResult = await archiveJob.finished();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : String(error);
+        console.log(`   ❌ Archive collection job failed: ${message}`);
+        throw error;
+      }
+
+      latestCollectionResult = archiveResult;
+      console.log(
+        `- Archive collection completed: ${archiveResult.batchesEnqueued} batches, ${archiveResult.postsQueued} posts`,
+      );
+      if (archiveResult.filesProcessed.length > 0) {
+        archiveResult.filesProcessed.forEach((file) => {
+          console.log(
+            `   • ${file.fileType} file (${file.metrics.totalLines} lines, errors=${file.errorCount})`,
+          );
+        });
+      }
+
+      const { completedJobs, failedJobs } = await waitForBatches(
+        archiveBatchQueue,
+        'Archive batch',
+        archiveResult.parentBatchJobId,
+        archiveResult.batchesEnqueued,
+      );
+
+      let archiveMentions = 0;
+      for (const job of completedJobs) {
+        const rv = job?.returnvalue || {};
+        const mentions =
+          typeof rv.mentionsExtracted === 'number'
+            ? rv.mentionsExtracted
+            : typeof rv.metrics?.mentionsExtracted === 'number'
+            ? rv.metrics.mentionsExtracted
+            : 0;
+        archiveMentions += mentions;
+
+        const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
+        if (summaryAdded) {
+          if (Array.isArray(rv.rawMentionsSample) && rv.rawMentionsSample.length > 0) {
+            aggregatedRawMentions.push(...rv.rawMentionsSample);
+          }
+          if (Array.isArray(rv.details?.llmPostSample) && rv.details.llmPostSample.length > 0) {
+            aggregatedLlmPostSamples.push(...rv.details.llmPostSample);
+          }
+        }
+
+        const llmPosts = Array.isArray(job?.data?.llmPosts) ? job.data.llmPosts : [];
+        collectedPostIds.push(...llmPosts.map((post: any) => post?.id || ''));
+      }
+
+      failedJobs.forEach((job) => addBatchSummary(job, job?.returnvalue || {}, false));
+
+      totalMentionsExtracted = archiveMentions;
+      batchesProcessed = completedJobs.length;
+      latestCollectionResult = {
+        ...archiveResult,
+        success: archiveResult.success && failedJobs.length === 0,
+        postsProcessed: collectedPostIds.filter(Boolean).length,
+        batchesProcessed,
+        mentionsExtracted: archiveMentions,
+        processingTime: archiveResult.processingTimeMs,
+      } as any;
+
+      if (failedJobs.length > 0) {
+        console.log(`⚠️  ${failedJobs.length} archive batches failed. Check batch summaries for details.`);
+      }
+    } else {
+      console.log(`- Timing: DB-driven (scheduler)`);
+      const limitOverride = CHRONO_MAX_POSTS_OVERRIDE ?? 1000;
 
       try {
-        const jobId = await collectionJobScheduler.scheduleManualCollection(
-          testSubreddit, // Single subreddit per job
-          {
-            limit: 1000, // Service always uses 1000 regardless
-            priority: 10
-          }
-        );
+        const jobId = await collectionJobScheduler.scheduleManualCollection(targetSubreddit, {
+          limit: limitOverride,
+          priority: 10,
+        });
         console.log(`OK • Bull job scheduled: ${jobId}`);
-        
-        // Monitor job completion and extract actual results
+
         let jobComplete = false;
         let attempts = 0;
-        const maxAttempts = 120; // 2 minutes with 1 second checks
-        
+        const maxAttempts = 120;
+        let jobResult: any = null;
+
         while (!jobComplete && attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Get the actual Bull job to check status and extract results
+          await new Promise((resolve) => setTimeout(resolve, 1000));
           const bullJob = await chronologicalQueue.getJob(jobId);
-          
+
           if (bullJob && bullJob.finishedOn) {
             jobComplete = true;
-            
             if (bullJob.failedReason) {
               throw new Error(`Bull queue job failed: ${bullJob.failedReason}`);
             }
-            
-            // Extract actual production results from Bull job
-            const jobResult = bullJob.returnvalue;
-            latestCollectionResult = jobResult;
-            console.log(`OK • Bull job completed`);
-            console.log(`Result:`);
-            console.log(`- Success: ${jobResult?.success}`);
-            console.log(`- Posts processed: ${jobResult?.postsProcessed || 0}`);
-            console.log(`- Batches processed: ${jobResult?.batchesProcessed || 0}`);
-            console.log(`- Mentions extracted: ${jobResult?.mentionsExtracted || 0}`);
-            console.log(`- Processing time: ${jobResult?.processingTime || 0} ms`);
-            
-            // Use actual production metrics
-            if (jobResult?.success) {
-              totalMentionsExtracted = jobResult.mentionsExtracted || 0;
-              // collectedPostIds would be available if the job returned them
-              // For now, we'll use the processed count as a proxy
-              collectedPostIds = Array.from({ length: jobResult.postsProcessed || 0 }, (_, i) => `bull-post-${i}`);
-            }
-
-            await collectBatchSummariesForJob(jobId);
-            
+            jobResult = bullJob.returnvalue;
           } else if (bullJob && bullJob.processedOn && !bullJob.finishedOn) {
-            // Job is still processing
             if (attempts % 10 === 0) console.log(`- Job processing... (${attempts}s)`);
           }
-          
-          attempts++;
-        }
-        
-        if (!jobComplete) {
-          console.log(`⚠️  Bull queue job did not complete in time, falling back to direct service`);
-          // Fall through to direct service mode
-          TEST_MODE = 'direct' as any;
-        }
-      } catch (error) {
-        console.log(`WARN • Bull queue test failed: ${error instanceof Error ? error.message : String(error)}`);
-        console.log(`   Falling back to direct service testing`);
-        // Fall through to direct service mode
-        TEST_MODE = 'direct' as any;
-      }
-    }
-    
-    if (TEST_MODE === 'direct') {
-      // TRUE PRODUCTION SIMULATION - Use actual ChronologicalCollectionWorker
-      console.log(`\n📦 Direct production service execution...`);
-      console.log(`   Subreddit: ${testSubreddit}`);
-      console.log(`   Limit: 1000 posts (service always requests maximum)`);
-      console.log(`   ✅ Using ChronologicalCollectionWorker (same as production Bull queue)`);
-      
-      try {
-        // Execute the same service that production Bull queue uses
-        // Get timing information like the scheduler would
-        const timingInfo = await collectionJobScheduler.getSubredditTiming(testSubreddit);
-        
-        const jobData = {
-          subreddit: testSubreddit,
-          jobId: `test-direct-${Date.now()}`,
-          triggeredBy: 'manual' as const,
-          options: {
-            limit: 100, // Temporary testing limit for log optimization
-            retryCount: 0,
-            lastProcessedTimestamp: timingInfo.lastProcessedTimestamp, // Use scheduler-calculated timing
-          },
-        };
-        
-        // Create mock Bull Job object for direct testing
-        const mockJob = {
-          data: jobData,
-          id: jobData.jobId,
-          opts: {},
-          attemptsMade: 0,
-          log: (message: string) => console.log(`[Job Log] ${message}`),
-          progress: (progress: number) => console.log(`[Job Progress] ${progress}%`),
-          // Add minimal Bull Job properties needed
-        } as any;
-        
-        console.log(`   🎯 Executing chronological collection with production service...`);
-        const collectionResult = await chronologicalCollectionWorker.processChronologicalCollection(mockJob);
-        
-        console.log(`\n⏳ Waiting for batch processing to complete (${collectionResult.batchesProcessed || 0} batches queued)...`);
-        
-        // Get the batch processing queue to monitor completion
-        const batchQueue = chronologicalBatchQueue;
-        if (!batchQueue) {
-          throw new Error('Chronological batch processing queue not available');
-        }
-        
-        // Wait for all batch jobs to complete
-        let waitingCount = 0;
-        let allJobsComplete = false;
-        const expectedBatchCount = collectionResult.batchesProcessed || 0;
-        const startWaitTime = Date.now();
-        let completed: any[] = [];
-        let failed: any[] = [];
-
-        while (!allJobsComplete) {
-          const waiting = await batchQueue.getWaiting();
-          const active = await batchQueue.getActive();
-          const completedAll = await batchQueue.getCompleted();
-          const failedAll = await batchQueue.getFailed();
-          completed = completedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
-          failed = failedAll.filter((j: any) => j?.data?.parentJobId === jobData.jobId);
-
-          const ourBatchTotal = completed.length + failed.length;
-          const totalPending = waiting.length + active.length;
-
-          if (
-            (expectedBatchCount > 0 && ourBatchTotal >= expectedBatchCount && totalPending === 0) ||
-            (expectedBatchCount === 0 && totalPending === 0)
-          ) {
-            allJobsComplete = true;
-            console.log(`✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`);
-            break;
-          }
-
-          if (waitingCount % 50 === 0) {
-            const elapsedSeconds = Math.round((Date.now() - startWaitTime) / 1000);
-            console.log(`   📊 Queue status (${elapsedSeconds}s): ${waiting.length} waiting, ${active.length} active, ${completed.length} completed, ${failed.length} failed`);
-            if (active.length > 0) {
-              const activeJob = active[0];
-              console.log(`   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${activeJob.data?.postCount || 'unknown'} posts)`);
-            }
-          }
-
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          waitingCount++;
+          attempts += 1;
         }
 
-        let totalBatchMentions = 0;
-        for (const completedJob of completed) {
-          const rv = completedJob.returnvalue || {};
-          const mCount =
+        if (!jobComplete || !jobResult) {
+          throw new Error('Bull queue job did not complete in time');
+        }
+
+        latestCollectionResult = jobResult;
+        totalMentionsExtracted = jobResult.mentionsExtracted || 0;
+        batchesProcessed = jobResult.batchesProcessed || 0;
+        collectedPostIds = Array.from({ length: jobResult.postsProcessed || 0 }, (_, i) => `bull-post-${i}`);
+
+        const { completedJobs, failedJobs } = await waitForBatches(
+          chronologicalBatchQueue,
+          'Chronological batch',
+          jobId,
+          jobResult.batchesProcessed || 0,
+        );
+
+        let batchMentions = 0;
+        for (const job of completedJobs) {
+          const rv = job?.returnvalue || {};
+          const mentions =
             typeof rv.mentionsExtracted === 'number'
               ? rv.mentionsExtracted
               : typeof rv.metrics?.mentionsExtracted === 'number'
               ? rv.metrics.mentionsExtracted
               : 0;
-          totalBatchMentions += mCount;
-          const summaryAdded = addBatchSummary(completedJob, rv, rv?.success !== false);
-          if (
-            summaryAdded &&
-            Array.isArray(rv.rawMentionsSample) &&
-            rv.rawMentionsSample.length > 0
-          ) {
-            aggregatedRawMentions.push(...rv.rawMentionsSample);
+          batchMentions += mentions;
+
+          const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
+          if (summaryAdded) {
+            if (Array.isArray(rv.rawMentionsSample) && rv.rawMentionsSample.length > 0) {
+              aggregatedRawMentions.push(...rv.rawMentionsSample);
+            }
+            if (Array.isArray(rv.details?.llmPostSample) && rv.details.llmPostSample.length > 0) {
+              aggregatedLlmPostSamples.push(...rv.details.llmPostSample);
+            }
           }
+
+          const jobPostIds = Array.isArray(job?.data?.postIds)
+            ? job.data.postIds
+            : Array.isArray(rv.postIds)
+            ? rv.postIds
+            : [];
+          collectedPostIds.push(...jobPostIds.map((id: string) => id || ''));
         }
 
-        for (const failedJob of failed) {
-          const rv = failedJob.returnvalue || {};
-          addBatchSummary(failedJob, rv, false);
-        }
+        failedJobs.forEach((job) => addBatchSummary(job, job?.returnvalue || {}, false));
+        totalMentionsExtracted = batchMentions || totalMentionsExtracted;
+        batchesProcessed = completedJobs.length || batchesProcessed;
 
-        collectionResult.mentionsExtracted = totalBatchMentions;
-        totalMentionsExtracted = totalBatchMentions;
-        latestCollectionResult = { ...collectionResult };
-        console.log(`- Mentions extracted across batches: ${totalBatchMentions}`);
-
-        console.log(`\nProduction service execution completed`);
-        console.log(`- Success: ${collectionResult.success ? 'TRUE' : 'FALSE'}`);
-        console.log(`- Posts processed: ${collectionResult.postsProcessed || 0}`);
-        console.log(`- Batches processed: ${collectionResult.batchesProcessed || 0}`);
-        console.log(`- Mentions extracted: ${collectionResult.mentionsExtracted || 0}`);
-        console.log(`- Processing time: ${(collectionResult.processingTime || 0)} ms (${((collectionResult.processingTime || 0) / 1000).toFixed(1)} s)`);
-        console.log(`- Latest timestamp: ${collectionResult.latestTimestamp || 'N/A'}`);
-        
-        // Component Processing & Quality Score Results (NEW - PRD Section 6.5 & 5.3)
-        if (collectionResult.componentProcessing) {
-          console.log(`\n🧩 COMPONENT PROCESSING RESULTS (PRD 6.5):`);
-          console.log(`   🏪 Restaurant entities processed: ${collectionResult.componentProcessing.restaurantsProcessed || 0}`);
-          console.log(`   🔗 Connections created: ${collectionResult.componentProcessing.connectionsCreated || 0}`);
-          console.log(`   🔗 Connections updated: ${collectionResult.componentProcessing.connectionsUpdated || 0}`);
-          console.log(`   📝 Mentions recorded: ${collectionResult.componentProcessing.mentionsCreated || 0}`);
-          console.log(`   ⚡ Components executed: ${collectionResult.componentProcessing.componentsExecuted || 'N/A'}`);
-          console.log(`   🎯 Processing success rate: ${collectionResult.componentProcessing.successRate || 'N/A'}%`);
-        }
-        
-        // Intermediate metrics and configuration logs suppressed; focus on final summary only
-
-        // Use actual production results
-        totalMentionsExtracted = collectionResult.mentionsExtracted;
-        // Generate mock post IDs based on actual processed count
-        collectedPostIds = Array.from({ length: collectionResult.postsProcessed }, (_, i) => `direct-post-${i}`);
-        if (collectionResult.error) console.log(`WARN • Service reported error: ${collectionResult.error}`);
-        
       } catch (error) {
         console.log(`   ❌ Production service failed: ${error instanceof Error ? error.message : String(error)}`);
         throw error;
       }
     }
-    
-    if (TEST_MODE === 'queue-only') {
-      // QUEUE-ONLY MODE - Just let Bull scheduler run background jobs
-      console.log(`\n⏳ Queue-only mode - monitoring Bull queue jobs...`);
-      console.log(`   Only active subreddits will be processed by background scheduler`);
-      console.log(`   Monitor logs for: "Processing chronological collection job"`);
-      console.log(`   Waiting for jobs to complete... (this may take 30+ minutes)`);
-      
-      // Keep the app alive to let Bull jobs run
-      console.log(`   Press Ctrl+C to stop monitoring and exit`);
-      
-      // Wait indefinitely - user will stop manually
-      await new Promise(() => {
-        // This will never resolve - user must manually stop
-      });
-    }
 
+    collectedPostIds = Array.from(new Set(collectedPostIds.filter(Boolean)));
     const step2Duration = Date.now() - step2StartTime;
-    console.log(`Step 2 Total Duration: ${step2Duration}ms (${(step2Duration/1000).toFixed(1)}s)`);
+    console.log(`Step 2 Total Duration: ${step2Duration}ms (${(step2Duration / 1000).toFixed(1)}s)`);
 
-
-    // ========================================
+// ========================================
     // REMAINING STEPS COMMENTED OUT FOR FOCUSED LLM TESTING
     // ========================================
     
@@ -575,7 +756,8 @@ async function testPipeline() {
     // ========================================
     console.log(`\n=== Test Summary ===`);
     console.log(`Date: ${new Date().toISOString()}`);
-    console.log(`Mode: ${TEST_MODE === 'bull' ? 'Bull Queue Simulation' : 'Direct Service'}`);
+    console.log(`Mode: ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer'}`);
+    console.log(`Pipeline: ${pipelineLabel}`);
     
     // ========================================
     // COLLECT PERFORMANCE METRICS
@@ -604,6 +786,7 @@ async function testPipeline() {
     console.log(`\nCore Results:`);
     console.log(`- Mentions: ${mentionsCount}`);
     console.log(`- Posts: ${postsCount}`);
+    console.log(`- Batches processed: ${batchesProcessed}`);
     console.log(`- Duration: ${overallDurationSeconds.toFixed(1)} s`);
     
     if (postsCount > 0) {
@@ -616,6 +799,24 @@ async function testPipeline() {
       console.log(`- Posts/min: ${postsPerMinute}`);
       console.log(`- Avg time/post: ${avgTimePerPost.toFixed(2)} s`);
       console.log(`- Mentions/post: ${mentionsPerPost}`);
+    }
+
+    if (LLM_POST_SAMPLE_COUNT > 0 && aggregatedLlmPostSamples.length > 0) {
+      const samplePreview = aggregatedLlmPostSamples.slice(
+        0,
+        Math.min(LLM_POST_SAMPLE_COUNT, aggregatedLlmPostSamples.length),
+      );
+      console.log(`\nLLM Post Sample Preview:`);
+      samplePreview.forEach((sample, index) => {
+        console.log(
+          `#${index + 1} ${sample.title} (${sample.id}) • ${sample.commentCount} comments`,
+        );
+        sample.sampleComments?.forEach((comment: any, i: number) => {
+          console.log(
+            `   ↳ Comment ${i + 1}: ${comment.author} (${comment.score}) - ${comment.contentSnippet}`,
+          );
+        });
+      });
     }
 
     // Rate limiting performance summary
@@ -672,18 +873,21 @@ async function testPipeline() {
     })();
     const structuredResults = {
       testMetadata: {
-        testName: `Production Orchestration - ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Direct'} Mode`,
+        testName: `Production Orchestration - ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer'} Mode`,
         timestamp: new Date().toISOString(),
         durationMs: overallDuration,
-        mode: TEST_MODE === 'bull' ? 'Bull Queue Simulation' : 'Direct Service',
-        subreddit: testSubreddit || 'foodnyc',
+        mode: TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer',
+        pipeline: pipelineLabel,
+        subreddit: targetSubreddit || 'foodnyc',
         productionFidelity: true,
+        resetDatabase: SHOULD_RESET_DB,
         concurrency: isNaN(concurrencyCfg) ? 16 : concurrencyCfg,
         headroom: isNaN(headroom) ? 0.95 : headroom,
       },
       throughput: {
         posts: collectedPostIds.length,
         mentions: totalMentionsExtracted || 0,
+        batches: batchesProcessed,
         postsPerSecond: Number(postsPerSecond.toFixed(2)),
         postsPerMinute: collectedPostIds.length > 0 ? Number((collectedPostIds.length / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
         avgTimePerPostMs: Math.round(avgTimePerPost),
@@ -739,6 +943,13 @@ async function testPipeline() {
       output: {
         testMode: TEST_MODE,
         rawMentionsSample: aggregatedRawMentions,
+        llmPostSample:
+          LLM_POST_SAMPLE_COUNT > 0
+            ? aggregatedLlmPostSamples.slice(
+                0,
+                Math.min(LLM_POST_SAMPLE_COUNT, aggregatedLlmPostSamples.length),
+              )
+            : undefined,
       },
     };
 
@@ -761,6 +972,14 @@ async function testPipeline() {
     console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
     throw error;
   } finally {
+    if (shouldCleanupQueues) {
+      console.log('\n🧹 Post-run queue cleanup (TEST_COLLECTION_JOBS_ENABLED=false)');
+      await cleanQueue(chronologicalQueue, 'chronological collection');
+      await cleanQueue(chronologicalBatchQueue, 'chronological batch');
+      await cleanQueue(archiveBatchQueue, 'archive batch');
+      await cleanQueue(archiveCollectionQueue, 'archive collection');
+    }
+
     if (app) {
       console.log('\n🔄 Closing application context...');
       const closeStartTime = Date.now();

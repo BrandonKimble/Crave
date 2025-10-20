@@ -53,7 +53,6 @@ export interface Connection {
   foodId: string;
   categories: string[];
   foodAttributes: string[];
-  isMenuItem: boolean;
   mentionCount: number;
   totalUpvotes: number;
   sourceDiversity: number;
@@ -90,7 +89,6 @@ export interface Mention {
 export interface EntityInMenuContext {
   entity: Entity;
   connection: Connection;
-  isMenuItem: boolean;
 }
 
 export interface EntityInCategoryContext {

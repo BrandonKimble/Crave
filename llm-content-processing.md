@@ -360,6 +360,7 @@ Create a concise, meaningful set of categories to support search, filtering, and
 
 - Include component ingredients and related nouns from the dish context (e.g., burrata, chanterelle mushrooms, pesto).
 - Include parent categories when a term is a subtype (e.g., "carnitas taco" -> "taco"; "tonkotsu ramen" -> "ramen").
+- Include broader cuisine or service-style categories that diners expect (e.g., BBQ, Indian, Italian, seafood) whenever context makes the association clear.
 - Exclude attributes; convert to singular; deduplicate.
 - Bound the set to the most salient 3-6 terms - avoid combinatorial n-grams.
 

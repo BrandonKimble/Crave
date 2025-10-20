@@ -5,6 +5,8 @@
  * Supports all collection types: chronological, archive, and keyword search.
  */
 
+import type { LLMPost, LLMMention } from '../../external-integrations/llm/llm.types';
+
 export interface BatchJob {
   /** Unique identifier for this batch job */
   batchId: string;
@@ -31,7 +33,29 @@ export interface BatchJob {
   priority?: number;
 
   /** Reddit post IDs to process */
-  postIds: string[];
+  postIds?: string[];
+
+  /**
+   * Pre-transformed posts ready for LLM processing.
+   * Used by archive ingestion where full Reddit API fetch is skipped.
+   */
+  llmPosts?: LLMPost[];
+
+  /**
+   * Additional source metadata for downstream reporting.
+   */
+  sourceMetadata?: {
+    archive?: {
+      /** Archive file identifiers included in this batch */
+      files: Array<{ subreddit: string; fileType: 'comments' | 'submissions' }>;
+      /** Temporal coverage for posts contained in this batch */
+      temporalRange?: { earliest?: number; latest?: number };
+    };
+    chronological?: {
+      /** Unix timestamps used for chronological pulls */
+      collectedAfter?: number;
+    };
+  };
 
   /** Collection configuration */
   options: {
@@ -46,8 +70,6 @@ export interface BatchJob {
  * Batch Processing Result
  * Returned by workers after processing a batch
  */
-import type { LLMMention } from '../../external-integrations/llm/llm.types';
-
 export interface BatchProcessingResult {
   /** The job that was processed */
   batchId: string;
@@ -104,6 +126,23 @@ export interface BatchProcessingResult {
     updatedConnectionIds?: string[];
     /** Any processing warnings */
     warnings?: string[];
+    /** Optional sample of LLM-ready posts used in this batch */
+    llmPostSample?: Array<{
+      id: string;
+      title: string;
+      subreddit: string;
+      author: string;
+      score: number;
+      created_at: string;
+      commentCount: number;
+      sampleComments: Array<{
+        id: string;
+        author: string;
+        score: number;
+        created_at: string;
+        contentSnippet: string;
+      }>;
+    }>;
   };
 
   /** Optional raw mentions sample for debugging (unchanged objects) */

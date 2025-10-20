@@ -9,7 +9,7 @@ import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { ArchiveStreamProcessorService } from './archive-stream-processor.service';
 import { ArchiveZstdDecompressor } from './archive-zstd-decompressor.service';
-import { ArchivePushshiftProcessorService } from './archive-pushshift-processor.service';
+import { ArchiveIngestionService } from './archive-ingestion.service';
 import { ArchiveProcessingMetricsService } from './archive-processing-metrics.service';
 import { RedditDataExtractorService } from './reddit-data-extractor.service';
 import { ChronologicalCollectionWorker } from './chronological-collection.worker';
@@ -21,9 +21,11 @@ import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.
 import { UnifiedProcessingService } from './unified-processing.service';
 import { SubredditVolumeTrackingService } from './subreddit-volume-tracking.service';
 import { VolumeTrackingProcessor } from './volume-tracking.processor';
-import { ChronologicalBatchProcessingWorker } from './chronological-batch-processing.worker';
+import { ChronologicalBatchProcessingWorker } from './chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
-import { ArchiveBatchProcessingWorker } from './archive-batch-processing.worker';
+import { ArchiveBatchProcessingWorker } from './archive-batch.worker';
+import { ArchiveCollectionWorker } from './archive-collection.worker';
+import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 
 /**
  * Reddit Collector Module
@@ -91,18 +93,23 @@ import { ArchiveBatchProcessingWorker } from './archive-batch-processing.worker'
     BullModule.registerQueue({
       name: 'archive-batch-processing-queue',
     }),
+    BullModule.registerQueue({
+      name: 'archive-collection',
+    }),
   ],
   providers: [
     ArchiveZstdDecompressor,
     ArchiveStreamProcessorService,
-    ArchivePushshiftProcessorService,
+    ArchiveIngestionService,
     ArchiveProcessingMetricsService,
     RedditDataExtractorService,
     // Chronological Collection components (PRD Section 5.1.2)
     ChronologicalCollectionWorker,
     ChronologicalBatchProcessingWorker,
+    RedditBatchProcessingService,
     KeywordBatchProcessingWorker,
     ArchiveBatchProcessingWorker,
+    ArchiveCollectionWorker,
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
     ContentRetrievalMonitoringService,
     // Scheduled Collection Jobs components (PRD Section 5.1.2)
@@ -120,14 +127,16 @@ import { ArchiveBatchProcessingWorker } from './archive-batch-processing.worker'
   exports: [
     ArchiveZstdDecompressor,
     ArchiveStreamProcessorService,
-    ArchivePushshiftProcessorService,
+    ArchiveIngestionService,
     ArchiveProcessingMetricsService,
     RedditDataExtractorService,
     // Export chronological collection components
     ChronologicalCollectionWorker,
     ChronologicalBatchProcessingWorker,
+    RedditBatchProcessingService,
     KeywordBatchProcessingWorker,
     ArchiveBatchProcessingWorker,
+    ArchiveCollectionWorker,
     // Export content retrieval pipeline components
     ContentRetrievalMonitoringService,
     // Export scheduled collection jobs components
