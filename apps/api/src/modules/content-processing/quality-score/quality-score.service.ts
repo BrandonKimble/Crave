@@ -1,7 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { Connection } from '@prisma/client';
+import { ConfigService } from '@nestjs/config';
+import { Connection, Entity, CategoryAggregate } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 import { ConnectionRepository } from '../../../repositories/connection.repository';
+import { EntityRepository } from '../../../repositories/entity.repository';
+import { CategoryAggregateRepository } from '../../../repositories/category-aggregate.repository';
 import {
   QualityScoreService as IQualityScoreService,
   ConnectionStrengthMetrics,
@@ -9,7 +12,10 @@ import {
   CategoryPerformanceData,
   QualityScoreUpdateResult,
   DEFAULT_QUALITY_SCORE_CONFIG,
+  QualityScoreConfig,
 } from './quality-score.types';
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 /**
  * Quality Score Service
@@ -18,7 +24,7 @@ import {
  *
  * Provides comprehensive quality scoring for:
  * - Food Quality Score (5.3.1): 85-90% connection strength + 10-15% restaurant context
- * - Restaurant Quality Score (5.3.2): 80% top food + 20% overall consistency
+ * - Restaurant Quality Score (5.3.2): 50% top food + 30% consistency + 20% general praise
  * - Category/Attribute Performance (5.3.3): Weighted average of relevant food
  *
  * All calculations use time decay and are optimized for production performance.
@@ -26,13 +32,131 @@ import {
 @Injectable()
 export class QualityScoreService implements IQualityScoreService {
   private logger!: LoggerService;
-  private readonly config = DEFAULT_QUALITY_SCORE_CONFIG;
+  private readonly config: QualityScoreConfig;
 
   constructor(
     private readonly connectionRepository: ConnectionRepository,
+    private readonly entityRepository: EntityRepository,
+    private readonly categoryAggregateRepository: CategoryAggregateRepository,
+    private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('QualityScoreService');
+    this.config = this.loadConfigFromEnv();
+  }
+
+  getConfig(): QualityScoreConfig {
+    return this.config;
+  }
+
+  private loadConfigFromEnv(): QualityScoreConfig {
+    const base = DEFAULT_QUALITY_SCORE_CONFIG;
+    const config: QualityScoreConfig = {
+      timeDecay: { ...base.timeDecay },
+      weights: { ...base.weights },
+      normalization: { ...base.normalization },
+      defaults: { ...base.defaults },
+    };
+
+    // Time decay overrides
+    config.timeDecay.mentionCountDecayDays = this.resolveNumericConfig(
+      config.timeDecay.mentionCountDecayDays,
+      'QUALITY_SCORE_MENTION_DECAY_DAYS',
+    );
+    config.timeDecay.upvoteDecayDays = this.resolveNumericConfig(
+      config.timeDecay.upvoteDecayDays,
+      'QUALITY_SCORE_UPVOTE_DECAY_DAYS',
+    );
+    config.timeDecay.recentMentionThresholdDays = this.resolveNumericConfig(
+      config.timeDecay.recentMentionThresholdDays,
+      'QUALITY_SCORE_RECENT_THRESHOLD_DAYS',
+    );
+
+    // Food weights
+    config.weights.foodConnectionStrength = this.resolveNumericConfig(
+      config.weights.foodConnectionStrength,
+      'QUALITY_SCORE_FOOD_CONNECTION_WEIGHT',
+    );
+    config.weights.foodRestaurantContext = this.resolveNumericConfig(
+      config.weights.foodRestaurantContext,
+      'QUALITY_SCORE_FOOD_RESTAURANT_WEIGHT',
+    );
+
+    // Restaurant weights
+    config.weights.restaurantTopFood = this.resolveNumericConfig(
+      config.weights.restaurantTopFood,
+      'QUALITY_SCORE_RESTAURANT_TOP_WEIGHT',
+    );
+    config.weights.restaurantOverallConsistency = this.resolveNumericConfig(
+      config.weights.restaurantOverallConsistency,
+      'QUALITY_SCORE_RESTAURANT_CONSISTENCY_WEIGHT',
+    );
+    config.weights.restaurantGeneralPraise = this.resolveNumericConfig(
+      config.weights.restaurantGeneralPraise,
+      'QUALITY_SCORE_RESTAURANT_PRAISE_WEIGHT',
+    );
+
+    // Connection strength component weights
+    config.weights.mentionCountWeight = this.resolveNumericConfig(
+      config.weights.mentionCountWeight,
+      'QUALITY_SCORE_MENTION_COMPONENT_WEIGHT',
+    );
+    config.weights.upvoteWeight = this.resolveNumericConfig(
+      config.weights.upvoteWeight,
+      'QUALITY_SCORE_UPVOTE_COMPONENT_WEIGHT',
+    );
+
+    // Normalization overrides
+    config.normalization.mentionScale = this.resolveNumericConfig(
+      config.normalization.mentionScale,
+      'QUALITY_SCORE_MENTION_SCALE',
+    );
+    config.normalization.upvoteScale = this.resolveNumericConfig(
+      config.normalization.upvoteScale,
+      'QUALITY_SCORE_UPVOTE_SCALE',
+    );
+    config.normalization.generalPraiseScale = this.resolveNumericConfig(
+      config.normalization.generalPraiseScale,
+      'QUALITY_SCORE_GENERAL_PRAISE_SCALE',
+    );
+    config.normalization.signalWeightScale = this.resolveNumericConfig(
+      config.normalization.signalWeightScale,
+      'QUALITY_SCORE_SIGNAL_WEIGHT_SCALE',
+    );
+    config.normalization.weightFloor = this.resolveNumericConfig(
+      config.normalization.weightFloor,
+      'QUALITY_SCORE_WEIGHT_FLOOR',
+    );
+
+    // Default score fallbacks
+    config.defaults.averageRestaurantScore = this.resolveNumericConfig(
+      config.defaults.averageRestaurantScore,
+      'QUALITY_SCORE_DEFAULT_AVERAGE_RESTAURANT',
+    );
+    config.defaults.categoryFallbackScore = this.resolveNumericConfig(
+      config.defaults.categoryFallbackScore,
+      'QUALITY_SCORE_DEFAULT_CATEGORY_FALLBACK',
+    );
+
+    return config;
+  }
+
+  private resolveNumericConfig(defaultValue: number, envKey: string): number {
+    const raw = this.configService.get<string | number | undefined>(envKey);
+    if (raw === undefined || raw === null || raw === '') {
+      return defaultValue;
+    }
+
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+
+    this.logger.warn('Invalid numeric override for quality score config', {
+      envKey,
+      rawValue: raw,
+    });
+    return defaultValue;
   }
 
   /**
@@ -95,8 +219,9 @@ export class QualityScoreService implements IQualityScoreService {
 
   /**
    * Calculate restaurant quality score (PRD 5.3.2)
-   * Primary component (80%): Top 3-5 highest-scoring food
-   * Secondary component (20%): Overall menu consistency
+   * Primary component (50%): Top 3-5 highest-scoring food
+   * Secondary component (30%): Overall menu consistency
+   * Tertiary component (20%): General praise upvotes
    */
   async calculateRestaurantQualityScore(restaurantId: string): Promise<number> {
     try {
@@ -119,26 +244,37 @@ export class QualityScoreService implements IQualityScoreService {
       const qualityComponents =
         await this.calculateRestaurantQualityComponents(connections);
 
+      // Fetch restaurant context for general praise component
+      const restaurantEntity = await this.getRestaurantEntity(restaurantId);
+      const generalPraiseUpvotes = restaurantEntity?.generalPraiseUpvotes ?? 0;
+      const generalPraiseScore =
+        this.calculateGeneralPraiseScore(generalPraiseUpvotes);
+
       // Primary component (80%): Top 3-5 food
       const topFoodScore = this.calculateTopFoodScore(
         qualityComponents.topFoodScores,
       );
       const primaryScore = topFoodScore * this.config.weights.restaurantTopFood;
 
-      // Secondary component (20%): Overall menu consistency
+      // Secondary component: Overall menu consistency
       const consistencyScore = qualityComponents.averageMenuScore;
       const secondaryScore =
         consistencyScore * this.config.weights.restaurantOverallConsistency;
 
+      // Tertiary component: General praise factor
+      const tertiaryScore =
+        generalPraiseScore * this.config.weights.restaurantGeneralPraise;
+
       const finalScore = Math.min(
         100,
-        Math.max(0, primaryScore + secondaryScore),
+        Math.max(0, primaryScore + secondaryScore + tertiaryScore),
       );
 
       this.logger.debug('Restaurant quality score calculated', {
         restaurantId,
         topFoodScore,
         consistencyScore,
+        generalPraiseScore,
         finalScore,
         totalConnections: connections.length,
         processingTimeMs: Date.now() - startTime,
@@ -165,24 +301,36 @@ export class QualityScoreService implements IQualityScoreService {
     try {
       const startTime = Date.now();
 
-      // Find all connections for food in this category
-      const categoryConnections =
-        await this.connectionRepository.findConnectionsInCategory(
+      // Find all connections and aggregated signals for this category
+      const [categoryConnections, categoryAggregate] = await Promise.all([
+        this.connectionRepository.findConnectionsInCategory(
           restaurantId,
           category,
-        );
+        ),
+        this.categoryAggregateRepository.findByRestaurantAndCategory(
+          restaurantId,
+          category,
+        ),
+      ]);
 
-      if (categoryConnections.length === 0) {
-        this.logger.debug('No category connections found', {
+      if (categoryConnections.length === 0 && !categoryAggregate) {
+        this.logger.debug('No category data available', {
           restaurantId,
           category,
         });
         return 0;
       }
 
-      // Calculate performance data
-      const performanceData =
-        this.calculateCategoryPerformanceData(categoryConnections);
+      const restaurantScoreForSignal = categoryAggregate
+        ? await this.calculateRestaurantQualityScore(restaurantId)
+        : undefined;
+
+      // Calculate performance data including signal fallback
+      const performanceData = this.calculateCategoryPerformanceData(
+        categoryConnections,
+        categoryAggregate ?? undefined,
+        restaurantScoreForSignal,
+      );
       const finalScore = performanceData.weightedAverage;
 
       this.logger.debug('Category performance score calculated', {
@@ -190,6 +338,7 @@ export class QualityScoreService implements IQualityScoreService {
         category,
         finalScore,
         totalConnections: categoryConnections.length,
+        hasSignal: Boolean(categoryAggregate),
         processingTimeMs: Date.now() - startTime,
       });
 
@@ -265,6 +414,7 @@ export class QualityScoreService implements IQualityScoreService {
     const errors: Array<{ connectionId: string; error: string }> = [];
     const updatedRestaurants = new Set<string>();
     let connectionsUpdated = 0;
+    const restaurantScoreCache = new Map<string, number>();
 
     try {
       this.logger.info('Starting quality score updates', {
@@ -286,8 +436,23 @@ export class QualityScoreService implements IQualityScoreService {
         // Update quality scores for each connection
         for (const connection of connections) {
           try {
-            const newQualityScore =
-              await this.calculateFoodQualityScore(connection);
+            let restaurantScore = restaurantScoreCache.get(
+              connection.restaurantId,
+            );
+            if (restaurantScore === undefined) {
+              restaurantScore = await this.calculateRestaurantQualityScore(
+                connection.restaurantId,
+              );
+              restaurantScoreCache.set(
+                connection.restaurantId,
+                restaurantScore,
+              );
+            }
+
+            const newQualityScore = await this.calculateFoodQualityScore(
+              connection,
+              restaurantScore,
+            );
 
             // Update the connection with new quality score
             await this.connectionRepository.update(connection.connectionId, {
@@ -313,7 +478,8 @@ export class QualityScoreService implements IQualityScoreService {
       }
 
       const processingTime = Date.now() - startTime;
-      const avgProcessingTime = processingTime / connectionsUpdated;
+      const avgProcessingTime =
+        connectionsUpdated > 0 ? processingTime / connectionsUpdated : 0;
 
       this.logger.info('Quality score updates completed', {
         connectionsUpdated,
@@ -345,24 +511,28 @@ export class QualityScoreService implements IQualityScoreService {
   private calculateConnectionStrength(
     connection: Connection,
   ): ConnectionStrengthMetrics {
-    const now = new Date();
-    const lastMentionedAt = connection.lastMentionedAt || connection.createdAt;
-    const daysSinceLastMention =
-      (now.getTime() - lastMentionedAt.getTime()) / (1000 * 60 * 60 * 24);
+    const {
+      mentionScore,
+      upvoteScore,
+      lastUpdatedAt,
+      elapsedMs,
+    } = this.getCurrentDecayedMetrics(connection);
 
-    // Calculate average mention age (approximate based on total mentions and last mentioned)
-    const averageMentionAge = daysSinceLastMention / 2; // Simplified assumption
+    const averageMentionAge =
+      elapsedMs > 0 ? elapsedMs / MS_PER_DAY : this.config.timeDecay.mentionCountDecayDays;
 
-    // Calculate recent mention ratio
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentMentionRatio =
-      connection.recentMentionCount / Math.max(1, connection.mentionCount);
+    const totalMentions = Math.max(1, connection.mentionCount);
+    const recentMentionRatio = Math.min(
+      1,
+      Math.max(0, connection.recentMentionCount / totalMentions),
+    );
 
     return {
+      decayedMentionScore: mentionScore,
+      decayedUpvoteScore: upvoteScore,
       mentionCount: connection.mentionCount,
       totalUpvotes: connection.totalUpvotes,
-      lastMentionedAt,
+      decayedScoresUpdatedAt: lastUpdatedAt ?? null,
       averageMentionAge,
       recentMentionRatio,
     };
@@ -374,26 +544,16 @@ export class QualityScoreService implements IQualityScoreService {
   private calculateConnectionStrengthScore(
     metrics: ConnectionStrengthMetrics,
   ): number {
-    // Apply time decay to mention count and upvotes
-    const mentionDecayFactor = Math.exp(
-      -metrics.averageMentionAge / this.config.timeDecay.mentionCountDecayDays,
+    const normalizedMentions = Math.min(
+      100,
+      Math.log1p(Math.max(0, metrics.decayedMentionScore)) *
+        this.config.normalization.mentionScale,
     );
-    const upvoteDecayFactor = Math.exp(
-      -metrics.averageMentionAge / this.config.timeDecay.upvoteDecayDays,
+    const normalizedUpvotes = Math.min(
+      100,
+      Math.log1p(Math.max(0, metrics.decayedUpvoteScore)) *
+        this.config.normalization.upvoteScale,
     );
-
-    // Calculate decayed mention count (with recent boost)
-    const decayedMentionCount =
-      metrics.mentionCount *
-      mentionDecayFactor *
-      (1 + metrics.recentMentionRatio);
-
-    // Calculate decayed upvote score
-    const decayedUpvotes = metrics.totalUpvotes * upvoteDecayFactor;
-
-    // Normalize components (these would need tuning based on actual data distribution)
-    const normalizedMentions = Math.min(100, decayedMentionCount * 2); // Scale mentions
-    const normalizedUpvotes = Math.min(100, decayedUpvotes / 10); // Scale upvotes
 
     // Weighted combination
     const strengthScore =
@@ -420,7 +580,10 @@ export class QualityScoreService implements IQualityScoreService {
         foodScores.push(Number(connection.foodQualityScore));
       } else {
         // Calculate on-demand if not available
-        const score = await this.calculateFoodQualityScore(connection, 50); // Use average restaurant score
+        const score = await this.calculateFoodQualityScore(
+          connection,
+          this.config.defaults.averageRestaurantScore,
+        ); // Use configured average restaurant score
         foodScores.push(score);
       }
     }
@@ -465,27 +628,211 @@ export class QualityScoreService implements IQualityScoreService {
   }
 
   /**
+   * Fetch restaurant entity safely for context-driven scoring
+   */
+  private async getRestaurantEntity(
+    restaurantId: string,
+  ): Promise<Entity | null> {
+    try {
+      return await this.entityRepository.findById(restaurantId);
+    } catch (error) {
+      this.logger.warn('Failed to load restaurant context', {
+        restaurantId,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Normalize general praise upvotes to a 0-100 score
+   */
+  private calculateGeneralPraiseScore(upvotes: number): number {
+    if (!upvotes || upvotes <= 0) {
+      return 0;
+    }
+
+    return Math.min(
+      100,
+      Math.log1p(upvotes) * this.config.normalization.generalPraiseScale,
+    );
+  }
+
+  /**
+   * Convert aggregated category signals into a connection-weight equivalent
+   */
+  private calculateSignalWeight(signal: CategoryAggregate): number {
+    const { mentionScore, upvoteScore } =
+      this.getCurrentDecayedAggregateMetrics(signal);
+
+    const mentionComponent = Math.max(
+      this.config.normalization.weightFloor,
+      Math.log1p(Math.max(mentionScore, 0)),
+    );
+    const upvoteComponent = Math.max(
+      this.config.normalization.weightFloor,
+      Math.log1p(Math.max(upvoteScore, 0)),
+    );
+
+    const baseWeight = Math.sqrt(mentionComponent * upvoteComponent);
+    return baseWeight * this.config.normalization.signalWeightScale;
+  }
+
+  private getCurrentDecayedMetrics(connection: Connection): {
+    mentionScore: number;
+    upvoteScore: number;
+    lastUpdatedAt: Date | null;
+    elapsedMs: number;
+  } {
+    const decayedMentionScoreRaw = (connection as any).decayedMentionScore;
+    const baseMentionScore =
+      decayedMentionScoreRaw !== null && decayedMentionScoreRaw !== undefined
+        ? Number(decayedMentionScoreRaw)
+        : Math.max(0, connection.mentionCount);
+
+    const decayedUpvoteScoreRaw = (connection as any).decayedUpvoteScore;
+    const baseUpvoteScore =
+      decayedUpvoteScoreRaw !== null && decayedUpvoteScoreRaw !== undefined
+        ? Number(decayedUpvoteScoreRaw)
+        : Math.max(0, connection.totalUpvotes);
+
+    const lastUpdatedRaw =
+      (connection as any).decayedScoresUpdatedAt ||
+      connection.lastMentionedAt ||
+      connection.createdAt ||
+      null;
+
+    let lastUpdatedAt: Date | null = null;
+    if (lastUpdatedRaw instanceof Date) {
+      lastUpdatedAt = lastUpdatedRaw;
+    } else if (lastUpdatedRaw) {
+      const parsed = new Date(lastUpdatedRaw);
+      lastUpdatedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const now = new Date();
+    const elapsedMs =
+      lastUpdatedAt !== null
+        ? Math.max(0, now.getTime() - lastUpdatedAt.getTime())
+        : 0;
+
+    const mentionDecayMs = Math.max(
+      1,
+      this.config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
+    );
+    const upvoteDecayMs = Math.max(
+      1,
+      this.config.timeDecay.upvoteDecayDays * MS_PER_DAY,
+    );
+
+    const mentionScore =
+      baseMentionScore * Math.exp(-elapsedMs / mentionDecayMs);
+    const upvoteScore =
+      baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
+
+    return { mentionScore, upvoteScore, lastUpdatedAt, elapsedMs };
+  }
+
+  private getCurrentDecayedAggregateMetrics(signal: CategoryAggregate): {
+    mentionScore: number;
+    upvoteScore: number;
+    lastUpdatedAt: Date | null;
+  } {
+    const baseMentionScore = Number(signal.decayedMentionScore ?? 0);
+    const baseUpvoteScore = Number(signal.decayedUpvoteScore ?? 0);
+
+    const lastUpdatedRaw =
+      signal.decayedScoresUpdatedAt ||
+      signal.lastMentionedAt ||
+      signal.firstMentionedAt ||
+      null;
+
+    let lastUpdatedAt: Date | null = null;
+    if (lastUpdatedRaw instanceof Date) {
+      lastUpdatedAt = lastUpdatedRaw;
+    } else if (lastUpdatedRaw) {
+      const parsed = new Date(lastUpdatedRaw);
+      lastUpdatedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const now = new Date();
+    const elapsedMs =
+      lastUpdatedAt !== null
+        ? Math.max(0, now.getTime() - lastUpdatedAt.getTime())
+        : 0;
+
+    const mentionDecayMs = Math.max(
+      1,
+      this.config.timeDecay.mentionCountDecayDays * MS_PER_DAY,
+    );
+    const upvoteDecayMs = Math.max(
+      1,
+      this.config.timeDecay.upvoteDecayDays * MS_PER_DAY,
+    );
+
+    const mentionScore =
+      baseMentionScore * Math.exp(-elapsedMs / mentionDecayMs);
+    const upvoteScore = baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
+
+    return { mentionScore, upvoteScore, lastUpdatedAt };
+  }
+
+  /**
    * Calculate category performance data
    */
   private calculateCategoryPerformanceData(
     connections: Connection[],
+    categoryAggregate?: CategoryAggregate,
+    restaurantScoreForSignal?: number,
   ): CategoryPerformanceData {
-    const relevantConnections = connections.map((connection) => {
-      // Weight based on mention count and upvotes
-      const weight = Math.sqrt(
-        connection.mentionCount * Math.log(connection.totalUpvotes + 1),
+    const relevantConnections: CategoryPerformanceData['relevantConnections'] =
+      connections.map(
+        (
+          connection,
+        ): CategoryPerformanceData['relevantConnections'][number] => {
+          const { mentionScore, upvoteScore } =
+            this.getCurrentDecayedMetrics(connection);
+
+          const mentionComponent = Math.max(
+            this.config.normalization.weightFloor,
+            Math.log1p(mentionScore),
+          );
+          const upvoteComponent = Math.max(
+            this.config.normalization.weightFloor,
+            Math.log1p(upvoteScore),
+          );
+
+          const weight = Math.sqrt(mentionComponent * upvoteComponent);
+
+          const foodQualityScore = connection.foodQualityScore
+            ? Number(connection.foodQualityScore)
+            : 0;
+
+          return {
+            connectionId: connection.connectionId,
+            foodQualityScore,
+            weight,
+          };
+        },
       );
 
-      const foodQualityScore = connection.foodQualityScore
-        ? Number(connection.foodQualityScore)
-        : 0;
-
-      return {
-        connectionId: connection.connectionId,
-        foodQualityScore,
-        weight,
-      };
-    });
+    if (categoryAggregate) {
+      const signalWeight = this.calculateSignalWeight(categoryAggregate);
+      if (signalWeight > 0) {
+        const contextualScore =
+          restaurantScoreForSignal && restaurantScoreForSignal > 0
+            ? restaurantScoreForSignal
+            : this.config.defaults.categoryFallbackScore;
+        relevantConnections.push({
+          connectionId: `signal:${categoryAggregate.categoryId}`,
+          foodQualityScore: contextualScore,
+          weight: signalWeight,
+          isSignal: true,
+        });
+      }
+    }
 
     // Calculate weighted average
     const totalWeight = relevantConnections.reduce(

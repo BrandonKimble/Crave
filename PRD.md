@@ -586,62 +586,52 @@ CREATE TYPE activity_level AS ENUM ('trending', 'active', 'normal');
 
 ##### Top Mentions Metadata Structure
 
-##### Restaurant Category Signals
+##### Category Boost Events & Aggregates
+
+Category chatter is captured in two lightweight tables:
+
+1. **`boosts`** – append-only event log of every category mention.
 
 ```sql
-CREATE TABLE restaurant_category_signals (
+CREATE TABLE boosts (
+  boost_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID NOT NULL REFERENCES entities(entity_id),
   category_id UUID NOT NULL REFERENCES entities(entity_id),
-  mentions_count INTEGER DEFAULT 0,
-  total_upvotes INTEGER DEFAULT 0,
-  first_mentioned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  last_mentioned_at TIMESTAMP,
-  PRIMARY KEY (restaurant_id, category_id),
-  INDEX idx_category_signal_category (category_id),
-  INDEX idx_category_signal_restaurant (restaurant_id, total_upvotes DESC)
+  food_attribute_ids UUID[] NOT NULL DEFAULT '{}',
+  mention_created_at TIMESTAMPTZ NOT NULL,
+  upvotes INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  INDEX idx_boosts_restaurant_category_time (restaurant_id, category_id, mention_created_at),
+  INDEX idx_boosts_restaurant (restaurant_id),
+  INDEX idx_boosts_category (category_id),
+  INDEX idx_boosts_food_attributes USING GIN (food_attribute_ids)
 );
 ```
 
-```json
-[
-  {
-    "mention_id": "uuid",
-    "score": 45.2,
-    "upvotes": 67,
-    "content_excerpt": "Their tonkotsu ramen is incredible - the broth is so rich",
-    "source_url": "https://reddit.com/r/Austin/comments/xyz123",
-    "created_at": "2024-01-10T14:20:00Z"
-  },
-  ...
-]
-```
-
-##### Mentions Table
+2. **`category_aggregates`** – exponential-decay counters used as restaurant/category fallbacks.
 
 ```sql
-CREATE TABLE mentions (
-  mention_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  connection_id UUID NOT NULL REFERENCES connections(connection_id),
-  source_type mention_source NOT NULL, -- 'post', 'comment'
-  source_id VARCHAR(255) NOT NULL, -- Reddit post/comment ID
-  source_url VARCHAR(500) NOT NULL, -- Full Reddit URL for attribution
-  subreddit VARCHAR(100) NOT NULL,
-  content_excerpt TEXT NOT NULL, -- Relevant quote for display
-  author VARCHAR(255),
-  upvotes INTEGER DEFAULT 0,
-  created_at TIMESTAMP NOT NULL,
-  processed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
-  INDEX idx_mentions_connection (connection_id),
-  INDEX idx_mentions_upvotes (upvotes DESC),
-  INDEX idx_mentions_source (source_type, source_id),
-  INDEX idx_mentions_subreddit (subreddit),
-  INDEX idx_mentions_created (created_at DESC),
-  INDEX idx_mentions_processed (processed_at DESC)
+CREATE TABLE category_aggregates (
+  restaurant_id UUID NOT NULL REFERENCES entities(entity_id),
+  category_id UUID NOT NULL REFERENCES entities(entity_id),
+  mentions_count INTEGER NOT NULL DEFAULT 0,
+  total_upvotes INTEGER NOT NULL DEFAULT 0,
+  first_mentioned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_mentioned_at TIMESTAMPTZ,
+  decayed_mention_score NUMERIC(18,6) NOT NULL DEFAULT 0,
+  decayed_upvote_score NUMERIC(18,6) NOT NULL DEFAULT 0,
+  decayed_scores_updated_at TIMESTAMPTZ,
+  PRIMARY KEY (restaurant_id, category_id),
+  INDEX idx_category_aggregate_category (category_id),
+  INDEX idx_category_aggregate_restaurant (restaurant_id, total_upvotes DESC)
 );
-
-CREATE TYPE mention_source AS ENUM ('post', 'comment');
 ```
+
+Each ingestion run appends boost events and updates the aggregate with the exponential-decay formula so scoring can blend real dish connections with category-only chatter.
+
+##### Mentions Table (deprecated)
+
+Earlier versions persisted per-connection mentions for evidence display. The current system relies on the `boosts` event log and per-connection decay counters instead, so the standalone `mentions` table has been removed from the schema.
 
 ##### User & Subscription Tables
 
@@ -1426,7 +1416,7 @@ Without Food Attributes:
 
 - Action: Find existing food connections with category and boost them
 - Do not create if no category food exist
-- Category-only mentions are also tallied in `restaurant_category_signals` to provide fallback evidence for future menu-item edges
+- Category-only mentions append to the `boosts` event log and update `category_aggregates`, giving us fallback evidence for future menu-item edges without touching connections in real time
 
 **Component 6: Attribute-Only Processing**
 

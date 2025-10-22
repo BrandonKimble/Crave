@@ -66,7 +66,6 @@ export interface ProcessingResult {
   databaseOperations: {
     entitiesCreated: number;
     connectionsCreated: number;
-    mentionsCreated: number;
     affectedConnectionIds: string[];
     createdEntityIds?: string[];
     createdEntitySummaries?: CreatedEntitySummary[];

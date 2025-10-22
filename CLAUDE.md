@@ -73,7 +73,8 @@ turbo run lint && turbo run type-check
 ## Database Schema (Key Tables)
 - **entities**: Restaurants, food, attributes (unified with `entity_type`)
 - **connections**: Entity relationships with quality scores  
-- **mentions**: Reddit community evidence with attribution
+- **boosts**: Category mention event log feeding exponential-decay updates
+- **category_aggregates**: Restaurant/category fallback metrics maintained via decay
 
 ## TypeScript Guidelines
 - Avoid `any` - use `unknown` for external data + type guards

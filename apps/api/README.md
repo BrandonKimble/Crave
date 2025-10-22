@@ -147,7 +147,8 @@ apps/api/
 
 - **entities**: Unified storage for restaurants, food, categories, attributes
 - **connections**: Restaurant-food relationships with quality scores
-- **mentions**: Reddit community evidence with attribution
+- **boosts**: Category mention event log used for exponential-decay replays
+- **category_aggregates**: Decayed restaurant/category fallback metrics
 
 ### Entity Types
 

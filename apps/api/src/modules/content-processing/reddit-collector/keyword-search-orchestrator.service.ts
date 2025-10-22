@@ -283,8 +283,6 @@ export class KeywordSearchOrchestratorService {
             processingResult.entityResolution?.entitiesProcessed || 0,
           connectionsCreated:
             processingResult.databaseOperations?.connectionsCreated || 0,
-          mentionsCreated:
-            processingResult.databaseOperations?.mentionsCreated || 0,
           processingTime:
             processingResult.performance?.totalProcessingTime || 0,
         };
@@ -311,7 +309,6 @@ export class KeywordSearchOrchestratorService {
           processingTime: 0,
           entitiesProcessed: 0,
           connectionsCreated: 0,
-          mentionsCreated: 0,
         };
 
         results.metadata.processingErrors++;
@@ -615,7 +612,6 @@ export interface EntityProcessingResult {
   processingTime: number;
   entitiesProcessed: number;
   connectionsCreated: number;
-  mentionsCreated: number;
 }
 
 /**

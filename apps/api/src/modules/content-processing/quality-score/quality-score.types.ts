@@ -56,9 +56,11 @@ export interface QualityScoreService {
 
 // Connection strength metrics for food quality calculation
 export interface ConnectionStrengthMetrics {
+  decayedMentionScore: number;
+  decayedUpvoteScore: number;
   mentionCount: number;
   totalUpvotes: number;
-  lastMentionedAt: Date;
+  decayedScoresUpdatedAt: Date | null;
   averageMentionAge: number; // in days
   recentMentionRatio: number; // mentions within 30 days / total mentions
 }
@@ -76,6 +78,7 @@ export interface CategoryPerformanceData {
     connectionId: string;
     foodQualityScore: number;
     weight: number; // based on mention count, upvotes, etc.
+    isSignal?: boolean;
   }>;
   weightedAverage: number;
   totalConnections: number;
@@ -108,33 +111,71 @@ export interface QualityScoreWeights {
   // Restaurant quality score weights (PRD 5.3.2)
   restaurantTopFood: number; // 0.80
   restaurantOverallConsistency: number; // 0.20
+  restaurantGeneralPraise: number; // 0.20
 
   // Connection strength component weights
   mentionCountWeight: number; // e.g., 0.60
   upvoteWeight: number; // e.g., 0.40
 }
 
+// Normalization factors for scaling raw metrics
+export interface QualityScoreNormalizationConfig {
+  mentionScale: number;
+  upvoteScale: number;
+  generalPraiseScale: number;
+  signalWeightScale: number;
+  weightFloor: number;
+}
+
+// Default fallback values used in scoring
+export interface QualityScoreDefaultsConfig {
+  averageRestaurantScore: number;
+  categoryFallbackScore: number;
+}
+
+// Aggregated configuration for quality score service
+export interface QualityScoreConfig {
+  timeDecay: TimeDecayConfig;
+  weights: QualityScoreWeights;
+  normalization: QualityScoreNormalizationConfig;
+  defaults: QualityScoreDefaultsConfig;
+}
+
 // Default configuration values
-export const DEFAULT_QUALITY_SCORE_CONFIG = {
+export const DEFAULT_QUALITY_SCORE_CONFIG: QualityScoreConfig = {
   timeDecay: {
-    mentionCountDecayDays: 180,
-    upvoteDecayDays: 120,
+    mentionCountDecayDays: 365,
+    upvoteDecayDays: 240,
     recentMentionThresholdDays: 30,
-  } as TimeDecayConfig,
+  },
 
   weights: {
     // PRD 5.3.1 - Food quality (85-90% connection + 10-15% restaurant)
     foodConnectionStrength: 0.87,
     foodRestaurantContext: 0.13,
 
-    // PRD 5.3.2 - Restaurant quality (80% top food + 20% consistency)
-    restaurantTopFood: 0.8,
-    restaurantOverallConsistency: 0.2,
+    // PRD 5.3.2 - Restaurant quality (50% top food + 30% consistency + 20% praise)
+    restaurantTopFood: 0.5,
+    restaurantOverallConsistency: 0.3,
+    restaurantGeneralPraise: 0.2,
 
     // Connection strength components (source diversity removed)
     mentionCountWeight: 0.6,
     upvoteWeight: 0.4,
-  } as QualityScoreWeights,
+  },
+
+  normalization: {
+    mentionScale: 20,
+    upvoteScale: 15,
+    generalPraiseScale: 12,
+    signalWeightScale: 1.5,
+    weightFloor: 1,
+  },
+
+  defaults: {
+    averageRestaurantScore: 50,
+    categoryFallbackScore: 55,
+  },
 };
 
 // Batch processing configuration

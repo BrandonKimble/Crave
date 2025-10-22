@@ -62,24 +62,7 @@ export interface Connection {
   foodQualityScore: number;
   lastUpdated: Date;
   createdAt: Date;
-}
-
-/**
- * Mention interface for community evidence
- * PRD 4.2: Reddit community evidence with attribution
- */
-export interface Mention {
-  mentionId: string;
-  connectionId: string;
-  sourceType: 'reddit_post' | 'reddit_comment';
-  sourceId: string;
-  sourceUrl: string;
-  subreddit: string;
-  contentExcerpt: string;
-  author?: string;
-  upvotes: number;
-  createdAt: Date;
-  processedAt: Date;
+  boostLastAppliedAt?: Date;
 }
 
 /**

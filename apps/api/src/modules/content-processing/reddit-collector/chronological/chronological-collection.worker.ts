@@ -39,7 +39,6 @@ export interface ChronologicalCollectionJobResult {
     restaurantsProcessed?: number;
     connectionsCreated?: number;
     connectionsUpdated?: number;
-    mentionsCreated?: number;
     componentsExecuted?: string;
     successRate?: number;
     totalTime?: number;
@@ -82,10 +81,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
   private readonly BATCH_SIZE =
     process.env.TEST_CHRONO_BATCH_SIZE &&
     !Number.isNaN(Number(process.env.TEST_CHRONO_BATCH_SIZE))
-      ? Math.max(
-          1,
-          Number.parseInt(process.env.TEST_CHRONO_BATCH_SIZE, 10),
-        )
+      ? Math.max(1, Number.parseInt(process.env.TEST_CHRONO_BATCH_SIZE, 10))
       : 25; // Default batch size
 
   constructor(
@@ -177,13 +173,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const maxPostsOverride =
         process.env.TEST_CHRONO_MAX_POSTS &&
         !Number.isNaN(Number(process.env.TEST_CHRONO_MAX_POSTS))
-          ? Math.max(
-              0,
-              Number.parseInt(
-                process.env.TEST_CHRONO_MAX_POSTS,
-                10,
-              ),
-            )
+          ? Math.max(0, Number.parseInt(process.env.TEST_CHRONO_MAX_POSTS, 10))
           : null;
       const posts =
         typeof maxPostsOverride === 'number' && maxPostsOverride > 0

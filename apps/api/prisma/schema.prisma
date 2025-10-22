@@ -53,11 +53,14 @@ model Connection {
   lastMentionedAt    DateTime?     @map("last_mentioned_at")
   activityLevel      ActivityLevel @default(normal) @map("activity_level")
   foodQualityScore   Decimal       @default(0) @map("food_quality_score") @db.Decimal(10, 4)
+  decayedMentionScore Decimal      @default(0) @map("decayed_mention_score") @db.Decimal(18, 6)
+  decayedUpvoteScore  Decimal      @default(0) @map("decayed_upvote_score") @db.Decimal(18, 6)
+  decayedScoresUpdatedAt DateTime? @map("decayed_scores_updated_at")
+  boostLastAppliedAt DateTime?     @map("boost_last_applied_at")
   lastUpdated        DateTime      @default(now()) @map("last_updated")
   createdAt          DateTime      @default(now()) @map("created_at")
   food               Entity        @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant         Entity        @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
-  mentions           Mention[]
 
   @@unique([restaurantId, foodId, foodAttributes], map: "connections_restaurant_id_food_id_food_attribut_key")
   @@index([restaurantId], map: "idx_connections_restaurant")
@@ -79,44 +82,37 @@ model Connection {
   @@map("connections")
 }
 
-model Mention {
-  mentionId      String        @id @default(dbgenerated("gen_random_uuid()")) @map("mention_id") @db.Uuid
-  connectionId   String        @map("connection_id") @db.Uuid
-  sourceType     MentionSource @map("source_type")
-  sourceId       String        @map("source_id") @db.VarChar(255)
-  sourceUrl      String        @map("source_url") @db.VarChar(500)
-  subreddit      String        @db.VarChar(100)
-  contentExcerpt String        @map("content_excerpt")
-  author         String?       @db.VarChar(255)
-  upvotes        Int           @default(0)
-  createdAt      DateTime      @map("created_at")
-  processedAt    DateTime      @default(now()) @map("processed_at")
-  connection     Connection    @relation(fields: [connectionId], references: [connectionId])
+model Boost {
+  boostId          String    @id @default(dbgenerated("gen_random_uuid()")) @map("boost_id") @db.Uuid
+  restaurantId     String    @map("restaurant_id") @db.Uuid
+  categoryId       String    @map("category_id") @db.Uuid
+  foodAttributeIds String[]  @default([]) @map("food_attribute_ids") @db.Uuid
+  mentionCreatedAt DateTime  @map("mention_created_at")
+  upvotes          Int       @default(0)
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  @@index([connectionId], map: "idx_mentions_connection")
-  @@index([upvotes(sort: Desc)], map: "idx_mentions_upvotes")
-  @@index([sourceType, sourceId], map: "idx_mentions_source")
-  @@index([subreddit], map: "idx_mentions_subreddit")
-  @@index([createdAt(sort: Desc)], map: "idx_mentions_created")
-  @@index([processedAt(sort: Desc)], map: "idx_mentions_processed")
-  @@index([author], map: "idx_mentions_author")
-  @@index([subreddit, upvotes(sort: Desc)], map: "idx_mentions_subreddit_upvotes")
-  @@index([sourceType, createdAt(sort: Desc)], map: "idx_mentions_source_type_created")
-  @@map("mentions")
+  @@index([restaurantId, categoryId, mentionCreatedAt], map: "idx_boosts_restaurant_category_time")
+  @@index([categoryId], map: "idx_boosts_category")
+  @@index([restaurantId], map: "idx_boosts_restaurant")
+  @@index([foodAttributeIds], map: "idx_boosts_food_attributes", type: Gin)
+  @@map("boosts")
 }
 
-model RestaurantCategorySignal {
-  restaurantId     String   @map("restaurant_id") @db.Uuid
-  categoryId       String   @map("category_id") @db.Uuid
-  mentionsCount    Int      @default(0) @map("mentions_count")
-  totalUpvotes     Int      @default(0) @map("total_upvotes")
-  lastMentionedAt  DateTime @map("last_mentioned_at")
-  firstMentionedAt DateTime @default(now()) @map("first_mentioned_at")
+model CategoryAggregate {
+  restaurantId         String   @map("restaurant_id") @db.Uuid
+  categoryId           String   @map("category_id") @db.Uuid
+  mentionsCount        Int      @default(0) @map("mentions_count")
+  totalUpvotes         Int      @default(0) @map("total_upvotes")
+  lastMentionedAt      DateTime @map("last_mentioned_at")
+  firstMentionedAt     DateTime @default(now()) @map("first_mentioned_at")
+  decayedMentionScore  Decimal  @default(0) @map("decayed_mention_score") @db.Decimal(18, 6)
+  decayedUpvoteScore   Decimal  @default(0) @map("decayed_upvote_score") @db.Decimal(18, 6)
+  decayedScoresUpdatedAt DateTime? @map("decayed_scores_updated_at")
 
   @@id([restaurantId, categoryId])
-  @@index([categoryId], map: "idx_category_signal_category")
-  @@index([restaurantId, totalUpvotes(sort: Desc)], map: "idx_category_signal_restaurant")
-  @@map("restaurant_category_signals")
+  @@index([categoryId], map: "idx_category_aggregate_category")
+  @@index([restaurantId, totalUpvotes(sort: Desc)], map: "idx_category_aggregate_restaurant")
+  @@map("category_aggregates")
 }
 
 model User {
