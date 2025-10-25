@@ -15,6 +15,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -54,6 +55,8 @@ type CategoryReplayKey = {
   restaurantId: string;
   categoryId: string;
 };
+
+type SourceLedgerRecord = Prisma.SourceCreateManyInput;
 
 const createEmptySummary = (): OperationSummary => ({
   affectedConnectionIds: [],
@@ -159,26 +162,64 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     const defaultConfig = this.buildDefaultProcessingConfig();
     const processingConfig = { ...defaultConfig, ...config };
+    const pipelineKey = this.resolvePipelineKey(sourceMetadata.collectionType);
+
+    const {
+      filteredMentions,
+      newRecordsBySourceId,
+      skippedCount,
+    } = await this.prepareSourceLedgerRecords(
+      mentions,
+      pipelineKey,
+      sourceMetadata.subreddit,
+    );
+
+    if (skippedCount > 0) {
+      this.logger.debug('Skipped previously processed sources', {
+        batchId,
+        skippedCount,
+        collectionType: sourceMetadata.collectionType,
+      });
+    }
+
+    if (filteredMentions.length === 0) {
+      this.logger.info('No new mentions to process after dedupe', {
+        batchId,
+        collectionType: sourceMetadata.collectionType,
+        totalMentions: mentions.length,
+        dedupedMentions: 0,
+      });
+
+      return {
+        entitiesCreated: 0,
+        connectionsCreated: 0,
+        affectedConnectionIds: [],
+        createdEntityIds: [],
+        createdEntitySummaries: [],
+        reusedEntitySummaries: [],
+      };
+    }
 
     try {
       this.logger.info('Processing LLM output directly', {
         batchId,
-        mentionsCount: mentions.length,
+        mentionsCount: filteredMentions.length,
         collectionType: sourceMetadata.collectionType,
         subreddit: sourceMetadata.subreddit,
       });
 
       // Create LLM output structure for existing pipeline
-      const llmOutput: LLMOutputStructure = { mentions };
+      const llmOutput: LLMOutputStructure = { mentions: filteredMentions };
 
       // PRD 6.6.4: Check if batch needs to be split
-      if (mentions.length > processingConfig.batchSize) {
-      const batchResult = await this.processMentionsInBatches(
-        llmOutput,
-        sourceMetadata,
-        batchId,
-        processingConfig,
-      );
+      if (filteredMentions.length > processingConfig.batchSize) {
+        const batchResult = await this.processMentionsInBatches(
+          llmOutput,
+          sourceMetadata,
+          batchId,
+          processingConfig,
+          newRecordsBySourceId,
+        );
 
         return {
           entitiesCreated:
@@ -202,6 +243,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         sourceMetadata,
         batchId,
         processingConfig,
+        newRecordsBySourceId,
         startTime,
       );
 
@@ -224,7 +266,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       this.logger.error('LLM output processing failed', {
         batchId,
-        mentionsCount: mentions.length,
+        mentionsCount: filteredMentions.length,
         error: error instanceof Error ? error.message : String(error),
         processingTime,
         sourceBreakdown: sourceMetadata.sourceBreakdown,
@@ -235,7 +277,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         error,
         {
           batchId,
-          mentionsCount: mentions.length,
+          mentionsCount: filteredMentions.length,
           processingTime,
           sourceBreakdown: sourceMetadata.sourceBreakdown,
         },
@@ -252,6 +294,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     sourceMetadata: any,
     parentBatchId: string,
     config: UnifiedProcessingConfig,
+    ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
   ): Promise<ProcessingResult> {
     const startTime = Date.now();
     const batchSize = config.batchSize;
@@ -299,6 +342,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           sourceMetadata,
           subBatchId,
           config,
+          ledgerRecordsBySourceId,
           Date.now(),
         );
 
@@ -397,6 +441,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     sourceMetadata: any,
     batchId: string,
     processingConfig: UnifiedProcessingConfig,
+    ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
     startTime: number,
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
@@ -410,12 +455,17 @@ export class UnifiedProcessingService implements OnModuleInit {
       );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
+    const ledgerRecords = this.collectLedgerRecordsForMentions(
+      llmOutput.mentions,
+      ledgerRecordsBySourceId,
+    );
     const databaseResult = await this.performConsolidatedProcessingWithRetry(
       llmOutput,
       resolutionResult,
       sourceMetadata,
       batchId,
       processingConfig.maxRetries || 3,
+      ledgerRecords,
     );
 
     // Step 6: Quality Score Updates (PRD Section 5.3)
@@ -792,6 +842,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     resolutionResult: BatchResolutionResult,
     sourceMetadata: any,
     batchId: string,
+    sourceLedgerRecords: SourceLedgerRecord[],
   ): Promise<{
     entitiesCreated: number;
     connectionsCreated: number;
@@ -853,6 +904,21 @@ export class UnifiedProcessingService implements OnModuleInit {
           batchId,
           mentionsProcessed: llmOutput.mentions.length,
         });
+
+        if (
+          Array.isArray(sourceLedgerRecords) &&
+          sourceLedgerRecords.length > 0
+        ) {
+          await tx.source.createMany({
+            data: sourceLedgerRecords.map((record) => ({
+              pipeline: record.pipeline,
+              sourceId: record.sourceId,
+              subreddit: record.subreddit ?? null,
+              processedAt: record.processedAt ?? new Date(),
+            })),
+            skipDuplicates: true,
+          });
+        }
 
         // PRD 6.6.2: Create any new entities from resolution within transaction
         // This ensures atomicity - if entity creation fails, entire batch fails
@@ -1256,6 +1322,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     sourceMetadata: any,
     batchId: string,
     maxRetries: number,
+    sourceLedgerRecords: SourceLedgerRecord[],
   ): Promise<{
     entitiesCreated: number;
     connectionsCreated: number;
@@ -1276,6 +1343,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           resolutionResult, // Cached resolution result - no re-resolution needed
           sourceMetadata,
           batchId,
+          sourceLedgerRecords,
         );
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
@@ -2562,6 +2630,145 @@ export class UnifiedProcessingService implements OnModuleInit {
       databaseOperations: 0,
       lastReset: new Date(),
     };
+  }
+
+  private resolvePipelineKey(collectionType?: string): string {
+    if (!collectionType) {
+      return 'unknown';
+    }
+
+    const normalized = collectionType.toLowerCase();
+    switch (normalized) {
+      case 'chronological':
+      case 'archive':
+      case 'keyword':
+      case 'on-demand':
+      case 'on_demand':
+        return normalized.replace('_', '-');
+      default:
+        return normalized || 'unknown';
+    }
+  }
+
+  private async prepareSourceLedgerRecords(
+    mentions: any[],
+    pipeline: string,
+    defaultSubreddit?: string,
+  ): Promise<{
+    filteredMentions: any[];
+    newRecordsBySourceId: Map<string, SourceLedgerRecord>;
+    skippedCount: number;
+  }> {
+    if (!Array.isArray(mentions) || mentions.length === 0) {
+      return {
+        filteredMentions: [],
+        newRecordsBySourceId: new Map(),
+        skippedCount: 0,
+      };
+    }
+
+    const normalizedPipeline = pipeline || 'unknown';
+    const sourceIdSet = new Set<string>();
+
+    for (const mention of mentions) {
+      const sourceId =
+        typeof mention?.source_id === 'string'
+          ? mention.source_id.trim()
+          : '';
+      if (sourceId) {
+        sourceIdSet.add(sourceId);
+      }
+    }
+
+    if (sourceIdSet.size === 0) {
+      return {
+        filteredMentions: [...mentions],
+        newRecordsBySourceId: new Map(),
+        skippedCount: 0,
+      };
+    }
+
+    const sourceIds = Array.from(sourceIdSet);
+    const existingRecords = await this.prismaService.source.findMany({
+      where: {
+        pipeline: normalizedPipeline,
+        sourceId: { in: sourceIds },
+      },
+      select: { sourceId: true },
+    });
+
+    const existingSet = new Set(existingRecords.map((record) => record.sourceId));
+    const filteredMentions: any[] = [];
+    const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
+    const seenInBatch = new Set<string>();
+    let skippedCount = 0;
+
+    for (const mention of mentions) {
+      const rawSourceId =
+        typeof mention?.source_id === 'string'
+          ? mention.source_id.trim()
+          : '';
+
+      if (!rawSourceId) {
+        filteredMentions.push(mention);
+        continue;
+      }
+
+      if (seenInBatch.has(rawSourceId) || existingSet.has(rawSourceId)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      seenInBatch.add(rawSourceId);
+      filteredMentions.push(mention);
+
+      newRecordsBySourceId.set(rawSourceId, {
+        pipeline: normalizedPipeline,
+        sourceId: rawSourceId,
+        subreddit:
+          typeof mention?.subreddit === 'string' &&
+          mention.subreddit.trim().length > 0
+            ? mention.subreddit.trim()
+            : defaultSubreddit ?? null,
+        processedAt: new Date(),
+      });
+    }
+
+    return {
+      filteredMentions,
+      newRecordsBySourceId,
+      skippedCount,
+    };
+  }
+
+  private collectLedgerRecordsForMentions(
+    mentions: any[],
+    ledgerMap: Map<string, SourceLedgerRecord>,
+  ): SourceLedgerRecord[] {
+    if (!ledgerMap || ledgerMap.size === 0 || !Array.isArray(mentions)) {
+      return [];
+    }
+
+    const records: SourceLedgerRecord[] = [];
+    const seen = new Set<string>();
+
+    for (const mention of mentions) {
+      const sourceId =
+        typeof mention?.source_id === 'string'
+          ? mention.source_id.trim()
+          : '';
+      if (!sourceId || seen.has(sourceId)) {
+        continue;
+      }
+
+      const ledgerRecord = ledgerMap.get(sourceId);
+      if (ledgerRecord) {
+        records.push(ledgerRecord);
+        seen.add(sourceId);
+      }
+    }
+
+    return records;
   }
 
   private buildDefaultProcessingConfig(): UnifiedProcessingConfig {

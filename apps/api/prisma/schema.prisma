@@ -142,6 +142,19 @@ model CategoryAggregate {
   @@map("category_aggregates")
 }
 
+model Source {
+  sourceId    String   @map("source_id") @db.VarChar(64)
+  pipeline    String   @db.VarChar(32)
+  subreddit   String?  @db.VarChar(100)
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@id([pipeline, sourceId])
+  @@index([pipeline], map: "idx_source_pipeline")
+  @@index([subreddit], map: "idx_source_subreddit")
+  @@index([processedAt(sort: Desc)], map: "idx_source_processed_at")
+  @@map("source")
+}
+
 model User {
   userId             String             @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
   email              String             @unique @db.VarChar(255)

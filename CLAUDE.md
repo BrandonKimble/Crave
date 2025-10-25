@@ -75,6 +75,7 @@ turbo run lint && turbo run type-check
 - **connections**: Entity relationships with quality scores  
 - **boosts**: Category mention event log feeding exponential-decay updates
 - **category_aggregates**: Restaurant/category fallback metrics maintained via decay
+- **source**: Pipeline-scoped ledger of processed Reddit IDs for duplicate prevention
 
 ## TypeScript Guidelines
 - Avoid `any` - use `unknown` for external data + type guards

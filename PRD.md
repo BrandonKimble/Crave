@@ -835,7 +835,7 @@ Both historical archive processing and ongoing Reddit API collection follow this
 
 - **Unified Pipeline**: Both data sources use the same entity extraction and processing pipeline
 - **Temporal Merging**: Combine archive data with API data based on timestamps
-- **Duplicate Detection**: Prevent duplicate processing of overlapping content
+- **Duplicate Detection**: Use the pipeline-scoped `source` ledger to skip Reddit IDs we've already processed, preventing duplicate work across archives and API runs
 - **Complete Context Capture**: All discovered entities and relationships from both sources are stored
 
 #### 5.1.3 On-Demand Query-Driven Collection
@@ -2380,7 +2380,7 @@ _Nothing works without this_
 
 #### 9.1.1 Core Tasks
 
-- **Database schema creation**: Entities, connections, mentions tables with proper indexes
+- **Database schema creation**: Entities, connections, source ledger tables with proper indexes
 - **Connection pooling and basic database operations**: CRUD operations, bulk inserts
 - **Database migrations and version control**: Schema evolution capability
 - **Testing infrastructure setup**: Jest, @nestjs/testing, test database configuration
@@ -2469,7 +2469,7 @@ _Community content foundation using hybrid Pushshift + Reddit API approach_
 **Unified Processing Pipeline:**
 
 - **Data merge logic**: Combine historical and real-time data by timestamp
-- **Duplicate detection**: Prevent duplicate processing of overlapping content
+- **Duplicate detection**: Use the `source` ledger to avoid re-processing Reddit IDs that have already been ingested
 - **LLM processing integration**: Unified entity extraction for both data sources
 
 #### 9.3.2 Success Criteria
