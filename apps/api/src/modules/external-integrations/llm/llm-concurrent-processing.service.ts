@@ -403,11 +403,11 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     for (const mention of output.mentions) {
       // Check vital fields
-      if (mention.food_name && mention.is_menu_item === undefined) {
+      if (mention.food && mention.is_menu_item === undefined) {
         this.logger.warn('Missing vital field: is_menu_item', {
           chunkId,
           mentionId: mention.temp_id,
-          hasFood: !!mention.food_name,
+          hasFood: !!mention.food,
         });
       }
 

@@ -38,6 +38,85 @@ export class EntityResolutionService implements OnModuleInit {
     this.logger = this.loggerService.setContext('EntityResolutionService');
   }
 
+  private readonly restaurantNonDistinctTokens = new Set<string>([
+    'restaurant',
+    'cafe',
+    'cafeteria',
+    'bar',
+    'pub',
+    'tavern',
+    'grill',
+    'steakhouse',
+    'chophouse',
+    'cookhouse',
+    'smokehouse',
+    'roadhouse',
+    'taphouse',
+    'taproom',
+    'brewery',
+    'brasserie',
+    'bistro',
+    'osteria',
+    'trattoria',
+    'cantina',
+    'taqueria',
+    'taco',
+    'tacos',
+    'pizzeria',
+    'eatery',
+    'food',
+    'foods',
+    'saloon',
+    'cuisine',
+    'farm',
+    'farms',
+    'coffee',
+    'kitchen',
+    'kitchenette',
+    'diner',
+    'lounge',
+    'house',
+    'bakery',
+    'bakeshop',
+    'market',
+    'coop',
+    'cooperative',
+    'co',
+    'company',
+    'heb',
+    'atx',
+    'bbq',
+    'barbecue',
+    'estiatorio',
+    'ristorante',
+    'cucina',
+    'no',
+    'numero',
+    'number',
+    'hashtag',
+    'el',
+    'la',
+    'los',
+    'las',
+    'le',
+    'les',
+    'the',
+  ]);
+
+  private readonly restaurantConnectorTokens = new Set<string>([
+    'and',
+    'n',
+    'y',
+    'et',
+  ]);
+
+  private readonly restaurantNonDistinctPhrases: string[][] = [
+    ['food', 'truck'],
+    ['coffee', 'shop'],
+    ['beer', 'garden'],
+    ['ice', 'cream'],
+  ];
+
   /**
    * Resolve a batch of entities using three-tier resolution
    * Implements PRD Section 5.2.1 - Three-Tier Resolution Process
@@ -499,6 +578,7 @@ export class EntityResolutionService implements OnModuleInit {
       const fuzzyResult = this.findBestFuzzyMatch(
         entity,
         allEntitiesOfType,
+        entityType,
         config,
       );
 
@@ -521,6 +601,7 @@ export class EntityResolutionService implements OnModuleInit {
   private findBestFuzzyMatch(
     inputEntity: EntityResolutionInput,
     candidateEntities: { entityId: string; name: string; aliases: string[] }[],
+    entityType: EntityType,
     config: EntityResolutionConfig,
   ): FuzzyMatchResult | null {
     const searchTerms = [
@@ -536,6 +617,38 @@ export class EntityResolutionService implements OnModuleInit {
 
       for (const searchTerm of searchTerms) {
         for (const candidateTerm of candidateTerms) {
+          if (entityType === 'restaurant') {
+            const inputTokens = this.tokenizeEntityName(
+              searchTerm.toLowerCase().trim(),
+            );
+            const candidateTokens = this.tokenizeEntityName(
+              candidateTerm.toLowerCase().trim(),
+            );
+
+            if (
+              inputTokens.length > 0 &&
+              candidateTokens.length > 0 &&
+              this.shouldMergeRestaurantTokens(inputTokens, candidateTokens)
+            ) {
+              const confidenceBoost = Math.max(
+                0.9,
+                config.fuzzyMatchThreshold + 0.15,
+              );
+              if (!bestMatch || confidenceBoost > bestMatch.confidence) {
+                bestMatch = {
+                  entityId: candidate.entityId,
+                  confidence: Math.min(confidenceBoost, 0.99),
+                  matchedText: candidateTerm,
+                  editDistance: this.calculateEditDistance(
+                    searchTerm.toLowerCase().trim(),
+                    candidateTerm.toLowerCase().trim(),
+                  ),
+                };
+              }
+              continue;
+            }
+          }
+
           // Calculate string similarity
           const similarity = stringSimilarity.compareTwoStrings(
             searchTerm.toLowerCase().trim(),
@@ -549,10 +662,17 @@ export class EntityResolutionService implements OnModuleInit {
           );
 
           // Check if within thresholds
-          if (
-            similarity >= config.fuzzyMatchThreshold &&
-            editDistance <= config.maxEditDistance
-          ) {
+        const forceMerge = this.shouldForceRestaurantFuzzyMatch(
+          entityType,
+          searchTerm,
+          candidateTerm,
+        );
+
+        if (
+          forceMerge ||
+          (similarity >= config.fuzzyMatchThreshold &&
+            editDistance <= config.maxEditDistance)
+        ) {
             if (!bestMatch || similarity > bestMatch.confidence) {
               bestMatch = {
                 entityId: candidate.entityId,
@@ -640,6 +760,49 @@ export class EntityResolutionService implements OnModuleInit {
           continue;
         }
 
+        const similarPrimary = this.findSimilarPrimaryCandidate(
+          primaryNewEntityMap,
+          entity,
+          entityType,
+        );
+
+        if (similarPrimary) {
+          const duplicateResult: EntityResolutionResult = {
+            tempId: entity.tempId,
+            entityId: similarPrimary.entityId ?? null,
+            confidence: 0.95,
+            resolutionTier: 'new',
+            matchedName: entity.normalizedName,
+            originalInput: entity,
+            isNewEntity: false,
+            entityType,
+            normalizedName: entity.normalizedName,
+            validatedAliases: scopeValidation.validAliases,
+            primaryTempId: similarPrimary.tempId,
+          };
+
+          const mergedAliasSet = new Set<string>([
+            ...(similarPrimary.validatedAliases || []),
+            ...scopeValidation.validAliases,
+          ]);
+          similarPrimary.validatedAliases = Array.from(mergedAliasSet);
+
+          results.push(duplicateResult);
+
+          this.logger.debug(
+            'Merged near-duplicate entity into primary new entity',
+            {
+              entityType,
+              normalizedName: entity.normalizedName,
+              primaryTempId: similarPrimary.tempId,
+              duplicateTempId: entity.tempId,
+              similaritySource: 'levenshtein-threshold',
+            },
+          );
+
+          continue;
+        }
+
         const primaryResult: EntityResolutionResult = {
           tempId: entity.tempId,
           entityId: null,
@@ -711,6 +874,34 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     return results;
+  }
+
+  private shouldForceRestaurantFuzzyMatch(
+    entityType: EntityType,
+    searchTerm: string,
+    candidateTerm: string,
+  ): boolean {
+    if (entityType !== 'restaurant') {
+      return false;
+    }
+
+    const normalizedInput = searchTerm.toLowerCase().trim();
+    const normalizedCandidate = candidateTerm.toLowerCase().trim();
+
+    if (normalizedInput.length < 4 || normalizedCandidate.length < 4) {
+      return false;
+    }
+
+    const distance = this.calculateEditDistance(
+      normalizedInput,
+      normalizedCandidate,
+    );
+
+    if (distance === 1) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
@@ -972,6 +1163,384 @@ export class EntityResolutionService implements OnModuleInit {
       });
       throw error;
     }
+  }
+
+  private findSimilarPrimaryCandidate(
+    primaryNewEntityMap: Map<string, EntityResolutionResult>,
+    entity: EntityResolutionInput,
+    entityType: EntityType,
+  ): EntityResolutionResult | null {
+    const normalizedInput = entity.normalizedName.toLowerCase().trim();
+    const inputTokens = this.tokenizeEntityName(normalizedInput);
+    let bestMatch: {
+      candidate: EntityResolutionResult;
+      similarity: number;
+      editDistance: number;
+    } | null = null;
+
+    for (const candidate of primaryNewEntityMap.values()) {
+      if (!candidate.normalizedName || candidate.entityType !== entityType) {
+        continue;
+      }
+
+      const normalizedCandidate = candidate.normalizedName
+        .toLowerCase()
+        .trim();
+      const candidateTokens = this.tokenizeEntityName(normalizedCandidate);
+
+      if (
+        entityType === 'restaurant' &&
+        this.shouldMergeRestaurantTokens(inputTokens, candidateTokens)
+      ) {
+        return candidate;
+      }
+
+      const similarity = stringSimilarity.compareTwoStrings(
+        normalizedInput,
+        normalizedCandidate,
+      );
+      const editDistance = this.calculateEditDistance(
+        normalizedInput,
+        normalizedCandidate,
+      );
+
+      if (similarity >= 0.7 && editDistance <= 2) {
+        if (!bestMatch || similarity > bestMatch.similarity) {
+          bestMatch = { candidate, similarity, editDistance };
+        }
+      }
+    }
+
+    return bestMatch?.candidate ?? null;
+  }
+
+  private tokenizeEntityName(value: string): string[] {
+    if (!value) {
+      return [];
+    }
+
+    const cleaned = value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+
+    if (!cleaned) {
+      return [];
+    }
+
+    const tokens: string[] = [];
+
+    cleaned.split(/\s+/).forEach((token) => {
+      if (!token) {
+        return;
+      }
+
+      let normalized = token;
+      if (normalized.endsWith("'s")) {
+        normalized = normalized.slice(0, -2);
+      }
+      if (normalized.endsWith('s') && normalized.length > 3) {
+        normalized = normalized.slice(0, -1);
+      }
+
+      const segments = normalized.match(/[a-z]+|\d+/g);
+      if (segments) {
+        segments.forEach((segment) => {
+          if (segment.length > 0) {
+            tokens.push(segment);
+          }
+        });
+      } else if (normalized.length > 0) {
+        tokens.push(normalized);
+      }
+    });
+
+    return tokens;
+  }
+  private isRestaurantDescriptorToken(token: string): boolean {
+    if (!token) {
+      return false;
+    }
+    if (this.restaurantNonDistinctTokens.has(token)) {
+      return true;
+    }
+    if (/^\d+$/.test(token)) {
+      return true;
+    }
+    if (token.length === 1 && /[a-z]/.test(token)) {
+      return true;
+    }
+    return false;
+  }
+
+  private stripLeadingDescriptorTokens(tokens: string[]): string[] {
+    let startIndex = 0;
+    while (
+      startIndex < tokens.length &&
+      this.isRestaurantDescriptorToken(tokens[startIndex])
+    ) {
+      startIndex += 1;
+    }
+    return tokens.slice(startIndex);
+  }
+
+  private removeDescriptorTokens(tokens: string[]): string[] {
+    return tokens.filter((token) => !this.isRestaurantDescriptorToken(token));
+  }
+
+  private removeDescriptorPhrases(tokens: string[]): string[] {
+    if (!tokens.length) {
+      return tokens;
+    }
+
+    const result: string[] = [];
+
+    for (let index = 0; index < tokens.length; index += 1) {
+      let phraseMatched = false;
+
+      for (const phrase of this.restaurantNonDistinctPhrases) {
+        if (phrase.length === 0) {
+          continue;
+        }
+
+        if (index + phrase.length > tokens.length) {
+          continue;
+        }
+
+        let matches = true;
+        for (let offset = 0; offset < phrase.length; offset += 1) {
+          if (tokens[index + offset] !== phrase[offset]) {
+            matches = false;
+            break;
+          }
+        }
+
+        if (matches) {
+          phraseMatched = true;
+          index += phrase.length - 1;
+          break;
+        }
+      }
+
+      if (!phraseMatched) {
+        result.push(tokens[index]);
+      }
+    }
+
+    return result;
+  }
+
+  private expandCompoundTokens(tokens: string[]): string[] {
+    if (!tokens.length) {
+      return tokens;
+    }
+
+    const expanded: string[] = [];
+
+    tokens.forEach((token) => {
+      const split = this.splitRepeatedToken(token);
+      if (split) {
+        expanded.push(...split);
+      } else {
+        expanded.push(token);
+      }
+    });
+
+    return this.combineSingleLetterTokens(expanded);
+  }
+
+  private splitRepeatedToken(token: string): string[] | null {
+    if (!token || token.length < 4) {
+      return null;
+    }
+
+    for (let segmentLength = 2; segmentLength <= Math.floor(token.length / 2); segmentLength += 1) {
+      if (token.length % segmentLength !== 0) {
+        continue;
+      }
+
+      const segment = token.slice(0, segmentLength);
+      if (segment.length < 2) {
+        continue;
+      }
+
+      const repetitions = token.length / segmentLength;
+      if (segment.repeat(repetitions) === token) {
+        return Array(repetitions).fill(segment);
+      }
+    }
+
+    return null;
+  }
+
+  private combineSingleLetterTokens(tokens: string[]): string[] {
+    if (!tokens.length) {
+      return tokens;
+    }
+
+    const combined: string[] = [];
+    let index = 0;
+
+    while (index < tokens.length) {
+      const token = tokens[index];
+
+      if (token.length === 1) {
+        const nextIndex = index + 1;
+
+        if (
+          nextIndex < tokens.length &&
+          tokens[nextIndex].length > 1
+        ) {
+          combined.push(token + tokens[nextIndex]);
+          index += 2;
+          continue;
+        }
+
+        let runEnd = index;
+        let concatenated = '';
+        while (
+          runEnd < tokens.length &&
+          tokens[runEnd].length === 1
+        ) {
+          concatenated += tokens[runEnd];
+          runEnd += 1;
+        }
+
+        if (runEnd === tokens.length && index === 0) {
+          combined.push(concatenated);
+          break;
+        }
+
+        combined.push(token);
+        index += 1;
+        continue;
+      }
+
+      combined.push(token);
+      index += 1;
+    }
+
+    return combined;
+  }
+
+  private removeConnectorTokens(tokens: string[]): string[] {
+    if (!tokens.length) {
+      return tokens;
+    }
+    return tokens.filter(
+      (token) => !this.restaurantConnectorTokens.has(token),
+    );
+  }
+
+  private tokensSharePrefix(
+    shorter: string[],
+    longer: string[],
+    prefixLength: number,
+  ): boolean {
+    if (shorter.length < prefixLength || longer.length < prefixLength) {
+      return false;
+    }
+    for (let index = 0; index < prefixLength; index += 1) {
+      if (shorter[index] !== longer[index]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private shouldMergeRestaurantTokens(
+    left: string[],
+    right: string[],
+  ): boolean {
+    if (!left.length || !right.length) {
+      return false;
+    }
+
+    const [shorterOriginal, longerOriginal] =
+      left.length <= right.length ? [left, right] : [right, left];
+
+    const shorter = this.stripLeadingDescriptorTokens(shorterOriginal);
+    const longer = this.stripLeadingDescriptorTokens(longerOriginal);
+
+    const baseShorter = shorter.length > 0 ? shorter : shorterOriginal;
+    const baseLonger = longer.length > 0 ? longer : longerOriginal;
+
+    const normalizedShorter = this.expandCompoundTokens(
+      this.removeDescriptorPhrases(this.removeConnectorTokens(baseShorter)),
+    );
+    const normalizedLonger = this.expandCompoundTokens(
+      this.removeDescriptorPhrases(this.removeConnectorTokens(baseLonger)),
+    );
+
+    if (!normalizedShorter.length || !normalizedLonger.length) {
+      return false;
+    }
+
+    const prefixLength = Math.min(2, normalizedShorter.length);
+    if (prefixLength === 0) {
+      return false;
+    }
+
+    if (!this.tokensSharePrefix(normalizedShorter, normalizedLonger, prefixLength)) {
+      return false;
+    }
+
+    const shorterRemainder = normalizedShorter.slice(prefixLength);
+    const longerRemainder = normalizedLonger.slice(prefixLength);
+
+    if (
+      normalizedShorter.length >= 3 &&
+      shorterRemainder.length === 0 &&
+      longerRemainder.length > 0
+    ) {
+      return true;
+    }
+
+    const significantShorter = this.removeDescriptorTokens(
+      this.removeDescriptorPhrases(this.expandCompoundTokens(shorterRemainder)),
+    );
+    const significantLonger = this.removeDescriptorTokens(
+      this.removeDescriptorPhrases(this.expandCompoundTokens(longerRemainder)),
+    );
+
+    if (significantShorter.length === 0 && significantLonger.length === 0) {
+      return true;
+    }
+
+    if (
+      significantShorter.length === significantLonger.length &&
+      significantShorter.every(
+        (token, index) => token === significantLonger[index],
+      )
+    ) {
+      return true;
+    }
+
+    if (
+      significantShorter.length === 1 &&
+      significantLonger.length >= 2
+    ) {
+      const abbreviation = significantLonger
+        .map((token) => token[0])
+        .join('');
+      if (abbreviation && abbreviation === significantShorter[0]) {
+        return true;
+      }
+    }
+
+    if (
+      significantLonger.length === 1 &&
+      significantShorter.length >= 2
+    ) {
+      const abbreviation = significantShorter
+        .map((token) => token[0])
+        .join('');
+      if (abbreviation && abbreviation === significantLonger[0]) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**

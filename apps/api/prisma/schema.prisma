@@ -82,6 +82,33 @@ model Connection {
   @@map("connections")
 }
 
+model ConnectionEntityDetails {
+  restaurantName          String        @map("restaurant_name")
+  restaurantAliases       String[]      @map("restaurant_aliases")
+  restaurantQualityScore  Decimal?      @map("restaurant_quality_score") @db.Decimal(10, 4)
+  foodName                String        @map("food_name")
+  foodAliases             String[]      @map("food_aliases")
+  foodQualityScore        Decimal       @map("food_quality_score") @db.Decimal(10, 4)
+  connectionId            String        @id @map("connection_id") @db.Uuid
+  restaurantId            String        @map("restaurant_id") @db.Uuid
+  foodId                  String        @map("food_id") @db.Uuid
+  categories              String[]      @map("categories") @db.Uuid
+  foodAttributes          String[]      @map("food_attributes") @db.Uuid
+  activityLevel           ActivityLevel @map("activity_level")
+  decayedUpvoteScore      Decimal       @map("decayed_upvote_score") @db.Decimal(18, 6)
+  decayedMentionScore     Decimal       @map("decayed_mention_score") @db.Decimal(18, 6)
+  totalUpvotes            Int           @map("total_upvotes")
+  mentionCount            Int           @map("mention_count")
+  recentMentionCount      Int           @map("recent_mention_count")
+  lastMentionedAt         DateTime?     @map("last_mentioned_at")
+  decayedScoresUpdatedAt  DateTime?     @map("decayed_scores_updated_at")
+  boostLastAppliedAt      DateTime?     @map("boost_last_applied_at")
+  lastUpdated             DateTime      @map("last_updated")
+  createdAt               DateTime      @map("created_at")
+
+  @@map("connection_entity_details")
+}
+
 model Boost {
   boostId          String    @id @default(dbgenerated("gen_random_uuid()")) @map("boost_id") @db.Uuid
   restaurantId     String    @map("restaurant_id") @db.Uuid

@@ -388,7 +388,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   description: 'Unique identifier for this mention',
                 },
                 // Restaurant info (required)
-                restaurant_name: {
+                restaurant: {
                   type: 'string',
                   description:
                     'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
@@ -402,7 +402,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                 },
 
                 // Food info (optional with nullable)
-                food_name: {
+                food: {
                   type: 'string',
                   description:
                     'Complete compound food term as primary name, singular form, excluding attributes',
@@ -444,15 +444,15 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               },
               required: [
                 'temp_id',
-                'restaurant_name',
+                'restaurant',
                 'general_praise',
                 'source_id',
               ],
               propertyOrdering: [
                 'temp_id',
-                'restaurant_name',
+                'restaurant',
                 'restaurant_attributes',
-                'food_name',
+                'food',
                 'food_categories',
                 'is_menu_item',
                 'food_attributes',
@@ -827,8 +827,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           parsed.mentions.length > 0
             ? parsed.mentions.map((m) => ({
                 temp_id: m.temp_id,
-                restaurant: m.restaurant_name,
-                food: m.food_name,
+                restaurant: m.restaurant,
+                food: m.food,
                 food_categories: m.food_categories,
               }))
             : [],

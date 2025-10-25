@@ -90,7 +90,8 @@ export interface QualityScoreUpdateResult {
   restaurantsUpdated: number;
   averageProcessingTimeMs: number;
   errors: Array<{
-    connectionId: string;
+    connectionId?: string;
+    restaurantId?: string;
     error: string;
   }>;
 }

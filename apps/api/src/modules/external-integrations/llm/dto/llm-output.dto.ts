@@ -57,13 +57,13 @@ export class LLMMentionDto {
   // Restaurant fields (REQUIRED)
   @IsString()
   @IsSafeString()
-  restaurant_name: string;
+  restaurant: string;
 
   // Enhanced food fields for compound term processing
   @IsOptional()
   @IsString()
   @IsSafeString()
-  food_name?: string | null;
+  food?: string | null;
 
   @IsOptional()
   @IsArray()

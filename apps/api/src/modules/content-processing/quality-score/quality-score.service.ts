@@ -16,6 +16,7 @@ import {
 } from './quality-score.types';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DEFAULT_CONNECTION_BATCH_SIZE = 50;
 
 /**
  * Quality Score Service
@@ -33,6 +34,7 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 export class QualityScoreService implements IQualityScoreService {
   private logger!: LoggerService;
   private readonly config: QualityScoreConfig;
+  private readonly connectionBatchSize: number;
 
   constructor(
     private readonly connectionRepository: ConnectionRepository,
@@ -43,6 +45,10 @@ export class QualityScoreService implements IQualityScoreService {
   ) {
     this.logger = loggerService.setContext('QualityScoreService');
     this.config = this.loadConfigFromEnv();
+    this.connectionBatchSize = this.resolveNumericConfig(
+      DEFAULT_CONNECTION_BATCH_SIZE,
+      'QUALITY_SCORE_CONNECTION_BATCH_SIZE',
+    );
   }
 
   getConfig(): QualityScoreConfig {
@@ -411,7 +417,11 @@ export class QualityScoreService implements IQualityScoreService {
     connectionIds: string[],
   ): Promise<QualityScoreUpdateResult> {
     const startTime = Date.now();
-    const errors: Array<{ connectionId: string; error: string }> = [];
+    const errors: Array<{
+      connectionId?: string;
+      restaurantId?: string;
+      error: string;
+    }> = [];
     const updatedRestaurants = new Set<string>();
     let connectionsUpdated = 0;
     const restaurantScoreCache = new Map<string, number>();
@@ -422,7 +432,7 @@ export class QualityScoreService implements IQualityScoreService {
       });
 
       // Process connections in batches
-      const batchSize = 50;
+      const batchSize = this.connectionBatchSize;
       for (let i = 0; i < connectionIds.length; i += batchSize) {
         const batch = connectionIds.slice(i, i + batchSize);
 
@@ -474,6 +484,30 @@ export class QualityScoreService implements IQualityScoreService {
               errorMessage,
             });
           }
+        }
+      }
+
+      for (const restaurantId of updatedRestaurants) {
+        try {
+          const restaurantScore = await this.calculateRestaurantQualityScore(
+            restaurantId,
+          );
+
+          await this.entityRepository.update(restaurantId, {
+            restaurantQualityScore: restaurantScore,
+            lastUpdated: new Date(),
+          });
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          errors.push({
+            restaurantId,
+            error: errorMessage,
+          });
+          this.logger.warn('Failed to update restaurant quality score', {
+            restaurantId,
+            errorMessage,
+          });
         }
       }
 

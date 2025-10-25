@@ -1255,10 +1255,10 @@ _**Note**: This structure reflects the current production implementation. Key pr
       "temp_id": "string",
       
       // Restaurant fields (REQUIRED)
-      "restaurant_name": "string",  // Normalized name only
+      "restaurant": "string",  // Normalized name only
       
       // Food entity fields (optional - null when no food mentioned)
-      "food_name": "string" | null,  // Normalized name only
+      "food": "string" | null,  // Normalized name only
       "food_categories": ["string"] | null,  // Hierarchical decomposition
       "is_menu_item": boolean | null,
       
@@ -1961,9 +1961,9 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
   },
   "food_results": [
     {
-      "food_name": "Tonkotsu Ramen",
+      "food": "Tonkotsu Ramen",
       "food_id": "uuid",
-      "restaurant_name": "Ramen Tatsu-Ya",
+      "restaurant": "Ramen Tatsu-Ya",
       "restaurant_id": "uuid",
       "connection_id": "uuid",
       "quality_score": 87.5,
@@ -2007,12 +2007,12 @@ _**Note**: Structure will evolve during implementation. Key principles are forma
   ],
   "restaurant_results": [
     {
-      "restaurant_name": "Ramen Tatsu-Ya",
+      "restaurant": "Ramen Tatsu-Ya",
       "restaurant_id": "uuid",
       "contextual_performance_score": 85.2,
       "relevant_food": [
         {
-          "food_name": "Tonkotsu Ramen",
+          "food": "Tonkotsu Ramen",
           "food_id": "uuid",
           "connection_id": "uuid",
           "quality_score": 87.5,

@@ -13,6 +13,7 @@
  */
 
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
@@ -68,6 +69,9 @@ const mergeIntoSummary = (
   target.newConnectionIds.push(...addition.newConnectionIds);
 };
 
+const DEFAULT_UNIFIED_BATCH_SIZE = 250;
+const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
+
 @Injectable()
 export class UnifiedProcessingService implements OnModuleInit {
   private logger!: LoggerService;
@@ -81,13 +85,25 @@ export class UnifiedProcessingService implements OnModuleInit {
     databaseOperations: 0,
     lastReset: new Date(),
   };
+  private readonly defaultBatchSize: number;
+  private readonly entityResolutionBatchSize: number;
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly qualityScoreService: QualityScoreService,
+    private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-  ) {}
+  ) {
+    this.defaultBatchSize = this.getNumericConfig(
+      'UNIFIED_PROCESSING_BATCH_SIZE',
+      DEFAULT_UNIFIED_BATCH_SIZE,
+    );
+    this.entityResolutionBatchSize = this.getNumericConfig(
+      'ENTITY_RESOLUTION_BATCH_SIZE',
+      DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE,
+    );
+  }
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('UnifiedProcessingService');
@@ -141,15 +157,8 @@ export class UnifiedProcessingService implements OnModuleInit {
     const batchId = sourceMetadata.batchId;
     const startTime = Date.now();
 
-    const DEFAULT_CONFIG: UnifiedProcessingConfig = {
-      enableQualityScores: true,
-      enableSourceAttribution: true,
-      maxRetries: 3,
-      batchTimeout: 300000, // 5 minutes
-      batchSize: 250, // PRD 6.6.4: Start with 100-500 entities per batch
-    };
-
-    const processingConfig = { ...DEFAULT_CONFIG, ...config };
+    const defaultConfig = this.buildDefaultProcessingConfig();
+    const processingConfig = { ...defaultConfig, ...config };
 
     try {
       this.logger.info('Processing LLM output directly', {
@@ -164,12 +173,12 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       // PRD 6.6.4: Check if batch needs to be split
       if (mentions.length > processingConfig.batchSize) {
-        const batchResult = await this.processMentionsInBatches(
-          llmOutput,
-          sourceMetadata,
-          batchId,
-          processingConfig,
-        );
+      const batchResult = await this.processMentionsInBatches(
+        llmOutput,
+        sourceMetadata,
+        batchId,
+        processingConfig,
+      );
 
         return {
           entitiesCreated:
@@ -392,10 +401,13 @@ export class UnifiedProcessingService implements OnModuleInit {
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput);
-    const resolutionResult = await this.entityResolutionService.resolveBatch(
-      entityResolutionInput,
-      { batchSize: 100, enableFuzzyMatching: true },
-    );
+      const resolutionResult = await this.entityResolutionService.resolveBatch(
+        entityResolutionInput,
+        {
+          batchSize: this.entityResolutionBatchSize,
+          enableFuzzyMatching: true,
+        },
+      );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
     const databaseResult = await this.performConsolidatedProcessingWithRetry(
@@ -457,31 +469,85 @@ export class UnifiedProcessingService implements OnModuleInit {
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
 
+    const getSurfaceString = (
+      surface: unknown,
+      fallback: unknown,
+    ): string => {
+      if (typeof surface === 'string' && surface.length > 0) {
+        return surface;
+      }
+      if (typeof fallback === 'string' && fallback.length > 0) {
+        return fallback;
+      }
+      return '';
+    };
+
+    const getSurfaceArray = (
+      canonical: unknown,
+      surfaces: unknown,
+    ): string[] => {
+      if (!Array.isArray(canonical)) {
+        return [];
+      }
+      const canonicalArray = canonical as unknown[];
+      const surfaceArray = Array.isArray(surfaces)
+        ? (surfaces as unknown[])
+        : [];
+
+      return canonicalArray.map((value, index) => {
+        const surfaceCandidate = surfaceArray[index];
+        if (typeof surfaceCandidate === 'string' && surfaceCandidate.length > 0) {
+          return surfaceCandidate;
+        }
+        if (typeof value === 'string' && value.length > 0) {
+          return value;
+        }
+        return '';
+      });
+    };
+
     try {
       for (const mention of llmOutput.mentions) {
         // Restaurant entities (deterministic temp IDs)
-        if (mention.restaurant_name) {
+        if (mention.restaurant) {
           const restaurantTempId = this.buildRestaurantTempId(mention);
           mention.__restaurantTempId = restaurantTempId;
+          const restaurantSurface = getSurfaceString(
+            mention.restaurant_surface,
+            mention.restaurant,
+          );
           entities.push({
-            normalizedName: mention.restaurant_name,
-            originalText: mention.restaurant_name,
+            normalizedName: mention.restaurant,
+            originalText: restaurantSurface,
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
+            aliases:
+              restaurantSurface &&
+              restaurantSurface !== mention.restaurant
+                ? [restaurantSurface]
+                : [],
           });
         } else {
           mention.__restaurantTempId = null;
         }
 
         // Food entity (menu item)
-        if (mention.food_name) {
+        if (mention.food) {
           const foodEntityTempId = this.buildFoodEntityTempId(mention);
           mention.__foodEntityTempId = foodEntityTempId;
+          const foodSurface = getSurfaceString(
+            mention.food_surface,
+            mention.food,
+          );
           entities.push({
-            normalizedName: mention.food_name,
-            originalText: mention.food_name,
+            normalizedName: mention.food,
+            originalText: foodSurface,
             entityType: 'food' as const,
             tempId: foodEntityTempId,
+            aliases:
+              foodSurface && foodSurface !== mention.food
+                ? [foodSurface]
+                : [],
           });
         } else {
           mention.__foodEntityTempId = null;
@@ -493,7 +559,12 @@ export class UnifiedProcessingService implements OnModuleInit {
             mention.__foodCategoryTempIds = [];
           }
           const seenCategoryIds = new Set<string>();
-          for (const category of mention.food_categories) {
+          const categorySurfaces = getSurfaceArray(
+            mention.food_categories,
+            mention.food_category_surfaces,
+          );
+          for (let i = 0; i < mention.food_categories.length; i += 1) {
+            const category = mention.food_categories[i];
             if (!category) {
               continue;
             }
@@ -502,38 +573,52 @@ export class UnifiedProcessingService implements OnModuleInit {
               continue;
             }
             seenCategoryIds.add(categoryTempId);
+            const categorySurface = categorySurfaces[i] || category;
 
             entities.push({
               normalizedName: category,
-              originalText: category,
+              originalText: categorySurface || category,
               entityType: 'food' as const,
               tempId: categoryTempId,
+              aliases:
+                categorySurface && categorySurface !== category
+                  ? [categorySurface]
+                  : [],
             });
             mention.__foodCategoryTempIds.push({
               name: category,
               tempId: categoryTempId,
+              surface: categorySurface || category,
             });
+            }
+            if (mention.__foodCategoryTempIds.length === 0) {
+              delete mention.__foodCategoryTempIds;
+            }
           }
-          if (mention.__foodCategoryTempIds.length === 0) {
-            delete mention.__foodCategoryTempIds;
-          }
-        }
 
         // Food attributes
         if (mention.food_attributes && Array.isArray(mention.food_attributes)) {
           const seenFoodAttrIds = new Set<string>();
-          for (const attr of mention.food_attributes) {
+          const foodAttributeSurfaces = getSurfaceArray(
+            mention.food_attributes,
+            mention.food_attribute_surfaces,
+          );
+          for (let i = 0; i < mention.food_attributes.length; i += 1) {
+            const attr = mention.food_attributes[i];
             if (typeof attr === 'string' && attr) {
               const attributeTempId = this.buildAttributeTempId('food', attr);
               if (seenFoodAttrIds.has(attributeTempId)) {
                 continue;
               }
               seenFoodAttrIds.add(attributeTempId);
+              const attrSurface = foodAttributeSurfaces[i] || attr;
               entities.push({
                 normalizedName: attr,
-                originalText: attr,
+                originalText: attrSurface || attr,
                 entityType: 'food_attribute' as const,
                 tempId: attributeTempId,
+                aliases:
+                  attrSurface && attrSurface !== attr ? [attrSurface] : [],
               });
             }
           }
@@ -545,7 +630,12 @@ export class UnifiedProcessingService implements OnModuleInit {
           Array.isArray(mention.restaurant_attributes)
         ) {
           const seenRestaurantAttrIds = new Set<string>();
-          for (const attr of mention.restaurant_attributes) {
+          const restaurantAttrSurfaces = getSurfaceArray(
+            mention.restaurant_attributes,
+            mention.restaurant_attribute_surfaces,
+          );
+          for (let i = 0; i < mention.restaurant_attributes.length; i += 1) {
+            const attr = mention.restaurant_attributes[i];
             if (typeof attr === 'string' && attr) {
               const attributeTempId = this.buildAttributeTempId(
                 'restaurant',
@@ -555,11 +645,14 @@ export class UnifiedProcessingService implements OnModuleInit {
                 continue;
               }
               seenRestaurantAttrIds.add(attributeTempId);
+              const attrSurface = restaurantAttrSurfaces[i] || attr;
               entities.push({
                 normalizedName: attr,
-                originalText: attr,
+                originalText: attrSurface || attr,
                 entityType: 'restaurant_attribute' as const,
                 tempId: attributeTempId,
+                aliases:
+                  attrSurface && attrSurface !== attr ? [attrSurface] : [],
               });
             }
           }
@@ -603,14 +696,14 @@ export class UnifiedProcessingService implements OnModuleInit {
       subject ?? '',
       mention?.source_id ?? '',
       mention?.temp_id ?? '',
-      mention?.restaurant_name ?? '',
-      mention?.food_name ?? '',
+      mention?.restaurant ?? '',
+      mention?.food ?? '',
     ];
     return `${scope}-${this.stableHash(parts.join('|'))}`;
   }
 
   private buildRestaurantTempId(mention: any): string {
-    const normalized = this.normalizeForId(mention?.restaurant_name);
+    const normalized = this.normalizeForId(mention?.restaurant);
     if (normalized) {
       return `restaurant::${normalized}`;
     }
@@ -624,7 +717,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         ? mention.__restaurantTempId
         : this.buildRestaurantTempId(mention);
 
-    const normalizedFoodName = this.normalizeForId(mention?.food_name);
+    const normalizedFoodName = this.normalizeForId(mention?.food);
     if (normalizedFoodName) {
       return `${restaurantTempId}::food::${normalizedFoodName}`;
     }
@@ -662,7 +755,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       return mention.__restaurantTempId.trim();
     }
 
-    if (mention && mention.restaurant_name) {
+    if (mention && mention.restaurant) {
       const generatedId = this.buildRestaurantTempId(mention);
       mention.__restaurantTempId = generatedId;
       return generatedId;
@@ -680,7 +773,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       return mention.__foodEntityTempId.trim();
     }
 
-    if (mention && mention.food_name) {
+    if (mention && mention.food) {
       const generatedId = this.buildFoodEntityTempId(mention);
       mention.__foodEntityTempId = generatedId;
       return generatedId;
@@ -719,6 +812,10 @@ export class UnifiedProcessingService implements OnModuleInit {
       const entityDetails =
         resolutionResult.entityDetails || new Map<string, any>();
       const newEntityTempGroups = new Map<string, Set<string>>();
+      const resolutionByTempId = new Map<
+        string,
+        (typeof resolutionResult.resolutionResults)[number]
+      >();
 
       for (const resolution of resolutionResult.resolutionResults) {
         if (resolution.resolutionTier !== 'new') {
@@ -738,6 +835,7 @@ export class UnifiedProcessingService implements OnModuleInit {
         }
 
         newEntityTempGroups.get(primaryTempId)!.add(resolution.tempId);
+        resolutionByTempId.set(resolution.tempId, resolution);
       }
 
       for (const resolution of resolutionResult.resolutionResults) {
@@ -773,6 +871,49 @@ export class UnifiedProcessingService implements OnModuleInit {
           if (!resolution.isNewEntity) {
             continue;
           }
+
+          const tempGroupSet =
+            newEntityTempGroups.get(resolution.tempId) ??
+            new Set<string>([resolution.tempId]);
+          const tempGroup = Array.from(tempGroupSet);
+          const aggregatedAliasSet = new Set<string>();
+
+          for (const tempId of tempGroup) {
+            const groupResolution = resolutionByTempId.get(tempId);
+            if (!groupResolution) {
+              continue;
+            }
+
+            const candidateAliases = groupResolution.validatedAliases || [];
+            for (const alias of candidateAliases) {
+              if (typeof alias === 'string' && alias.length > 0) {
+                aggregatedAliasSet.add(alias);
+              }
+            }
+
+            const originalSurface =
+              groupResolution.originalInput?.originalText;
+            if (
+              typeof originalSurface === 'string' &&
+              originalSurface.length > 0
+            ) {
+              aggregatedAliasSet.add(originalSurface);
+            }
+          }
+
+          if (aggregatedAliasSet.size === 0) {
+            const fallbackAlias =
+              typeof resolution.originalInput.originalText === 'string' &&
+              resolution.originalInput.originalText.length > 0
+                ? resolution.originalInput.originalText
+                : resolution.normalizedName || '';
+            if (fallbackAlias) {
+              aggregatedAliasSet.add(fallbackAlias);
+            }
+          }
+
+          const aggregatedAliases = Array.from(aggregatedAliasSet);
+          resolution.validatedAliases = aggregatedAliases;
 
           const existing = await tx.entity.findUnique({
             where: {
@@ -871,11 +1012,6 @@ export class UnifiedProcessingService implements OnModuleInit {
               entityType: resolution.entityType,
               name: resolution.normalizedName,
             });
-
-            const tempGroup = Array.from(
-              newEntityTempGroups.get(resolution.tempId) ??
-                new Set<string>([resolution.tempId]),
-            );
 
             createdEntitySummaries.push({
               entityId,
@@ -1880,7 +2016,8 @@ export class UnifiedProcessingService implements OnModuleInit {
         recentMentionCount: operation.isRecent ? 1 : 0,
         lastMentionedAt: mentionCreatedAt,
         activityLevel: operation.activityLevel,
-        foodQualityScore: upvoteValue * 0.1,
+        // Seed with 0 and let the quality score batch recompute the final value
+        foodQualityScore: 0,
         lastUpdated: new Date(),
         createdAt: new Date(),
         decayedMentionScore: 1,
@@ -2425,5 +2562,29 @@ export class UnifiedProcessingService implements OnModuleInit {
       databaseOperations: 0,
       lastReset: new Date(),
     };
+  }
+
+  private buildDefaultProcessingConfig(): UnifiedProcessingConfig {
+    return {
+      enableQualityScores: true,
+      enableSourceAttribution: true,
+      maxRetries: 3,
+      batchTimeout: 300000, // 5 minutes
+      batchSize: this.defaultBatchSize,
+    };
+  }
+
+  private getNumericConfig(envKey: string, fallback: number): number {
+    const raw = this.configService.get<string | number | undefined>(envKey);
+    if (raw === undefined || raw === null || raw === '') {
+      return fallback;
+    }
+
+    const parsed = typeof raw === 'number' ? raw : Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return fallback;
+    }
+
+    return parsed;
   }
 }

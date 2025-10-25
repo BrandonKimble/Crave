@@ -29,8 +29,8 @@
 **Key Updates Applied**:
 
 - ✅ `food_` prefix instead of `dish_` for all food-related fields
-- ✅ Single normalized `restaurant_name` field (removed `restaurant_original_text`)
-- ✅ Single normalized `food_name` field (removed `food_original_text`)
+- ✅ Single normalized `restaurant` field (removed `restaurant_original_text`)
+- ✅ Single normalized `food` field (removed `food_original_text`)
 - ✅ Updated all LLM types, DTOs, and schemas across the codebase
 - ✅ Updated JSON schema definitions for LLM requests
 - ✅ Fixed all field references in processing services

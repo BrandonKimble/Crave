@@ -100,6 +100,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         })),
       };
 
+      this.ensureSurfaceDefaults(llmOutput.mentions);
       this.normalizeRestaurantNames(llmOutput.mentions, enrichment);
       this.dropDuplicateRestaurantMentions(llmOutput.mentions, enrichment);
 
@@ -319,6 +320,79 @@ export class RedditBatchProcessingService implements OnModuleInit {
     };
   }
 
+  private ensureSurfaceDefaults(mentions: any[]): void {
+    const alignSurfaces = (
+      canonicalValues: unknown,
+      surfaceValues: unknown,
+    ): (string | null)[] | null => {
+      if (!Array.isArray(canonicalValues)) {
+        return Array.isArray(surfaceValues)
+          ? (surfaceValues as unknown[]).map((value) =>
+              typeof value === 'string' && value.length > 0 ? value : null,
+            )
+          : null;
+      }
+
+      const canonicalArray = canonicalValues as unknown[];
+      const surfaceArray = Array.isArray(surfaceValues)
+        ? (surfaceValues as unknown[])
+        : [];
+
+      return canonicalArray.map((value, index) => {
+        const surfaceCandidate = surfaceArray[index];
+        if (typeof surfaceCandidate === 'string' && surfaceCandidate.length > 0) {
+          return surfaceCandidate;
+        }
+        if (typeof value === 'string' && value.length > 0) {
+          return value;
+        }
+        return null;
+      });
+    };
+
+    for (const mention of mentions) {
+      const restaurantName =
+        typeof mention?.restaurant === 'string'
+          ? mention.restaurant
+          : null;
+      if (
+        typeof mention?.restaurant_surface !== 'string' ||
+        mention.restaurant_surface.length === 0
+      ) {
+        mention.restaurant_surface = restaurantName;
+      }
+
+      const foodName =
+        typeof mention?.food === 'string' ? mention.food : null;
+      if (
+        mention.food_surface === undefined ||
+        (mention.food_surface === null && foodName)
+      ) {
+        mention.food_surface = foodName;
+      } else if (
+        typeof mention.food_surface !== 'string' ||
+        mention.food_surface.length === 0
+      ) {
+        mention.food_surface = foodName;
+      }
+
+      mention.food_category_surfaces = alignSurfaces(
+        mention.food_categories,
+        mention.food_category_surfaces,
+      );
+
+      mention.food_attribute_surfaces = alignSurfaces(
+        mention.food_attributes,
+        mention.food_attribute_surfaces,
+      );
+
+      mention.restaurant_attribute_surfaces = alignSurfaces(
+        mention.restaurant_attributes,
+        mention.restaurant_attribute_surfaces,
+      );
+    }
+  }
+
   private normalizeRestaurantNames(
     mentions: any[],
     enrichment: ReturnType<typeof this.buildSourceEnrichmentMaps>,
@@ -368,7 +442,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         >();
 
         for (const mention of postMentions) {
-          const tokens = tokenize(mention.restaurant_name);
+          const tokens = tokenize(mention.restaurant);
           const key = keyFromTokens(tokens);
           if (!key) continue;
           const prev = nameCounts.get(key) || {
@@ -390,7 +464,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         const dishSets: string[][] = [];
         const dishKeys = new Set<string>();
         for (const mention of postMentions) {
-          const dishTokens = tokenize(mention.food_name);
+          const dishTokens = tokenize(mention.food);
           if (dishTokens.length === 0) continue;
           const key = keyFromTokens(dishTokens);
           if (!dishKeys.has(key)) {
@@ -405,11 +479,11 @@ export class RedditBatchProcessingService implements OnModuleInit {
         });
 
         for (const mention of postMentions) {
-          const restaurantTokens = tokenize(mention.restaurant_name);
+          const restaurantTokens = tokenize(mention.restaurant);
           if (restaurantTokens.length === 0) continue;
 
           let rewritten = false;
-          const foodTokens = tokenize(mention.food_name);
+          const foodTokens = tokenize(mention.food);
           if (foodTokens.length > 0) {
             const restaurantSet = new Set(restaurantTokens);
             const foodSet = new Set(foodTokens);
@@ -460,7 +534,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
                   bestMatch &&
                   bestMatch.key !== keyFromTokens(restaurantTokens)
                 ) {
-                  mention.restaurant_name = bestMatch.key;
+                  mention.restaurant = bestMatch.key;
                   rewritten = true;
                 }
               }
@@ -513,11 +587,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
               bestMatch &&
               bestMatch.key !== keyFromTokens(restaurantTokens)
             ) {
-              mention.restaurant_name = bestMatch.key;
+              mention.restaurant = bestMatch.key;
             }
           }
         }
       }
+
     } catch (error) {
       this.logger.debug('Post-level normalization skipped due to error', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -557,7 +632,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         });
       }
       const stats = postNormalizationStats.get(postId)!;
-      const tokens = tokenize(mention.restaurant_name);
+      const tokens = tokenize(mention.restaurant);
       if (tokens.length === 0) {
         return;
       }
@@ -568,12 +643,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
     });
 
     const filtered = mentions.filter((mention) => {
-      const restaurantTokens = tokenize(mention.restaurant_name);
+      const restaurantTokens = tokenize(mention.restaurant);
       if (restaurantTokens.length === 0) {
         return false;
       }
 
-      const foodTokenSet = new Set(tokenize(mention.food_name));
+      const foodTokenSet = new Set(tokenize(mention.food));
       if (Array.isArray(mention.food_categories)) {
         for (const category of mention.food_categories) {
           tokenize(category).forEach((token) => foodTokenSet.add(token));

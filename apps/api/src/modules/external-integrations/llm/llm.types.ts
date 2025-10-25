@@ -66,16 +66,21 @@ export interface LLMMention {
   temp_id: string;
 
   // Restaurant fields (REQUIRED)
-  restaurant_name: string; // Normalized name only
+  restaurant: string; // Normalized name only
+  restaurant_surface?: string | null; // Exact string as observed in source
 
   // Food entity fields (optional - null when no food mentioned)
-  food_name?: string | null; // Normalized name only
+  food?: string | null; // Normalized name only
+  food_surface?: string | null; // Exact string as observed in source
   food_categories?: string[] | null; // Hierarchical decomposition
+  food_category_surfaces?: (string | null)[] | null; // Surface tokens aligned with food_categories
   is_menu_item?: boolean | null;
 
   // Attributes (preserved as arrays)
   restaurant_attributes?: string[] | null;
+  restaurant_attribute_surfaces?: (string | null)[] | null;
   food_attributes?: string[] | null;
+  food_attribute_surfaces?: (string | null)[] | null;
 
   // Core processing fields (VITAL)
   general_praise: boolean;
@@ -93,7 +98,11 @@ export interface LLMMention {
   // Internal processing fields populated server-side
   __restaurantTempId?: string | null;
   __foodEntityTempId?: string | null;
-  __foodCategoryTempIds?: Array<{ name: string; tempId: string }>;
+  __foodCategoryTempIds?: Array<{
+    name: string;
+    tempId: string;
+    surface?: string | null;
+  }>;
 }
 
 /**
