@@ -293,6 +293,7 @@ async function testPipeline() {
     const aggregatedLlmPostSamples: any[] = [];
     let batchesProcessed = 0;
     let collectedPostIds: string[] = [];
+    let reportedPostsCount = 0;
     let totalMentionsExtracted = 0;
 
 
@@ -461,6 +462,7 @@ async function testPipeline() {
     const queueLabel = PIPELINE_COLLECTION === 'archive' ? 'Archive batch' : 'Chronological batch';
 
     collectedPostIds = [];
+    reportedPostsCount = 0;
     totalMentionsExtracted = 0;
     batchesProcessed = 0;
 
@@ -676,7 +678,8 @@ async function testPipeline() {
         latestCollectionResult = jobResult;
         totalMentionsExtracted = jobResult.mentionsExtracted || 0;
         batchesProcessed = jobResult.batchesProcessed || 0;
-        collectedPostIds = Array.from({ length: jobResult.postsProcessed || 0 }, (_, i) => `bull-post-${i}`);
+        collectedPostIds = [];
+        reportedPostsCount = jobResult.postsProcessed || 0;
 
         const { completedJobs, failedJobs } = await waitForBatches(
           chronologicalBatchQueue,
@@ -766,7 +769,8 @@ async function testPipeline() {
     // ========================================
     const overallDurationSeconds = (Date.now() - overallStartTime) / 1000;
     const mentionsCount = totalMentionsExtracted || 0;
-    const postsCount = collectedPostIds.length;
+    const actualPostsCount = collectedPostIds.length;
+    const postsCount = actualPostsCount > 0 ? actualPostsCount : reportedPostsCount;
     
     // Get comprehensive metrics from rate limiter and LLM service
     let rateLimitMetrics: any = null;
@@ -859,9 +863,9 @@ async function testPipeline() {
     const overallDuration = Date.now() - overallStartTime;
     
     // Calculate comprehensive stats
-    const avgTimePerPost = collectedPostIds.length > 0 ? overallDuration / collectedPostIds.length : 0;
-    const postsPerSecond = collectedPostIds.length > 0 ? collectedPostIds.length / (overallDuration / 1000) : 0;
-    const mentionsPerPost = collectedPostIds.length > 0 ? (totalMentionsExtracted || 0) / collectedPostIds.length : 0;
+    const avgTimePerPost = postsCount > 0 ? overallDuration / postsCount : 0;
+    const postsPerSecond = postsCount > 0 ? postsCount / (overallDuration / 1000) : 0;
+    const mentionsPerPost = postsCount > 0 ? (totalMentionsExtracted || 0) / postsCount : 0;
     
     // Build structured results (revamped)
     const headroom = parseFloat(process.env.LLM_RATE_HEADROOM || '0.95');
@@ -887,13 +891,13 @@ async function testPipeline() {
         headroom: isNaN(headroom) ? 0.95 : headroom,
       },
       throughput: {
-        posts: collectedPostIds.length,
+        posts: postsCount,
         mentions: totalMentionsExtracted || 0,
         batches: batchesProcessed,
         postsPerSecond: Number(postsPerSecond.toFixed(2)),
-        postsPerMinute: collectedPostIds.length > 0 ? Number((collectedPostIds.length / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
+        postsPerMinute: postsCount > 0 ? Number((postsCount / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
         avgTimePerPostMs: Math.round(avgTimePerPost),
-        mentionsPerPost: collectedPostIds.length > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
+        mentionsPerPost: postsCount > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
       },
       rateLimiting: rateLimitMetrics && !rateLimitMetrics.error ? {
         rpm: {

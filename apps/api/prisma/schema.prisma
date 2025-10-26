@@ -22,10 +22,15 @@ model Entity {
   address                String?      @db.VarChar(500)
   googlePlaceId          String?      @unique @map("google_place_id") @db.VarChar(255)
   restaurantMetadata     Json         @default("{}") @map("restaurant_metadata")
+  city                   String?      @map("city") @db.VarChar(255)
+  region                 String?      @map("region") @db.VarChar(255)
+  country                String?      @map("country") @db.VarChar(2)
+  postalCode             String?      @map("postal_code") @db.VarChar(32)
   lastUpdated            DateTime     @default(now()) @map("last_updated")
   createdAt              DateTime     @default(now()) @map("created_at")
   foodConnections        Connection[] @relation("FoodEntity")
   restaurantConnections  Connection[] @relation("RestaurantEntity")
+  priorityMetrics        EntityPriorityMetric?
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -36,6 +41,9 @@ model Entity {
   @@index([longitude, latitude], map: "idx_entities_location")
   @@index([address], map: "idx_entities_address")
   @@index([googlePlaceId], map: "idx_entities_google_place_id")
+  @@index([city], map: "idx_entities_city")
+  @@index([region], map: "idx_entities_region")
+  @@index([country], map: "idx_entities_country")
   @@index([lastUpdated(sort: Desc)], map: "idx_entities_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_entities_created_at")
   @@map("entities")
@@ -153,6 +161,27 @@ model Source {
   @@index([subreddit], map: "idx_source_subreddit")
   @@index([processedAt(sort: Desc)], map: "idx_source_processed_at")
   @@map("source")
+}
+
+model EntityPriorityMetric {
+  entityId         String     @map("entity_id") @db.Uuid
+  entityType       EntityType @map("entity_type")
+  priorityScore    Decimal?   @default(0) @map("priority_score") @db.Decimal(9, 4)
+  dataRecencyScore Decimal?   @default(0) @map("data_recency_score") @db.Decimal(9, 4)
+  dataQualityScore Decimal?   @default(0) @map("data_quality_score") @db.Decimal(9, 4)
+  userDemandScore  Decimal?   @default(0) @map("user_demand_score") @db.Decimal(9, 4)
+  isNewEntity      Boolean    @default(false) @map("is_new_entity")
+  lastCalculatedAt DateTime   @default(now()) @map("last_calculated_at")
+  lastSelectedAt   DateTime?  @map("last_selected_at")
+  queryImpressions Int        @default(0) @map("query_impressions")
+  queryClicks      Int        @default(0) @map("query_clicks")
+  lastQueryAt      DateTime?  @map("last_query_at")
+  entity           Entity     @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  @@id([entityId])
+  @@index([entityType], map: "idx_entity_priority_metrics_type")
+  @@index([lastCalculatedAt(sort: Desc)], map: "idx_entity_priority_metrics_calculated")
+  @@map("entity_priority_metrics")
 }
 
 model User {

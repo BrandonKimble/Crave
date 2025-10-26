@@ -489,9 +489,8 @@ export class QualityScoreService implements IQualityScoreService {
 
       for (const restaurantId of updatedRestaurants) {
         try {
-          const restaurantScore = await this.calculateRestaurantQualityScore(
-            restaurantId,
-          );
+          const restaurantScore =
+            await this.calculateRestaurantQualityScore(restaurantId);
 
           await this.entityRepository.update(restaurantId, {
             restaurantQualityScore: restaurantScore,
@@ -545,15 +544,13 @@ export class QualityScoreService implements IQualityScoreService {
   private calculateConnectionStrength(
     connection: Connection,
   ): ConnectionStrengthMetrics {
-    const {
-      mentionScore,
-      upvoteScore,
-      lastUpdatedAt,
-      elapsedMs,
-    } = this.getCurrentDecayedMetrics(connection);
+    const { mentionScore, upvoteScore, lastUpdatedAt, elapsedMs } =
+      this.getCurrentDecayedMetrics(connection);
 
     const averageMentionAge =
-      elapsedMs > 0 ? elapsedMs / MS_PER_DAY : this.config.timeDecay.mentionCountDecayDays;
+      elapsedMs > 0
+        ? elapsedMs / MS_PER_DAY
+        : this.config.timeDecay.mentionCountDecayDays;
 
     const totalMentions = Math.max(1, connection.mentionCount);
     const recentMentionRatio = Math.min(
@@ -763,8 +760,7 @@ export class QualityScoreService implements IQualityScoreService {
 
     const mentionScore =
       baseMentionScore * Math.exp(-elapsedMs / mentionDecayMs);
-    const upvoteScore =
-      baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
+    const upvoteScore = baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
 
     return { mentionScore, upvoteScore, lastUpdatedAt, elapsedMs };
   }

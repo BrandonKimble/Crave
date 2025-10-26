@@ -662,17 +662,17 @@ export class EntityResolutionService implements OnModuleInit {
           );
 
           // Check if within thresholds
-        const forceMerge = this.shouldForceRestaurantFuzzyMatch(
-          entityType,
-          searchTerm,
-          candidateTerm,
-        );
+          const forceMerge = this.shouldForceRestaurantFuzzyMatch(
+            entityType,
+            searchTerm,
+            candidateTerm,
+          );
 
-        if (
-          forceMerge ||
-          (similarity >= config.fuzzyMatchThreshold &&
-            editDistance <= config.maxEditDistance)
-        ) {
+          if (
+            forceMerge ||
+            (similarity >= config.fuzzyMatchThreshold &&
+              editDistance <= config.maxEditDistance)
+          ) {
             if (!bestMatch || similarity > bestMatch.confidence) {
               bestMatch = {
                 entityId: candidate.entityId,
@@ -1183,9 +1183,7 @@ export class EntityResolutionService implements OnModuleInit {
         continue;
       }
 
-      const normalizedCandidate = candidate.normalizedName
-        .toLowerCase()
-        .trim();
+      const normalizedCandidate = candidate.normalizedName.toLowerCase().trim();
       const candidateTokens = this.tokenizeEntityName(normalizedCandidate);
 
       if (
@@ -1354,7 +1352,11 @@ export class EntityResolutionService implements OnModuleInit {
       return null;
     }
 
-    for (let segmentLength = 2; segmentLength <= Math.floor(token.length / 2); segmentLength += 1) {
+    for (
+      let segmentLength = 2;
+      segmentLength <= Math.floor(token.length / 2);
+      segmentLength += 1
+    ) {
       if (token.length % segmentLength !== 0) {
         continue;
       }
@@ -1387,10 +1389,7 @@ export class EntityResolutionService implements OnModuleInit {
       if (token.length === 1) {
         const nextIndex = index + 1;
 
-        if (
-          nextIndex < tokens.length &&
-          tokens[nextIndex].length > 1
-        ) {
+        if (nextIndex < tokens.length && tokens[nextIndex].length > 1) {
           combined.push(token + tokens[nextIndex]);
           index += 2;
           continue;
@@ -1398,10 +1397,7 @@ export class EntityResolutionService implements OnModuleInit {
 
         let runEnd = index;
         let concatenated = '';
-        while (
-          runEnd < tokens.length &&
-          tokens[runEnd].length === 1
-        ) {
+        while (runEnd < tokens.length && tokens[runEnd].length === 1) {
           concatenated += tokens[runEnd];
           runEnd += 1;
         }
@@ -1427,9 +1423,7 @@ export class EntityResolutionService implements OnModuleInit {
     if (!tokens.length) {
       return tokens;
     }
-    return tokens.filter(
-      (token) => !this.restaurantConnectorTokens.has(token),
-    );
+    return tokens.filter((token) => !this.restaurantConnectorTokens.has(token));
   }
 
   private tokensSharePrefix(
@@ -1481,7 +1475,9 @@ export class EntityResolutionService implements OnModuleInit {
       return false;
     }
 
-    if (!this.tokensSharePrefix(normalizedShorter, normalizedLonger, prefixLength)) {
+    if (
+      !this.tokensSharePrefix(normalizedShorter, normalizedLonger, prefixLength)
+    ) {
       return false;
     }
 
@@ -1516,25 +1512,15 @@ export class EntityResolutionService implements OnModuleInit {
       return true;
     }
 
-    if (
-      significantShorter.length === 1 &&
-      significantLonger.length >= 2
-    ) {
-      const abbreviation = significantLonger
-        .map((token) => token[0])
-        .join('');
+    if (significantShorter.length === 1 && significantLonger.length >= 2) {
+      const abbreviation = significantLonger.map((token) => token[0]).join('');
       if (abbreviation && abbreviation === significantShorter[0]) {
         return true;
       }
     }
 
-    if (
-      significantLonger.length === 1 &&
-      significantShorter.length >= 2
-    ) {
-      const abbreviation = significantShorter
-        .map((token) => token[0])
-        .join('');
+    if (significantLonger.length === 1 && significantShorter.length >= 2) {
+      const abbreviation = significantShorter.map((token) => token[0]).join('');
       if (abbreviation && abbreviation === significantLonger[0]) {
         return true;
       }

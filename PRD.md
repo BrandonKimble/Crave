@@ -2639,7 +2639,7 @@ _MVP user experience with essential filtering_
 - Error states provide helpful guidance to users
 - State management maintains search context during normal usage
 
-### 9.8 Milestone 8: Evidence & Attribution System (Week 16-17)
+### 9.8 Milestone 8: Evidence & Attribution System (Week 16-17) [DEPRECATED]
 
 _Core value proposition with hybrid data foundation_
 
@@ -2654,7 +2654,6 @@ _Core value proposition with hybrid data foundation_
 - **8** Community Engagement & Growth Strategy (all subsections)
 - **9** PRE-MVP Implementation Roadmap (all subsections)
 - **10** POST-MVP Roadmap (all subsections)
-
 #### 9.8.1 Core Tasks
 
 **Backend Implementation:**

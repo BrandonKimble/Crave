@@ -69,10 +69,11 @@ export class ArchiveCollectionWorker implements OnModuleInit {
     );
 
     try {
-      const enqueueResult = await this.archiveIngestionService.enqueueArchiveBatches(
-        subreddit,
-        options,
-      );
+      const enqueueResult =
+        await this.archiveIngestionService.enqueueArchiveBatches(
+          subreddit,
+          options,
+        );
 
       await job.log(
         `Enqueued ${enqueueResult.batchesEnqueued} archive batches (${enqueueResult.postsQueued} posts) with parent batch job ${enqueueResult.parentJobId}`,

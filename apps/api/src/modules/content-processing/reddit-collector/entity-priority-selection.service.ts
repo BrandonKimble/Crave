@@ -3,6 +3,7 @@ import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { ConnectionRepository } from '../../../repositories/connection.repository';
+import { EntityPriorityMetricsRepository } from '../../../repositories/entity-priority-metrics.repository';
 
 /**
  * Entity Priority Score interface per PRD 5.1.2
@@ -44,6 +45,7 @@ export class EntityPrioritySelectionService {
   constructor(
     private readonly entityRepository: EntityRepository,
     private readonly connectionRepository: ConnectionRepository,
+    private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
     private readonly logger: LoggerService,
   ) {}
 
@@ -89,12 +91,14 @@ export class EntityPrioritySelectionService {
       });
 
       const entityScores: EntityPriorityScore[] = [];
+      const metricWrites: Promise<unknown>[] = [];
 
       // Process each entity type for multi-entity coverage per PRD 5.1.2
       for (const entityType of finalConfig.entityTypes) {
         const typeScores = await this.calculateEntityTypeScores(
           entityType,
           finalConfig,
+          metricWrites,
         );
         entityScores.push(...typeScores);
       }
@@ -105,6 +109,21 @@ export class EntityPrioritySelectionService {
         .slice(0, finalConfig.maxEntities);
 
       const duration = Date.now() - startTime;
+
+      if (metricWrites.length > 0) {
+        const metricResults = await Promise.allSettled(metricWrites);
+        const failedWrites = metricResults.filter(
+          (result) => result.status === 'rejected',
+        ).length;
+        if (failedWrites > 0) {
+          this.logger.warn('Some priority metric updates failed', {
+            failedWrites,
+            totalWrites: metricWrites.length,
+          });
+        }
+      }
+
+      await this.updateLastSelectedTimestamps(topEntities);
       this.logger.debug('Entity priority selection completed', {
         duration,
         totalCandidates: entityScores.length,
@@ -138,6 +157,7 @@ export class EntityPrioritySelectionService {
   private async calculateEntityTypeScores(
     entityType: EntityType,
     config: PrioritySelectionConfig,
+    metricWrites: Promise<unknown>[],
   ): Promise<EntityPriorityScore[]> {
     try {
       this.logger.debug(`Calculating scores for entity type: ${entityType}`);
@@ -188,6 +208,9 @@ export class EntityPrioritySelectionService {
             compositeScore += config.newEntityBoost;
           }
 
+          const normalizedComposite =
+            Math.round(compositeScore * 10000) / 10000;
+
           const priorityScore: EntityPriorityScore = {
             entityId: entity.entityId,
             entityName: entity.name,
@@ -203,6 +226,44 @@ export class EntityPrioritySelectionService {
           };
 
           entityScores.push(priorityScore);
+
+          metricWrites.push(
+            this.entityPriorityMetricsRepository
+              .upsertMetrics(
+                { entityId: entity.entityId },
+                {
+                  entity: { connect: { entityId: entity.entityId } },
+                  entityType: entity.type,
+                  priorityScore: normalizedComposite,
+                  dataRecencyScore: dataRecency,
+                  dataQualityScore: dataQuality,
+                  userDemandScore: userDemand,
+                  isNewEntity,
+                  lastCalculatedAt: new Date(),
+                },
+                {
+                  entityType: entity.type,
+                  priorityScore: normalizedComposite,
+                  dataRecencyScore: dataRecency,
+                  dataQualityScore: dataQuality,
+                  userDemandScore: userDemand,
+                  isNewEntity,
+                  lastCalculatedAt: new Date(),
+                },
+              )
+              .catch((writeError: unknown) => {
+                this.logger.warn('Failed to record priority metrics', {
+                  entityId: entity.entityId,
+                  entityName: entity.name,
+                  error: {
+                    message:
+                      writeError instanceof Error
+                        ? writeError.message
+                        : String(writeError),
+                  },
+                });
+              }),
+          );
         } catch (entityError: unknown) {
           this.logger.warn('Failed to calculate score for entity', {
             entityId: entity.entityId,
@@ -238,6 +299,60 @@ export class EntityPrioritySelectionService {
         },
       );
       throw error;
+    }
+  }
+
+  private async updateLastSelectedTimestamps(
+    selectedEntities: EntityPriorityScore[],
+  ): Promise<void> {
+    if (selectedEntities.length === 0) {
+      return;
+    }
+
+    const updates = selectedEntities.map((entity) =>
+      this.entityPriorityMetricsRepository
+        .upsertMetrics(
+          { entityId: entity.entityId },
+          {
+            entity: { connect: { entityId: entity.entityId } },
+            entityType: entity.entityType,
+            priorityScore: entity.score,
+            dataRecencyScore: entity.factors.dataRecency,
+            dataQualityScore: entity.factors.dataQuality,
+            userDemandScore: entity.factors.userDemand,
+            isNewEntity: entity.isNewEntity,
+            lastCalculatedAt: new Date(),
+            lastSelectedAt: new Date(),
+          },
+          {
+            entityType: entity.entityType,
+            priorityScore: entity.score,
+            dataRecencyScore: entity.factors.dataRecency,
+            dataQualityScore: entity.factors.dataQuality,
+            userDemandScore: entity.factors.userDemand,
+            isNewEntity: entity.isNewEntity,
+            lastCalculatedAt: new Date(),
+            lastSelectedAt: new Date(),
+          },
+        )
+        .catch((error: unknown) => {
+          this.logger.warn('Failed to update lastSelectedAt for entity', {
+            entityId: entity.entityId,
+            error: {
+              message:
+                error instanceof Error ? error.message : String(error ?? ''),
+            },
+          });
+        }),
+    );
+
+    const results = await Promise.allSettled(updates);
+    const failures = results.filter((result) => result.status === 'rejected');
+    if (failures.length > 0) {
+      this.logger.warn('Some lastSelectedAt updates failed', {
+        failedUpdates: failures.length,
+        totalUpdates: updates.length,
+      });
     }
   }
 

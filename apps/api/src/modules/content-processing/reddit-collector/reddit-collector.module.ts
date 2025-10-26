@@ -26,6 +26,7 @@ import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker'
 import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
 import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
+import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 
 /**
  * Reddit Collector Module
@@ -96,6 +97,7 @@ import { RedditBatchProcessingService } from './reddit-batch-processing.service'
     BullModule.registerQueue({
       name: 'archive-collection',
     }),
+    RestaurantEnrichmentModule,
   ],
   providers: [
     ArchiveZstdDecompressor,

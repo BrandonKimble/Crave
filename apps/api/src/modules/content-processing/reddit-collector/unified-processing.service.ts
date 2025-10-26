@@ -35,6 +35,7 @@ import {
   UnifiedProcessingException,
   UnifiedProcessingExceptionFactory,
 } from './unified-processing.exceptions';
+import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -96,6 +97,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly entityResolutionService: EntityResolutionService,
     private readonly qualityScoreService: QualityScoreService,
     private readonly configService: ConfigService,
+    private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {
     this.defaultBatchSize = this.getNumericConfig(
@@ -164,15 +166,12 @@ export class UnifiedProcessingService implements OnModuleInit {
     const processingConfig = { ...defaultConfig, ...config };
     const pipelineKey = this.resolvePipelineKey(sourceMetadata.collectionType);
 
-    const {
-      filteredMentions,
-      newRecordsBySourceId,
-      skippedCount,
-    } = await this.prepareSourceLedgerRecords(
-      mentions,
-      pipelineKey,
-      sourceMetadata.subreddit,
-    );
+    const { filteredMentions, newRecordsBySourceId, skippedCount } =
+      await this.prepareSourceLedgerRecords(
+        mentions,
+        pipelineKey,
+        sourceMetadata.subreddit,
+      );
 
     if (skippedCount > 0) {
       this.logger.debug('Skipped previously processed sources', {
@@ -391,6 +390,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       createdEntitySummaryMap.values(),
     );
 
+    this.scheduleRestaurantEnrichment(uniqueCreatedEntitySummaries);
+
     const reusedEntitySummaryMap = new Map<
       string,
       (typeof reusedEntitySummaries)[number]
@@ -446,13 +447,13 @@ export class UnifiedProcessingService implements OnModuleInit {
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput);
-      const resolutionResult = await this.entityResolutionService.resolveBatch(
-        entityResolutionInput,
-        {
-          batchSize: this.entityResolutionBatchSize,
-          enableFuzzyMatching: true,
-        },
-      );
+    const resolutionResult = await this.entityResolutionService.resolveBatch(
+      entityResolutionInput,
+      {
+        batchSize: this.entityResolutionBatchSize,
+        enableFuzzyMatching: true,
+      },
+    );
 
     // Step 4b-5: Single Consolidated Processing Phase with retry logic
     const ledgerRecords = this.collectLedgerRecordsForMentions(
@@ -519,10 +520,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
 
-    const getSurfaceString = (
-      surface: unknown,
-      fallback: unknown,
-    ): string => {
+    const getSurfaceString = (surface: unknown, fallback: unknown): string => {
       if (typeof surface === 'string' && surface.length > 0) {
         return surface;
       }
@@ -546,7 +544,10 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       return canonicalArray.map((value, index) => {
         const surfaceCandidate = surfaceArray[index];
-        if (typeof surfaceCandidate === 'string' && surfaceCandidate.length > 0) {
+        if (
+          typeof surfaceCandidate === 'string' &&
+          surfaceCandidate.length > 0
+        ) {
           return surfaceCandidate;
         }
         if (typeof value === 'string' && value.length > 0) {
@@ -572,8 +573,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
             aliases:
-              restaurantSurface &&
-              restaurantSurface !== mention.restaurant
+              restaurantSurface && restaurantSurface !== mention.restaurant
                 ? [restaurantSurface]
                 : [],
           });
@@ -595,9 +595,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityType: 'food' as const,
             tempId: foodEntityTempId,
             aliases:
-              foodSurface && foodSurface !== mention.food
-                ? [foodSurface]
-                : [],
+              foodSurface && foodSurface !== mention.food ? [foodSurface] : [],
           });
         } else {
           mention.__foodEntityTempId = null;
@@ -640,11 +638,11 @@ export class UnifiedProcessingService implements OnModuleInit {
               tempId: categoryTempId,
               surface: categorySurface || category,
             });
-            }
-            if (mention.__foodCategoryTempIds.length === 0) {
-              delete mention.__foodCategoryTempIds;
-            }
           }
+          if (mention.__foodCategoryTempIds.length === 0) {
+            delete mention.__foodCategoryTempIds;
+          }
+        }
 
         // Food attributes
         if (mention.food_attributes && Array.isArray(mention.food_attributes)) {
@@ -957,8 +955,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               }
             }
 
-            const originalSurface =
-              groupResolution.originalInput?.originalText;
+            const originalSurface = groupResolution.originalInput?.originalText;
             if (
               typeof originalSurface === 'string' &&
               originalSurface.length > 0
@@ -1615,12 +1612,12 @@ export class UnifiedProcessingService implements OnModuleInit {
             isRecent,
             mentionCreatedAt,
             activityLevel,
-          foodAttributeIds: [...foodAttributeIds],
-          foodAttributeNames: [...foodAttributeNames],
-          hasFoodAttrs,
-          allowCreate: true, // Component 4 always allows creation of new connections
-          categoryEntityIds,
-        };
+            foodAttributeIds: [...foodAttributeIds],
+            foodAttributeNames: [...foodAttributeNames],
+            hasFoodAttrs,
+            allowCreate: true, // Component 4 always allows creation of new connections
+            categoryEntityIds,
+          };
           connectionOperations.push(foodAttributeOperation);
 
           this.logger.debug('Component 4: Specific food processing queued', {
@@ -1645,7 +1642,10 @@ export class UnifiedProcessingService implements OnModuleInit {
             upvotes: mention.source_ups ?? 0,
             foodAttributeIds: [...foodAttributeIds],
           });
-          categoryReplayKeys.push({ restaurantId: restaurantEntityId, categoryId });
+          categoryReplayKeys.push({
+            restaurantId: restaurantEntityId,
+            categoryId,
+          });
         }
 
         this.logger.debug('Category boost events queued for replay', {
@@ -1866,11 +1866,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     if (existingConnection) {
       summary.affectedConnectionIds.push(existingConnection.connectionId);
-      await this.boostConnection(
-        tx,
-        existingConnection,
-        operation,
-      );
+      await this.boostConnection(tx, existingConnection, operation);
     } else {
       mergeIntoSummary(
         summary,
@@ -2117,8 +2113,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const sortedEvents = [...events].sort(
-      (a, b) =>
-        a.mentionCreatedAt.getTime() - b.mentionCreatedAt.getTime(),
+      (a, b) => a.mentionCreatedAt.getTime() - b.mentionCreatedAt.getTime(),
     );
 
     await tx.boost.createMany({
@@ -2235,7 +2230,6 @@ export class UnifiedProcessingService implements OnModuleInit {
     const now = Date.now();
 
     for (const { restaurantId } of targets) {
-
       try {
         const connections = await this.prismaService.connection.findMany({
           where: {
@@ -2299,12 +2293,8 @@ export class UnifiedProcessingService implements OnModuleInit {
           let activityLevel: string | null = null;
           const attributeMerge = new Set(connection.foodAttributes || []);
 
-          let decayedMentionScore = Number(
-            connection.decayedMentionScore ?? 0,
-          );
-          let decayedUpvoteScore = Number(
-            connection.decayedUpvoteScore ?? 0,
-          );
+          let decayedMentionScore = Number(connection.decayedMentionScore ?? 0);
+          let decayedUpvoteScore = Number(connection.decayedUpvoteScore ?? 0);
           let decayedScoresUpdatedAt =
             connection.decayedScoresUpdatedAt ||
             connection.lastMentionedAt ||
@@ -2326,8 +2316,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
             if (
               connection.boostLastAppliedAt &&
-              eventTime.getTime() <=
-                connection.boostLastAppliedAt.getTime()
+              eventTime.getTime() <= connection.boostLastAppliedAt.getTime()
             ) {
               continue;
             }
@@ -2377,9 +2366,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
             if (now - eventTime.getTime() <= activeThresholdMs) {
               activityLevel =
-                connection.activityLevel === 'trending'
-                  ? 'trending'
-                  : 'active';
+                connection.activityLevel === 'trending' ? 'trending' : 'active';
             }
 
             if (
@@ -2426,10 +2413,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             if (attributeMerge.size !== connectionAttributes.size) {
               updateData.foodAttributes = Array.from(attributeMerge);
             }
-            if (
-              activityLevel &&
-              activityLevel !== connection.activityLevel
-            ) {
+            if (activityLevel && activityLevel !== connection.activityLevel) {
               updateData.activityLevel = activityLevel;
             }
 
@@ -2672,9 +2656,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     for (const mention of mentions) {
       const sourceId =
-        typeof mention?.source_id === 'string'
-          ? mention.source_id.trim()
-          : '';
+        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
       if (sourceId) {
         sourceIdSet.add(sourceId);
       }
@@ -2697,7 +2679,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       select: { sourceId: true },
     });
 
-    const existingSet = new Set(existingRecords.map((record) => record.sourceId));
+    const existingSet = new Set(
+      existingRecords.map((record) => record.sourceId),
+    );
     const filteredMentions: any[] = [];
     const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
     const seenInBatch = new Set<string>();
@@ -2705,9 +2689,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     for (const mention of mentions) {
       const rawSourceId =
-        typeof mention?.source_id === 'string'
-          ? mention.source_id.trim()
-          : '';
+        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
 
       if (!rawSourceId) {
         filteredMentions.push(mention);
@@ -2729,7 +2711,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           typeof mention?.subreddit === 'string' &&
           mention.subreddit.trim().length > 0
             ? mention.subreddit.trim()
-            : defaultSubreddit ?? null,
+            : (defaultSubreddit ?? null),
         processedAt: new Date(),
       });
     }
@@ -2754,9 +2736,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     for (const mention of mentions) {
       const sourceId =
-        typeof mention?.source_id === 'string'
-          ? mention.source_id.trim()
-          : '';
+        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
       if (!sourceId || seen.has(sourceId)) {
         continue;
       }
@@ -2793,5 +2773,39 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     return parsed;
+  }
+
+  private scheduleRestaurantEnrichment(
+    summaries: CreatedEntitySummary[],
+  ): void {
+    if (!summaries.length) {
+      return;
+    }
+
+    const restaurantIds = Array.from(
+      new Set(
+        summaries
+          .filter((summary) => summary.entityType === 'restaurant')
+          .map((summary) => summary.entityId),
+      ),
+    );
+
+    if (!restaurantIds.length) {
+      return;
+    }
+
+    for (const entityId of restaurantIds) {
+      this.restaurantLocationEnrichmentService
+        .enrichRestaurantById(entityId)
+        .catch((error) => {
+          this.logger.warn('Restaurant enrichment failed', {
+            entityId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            },
+          });
+        });
+    }
   }
 }

@@ -4,6 +4,7 @@ import { SharedModule } from '../shared/shared.module';
 import { EntityRepository } from './entity.repository';
 import { ConnectionRepository } from './connection.repository';
 import { CategoryAggregateRepository } from './category-aggregate.repository';
+import { EntityPriorityMetricsRepository } from './entity-priority-metrics.repository';
 
 /**
  * Repository module providing data access layer
@@ -17,11 +18,13 @@ import { CategoryAggregateRepository } from './category-aggregate.repository';
     EntityRepository,
     ConnectionRepository,
     CategoryAggregateRepository,
+    EntityPriorityMetricsRepository,
   ],
   exports: [
     EntityRepository,
     ConnectionRepository,
     CategoryAggregateRepository,
+    EntityPriorityMetricsRepository,
   ],
 })
 export class RepositoryModule {}

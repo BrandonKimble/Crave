@@ -5,7 +5,10 @@
  * Supports all collection types: chronological, archive, and keyword search.
  */
 
-import type { LLMPost, LLMMention } from '../../external-integrations/llm/llm.types';
+import type {
+  LLMPost,
+  LLMMention,
+} from '../../external-integrations/llm/llm.types';
 
 export interface BatchJob {
   /** Unique identifier for this batch job */

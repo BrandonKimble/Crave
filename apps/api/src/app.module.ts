@@ -10,6 +10,7 @@ import { ExternalIntegrationsModule } from './modules/external-integrations/exte
 import { RedditCollectorModule } from './modules/content-processing/reddit-collector/reddit-collector.module';
 import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
+import { SearchModule } from './modules/search/search.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { SharedModule } from './shared/shared.module';
     RepositoryModule,
     ExternalIntegrationsModule,
     RedditCollectorModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [],

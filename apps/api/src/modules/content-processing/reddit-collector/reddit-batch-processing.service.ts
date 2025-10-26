@@ -49,10 +49,15 @@ export class RedditBatchProcessingService implements OnModuleInit {
       const llmPostSampleCount =
         this.parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
       const commentSampleLimit =
-        this.parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COMMENT_COUNT) ?? 2;
+        this.parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COMMENT_COUNT) ??
+        2;
       const llmPostSample =
         llmPostSampleCount > 0
-          ? this.buildLlmPostSample(llmPosts, llmPostSampleCount, commentSampleLimit)
+          ? this.buildLlmPostSample(
+              llmPosts,
+              llmPostSampleCount,
+              commentSampleLimit,
+            )
           : null;
 
       const llmStartTime = Date.now();
@@ -110,7 +115,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
       const dbStartTime = Date.now();
 
       const sourceBreakdown = {
-        pushshift_archive: job.collectionType === 'archive' ? llmPosts.length : 0,
+        pushshift_archive:
+          job.collectionType === 'archive' ? llmPosts.length : 0,
         reddit_api_chronological:
           job.collectionType === 'chronological' ? llmPosts.length : 0,
         reddit_api_keyword_search:
@@ -150,13 +156,13 @@ export class RedditBatchProcessingService implements OnModuleInit {
           dbProcessingTimeMs: dbProcessingTime,
         },
         completedAt: new Date(),
-       details: {
-         createdEntityIds: dbResult.createdEntityIds || [],
-         updatedConnectionIds: dbResult.affectedConnectionIds || [],
-         createdEntities: dbResult.createdEntitySummaries || [],
-         reusedEntities: dbResult.reusedEntitySummaries || [],
+        details: {
+          createdEntityIds: dbResult.createdEntityIds || [],
+          updatedConnectionIds: dbResult.affectedConnectionIds || [],
+          createdEntities: dbResult.createdEntitySummaries || [],
+          reusedEntities: dbResult.reusedEntitySummaries || [],
           ...(llmPostSample ? { llmPostSample } : {}),
-       },
+        },
         rawMentionsSample,
       };
     } catch (error) {
@@ -223,14 +229,11 @@ export class RedditBatchProcessingService implements OnModuleInit {
         );
 
         if (!post) {
-          this.logger.warn(
-            `Skipping post ${postId} - transformation failed`,
-            {
-              correlationId,
-              postId,
-              batchId: job.batchId,
-            },
-          );
+          this.logger.warn(`Skipping post ${postId} - transformation failed`, {
+            correlationId,
+            postId,
+            batchId: job.batchId,
+          });
           continue;
         }
 
@@ -295,9 +298,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
                 ? comment.created_at
                 : new Date().toISOString(),
             subreddit:
-              typeof post.subreddit === 'string'
-                ? post.subreddit
-                : 'unknown',
+              typeof post.subreddit === 'string' ? post.subreddit : 'unknown',
           });
         }
       }
@@ -340,7 +341,10 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
       return canonicalArray.map((value, index) => {
         const surfaceCandidate = surfaceArray[index];
-        if (typeof surfaceCandidate === 'string' && surfaceCandidate.length > 0) {
+        if (
+          typeof surfaceCandidate === 'string' &&
+          surfaceCandidate.length > 0
+        ) {
           return surfaceCandidate;
         }
         if (typeof value === 'string' && value.length > 0) {
@@ -352,9 +356,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
     for (const mention of mentions) {
       const restaurantName =
-        typeof mention?.restaurant === 'string'
-          ? mention.restaurant
-          : null;
+        typeof mention?.restaurant === 'string' ? mention.restaurant : null;
       if (
         typeof mention?.restaurant_surface !== 'string' ||
         mention.restaurant_surface.length === 0
@@ -362,8 +364,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         mention.restaurant_surface = restaurantName;
       }
 
-      const foodName =
-        typeof mention?.food === 'string' ? mention.food : null;
+      const foodName = typeof mention?.food === 'string' ? mention.food : null;
       if (
         mention.food_surface === undefined ||
         (mention.food_surface === null && foodName)
@@ -454,9 +455,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
             count: prev.count + 1,
             upvotes:
               prev.upvotes +
-              (typeof mention.source_ups === 'number'
-                ? mention.source_ups
-                : 0),
+              (typeof mention.source_ups === 'number' ? mention.source_ups : 0),
             tokens,
           });
         }
@@ -592,7 +591,6 @@ export class RedditBatchProcessingService implements OnModuleInit {
           }
         }
       }
-
     } catch (error) {
       this.logger.debug('Post-level normalization skipped due to error', {
         correlationId: CorrelationUtils.getCorrelationId(),

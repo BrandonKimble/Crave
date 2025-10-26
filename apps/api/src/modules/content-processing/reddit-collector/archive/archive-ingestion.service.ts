@@ -296,15 +296,12 @@ export class ArchiveIngestionService implements OnModuleInit {
     const envMaxPosts =
       process.env.TEST_ARCHIVE_MAX_POSTS &&
       !Number.isNaN(Number(process.env.TEST_ARCHIVE_MAX_POSTS))
-        ? Math.max(
-            0,
-            Number.parseInt(process.env.TEST_ARCHIVE_MAX_POSTS, 10),
-          )
+        ? Math.max(0, Number.parseInt(process.env.TEST_ARCHIVE_MAX_POSTS, 10))
         : null;
     const effectiveMaxPosts =
       typeof options.maxPosts === 'number'
         ? options.maxPosts
-        : envMaxPosts ?? null;
+        : (envMaxPosts ?? null);
 
     const posts =
       typeof effectiveMaxPosts === 'number' && effectiveMaxPosts > 0
@@ -337,10 +334,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const envBatchSize =
       process.env.TEST_ARCHIVE_BATCH_SIZE &&
       !Number.isNaN(Number(process.env.TEST_ARCHIVE_BATCH_SIZE))
-        ? Math.max(
-            1,
-            Number.parseInt(process.env.TEST_ARCHIVE_BATCH_SIZE, 10),
-          )
+        ? Math.max(1, Number.parseInt(process.env.TEST_ARCHIVE_BATCH_SIZE, 10))
         : null;
     const batchSize = Math.max(1, options.batchSize ?? envBatchSize ?? 20);
     const chunks = this.chunkPosts(posts, batchSize);

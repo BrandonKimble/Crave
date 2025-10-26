@@ -3,6 +3,7 @@ import { RedditModule } from './reddit/reddit.module';
 import { LLMModule } from './llm/llm.module';
 import { SharedServicesModule } from './shared/shared-services.module';
 import { SharedModule } from '../../shared/shared.module';
+import { GooglePlacesModule } from './google-places/google-places.module';
 
 /**
  * External Integrations Module
@@ -25,12 +26,14 @@ import { SharedModule } from '../../shared/shared.module';
     SharedServicesModule, // Import for RateLimitCoordinatorService
     RedditModule,
     LLMModule,
+    GooglePlacesModule,
   ],
   providers: [],
   exports: [
     SharedServicesModule, // Export so submodules can access RateLimitCoordinatorService
     RedditModule,
     LLMModule,
+    GooglePlacesModule,
   ],
 })
 export class ExternalIntegrationsModule {}
