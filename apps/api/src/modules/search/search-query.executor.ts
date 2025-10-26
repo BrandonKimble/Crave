@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ActivityLevel, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
   FoodResultDto,
-  QueryEntityDto,
   QueryPlan,
   RestaurantFoodSnippetDto,
   RestaurantResultDto,
   SearchQueryRequestDto,
 } from './dto/search-query.dto';
+import { SearchQueryBuilder } from './search-query.builder';
 
 const DAY_KEYS = [
   'sunday',
@@ -48,30 +48,29 @@ type RestaurantMetadata = Record<string, unknown> & {
   utc_offset_minutes?: number;
 };
 
-type ConnectionWithEntities = Prisma.ConnectionGetPayload<{
-  include: {
-    food: {
-      select: {
-        entityId: true;
-        name: true;
-        aliases: true;
-      };
-    };
-    restaurant: {
-      select: {
-        entityId: true;
-        name: true;
-        aliases: true;
-        restaurantQualityScore: true;
-        latitude: true;
-        longitude: true;
-        address: true;
-        restaurantAttributes: true;
-        restaurantMetadata: true;
-      };
-    };
-  };
-}>;
+interface QueryResultRow {
+  connection_id: string;
+  restaurant_id: string;
+  food_id: string;
+  categories: string[];
+  food_attributes: string[];
+  mention_count: number;
+  total_upvotes: number;
+  recent_mention_count: number;
+  last_mentioned_at: Date | null;
+  activity_level: ActivityLevel;
+  food_quality_score: Prisma.Decimal | number | string;
+  restaurant_name: string;
+  restaurant_aliases: string[];
+  restaurant_quality_score?: Prisma.Decimal | number | string | null;
+  latitude?: Prisma.Decimal | number | string | null;
+  longitude?: Prisma.Decimal | number | string | null;
+  address?: string | null;
+  restaurant_attributes: string[];
+  restaurant_metadata?: Prisma.JsonValue | null;
+  food_name: string;
+  food_aliases: string[];
+}
 
 interface ExecuteParams {
   plan: QueryPlan;
@@ -102,6 +101,7 @@ export class SearchQueryExecutor {
   constructor(
     loggerService: LoggerService,
     private readonly prisma: PrismaService,
+    private readonly queryBuilder: SearchQueryBuilder,
   ) {
     this.logger = loggerService.setContext('SearchQueryExecutor');
     this.diagnosticLogging =
@@ -112,19 +112,14 @@ export class SearchQueryExecutor {
     const { plan, request, pagination, perRestaurantLimit, includeSqlPreview } =
       params;
 
-    const filterMetadata = { boundsApplied: false };
-    const where = this.buildConnectionWhere(request, filterMetadata);
+    const query = this.queryBuilder.build({ plan, pagination });
 
-    const [connections, totalFoodCount] = await Promise.all([
-      this.prisma.connection.findMany({
-        where,
-        include: this.buildConnectionInclude(),
-        orderBy: this.resolveFoodOrder(plan),
-        skip: pagination.skip,
-        take: pagination.take,
-      }),
-      this.prisma.connection.count({ where }),
+    const [connections, totalResult] = await Promise.all([
+      this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
+      this.prisma.$queryRaw<Array<{ total: bigint }>>(query.countSql),
     ]);
+
+    const totalFoodCount = Number(totalResult[0]?.total ?? 0);
 
     const openFilter = request.openNow
       ? this.filterByOpenNow(connections)
@@ -165,147 +160,29 @@ export class SearchQueryExecutor {
       restaurantResults,
       totalFoodCount,
       metadata: {
-        boundsApplied: filterMetadata.boundsApplied,
+        boundsApplied: query.metadata.boundsApplied,
         openNowApplied: openFilter.applied,
         openNowSupportedRestaurants: openFilter.supportedCount,
         openNowUnsupportedRestaurants: openFilter.unsupportedCount,
       },
-      sqlPreview: includeSqlPreview
-        ? this.buildSqlPreview(where, plan)
-        : null,
+      sqlPreview: includeSqlPreview ? query.preview : null,
     };
   }
 
-  private buildConnectionInclude() {
-    return {
-      food: {
-        select: {
-          entityId: true,
-          name: true,
-          aliases: true,
-        },
-      },
-      restaurant: {
-        select: {
-          entityId: true,
-          name: true,
-          aliases: true,
-          restaurantQualityScore: true,
-          latitude: true,
-          longitude: true,
-          address: true,
-          restaurantAttributes: true,
-          restaurantMetadata: true,
-        },
-      },
-    } satisfies Prisma.ConnectionInclude;
-  }
-
-  private buildConnectionWhere(
-    request: SearchQueryRequestDto,
-    metadata: { boundsApplied: boolean },
-  ): Prisma.ConnectionWhereInput {
-    const where: Prisma.ConnectionWhereInput = {};
-    let restaurantWhere: Prisma.EntityWhereInput | undefined;
-
-    const restaurantIds = this.collectEntityIds(request.entities.restaurants);
-    if (restaurantIds.length) {
-      where.restaurantId = { in: restaurantIds };
-    }
-
-    const foodIds = this.collectEntityIds(request.entities.food);
-    if (foodIds.length) {
-      where.foodId = { in: foodIds };
-    }
-
-    const foodAttributeIds = this.collectEntityIds(
-      request.entities.foodAttributes,
-    );
-    if (foodAttributeIds.length) {
-      where.foodAttributes = { hasSome: foodAttributeIds };
-    }
-
-    const restaurantAttributeIds = this.collectEntityIds(
-      request.entities.restaurantAttributes,
-    );
-    if (restaurantAttributeIds.length) {
-      restaurantWhere = this.mergeEntityWhere(restaurantWhere, {
-        restaurantAttributes: { hasSome: restaurantAttributeIds },
-      });
-    }
-
-    if (request.bounds) {
-      restaurantWhere = this.mergeEntityWhere(restaurantWhere, {
-        latitude: {
-          gte: request.bounds.southWest.lat,
-          lte: request.bounds.northEast.lat,
-        },
-        longitude: {
-          gte: request.bounds.southWest.lng,
-          lte: request.bounds.northEast.lng,
-        },
-      });
-      metadata.boundsApplied = true;
-    }
-
-    if (restaurantWhere) {
-      where.restaurant = restaurantWhere;
-    }
-
-    return where;
-  }
-
-  private mergeEntityWhere(
-    existing: Prisma.EntityWhereInput | undefined,
-    addition: Prisma.EntityWhereInput,
-  ): Prisma.EntityWhereInput {
-    if (!existing) {
-      return { ...addition };
-    }
-    return { ...existing, ...addition };
-  }
-
-  private collectEntityIds(entities?: QueryEntityDto[]): string[] {
-    if (!entities?.length) {
-      return [];
-    }
-
-    const ids = entities.flatMap((entity) => entity.entityIds).filter(Boolean);
-    return Array.from(new Set(ids));
-  }
-
-  private resolveFoodOrder(plan: QueryPlan) {
-    const order = plan.ranking.foodOrder?.toLowerCase() ?? '';
-    if (order.includes('food_quality_score') && order.includes('desc')) {
-      return { foodQualityScore: 'desc' as const };
-    }
-    if (order.includes('food_quality_score') && order.includes('asc')) {
-      return { foodQualityScore: 'asc' as const };
-    }
-    return { foodQualityScore: 'desc' as const };
-  }
-
-  private filterByOpenNow(
-    connections: ConnectionWithEntities[],
-  ): {
-    connections: ConnectionWithEntities[];
+  private filterByOpenNow(connections: QueryResultRow[]): {
+    connections: QueryResultRow[];
     applied: boolean;
     supportedCount: number;
     unsupportedCount: number;
   } {
-    const filtered: ConnectionWithEntities[] = [];
+    const filtered: QueryResultRow[] = [];
     let applied = false;
     let supported = 0;
     let unsupported = 0;
 
     for (const connection of connections) {
-      const restaurant = connection.restaurant;
-      if (!restaurant) {
-        continue;
-      }
-
       const status = this.isRestaurantOpenNow(
-        restaurant.restaurantMetadata,
+        connection.restaurant_metadata,
         new Date(),
       );
 
@@ -340,18 +217,18 @@ export class SearchQueryExecutor {
   }
 
   private applyPerRestaurantLimit(
-    connections: ConnectionWithEntities[],
+    connections: QueryResultRow[],
     perRestaurantLimit: number,
-  ): ConnectionWithEntities[] {
+  ): QueryResultRow[] {
     if (perRestaurantLimit <= 0) {
       return connections;
     }
 
     const counts = new Map<string, number>();
-    const limited: ConnectionWithEntities[] = [];
+    const limited: QueryResultRow[] = [];
 
     for (const connection of connections) {
-      const restaurantId = connection.restaurant?.entityId;
+      const restaurantId = connection.restaurant_id;
       if (!restaurantId) {
         continue;
       }
@@ -368,35 +245,28 @@ export class SearchQueryExecutor {
     return limited;
   }
 
-  private mapFoodResults(
-    connections: ConnectionWithEntities[],
-  ): FoodResultDto[] {
+  private mapFoodResults(connections: QueryResultRow[]): FoodResultDto[] {
     const results: FoodResultDto[] = [];
 
     for (const connection of connections) {
-      const { food, restaurant } = connection;
-      if (!food || !restaurant) {
-        continue;
-      }
-
       results.push({
-        connectionId: connection.connectionId,
-        foodId: food.entityId,
-        foodName: food.name,
-        foodAliases: food.aliases || [],
-        restaurantId: restaurant.entityId,
-        restaurantName: restaurant.name,
-        restaurantAliases: restaurant.aliases || [],
-        qualityScore: this.toNumber(connection.foodQualityScore),
-        activityLevel: connection.activityLevel,
-        mentionCount: connection.mentionCount,
-        totalUpvotes: connection.totalUpvotes,
-        recentMentionCount: connection.recentMentionCount,
-        lastMentionedAt: connection.lastMentionedAt
-          ? connection.lastMentionedAt.toISOString()
+        connectionId: connection.connection_id,
+        foodId: connection.food_id,
+        foodName: connection.food_name,
+        foodAliases: connection.food_aliases || [],
+        restaurantId: connection.restaurant_id,
+        restaurantName: connection.restaurant_name,
+        restaurantAliases: connection.restaurant_aliases || [],
+        qualityScore: this.toNumber(connection.food_quality_score),
+        activityLevel: connection.activity_level,
+        mentionCount: connection.mention_count,
+        totalUpvotes: connection.total_upvotes,
+        recentMentionCount: connection.recent_mention_count,
+        lastMentionedAt: connection.last_mentioned_at
+          ? connection.last_mentioned_at.toISOString()
           : null,
         categories: connection.categories || [],
-        foodAttributes: connection.foodAttributes || [],
+        foodAttributes: connection.food_attributes || [],
       });
     }
 
@@ -404,13 +274,19 @@ export class SearchQueryExecutor {
   }
 
   private mapRestaurantResults(
-    connections: ConnectionWithEntities[],
+    connections: QueryResultRow[],
     restaurantOrder: string,
   ): RestaurantResultDto[] {
     const grouped = new Map<
       string,
       {
-        entity: ConnectionWithEntities['restaurant'];
+        restaurantId: string;
+        name: string;
+        aliases: string[];
+        restaurantQualityScore?: Prisma.Decimal | number | string | null;
+        latitude?: Prisma.Decimal | number | string | null;
+        longitude?: Prisma.Decimal | number | string | null;
+        address?: string | null;
         snippets: RestaurantFoodSnippetDto[];
         scoreSum: number;
         count: number;
@@ -418,28 +294,28 @@ export class SearchQueryExecutor {
     >();
 
     for (const connection of connections) {
-      const restaurant = connection.restaurant;
-      const food = connection.food;
-      if (!restaurant || !food) {
-        continue;
-      }
-
       const snippet: RestaurantFoodSnippetDto = {
-        connectionId: connection.connectionId,
-        foodId: food.entityId,
-        foodName: food.name,
-        qualityScore: this.toNumber(connection.foodQualityScore),
-        activityLevel: connection.activityLevel,
+        connectionId: connection.connection_id,
+        foodId: connection.food_id,
+        foodName: connection.food_name,
+        qualityScore: this.toNumber(connection.food_quality_score),
+        activityLevel: connection.activity_level,
       };
 
-      const existing = grouped.get(restaurant.entityId);
+      const existing = grouped.get(connection.restaurant_id);
       if (existing) {
         existing.snippets.push(snippet);
         existing.scoreSum += snippet.qualityScore;
         existing.count += 1;
       } else {
-        grouped.set(restaurant.entityId, {
-          entity: restaurant,
+        grouped.set(connection.restaurant_id, {
+          restaurantId: connection.restaurant_id,
+          name: connection.restaurant_name,
+          aliases: connection.restaurant_aliases || [],
+          restaurantQualityScore: connection.restaurant_quality_score,
+          latitude: connection.latitude,
+          longitude: connection.longitude,
+          address: connection.address,
           snippets: [snippet],
           scoreSum: snippet.qualityScore,
           count: 1,
@@ -448,20 +324,36 @@ export class SearchQueryExecutor {
     }
 
     const results = Array.from(grouped.values()).map(
-      ({ entity, snippets, scoreSum, count }) => ({
-        restaurantId: entity!.entityId,
-        restaurantName: entity!.name,
-        restaurantAliases: entity!.aliases || [],
+      ({
+        restaurantId,
+        name,
+        aliases,
+        restaurantQualityScore,
+        latitude,
+        longitude,
+        address,
+        snippets,
+        scoreSum,
+        count,
+      }) => ({
+        restaurantId,
+        restaurantName: name,
+        restaurantAliases: aliases || [],
         contextualScore: count ? scoreSum / count : 0,
         restaurantQualityScore:
-          entity!.restaurantQualityScore === null
+          restaurantQualityScore === null ||
+          restaurantQualityScore === undefined
             ? null
-            : this.toNumber(entity!.restaurantQualityScore),
+            : this.toNumber(restaurantQualityScore),
         latitude:
-          entity!.latitude === null ? null : this.toNumber(entity!.latitude),
+          latitude === null || latitude === undefined
+            ? null
+            : this.toNumber(latitude),
         longitude:
-          entity!.longitude === null ? null : this.toNumber(entity!.longitude),
-        address: entity!.address,
+          longitude === null || longitude === undefined
+            ? null
+            : this.toNumber(longitude),
+        address: address ?? null,
         topFood: snippets
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
@@ -630,7 +522,9 @@ export class SearchQueryExecutor {
   }
 
   private parseHourString(value: string): DaySegment[] {
-    const rangeMatch = value.match(/(\d{1,2}:?\d{0,2}\s?(am|pm)?)[^\d]+(\d{1,2}:?\d{0,2}\s?(am|pm)?)/i);
+    const rangeMatch = value.match(
+      /(\d{1,2}:?\d{0,2}\s?(am|pm)?)[^\d]+(\d{1,2}:?\d{0,2}\s?(am|pm)?)/i,
+    );
     if (!rangeMatch) {
       return [];
     }
@@ -806,7 +700,7 @@ export class SearchQueryExecutor {
         typeof offsetCandidate === 'number' ||
         (typeof offsetCandidate === 'string' && offsetCandidate.trim())
       ) {
-        candidates.push(offsetCandidate as number | string);
+        candidates.push(offsetCandidate);
       }
     }
 
@@ -853,16 +747,5 @@ export class SearchQueryExecutor {
     }
 
     return Number(value) || 0;
-  }
-
-  private buildSqlPreview(
-    where: Prisma.ConnectionWhereInput,
-    plan: QueryPlan,
-  ): string {
-    const preview = {
-      where,
-      ranking: plan.ranking,
-    };
-    return JSON.stringify(preview, null, 2);
   }
 }

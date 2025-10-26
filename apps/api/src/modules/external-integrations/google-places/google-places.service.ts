@@ -416,7 +416,10 @@ export class GooglePlacesService {
         );
       }
 
-      if (data.status === 'INVALID_REQUEST' || data.status === 'REQUEST_DENIED') {
+      if (
+        data.status === 'INVALID_REQUEST' ||
+        data.status === 'REQUEST_DENIED'
+      ) {
         throw new BadRequestException(
           data.error_message || 'Invalid autocomplete request',
         );
@@ -427,7 +430,8 @@ export class GooglePlacesService {
       );
     } catch (error) {
       const duration = Date.now() - requestStart;
-      const axiosError = error as AxiosError<GooglePlaceAutocompleteApiResponse>;
+      const axiosError =
+        error as AxiosError<GooglePlaceAutocompleteApiResponse>;
       const status = axiosError.response?.data?.status;
       const message =
         axiosError.response?.data?.error_message || axiosError.message;

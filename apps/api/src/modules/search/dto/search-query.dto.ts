@@ -127,6 +127,7 @@ export interface FilterClause {
   description: string;
   entityType: EntityScope;
   entityIds: string[];
+  payload?: Record<string, unknown>;
 }
 
 export interface QueryPlan {

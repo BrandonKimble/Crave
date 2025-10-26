@@ -253,6 +253,8 @@ model Subreddit {
   isActive         Boolean   @default(true) @map("is_active")
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   safeIntervalDays Float     @map("safe_interval_days")
+  centerLatitude   Decimal?  @map("center_latitude") @db.Decimal(10, 8)
+  centerLongitude  Decimal?  @map("center_longitude") @db.Decimal(11, 8)
 
   @@index([name])
   @@index([isActive])

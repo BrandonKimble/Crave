@@ -77,10 +77,7 @@ export class RestaurantLocationEnrichmentService {
     options: BatchEnrichmentOptions = {},
   ): Promise<BatchEnrichmentSummary> {
     if (options.entityId) {
-      const result = await this.enrichRestaurantById(
-        options.entityId,
-        options,
-      );
+      const result = await this.enrichRestaurantById(options.entityId, options);
       return {
         attempted: 1,
         updated: result.status === 'updated' ? 1 : 0,
@@ -139,9 +136,7 @@ export class RestaurantLocationEnrichmentService {
     entityId: string,
     options: RestaurantEnrichmentOptions = {},
   ): Promise<RestaurantEnrichmentResult> {
-    const entity = (await this.entityRepository.findById(entityId)) as
-      | RestaurantEntity
-      | null;
+    const entity = await this.entityRepository.findById(entityId);
 
     if (!entity) {
       return { entityId, status: 'not_found', reason: 'entity not found' };
@@ -505,7 +500,7 @@ export class RestaurantLocationEnrichmentService {
   ): Prisma.InputJsonValue {
     const base = this.toRecord(current);
     base.googlePlaces = {
-      ...(this.toRecord(base.googlePlaces) as Record<string, unknown>),
+      ...this.toRecord(base.googlePlaces),
       ...googleMetadata,
     };
     return base as Prisma.InputJsonValue;
@@ -535,9 +530,12 @@ export class RestaurantLocationEnrichmentService {
 
     const cityComponent = components.find((component) =>
       component.types?.some((type) =>
-        ['locality', 'postal_town', 'sublocality', 'sublocality_level_1'].includes(
-          type,
-        ),
+        [
+          'locality',
+          'postal_town',
+          'sublocality',
+          'sublocality_level_1',
+        ].includes(type),
       ),
     );
 

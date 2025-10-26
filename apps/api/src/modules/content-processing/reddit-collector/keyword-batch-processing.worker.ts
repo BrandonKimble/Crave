@@ -6,6 +6,7 @@ import {
   BatchJob,
   BatchProcessingResult,
 } from './batch-processing-queue.types';
+import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 
 /**
  * Keyword Batch Processing Worker (Stub)
@@ -27,6 +28,7 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly redditBatchProcessingService: RedditBatchProcessingService,
   ) {}
 
   onModuleInit(): void {
@@ -38,70 +40,64 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
   async processKeywordBatch(
     job: Job<BatchJob>,
   ): Promise<BatchProcessingResult> {
-    const start = Date.now();
     const correlationId = CorrelationUtils.generateCorrelationId();
-    const {
-      batchId,
-      collectionType,
-      subreddit,
-      postIds,
-      batchNumber,
-      totalBatches,
-    } = job.data;
+    const batch = job.data;
 
-    const ids = postIds ?? [];
-
-    if (collectionType !== 'keyword') {
-      return {
-        batchId,
-        parentJobId: job.data.parentJobId,
-        collectionType,
-        success: false,
-        error: `Unsupported collectionType for this worker: ${collectionType}`,
-        metrics: {
-          postsProcessed: 0,
-          mentionsExtracted: 0,
-          entitiesCreated: 0,
-          connectionsCreated: 0,
-          processingTimeMs: Date.now() - start,
-          llmProcessingTimeMs: 0,
-          dbProcessingTimeMs: 0,
-        },
-        completedAt: new Date(),
-      };
+    if (batch.collectionType !== 'keyword') {
+      return this.buildNoopResult(
+        batch,
+        0,
+        batch.postIds?.length ?? 0,
+        'Unsupported collection type',
+      );
     }
 
-    this.logger.info('Stub keyword batch received', {
+    this.logger.info('Processing keyword batch', {
       correlationId,
-      batchId,
-      subreddit,
-      batch: `${batchNumber}/${totalBatches}`,
-      posts: ids.length,
+      batchId: batch.batchId,
+      subreddit: batch.subreddit,
+      batch: `${batch.batchNumber}/${batch.totalBatches}`,
+      posts: batch.postIds?.length ?? 0,
     });
 
-    // PSEUDOCODE for future implementation:
-    // 1) Retrieve full content for postIds (ContentRetrievalPipelineService)
-    // 2) Chunk + run LLM (LLMChunkingService + LLMConcurrentProcessingService)
-    // 3) Pass mentions to UnifiedProcessingService.processLLMOutput
-    // 4) Return BatchProcessingResult
+    try {
+      const result = await this.redditBatchProcessingService.processBatch(
+        batch,
+        correlationId,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error('Keyword batch processing failed', {
+        correlationId,
+        batchId: batch.batchId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
 
+  private buildNoopResult(
+    job: BatchJob,
+    duration: number,
+    postCount: number,
+    reason = 'Unsupported collection type',
+  ): BatchProcessingResult {
     return {
-      batchId,
-      parentJobId: job.data.parentJobId,
-      collectionType: 'keyword',
+      batchId: job.batchId,
+      parentJobId: job.parentJobId,
+      collectionType: job.collectionType,
       success: false,
-      error: 'Keyword batch processing not implemented yet',
+      error: reason,
       metrics: {
-        postsProcessed: ids.length,
+        postsProcessed: postCount,
         mentionsExtracted: 0,
         entitiesCreated: 0,
         connectionsCreated: 0,
-        processingTimeMs: Date.now() - start,
+        processingTimeMs: duration,
         llmProcessingTimeMs: 0,
         dbProcessingTimeMs: 0,
       },
       completedAt: new Date(),
-      details: { warnings: ['Stub worker – no-op execution'] },
     };
   }
 }

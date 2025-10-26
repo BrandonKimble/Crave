@@ -1,4 +1,10 @@
-import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Param,
+  Query,
+} from '@nestjs/common';
 import { GooglePlacesService } from './google-places.service';
 import { LoggerService } from '../../../shared';
 

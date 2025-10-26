@@ -23,6 +23,7 @@ import { SubredditVolumeTrackingService } from './chronological/subreddit-volume
 import { VolumeTrackingProcessor } from './chronological/volume-tracking.processor';
 import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
+import { KeywordSearchJobWorker } from './keyword-search-job.worker';
 import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
 import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
@@ -92,6 +93,9 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
       name: 'keyword-batch-processing-queue',
     }),
     BullModule.registerQueue({
+      name: 'keyword-search-execution',
+    }),
+    BullModule.registerQueue({
       name: 'archive-batch-processing-queue',
     }),
     BullModule.registerQueue({
@@ -110,6 +114,7 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
     ChronologicalBatchProcessingWorker,
     RedditBatchProcessingService,
     KeywordBatchProcessingWorker,
+    KeywordSearchJobWorker,
     ArchiveBatchProcessingWorker,
     ArchiveCollectionWorker,
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
@@ -137,6 +142,7 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
     ChronologicalBatchProcessingWorker,
     RedditBatchProcessingService,
     KeywordBatchProcessingWorker,
+    KeywordSearchJobWorker,
     ArchiveBatchProcessingWorker,
     ArchiveCollectionWorker,
     // Export content retrieval pipeline components

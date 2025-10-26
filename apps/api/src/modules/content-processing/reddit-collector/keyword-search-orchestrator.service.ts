@@ -1,4 +1,9 @@
-import { Injectable, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -13,6 +18,7 @@ import {
 } from './keyword-search-scheduler.service';
 import { EntityPriorityScore } from './entity-priority-selection.service';
 import { BatchJob } from './batch-processing-queue.types';
+import { ConfigService } from '@nestjs/config';
 
 /**
  * Keyword Search Orchestrator Service
@@ -21,16 +27,35 @@ import { BatchJob } from './batch-processing-queue.types';
  * Coordinates entity selection, Reddit API searches, and processing pipeline integration.
  */
 @Injectable()
-export class KeywordSearchOrchestratorService {
+export class KeywordSearchOrchestratorService
+  implements OnModuleInit, OnModuleDestroy
+{
   // Legacy field retained to avoid compile errors in deprecated methods retained below
   private unifiedProcessing: any = null;
+  private autoIntervalMs = 60 * 60 * 1000;
+  private autoExecutionTimer?: NodeJS.Timeout;
   constructor(
     private readonly redditService: RedditService,
     private readonly keywordScheduler: KeywordSearchSchedulerService,
     @Inject(LoggerService) private readonly logger: LoggerService,
+    private readonly configService: ConfigService,
     @InjectQueue('keyword-batch-processing-queue')
     private readonly keywordQueue: Queue,
+    @InjectQueue('keyword-search-execution')
+    private readonly keywordSearchQueue: Queue,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    this.autoIntervalMs = this.resolveAutoInterval();
+    if (this.keywordSchedulerConfigEnabled()) {
+      await this.keywordScheduler.initializeScheduling();
+      this.startAutoExecution();
+    }
+  }
+
+  onModuleDestroy(): void {
+    this.stopAutoExecution();
+  }
 
   /**
    * Execute keyword entity search for specific subreddit
@@ -413,6 +438,7 @@ export class KeywordSearchOrchestratorService {
 
         return {
           executedSearches: [],
+          enqueuedJobs: [],
           totalSchedules: 0,
           successfulExecutions: 0,
           failedExecutions: 0,
@@ -426,91 +452,38 @@ export class KeywordSearchOrchestratorService {
         subreddits: dueSchedules.map((s) => s.subreddit),
       });
 
-      const executionResults: KeywordSearchExecutionResult[] = [];
-      let successfulExecutions = 0;
-      let failedExecutions = 0;
+      const enqueuedJobs: Array<{ subreddit: string; entityCount: number }> =
+        [];
 
-      // Execute each due search
       for (const schedule of dueSchedules) {
-        try {
-          this.logger.info(
-            `Executing keyword search for subreddit: ${schedule.subreddit}`,
-            {
-              correlationId,
-              subreddit: schedule.subreddit,
-              entityCount: schedule.entities.length,
-            },
-          );
-
-          const executionResult = await this.executeKeywordSearchCycle(
-            schedule.subreddit,
-            schedule.entities,
-          );
-
-          executionResults.push(executionResult);
-          successfulExecutions++;
-
-          // Mark search as completed in scheduler
-          await this.keywordScheduler.markSearchCompleted(
-            schedule.subreddit,
-            true,
-            executionResult.metadata.processedEntities,
-          );
-
-          this.logger.info(
-            `Keyword search completed for subreddit: ${schedule.subreddit}`,
-            {
-              correlationId,
-              subreddit: schedule.subreddit,
-              processedEntities: executionResult.metadata.processedEntities,
-              duration: executionResult.performance.totalDuration,
-            },
-          );
-        } catch (scheduleError: unknown) {
-          failedExecutions++;
-          const errorMessage =
-            scheduleError instanceof Error
-              ? scheduleError.message
-              : String(scheduleError);
-
-          this.logger.error(
-            `Keyword search failed for subreddit: ${schedule.subreddit}`,
-            {
-              correlationId,
-              subreddit: schedule.subreddit,
-              error: errorMessage,
-            },
-          );
-
-          // Mark search as failed in scheduler
-          await this.keywordScheduler.markSearchCompleted(
-            schedule.subreddit,
-            false,
-            0,
-          );
-        }
+        await this.enqueueKeywordSearchJob({
+          subreddit: schedule.subreddit,
+          entities: schedule.entities,
+          source: 'scheduled',
+          trackCompletion: true,
+        });
+        enqueuedJobs.push({
+          subreddit: schedule.subreddit,
+          entityCount: schedule.entities.length,
+        });
       }
 
       const totalDuration = Date.now() - startTime;
 
-      this.logger.info('Due keyword searches execution completed', {
+      this.logger.info('Enqueued due keyword searches', {
         correlationId,
         totalDuration,
         totalSchedules: dueSchedules.length,
-        successfulExecutions,
-        failedExecutions,
-        totalEntitiesProcessed: executionResults.reduce(
-          (sum, result) => sum + result.metadata.processedEntities,
-          0,
-        ),
+        subreddits: enqueuedJobs.map((entry) => entry.subreddit),
       });
 
       return {
-        executedSearches: executionResults,
+        executedSearches: [],
+        enqueuedJobs,
         totalSchedules: dueSchedules.length,
-        successfulExecutions,
-        failedExecutions,
         totalDuration,
+        successfulExecutions: 0,
+        failedExecutions: 0,
       };
     } catch (error: unknown) {
       const totalDuration = Date.now() - startTime;
@@ -575,6 +548,60 @@ export class KeywordSearchOrchestratorService {
       throw error;
     }
   }
+
+  async enqueueKeywordSearchJob(data: KeywordSearchJobData): Promise<void> {
+    const correlationId = CorrelationUtils.generateCorrelationId();
+
+    await this.keywordSearchQueue.add('run-keyword-search', data, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
+      removeOnComplete: true,
+      removeOnFail: false,
+      jobId: data.jobId || `${data.source}-${data.subreddit}-${Date.now()}`,
+    });
+
+    this.logger.debug('Queued keyword search job', {
+      correlationId,
+      subreddit: data.subreddit,
+      source: data.source,
+      entityCount: data.entities.length,
+    });
+  }
+
+  private keywordSchedulerConfigEnabled(): boolean {
+    return this.keywordScheduler.isEnabled();
+  }
+
+  private resolveAutoInterval(): number {
+    const raw = this.configService.get<string>(
+      'KEYWORD_SEARCH_POLL_INTERVAL_MS',
+    );
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+    return 60 * 60 * 1000; // default 1 hour
+  }
+
+  private startAutoExecution(): void {
+    if (this.autoExecutionTimer) {
+      return;
+    }
+    this.autoExecutionTimer = setInterval(() => {
+      this.executeDueKeywordSearches().catch((error) => {
+        this.logger.error('Auto keyword execution failed', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+    }, this.autoIntervalMs);
+  }
+
+  private stopAutoExecution(): void {
+    if (this.autoExecutionTimer) {
+      clearInterval(this.autoExecutionTimer);
+      this.autoExecutionTimer = undefined;
+    }
+  }
 }
 
 /**
@@ -619,6 +646,7 @@ export interface EntityProcessingResult {
  */
 export interface KeywordSearchBatchResult {
   executedSearches: KeywordSearchExecutionResult[];
+  enqueuedJobs: Array<{ subreddit: string; entityCount: number }>;
   totalSchedules: number;
   successfulExecutions: number;
   failedExecutions: number;
@@ -637,4 +665,12 @@ export interface KeywordSearchMetrics {
   totalEntitiesScheduled: number;
   averageEntitiesPerSchedule: number;
   schedulesBySubreddit: Record<string, any>;
+}
+
+export interface KeywordSearchJobData {
+  jobId?: string;
+  subreddit: string;
+  entities: EntityPriorityScore[];
+  source: 'scheduled' | 'on_demand';
+  trackCompletion: boolean;
 }

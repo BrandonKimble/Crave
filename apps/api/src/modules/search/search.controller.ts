@@ -22,8 +22,7 @@ export class SearchController {
   @Post('plan')
   plan(@Body() request: SearchQueryRequestDto): SearchPlanResponseDto {
     this.logger.debug('Received search plan request');
-    const plan = this.searchService.buildQueryPlan(request);
-    return { plan, sqlPreview: null };
+    return this.searchService.buildPlanResponse(request);
   }
 
   @Post('run')
@@ -35,7 +34,9 @@ export class SearchController {
   }
 
   @Post('events/click')
-  async recordClick(@Body() dto: SearchResultClickDto): Promise<{ status: string }> {
+  async recordClick(
+    @Body() dto: SearchResultClickDto,
+  ): Promise<{ status: string }> {
     await this.searchService.recordResultClick(dto);
     return { status: 'ok' };
   }

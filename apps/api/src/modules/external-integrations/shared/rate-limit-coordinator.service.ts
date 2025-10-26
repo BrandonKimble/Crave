@@ -22,17 +22,46 @@ import {
 @Injectable()
 export class RateLimitCoordinatorService implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly rateLimitConfigs: Map<ExternalApiService, RateLimitConfig> =
-    new Map();
-  private readonly requestCounts: Map<ExternalApiService, Map<string, number>> =
-    new Map();
-  private readonly resetTimes: Map<ExternalApiService, Map<string, Date>> =
-    new Map();
+  private readonly rateLimitConfigs: Map<string, RateLimitConfig> = new Map();
+  private readonly requestCounts: Map<string, Map<string, number>> = new Map();
+  private readonly resetTimes: Map<string, Map<string, Date>> = new Map();
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
+
+  private getScopeKey(service: ExternalApiService, operation?: string): string {
+    return operation ? `${service}:${operation}` : `${service}`;
+  }
+
+  private resolveScope(
+    service: ExternalApiService,
+    operation?: string,
+  ): { config?: RateLimitConfig; scopeKey: string } {
+    const operationKey = this.getScopeKey(service, operation);
+    if (operation && this.rateLimitConfigs.has(operationKey)) {
+      return {
+        config: this.rateLimitConfigs.get(operationKey),
+        scopeKey: operationKey,
+      };
+    }
+
+    const serviceKey = this.getScopeKey(service);
+    return {
+      config: this.rateLimitConfigs.get(serviceKey),
+      scopeKey: serviceKey,
+    };
+  }
+
+  private registerRateLimitConfig(
+    service: ExternalApiService,
+    config: RateLimitConfig,
+    operation?: string,
+  ): void {
+    const key = this.getScopeKey(service, operation);
+    this.rateLimitConfigs.set(key, config);
+  }
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RateLimitCoordinator');
@@ -47,7 +76,10 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    */
   requestPermission(request: RateLimitRequest): RateLimitResponse {
     const correlationId = CorrelationUtils.getCorrelationId();
-    const config = this.rateLimitConfigs.get(request.service);
+    const { config, scopeKey } = this.resolveScope(
+      request.service,
+      request.operation,
+    );
 
     if (!config) {
       this.logger.warn(
@@ -67,16 +99,17 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     }
 
     const now = new Date();
-    const currentUsage = this.getCurrentUsage(request.service, 'minute', now);
+    const currentUsage = this.getCurrentUsage(scopeKey, 'minute', now);
     const limit = config.requestsPerMinute;
 
     // Check if we're at the rate limit
-    if (currentUsage >= limit) {
-      const retryAfter = this.getRetryAfter(request.service, 'minute', now);
+    if (limit > 0 && currentUsage >= limit) {
+      const retryAfter = this.getRetryAfter(scopeKey, 'minute', now);
 
       this.logger.warn(`Rate limit exceeded for ${request.service}`, {
         service: request.service,
         operation: request.operation,
+        scopeKey,
         currentUsage,
         limit,
         retryAfter,
@@ -93,23 +126,25 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     }
 
     // Increment usage counter
-    this.incrementUsage(request.service, now);
+    this.incrementUsage(scopeKey, now);
 
     // Only log when approaching limits (80%+) to reduce noise
-    if ((currentUsage + 1) / limit >= 0.8) {
+    const updatedUsage = currentUsage + 1;
+    if (limit > 0 && updatedUsage / limit >= 0.8) {
       this.logger.info(`Approaching rate limit for ${request.service}`, {
         service: request.service,
         operation: request.operation,
-        currentUsage: currentUsage + 1,
+        scopeKey,
+        currentUsage: updatedUsage,
         limit,
-        utilizationPercent: Math.round(((currentUsage + 1) / limit) * 100),
+        utilizationPercent: Math.round((updatedUsage / limit) * 100),
         correlationId,
       });
     }
 
     return {
       allowed: true,
-      currentUsage: currentUsage + 1,
+      currentUsage: updatedUsage,
       limit,
       resetTime: new Date(now.getTime() + 60000), // Next minute
     };
@@ -134,10 +169,10 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
     // Update internal tracking to reflect the rate limit
     const now = new Date();
-    const config = this.rateLimitConfigs.get(service);
+    const { config, scopeKey } = this.resolveScope(service, operation);
     if (config) {
       // Set usage to limit to prevent further requests
-      this.setUsageToLimit(service, now);
+      this.setUsageToLimit(scopeKey, now, config.requestsPerMinute);
     }
   }
 
@@ -146,8 +181,9 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    */
   getStatus(service: ExternalApiService): RateLimitStatus {
     const now = new Date();
-    const config = this.rateLimitConfigs.get(service);
-    const currentUsage = this.getCurrentUsage(service, 'minute', now);
+    const serviceKey = this.getScopeKey(service);
+    const config = this.rateLimitConfigs.get(serviceKey);
+    const currentUsage = this.getCurrentUsage(serviceKey, 'minute', now);
     const limit = config?.requestsPerMinute || 0;
 
     return {
@@ -157,7 +193,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       isAtLimit: currentUsage >= limit,
       retryAfter:
         currentUsage >= limit
-          ? this.getRetryAfter(service, 'minute', now)
+          ? this.getRetryAfter(serviceKey, 'minute', now)
           : undefined,
     };
   }
@@ -175,8 +211,20 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    * Reset rate limits for a service (for testing/debugging)
    */
   resetService(service: ExternalApiService): void {
-    this.requestCounts.delete(service);
-    this.resetTimes.delete(service);
+    const serviceKey = this.getScopeKey(service);
+    const scopePrefix = `${service}:`;
+
+    for (const key of Array.from(this.requestCounts.keys())) {
+      if (key === serviceKey || key.startsWith(scopePrefix)) {
+        this.requestCounts.delete(key);
+      }
+    }
+
+    for (const key of Array.from(this.resetTimes.keys())) {
+      if (key === serviceKey || key.startsWith(scopePrefix)) {
+        this.resetTimes.delete(key);
+      }
+    }
 
     this.logger.info(`Rate limits reset for ${service}`, { service });
   }
@@ -185,35 +233,88 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    * Initialize rate limit configurations from environment
    */
   private initializeRateLimitConfigs(): void {
-    // Google Places API - 100 requests per minute (as per PRD section 2.5)
-    this.rateLimitConfigs.set(ExternalApiService.GOOGLE_PLACES, {
-      requestsPerSecond: 10,
-      requestsPerMinute:
-        this.configService.get<number>('googlePlaces.requestsPerMinute') || 50,
-      requestsPerHour: 3000,
-      requestsPerDay: 100000,
+    const googleRequestsPerMinute =
+      this.configService.get<number>('googlePlaces.requestsPerMinute') || 600;
+    const googleRequestsPerDay =
+      this.configService.get<number>('googlePlaces.requestsPerDay') || 0;
+    const googleRequestsPerSecond =
+      this.configService.get<number>('googlePlaces.requestsPerSecond') ||
+      this.computePerSecond(googleRequestsPerMinute);
+    const googleRequestsPerHour = this.computePerHour(
+      googleRequestsPerMinute,
+      googleRequestsPerDay,
+    );
+
+    this.registerRateLimitConfig(ExternalApiService.GOOGLE_PLACES, {
+      requestsPerSecond: googleRequestsPerSecond,
+      requestsPerMinute: googleRequestsPerMinute,
+      requestsPerHour: googleRequestsPerHour,
+      requestsPerDay: googleRequestsPerDay,
+    });
+
+    const googleOperationLimits =
+      this.configService.get<
+        Record<
+          string,
+          {
+            requestsPerMinute?: number;
+            requestsPerDay?: number;
+          }
+        >
+      >(
+        'googlePlaces.operationLimits',
+      ) || {};
+
+    Object.entries(googleOperationLimits).forEach(([operation, value]) => {
+      const perMinute =
+        typeof value?.requestsPerMinute === 'number'
+          ? value.requestsPerMinute
+          : googleRequestsPerMinute;
+      if (!Number.isFinite(perMinute) || perMinute <= 0) {
+        return;
+      }
+
+      const perDay =
+        typeof value?.requestsPerDay === 'number'
+          ? value.requestsPerDay
+          : googleRequestsPerDay;
+      const perSecond = this.computePerSecond(perMinute);
+      const perHour = this.computePerHour(perMinute, perDay);
+
+      this.registerRateLimitConfig(
+        ExternalApiService.GOOGLE_PLACES,
+        {
+          requestsPerSecond: perSecond,
+          requestsPerMinute: perMinute,
+          requestsPerHour: perHour,
+          requestsPerDay: perDay,
+        },
+        operation,
+      );
     });
 
     // Reddit API - 100 requests per minute (as per PRD section 2.5)
-    this.rateLimitConfigs.set(ExternalApiService.REDDIT, {
+    const redditRequestsPerMinute =
+      this.configService.get<number>('reddit.requestsPerMinute') || 100;
+    this.registerRateLimitConfig(ExternalApiService.REDDIT, {
       requestsPerSecond: 1,
-      requestsPerMinute:
-        this.configService.get<number>('reddit.requestsPerMinute') || 100,
-      requestsPerHour: 6000,
-      requestsPerDay: 144000,
+      requestsPerMinute: redditRequestsPerMinute,
+      requestsPerHour: redditRequestsPerMinute * 60,
+      requestsPerDay: redditRequestsPerMinute * 60 * 24,
     });
 
     // LLM API - Conservative limits to manage costs
-    this.rateLimitConfigs.set(ExternalApiService.LLM, {
+    const llmRequestsPerMinute =
+      this.configService.get<number>('llm.requestsPerMinute') || 60;
+    this.registerRateLimitConfig(ExternalApiService.LLM, {
       requestsPerSecond: 2,
-      requestsPerMinute:
-        this.configService.get<number>('llm.requestsPerMinute') || 60,
-      requestsPerHour: 3600,
-      requestsPerDay: 86400,
+      requestsPerMinute: llmRequestsPerMinute,
+      requestsPerHour: llmRequestsPerMinute * 60,
+      requestsPerDay: llmRequestsPerMinute * 60 * 24,
     });
 
     this.logger.info('Rate limit configurations initialized', {
-      services: Array.from(this.rateLimitConfigs.keys()),
+      scopes: Array.from(this.rateLimitConfigs.keys()),
     });
   }
 
@@ -221,31 +322,56 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    * Get current usage for a service within a time window
    */
   private getCurrentUsage(
-    service: ExternalApiService,
+    scopeKey: string,
     window: 'minute' | 'hour' | 'day',
     now: Date,
   ): number {
-    const serviceMap = this.requestCounts.get(service);
+    const serviceMap = this.requestCounts.get(scopeKey);
     if (!serviceMap) return 0;
 
     const windowKey = this.getWindowKey(window, now);
     return serviceMap.get(windowKey) || 0;
   }
 
+  private computePerSecond(requestsPerMinute: number): number {
+    if (!Number.isFinite(requestsPerMinute) || requestsPerMinute <= 0) {
+      return 0;
+    }
+
+    return Math.max(1, Math.floor(requestsPerMinute / 60));
+  }
+
+  private computePerHour(
+    requestsPerMinute: number,
+    requestsPerDay?: number,
+  ): number {
+    if (!Number.isFinite(requestsPerMinute) || requestsPerMinute <= 0) {
+      return 0;
+    }
+
+    const perHour = requestsPerMinute * 60;
+
+    if (!Number.isFinite(requestsPerDay) || !requestsPerDay || requestsPerDay <= 0) {
+      return perHour;
+    }
+
+    return Math.min(perHour, requestsPerDay);
+  }
+
   /**
    * Increment usage counter for a service
    */
-  private incrementUsage(service: ExternalApiService, now: Date): void {
-    if (!this.requestCounts.has(service)) {
-      this.requestCounts.set(service, new Map());
-      this.resetTimes.set(service, new Map());
+  private incrementUsage(scopeKey: string, now: Date): void {
+    if (!this.requestCounts.has(scopeKey)) {
+      this.requestCounts.set(scopeKey, new Map());
+      this.resetTimes.set(scopeKey, new Map());
     }
 
-    const serviceMap = this.requestCounts.get(service)!;
-    const resetMap = this.resetTimes.get(service)!;
+    const serviceMap = this.requestCounts.get(scopeKey)!;
+    const resetMap = this.resetTimes.get(scopeKey)!;
 
     // Clean up old windows first
-    this.cleanupOldWindows(service, now);
+    this.cleanupOldWindows(scopeKey, now);
 
     // Increment current minute
     const minuteKey = this.getWindowKey('minute', now);
@@ -256,20 +382,17 @@ export class RateLimitCoordinatorService implements OnModuleInit {
   /**
    * Set usage to limit (when rate limit is hit externally)
    */
-  private setUsageToLimit(service: ExternalApiService, now: Date): void {
-    const config = this.rateLimitConfigs.get(service);
-    if (!config) return;
-
-    if (!this.requestCounts.has(service)) {
-      this.requestCounts.set(service, new Map());
-      this.resetTimes.set(service, new Map());
+  private setUsageToLimit(scopeKey: string, now: Date, limit: number): void {
+    if (!this.requestCounts.has(scopeKey)) {
+      this.requestCounts.set(scopeKey, new Map());
+      this.resetTimes.set(scopeKey, new Map());
     }
 
-    const serviceMap = this.requestCounts.get(service)!;
-    const resetMap = this.resetTimes.get(service)!;
+    const serviceMap = this.requestCounts.get(scopeKey)!;
+    const resetMap = this.resetTimes.get(scopeKey)!;
 
     const minuteKey = this.getWindowKey('minute', now);
-    serviceMap.set(minuteKey, config.requestsPerMinute);
+    serviceMap.set(minuteKey, limit);
     resetMap.set(minuteKey, new Date(now.getTime() + 60000));
   }
 
@@ -277,11 +400,11 @@ export class RateLimitCoordinatorService implements OnModuleInit {
    * Get retry after time in seconds
    */
   private getRetryAfter(
-    service: ExternalApiService,
+    scopeKey: string,
     window: 'minute' | 'hour' | 'day',
     now: Date,
   ): number {
-    const resetMap = this.resetTimes.get(service);
+    const resetMap = this.resetTimes.get(scopeKey);
     if (!resetMap) return 60; // Default to 1 minute
 
     const windowKey = this.getWindowKey(window, now);
@@ -311,9 +434,9 @@ export class RateLimitCoordinatorService implements OnModuleInit {
   /**
    * Clean up old tracking windows to prevent memory leaks
    */
-  private cleanupOldWindows(service: ExternalApiService, now: Date): void {
-    const serviceMap = this.requestCounts.get(service);
-    const resetMap = this.resetTimes.get(service);
+  private cleanupOldWindows(scopeKey: string, now: Date): void {
+    const serviceMap = this.requestCounts.get(scopeKey);
+    const resetMap = this.resetTimes.get(scopeKey);
 
     if (!serviceMap || !resetMap) return;
 

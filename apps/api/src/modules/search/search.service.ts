@@ -11,8 +11,11 @@ import {
   SearchResponseDto,
   PaginationDto,
   SearchResultClickDto,
+  SearchPlanResponseDto,
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
+import { SearchQueryBuilder } from './search-query.builder';
+import { SearchOnDemandCollectionService } from './search-on-demand-collection.service';
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -40,17 +43,23 @@ export class SearchService {
   private readonly defaultPageSize: number;
   private readonly maxPageSize: number;
   private readonly perRestaurantLimit: number;
+  private readonly alwaysIncludeSqlPreview: boolean;
+  private readonly onDemandMinResults: number;
 
   constructor(
     loggerService: LoggerService,
     private readonly queryExecutor: SearchQueryExecutor,
     private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
+    private readonly queryBuilder: SearchQueryBuilder,
+    private readonly onDemandCollectionService: SearchOnDemandCollectionService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
     this.defaultPageSize = this.resolveDefaultPageSize();
     this.maxPageSize = this.resolveMaxPageSize();
     this.perRestaurantLimit = this.resolvePerRestaurantLimit();
+    this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
+    this.onDemandMinResults = this.resolveOnDemandMinResults();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -93,24 +102,40 @@ export class SearchService {
     return plan;
   }
 
+  buildPlanResponse(request: SearchQueryRequestDto): SearchPlanResponseDto {
+    const plan = this.buildQueryPlan(request);
+    const includeSqlPreview = this.shouldIncludeSqlPreview(request);
+    if (!includeSqlPreview) {
+      return { plan, sqlPreview: null };
+    }
+
+    const pagination = this.resolvePagination(request.pagination);
+    const preview = this.queryBuilder.build({
+      plan,
+      pagination,
+    }).preview;
+
+    return { plan, sqlPreview: preview };
+  }
+
   async runQuery(request: SearchQueryRequestDto): Promise<SearchResponseDto> {
     const start = Date.now();
     const plan = this.buildQueryPlan(request);
     const pagination = this.resolvePagination(request.pagination);
+    const includeSqlPreview = this.shouldIncludeSqlPreview(request);
 
     const execution = await this.queryExecutor.execute({
       plan,
       request,
       pagination,
       perRestaurantLimit: this.perRestaurantLimit,
+      includeSqlPreview,
     });
 
     const metadata = {
       totalFoodResults: execution.totalFoodCount,
       totalRestaurantResults:
-        plan.format === 'dual_list'
-          ? execution.restaurantResults.length
-          : 0,
+        plan.format === 'dual_list' ? execution.restaurantResults.length : 0,
       queryExecutionTimeMs: Date.now() - start,
       boundsApplied: execution.metadata.boundsApplied,
       openNowApplied: execution.metadata.openNowApplied,
@@ -149,13 +174,32 @@ export class SearchService {
       metadata,
     });
 
+    if (
+      this.shouldTriggerOnDemand(request, execution.restaurantResults.length)
+    ) {
+      try {
+        await this.onDemandCollectionService.processDiagnostics({
+          request,
+          plan,
+          restaurantCount: execution.restaurantResults.length,
+          restaurantResults: execution.restaurantResults,
+        });
+      } catch (error) {
+        this.logger.warn('Failed to queue on-demand collection', {
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+
     return {
       format: plan.format,
       plan,
       food: execution.foodResults,
       restaurants:
         plan.format === 'dual_list' ? execution.restaurantResults : undefined,
-      sqlPreview: execution.sqlPreview ?? null,
+      sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
       metadata,
     };
   }
@@ -169,6 +213,20 @@ export class SearchService {
       foodAttributes: request.entities.foodAttributes?.length ?? 0,
       restaurantAttributes: request.entities.restaurantAttributes?.length ?? 0,
     };
+  }
+
+  private shouldIncludeSqlPreview(request: SearchQueryRequestDto): boolean {
+    return this.alwaysIncludeSqlPreview || Boolean(request.includeSqlPreview);
+  }
+
+  private shouldTriggerOnDemand(
+    request: SearchQueryRequestDto,
+    restaurantCount: number,
+  ): boolean {
+    if (restaurantCount >= this.onDemandMinResults) {
+      return false;
+    }
+    return this.hasEntityTargets(request);
   }
 
   private buildRestaurantFilters(
@@ -191,9 +249,7 @@ export class SearchService {
         scope: 'restaurant',
         description: 'Filter by restaurant attributes',
         entityType: EntityScope.RESTAURANT_ATTRIBUTE,
-        entityIds: this.collectEntityIds(
-          request.entities.restaurantAttributes,
-        ),
+        entityIds: this.collectEntityIds(request.entities.restaurantAttributes),
       });
     }
 
@@ -203,6 +259,7 @@ export class SearchService {
         description: `Restrict to map bounds (${request.bounds.southWest.lat.toFixed(4)}, ${request.bounds.southWest.lng.toFixed(4)}) ↔ (${request.bounds.northEast.lat.toFixed(4)}, ${request.bounds.northEast.lng.toFixed(4)})`,
         entityType: EntityScope.RESTAURANT,
         entityIds: [],
+        payload: { bounds: request.bounds },
       });
     }
 
@@ -212,6 +269,7 @@ export class SearchService {
         description: `Filter restaurants open at ${now.toISOString()}`,
         entityType: EntityScope.RESTAURANT,
         entityIds: [],
+        payload: { openNow: { requestedAt: now.toISOString() } },
       });
     }
 
@@ -252,9 +310,7 @@ export class SearchService {
     return Array.from(new Set(ids));
   }
 
-  private getMissingScopes(
-    presence: EntityPresenceSummary,
-  ): EntityScope[] {
+  private getMissingScopes(presence: EntityPresenceSummary): EntityScope[] {
     const missing: EntityScope[] = [];
     if (!presence.restaurants) {
       missing.push(EntityScope.RESTAURANT);
@@ -449,5 +505,30 @@ export class SearchService {
     }
 
     return DEFAULT_RESULT_LIMIT;
+  }
+
+  private resolveAlwaysIncludeSqlPreview(): boolean {
+    const raw = process.env.SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW || '';
+    return raw.toLowerCase() === 'true';
+  }
+
+  private resolveOnDemandMinResults(): number {
+    const raw = process.env.SEARCH_ON_DEMAND_MIN_RESULTS;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    return this.defaultPageSize;
+  }
+
+  private hasEntityTargets(request: SearchQueryRequestDto): boolean {
+    return Boolean(
+      request.entities.food?.length ||
+        request.entities.foodAttributes?.length ||
+        request.entities.restaurants?.length ||
+        request.entities.restaurantAttributes?.length,
+    );
   }
 }

@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { PrismaService } from '../../../prisma/prisma.service';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
 import {
   EntityPrioritySelectionService,
@@ -9,10 +10,9 @@ import {
 
 export interface KeywordSearchConfig {
   enabled: boolean;
-  subreddits: string[];
-  monthlyEntityCount: number; // top N entities to search for
-  offsetDays: number; // days to offset from chronological collection
-  searchLimit: number; // Reddit API limit per search
+  entityCount: number;
+  intervalDays: number;
+  searchLimit: number;
 }
 
 export interface KeywordSearchSchedule {
@@ -48,20 +48,18 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
   private config!: KeywordSearchConfig;
   private schedules = new Map<string, KeywordSearchSchedule>();
-  private scheduleTimer?: NodeJS.Timeout;
-
   // Default configuration following PRD requirements
   private readonly DEFAULT_CONFIG: KeywordSearchConfig = {
     enabled: true,
-    subreddits: ['austinfood', 'FoodNYC'], // PRD example subreddits
-    monthlyEntityCount: 25, // Top 20-30 entities per PRD
-    offsetDays: 15, // 15 days offset from chronological collection
-    searchLimit: 1000, // Reddit API limit per search query
+    entityCount: 25,
+    intervalDays: 7,
+    searchLimit: 1000,
   };
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly entityPriorityService: EntityPrioritySelectionService,
+    private readonly prisma: PrismaService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -88,12 +86,17 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     }
 
     // Initialize schedules for each subreddit
-    for (const subreddit of this.config.subreddits) {
+    const subreddits = await this.loadActiveSubreddits();
+    for (const subreddit of subreddits) {
       await this.initializeSubredditSchedule(subreddit);
     }
 
-    // Start the scheduling timer
-    this.startScheduleTimer();
+    this.logger.info('Keyword search scheduling initialized', {
+      nextRuns: this.getAllSchedules().map((schedule) => ({
+        subreddit: schedule.subreddit,
+        nextRun: schedule.nextRun,
+      })),
+    });
   }
 
   /**
@@ -158,7 +161,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       // Use real entity priority selection service per PRD 5.1.2
       const prioritizedEntities =
         await this.entityPriorityService.selectTopPriorityEntities({
-          maxEntities: this.config.monthlyEntityCount,
+          maxEntities: this.config.entityCount,
         });
 
       this.logger.info('Entity priority scores calculated', {
@@ -196,14 +199,10 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   /**
    * Calculate next run date (first of next month + offset)
    */
-  private calculateNextRunDate(): Date {
-    const now = new Date();
-    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-
-    // Add offset days to distribute from chronological collection
-    nextMonth.setDate(nextMonth.getDate() + this.config.offsetDays);
-
-    return nextMonth;
+  private calculateNextRunDate(baseDate?: Date | null): Date {
+    const start = baseDate ? new Date(baseDate) : new Date();
+    start.setDate(start.getDate() + this.config.intervalDays);
+    return start;
   }
 
   /**
@@ -260,7 +259,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
 
     schedule.status = success ? 'completed' : 'failed';
     schedule.lastRun = new Date();
-    schedule.nextRun = this.calculateNextRunDate();
+    schedule.nextRun = this.calculateNextRunDate(schedule.lastRun);
 
     // Refresh entity priorities for next run
     schedule.entities = await this.calculateEntityPriorities(subreddit);
@@ -289,6 +288,14 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
    */
   getSchedule(subreddit: string): KeywordSearchSchedule | undefined {
     return this.schedules.get(subreddit);
+  }
+
+  isEnabled(): boolean {
+    return this.config.enabled;
+  }
+
+  getConfig(): KeywordSearchConfig {
+    return { ...this.config };
   }
 
   /**
@@ -323,50 +330,11 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     });
   }
 
-  /**
-   * Start the schedule timer to check for due searches
-   */
-  private startScheduleTimer(): void {
-    // Check for due searches every hour
-    this.scheduleTimer = setInterval(
-      async () => {
-        try {
-          const dueSearches = await this.checkDueSearches();
-
-          if (dueSearches.length > 0) {
-            this.logger.info('Found due keyword searches', {
-              correlationId: CorrelationUtils.generateCorrelationId(),
-              dueCount: dueSearches.length,
-              subreddits: dueSearches.map((s) => s.subreddit),
-            });
-
-            // TODO: Integrate with job scheduler to actually schedule the searches
-            // This will be implemented when the full keyword search execution is ready
-          }
-        } catch (error) {
-          this.logger.error('Error in keyword search schedule timer', {
-            correlationId: CorrelationUtils.generateCorrelationId(),
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      },
-      60 * 60 * 1000,
-    ); // 1 hour
-  }
-
-  /**
-   * Stop scheduling (for graceful shutdown)
-   */
   async stopScheduling(): Promise<void> {
     this.logger.info('Stopping keyword search scheduler', {
       correlationId: CorrelationUtils.generateCorrelationId(),
       operation: 'stop_scheduler',
     });
-
-    if (this.scheduleTimer) {
-      clearInterval(this.scheduleTimer);
-      this.scheduleTimer = undefined;
-    }
   }
 
   /**
@@ -389,8 +357,48 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
    * Load configuration from environment/config service
    */
   private loadConfiguration(): KeywordSearchConfig {
-    // Use default configuration for now
-    // In the future, this could load from ConfigService
-    return { ...this.DEFAULT_CONFIG };
+    const enabledRaw = this.configService.get<string>('KEYWORD_SEARCH_ENABLED');
+    const enabled = enabledRaw
+      ? enabledRaw.toLowerCase() === 'true'
+      : this.DEFAULT_CONFIG.enabled;
+
+    const entityCount = this.parseNumberEnv(
+      'KEYWORD_SEARCH_ENTITY_COUNT',
+      this.DEFAULT_CONFIG.entityCount,
+    );
+
+    const intervalDays = this.parseNumberEnv(
+      'KEYWORD_SEARCH_INTERVAL_DAYS',
+      this.DEFAULT_CONFIG.intervalDays,
+    );
+
+    const searchLimit = this.parseNumberEnv(
+      'KEYWORD_SEARCH_LIMIT',
+      this.DEFAULT_CONFIG.searchLimit,
+    );
+
+    return {
+      enabled,
+      entityCount,
+      intervalDays,
+      searchLimit,
+    };
+  }
+
+  private parseNumberEnv(key: string, fallback: number): number {
+    const raw = this.configService.get<string>(key);
+    if (!raw) {
+      return fallback;
+    }
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+  private async loadActiveSubreddits(): Promise<string[]> {
+    const records = await this.prisma.subreddit.findMany({
+      where: { isActive: true },
+      select: { name: true },
+      orderBy: { name: 'asc' },
+    });
+    return records.map((row) => row.name);
   }
 }

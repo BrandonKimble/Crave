@@ -134,6 +134,44 @@ export default () => ({
       process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '50',
       10,
     ),
+    requestsPerMinute: parseInt(
+      process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE || '12000',
+      10,
+    ),
+    requestsPerDay: parseInt(
+      process.env.GOOGLE_PLACES_REQUESTS_PER_DAY || '150000',
+      10,
+    ),
+    operationLimits: {
+      placeAutocomplete: {
+        requestsPerMinute: parseInt(
+          process.env.GOOGLE_PLACES_AUTOCOMPLETE_REQUESTS_PER_MINUTE ||
+            process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE ||
+            '12000',
+          10,
+        ),
+        requestsPerDay: parseInt(
+          process.env.GOOGLE_PLACES_AUTOCOMPLETE_REQUESTS_PER_DAY ||
+            process.env.GOOGLE_PLACES_REQUESTS_PER_DAY ||
+            '150000',
+          10,
+        ),
+      },
+      placeDetails: {
+        requestsPerMinute: parseInt(
+          process.env.GOOGLE_PLACES_PLACE_DETAILS_REQUESTS_PER_MINUTE ||
+            process.env.GOOGLE_PLACES_REQUESTS_PER_MINUTE ||
+            '600',
+          10,
+        ),
+        requestsPerDay: parseInt(
+          process.env.GOOGLE_PLACES_PLACE_DETAILS_REQUESTS_PER_DAY ||
+            process.env.GOOGLE_PLACES_REQUESTS_PER_DAY ||
+            '100000',
+          10,
+        ),
+      },
+    },
     defaultRadius: parseInt(
       process.env.GOOGLE_PLACES_DEFAULT_RADIUS || '5000',
       10,
