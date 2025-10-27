@@ -179,9 +179,9 @@ model EntityPriorityMetric {
   entity           Entity     @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
 
   @@id([entityId])
-  @@index([entityType], map: "idx_entity_priority_metrics_type")
-  @@index([lastCalculatedAt(sort: Desc)], map: "idx_entity_priority_metrics_calculated")
-  @@map("entity_priority_metrics")
+  @@index([entityType], map: "idx_entity_priority_type")
+  @@index([lastCalculatedAt(sort: Desc)], map: "idx_entity_priority_calculated")
+  @@map("entity_priority")
 }
 
 model User {
@@ -269,7 +269,7 @@ model KeywordSearchTrigger {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@map("keyword_search_triggers")
+  @@map("search_cooldowns")
 }
 
 enum EntityType {

@@ -171,7 +171,7 @@ export class SearchOnDemandCollectionService {
 
     const updated = await this.prisma.$executeRaw(
       Prisma.sql`
-        UPDATE "keyword_search_triggers"
+        UPDATE "search_cooldowns"
         SET "last_triggered_at" = ${now}, "updated_at" = ${now}
         WHERE "reason_key" = ${reasonKey} AND "last_triggered_at" <= ${cutoff}
       `,
@@ -183,7 +183,7 @@ export class SearchOnDemandCollectionService {
 
     const inserted = await this.prisma.$executeRaw(
       Prisma.sql`
-        INSERT INTO "keyword_search_triggers" ("reason_key", "last_triggered_at", "created_at", "updated_at")
+        INSERT INTO "search_cooldowns" ("reason_key", "last_triggered_at", "created_at", "updated_at")
         VALUES (${reasonKey}, ${now}, ${now}, ${now})
         ON CONFLICT ("reason_key") DO NOTHING
       `,

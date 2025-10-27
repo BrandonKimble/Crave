@@ -99,7 +99,7 @@ When a query supplies food entities/attributes but returns fewer than `SEARCH_ON
 ```json
 { "entityId": "uuid-food", "entityType": "food" }
 ```
-Records a user selection so `entity_priority_metrics` can learn from demand signals.
+Records a user selection so `entity_priority` can learn from demand signals.
 
 ## POST /search/plan
 

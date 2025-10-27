@@ -1,12 +1,12 @@
-CREATE TABLE IF NOT EXISTS "keyword_search_triggers" (
+CREATE TABLE IF NOT EXISTS "search_cooldowns" (
   "reason_key" TEXT PRIMARY KEY,
   "last_triggered_at" TIMESTAMPTZ NOT NULL,
   "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS "idx_keyword_search_triggers_last_triggered"
-  ON "keyword_search_triggers" ("last_triggered_at");
+CREATE INDEX IF NOT EXISTS "idx_search_cooldowns_last_triggered"
+  ON "search_cooldowns" ("last_triggered_at");
 
 WITH upsert_values AS (
   SELECT
