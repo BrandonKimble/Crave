@@ -201,6 +201,7 @@ export interface SearchResponseDto {
     openNowApplied: boolean;
     openNowSupportedRestaurants: number;
     openNowUnsupportedRestaurants: number;
+    openNowFilteredOut: number;
     page: number;
     pageSize: number;
     perRestaurantLimit: number;

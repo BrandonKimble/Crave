@@ -4,6 +4,7 @@ import { KeywordSearchOrchestratorService } from '../content-processing/reddit-c
 import { EntityPriorityScore } from '../content-processing/reddit-collector/entity-priority-selection.service';
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
+import { KeywordSearchMetricsService } from '../content-processing/reddit-collector/keyword-search-metrics.service';
 import {
   MapBoundsDto,
   QueryPlan,
@@ -24,11 +25,12 @@ export class SearchOnDemandCollectionService {
   private readonly cooldownMs: number;
   private readonly maxEntities: number;
   private readonly logger: LoggerService;
-  private readonly lastTriggered = new Map<string, number>();
+  private readonly localCooldownCache = new Map<string, number>();
 
   constructor(
     private readonly keywordOrchestrator: KeywordSearchOrchestratorService,
     private readonly prisma: PrismaService,
+    private readonly keywordSearchMetrics: KeywordSearchMetricsService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchOnDemandCollection');
@@ -51,7 +53,7 @@ export class SearchOnDemandCollectionService {
     }
 
     const reasonKey = this.buildReasonKey(targets, targetSubreddits);
-    if (!this.canTrigger(reasonKey)) {
+    if (!(await this.canTrigger(reasonKey))) {
       return;
     }
 
@@ -65,7 +67,7 @@ export class SearchOnDemandCollectionService {
         targetCount: targets.length,
       });
 
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         targetSubreddits.map((subreddit) =>
           this.keywordOrchestrator.enqueueKeywordSearchJob({
             subreddit,
@@ -75,7 +77,24 @@ export class SearchOnDemandCollectionService {
           }),
         ),
       );
-      this.lastTriggered.set(reasonKey, Date.now());
+      const successfulSubreddits = targetSubreddits.filter(
+        (_subreddit, index) => results[index]?.status === 'fulfilled',
+      );
+      const successfulJobs = successfulSubreddits.length;
+
+      if (successfulJobs > 0) {
+        this.keywordSearchMetrics.recordOnDemandEnqueue({
+          reasonKey,
+          subredditCount: successfulJobs,
+          subreddits: successfulSubreddits,
+          entityCount: targets.length,
+          keywords,
+        });
+      } else {
+        this.logger.warn('No on-demand keyword searches were enqueued', {
+          reasonKey,
+        });
+      }
     } catch (error) {
       this.logger.warn('Failed to trigger on-demand collection', {
         reasonKey,
@@ -104,12 +123,32 @@ export class SearchOnDemandCollectionService {
     return 5;
   }
 
-  private canTrigger(reasonKey: string): boolean {
-    const lastTime = this.lastTriggered.get(reasonKey);
-    if (!lastTime) {
+  private async canTrigger(reasonKey: string): Promise<boolean> {
+    const now = Date.now();
+    const cached = this.localCooldownCache.get(reasonKey);
+    if (cached && now - cached < this.cooldownMs) {
+      return false;
+    }
+
+    const acquired = await this.acquireCooldown(reasonKey, new Date(now));
+    if (acquired) {
+      this.localCooldownCache.set(reasonKey, now);
       return true;
     }
-    return Date.now() - lastTime >= this.cooldownMs;
+
+    const record = await this.prisma.keywordSearchTrigger.findUnique({
+      where: { reasonKey },
+      select: { lastTriggeredAt: true },
+    });
+
+    if (record) {
+      this.localCooldownCache.set(
+        reasonKey,
+        record.lastTriggeredAt.getTime(),
+      );
+    }
+
+    return false;
   }
 
   private buildReasonKey(
@@ -122,6 +161,35 @@ export class SearchOnDemandCollectionService {
       .join('-');
     const subredditSegment = subreddits.sort().join('-') || 'all';
     return `${targetSegment || 'none'}:${subredditSegment}`;
+  }
+
+  private async acquireCooldown(
+    reasonKey: string,
+    now: Date,
+  ): Promise<boolean> {
+    const cutoff = new Date(now.getTime() - this.cooldownMs);
+
+    const updated = await this.prisma.$executeRaw(
+      Prisma.sql`
+        UPDATE "keyword_search_triggers"
+        SET "last_triggered_at" = ${now}, "updated_at" = ${now}
+        WHERE "reason_key" = ${reasonKey} AND "last_triggered_at" <= ${cutoff}
+      `,
+    );
+
+    if (Number(updated) > 0) {
+      return true;
+    }
+
+    const inserted = await this.prisma.$executeRaw(
+      Prisma.sql`
+        INSERT INTO "keyword_search_triggers" ("reason_key", "last_triggered_at", "created_at", "updated_at")
+        VALUES (${reasonKey}, ${now}, ${now}, ${now})
+        ON CONFLICT ("reason_key") DO NOTHING
+      `,
+    );
+
+    return Number(inserted) > 0;
   }
 
   private collectKeywords(request: SearchQueryRequestDto): string[] {

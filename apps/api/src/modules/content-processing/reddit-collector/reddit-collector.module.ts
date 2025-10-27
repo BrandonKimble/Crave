@@ -24,6 +24,7 @@ import { VolumeTrackingProcessor } from './chronological/volume-tracking.process
 import { ChronologicalBatchProcessingWorker } from './chronological/chronological-batch.worker';
 import { KeywordBatchProcessingWorker } from './keyword-batch-processing.worker';
 import { KeywordSearchJobWorker } from './keyword-search-job.worker';
+import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
 import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
@@ -117,6 +118,7 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
     KeywordSearchJobWorker,
     ArchiveBatchProcessingWorker,
     ArchiveCollectionWorker,
+    KeywordSearchMetricsService,
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
     ContentRetrievalMonitoringService,
     // Scheduled Collection Jobs components (PRD Section 5.1.2)
@@ -145,6 +147,7 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
     KeywordSearchJobWorker,
     ArchiveBatchProcessingWorker,
     ArchiveCollectionWorker,
+    KeywordSearchMetricsService,
     // Export content retrieval pipeline components
     ContentRetrievalMonitoringService,
     // Export scheduled collection jobs components

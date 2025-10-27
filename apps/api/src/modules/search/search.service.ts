@@ -45,6 +45,7 @@ export class SearchService {
   private readonly perRestaurantLimit: number;
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
+  private readonly openNowFetchMultiplier: number;
 
   constructor(
     loggerService: LoggerService,
@@ -60,6 +61,7 @@ export class SearchService {
     this.perRestaurantLimit = this.resolvePerRestaurantLimit();
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
+    this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -110,9 +112,10 @@ export class SearchService {
     }
 
     const pagination = this.resolvePagination(request.pagination);
+    const dbPagination = this.resolveDbPagination(pagination, request);
     const preview = this.queryBuilder.build({
       plan,
-      pagination,
+      pagination: dbPagination,
     }).preview;
 
     return { plan, sqlPreview: preview };
@@ -123,12 +126,16 @@ export class SearchService {
     const plan = this.buildQueryPlan(request);
     const pagination = this.resolvePagination(request.pagination);
     const includeSqlPreview = this.shouldIncludeSqlPreview(request);
+    const dbPagination = this.resolveDbPagination(pagination, request);
+    const perRestaurantLimit =
+      plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
 
     const execution = await this.queryExecutor.execute({
       plan,
       request,
       pagination,
-      perRestaurantLimit: this.perRestaurantLimit,
+      dbPagination,
+      perRestaurantLimit,
       includeSqlPreview,
     });
 
@@ -143,9 +150,10 @@ export class SearchService {
         execution.metadata.openNowSupportedRestaurants,
       openNowUnsupportedRestaurants:
         execution.metadata.openNowUnsupportedRestaurants,
+      openNowFilteredOut: execution.metadata.openNowFilteredOut,
       page: pagination.page,
       pageSize: pagination.pageSize,
-      perRestaurantLimit: this.perRestaurantLimit,
+      perRestaurantLimit,
     };
 
     if (request.openNow && !execution.metadata.openNowApplied) {
@@ -523,6 +531,17 @@ export class SearchService {
     return this.defaultPageSize;
   }
 
+  private resolveOpenNowFetchMultiplier(): number {
+    const raw = process.env.SEARCH_OPEN_NOW_FETCH_MULTIPLIER;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 1) {
+        return Math.min(parsed, 10);
+      }
+    }
+    return 4;
+  }
+
   private hasEntityTargets(request: SearchQueryRequestDto): boolean {
     return Boolean(
       request.entities.food?.length ||
@@ -530,5 +549,26 @@ export class SearchService {
         request.entities.restaurants?.length ||
         request.entities.restaurantAttributes?.length,
     );
+  }
+
+  private resolveDbPagination(
+    pagination: PaginationState,
+    request: SearchQueryRequestDto,
+  ): { skip: number; take: number } {
+    if (!request.openNow) {
+      return { skip: pagination.skip, take: pagination.take };
+    }
+
+    const rawTake =
+      pagination.page * pagination.pageSize * this.openNowFetchMultiplier;
+    const take = Math.min(
+      Math.max(rawTake, pagination.pageSize),
+      this.resultLimit,
+    );
+
+    return {
+      skip: 0,
+      take,
+    };
   }
 }

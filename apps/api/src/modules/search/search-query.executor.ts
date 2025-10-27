@@ -78,6 +78,7 @@ interface ExecuteParams {
   pagination: { skip: number; take: number };
   perRestaurantLimit: number;
   includeSqlPreview?: boolean;
+  dbPagination?: { skip: number; take: number };
 }
 
 interface ExecuteResult {
@@ -89,6 +90,7 @@ interface ExecuteResult {
     openNowApplied: boolean;
     openNowSupportedRestaurants: number;
     openNowUnsupportedRestaurants: number;
+    openNowFilteredOut: number;
   };
   sqlPreview?: string | null;
 }
@@ -109,19 +111,30 @@ export class SearchQueryExecutor {
   }
 
   async execute(params: ExecuteParams): Promise<ExecuteResult> {
-    const { plan, request, pagination, perRestaurantLimit, includeSqlPreview } =
-      params;
+    const {
+      plan,
+      request,
+      pagination,
+      perRestaurantLimit,
+      includeSqlPreview,
+      dbPagination,
+    } = params;
 
-    const query = this.queryBuilder.build({ plan, pagination });
+    const effectivePagination = dbPagination ?? pagination;
+    const query = this.queryBuilder.build({
+      plan,
+      pagination: effectivePagination,
+    });
 
     const [connections, totalResult] = await Promise.all([
       this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
       this.prisma.$queryRaw<Array<{ total: bigint }>>(query.countSql),
     ]);
 
-    const totalFoodCount = Number(totalResult[0]?.total ?? 0);
+    const totalBeforeFiltering = Number(totalResult[0]?.total ?? 0);
+    const needsOpenFilter = Boolean(request.openNow);
 
-    const openFilter = request.openNow
+    const openFilter = needsOpenFilter
       ? this.filterByOpenNow(connections)
       : {
           connections,
@@ -130,10 +143,23 @@ export class SearchQueryExecutor {
           unsupportedCount: 0,
         };
 
-    const limitedConnections = this.applyPerRestaurantLimit(
-      openFilter.connections,
-      perRestaurantLimit,
-    );
+    const filteredConnections = openFilter.connections;
+    const totalFoodCount = needsOpenFilter
+      ? filteredConnections.length
+      : totalBeforeFiltering;
+
+    const openNowFilteredOut = needsOpenFilter
+      ? connections.length - filteredConnections.length
+      : 0;
+
+    const paginatedConnections = needsOpenFilter
+      ? this.applyManualPagination(filteredConnections, pagination)
+      : connections;
+
+    const limitedConnections =
+      perRestaurantLimit > 0
+        ? this.applyPerRestaurantLimit(paginatedConnections, perRestaurantLimit)
+        : paginatedConnections;
 
     const foodResults = this.mapFoodResults(limitedConnections);
     const restaurantResults =
@@ -152,6 +178,7 @@ export class SearchQueryExecutor {
         openNowApplied: openFilter.applied,
         openNowSupported: openFilter.supportedCount,
         openNowUnsupported: openFilter.unsupportedCount,
+        openNowFilteredOut,
       });
     }
 
@@ -164,6 +191,7 @@ export class SearchQueryExecutor {
         openNowApplied: openFilter.applied,
         openNowSupportedRestaurants: openFilter.supportedCount,
         openNowUnsupportedRestaurants: openFilter.unsupportedCount,
+        openNowFilteredOut,
       },
       sqlPreview: includeSqlPreview ? query.preview : null,
     };
@@ -214,6 +242,24 @@ export class SearchQueryExecutor {
       supportedCount: supported,
       unsupportedCount: unsupported,
     };
+  }
+
+  private applyManualPagination(
+    connections: QueryResultRow[],
+    pagination: { skip: number; take: number },
+  ): QueryResultRow[] {
+    if (pagination.take <= 0) {
+      return [];
+    }
+
+    if (pagination.skip <= 0 && connections.length <= pagination.take) {
+      return connections.slice(0, pagination.take);
+    }
+
+    return connections.slice(
+      pagination.skip,
+      pagination.skip + pagination.take,
+    );
   }
 
   private applyPerRestaurantLimit(

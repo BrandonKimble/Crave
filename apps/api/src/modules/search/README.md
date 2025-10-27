@@ -7,6 +7,7 @@
 - `SEARCH_ON_DEMAND_COOLDOWN_MS` (default `300000`): minimum time between repeated keyword triggers for the same targets/bounds combo.
 - `SEARCH_ON_DEMAND_MIN_RESULTS` (default `SEARCH_DEFAULT_PAGE_SIZE`): threshold of restaurant results below which on-demand keyword collection runs (only if food entities/attributes were provided).
 - `SEARCH_ON_DEMAND_MAX_ENTITIES` (default `5`): max number of entities queued for a single on-demand keyword cycle.
+- `SEARCH_OPEN_NOW_FETCH_MULTIPLIER` (default `4`): how many pages of results to prefetch when `openNow` is requested so closed restaurants can be filtered before pagination.
 - `KEYWORD_SEARCH_ENABLED`, `KEYWORD_SEARCH_ENTITY_COUNT`, `KEYWORD_SEARCH_INTERVAL_DAYS`, `KEYWORD_SEARCH_LIMIT`, `KEYWORD_SEARCH_POLL_INTERVAL_MS`: control the scheduled keyword enrichment cadence (per-city entity selection—subreddits are pulled from the DB—run frequency, and Reddit search limits).
 
 ## POST /search/run

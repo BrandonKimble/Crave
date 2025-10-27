@@ -19,6 +19,7 @@ import {
 import { EntityPriorityScore } from './entity-priority-selection.service';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
+import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 
 /**
  * Keyword Search Orchestrator Service
@@ -43,6 +44,7 @@ export class KeywordSearchOrchestratorService
     private readonly keywordQueue: Queue,
     @InjectQueue('keyword-search-execution')
     private readonly keywordSearchQueue: Queue,
+    private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -476,6 +478,8 @@ export class KeywordSearchOrchestratorService
         totalSchedules: dueSchedules.length,
         subreddits: enqueuedJobs.map((entry) => entry.subreddit),
       });
+
+      this.keywordSearchMetrics.recordScheduledEnqueue(enqueuedJobs);
 
       return {
         executedSearches: [],

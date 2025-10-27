@@ -7,6 +7,7 @@ import {
   KeywordSearchJobData,
 } from './keyword-search-orchestrator.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
+import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 
 @Processor('keyword-search-execution')
 @Injectable()
@@ -17,6 +18,7 @@ export class KeywordSearchJobWorker {
     @Inject(LoggerService) loggerService: LoggerService,
     private readonly orchestrator: KeywordSearchOrchestratorService,
     private readonly keywordScheduler: KeywordSearchSchedulerService,
+    private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {
     this.logger = loggerService.setContext('KeywordSearchJobWorker');
   }
@@ -48,6 +50,12 @@ export class KeywordSearchJobWorker {
         );
       }
 
+      this.keywordSearchMetrics.recordJobCompletion({
+        source,
+        subreddit,
+        processedEntities: result.metadata.processedEntities,
+      });
+
       this.logger.info('Keyword search job completed', {
         correlationId,
         jobId: job.id,
@@ -58,6 +66,12 @@ export class KeywordSearchJobWorker {
       if (job.data.trackCompletion) {
         await this.keywordScheduler.markSearchCompleted(subreddit, false, 0);
       }
+
+      this.keywordSearchMetrics.recordJobFailure({
+        source,
+        subreddit,
+        error: error instanceof Error ? error.message : String(error),
+      });
 
       this.logger.error('Keyword search job failed', {
         correlationId,

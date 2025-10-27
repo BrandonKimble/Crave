@@ -263,6 +263,15 @@ model Subreddit {
   @@map("subreddits")
 }
 
+model KeywordSearchTrigger {
+  reasonKey       String   @id @map("reason_key")
+  lastTriggeredAt DateTime @map("last_triggered_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("keyword_search_triggers")
+}
+
 enum EntityType {
   restaurant
   food
