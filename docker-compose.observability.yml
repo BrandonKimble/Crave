@@ -1,6 +1,59 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15
+    container_name: crave-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: crave_search
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: crave-redis
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  api:
+    image: node:20-bullseye
+    container_name: crave-api
+    working_dir: /workspace
+    command: >
+      bash -lc "
+        corepack enable &&
+        pnpm install --frozen-lockfile &&
+        cd apps/api &&
+        pnpm prisma generate &&
+        pnpm prisma db push &&
+        LOG_CONSOLE=true LOG_FILES=false pnpm start:dev
+      "
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/crave_search
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      LOG_CONSOLE: 'true'
+      LOG_FILES: 'false'
+      NO_COLOR: 'true'
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/workspace
+      - pnpm-store:/root/.local/share/pnpm/store
+      - root-node_modules:/workspace/node_modules
+      - api-node_modules:/workspace/apps/api/node_modules
+      - shared-node_modules:/workspace/packages/shared/node_modules
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
   prometheus:
     image: prom/prometheus:v2.53.0
     container_name: crave-prometheus
@@ -51,5 +104,11 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
+  redis_data:
+  pnpm-store:
+  root-node_modules:
+  api-node_modules:
+  shared-node_modules:
   grafana-data:
   loki-data:

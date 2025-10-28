@@ -165,6 +165,8 @@ apps/api/
 - Default metrics use the `crave_search_` prefix and include process/node stats plus:
   - `search_requests_total`, `search_execution_duration_seconds`, `search_food_results_count`, `search_open_now_filtered_count`
   - `keyword_on_demand_enqueues_total`, `keyword_scheduled_jobs_enqueued_total`, `keyword_jobs_completed_total`, `keyword_jobs_failed_total`, and associated entity-count histograms
+  - `search_errors_total` for failed requests, `keyword_queue_jobs` gauges for Bull queue depth
+  - Prisma ORM metrics: `prisma_query_duration_seconds`, `prisma_query_errors_total`, `prisma_in_flight_queries`
 - Configure Prometheus/Grafana to scrape the `/metrics` endpoint and visualise search latency, open-now behaviour, and keyword queue health.
 
 ### Logging
@@ -172,6 +174,7 @@ apps/api/
 - Winston logs JSON by default in production and streams to `stdout` (enable with `LOG_CONSOLE=true`) or rotating files (`LOG_FILES=true`).
 - For Loki ingestion, prefer shipping container `stdout`; disable on-disk rotation by omitting `LOG_FILES`.
 - Request logs include correlation IDs; structured fields (e.g. `operation`, `subreddit`, `entityCount`) are intentionally Loki-friendly for querying.
+- The bundled promtail config expects JSON console logs; set `LOG_CONSOLE=true` so pipeline stages can extract `context`, `operation`, and other labels.
 
 ## Testing
 

@@ -16,7 +16,7 @@ scrape_configs:
         labels:
           job: docker-logs
           __path__: /var/lib/docker/containers/*/*.log
-           app: crave-search-api
+          app: crave-search-api
     pipeline_stages:
       - docker: {}
       - json:
@@ -24,19 +24,20 @@ scrape_configs:
             level: level
             message: message
             timestamp: timestamp
-            metadata: metadata
-      - json:
-          source: metadata
-          expressions:
+            service: service
             context: context
             operation: operation
+            correlationId: correlationId
+            environment: environment
             subreddit: subreddit
-            entityCount: entityCount
       - labels:
           level:
           context:
           operation:
           subreddit:
+          service:
+          correlationId:
+          environment:
       - timestamp:
           source: timestamp
           format: RFC3339Nano

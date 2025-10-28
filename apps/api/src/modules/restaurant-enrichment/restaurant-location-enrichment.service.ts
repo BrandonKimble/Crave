@@ -4,11 +4,14 @@ import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntityRepository } from '../../repositories/entity.repository';
 import {
+  GooglePlaceDetailsResponse,
   GooglePlaceDetailsResult,
   GooglePlacesService,
   GooglePlacePrediction,
 } from '../external-integrations/google-places';
 import { LoggerService } from '../../shared';
+import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
+import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 
 const DEFAULT_COUNTRY = 'us';
 const MIN_SCORE_THRESHOLD = 0.45;
@@ -39,6 +42,7 @@ export interface RestaurantEnrichmentResult {
   placeId?: string;
   score?: number;
   updatedFields?: string[];
+  mergedInto?: string;
 }
 
 export interface BatchEnrichmentOptions extends RestaurantEnrichmentOptions {
@@ -66,6 +70,8 @@ export class RestaurantLocationEnrichmentService {
     private readonly entityRepository: EntityRepository,
     private readonly prisma: PrismaService,
     private readonly googlePlacesService: GooglePlacesService,
+    private readonly aliasManagementService: AliasManagementService,
+    private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext(
@@ -241,12 +247,24 @@ export class RestaurantLocationEnrichmentService {
         details.metadata.fields,
         matchMetadata,
       );
+      const {
+        updateData: aliasUpdate,
+        updatedFields: aliasFields,
+      } = this.computeNameAndAliasUpdate(entity, details.result.name);
+      const combinedUpdateData = this.mergeEntityUpdates(
+        updateData,
+        aliasUpdate,
+      );
+      const combinedUpdatedFields = this.mergeUpdatedFieldLists(
+        updatedFields,
+        aliasFields,
+      );
 
       if (options.dryRun) {
         this.logger.info('Dry-run enrichment preview', {
           entityId: entity.entityId,
           placeId: details.result.place_id,
-          updatedFields,
+          updatedFields: combinedUpdatedFields,
         });
         return {
           entityId: entity.entityId,
@@ -254,20 +272,32 @@ export class RestaurantLocationEnrichmentService {
           reason: 'dry_run',
           placeId: details.result.place_id,
           score: best.score,
-          updatedFields,
+          updatedFields: combinedUpdatedFields,
         };
       }
 
-      await this.prisma.entity.update({
-        where: { entityId: entity.entityId },
-        data: updateData,
-      });
+      try {
+        await this.prisma.entity.update({
+          where: { entityId: entity.entityId },
+          data: combinedUpdateData,
+        });
+      } catch (error) {
+        if (this.isGooglePlaceConflict(error)) {
+          return this.handleGooglePlaceCollision({
+            entity,
+            details,
+            matchMetadata,
+            score: best.score,
+          });
+        }
+        throw error;
+      }
 
       this.logger.info('Restaurant enriched with Google Places', {
         entityId: entity.entityId,
         placeId: details.result.place_id,
         score: best.score,
-        updatedFields,
+        updatedFields: combinedUpdatedFields,
       });
 
       return {
@@ -275,7 +305,7 @@ export class RestaurantLocationEnrichmentService {
         status: 'updated',
         placeId: details.result.place_id,
         score: best.score,
-        updatedFields,
+        updatedFields: combinedUpdatedFields,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -290,6 +320,319 @@ export class RestaurantLocationEnrichmentService {
         reason: message,
       };
     }
+  }
+
+  private mergeEntityUpdates(
+    ...updates: Prisma.EntityUpdateInput[]
+  ): Prisma.EntityUpdateInput {
+    return updates.reduce<Prisma.EntityUpdateInput>((acc, update) => {
+      Object.entries(update).forEach(([key, value]) => {
+        if (value !== undefined) {
+          (acc as Record<string, unknown>)[key] = value;
+        }
+      });
+      return acc;
+    }, {});
+  }
+
+  private mergeUpdatedFieldLists(
+    ...lists: Array<string[] | undefined>
+  ): string[] {
+    const merged = new Set<string>();
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const field of list) {
+        if (field) merged.add(field);
+      }
+    }
+    return Array.from(merged);
+  }
+
+  private computeNameAndAliasUpdate(
+    entity: RestaurantEntity,
+    canonicalName?: string | null,
+    extraAliases: string[] = [],
+  ): {
+    updateData: Prisma.EntityUpdateInput;
+    updatedFields: string[];
+  } {
+    const updateData: Prisma.EntityUpdateInput = {};
+    const updatedFields: string[] = [];
+    const normalizedCanonical = this.normalizeName(canonicalName);
+    const normalizedCurrent = this.normalizeName(entity.name);
+
+    const aliasSources = new Set<string>();
+    for (const alias of extraAliases) {
+      const normalizedAlias = this.normalizeName(alias);
+      if (normalizedAlias) {
+        aliasSources.add(alias.trim());
+      }
+    }
+
+    if (
+      normalizedCanonical &&
+      normalizedCurrent &&
+      normalizedCanonical !== normalizedCurrent
+    ) {
+      updateData.name = canonicalName!.trim();
+      updatedFields.push('name');
+      aliasSources.add(entity.name);
+    }
+
+    const aliasResult = this.aliasManagementService.mergeAliases(
+      entity.aliases ?? [],
+      [],
+      Array.from(aliasSources),
+    );
+
+    if (
+      !this.aliasSetsEqual(entity.aliases ?? [], aliasResult.mergedAliases)
+    ) {
+      updateData.aliases = aliasResult.mergedAliases;
+      updatedFields.push('aliases');
+    }
+
+    return { updateData, updatedFields };
+  }
+
+  private normalizeName(value?: string | null): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed.toLowerCase() : null;
+  }
+
+  private aliasSetsEqual(current: string[], next: string[]): boolean {
+    if (current.length !== next.length) {
+      return false;
+    }
+    return this.setsEqual(this.aliasKeySet(current), this.aliasKeySet(next));
+  }
+
+  private aliasKeySet(aliases: string[]): Set<string> {
+    const set = new Set<string>();
+    for (const alias of aliases) {
+      const normalized = this.normalizeName(alias);
+      if (normalized) {
+        set.add(normalized);
+      }
+    }
+    return set;
+  }
+
+  private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
+    if (a.size !== b.size) return false;
+    for (const value of a) {
+      if (!b.has(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private collectAliasCandidates(entity: RestaurantEntity): string[] {
+    const aliases = new Set<string>();
+    if (entity.name?.trim()) {
+      aliases.add(entity.name.trim());
+    }
+    for (const alias of entity.aliases ?? []) {
+      if (alias && alias.trim().length) {
+        aliases.add(alias.trim());
+      }
+    }
+    return Array.from(aliases);
+  }
+
+  private isGooglePlaceConflict(error: unknown): boolean {
+    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+      return false;
+    }
+    if (error.code !== 'P2002') {
+      return false;
+    }
+    const target = Array.isArray(error.meta?.target)
+      ? (error.meta?.target as string[])
+      : [];
+    return target.some((value) =>
+      value.toLowerCase().includes('google_place_id'),
+    );
+  }
+
+  private async handleGooglePlaceCollision(params: {
+    entity: RestaurantEntity;
+    details: GooglePlaceDetailsResponse;
+    matchMetadata: MatchMetadata;
+    score: number;
+  }): Promise<RestaurantEnrichmentResult> {
+    const { entity, details, matchMetadata, score } = params;
+    const placeId = details.result?.place_id;
+
+    if (!placeId) {
+      throw new Error('Google Place details missing place_id');
+    }
+
+    if (!details.result) {
+      throw new Error('Google Place details missing result payload');
+    }
+
+    const canonical = await this.prisma.entity.findUnique({
+      where: { googlePlaceId: placeId },
+    });
+
+    if (!canonical) {
+      this.logger.error(
+        'Google Place ID conflict encountered but canonical entity missing',
+        {
+          entityId: entity.entityId,
+          placeId,
+        },
+      );
+      throw new Error('Canonical entity not found for Google Place ID');
+    }
+
+    const canonicalUpdate = this.buildEntityUpdate(
+      canonical,
+      details.result!,
+      details.metadata?.fields ?? [],
+      matchMetadata,
+    );
+
+    const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
+      canonical,
+      details.result?.name,
+      this.collectAliasCandidates(entity),
+    );
+
+    const mergeAugmentations = this.buildCanonicalMergeAugmentations(
+      canonical,
+      entity,
+    );
+
+    const mergedUpdate = this.mergeEntityUpdates(
+      canonicalUpdate.updateData,
+      canonicalAliasUpdate.updateData,
+      mergeAugmentations.updateData,
+    );
+    const mergedFields = this.mergeUpdatedFieldLists(
+      canonicalUpdate.updatedFields,
+      canonicalAliasUpdate.updatedFields,
+      mergeAugmentations.updatedFields,
+    );
+
+    const updatedCanonical =
+      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+        canonical,
+        duplicate: entity,
+        canonicalUpdate: mergedUpdate,
+      });
+
+    this.logger.info('Merged restaurant into canonical entity', {
+      duplicateId: entity.entityId,
+      canonicalId: updatedCanonical.entityId,
+      placeId,
+      updatedFields: mergedFields,
+    });
+
+    return {
+      entityId: entity.entityId,
+      mergedInto: updatedCanonical.entityId,
+      status: 'updated',
+      placeId,
+      score,
+      updatedFields: mergedFields,
+    };
+  }
+
+  private buildCanonicalMergeAugmentations(
+    canonical: RestaurantEntity,
+    duplicate: RestaurantEntity,
+  ): {
+    updateData: Prisma.EntityUpdateInput;
+    updatedFields: string[];
+  } {
+    const updateData: Prisma.EntityUpdateInput = {};
+    const updatedFields: string[] = [];
+    const mergedAttributes = this.unionStringArrays(
+      canonical.restaurantAttributes,
+      duplicate.restaurantAttributes,
+    );
+
+    if (
+      !this.setsEqual(
+        new Set(canonical.restaurantAttributes),
+        new Set(mergedAttributes),
+      )
+    ) {
+      updateData.restaurantAttributes = mergedAttributes;
+      updatedFields.push('restaurantAttributes');
+    }
+
+    const totalPraise =
+      (canonical.generalPraiseUpvotes ?? 0) +
+      (duplicate.generalPraiseUpvotes ?? 0);
+    if (totalPraise !== (canonical.generalPraiseUpvotes ?? 0)) {
+      updateData.generalPraiseUpvotes = totalPraise;
+      updatedFields.push('generalPraiseUpvotes');
+    }
+
+    const qualityScore = this.maxDecimalValue(
+      canonical.restaurantQualityScore,
+      duplicate.restaurantQualityScore,
+    );
+    if (
+      qualityScore &&
+      (!canonical.restaurantQualityScore ||
+        !qualityScore.equals(canonical.restaurantQualityScore))
+    ) {
+      updateData.restaurantQualityScore = qualityScore;
+      updatedFields.push('restaurantQualityScore');
+    }
+
+    updateData.lastUpdated = new Date();
+
+    return { updateData, updatedFields };
+  }
+
+  private unionStringArrays(
+    ...arrays: Array<string[] | null | undefined>
+  ): string[] {
+    const merged = new Set<string>();
+    for (const list of arrays) {
+      if (!Array.isArray(list)) continue;
+      for (const value of list) {
+        if (value && value.length) {
+          merged.add(value);
+        }
+      }
+    }
+    return Array.from(merged);
+  }
+
+  private maxDecimalValue(
+    current: Prisma.Decimal | number | string | null | undefined,
+    next: Prisma.Decimal | number | string | null | undefined,
+  ): Prisma.Decimal | null {
+    if (current === null || current === undefined) {
+      return next === null || next === undefined
+        ? null
+        : this.toDecimal(next);
+    }
+    if (next === null || next === undefined) {
+      return this.toDecimal(current);
+    }
+    const currentDecimal = this.toDecimal(current);
+    const nextDecimal = this.toDecimal(next);
+    return currentDecimal.greaterThan(nextDecimal)
+      ? currentDecimal
+      : nextDecimal;
+  }
+
+  private toDecimal(
+    value: Prisma.Decimal | number | string,
+  ): Prisma.Decimal {
+    if (value instanceof Prisma.Decimal) {
+      return value;
+    }
+    return new Prisma.Decimal(value);
   }
 
   private buildSearchContext(

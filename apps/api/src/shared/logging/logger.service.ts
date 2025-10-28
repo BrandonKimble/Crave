@@ -35,16 +35,35 @@ export interface LogMetadata {
  */
 @Injectable()
 export class LoggerService {
+  private readonly serviceName =
+    process.env.LOG_SERVICE_NAME ?? 'crave-search-api';
+  private readonly environmentName =
+    process.env.NODE_ENV ?? 'development';
+
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: WinstonLogger,
-  ) {}
+    private readonly contextName?: string,
+  ) {
+  }
+
+  private buildBaseMetadata(): Record<string, unknown> {
+    const base: Record<string, unknown> = {
+      service: this.serviceName,
+      environment: this.environmentName,
+    };
+
+    if (this.contextName) {
+      base.context = this.contextName;
+    }
+
+    return base;
+  }
 
   /**
    * Set context for all subsequent log entries from this service instance
    */
   setContext(context: string): LoggerService {
-    const contextualLogger = new LoggerService(this.logger.child({ context }));
-    return contextualLogger;
+    return this.child({ context });
   }
 
   /**
@@ -73,7 +92,7 @@ export class LoggerService {
    */
   error(message: string, error?: unknown, metadata?: LogMetadata): void {
     const errorMetadata = this.buildErrorMetadata(error, metadata);
-    this.logger.error(message, errorMetadata);
+    this.logger.error(message, this.sanitizeMetadata(errorMetadata));
   }
 
   /**
@@ -171,9 +190,13 @@ export class LoggerService {
    * Create a child logger with additional context
    */
   child(context: Partial<LogMetadata>): LoggerService {
-    const sanitized = this.sanitizeMetadata(context);
-    const childLogger = this.logger.child(sanitized || {});
-    return new LoggerService(childLogger);
+    const sanitizedContext = this.sanitizeMetadata(context, {
+      includeBase: false,
+    });
+    const childLogger = this.logger.child(sanitizedContext ?? {});
+    const inheritedContext =
+      (sanitizedContext?.context as string | undefined) ?? this.contextName;
+    return new LoggerService(childLogger, inheritedContext);
   }
 
   /**
@@ -225,12 +248,20 @@ export class LoggerService {
   /**
    * Sanitize metadata to prevent logging sensitive information
    */
-  private sanitizeMetadata(metadata?: LogMetadata): LogMetadata | undefined {
-    if (!metadata) return undefined;
+  private sanitizeMetadata(
+    metadata?: LogMetadata,
+    options: { includeBase?: boolean } = {},
+  ): Record<string, unknown> | undefined {
+    const includeBase = options.includeBase ?? true;
+    const merged: Record<string, unknown> = {
+      ...(includeBase ? this.buildBaseMetadata() : {}),
+      ...(metadata ?? {}),
+    };
 
-    const sanitized = { ...metadata };
+    if (!merged.context && this.contextName && includeBase) {
+      merged.context = this.contextName;
+    }
 
-    // Remove or mask sensitive fields
     const sensitiveFields = [
       'password',
       'token',
@@ -242,19 +273,24 @@ export class LoggerService {
     ];
 
     sensitiveFields.forEach((field) => {
-      if (sanitized[field]) {
-        sanitized[field] = '[REDACTED]';
+      if (field in merged) {
+        merged[field] = '[REDACTED]';
       }
     });
 
-    // Sanitize nested objects
-    Object.keys(sanitized).forEach((key) => {
-      if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
-        sanitized[key] = this.sanitizeNestedObject(sanitized[key]);
+    Object.keys(merged).forEach((key) => {
+      const value = merged[key];
+      if (value === undefined || value === null) {
+        delete merged[key];
+        return;
+      }
+
+      if (typeof value === 'object') {
+        merged[key] = this.sanitizeNestedObject(value);
       }
     });
 
-    return sanitized;
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 
   /**

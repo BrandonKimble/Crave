@@ -2,29 +2,73 @@ import * as winston from 'winston';
 import * as DailyRotateFile from 'winston-daily-rotate-file';
 import { WinstonModuleOptions } from 'nest-winston';
 
-// Create custom log format for structured logging
-const logFormat = winston.format.combine(
+const DEFAULT_SERVICE_NAME =
+  process.env.LOG_SERVICE_NAME ?? 'crave-search-api';
+
+const flattenMetadata = winston.format((info) => {
+  const metadata = (info as Record<string, unknown>).metadata;
+  if (metadata && typeof metadata === 'object') {
+    Object.entries(metadata as Record<string, unknown>).forEach(
+      ([key, value]) => {
+        if (value !== undefined) {
+          (info as Record<string, unknown>)[key] = value;
+        }
+      },
+    );
+    delete (info as Record<string, unknown>).metadata;
+  }
+
+  if (!('context' in info) && typeof (info as Record<string, unknown>).label === 'string') {
+    (info as Record<string, unknown>).context = (info as Record<
+      string,
+      unknown
+    >).label;
+  }
+  delete (info as Record<string, unknown>).label;
+
+  if (!(info as Record<string, unknown>).service) {
+    (info as Record<string, unknown>).service = DEFAULT_SERVICE_NAME;
+  }
+
+  return info;
+});
+
+const baseFormats = [
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss.SSS' }),
   winston.format.errors({ stack: true }),
-  winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
-  winston.format.printf(({ timestamp, level, message, metadata }) => {
-    const metaString =
-      metadata &&
-      typeof metadata === 'object' &&
-      Object.keys(metadata).length > 0
-        ? ` ${JSON.stringify(metadata)}`
+  flattenMetadata(),
+];
+
+const prettyFormat = winston.format.combine(
+  ...baseFormats,
+  winston.format.colorize({ level: true }),
+  winston.format.printf(({ timestamp, level, message, stack, ...rest }) => {
+    const renderedMessage = stack ?? message;
+    const { service, context, correlationId, ...extras } = rest;
+    const orderedPayload = {
+      service,
+      context,
+      correlationId,
+      ...extras,
+    };
+    const serializedPayload =
+      Object.values(orderedPayload).some((value) => value !== undefined)
+        ? ` ${JSON.stringify(
+            Object.fromEntries(
+              Object.entries(orderedPayload).filter(
+                ([, value]) => value !== undefined,
+              ),
+            ),
+          )}`
         : '';
-    return `${String(timestamp)} [${String(level).toUpperCase()}] ${String(
-      message,
-    )}${metaString}`;
+    return `${String(timestamp)} [${String(level)}] ${String(
+      renderedMessage,
+    )}${serializedPayload}`;
   }),
 );
 
-// Create JSON format for production
 const jsonFormat = winston.format.combine(
-  winston.format.timestamp(),
-  winston.format.errors({ stack: true }),
-  winston.format.metadata({ fillExcept: ['message', 'level', 'timestamp'] }),
+  ...baseFormats,
   winston.format.json(),
 );
 
@@ -36,6 +80,9 @@ export function createWinstonConfig(
 ): WinstonModuleOptions {
   const isDevelopment = nodeEnv === 'development';
   const isProduction = nodeEnv === 'production';
+  const forceJson =
+    (process.env.LOG_FORMAT || '').toLowerCase() === 'json' ? true : false;
+  const useJsonFormat = forceJson || !isDevelopment;
 
   // Base transports
   const transports: winston.transport[] = [];
@@ -45,7 +92,7 @@ export function createWinstonConfig(
     transports.push(
       new winston.transports.Console({
         level: isDevelopment ? 'debug' : 'info',
-        format: isDevelopment ? logFormat : jsonFormat,
+        format: useJsonFormat ? jsonFormat : prettyFormat,
       }),
     );
   }
@@ -94,7 +141,11 @@ export function createWinstonConfig(
 
   return {
     level: isDevelopment ? 'debug' : 'info',
-    format: isDevelopment ? logFormat : jsonFormat,
+    format: useJsonFormat ? jsonFormat : prettyFormat,
+    defaultMeta: {
+      service: DEFAULT_SERVICE_NAME,
+      environment: nodeEnv,
+    },
     transports,
     // Handle uncaught exceptions
     exceptionHandlers: isProduction
