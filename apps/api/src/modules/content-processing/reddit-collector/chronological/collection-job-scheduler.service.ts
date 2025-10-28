@@ -415,7 +415,10 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         jobId,
         triggeredBy,
         options: {
-          limit: 1000, // ALWAYS use Reddit's max - safety buffer is for scheduling only
+          limit:
+            typeof options?.limit === 'number' && options.limit > 0
+              ? Math.floor(options.limit)
+              : 1000, // Default to Reddit max when no override provided
           retryCount: 0,
           lastProcessedTimestamp: options?.lastProcessedTimestamp,
         },
@@ -679,10 +682,17 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    * Load configuration from environment/config service
    */
   private loadConfiguration(): JobScheduleConfig {
-    // Load configuration from environment variables
+    const enabledRaw =
+      this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ??
+      process.env.COLLECTION_SCHEDULER_ENABLED;
+    const enabled =
+      typeof enabledRaw === 'string'
+        ? enabledRaw.toLowerCase() === 'true'
+        : true;
+
     return {
       ...this.DEFAULT_CONFIG,
-      enabled: true,
+      enabled,
     };
   }
 }

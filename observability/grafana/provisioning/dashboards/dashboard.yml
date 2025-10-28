@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: Crave Search Dashboards
+    type: file
+    folder: Crave Search
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

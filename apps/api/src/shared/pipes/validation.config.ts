@@ -16,7 +16,7 @@ export function createValidationPipeConfig(isProd = false): ValidationPipe {
     transform: true, // Transform payloads to DTO instances
     transformOptions: {
       enableImplicitConversion: false, // Require explicit type conversion for security
-      excludeExtraneousValues: true, // Remove extra values during transformation
+      excludeExtraneousValues: false, // Preserve DTO fields (explicit @Expose if needed)
     },
 
     // Error handling

@@ -5,10 +5,12 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { DatabaseConfig } from '../config/database-config.interface';
 import { DatabaseValidationService } from '../config/database-validation.service';
 import { LoggerService } from '../shared';
+import { MetricsService } from '../modules/metrics/metrics.service';
+import { Histogram, Counter, Gauge } from 'prom-client';
 
 @Injectable()
 export class PrismaService
@@ -26,11 +28,15 @@ export class PrismaService
     connectionErrors: 0,
     lastHealthCheck: new Date(),
   };
+  private readonly queryDurationHistogram: Histogram<string>;
+  private readonly queryErrorCounter: Counter<string>;
+  private readonly inFlightGauge: Gauge<string>;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     private readonly validationService: DatabaseValidationService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly metricsService: MetricsService,
   ) {
     const dbConfig = configService?.get<DatabaseConfig>('database');
 
@@ -64,8 +70,29 @@ export class PrismaService
               emit: 'event',
               level: 'error',
             },
-          ],
+        ],
     });
+
+    this.queryDurationHistogram = this.metricsService.getHistogram({
+      name: 'prisma_query_duration_seconds',
+      help: 'Duration of Prisma ORM operations in seconds',
+      labelNames: ['model', 'action'],
+      buckets: [0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+    });
+
+    this.queryErrorCounter = this.metricsService.getCounter({
+      name: 'prisma_query_errors_total',
+      help: 'Total Prisma ORM operations that resulted in an error',
+      labelNames: ['model', 'action'],
+    });
+
+    this.inFlightGauge = this.metricsService.getGauge({
+      name: 'prisma_in_flight_queries',
+      help: 'Number of Prisma ORM operations currently executing',
+      labelNames: ['model', 'action'],
+    });
+
+    this.setupMetricsMiddleware();
 
     // Configuration and logger initialization moved to onModuleInit
     // this.setupEventListeners(); // Moved to onModuleInit
@@ -206,6 +233,28 @@ export class PrismaService
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     (this.$on as any)('info', (event: { message: string }) => {
       this.logger.info('Database info', { message: event.message });
+    });
+  }
+
+  private setupMetricsMiddleware(): void {
+    this.$use(async (params: Prisma.MiddlewareParams, next) => {
+      const model = params?.model ?? 'raw';
+      const action = params?.action ?? 'unknown';
+      const labels = { model, action };
+      const start = Date.now();
+
+      this.inFlightGauge.inc(labels, 1);
+      try {
+        const result = await next(params);
+        const durationSeconds = (Date.now() - start) / 1000;
+        this.queryDurationHistogram.observe(labels, durationSeconds);
+        return result;
+      } catch (error) {
+        this.queryErrorCounter.inc(labels, 1);
+        throw error;
+      } finally {
+        this.inFlightGauge.dec(labels, 1);
+      }
     });
   }
 

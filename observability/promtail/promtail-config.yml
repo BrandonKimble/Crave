@@ -1,0 +1,43 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: containers
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker-logs
+          __path__: /var/lib/docker/containers/*/*.log
+           app: crave-search-api
+    pipeline_stages:
+      - docker: {}
+      - json:
+          expressions:
+            level: level
+            message: message
+            timestamp: timestamp
+            metadata: metadata
+      - json:
+          source: metadata
+          expressions:
+            context: context
+            operation: operation
+            subreddit: subreddit
+            entityCount: entityCount
+      - labels:
+          level:
+          context:
+          operation:
+          subreddit:
+      - timestamp:
+          source: timestamp
+          format: RFC3339Nano
+          location: UTC

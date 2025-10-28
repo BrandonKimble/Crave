@@ -170,14 +170,25 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       );
 
       const allPosts = postsResult.data || [];
-      const maxPostsOverride =
+      const jobLimit =
+        typeof options.limit === 'number' && options.limit > 0
+          ? Math.floor(options.limit)
+          : null;
+      const envLimit =
         process.env.TEST_CHRONO_MAX_POSTS &&
         !Number.isNaN(Number(process.env.TEST_CHRONO_MAX_POSTS))
           ? Math.max(0, Number.parseInt(process.env.TEST_CHRONO_MAX_POSTS, 10))
           : null;
+      const manualLimitProvided =
+        job.data.triggeredBy === 'manual' && jobLimit !== null;
+      const effectiveLimit = manualLimitProvided
+        ? jobLimit
+        : envLimit !== null && envLimit >= 0
+        ? envLimit
+        : jobLimit;
       const posts =
-        typeof maxPostsOverride === 'number' && maxPostsOverride > 0
-          ? allPosts.slice(0, maxPostsOverride)
+        typeof effectiveLimit === 'number' && effectiveLimit > 0
+          ? allPosts.slice(0, effectiveLimit)
           : allPosts;
       await job.log(
         `Collected ${allPosts.length} posts from r/${subreddit}, limited to ${posts.length} for testing`,

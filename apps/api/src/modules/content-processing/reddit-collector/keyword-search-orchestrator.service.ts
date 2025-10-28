@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { Queue, JobCounts } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   RedditService,
@@ -259,6 +259,8 @@ export class KeywordSearchOrchestratorService
     });
 
     await Promise.all(enqueuePromises);
+
+    await this.safeUpdateQueueMetrics();
   }
 
   /**
@@ -570,6 +572,34 @@ export class KeywordSearchOrchestratorService
       source: data.source,
       entityCount: data.entities.length,
     });
+
+    await this.safeUpdateQueueMetrics();
+  }
+
+  private async safeUpdateQueueMetrics(): Promise<void> {
+    try {
+      await Promise.all([
+        this.captureQueueMetrics(
+          this.keywordSearchQueue,
+          'keyword_search_execution',
+        ),
+        this.captureQueueMetrics(
+          this.keywordQueue,
+          'keyword_batch_processing',
+        ),
+      ]);
+    } catch (error) {
+      this.logger.warn('Failed to record keyword queue metrics', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async captureQueueMetrics(queue: Queue, name: string): Promise<void> {
+    const counts: JobCounts = await queue.getJobCounts();
+    this.keywordSearchMetrics.recordQueueSnapshot(name, counts);
   }
 
   private keywordSchedulerConfigEnabled(): boolean {

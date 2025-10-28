@@ -266,7 +266,21 @@ async function testPipeline() {
     if (SHOULD_RESET_DB) {
       console.log('\nStep 1b • Resetting database state for test run');
       await prisma.$executeRawUnsafe(
-        'TRUNCATE TABLE boosts, category_aggregates, connections, entities CASCADE',
+        [
+          'TRUNCATE TABLE',
+          [
+            'boosts',
+            'category_aggregates',
+            'connections',
+            'entities',
+            'entity_priority',
+            'search_cooldowns',
+            'subscriptions',
+            'user_events',
+            'source',
+          ].join(', '),
+          'RESTART IDENTITY CASCADE',
+        ].join(' '),
       );
       await prisma.$executeRawUnsafe('UPDATE subreddits SET last_processed = NULL');
       await cleanQueue(chronologicalQueue, 'chronological collection');

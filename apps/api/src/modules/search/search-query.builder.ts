@@ -55,7 +55,7 @@ export class SearchQueryBuilder {
         this.buildInClause('r.entity_id', restaurantIds),
       );
       restaurantConditionPreview.push(
-        `r.entity_id IN (${this.formatIdList(restaurantIds)})`,
+        `r.entity_id = ANY(${this.formatUuidArray(restaurantIds)})`,
       );
     }
 
@@ -96,7 +96,7 @@ export class SearchQueryBuilder {
     if (foodIds.length) {
       connectionConditions.push(this.buildInClause('c.food_id', foodIds));
       connectionConditionPreview.push(
-        `c.food_id IN (${this.formatIdList(foodIds)})`,
+        `c.food_id = ANY(${this.formatUuidArray(foodIds)})`,
       );
     }
 
@@ -268,11 +268,10 @@ LIMIT ${pagination.take};`.trim();
   }
 
   private buildInClause(column: string, values: string[]): Prisma.Sql {
-    const valueList = Prisma.join(
-      values.map((value) => Prisma.sql`${value}`),
-      ', ',
-    );
-    return Prisma.sql`${Prisma.raw(column)} IN (${valueList})`;
+    if (!values.length) {
+      return Prisma.sql`FALSE`;
+    }
+    return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildUuidArray(values)})`;
   }
 
   private buildArrayOverlapClause(
@@ -292,10 +291,6 @@ LIMIT ${pagination.take};`.trim();
 
   private formatUuidArray(values: string[]): string {
     return `ARRAY[${values.map((value) => `'${value}'`).join(', ')}]::uuid[]`;
-  }
-
-  private formatIdList(values: string[]): string {
-    return values.map((value) => `'${value}'`).join(', ');
   }
 
   private combineSqlClauses(clauses: Prisma.Sql[]): Prisma.Sql {

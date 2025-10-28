@@ -1,0 +1,11 @@
+apiVersion: 1
+
+providers:
+  - name: crave-search
+    orgId: 1
+    folder: Crave Search
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /etc/grafana/provisioning/dashboards

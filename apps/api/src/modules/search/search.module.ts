@@ -8,6 +8,7 @@ import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
 import { SearchOnDemandCollectionService } from './search-on-demand-collection.service';
+import { SearchMetricsService } from './search-metrics.service';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { SearchOnDemandCollectionService } from './search-on-demand-collection.s
     SearchQueryExecutor,
     SearchQueryBuilder,
     SearchOnDemandCollectionService,
+    SearchMetricsService,
   ],
   exports: [SearchService],
 })

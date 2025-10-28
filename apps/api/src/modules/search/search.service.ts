@@ -16,6 +16,7 @@ import {
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
 import { SearchOnDemandCollectionService } from './search-on-demand-collection.service';
+import { SearchMetricsService } from './search-metrics.service';
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -53,6 +54,7 @@ export class SearchService {
     private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
     private readonly queryBuilder: SearchQueryBuilder,
     private readonly onDemandCollectionService: SearchOnDemandCollectionService,
+    private readonly searchMetrics: SearchMetricsService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -123,93 +125,112 @@ export class SearchService {
 
   async runQuery(request: SearchQueryRequestDto): Promise<SearchResponseDto> {
     const start = Date.now();
-    const plan = this.buildQueryPlan(request);
-    const pagination = this.resolvePagination(request.pagination);
-    const includeSqlPreview = this.shouldIncludeSqlPreview(request);
-    const dbPagination = this.resolveDbPagination(pagination, request);
-    const perRestaurantLimit =
-      plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
-
-    const execution = await this.queryExecutor.execute({
-      plan,
-      request,
-      pagination,
-      dbPagination,
-      perRestaurantLimit,
-      includeSqlPreview,
-    });
-
-    const metadata = {
-      totalFoodResults: execution.totalFoodCount,
-      totalRestaurantResults:
-        plan.format === 'dual_list' ? execution.restaurantResults.length : 0,
-      queryExecutionTimeMs: Date.now() - start,
-      boundsApplied: execution.metadata.boundsApplied,
-      openNowApplied: execution.metadata.openNowApplied,
-      openNowSupportedRestaurants:
-        execution.metadata.openNowSupportedRestaurants,
-      openNowUnsupportedRestaurants:
-        execution.metadata.openNowUnsupportedRestaurants,
-      openNowFilteredOut: execution.metadata.openNowFilteredOut,
-      page: pagination.page,
-      pageSize: pagination.pageSize,
-      perRestaurantLimit,
-    };
-
-    if (request.openNow && !execution.metadata.openNowApplied) {
-      this.logger.warn(
-        'Open-now filter requested but insufficient metadata to evaluate',
-        {
-          unsupportedCount: execution.metadata.openNowUnsupportedRestaurants,
-        },
-      );
-    }
+    let plan: QueryPlan | undefined;
 
     try {
-      await this.recordQueryImpressions(request);
-    } catch (error) {
-      this.logger.warn('Failed to record search query impressions', {
-        error: {
-          message: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-        },
+      plan = this.buildQueryPlan(request);
+      const pagination = this.resolvePagination(request.pagination);
+      const includeSqlPreview = this.shouldIncludeSqlPreview(request);
+      const dbPagination = this.resolveDbPagination(pagination, request);
+      const perRestaurantLimit =
+        plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
+
+      const execution = await this.queryExecutor.execute({
+        plan,
+        request,
+        pagination,
+        dbPagination,
+        perRestaurantLimit,
+        includeSqlPreview,
       });
-    }
 
-    this.logger.debug('Search query executed', {
-      foodCount: execution.foodResults.length,
-      restaurantCount: execution.restaurantResults.length,
-      metadata,
-    });
+      const metadata = {
+        totalFoodResults: execution.totalFoodCount,
+        totalRestaurantResults:
+          plan.format === 'dual_list' ? execution.restaurantResults.length : 0,
+        queryExecutionTimeMs: Date.now() - start,
+        boundsApplied: execution.metadata.boundsApplied,
+        openNowApplied: execution.metadata.openNowApplied,
+        openNowSupportedRestaurants:
+          execution.metadata.openNowSupportedRestaurants,
+        openNowUnsupportedRestaurants:
+          execution.metadata.openNowUnsupportedRestaurants,
+        openNowFilteredOut: execution.metadata.openNowFilteredOut,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        perRestaurantLimit,
+      };
 
-    if (
-      this.shouldTriggerOnDemand(request, execution.restaurantResults.length)
-    ) {
+      if (request.openNow && !execution.metadata.openNowApplied) {
+        this.logger.warn(
+          'Open-now filter requested but insufficient metadata to evaluate',
+          {
+            unsupportedCount: execution.metadata.openNowUnsupportedRestaurants,
+          },
+        );
+      }
+
       try {
-        await this.onDemandCollectionService.processDiagnostics({
-          request,
-          plan,
-          restaurantCount: execution.restaurantResults.length,
-          restaurantResults: execution.restaurantResults,
-        });
+        await this.recordQueryImpressions(request);
       } catch (error) {
-        this.logger.warn('Failed to queue on-demand collection', {
+        this.logger.warn('Failed to record search query impressions', {
           error: {
             message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
           },
         });
       }
-    }
 
-    return {
-      format: plan.format,
-      plan,
-      food: execution.foodResults,
-      restaurants:
-        plan.format === 'dual_list' ? execution.restaurantResults : undefined,
-      sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
-      metadata,
-    };
+      this.logger.debug('Search query executed', {
+        foodCount: execution.foodResults.length,
+        restaurantCount: execution.restaurantResults.length,
+        metadata,
+      });
+
+      this.searchMetrics.recordSearchExecution({
+        format: plan.format,
+        openNow: Boolean(request.openNow),
+        durationMs: metadata.queryExecutionTimeMs,
+        totalFoodResults: execution.totalFoodCount,
+        openNowFilteredOut: execution.metadata.openNowFilteredOut ?? 0,
+      });
+
+      if (
+        this.shouldTriggerOnDemand(request, execution.restaurantResults.length)
+      ) {
+        try {
+          await this.onDemandCollectionService.processDiagnostics({
+            request,
+            plan,
+            restaurantCount: execution.restaurantResults.length,
+            restaurantResults: execution.restaurantResults,
+          });
+        } catch (error) {
+          this.logger.warn('Failed to queue on-demand collection', {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }
+
+      return {
+        format: plan.format,
+        plan,
+        food: execution.foodResults,
+        restaurants:
+          plan.format === 'dual_list' ? execution.restaurantResults : undefined,
+        sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
+        metadata,
+      };
+    } catch (error) {
+      this.searchMetrics.recordSearchFailure({
+        format: plan?.format ?? 'unknown',
+        openNow: Boolean(request.openNow),
+        errorName: error instanceof Error ? error.name : 'Error',
+      });
+      throw error;
+    }
   }
 
   private getEntityPresenceSummary(

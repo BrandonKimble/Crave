@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: crave-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - '9090:9090'
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: crave-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    ports:
+      - '3001:3000'
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: crave-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - '3100:3100'
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: crave-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/log:/var/log:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  loki-data:

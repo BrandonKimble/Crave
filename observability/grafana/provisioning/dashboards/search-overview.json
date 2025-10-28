@@ -1,0 +1,133 @@
+{
+  "uid": "search-overview",
+  "title": "Crave Search Overview",
+  "tags": ["crave-search", "backend"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "P95 Search Execution Duration",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "calcs": ["lastNotNull"], "displayMode": "table" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(search_execution_duration_seconds_bucket[5m])) by (le, format, open_now))",
+          "legendFormat": "{{format}} | open={{open_now}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Search Errors (5m)",
+      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "graphMode": "area",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(search_errors_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Keyword Queue Depth",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "transformations": [],
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(keyword_queue_jobs{queue=\"keyword_search_execution\"}) by (status)",
+          "legendFormat": "execution: {{status}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(keyword_queue_jobs{queue=\"keyword_batch_processing\"}) by (status)",
+          "legendFormat": "batch: {{status}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Open-Now Filter Drops",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table" },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(search_open_now_filtered_count_sum[5m])) by (format)",
+          "legendFormat": "{{format}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Recent Search Logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "loki", "uid": "crave-loki" },
+      "targets": [
+        {
+          "expr": "{job=\"docker-logs\", context=\"SearchService\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showLabels": true,
+        "showTime": true,
+        "dedupStrategy": "none"
+      }
+    }
+  ],
+  "templating": { "list": [] }
+}

@@ -11,9 +11,10 @@ import { createValidationPipeConfig } from './shared';
 
 async function bootstrap() {
   // Create with Fastify adapter
+  const fastifyAdapter = new FastifyAdapter();
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter(),
+    fastifyAdapter,
   );
 
   const configService = app.get(ConfigService);
@@ -39,7 +40,6 @@ async function bootstrap() {
         baseUri: [`'self'`],
         formAction: [`'self'`],
         frameAncestors: [`'none'`],
-        upgradeInsecureRequests: isProd ? [] : undefined,
       },
     },
     // Additional security headers
@@ -49,6 +49,21 @@ async function bootstrap() {
     noSniff: true,
     xssFilter: true,
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  });
+
+  fastifyAdapter.getInstance().addHook('preHandler', async (req, reply) => {
+    if (req.raw.url?.startsWith('/metrics')) {
+      const headers = reply.getHeaders();
+      if ('content-security-policy' in headers) {
+        reply.raw.removeHeader('content-security-policy');
+      }
+      if ('x-content-type-options' in headers) {
+        reply.raw.removeHeader('x-content-type-options');
+      }
+      if ('x-frame-options' in headers) {
+        reply.raw.removeHeader('x-frame-options');
+      }
+    }
   });
 
   // Enhanced CORS configuration
@@ -81,7 +96,9 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   // Prefix all routes with /api
-  app.setGlobalPrefix('api');
+  app.setGlobalPrefix('api', {
+    exclude: ['metrics'],
+  });
 
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port, '0.0.0.0'); // Fastify needs the host specified

@@ -11,6 +11,7 @@ import { RedditCollectorModule } from './modules/content-processing/reddit-colle
 import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
 import { SearchModule } from './modules/search/search.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 
 @Module({
   imports: [
@@ -36,6 +37,7 @@ import { SearchModule } from './modules/search/search.module';
     ExternalIntegrationsModule,
     RedditCollectorModule,
     SearchModule,
+    MetricsModule,
   ],
   controllers: [AppController],
   providers: [],
