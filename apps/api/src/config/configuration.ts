@@ -188,22 +188,35 @@ export default () => ({
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRATION || '7d',
   },
-  searchInterest: {
-    maxPerBatch: parseInt(process.env.SEARCH_INTEREST_MAX_PER_BATCH || '5', 10),
+  onDemand: {
+    maxPerBatch: parseInt(
+      process.env.SEARCH_ON_DEMAND_MAX_PER_BATCH ||
+        process.env.SEARCH_INTEREST_MAX_PER_BATCH ||
+        '5',
+      10,
+    ),
     maxImmediateWaiting: parseInt(
-      process.env.SEARCH_INTEREST_MAX_INSTANT_WAITING || '3',
+      process.env.SEARCH_ON_DEMAND_MAX_INSTANT_WAITING ||
+        process.env.SEARCH_INTEREST_MAX_INSTANT_WAITING ||
+        '3',
       10,
     ),
     maxImmediateActive: parseInt(
-      process.env.SEARCH_INTEREST_MAX_INSTANT_ACTIVE || '1',
+      process.env.SEARCH_ON_DEMAND_MAX_INSTANT_ACTIVE ||
+        process.env.SEARCH_INTEREST_MAX_INSTANT_ACTIVE ||
+        '1',
       10,
     ),
     maxProcessingBacklog: parseInt(
-      process.env.SEARCH_INTEREST_MAX_PROCESSING_BACKLOG || '10',
+      process.env.SEARCH_ON_DEMAND_MAX_PROCESSING_BACKLOG ||
+        process.env.SEARCH_INTEREST_MAX_PROCESSING_BACKLOG ||
+        '10',
       10,
     ),
     instantCooldownMs: parseInt(
-      process.env.SEARCH_INTEREST_INSTANT_COOLDOWN_MS || '300000',
+      process.env.SEARCH_ON_DEMAND_INSTANT_COOLDOWN_MS ||
+        process.env.SEARCH_INTEREST_INSTANT_COOLDOWN_MS ||
+        '300000',
       10,
     ),
   },

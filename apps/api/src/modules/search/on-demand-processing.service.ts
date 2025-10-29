@@ -1,5 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
+import {
+  EntityType,
+  OnDemandReason,
+  OnDemandStatus,
+  Prisma,
+} from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntityRepository } from '../../repositories/entity.repository';
@@ -9,33 +14,36 @@ import {
 } from '../content-processing/reddit-collector/keyword-search-orchestrator.service';
 import { EntityPriorityScore } from '../content-processing/reddit-collector/entity-priority-selection.service';
 import {
-  InterestInput,
-  SearchInterestService,
-} from './search-interest.service';
+  OnDemandRequestInput,
+  OnDemandRequestService,
+} from './on-demand-request.service';
 import { LoggerService } from '../../shared';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { MapBoundsDto } from './dto/search-query.dto';
-export interface SearchInterestJobTarget {
-  interestId: string;
+
+export interface OnDemandJobTarget {
+  requestId: string;
   term: string;
   normalizedTerm: string;
   entityType: EntityType;
   occurrenceCount: number;
+  reason: OnDemandReason;
   existingEntityId?: string | null;
 }
 
-type SearchInterestRecord = {
-  interestId: string;
+type OnDemandRecord = {
+  requestId: string;
   term: string;
   entityType: EntityType;
+  reason: OnDemandReason;
   occurrenceCount: number;
-  status: 'pending' | 'queued' | 'processing' | 'completed';
+  status: OnDemandStatus;
   entityId?: string | null;
   metadata: Prisma.JsonValue | null;
   lastEnqueuedAt: Date | null;
 };
 
-type SearchInterestMetadata = Record<string, unknown>;
+type OnDemandMetadata = Record<string, unknown>;
 
 interface QueueDecision {
   runNow: boolean;
@@ -57,7 +65,7 @@ interface QueueSnapshot {
 }
 
 @Injectable()
-export class SearchInterestProcessingService {
+export class OnDemandProcessingService {
   private readonly maxPerBatch: number;
   private readonly maxImmediateWaiting: number;
   private readonly maxImmediateActive: number;
@@ -69,66 +77,68 @@ export class SearchInterestProcessingService {
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
     private readonly keywordSearchOrchestrator: KeywordSearchOrchestratorService,
-    private readonly interestService: SearchInterestService,
+    private readonly requestService: OnDemandRequestService,
     private readonly subredditResolver: SearchSubredditResolverService,
     private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.maxPerBatch =
-      this.configService.get<number>('searchInterest.maxPerBatch') || 5;
+      this.configService.get<number>('onDemand.maxPerBatch') || 5;
     this.maxImmediateWaiting =
-      this.configService.get<number>('searchInterest.maxImmediateWaiting') || 3;
+      this.configService.get<number>('onDemand.maxImmediateWaiting') || 3;
     this.maxImmediateActive =
-      this.configService.get<number>('searchInterest.maxImmediateActive') || 1;
+      this.configService.get<number>('onDemand.maxImmediateActive') || 1;
     this.maxProcessingBacklog =
-      this.configService.get<number>('searchInterest.maxProcessingBacklog') ||
-      10;
+      this.configService.get<number>('onDemand.maxProcessingBacklog') || 10;
     this.instantCooldownMs =
-      this.configService.get<number>('searchInterest.instantCooldownMs') ||
+      this.configService.get<number>('onDemand.instantCooldownMs') ||
       5 * 60 * 1000;
-    this.logger = loggerService.setContext('SearchInterestProcessingService');
+    this.logger = loggerService.setContext('OnDemandProcessingService');
   }
 
-  async enqueueInterests(interests: InterestInput[]): Promise<void> {
-    if (!interests.length) {
+  async enqueueRequests(requests: OnDemandRequestInput[]): Promise<void> {
+    if (!requests.length) {
       return;
     }
 
     try {
       await this.processPendingBacklog();
     } catch (error) {
-      this.logger.warn('Failed to process pending search interest backlog', {
+      this.logger.warn('Failed to process pending on-demand backlog', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
-    const limited = interests.slice(0, this.maxPerBatch);
+    const limited = requests.slice(0, this.maxPerBatch);
 
-    for (const interest of limited) {
+    for (const request of limited) {
       try {
-        await this.processInterest(interest);
+        await this.processRequest(request);
       } catch (error) {
-        this.logger.error('Failed to enqueue search interest', {
-          term: interest.term,
-          entityType: interest.entityType,
+        this.logger.error('Failed to enqueue on-demand request', {
+          term: request.term,
+          entityType: request.entityType,
+          reason: request.reason,
           error: error instanceof Error ? error.message : String(error),
         });
       }
     }
   }
 
-  private async processInterest(interest: InterestInput): Promise<void> {
-    const record = await this.prisma.searchInterest.findUnique({
+  private async processRequest(request: OnDemandRequestInput): Promise<void> {
+    const record = await this.prisma.onDemandRequest.findUnique({
       where: {
-        term_entityType: {
-          term: interest.term,
-          entityType: interest.entityType,
+        term_entityType_reason: {
+          term: request.term,
+          entityType: request.entityType,
+          reason: request.reason,
         },
       },
       select: {
-        interestId: true,
+        requestId: true,
         term: true,
         entityType: true,
+        reason: true,
         occurrenceCount: true,
         status: true,
         entityId: true,
@@ -141,16 +151,16 @@ export class SearchInterestProcessingService {
       return;
     }
 
-    await this.processInterestRecord(record as SearchInterestRecord);
+    await this.processRecord(record as OnDemandRecord);
   }
 
-  private async processInterestRecord(
-    record: SearchInterestRecord,
-  ): Promise<void> {
+  private async processRecord(record: OnDemandRecord): Promise<void> {
     if (record.status !== 'pending') {
-      this.logger.debug('Search interest already queued or in-flight', {
+      this.logger.debug('On-demand request already queued or in-flight', {
+        requestId: record.requestId,
         term: record.term,
         entityType: record.entityType,
+        reason: record.reason,
         status: record.status,
       });
       return;
@@ -165,7 +175,7 @@ export class SearchInterestProcessingService {
         typeof metadata.deferredAttempts === 'number'
           ? metadata.deferredAttempts
           : 0;
-      const updatedMetadata: SearchInterestMetadata = {
+      const updatedMetadata: OnDemandMetadata = {
         ...metadata,
         lastOutcome: 'deferred',
         lastDeferredAt: nowIso,
@@ -183,16 +193,17 @@ export class SearchInterestProcessingService {
         ).toISOString();
       }
 
-      await this.interestService.updateMetadataById(
-        record.interestId,
+      await this.requestService.updateMetadataById(
+        record.requestId,
         updatedMetadata,
       );
 
-      this.logger.debug('Deferred search interest immediate execution', {
-        interestId: record.interestId,
+      this.logger.debug('Deferred on-demand request immediate execution', {
+        requestId: record.requestId,
         term: record.term,
         entityType: record.entityType,
-        reason: decision.reason ?? 'unspecified',
+        reason: record.reason,
+        deferReason: decision.reason ?? 'unspecified',
       });
 
       return;
@@ -204,7 +215,7 @@ export class SearchInterestProcessingService {
     });
 
     if (!subreddits.length) {
-      const updatedMetadata: SearchInterestMetadata = {
+      const updatedMetadata: OnDemandMetadata = {
         ...metadata,
         lastOutcome: 'no_active_subreddits',
         lastAttemptAt: new Date().toISOString(),
@@ -214,15 +225,16 @@ export class SearchInterestProcessingService {
         deferredAttempts: 0,
       };
 
-      await this.interestService.updateMetadataById(
-        record.interestId,
+      await this.requestService.updateMetadataById(
+        record.requestId,
         updatedMetadata,
       );
 
-      this.logger.warn('Skipping search interest; no active subreddits found', {
-        interestId: record.interestId,
+      this.logger.warn('Skipping on-demand request; no active subreddits found', {
+        requestId: record.requestId,
         term: record.term,
         entityType: record.entityType,
+        reason: record.reason,
       });
 
       return;
@@ -230,32 +242,30 @@ export class SearchInterestProcessingService {
 
     const target = this.buildTarget(record);
 
-    const marked = await this.interestService.markQueuedById(
-      record.interestId,
-      {
-        lastEnqueuedAt: new Date(),
-      },
-    );
+    const marked = await this.requestService.markQueuedById(record.requestId, {
+      lastEnqueuedAt: new Date(),
+    });
 
     if (!marked) {
       return;
     }
 
-    await this.interestService.markProcessingById(record.interestId);
+    await this.requestService.markProcessingById(record.requestId);
 
     try {
-      await this.runInterestKeywordSearch(target, subreddits);
+      await this.runOnDemandSearch(target, subreddits);
     } catch (error) {
-      this.logger.error('Failed to execute keyword search for interest', {
-        interestId: target.interestId,
+      this.logger.error('Failed to execute keyword search for on-demand request', {
+        requestId: target.requestId,
         term: target.term,
         entityType: target.entityType,
+        reason: target.reason,
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }
             : { message: String(error) },
       });
-      await this.interestService.resetToPendingById(target.interestId, {
+      await this.requestService.resetToPendingById(target.requestId, {
         lastOutcome: 'error',
         lastAttemptAt: new Date().toISOString(),
         lastError: error instanceof Error ? error.message : String(error),
@@ -263,9 +273,117 @@ export class SearchInterestProcessingService {
           Date.now() + this.instantCooldownMs,
         ).toISOString(),
         deferredAttempts: 0,
+        reason: target.reason,
         attemptedSubreddits: subreddits,
       });
     }
+  }
+
+  private async runOnDemandSearch(
+    target: OnDemandJobTarget,
+    subreddits: string[],
+  ): Promise<void> {
+    const attemptedSubreddits: string[] = [];
+
+    for (const subreddit of subreddits) {
+      attemptedSubreddits.push(subreddit);
+
+      const entityScore = this.buildPriorityScore(target);
+
+      const result =
+        await this.keywordSearchOrchestrator.executeKeywordSearchCycle(
+          subreddit,
+          [entityScore],
+        );
+
+      const searchResult = result.searchResults[target.normalizedTerm];
+      const processingResult = result.processingResults[target.normalizedTerm];
+
+      const success =
+        Boolean(
+          searchResult &&
+            (searchResult.posts.length > 0 || searchResult.comments.length > 0),
+        ) ||
+        Boolean(
+          processingResult &&
+            (processingResult.connectionsCreated ?? 0) > 0 &&
+            processingResult.success,
+        );
+
+      if (success) {
+        const entityId = await this.resolveSuccessfulEntityId(target);
+
+        await this.requestService.markCompletedById(target.requestId, {
+          entityId,
+          metadata: {
+            lastOutcome: 'success',
+            lastCompletedAt: new Date().toISOString(),
+            posts: searchResult?.posts.length ?? 0,
+            comments: searchResult?.comments.length ?? 0,
+            attemptedSubreddits,
+            deferredAttempts: 0,
+            reason: target.reason,
+          },
+        });
+
+        this.logger.info('On-demand request resolved via keyword enrichment', {
+          requestId: target.requestId,
+          term: target.term,
+          entityType: target.entityType,
+          entityId,
+          reason: target.reason,
+          subreddit,
+        });
+
+        return;
+      }
+    }
+
+    await this.requestService.resetToPendingById(target.requestId, {
+      lastOutcome: 'no_results',
+      lastAttemptAt: new Date().toISOString(),
+      instantCooldownUntil: new Date(
+        Date.now() + this.instantCooldownMs,
+      ).toISOString(),
+      deferredAttempts: 0,
+      attemptedSubreddits,
+      reason: target.reason,
+    });
+
+    this.logger.info('On-demand request yielded no new data', {
+      requestId: target.requestId,
+      term: target.term,
+      entityType: target.entityType,
+      reason: target.reason,
+      attemptedSubreddits,
+    });
+  }
+
+  private async resolveSuccessfulEntityId(
+    target: OnDemandJobTarget,
+  ): Promise<string | null> {
+    if (target.reason === 'low_result' && target.existingEntityId) {
+      return target.existingEntityId;
+    }
+
+    if (target.reason === 'low_result') {
+      const existing = await this.prisma.entity.findFirst({
+        where: {
+          type: target.entityType,
+          name: {
+            equals: target.normalizedTerm,
+            mode: 'insensitive',
+          },
+        },
+        select: { entityId: true },
+      });
+      if (existing) {
+        return existing.entityId;
+      }
+    }
+
+    // For unresolved requests, create or reuse entity placeholder.
+    return this.ensureEntity(target.term, target.entityType, target.existingEntityId ?? undefined);
   }
 
   private async ensureEntity(
@@ -310,7 +428,7 @@ export class SearchInterestProcessingService {
           : undefined,
       restaurantMetadata:
         entityType === 'restaurant'
-          ? ({ origin: 'search_interest' } as Prisma.InputJsonValue)
+          ? ({ origin: 'on_demand' } as Prisma.InputJsonValue)
           : Prisma.JsonNull,
       restaurantQualityScore: entityType === 'restaurant' ? 0 : undefined,
       generalPraiseUpvotes: entityType === 'restaurant' ? 0 : null,
@@ -318,7 +436,7 @@ export class SearchInterestProcessingService {
 
     const created = await this.entityRepository.create(data);
 
-    this.logger.info('Created placeholder entity for search interest', {
+    this.logger.info('Created placeholder entity for on-demand request', {
       entityId: created.entityId,
       name: created.name,
       entityType: created.type,
@@ -327,24 +445,26 @@ export class SearchInterestProcessingService {
     return created.entityId;
   }
 
-  private buildPriorityScore(
-    entityId: string,
-    term: string,
-    entityType: EntityType,
-    occurrenceCount: number,
-  ): EntityPriorityScore {
-    const normalizedName = this.normalizeEntityName(term);
+  private buildPriorityScore(target: OnDemandJobTarget): EntityPriorityScore {
+    const entityId =
+      target.reason === 'low_result' && target.existingEntityId
+        ? target.existingEntityId
+        : target.requestId;
+
     return {
       entityId,
-      entityName: normalizedName,
-      entityType,
-      score: 100 + occurrenceCount,
+      entityName: target.normalizedTerm,
+      entityType: target.entityType,
+      score:
+        target.reason === 'low_result'
+          ? 200 + target.occurrenceCount
+          : 100 + target.occurrenceCount,
       factors: {
-        dataRecency: 1,
-        dataQuality: 0,
-        userDemand: occurrenceCount,
+        dataRecency: target.reason === 'low_result' ? 2 : 1,
+        dataQuality: target.reason === 'low_result' ? 1 : 0,
+        userDemand: target.occurrenceCount,
       },
-      isNewEntity: true,
+      isNewEntity: target.reason === 'unresolved',
     };
   }
 
@@ -362,110 +482,25 @@ export class SearchInterestProcessingService {
   }
 
   private buildTarget(record: {
-    interestId: string;
+    requestId: string;
     term: string;
     entityType: EntityType;
     occurrenceCount: number;
+    reason: OnDemandReason;
     entityId?: string | null;
-  }): SearchInterestJobTarget {
+  }): OnDemandJobTarget {
     return {
-      interestId: record.interestId,
+      requestId: record.requestId,
       term: record.term,
       normalizedTerm: this.normalizeEntityName(record.term),
       entityType: record.entityType,
       occurrenceCount: record.occurrenceCount,
+      reason: record.reason,
       existingEntityId: record.entityId,
     };
   }
 
-  private async runInterestKeywordSearch(
-    target: SearchInterestJobTarget,
-    subreddits: string[],
-  ): Promise<void> {
-    const attemptedSubreddits: string[] = [];
-
-    for (const subreddit of subreddits) {
-      attemptedSubreddits.push(subreddit);
-
-      const entityScore = this.buildPriorityScore(
-        target.interestId,
-        target.term,
-        target.entityType,
-        target.occurrenceCount,
-      );
-
-      const result =
-        await this.keywordSearchOrchestrator.executeKeywordSearchCycle(
-          subreddit,
-          [entityScore],
-        );
-
-      const searchResult = result.searchResults[target.normalizedTerm];
-      const processingResult = result.processingResults[target.normalizedTerm];
-
-      const success =
-        Boolean(
-          searchResult &&
-            (searchResult.posts.length > 0 || searchResult.comments.length > 0),
-        ) ||
-        Boolean(
-          processingResult &&
-            (processingResult.connectionsCreated ?? 0) > 0 &&
-            processingResult.success,
-        );
-
-      if (success) {
-        const entityId = await this.ensureEntity(
-          target.term,
-          target.entityType,
-          target.existingEntityId ?? undefined,
-        );
-
-        await this.interestService.markCompletedById(target.interestId, {
-          entityId,
-          metadata: {
-            lastOutcome: 'success',
-            lastCompletedAt: new Date().toISOString(),
-            posts: searchResult?.posts.length ?? 0,
-            comments: searchResult?.comments.length ?? 0,
-            attemptedSubreddits,
-            deferredAttempts: 0,
-          },
-        });
-
-        this.logger.info('Search interest resolved via keyword enrichment', {
-          interestId: target.interestId,
-          term: target.term,
-          entityType: target.entityType,
-          entityId,
-          subreddit,
-        });
-
-        return;
-      }
-    }
-
-    await this.interestService.resetToPendingById(target.interestId, {
-      lastOutcome: 'no_results',
-      lastAttemptAt: new Date().toISOString(),
-      instantCooldownUntil: new Date(
-        Date.now() + this.instantCooldownMs,
-      ).toISOString(),
-      deferredAttempts: 0,
-      attemptedSubreddits,
-    });
-
-    this.logger.info('Search interest yielded no new data', {
-      interestId: target.interestId,
-      term: target.term,
-      entityType: target.entityType,
-      attemptedSubreddits,
-    });
-  }
-
-  private extractBounds(
-    metadata: SearchInterestMetadata,
-  ): MapBoundsDto | undefined {
+  private extractBounds(metadata: OnDemandMetadata): MapBoundsDto | undefined {
     const context = metadata.context;
     if (!context || typeof context !== 'object') {
       return undefined;
@@ -514,9 +549,7 @@ export class SearchInterestProcessingService {
     return null;
   }
 
-  private parseMetadata(
-    metadata: Prisma.JsonValue | null,
-  ): SearchInterestMetadata {
+  private parseMetadata(metadata: Prisma.JsonValue | null): OnDemandMetadata {
     if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
       return {};
     }
@@ -524,8 +557,8 @@ export class SearchInterestProcessingService {
   }
 
   private async shouldRunImmediately(
-    record: SearchInterestRecord,
-    metadata: SearchInterestMetadata,
+    record: OnDemandRecord,
+    metadata: OnDemandMetadata,
   ): Promise<QueueDecision> {
     const cooldownRaw = metadata.instantCooldownUntil;
     if (typeof cooldownRaw === 'string') {
@@ -572,7 +605,7 @@ export class SearchInterestProcessingService {
       this.logger.warn(
         'Unable to inspect keyword queue depth; defaulting to immediate execution',
         {
-          interestId: record.interestId,
+          requestId: record.requestId,
           error: error instanceof Error ? error.message : String(error),
         },
       );
@@ -596,16 +629,17 @@ export class SearchInterestProcessingService {
   }
 
   private async processPendingBacklog(): Promise<void> {
-    const backlog = await this.prisma.searchInterest.findMany({
+    const backlog = await this.prisma.onDemandRequest.findMany({
       where: {
         status: 'pending',
       },
       orderBy: [{ occurrenceCount: 'desc' }, { lastSeenAt: 'asc' }],
       take: this.maxPerBatch,
       select: {
-        interestId: true,
+        requestId: true,
         term: true,
         entityType: true,
+        reason: true,
         occurrenceCount: true,
         status: true,
         entityId: true,
@@ -616,10 +650,12 @@ export class SearchInterestProcessingService {
 
     for (const record of backlog) {
       try {
-        await this.processInterestRecord(record as SearchInterestRecord);
+        await this.processRecord(record as OnDemandRecord);
       } catch (error) {
-        this.logger.error('Failed to process backlog search interest', {
-          interestId: record.interestId,
+        this.logger.error('Failed to process backlog on-demand request', {
+          requestId: record.requestId,
+          term: record.term,
+          reason: record.reason,
           error: error instanceof Error ? error.message : String(error),
         });
       }

@@ -30,6 +30,26 @@ export class SearchOrchestrationService {
     response.metadata.sourceQuery = request.query;
     response.metadata.analysisMetadata = interpretation.analysisMetadata;
 
+    const totalResults =
+      (response.food?.length ?? 0) + (response.restaurants?.length ?? 0);
+    const hasQueryTargets = Boolean(
+      interpretation.structuredRequest.entities.food?.length ||
+        interpretation.structuredRequest.entities.foodAttributes?.length ||
+        interpretation.structuredRequest.entities.restaurants?.length ||
+        interpretation.structuredRequest.entities.restaurantAttributes?.length,
+    );
+
+    if (interpretation.unresolved.length) {
+      response.metadata.coverageStatus =
+        totalResults > 0 ? 'partial' : 'unresolved';
+    } else if (!response.metadata.coverageStatus) {
+      if (hasQueryTargets && totalResults === 0) {
+        response.metadata.coverageStatus = 'unresolved';
+      } else {
+        response.metadata.coverageStatus = totalResults > 0 ? 'full' : 'full';
+      }
+    }
+
     return response;
   }
 }

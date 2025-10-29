@@ -1,5 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, OnDemandReason } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMSearchQueryAnalysis } from '../external-integrations/llm/llm.types';
@@ -15,8 +15,8 @@ import {
   QueryEntityGroupDto,
   SearchQueryRequestDto,
 } from './dto/search-query.dto';
-import { SearchInterestService } from './search-interest.service';
-import { SearchInterestProcessingService } from './search-interest-processing.service';
+import { OnDemandRequestService } from './on-demand-request.service';
+import { OnDemandProcessingService } from './on-demand-processing.service';
 
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
@@ -35,8 +35,8 @@ export class SearchQueryInterpretationService {
   constructor(
     private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
-    private readonly searchInterestService: SearchInterestService,
-    private readonly searchInterestProcessingService: SearchInterestProcessingService,
+    private readonly onDemandRequestService: OnDemandRequestService,
+    private readonly onDemandProcessingService: OnDemandProcessingService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -86,29 +86,32 @@ export class SearchQueryInterpretationService {
       resolutionResults.resolutionResults,
     );
     if (unresolved.length) {
-      const interestContext: Record<string, unknown> = {
+      const onDemandContext: Record<string, unknown> = {
         query: request.query,
       };
       if (request.bounds) {
-        interestContext.bounds = request.bounds;
+        onDemandContext.bounds = request.bounds;
       }
 
-      const recordedInterests =
-        await this.searchInterestService.recordInterests(
-          unresolved.flatMap((group) =>
-            group.terms.map((term) => ({
-              term,
-              entityType: group.type,
-              metadata: { source: 'natural_query' },
-            })),
-          ),
-          interestContext,
-        );
+      const reason: OnDemandReason = 'unresolved';
+      const unresolvedRequests = unresolved.flatMap((group) =>
+        group.terms.map((term) => ({
+          term,
+          entityType: group.type,
+          reason,
+          metadata: { source: 'natural_query', unresolvedType: group.type },
+        })),
+      );
 
-      void this.searchInterestProcessingService
-        .enqueueInterests(recordedInterests)
+      const recordedRequests = await this.onDemandRequestService.recordRequests(
+        unresolvedRequests,
+        onDemandContext,
+      );
+
+      void this.onDemandProcessingService
+        .enqueueRequests(recordedRequests)
         .catch((error) => {
-          this.logger.error('Failed to enqueue recorded search interests', {
+          this.logger.error('Failed to enqueue recorded on-demand requests', {
             error: error instanceof Error ? error.message : String(error),
           });
         });

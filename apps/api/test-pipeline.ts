@@ -274,7 +274,6 @@ async function testPipeline() {
             'connections',
             'entities',
             'entity_priority',
-            'search_cooldowns',
             'subscriptions',
             'user_events',
             'source',

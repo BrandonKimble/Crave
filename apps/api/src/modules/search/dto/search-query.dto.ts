@@ -205,6 +205,7 @@ export interface SearchResponseDto {
     page: number;
     pageSize: number;
     perRestaurantLimit: number;
+    coverageStatus?: 'full' | 'partial' | 'unresolved';
     unresolvedEntities?: Array<{
       type: EntityType;
       terms: string[];

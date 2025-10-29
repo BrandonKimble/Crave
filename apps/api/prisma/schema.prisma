@@ -31,7 +31,7 @@ model Entity {
   foodConnections        Connection[] @relation("FoodEntity")
   restaurantConnections  Connection[] @relation("RestaurantEntity")
   priorityMetrics        EntityPriorityMetric?
-  searchInterests        SearchInterest[]
+  onDemandRequests       OnDemandRequest[]
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -264,39 +264,36 @@ model Subreddit {
   @@map("subreddits")
 }
 
-model KeywordSearchTrigger {
-  reasonKey       String   @id @map("reason_key")
-  lastTriggeredAt DateTime @map("last_triggered_at")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model OnDemandRequest {
+  requestId       String         @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
+  term            String         @db.VarChar(255)
+  entityType      EntityType     @map("entity_type")
+  reason          OnDemandReason
+  occurrenceCount Int            @default(1) @map("occurrence_count")
+  entityId        String?        @map("entity_id") @db.Uuid
+  status          OnDemandStatus @default(pending)
+  lastSeenAt      DateTime       @default(now()) @map("last_seen_at")
+  lastEnqueuedAt  DateTime?      @map("last_enqueued_at")
+  metadata        Json?          @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
 
-  @@map("search_cooldowns")
+  entity          Entity?        @relation(fields: [entityId], references: [entityId])
+
+  @@unique([term, entityType, reason], map: "on_demand_term_entity_type_reason_key")
+  @@map("on_demand")
 }
 
-model SearchInterest {
-  interestId      String     @id @default(dbgenerated("gen_random_uuid()")) @map("interest_id") @db.Uuid
-  term            String     @db.VarChar(255)
-  entityType      EntityType @map("entity_type")
-  occurrenceCount Int        @default(1) @map("occurrence_count")
-  lastSeenAt      DateTime   @default(now()) @map("last_seen_at")
-  metadata        Json?      @default("{}")
-  status          SearchInterestStatus @default(pending)
-  entityId        String?    @map("entity_id") @db.Uuid
-  lastEnqueuedAt  DateTime?  @map("last_enqueued_at")
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
-
-  entity          Entity?    @relation(fields: [entityId], references: [entityId])
-
-  @@unique([term, entityType], map: "search_interests_term_entity_type_key")
-  @@map("search_interests")
-}
-
-enum SearchInterestStatus {
+enum OnDemandStatus {
   pending
   queued
   processing
   completed
+}
+
+enum OnDemandReason {
+  low_result
+  unresolved
 }
 
 enum EntityType {

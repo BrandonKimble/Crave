@@ -1,84 +1,97 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { EntityType, Prisma } from '@prisma/client';
+import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
-export interface InterestInput {
+export interface OnDemandRequestInput {
   term: string;
   entityType: EntityType;
+  reason: OnDemandReason;
+  entityId?: string | null;
   metadata?: Record<string, unknown>;
 }
 
 @Injectable()
-export class SearchInterestService {
+export class OnDemandRequestService {
   private readonly logger: LoggerService;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
-    this.logger = loggerService.setContext('SearchInterestService');
+    this.logger = loggerService.setContext('OnDemandRequestService');
   }
 
-  async recordInterests(
-    interests: InterestInput[],
+  async recordRequests(
+    requests: OnDemandRequestInput[],
     context: Record<string, unknown> = {},
-  ): Promise<InterestInput[]> {
-    const deduped = this.deduplicateInterests(interests);
+  ): Promise<OnDemandRequestInput[]> {
+    const deduped = this.deduplicateRequests(requests);
     if (!deduped.length) {
       return [];
     }
 
-    const operations = deduped.map((interest) =>
-      this.prisma.searchInterest.upsert({
+    const operations = deduped.map((request) =>
+      this.prisma.onDemandRequest.upsert({
         where: {
-          term_entityType: {
-            term: interest.term,
-            entityType: interest.entityType,
+          term_entityType_reason: {
+            term: request.term,
+            entityType: request.entityType,
+            reason: request.reason,
           },
         },
         create: {
-          term: interest.term,
-          entityType: interest.entityType,
-          metadata: this.buildMetadata(interest.metadata, context),
+          term: request.term,
+          entityType: request.entityType,
+          reason: request.reason,
+          entityId: request.entityId ?? null,
+          metadata: this.buildMetadata(request.metadata, context),
         },
         update: {
           occurrenceCount: { increment: 1 },
           lastSeenAt: new Date(),
-          metadata: this.buildMetadata(interest.metadata, context),
+          metadata: this.buildMetadata(request.metadata, context),
+          ...(request.entityId
+            ? { entityId: request.entityId }
+            : undefined),
         },
       }),
     );
 
     await this.prisma.$transaction(operations);
 
-    this.logger.debug('Recorded search interests', {
-      interests: deduped.map((interest) => ({
-        term: interest.term,
-        entityType: interest.entityType,
+    this.logger.debug('Recorded on-demand requests', {
+      requests: deduped.map((request) => ({
+        term: request.term,
+        entityType: request.entityType,
+        reason: request.reason,
       })),
     });
 
     return deduped;
   }
 
-  private deduplicateInterests(interests: InterestInput[]): InterestInput[] {
+  private deduplicateRequests(
+    requests: OnDemandRequestInput[],
+  ): OnDemandRequestInput[] {
     const seen = new Set<string>();
-    const result: InterestInput[] = [];
-    for (const interest of interests) {
-      const sanitizedTerm = this.sanitizeTerm(interest.term);
+    const result: OnDemandRequestInput[] = [];
+    for (const request of requests) {
+      const sanitizedTerm = this.sanitizeTerm(request.term);
       if (!sanitizedTerm) {
         continue;
       }
-      const key = `${interest.entityType}:${sanitizedTerm.toLowerCase()}`;
+      const key = `${request.reason}:${request.entityType}:${sanitizedTerm.toLowerCase()}`;
       if (seen.has(key)) {
         continue;
       }
       seen.add(key);
       result.push({
         term: sanitizedTerm,
-        entityType: interest.entityType,
-        metadata: interest.metadata,
+        entityType: request.entityType,
+        reason: request.reason,
+        entityId: request.entityId,
+        metadata: request.metadata,
       });
     }
     return result;
@@ -107,12 +120,12 @@ export class SearchInterestService {
   }
 
   async markQueuedById(
-    interestId: string,
+    requestId: string,
     update: { lastEnqueuedAt?: Date; status?: 'queued' | 'processing' } = {},
   ): Promise<boolean> {
-    const { count } = await this.prisma.searchInterest.updateMany({
+    const { count } = await this.prisma.onDemandRequest.updateMany({
       where: {
-        interestId,
+        requestId,
         status: 'pending',
       },
       data: {
@@ -122,8 +135,8 @@ export class SearchInterestService {
     });
 
     if (count === 0) {
-      this.logger.debug('Search interest was already queued or processed', {
-        interestId,
+      this.logger.debug('On-demand request already queued or processed', {
+        requestId,
       });
       return false;
     }
@@ -131,10 +144,10 @@ export class SearchInterestService {
     return true;
   }
 
-  async markProcessingById(interestId: string): Promise<void> {
-    await this.prisma.searchInterest.updateMany({
+  async markProcessingById(requestId: string): Promise<void> {
+    await this.prisma.onDemandRequest.updateMany({
       where: {
-        interestId,
+        requestId,
         status: 'queued',
       },
       data: {
@@ -144,14 +157,14 @@ export class SearchInterestService {
   }
 
   async markCompletedById(
-    interestId: string,
+    requestId: string,
     update: {
       entityId?: string | null;
       metadata?: Record<string, unknown>;
     },
   ): Promise<void> {
-    await this.prisma.searchInterest.updateMany({
-      where: { interestId },
+    await this.prisma.onDemandRequest.updateMany({
+      where: { requestId },
       data: {
         status: 'completed',
         entityId: update.entityId ?? null,
@@ -163,11 +176,11 @@ export class SearchInterestService {
   }
 
   async resetToPendingById(
-    interestId: string,
+    requestId: string,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
-    await this.prisma.searchInterest.updateMany({
-      where: { interestId },
+    await this.prisma.onDemandRequest.updateMany({
+      where: { requestId },
       data: {
         status: 'pending',
         metadata: metadata
@@ -178,11 +191,11 @@ export class SearchInterestService {
   }
 
   async updateMetadataById(
-    interestId: string,
+    requestId: string,
     metadata: Record<string, unknown>,
   ): Promise<void> {
-    await this.prisma.searchInterest.updateMany({
-      where: { interestId },
+    await this.prisma.onDemandRequest.updateMany({
+      where: { requestId },
       data: {
         metadata: metadata as Prisma.InputJsonValue,
       },

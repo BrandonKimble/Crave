@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType } from '@prisma/client';
+import { EntityType, OnDemandReason } from '@prisma/client';
 import { LoggerService } from '../../shared';
 import { EntityPriorityMetricsRepository } from '../../repositories/entity-priority-metrics.repository';
 import {
@@ -15,7 +15,8 @@ import {
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
-import { SearchOnDemandCollectionService } from './search-on-demand-collection.service';
+import { OnDemandRequestService, OnDemandRequestInput } from './on-demand-request.service';
+import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
 
 const DEFAULT_RESULT_LIMIT = 100;
@@ -53,7 +54,8 @@ export class SearchService {
     private readonly queryExecutor: SearchQueryExecutor,
     private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
     private readonly queryBuilder: SearchQueryBuilder,
-    private readonly onDemandCollectionService: SearchOnDemandCollectionService,
+    private readonly onDemandRequestService: OnDemandRequestService,
+    private readonly onDemandProcessingService: OnDemandProcessingService,
     private readonly searchMetrics: SearchMetricsService,
   ) {
     this.logger = loggerService.setContext('SearchService');
@@ -144,10 +146,27 @@ export class SearchService {
         includeSqlPreview,
       });
 
+      const totalRestaurantResults =
+        plan.format === 'dual_list'
+          ? execution.restaurantResults.length
+          : 0;
+      const totalFoodResults = execution.totalFoodCount;
+
+      const triggeredOnDemand = this.shouldTriggerOnDemand(
+        request,
+        execution.restaurantResults.length,
+      );
+
+      const coverageStatus = this.calculateCoverageStatus({
+        request,
+        totalFoodResults,
+        totalRestaurantResults,
+        triggeredOnDemand,
+      });
+
       const metadata = {
         totalFoodResults: execution.totalFoodCount,
-        totalRestaurantResults:
-          plan.format === 'dual_list' ? execution.restaurantResults.length : 0,
+        totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         boundsApplied: execution.metadata.boundsApplied,
         openNowApplied: execution.metadata.openNowApplied,
@@ -159,6 +178,7 @@ export class SearchService {
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
+        coverageStatus,
       };
 
       if (request.openNow && !execution.metadata.openNowApplied) {
@@ -195,18 +215,27 @@ export class SearchService {
         openNowFilteredOut: execution.metadata.openNowFilteredOut ?? 0,
       });
 
-      if (
-        this.shouldTriggerOnDemand(request, execution.restaurantResults.length)
-      ) {
+      if (triggeredOnDemand) {
         try {
-          await this.onDemandCollectionService.processDiagnostics({
-            request,
-            plan,
-            restaurantCount: execution.restaurantResults.length,
-            restaurantResults: execution.restaurantResults,
-          });
+          const lowResultRequests = this.buildLowResultRequests(request);
+          if (lowResultRequests.length) {
+            const recorded = await this.onDemandRequestService.recordRequests(
+              lowResultRequests,
+              {
+                source: 'low_result',
+                restaurantCount: execution.restaurantResults.length,
+                planFormat: plan.format,
+                bounds: request.bounds,
+                openNow: request.openNow,
+              },
+            );
+
+            if (recorded.length) {
+              await this.onDemandProcessingService.enqueueRequests(recorded);
+            }
+          }
         } catch (error) {
-          this.logger.warn('Failed to queue on-demand collection', {
+          this.logger.warn('Failed to enqueue low-result on-demand requests', {
             error: {
               message: error instanceof Error ? error.message : String(error),
             },
@@ -465,6 +494,79 @@ export class SearchService {
         lastQueryAt: now,
       },
     );
+  }
+
+  private calculateCoverageStatus(params: {
+    request: SearchQueryRequestDto;
+    totalFoodResults: number;
+    totalRestaurantResults: number;
+    triggeredOnDemand: boolean;
+  }): 'full' | 'partial' | 'unresolved' {
+    const { request, totalFoodResults, totalRestaurantResults, triggeredOnDemand } =
+      params;
+
+    const totalResults = totalFoodResults + totalRestaurantResults;
+    const hasTargets = this.hasEntityTargets(request);
+
+    if (!hasTargets) {
+      return totalResults === 0 ? 'full' : 'full';
+    }
+
+    if (totalResults === 0) {
+      return 'unresolved';
+    }
+
+    if (triggeredOnDemand) {
+      return 'partial';
+    }
+
+    return 'full';
+  }
+
+  private buildLowResultRequests(
+    request: SearchQueryRequestDto,
+  ): OnDemandRequestInput[] {
+    const results: OnDemandRequestInput[] = [];
+    const seen = new Set<string>();
+    const reason: OnDemandReason = 'low_result';
+
+    const pushEntities = (
+      entities: QueryEntityDto[] | undefined,
+      entityType: EntityType,
+    ) => {
+      for (const entity of entities ?? []) {
+        const entityId = entity.entityIds?.[0] ?? null;
+        const baseTerm = entity.normalizedName || entity.originalText || entityId;
+        if (!baseTerm) {
+          continue;
+        }
+        const sanitizedTerm = baseTerm.trim();
+        if (!sanitizedTerm.length) {
+          continue;
+        }
+        const dedupeKey = `${entityType}:${(entityId ?? sanitizedTerm).toLowerCase()}`;
+        if (seen.has(dedupeKey)) {
+          continue;
+        }
+        seen.add(dedupeKey);
+        results.push({
+          term: sanitizedTerm,
+          entityType,
+          reason,
+          entityId,
+          metadata: entity.originalText
+            ? { originalText: entity.originalText }
+            : undefined,
+        });
+      }
+    };
+
+    pushEntities(request.entities.food, 'food');
+    pushEntities(request.entities.foodAttributes, 'food_attribute');
+    pushEntities(request.entities.restaurants, 'restaurant');
+    pushEntities(request.entities.restaurantAttributes, 'restaurant_attribute');
+
+    return results;
   }
 
   private resolvePagination(pagination?: PaginationDto): PaginationState {

@@ -9,12 +9,11 @@ import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
-import { SearchOnDemandCollectionService } from './search-on-demand-collection.service';
 import { SearchMetricsService } from './search-metrics.service';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
-import { SearchInterestService } from './search-interest.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
-import { SearchInterestProcessingService } from './search-interest-processing.service';
+import { OnDemandRequestService } from './on-demand-request.service';
+import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 
 @Module({
@@ -31,11 +30,10 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
     SearchService,
     SearchQueryExecutor,
     SearchQueryBuilder,
-    SearchOnDemandCollectionService,
     SearchMetricsService,
     SearchQueryInterpretationService,
-    SearchInterestService,
-    SearchInterestProcessingService,
+    OnDemandRequestService,
+    OnDemandProcessingService,
     SearchOrchestrationService,
     SearchSubredditResolverService,
   ],
