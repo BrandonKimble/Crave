@@ -247,10 +247,8 @@ export class RestaurantLocationEnrichmentService {
         details.metadata.fields,
         matchMetadata,
       );
-      const {
-        updateData: aliasUpdate,
-        updatedFields: aliasFields,
-      } = this.computeNameAndAliasUpdate(entity, details.result.name);
+      const { updateData: aliasUpdate, updatedFields: aliasFields } =
+        this.computeNameAndAliasUpdate(entity, details.result.name);
       const combinedUpdateData = this.mergeEntityUpdates(
         updateData,
         aliasUpdate,
@@ -358,10 +356,16 @@ export class RestaurantLocationEnrichmentService {
   } {
     const updateData: Prisma.EntityUpdateInput = {};
     const updatedFields: string[] = [];
-    const normalizedCanonical = this.normalizeName(canonicalName);
-    const normalizedCurrent = this.normalizeName(entity.name);
+    const canonicalTrimmed =
+      typeof canonicalName === 'string' ? canonicalName.trim() : null;
+    const currentTrimmed =
+      typeof entity.name === 'string' ? entity.name.trim() : null;
 
     const aliasSources = new Set<string>();
+    if (canonicalTrimmed?.length) {
+      aliasSources.add(canonicalTrimmed);
+    }
+
     for (const alias of extraAliases) {
       const normalizedAlias = this.normalizeName(alias);
       if (normalizedAlias) {
@@ -370,11 +374,11 @@ export class RestaurantLocationEnrichmentService {
     }
 
     if (
-      normalizedCanonical &&
-      normalizedCurrent &&
-      normalizedCanonical !== normalizedCurrent
+      canonicalTrimmed &&
+      currentTrimmed &&
+      canonicalTrimmed !== currentTrimmed
     ) {
-      updateData.name = canonicalName!.trim();
+      updateData.name = canonicalTrimmed;
       updatedFields.push('name');
       aliasSources.add(entity.name);
     }
@@ -385,10 +389,27 @@ export class RestaurantLocationEnrichmentService {
       Array.from(aliasSources),
     );
 
+    let mergedAliases = [...aliasResult.mergedAliases];
+
+    if (canonicalTrimmed) {
+      mergedAliases = this.ensureAliasPresence(
+        mergedAliases,
+        canonicalTrimmed,
+        'front',
+      );
+    }
+
     if (
-      !this.aliasSetsEqual(entity.aliases ?? [], aliasResult.mergedAliases)
+      canonicalTrimmed &&
+      currentTrimmed &&
+      canonicalTrimmed.toLowerCase() === currentTrimmed.toLowerCase() &&
+      canonicalTrimmed !== currentTrimmed
     ) {
-      updateData.aliases = aliasResult.mergedAliases;
+      mergedAliases = this.ensureAliasPresence(mergedAliases, entity.name);
+    }
+
+    if (!this.aliasListsEqual(entity.aliases ?? [], mergedAliases)) {
+      updateData.aliases = mergedAliases;
       updatedFields.push('aliases');
     }
 
@@ -401,32 +422,49 @@ export class RestaurantLocationEnrichmentService {
     return trimmed.length ? trimmed.toLowerCase() : null;
   }
 
-  private aliasSetsEqual(current: string[], next: string[]): boolean {
+  private ensureAliasPresence(
+    aliases: string[],
+    value: string,
+    position: 'front' | 'back' = 'back',
+  ): string[] {
+    if (!value.trim().length) {
+      return aliases;
+    }
+
+    if (aliases.includes(value)) {
+      return aliases;
+    }
+
+    if (position === 'front') {
+      return [value, ...aliases];
+    }
+
+    return [...aliases, value];
+  }
+
+  private aliasListsEqual(current: string[], next: string[]): boolean {
     if (current.length !== next.length) {
       return false;
     }
-    return this.setsEqual(this.aliasKeySet(current), this.aliasKeySet(next));
-  }
 
-  private aliasKeySet(aliases: string[]): Set<string> {
-    const set = new Set<string>();
-    for (const alias of aliases) {
-      const normalized = this.normalizeName(alias);
-      if (normalized) {
-        set.add(normalized);
-      }
+    const counts = new Map<string, number>();
+    for (const alias of current) {
+      counts.set(alias, (counts.get(alias) ?? 0) + 1);
     }
-    return set;
-  }
 
-  private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
-    if (a.size !== b.size) return false;
-    for (const value of a) {
-      if (!b.has(value)) {
+    for (const alias of next) {
+      const existing = counts.get(alias);
+      if (!existing) {
         return false;
       }
+      if (existing === 1) {
+        counts.delete(alias);
+      } else {
+        counts.set(alias, existing - 1);
+      }
     }
-    return true;
+
+    return counts.size === 0;
   }
 
   private collectAliasCandidates(entity: RestaurantEntity): string[] {
@@ -491,7 +529,7 @@ export class RestaurantLocationEnrichmentService {
 
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
-      details.result!,
+      details.result,
       details.metadata?.fields ?? [],
       matchMetadata,
     );
@@ -612,9 +650,7 @@ export class RestaurantLocationEnrichmentService {
     next: Prisma.Decimal | number | string | null | undefined,
   ): Prisma.Decimal | null {
     if (current === null || current === undefined) {
-      return next === null || next === undefined
-        ? null
-        : this.toDecimal(next);
+      return next === null || next === undefined ? null : this.toDecimal(next);
     }
     if (next === null || next === undefined) {
       return this.toDecimal(current);
@@ -626,9 +662,7 @@ export class RestaurantLocationEnrichmentService {
       : nextDecimal;
   }
 
-  private toDecimal(
-    value: Prisma.Decimal | number | string,
-  ): Prisma.Decimal {
+  private toDecimal(value: Prisma.Decimal | number | string): Prisma.Decimal {
     if (value instanceof Prisma.Decimal) {
       return value;
     }

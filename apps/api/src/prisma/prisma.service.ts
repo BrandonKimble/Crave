@@ -70,7 +70,7 @@ export class PrismaService
               emit: 'event',
               level: 'error',
             },
-        ],
+          ],
     });
 
     this.queryDurationHistogram = this.metricsService.getHistogram({

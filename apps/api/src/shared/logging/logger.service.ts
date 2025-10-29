@@ -37,14 +37,12 @@ export interface LogMetadata {
 export class LoggerService {
   private readonly serviceName =
     process.env.LOG_SERVICE_NAME ?? 'crave-search-api';
-  private readonly environmentName =
-    process.env.NODE_ENV ?? 'development';
+  private readonly environmentName = process.env.NODE_ENV ?? 'development';
 
   constructor(
     @Inject(WINSTON_MODULE_PROVIDER) private readonly logger: WinstonLogger,
     private readonly contextName?: string,
-  ) {
-  }
+  ) {}
 
   private buildBaseMetadata(): Record<string, unknown> {
     const base: Record<string, unknown> = {

@@ -5,6 +5,7 @@ import { EntityPriorityScore } from '../content-processing/reddit-collector/enti
 import { LoggerService } from '../../shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { KeywordSearchMetricsService } from '../content-processing/reddit-collector/keyword-search-metrics.service';
+import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import {
   MapBoundsDto,
   QueryPlan,
@@ -31,6 +32,7 @@ export class SearchOnDemandCollectionService {
     private readonly keywordOrchestrator: KeywordSearchOrchestratorService,
     private readonly prisma: PrismaService,
     private readonly keywordSearchMetrics: KeywordSearchMetricsService,
+    private readonly subredditResolver: SearchSubredditResolverService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchOnDemandCollection');
@@ -44,10 +46,24 @@ export class SearchOnDemandCollectionService {
       return;
     }
 
-    const targetSubreddits = await this.resolveTargetSubreddits(
-      context.request,
-      context.restaurantResults,
-    );
+    const referenceLocations = context.restaurantResults
+      .map((result) => ({
+        latitude:
+          typeof result.latitude === 'number' ? result.latitude : null,
+        longitude:
+          typeof result.longitude === 'number' ? result.longitude : null,
+      }))
+      .filter(
+        (location) =>
+          location.latitude !== null && location.longitude !== null,
+      );
+
+    const targetSubreddits = await this.subredditResolver.resolve({
+      bounds: context.request.bounds ?? null,
+      referenceLocations: referenceLocations.length
+        ? referenceLocations
+        : undefined,
+    });
     if (!targetSubreddits.length) {
       return;
     }
@@ -142,10 +158,7 @@ export class SearchOnDemandCollectionService {
     });
 
     if (record) {
-      this.localCooldownCache.set(
-        reasonKey,
-        record.lastTriggeredAt.getTime(),
-      );
+      this.localCooldownCache.set(reasonKey, record.lastTriggeredAt.getTime());
     }
 
     return false;
@@ -262,115 +275,5 @@ export class SearchOnDemandCollectionService {
     return targets;
   }
 
-  private async resolveTargetSubreddits(
-    request: SearchQueryRequestDto,
-    restaurantResults: RestaurantResultDto[],
-  ): Promise<string[]> {
-    const subreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
-      select: {
-        name: true,
-        centerLatitude: true,
-        centerLongitude: true,
-      },
-    });
-    if (!subreddits.length) {
-      return [];
-    }
-
-    const center = this.resolveQueryCenter(request.bounds, restaurantResults);
-    if (!center) {
-      return subreddits.map((row) => row.name);
-    }
-
-    const candidates = subreddits
-      .map((row) => ({
-        name: row.name,
-        latitude: this.toNumeric(row.centerLatitude),
-        longitude: this.toNumeric(row.centerLongitude),
-      }))
-      .filter(
-        (row) =>
-          Number.isFinite(row.latitude ?? NaN) &&
-          Number.isFinite(row.longitude ?? NaN),
-      ) as Array<{ name: string; latitude: number; longitude: number }>;
-
-    if (!candidates.length) {
-      return subreddits.map((row) => row.name);
-    }
-
-    const nearest = candidates.reduce(
-      (best, current) => {
-        const distance = this.haversineDistance(
-          center.lat,
-          center.lng,
-          current.latitude,
-          current.longitude,
-        );
-        if (!best || distance < best.distance) {
-          return { ...current, distance };
-        }
-        return best;
-      },
-      null as null | { name: string; distance: number },
-    );
-
-    return nearest ? [nearest.name] : subreddits.map((row) => row.name);
-  }
-
-  private resolveQueryCenter(
-    bounds: MapBoundsDto | undefined,
-    restaurantResults: RestaurantResultDto[],
-  ): { lat: number; lng: number } | null {
-    if (bounds) {
-      return {
-        lat: (bounds.northEast.lat + bounds.southWest.lat) / 2,
-        lng: (bounds.northEast.lng + bounds.southWest.lng) / 2,
-      };
-    }
-
-    for (const result of restaurantResults) {
-      if (
-        typeof result.latitude === 'number' &&
-        typeof result.longitude === 'number'
-      ) {
-        return { lat: result.latitude, lng: result.longitude };
-      }
-    }
-
-    return null;
-  }
-
-  private haversineDistance(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number {
-    const toRad = (value: number) => (value * Math.PI) / 180;
-
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) *
-        Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const earthRadiusKm = 6371;
-    return earthRadiusKm * c;
-  }
-
-  private toNumeric(
-    value: Prisma.Decimal | number | null | undefined,
-  ): number | null {
-    if (value instanceof Prisma.Decimal) {
-      return value.toNumber();
-    }
-    if (typeof value === 'number') {
-      return value;
-    }
-    return null;
-  }
+  
 }

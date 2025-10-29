@@ -261,9 +261,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
             requestsPerDay?: number;
           }
         >
-      >(
-        'googlePlaces.operationLimits',
-      ) || {};
+      >('googlePlaces.operationLimits') || {};
 
     Object.entries(googleOperationLimits).forEach(([operation, value]) => {
       const perMinute =
@@ -351,7 +349,11 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
     const perHour = requestsPerMinute * 60;
 
-    if (!Number.isFinite(requestsPerDay) || !requestsPerDay || requestsPerDay <= 0) {
+    if (
+      !Number.isFinite(requestsPerDay) ||
+      !requestsPerDay ||
+      requestsPerDay <= 0
+    ) {
       return perHour;
     }
 

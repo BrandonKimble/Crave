@@ -204,3 +204,11 @@ export interface LLMPerformanceMetrics {
   errorCount: number;
   successRate: number;
 }
+
+export interface LLMSearchQueryAnalysis {
+  restaurants: string[];
+  foods: string[];
+  foodAttributes: string[];
+  restaurantAttributes: string[];
+  metadata?: Record<string, unknown>;
+}

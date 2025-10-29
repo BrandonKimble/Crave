@@ -13,12 +13,15 @@
 
 ## Dashboards & Metrics
 
-- **Crave Search Overview** (provisioned automatically) tracks:
+- **Crave Search Overview** (provisioned automatically) now tracks:
   - P95 search execution latency split by format and `open_now` flag
-  - Error throughput from `search_errors_total`
-  - Queue depth for `keyword_search_execution` and `keyword_batch_processing`
+  - Request and error rates (plus a rolling error percentage) from `search_requests_total` / `search_errors_total`
+  - Average food results per query derived from `search_food_results_count`
+  - Queue depth and throughput for `keyword_search_execution` / `keyword_batch_processing`
   - Open-now filter drop rate via `search_open_now_filtered_count`
-  - Recent `SearchService` log lines for context
+  - Prisma health: p95 query latency, error rate, and in-flight query counts
+  - Error breakdown by `error` label to spot recurring failure signatures
+  - Recent logs filtered by `service` / `context` (Loki variables) for quick drill-down
 - Prisma ORM instrumentation surfaces:
   - `prisma_query_duration_seconds` for slow queries by model/action
   - `prisma_query_errors_total` spikes when database exceptions occur

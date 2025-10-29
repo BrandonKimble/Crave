@@ -36,9 +36,7 @@ export class MetricsService {
     return this.registry.metrics();
   }
 
-  getCounter(
-    configuration: CounterConfiguration<string>,
-  ): Counter<string> {
+  getCounter(configuration: CounterConfiguration<string>): Counter<string> {
     const key: MetricKey = `counter:${configuration.name}`;
     const existing = this.metrics.get(key);
     if (existing) {
@@ -85,9 +83,7 @@ export class MetricsService {
     return histogram;
   }
 
-  getSummary(
-    configuration: SummaryConfiguration<string>,
-  ): Summary<string> {
+  getSummary(configuration: SummaryConfiguration<string>): Summary<string> {
     const key: MetricKey = `summary:${configuration.name}`;
     const existing = this.metrics.get(key);
     if (existing) {

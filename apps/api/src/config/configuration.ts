@@ -188,6 +188,25 @@ export default () => ({
     secret: process.env.JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRATION || '7d',
   },
+  searchInterest: {
+    maxPerBatch: parseInt(process.env.SEARCH_INTEREST_MAX_PER_BATCH || '5', 10),
+    maxImmediateWaiting: parseInt(
+      process.env.SEARCH_INTEREST_MAX_INSTANT_WAITING || '3',
+      10,
+    ),
+    maxImmediateActive: parseInt(
+      process.env.SEARCH_INTEREST_MAX_INSTANT_ACTIVE || '1',
+      10,
+    ),
+    maxProcessingBacklog: parseInt(
+      process.env.SEARCH_INTEREST_MAX_PROCESSING_BACKLOG || '10',
+      10,
+    ),
+    instantCooldownMs: parseInt(
+      process.env.SEARCH_INTEREST_INSTANT_COOLDOWN_MS || '300000',
+      10,
+    ),
+  },
   pushshift: {
     baseDirectory: process.env.PUSHSHIFT_BASE_DIR || 'data/pushshift/archives',
     targetSubreddits: (

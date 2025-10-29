@@ -135,11 +135,7 @@ export class WinstonLoggerService extends LoggerService {
     return derived;
   }
 
-  private log(
-    level: string,
-    message: string,
-    metadata?: LogMetadata,
-  ): void {
+  private log(level: string, message: string, metadata?: LogMetadata): void {
     const sanitized = this.sanitizeMetadata(metadata);
     this.logger.log(level, message, sanitized);
   }
@@ -289,4 +285,3 @@ export class WinstonLoggerService extends LoggerService {
     return sanitized as Record<string, unknown>;
   }
 }
-

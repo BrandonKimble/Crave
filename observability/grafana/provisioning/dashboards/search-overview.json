@@ -4,7 +4,7 @@
   "tags": ["crave-search", "backend"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "panels": [
     {
@@ -39,11 +39,106 @@
       ]
     },
     {
+      "type": "timeseries",
+      "title": "Search Request Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "req/s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(search_requests_total[5m])) by (format, open_now)",
+          "legendFormat": "{{format}} | open={{open_now}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Search Error Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "req/s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(search_errors_total[5m])) by (format, open_now)",
+          "legendFormat": "{{format}} | open={{open_now}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Error Rate (5m)",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.05 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "horizontal",
+        "graphMode": "area",
+        "justifyMode": "center"
+      },
+      "targets": [
+        {
+          "expr": "sum(increase(search_errors_total[5m])) / sum(increase(search_requests_total[5m]))",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "type": "stat",
       "title": "Search Errors (5m)",
-      "gridPos": { "h": 8, "w": 4, "x": 12, "y": 0 },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] } }, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": []
+      },
       "options": {
         "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
         "orientation": "horizontal",
@@ -60,12 +155,11 @@
     {
       "type": "timeseries",
       "title": "Keyword Queue Depth",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
-          "transformations": [],
           "color": { "mode": "palette-classic" }
         },
         "overrides": []
@@ -90,7 +184,7 @@
     {
       "type": "timeseries",
       "title": "Open-Now Filter Drops",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -112,22 +206,201 @@
       ]
     },
     {
+      "type": "timeseries",
+      "title": "Keyword Job Throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "jobs/s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(keyword_jobs_completed_total[5m])) by (source, subreddit)",
+          "legendFormat": "completed {{source}}/{{subreddit}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(keyword_jobs_failed_total[5m])) by (source, subreddit)",
+          "legendFormat": "failed {{source}}/{{subreddit}}",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prisma Query Duration P95",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(prisma_query_duration_seconds_bucket[5m])) by (le, model, action))",
+          "legendFormat": "{{model}}.{{action}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prisma Query Error Rate",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "errors/s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(prisma_query_errors_total[5m])) by (model, action)",
+          "legendFormat": "{{model}}.{{action}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Prisma In-Flight Queries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(prisma_in_flight_queries) by (model, action)",
+          "legendFormat": "{{model}}.{{action}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Average Food Results Returned",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "(sum(rate(search_food_results_count_sum[5m])) by (format, open_now)) / (sum(rate(search_food_results_count_count[5m])) by (format, open_now))",
+          "legendFormat": "{{format}} | open={{open_now}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Search Errors by Type",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 40 },
+      "datasource": { "type": "prometheus", "uid": "crave-prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "errors/s",
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "calcs": ["lastNotNull"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(search_errors_total[5m])) by (error)",
+          "legendFormat": "{{error}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
       "type": "logs",
-      "title": "Recent Search Logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+      "title": "Recent Logs",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 48 },
       "datasource": { "type": "loki", "uid": "crave-loki" },
       "targets": [
         {
-          "expr": "{job=\"docker-logs\", context=\"SearchService\"}",
+          "expr": "{job=\"docker-logs\", service=~\"${service}\", context=~\"${context}\"}",
           "refId": "A"
         }
       ],
       "options": {
         "showLabels": true,
         "showTime": true,
-        "dedupStrategy": "none"
+        "dedupStrategy": "none",
+        "wrapLogMessage": true
       }
     }
   ],
-  "templating": { "list": [] }
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Service",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "crave-loki" },
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "query": "label_values({job=\"docker-logs\"}, service)",
+        "sort": 1,
+        "current": { "selected": false, "text": "All", "value": ".*" }
+      },
+      {
+        "name": "context",
+        "label": "Context",
+        "type": "query",
+        "datasource": { "type": "loki", "uid": "crave-loki" },
+        "refresh": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "query": "label_values({job=\"docker-logs\"}, context)",
+        "sort": 1,
+        "current": { "selected": false, "text": "All", "value": ".*" }
+      }
+    ]
+  }
 }

@@ -2,8 +2,7 @@ import * as winston from 'winston';
 import * as DailyRotateFile from 'winston-daily-rotate-file';
 import { WinstonModuleOptions } from 'nest-winston';
 
-const DEFAULT_SERVICE_NAME =
-  process.env.LOG_SERVICE_NAME ?? 'crave-search-api';
+const DEFAULT_SERVICE_NAME = process.env.LOG_SERVICE_NAME ?? 'crave-search-api';
 
 const flattenMetadata = winston.format((info) => {
   const metadata = (info as Record<string, unknown>).metadata;
@@ -18,11 +17,13 @@ const flattenMetadata = winston.format((info) => {
     delete (info as Record<string, unknown>).metadata;
   }
 
-  if (!('context' in info) && typeof (info as Record<string, unknown>).label === 'string') {
-    (info as Record<string, unknown>).context = (info as Record<
-      string,
-      unknown
-    >).label;
+  if (
+    !('context' in info) &&
+    typeof (info as Record<string, unknown>).label === 'string'
+  ) {
+    (info as Record<string, unknown>).context = (
+      info as Record<string, unknown>
+    ).label;
   }
   delete (info as Record<string, unknown>).label;
 
@@ -51,16 +52,17 @@ const prettyFormat = winston.format.combine(
       correlationId,
       ...extras,
     };
-    const serializedPayload =
-      Object.values(orderedPayload).some((value) => value !== undefined)
-        ? ` ${JSON.stringify(
-            Object.fromEntries(
-              Object.entries(orderedPayload).filter(
-                ([, value]) => value !== undefined,
-              ),
+    const serializedPayload = Object.values(orderedPayload).some(
+      (value) => value !== undefined,
+    )
+      ? ` ${JSON.stringify(
+          Object.fromEntries(
+            Object.entries(orderedPayload).filter(
+              ([, value]) => value !== undefined,
             ),
-          )}`
-        : '';
+          ),
+        )}`
+      : '';
     return `${String(timestamp)} [${String(level)}] ${String(
       renderedMessage,
     )}${serializedPayload}`;

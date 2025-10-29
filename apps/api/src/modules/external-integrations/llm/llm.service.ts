@@ -12,6 +12,7 @@ import {
   LLMOutputStructure,
   LLMApiResponse,
   LLMPerformanceMetrics,
+  LLMSearchQueryAnalysis,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
 import {
@@ -39,7 +40,9 @@ export class LLMService implements OnModuleInit {
   };
 
   private genAI!: GoogleGenAI;
-  private systemInstructionCache: any = null; // Cache for system instructions
+  private systemInstructionCache: any = null; // Cache for collection processing instructions
+  private queryPrompt!: string;
+  private queryInstructionCache: any = null;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -80,8 +83,9 @@ export class LLMService implements OnModuleInit {
     // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
 
-    // Load system prompt from llm-content-processing.md
+    // Load system prompt from collection-prompt.md
     this.systemPrompt = this.loadSystemPrompt();
+    this.queryPrompt = this.loadQueryPrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -103,6 +107,19 @@ export class LLMService implements OnModuleInit {
     this.initializeSystemInstructionCache().catch((error) => {
       this.logger.warn(
         'System instruction cache initialization failed, continuing with fallback',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'module_init',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+    });
+
+    this.initializeQueryInstructionCache().catch((error) => {
+      this.logger.warn(
+        'Query instruction cache initialization failed, continuing with fallback',
         {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'module_init',
@@ -156,19 +173,56 @@ export class LLMService implements OnModuleInit {
     }
   }
 
+  private async initializeQueryInstructionCache(): Promise<void> {
+    try {
+      this.logger.info('Creating explicit cache for query instructions', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_query_cache',
+        promptLength: this.queryPrompt.length,
+      });
+
+      this.queryInstructionCache = await this.genAI.caches.create({
+        model: this.llmConfig.model,
+        config: {
+          systemInstruction: this.queryPrompt,
+          ttl: '10800s',
+        },
+      });
+
+      this.logger.info('Query instruction cache created successfully', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_query_cache',
+        cacheId: this.queryInstructionCache.name,
+        ttl: '10800s',
+      });
+    } catch (error) {
+      this.logger.warn(
+        'Failed to create query instruction cache, falling back to direct system instruction usage',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'init_query_cache',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+      this.queryInstructionCache = null;
+    }
+  }
+
   private loadSystemPrompt(): string {
     try {
-      // Path to llm-content-processing.md in project root (relative from apps/api when running)
+      // Path to collection-prompt.md in project root (relative from apps/api when running)
       const promptPath = join(
         process.cwd(),
         '..',
         '..',
-        'llm-content-processing.md',
+        'collection-prompt.md',
       );
       return readFileSync(promptPath, 'utf-8');
     } catch (error) {
       this.logger.error(
-        'Failed to load system prompt from llm-content-processing.md',
+        'Failed to load system prompt from collection-prompt.md',
         {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'load_system_prompt',
@@ -190,6 +244,23 @@ EXTRACTION GUIDELINES:
 6. Mark general_praise for holistic restaurant praise
 
 OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
+    }
+  }
+
+  private loadQueryPrompt(): string {
+    try {
+      const promptPath = join(process.cwd(), '..', '..', 'query-prompt.md');
+      return readFileSync(promptPath, 'utf-8');
+    } catch (error) {
+      this.logger.error('Failed to load query prompt from query-prompt.md', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'load_query_prompt',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      return `You are Crave Search's query understanding assistant. Given a user's natural language request for food or restaurants, return JSON with four arrays: restaurants, foods, foodAttributes, restaurantAttributes. Each array should contain canonical, normalized strings; omit items you cannot deduce confidently. Return minified JSON.`;
     }
   }
 
@@ -268,8 +339,78 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
   }
 
+  async analyzeSearchQuery(query: string): Promise<LLMSearchQueryAnalysis> {
+    this.logger.info('Analyzing search query through Gemini', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'analyze_search_query',
+    });
+
+    const prompt = this.buildSearchQueryPrompt(query);
+    const queryGenerationConfig = {
+      temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: Math.min(this.llmConfig.maxTokens || 2048, 2048),
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: 'object',
+        description: 'Structured representation of the search request',
+        properties: {
+          restaurants: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Restaurant names explicitly requested or implied',
+          },
+          foods: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Food or dish names derived from the query',
+          },
+          foodAttributes: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Food-level attributes such as dietary or flavor notes',
+          },
+          restaurantAttributes: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Restaurant-level attributes such as ambiance or amenities',
+          },
+        },
+        additionalProperties: false,
+      },
+      thinkingConfig: {
+        thinkingBudget: this.llmConfig.thinking?.enabled
+          ? this.llmConfig.thinking.budget || -1
+          : 0,
+      },
+    };
+
+    const response = await this.callLLMApi(prompt, {
+      generationConfig: queryGenerationConfig,
+      cacheName: this.queryInstructionCache?.name ?? null,
+      systemInstruction: this.queryPrompt,
+    });
+    const content = this.extractTextContent(response, 'analyze_search_query');
+    const analysis = this.parseSearchQueryResponse(content);
+
+    this.logger.info('Search query analysis completed', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'analyze_search_query',
+      restaurants: analysis.restaurants.length,
+      foods: analysis.foods.length,
+      foodAttributes: analysis.foodAttributes.length,
+      restaurantAttributes: analysis.restaurantAttributes.length,
+    });
+
+    return analysis;
+  }
+
   /**
-   * Build the processing prompt using the complete llm-content-processing.md system prompt
+   * Build the processing prompt using the complete collection-prompt.md system prompt
    */
   private buildProcessingPrompt(input: LLMInputStructure): string {
     // Validate input structure first to prevent undefined access errors
@@ -353,15 +494,150 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return promptData;
   }
 
+  private buildSearchQueryPrompt(query: string): string {
+    return JSON.stringify({ query });
+  }
+
+  private extractTextContent(
+    response: LLMApiResponse,
+    operation: string,
+  ): string {
+    if (!response.candidates || response.candidates.length === 0) {
+      throw new LLMResponseParsingError(
+        `No candidates in Gemini response for ${operation}`,
+        JSON.stringify(response),
+      );
+    }
+
+    const candidate = response.candidates[0];
+    if (
+      !candidate.content ||
+      !candidate.content.parts ||
+      candidate.content.parts.length === 0
+    ) {
+      throw new LLMResponseParsingError(
+        `No content parts in Gemini response for ${operation}`,
+        JSON.stringify(response),
+      );
+    }
+
+    const content = candidate.content.parts[0].text;
+    if (!content) {
+      throw new LLMResponseParsingError(
+        `Empty text content in Gemini response for ${operation}`,
+        JSON.stringify(response),
+      );
+    }
+
+    return content;
+  }
+
+  private sanitizeJsonContent(content: string): string {
+    let cleanContent = content.trim();
+
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent
+        .replace(/^```json\s*/, '')
+        .replace(/\s*```$/u, '');
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent
+        .replace(/^```\s*/, '')
+        .replace(/\s*```$/u, '');
+    }
+
+    if (!cleanContent.endsWith('}') && !cleanContent.endsWith(']')) {
+      const lastCompleteObjectIndex = cleanContent.lastIndexOf('},');
+      if (lastCompleteObjectIndex > 0) {
+        const afterLastObject = cleanContent.substring(
+          lastCompleteObjectIndex + 2,
+        );
+        const closingBracketIndex = afterLastObject.indexOf(']');
+        if (
+          closingBracketIndex === -1 ||
+          afterLastObject.indexOf('"') < closingBracketIndex
+        ) {
+          cleanContent =
+            cleanContent.substring(0, lastCompleteObjectIndex + 1) + '\n  ]\n}';
+        }
+      }
+    }
+
+    return cleanContent;
+  }
+
+  private parseSearchQueryResponse(content: string): LLMSearchQueryAnalysis {
+    const cleanContent = this.sanitizeJsonContent(content);
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleanContent);
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : 'Unknown JSON parse error';
+      throw new LLMResponseParsingError(
+        `Failed to parse search query analysis response: ${reason}`,
+        content,
+      );
+    }
+
+    const restaurants = this.coerceStringArray(
+      parsed.restaurants ?? parsed.restaurantNames ?? parsed.restaurant_names,
+    );
+    const foods = this.coerceStringArray(
+      parsed.foods ?? parsed.dishes ?? parsed.food_items,
+    );
+    const foodAttributes = this.coerceStringArray(
+      parsed.foodAttributes ?? parsed.food_attributes ?? parsed.foodTraits,
+    );
+    const restaurantAttributes = this.coerceStringArray(
+      parsed.restaurantAttributes ??
+        parsed.restaurant_attributes ??
+        parsed.venueAttributes,
+    );
+
+    return {
+      restaurants,
+      foods,
+      foodAttributes,
+      restaurantAttributes,
+    };
+  }
+
+  private coerceStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    const set = new Set<string>();
+    for (const entry of value) {
+      if (typeof entry !== 'string') {
+        continue;
+      }
+      const normalized = entry.trim();
+      if (normalized.length) {
+        set.add(normalized);
+      }
+    }
+
+    return Array.from(set);
+  }
+
   /**
    * Make authenticated API call to Gemini service using @google/genai library
    */
-  private async callLLMApi(prompt: string): Promise<LLMApiResponse> {
+  private async callLLMApi(
+    prompt: string,
+    options: {
+      generationConfig?: Record<string, unknown>;
+      cacheName?: string | null;
+      systemInstruction?: string | null;
+    } = {},
+  ): Promise<LLMApiResponse> {
     const maxRetries = this.llmConfig.retryOptions?.maxRetries ?? 3;
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
 
-    const generationConfig = {
+    const defaultGenerationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
@@ -382,12 +658,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               description:
                 'Single mention of restaurant or food with complete metadata',
               properties: {
-                // Core identifiers (shortened names for complexity reduction)
                 temp_id: {
                   type: 'string',
                   description: 'Unique identifier for this mention',
                 },
-                // Restaurant info (required)
                 restaurant: {
                   type: 'string',
                   description:
@@ -400,8 +674,6 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                   items: { type: 'string' },
                   nullable: true,
                 },
-
-                // Food info (optional with nullable)
                 food: {
                   type: 'string',
                   description:
@@ -428,19 +700,15 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                     'True if specific menu item, false if general food type',
                   nullable: true,
                 },
-
-                // Sentiment (required)
                 general_praise: {
                   type: 'boolean',
                   description:
                     'True if mention contains holistic restaurant praise, regardless of specific food praise',
                 },
-
                 source_id: {
                   type: 'string',
                   description: 'Reddit ID of the source (t3_ or t1_ prefixed)',
                 },
-                // Note: other source_* fields (type, ups, url, created_at) are injected server-side
               },
               required: [
                 'temp_id',
@@ -465,20 +733,27 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         required: ['mentions'],
         propertyOrdering: ['mentions'],
       },
-      // Always include thinkingConfig for explicit control (Google's recommended approach)
       thinkingConfig: {
         thinkingBudget: this.llmConfig.thinking?.enabled
-          ? this.llmConfig.thinking.budget || -1 // Dynamic thinking if no budget specified
-          : 0, // Explicitly disable thinking (Google's proper way)
+          ? this.llmConfig.thinking.budget || -1
+          : 0,
       },
     };
 
-    // Debug logging to verify structured output config
+    const generationConfig =
+      options.generationConfig ?? defaultGenerationConfig;
+    const cacheName =
+      options.cacheName ??
+      (options.systemInstruction
+        ? null
+        : (this.systemInstructionCache?.name ?? null));
+    const systemInstruction = options.systemInstruction ?? this.systemPrompt;
+
     this.logger.info('Generation config with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'call_llm_api',
-      hasResponseMimeType: !!generationConfig.responseMimeType,
-      hasResponseSchema: !!generationConfig.responseSchema,
+      hasResponseMimeType: !!(generationConfig as any).responseMimeType,
+      hasResponseSchema: !!(generationConfig as any).responseSchema,
       configKeys: Object.keys(generationConfig),
     });
 
@@ -537,21 +812,21 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           hasApiKey: !!this.llmConfig.apiKey,
           promptLength: prompt.length,
           library: '@google/genai',
-          usingExplicitCache: !!this.systemInstructionCache,
-          cacheId: this.systemInstructionCache?.name || null,
+          usingExplicitCache: !!cacheName,
+          cacheId: cacheName || null,
           attempt: attempt + 1,
           maxRetries,
         });
 
         // Use explicit cache if available, otherwise fall back to system instruction in config
-        const requestConfig = this.systemInstructionCache
+        const requestConfig = cacheName
           ? {
               ...generationConfig,
-              cachedContent: this.systemInstructionCache.name,
+              cachedContent: cacheName,
             }
           : {
               ...generationConfig,
-              systemInstruction: this.systemPrompt,
+              systemInstruction,
             };
 
         const response = await this.genAI.models.generateContent({
@@ -625,7 +900,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           finishReason,
           safetyRatings: response.candidates?.[0]?.safetyRatings,
           usageMetadata: response.usageMetadata,
-          usingExplicitCache: !!this.systemInstructionCache,
+          usingExplicitCache: !!cacheName,
           cachedTokenCount:
             response.usageMetadata?.cachedContentTokenCount || 0,
           attempt: attempt + 1,
@@ -746,25 +1021,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
 
-    const candidate = response.candidates[0];
-    if (
-      !candidate.content ||
-      !candidate.content.parts ||
-      candidate.content.parts.length === 0
-    ) {
-      throw new LLMResponseParsingError(
-        'No content parts in Gemini response',
-        JSON.stringify(response),
-      );
-    }
-
-    const content = candidate.content.parts[0].text;
-    if (!content) {
-      throw new LLMResponseParsingError(
-        'Empty text content in Gemini response',
-        JSON.stringify(response),
-      );
-    }
+    const content = this.extractTextContent(response, 'content_processing');
 
     this.logger.debug('Parsing LLM response content', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -775,40 +1032,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     });
 
     try {
-      // Remove markdown code block formatting if present
-      let cleanContent = content.trim();
-      if (cleanContent.startsWith('```json')) {
-        cleanContent = cleanContent
-          .replace(/^```json\s*/, '')
-          .replace(/\s*```$/, '');
-      } else if (cleanContent.startsWith('```')) {
-        cleanContent = cleanContent
-          .replace(/^```\s*/, '')
-          .replace(/\s*```$/, '');
-      }
-
-      // Check for truncated JSON and attempt to fix simple cases
-      if (!cleanContent.endsWith('}') && !cleanContent.endsWith(']')) {
-        // Try to find the last complete object/array and truncate there
-        const lastCompleteObjectIndex = cleanContent.lastIndexOf('},');
-        if (lastCompleteObjectIndex > 0) {
-          // Look for the closing of the mentions array
-          const afterLastObject = cleanContent.substring(
-            lastCompleteObjectIndex + 2,
-          );
-          const mentionsArrayClose = afterLastObject.indexOf(']');
-          if (
-            mentionsArrayClose === -1 ||
-            afterLastObject.indexOf('"') < mentionsArrayClose
-          ) {
-            // Close the mentions array and root object
-            cleanContent =
-              cleanContent.substring(0, lastCompleteObjectIndex + 1) +
-              '\n  ]\n}';
-          }
-        }
-      }
-
+      const cleanContent = this.sanitizeJsonContent(content);
       const parsed = JSON.parse(cleanContent) as LLMOutputStructure;
 
       // Basic validation

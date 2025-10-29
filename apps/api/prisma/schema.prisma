@@ -16,7 +16,7 @@ model Entity {
   aliases                String[]     @default([])
   restaurantAttributes   String[]     @default([]) @map("restaurant_attributes") @db.Uuid
   restaurantQualityScore Decimal?     @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
-  generalPraiseUpvotes   Int          @default(0) @map("general_praise_upvotes")
+  generalPraiseUpvotes   Int?         @default(0) @map("general_praise_upvotes")
   latitude               Decimal?     @db.Decimal(10, 8)
   longitude              Decimal?     @db.Decimal(11, 8)
   address                String?      @db.VarChar(500)
@@ -31,6 +31,7 @@ model Entity {
   foodConnections        Connection[] @relation("FoodEntity")
   restaurantConnections  Connection[] @relation("RestaurantEntity")
   priorityMetrics        EntityPriorityMetric?
+  searchInterests        SearchInterest[]
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -270,6 +271,32 @@ model KeywordSearchTrigger {
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@map("search_cooldowns")
+}
+
+model SearchInterest {
+  interestId      String     @id @default(dbgenerated("gen_random_uuid()")) @map("interest_id") @db.Uuid
+  term            String     @db.VarChar(255)
+  entityType      EntityType @map("entity_type")
+  occurrenceCount Int        @default(1) @map("occurrence_count")
+  lastSeenAt      DateTime   @default(now()) @map("last_seen_at")
+  metadata        Json?      @default("{}")
+  status          SearchInterestStatus @default(pending)
+  entityId        String?    @map("entity_id") @db.Uuid
+  lastEnqueuedAt  DateTime?  @map("last_enqueued_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  entity          Entity?    @relation(fields: [entityId], references: [entityId])
+
+  @@unique([term, entityType], map: "search_interests_term_entity_type_key")
+  @@map("search_interests")
+}
+
+enum SearchInterestStatus {
+  pending
+  queued
+  processing
+  completed
 }
 
 enum EntityType {

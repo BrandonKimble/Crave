@@ -583,10 +583,7 @@ export class KeywordSearchOrchestratorService
           this.keywordSearchQueue,
           'keyword_search_execution',
         ),
-        this.captureQueueMetrics(
-          this.keywordQueue,
-          'keyword_batch_processing',
-        ),
+        this.captureQueueMetrics(this.keywordQueue, 'keyword_batch_processing'),
       ]);
     } catch (error) {
       this.logger.warn('Failed to record keyword queue metrics', {
@@ -635,6 +632,14 @@ export class KeywordSearchOrchestratorService
       clearInterval(this.autoExecutionTimer);
       this.autoExecutionTimer = undefined;
     }
+  }
+
+  async getQueueDepth(): Promise<KeywordQueueDepth> {
+    const [execution, processing] = await Promise.all([
+      this.keywordSearchQueue.getJobCounts(),
+      this.keywordQueue.getJobCounts(),
+    ]);
+    return { execution, processing };
   }
 }
 
@@ -707,4 +712,9 @@ export interface KeywordSearchJobData {
   entities: EntityPriorityScore[];
   source: 'scheduled' | 'on_demand';
   trackCompletion: boolean;
+}
+
+export interface KeywordQueueDepth {
+  execution: JobCounts;
+  processing: JobCounts;
 }

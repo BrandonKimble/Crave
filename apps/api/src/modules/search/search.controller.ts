@@ -1,12 +1,14 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { LoggerService } from '../../shared';
 import {
+  NaturalSearchRequestDto,
   SearchPlanResponseDto,
   SearchQueryRequestDto,
   SearchResponseDto,
   SearchResultClickDto,
 } from './dto/search-query.dto';
 import { SearchService } from './search.service';
+import { SearchOrchestrationService } from './search-orchestration.service';
 
 @Controller('search')
 export class SearchController {
@@ -14,6 +16,7 @@ export class SearchController {
 
   constructor(
     private readonly searchService: SearchService,
+    private readonly searchOrchestrationService: SearchOrchestrationService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
@@ -31,6 +34,14 @@ export class SearchController {
   ): Promise<SearchResponseDto> {
     this.logger.debug('Received search execution request');
     return this.searchService.runQuery(request);
+  }
+
+  @Post('natural')
+  async runNatural(
+    @Body() request: NaturalSearchRequestDto,
+  ): Promise<SearchResponseDto> {
+    this.logger.debug('Received natural language search request');
+    return this.searchOrchestrationService.runNaturalQuery(request);
   }
 
   @Post('events/click')

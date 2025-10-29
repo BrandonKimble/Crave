@@ -205,7 +205,37 @@ export interface SearchResponseDto {
     page: number;
     pageSize: number;
     perRestaurantLimit: number;
+    unresolvedEntities?: Array<{
+      type: EntityType;
+      terms: string[];
+    }>;
+    sourceQuery?: string;
+    analysisMetadata?: Record<string, unknown>;
   };
+}
+
+export class NaturalSearchRequestDto {
+  @IsString()
+  @IsNotEmpty()
+  query!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MapBoundsDto)
+  bounds?: MapBoundsDto;
+
+  @IsOptional()
+  @IsBoolean()
+  openNow?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PaginationDto)
+  pagination?: PaginationDto;
+
+  @IsOptional()
+  @IsBoolean()
+  includeSqlPreview?: boolean;
 }
 
 export class SearchResultClickDto {

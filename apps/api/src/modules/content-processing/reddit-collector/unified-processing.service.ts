@@ -1058,7 +1058,8 @@ export class UnifiedProcessingService implements OnModuleInit {
                     : [resolution.originalInput.originalText],
                 restaurantAttributes: [],
                 restaurantQualityScore: 0,
-                generalPraiseUpvotes: 0,
+                generalPraiseUpvotes:
+                  resolution.entityType === 'restaurant' ? 0 : null,
                 restaurantMetadata: {},
                 createdAt: new Date(),
                 lastUpdated: new Date(),

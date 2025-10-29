@@ -232,7 +232,10 @@ export class RestaurantEntityMergeService {
             mentionsCount: existing.mentionsCount + aggregate.mentionsCount,
             totalUpvotes: existing.totalUpvotes + aggregate.totalUpvotes,
             lastMentionedAt:
-              this.maxDate(existing.lastMentionedAt, aggregate.lastMentionedAt) ??
+              this.maxDate(
+                existing.lastMentionedAt,
+                aggregate.lastMentionedAt,
+              ) ??
               existing.lastMentionedAt ??
               aggregate.lastMentionedAt ??
               new Date(),
@@ -419,7 +422,7 @@ export class RestaurantEntityMergeService {
     if (a && b) {
       return a.getTime() >= b.getTime() ? a : b;
     }
-    return (a ?? b) ?? undefined;
+    return a ?? b ?? undefined;
   }
 
   private minDate(
@@ -429,7 +432,7 @@ export class RestaurantEntityMergeService {
     if (a && b) {
       return a.getTime() <= b.getTime() ? a : b;
     }
-    return (a ?? b) ?? undefined;
+    return a ?? b ?? undefined;
   }
 
   private mergeActivityLevel(

@@ -3,7 +3,7 @@
 **⚠️ IMPORTANT: This document is outdated and will need extensive updates to align with current system architecture and implementation approach. For current development information, refer to:**
 
 - **PRD.md** - Complete system architecture, data model, and implementation roadmap
-- **llm-content-processing.md** - LLM processing guidelines and entity extraction rules
+- **collection-prompt.md** - LLM processing guidelines and entity extraction rules
 
 **This BRD will be updated at a later time to reflect the current system design and user experience strategy.**
 

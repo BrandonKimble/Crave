@@ -1111,7 +1111,7 @@ For restaurant ranking in category/attribute queries:
    2a. Pushshift Archive Processing (stream parse zstd-ndjson files)
    2b. Reddit API Collection (chronological + keyword entity search)
    2c. On-Demand Query Collection (keyword search for missing entities)
-3. LLM Content Processing (outputs structured mentions with temp IDs; see llm-content-processing.md)
+3. LLM Content Processing (outputs structured mentions with temp IDs; see collection-prompt.md)
 4. Single Consolidated Processing Phase:
    4a. Entity Resolution (with in-memory ID mapping; see section 5.2)
    4b. Mention Scoring & Activity Calculation (using existing DB data; see section 6.4)
@@ -1141,7 +1141,7 @@ For restaurant ranking in category/attribute queries:
 - Keyword search Reddit API for specific missing entities
 - Fetch complete posts and comment threads with URLs
 
-**Step 3**: LLM Content Processing (see llm-content-processing.md for more details)
+**Step 3**: LLM Content Processing (see collection-prompt.md for more details)
 
 - Input: Reddit posts/comments
 - Output: Structured mentions with temp IDs (only JSON structure needed)
@@ -1166,7 +1166,7 @@ For restaurant ranking in category/attribute queries:
 
 **Primary Function:** Convert Reddit content into structured mentions with normalized entities
 
-**Key Processing Rules** (see `llm-content-processing.md` for full details):
+**Key Processing Rules** (see `collection-prompt.md` for full details):
 
 - **Entity Extraction**: All 4 entity types (restaurant, food, food_attribute, restaurant_attribute)
 - **Scope Determination**: Context-dependent attributes assigned to correct scope (food vs restaurant)
@@ -1178,7 +1178,7 @@ For restaurant ranking in category/attribute queries:
 
 ### 6.3 LLM Data Collection Input/Output Structures
 
-See llm-content-processing.md for more implementation and processing details.
+See collection-prompt.md for more implementation and processing details.
 
 #### 6.3.1 LLM Input Structure
 
@@ -2415,7 +2415,7 @@ _Required for any content processing and location services_
 
 #### 9.2.1 Core Tasks
 
-- **LLM integration**: API connectivity, structured input/output handling (see llm-content-processing.md for LLM details)
+- **LLM integration**: API connectivity, structured input/output handling (see collection-prompt.md for LLM details)
 - **Complete entity resolution system**: Three-phase system with LLM normalization, database matching (exact, alias, fuzzy), and batched processing pipeline
 - **Alias management**: Automatic alias creation, duplicate prevention, scope-aware resolution
 - **Context-dependent attribute handling**: Separate entities by scope (food vs restaurant attributes), referencing section 4.2.2's entity type definitions
@@ -3303,7 +3303,7 @@ _Advanced recommendation engine (lowest priority)_
 
 ### A. LLM Processing Guidelines
 
-See `llm-content-processing.md` for detailed content processing rules
+See `collection-prompt.md` for detailed content processing rules
 
 ### B. Database Migrations
 
