@@ -116,6 +116,11 @@ export class SearchQueryRequestDto {
   @IsOptional()
   @IsBoolean()
   includeSqlPreview?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoordinateDto)
+  userLocation?: CoordinateDto;
 }
 
 export type QueryFormat = 'single_list' | 'dual_list';
@@ -237,6 +242,11 @@ export class NaturalSearchRequestDto {
   @IsOptional()
   @IsBoolean()
   includeSqlPreview?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoordinateDto)
+  userLocation?: CoordinateDto;
 }
 
 export class SearchResultClickDto {

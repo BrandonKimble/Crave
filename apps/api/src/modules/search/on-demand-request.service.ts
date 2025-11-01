@@ -1,5 +1,10 @@
 import { Injectable, Inject } from '@nestjs/common';
-import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
+import {
+  EntityType,
+  OnDemandOutcome,
+  OnDemandReason,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 
@@ -31,8 +36,53 @@ export class OnDemandRequestService {
       return [];
     }
 
-    const operations = deduped.map((request) =>
-      this.prisma.onDemandRequest.upsert({
+    const operations = deduped.map((request) => {
+      const resultRestaurantCount = this.extractInteger(
+        context.restaurantCount,
+      );
+      const resultFoodCount = this.extractInteger(context.foodCount);
+
+      const createData: Prisma.OnDemandRequestCreateInput = {
+        term: request.term,
+        entityType: request.entityType,
+        reason: request.reason,
+        metadata: this.buildMetadata(request.metadata, context),
+        attemptedSubreddits: [],
+        deferredAttempts: 0,
+      };
+
+      if (request.entityId) {
+        createData.entity = {
+          connect: { entityId: request.entityId },
+        };
+      }
+
+      if (resultRestaurantCount !== null) {
+        createData.resultRestaurantCount = resultRestaurantCount;
+      }
+      if (resultFoodCount !== null) {
+        createData.resultFoodCount = resultFoodCount;
+      }
+
+      const updateData: Prisma.OnDemandRequestUpdateInput = {
+        occurrenceCount: { increment: 1 },
+        lastSeenAt: new Date(),
+        metadata: this.buildMetadata(request.metadata, context),
+      };
+
+      if (request.entityId !== undefined) {
+        updateData.entity = request.entityId
+          ? { connect: { entityId: request.entityId } }
+          : { disconnect: true };
+      }
+      if (resultRestaurantCount !== null) {
+        updateData.resultRestaurantCount = resultRestaurantCount;
+      }
+      if (resultFoodCount !== null) {
+        updateData.resultFoodCount = resultFoodCount;
+      }
+
+      return this.prisma.onDemandRequest.upsert({
         where: {
           term_entityType_reason: {
             term: request.term,
@@ -40,23 +90,10 @@ export class OnDemandRequestService {
             reason: request.reason,
           },
         },
-        create: {
-          term: request.term,
-          entityType: request.entityType,
-          reason: request.reason,
-          entityId: request.entityId ?? null,
-          metadata: this.buildMetadata(request.metadata, context),
-        },
-        update: {
-          occurrenceCount: { increment: 1 },
-          lastSeenAt: new Date(),
-          metadata: this.buildMetadata(request.metadata, context),
-          ...(request.entityId
-            ? { entityId: request.entityId }
-            : undefined),
-        },
-      }),
-    );
+        create: createData,
+        update: updateData,
+      });
+    });
 
     await this.prisma.$transaction(operations);
 
@@ -160,6 +197,9 @@ export class OnDemandRequestService {
     requestId: string,
     update: {
       entityId?: string | null;
+      outcome: OnDemandOutcome;
+      completedAt?: Date;
+      attemptedSubreddits?: string[];
       metadata?: Record<string, unknown>;
     },
   ): Promise<void> {
@@ -168,6 +208,11 @@ export class OnDemandRequestService {
       data: {
         status: 'completed',
         entityId: update.entityId ?? null,
+        lastOutcome: update.outcome,
+        lastCompletedAt: update.completedAt ?? new Date(),
+        lastAttemptAt: update.completedAt ?? new Date(),
+        deferredAttempts: 0,
+        attemptedSubreddits: update.attemptedSubreddits ?? [],
         metadata: update.metadata
           ? (update.metadata as Prisma.InputJsonValue)
           : Prisma.JsonNull,
@@ -177,28 +222,65 @@ export class OnDemandRequestService {
 
   async resetToPendingById(
     requestId: string,
-    metadata?: Record<string, unknown>,
+    update: {
+      outcome: OnDemandOutcome;
+      attemptedAt?: Date;
+      cooldownUntil?: Date;
+      deferredAttempts?: number;
+      attemptedSubreddits?: string[];
+      metadata?: Record<string, unknown>;
+    },
   ): Promise<void> {
+    const metadata: Record<string, unknown> = {
+      ...(update.metadata ?? {}),
+    };
+
+    if (update.cooldownUntil) {
+      metadata.instantCooldownUntil = update.cooldownUntil.toISOString();
+    }
+
     await this.prisma.onDemandRequest.updateMany({
       where: { requestId },
       data: {
         status: 'pending',
-        metadata: metadata
+        lastOutcome: update.outcome,
+        lastAttemptAt: update.attemptedAt ?? new Date(),
+        deferredAttempts: update.deferredAttempts ?? 0,
+        attemptedSubreddits: update.attemptedSubreddits ?? [],
+        metadata: Object.keys(metadata).length
           ? (metadata as Prisma.InputJsonValue)
           : Prisma.JsonNull,
       },
     });
   }
 
-  async updateMetadataById(
+  async markDeferredById(
     requestId: string,
-    metadata: Record<string, unknown>,
+    update: {
+      metadata: Record<string, unknown>;
+      deferredAttempts: number;
+    },
   ): Promise<void> {
     await this.prisma.onDemandRequest.updateMany({
       where: { requestId },
       data: {
-        metadata: metadata as Prisma.InputJsonValue,
+        metadata: update.metadata as Prisma.InputJsonValue,
+        deferredAttempts: update.deferredAttempts,
+        lastOutcome: OnDemandOutcome.deferred,
       },
     });
+  }
+
+  private extractInteger(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.trunc(value);
+    }
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) {
+        return Math.trunc(parsed);
+      }
+    }
+    return null;
   }
 }

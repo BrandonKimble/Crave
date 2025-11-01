@@ -220,6 +220,11 @@ export default () => ({
       10,
     ),
   },
+  restaurantEnrichment: {
+    minScoreThreshold: parseFloat(
+      process.env.RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD || '0.2',
+    ),
+  },
   pushshift: {
     baseDirectory: process.env.PUSHSHIFT_BASE_DIR || 'data/pushshift/archives',
     targetSubreddits: (

@@ -71,7 +71,7 @@ model Connection {
   food               Entity        @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant         Entity        @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
 
-  @@unique([restaurantId, foodId, foodAttributes], map: "connections_restaurant_id_food_id_food_attribut_key")
+  @@unique([restaurantId, foodId], map: "connections_restaurant_id_food_id_key")
   @@index([restaurantId], map: "idx_connections_restaurant")
   @@index([foodId], map: "idx_connections_food")
   @@index([categories], map: "idx_connections_categories_gin", type: Gin)
@@ -102,7 +102,9 @@ model ConnectionEntityDetails {
   restaurantId            String        @map("restaurant_id") @db.Uuid
   foodId                  String        @map("food_id") @db.Uuid
   categories              String[]      @map("categories") @db.Uuid
+  categoryNames           String[]      @map("category_names")
   foodAttributes          String[]      @map("food_attributes") @db.Uuid
+  foodAttributeNames      String[]      @map("food_attribute_names")
   activityLevel           ActivityLevel @map("activity_level")
   decayedUpvoteScore      Decimal       @map("decayed_upvote_score") @db.Decimal(18, 6)
   decayedMentionScore     Decimal       @map("decayed_mention_score") @db.Decimal(18, 6)
@@ -274,6 +276,13 @@ model OnDemandRequest {
   status          OnDemandStatus @default(pending)
   lastSeenAt      DateTime       @default(now()) @map("last_seen_at")
   lastEnqueuedAt  DateTime?      @map("last_enqueued_at")
+  resultRestaurantCount Int      @default(0) @map("result_restaurant_count")
+  resultFoodCount       Int      @default(0) @map("result_food_count")
+  attemptedSubreddits   String[] @default([]) @map("attempted_subreddits")
+  deferredAttempts      Int      @default(0) @map("deferred_attempts")
+  lastOutcome           OnDemandOutcome? @map("last_outcome")
+  lastAttemptAt         DateTime?        @map("last_attempt_at")
+  lastCompletedAt       DateTime?        @map("last_completed_at")
   metadata        Json?          @default("{}")
   createdAt       DateTime       @default(now()) @map("created_at")
   updatedAt       DateTime       @updatedAt @map("updated_at")
@@ -289,6 +298,14 @@ enum OnDemandStatus {
   queued
   processing
   completed
+}
+
+enum OnDemandOutcome {
+  success
+  no_results
+  error
+  deferred
+  no_active_subreddits
 }
 
 enum OnDemandReason {

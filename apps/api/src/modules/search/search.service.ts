@@ -15,7 +15,10 @@ import {
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
-import { OnDemandRequestService, OnDemandRequestInput } from './on-demand-request.service';
+import {
+  OnDemandRequestService,
+  OnDemandRequestInput,
+} from './on-demand-request.service';
 import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
 
@@ -147,14 +150,14 @@ export class SearchService {
       });
 
       const totalRestaurantResults =
-        plan.format === 'dual_list'
-          ? execution.restaurantResults.length
-          : 0;
+        plan.format === 'dual_list' ? execution.restaurantResults.length : 0;
       const totalFoodResults = execution.totalFoodCount;
 
       const triggeredOnDemand = this.shouldTriggerOnDemand(
         request,
+        plan.format,
         execution.restaurantResults.length,
+        execution.totalFoodCount,
       );
 
       const coverageStatus = this.calculateCoverageStatus({
@@ -219,15 +222,22 @@ export class SearchService {
         try {
           const lowResultRequests = this.buildLowResultRequests(request);
           if (lowResultRequests.length) {
+            const context: Record<string, unknown> = {
+              source: 'low_result',
+              restaurantCount: execution.restaurantResults.length,
+              foodCount: execution.foodResults.length,
+              planFormat: plan.format,
+              bounds: request.bounds,
+              openNow: request.openNow,
+            };
+            const fallbackLocation = this.resolveFallbackLocation(request);
+            if (fallbackLocation) {
+              context.location = fallbackLocation;
+            }
+
             const recorded = await this.onDemandRequestService.recordRequests(
               lowResultRequests,
-              {
-                source: 'low_result',
-                restaurantCount: execution.restaurantResults.length,
-                planFormat: plan.format,
-                bounds: request.bounds,
-                openNow: request.openNow,
-              },
+              context,
             );
 
             if (recorded.length) {
@@ -279,9 +289,13 @@ export class SearchService {
 
   private shouldTriggerOnDemand(
     request: SearchQueryRequestDto,
+    format: QueryPlan['format'],
     restaurantCount: number,
+    foodCount: number,
   ): boolean {
-    if (restaurantCount >= this.onDemandMinResults) {
+    const primaryCount = format === 'single_list' ? foodCount : restaurantCount;
+
+    if (primaryCount >= this.onDemandMinResults) {
       return false;
     }
     return this.hasEntityTargets(request);
@@ -338,23 +352,32 @@ export class SearchService {
     request: SearchQueryRequestDto,
   ): FilterClause[] {
     const filters: FilterClause[] = [];
+    const foodEntityIds = this.collectEntityIds(request.entities.food);
 
-    if (request.entities.food?.length) {
+    if (foodEntityIds.length > 0) {
       filters.push({
         scope: 'connection',
         description: 'Match food entities',
         entityType: EntityScope.FOOD,
-        entityIds: this.collectEntityIds(request.entities.food),
+        entityIds: foodEntityIds,
       });
     }
 
     if (request.entities.foodAttributes?.length) {
-      filters.push({
-        scope: 'connection',
-        description: 'Filter by food attributes',
-        entityType: EntityScope.FOOD_ATTRIBUTE,
-        entityIds: this.collectEntityIds(request.entities.foodAttributes),
-      });
+      const attributeIds = this.collectEntityIds(
+        request.entities.foodAttributes,
+      );
+      if (
+        attributeIds.length > 0 &&
+        (foodEntityIds.length > 0 || !request.entities.food?.length)
+      ) {
+        filters.push({
+          scope: 'connection',
+          description: 'Filter by food attributes',
+          entityType: EntityScope.FOOD_ATTRIBUTE,
+          entityIds: attributeIds,
+        });
+      }
     }
 
     return filters;
@@ -502,8 +525,12 @@ export class SearchService {
     totalRestaurantResults: number;
     triggeredOnDemand: boolean;
   }): 'full' | 'partial' | 'unresolved' {
-    const { request, totalFoodResults, totalRestaurantResults, triggeredOnDemand } =
-      params;
+    const {
+      request,
+      totalFoodResults,
+      totalRestaurantResults,
+      triggeredOnDemand,
+    } = params;
 
     const totalResults = totalFoodResults + totalRestaurantResults;
     const hasTargets = this.hasEntityTargets(request);
@@ -523,6 +550,40 @@ export class SearchService {
     return 'full';
   }
 
+  private resolveFallbackLocation(
+    request: SearchQueryRequestDto,
+  ): { latitude: number; longitude: number } | undefined {
+    if (
+      typeof request.userLocation?.lat === 'number' &&
+      typeof request.userLocation?.lng === 'number'
+    ) {
+      return {
+        latitude: request.userLocation.lat,
+        longitude: request.userLocation.lng,
+      };
+    }
+
+    const bounds = request.bounds;
+    if (!bounds) {
+      return undefined;
+    }
+
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return undefined;
+    }
+
+    return {
+      latitude: (northEast.lat + southWest.lat) / 2,
+      longitude: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
   ): OnDemandRequestInput[] {
@@ -536,7 +597,8 @@ export class SearchService {
     ) => {
       for (const entity of entities ?? []) {
         const entityId = entity.entityIds?.[0] ?? null;
-        const baseTerm = entity.normalizedName || entity.originalText || entityId;
+        const baseTerm =
+          entity.normalizedName || entity.originalText || entityId;
         if (!baseTerm) {
           continue;
         }

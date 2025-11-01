@@ -76,6 +76,37 @@ const mergeIntoSummary = (
 const DEFAULT_UNIFIED_BATCH_SIZE = 250;
 const DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE = 100;
 
+const GENERIC_FOOD_PLACEHOLDERS = new Set<string>([
+  'food',
+  'foods',
+  'the food',
+  'good food',
+  'great food',
+  'awesome food',
+  'amazing food',
+  'delicious food',
+  'some food',
+  'meal',
+  'meals',
+  'the meal',
+  'dish',
+  'dishes',
+]);
+
+const GENERIC_RESTAURANT_PLACEHOLDERS = new Set<string>([
+  'restaurant',
+  'restaurants',
+  'the restaurant',
+  'place',
+  'places',
+  'the place',
+  'spot',
+  'spots',
+  'the spot',
+  'joint',
+  'joints',
+]);
+
 @Injectable()
 export class UnifiedProcessingService implements OnModuleInit {
   private logger!: LoggerService;
@@ -112,6 +143,108 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('UnifiedProcessingService');
+  }
+
+  private normalizePlaceholder(term: string): string {
+    return term.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private isGenericFoodPlaceholder(term: string): boolean {
+    if (typeof term !== 'string') {
+      return true;
+    }
+    const normalized = this.normalizePlaceholder(term);
+    return normalized.length === 0 || GENERIC_FOOD_PLACEHOLDERS.has(normalized);
+  }
+
+  private isGenericRestaurantPlaceholder(term: string): boolean {
+    if (typeof term !== 'string') {
+      return true;
+    }
+    const normalized = this.normalizePlaceholder(term);
+    return (
+      normalized.length === 0 ||
+      GENERIC_RESTAURANT_PLACEHOLDERS.has(normalized) ||
+      GENERIC_FOOD_PLACEHOLDERS.has(normalized)
+    );
+  }
+
+  private sanitizeFoodTerm(value: unknown): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed.length || this.isGenericFoodPlaceholder(trimmed)) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  private filterMentionArray(
+    values: unknown,
+    surfaces: unknown,
+    predicate: (value: string) => boolean,
+  ): { values: string[]; surfaces: string[] } {
+    const valueArray = Array.isArray(values) ? (values as unknown[]) : [];
+    const surfaceArray = Array.isArray(surfaces) ? (surfaces as unknown[]) : [];
+
+    const filteredValues: string[] = [];
+    const filteredSurfaces: string[] = [];
+
+    valueArray.forEach((rawValue, index) => {
+      if (typeof rawValue !== 'string') {
+        return;
+      }
+      const trimmed = rawValue.trim();
+      if (!trimmed.length) {
+        return;
+      }
+      if (!predicate(trimmed)) {
+        return;
+      }
+
+      filteredValues.push(trimmed);
+
+      const surfaceCandidate = surfaceArray[index];
+      if (
+        typeof surfaceCandidate === 'string' &&
+        surfaceCandidate.trim().length > 0
+      ) {
+        filteredSurfaces.push(surfaceCandidate);
+      } else {
+        filteredSurfaces.push(trimmed);
+      }
+    });
+
+    return { values: filteredValues, surfaces: filteredSurfaces };
+  }
+
+  private sanitizeMention(mention: any): void {
+    mention.food = this.sanitizeFoodTerm(mention.food);
+
+    const categoryResult = this.filterMentionArray(
+      mention.food_categories,
+      mention.food_category_surfaces,
+      (value) => !this.isGenericFoodPlaceholder(value),
+    );
+    mention.food_categories = categoryResult.values;
+    mention.food_category_surfaces = categoryResult.surfaces;
+
+    const foodAttrResult = this.filterMentionArray(
+      mention.food_attributes,
+      mention.food_attribute_surfaces,
+      (value) => !this.isGenericFoodPlaceholder(value),
+    );
+    mention.food_attributes = foodAttrResult.values;
+    mention.food_attribute_surfaces = foodAttrResult.surfaces;
+
+    const restaurantAttrResult = this.filterMentionArray(
+      mention.restaurant_attributes,
+      mention.restaurant_attribute_surfaces,
+      (value) => !this.isGenericRestaurantPlaceholder(value),
+    );
+    mention.restaurant_attributes = restaurantAttrResult.values;
+    mention.restaurant_attribute_surfaces = restaurantAttrResult.surfaces;
   }
 
   /**
@@ -390,7 +523,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       createdEntitySummaryMap.values(),
     );
 
-    this.scheduleRestaurantEnrichment(uniqueCreatedEntitySummaries);
+    await this.scheduleRestaurantEnrichment(uniqueCreatedEntitySummaries);
 
     const reusedEntitySummaryMap = new Map<
       string,
@@ -559,6 +692,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
     try {
       for (const mention of llmOutput.mentions) {
+        this.sanitizeMention(mention);
         // Restaurant entities (deterministic temp IDs)
         if (mention.restaurant) {
           const restaurantTempId = this.buildRestaurantTempId(mention);
@@ -1907,21 +2041,18 @@ export class UnifiedProcessingService implements OnModuleInit {
       return summary;
     }
 
-    const existingConnections = await tx.connection.findMany({
+    const existingConnection = await tx.connection.findFirst({
       where: {
         restaurantId: operation.restaurantEntityId,
         foodId: operation.foodEntityId,
-        foodAttributes: { hasSome: operation.foodAttributeIds },
       },
     });
 
-    if (existingConnections.length > 0) {
-      for (const connection of existingConnections) {
-        summary.affectedConnectionIds.push(connection.connectionId);
-        await this.boostConnection(tx, connection, operation, {
-          additionalAttributeIds: operation.foodAttributeIds,
-        });
-      }
+    if (existingConnection) {
+      summary.affectedConnectionIds.push(existingConnection.connectionId);
+      await this.boostConnection(tx, existingConnection, operation, {
+        additionalAttributeIds: operation.foodAttributeIds,
+      });
       return summary;
     }
 
@@ -2776,9 +2907,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     return parsed;
   }
 
-  private scheduleRestaurantEnrichment(
+  private async scheduleRestaurantEnrichment(
     summaries: CreatedEntitySummary[],
-  ): void {
+  ): Promise<void> {
     if (!summaries.length) {
       return;
     }
@@ -2795,7 +2926,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       return;
     }
 
-    for (const entityId of restaurantIds) {
+    const enrichmentPromises = restaurantIds.map((entityId) =>
       this.restaurantLocationEnrichmentService
         .enrichRestaurantById(entityId)
         .catch((error) => {
@@ -2806,7 +2937,9 @@ export class UnifiedProcessingService implements OnModuleInit {
               stack: error instanceof Error ? error.stack : undefined,
             },
           });
-        });
-    }
+        }),
+    );
+
+    await Promise.all(enrichmentPromises);
   }
 }

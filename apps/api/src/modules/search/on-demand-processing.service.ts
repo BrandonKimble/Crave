@@ -3,6 +3,7 @@ import {
   EntityType,
   OnDemandReason,
   OnDemandStatus,
+  OnDemandOutcome,
   Prisma,
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -41,6 +42,13 @@ type OnDemandRecord = {
   entityId?: string | null;
   metadata: Prisma.JsonValue | null;
   lastEnqueuedAt: Date | null;
+  resultRestaurantCount: number;
+  resultFoodCount: number;
+  attemptedSubreddits: string[];
+  deferredAttempts: number;
+  lastOutcome: OnDemandOutcome | null;
+  lastAttemptAt: Date | null;
+  lastCompletedAt: Date | null;
 };
 
 type OnDemandMetadata = Record<string, unknown>;
@@ -105,7 +113,10 @@ export class OnDemandProcessingService {
       await this.processPendingBacklog();
     } catch (error) {
       this.logger.warn('Failed to process pending on-demand backlog', {
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
       });
     }
 
@@ -119,7 +130,10 @@ export class OnDemandProcessingService {
           term: request.term,
           entityType: request.entityType,
           reason: request.reason,
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
         });
       }
     }
@@ -144,6 +158,13 @@ export class OnDemandProcessingService {
         entityId: true,
         metadata: true,
         lastEnqueuedAt: true,
+        resultRestaurantCount: true,
+        resultFoodCount: true,
+        attemptedSubreddits: true,
+        deferredAttempts: true,
+        lastOutcome: true,
+        lastAttemptAt: true,
+        lastCompletedAt: true,
       },
     });
 
@@ -171,10 +192,7 @@ export class OnDemandProcessingService {
 
     if (!decision.runNow) {
       const nowIso = new Date().toISOString();
-      const deferredAttempts =
-        typeof metadata.deferredAttempts === 'number'
-          ? metadata.deferredAttempts
-          : 0;
+      const deferredAttempts = record.deferredAttempts;
       const updatedMetadata: OnDemandMetadata = {
         ...metadata,
         lastOutcome: 'deferred',
@@ -193,10 +211,10 @@ export class OnDemandProcessingService {
         ).toISOString();
       }
 
-      await this.requestService.updateMetadataById(
-        record.requestId,
-        updatedMetadata,
-      );
+      await this.requestService.markDeferredById(record.requestId, {
+        metadata: updatedMetadata,
+        deferredAttempts: deferredAttempts + 1,
+      });
 
       this.logger.debug('Deferred on-demand request immediate execution', {
         requestId: record.requestId,
@@ -210,8 +228,10 @@ export class OnDemandProcessingService {
     }
 
     const bounds = this.extractBounds(metadata);
+    const fallbackLocation = this.extractFallbackLocation(metadata);
     const subreddits = await this.subredditResolver.resolve({
       bounds: bounds ?? null,
+      fallbackLocation,
     });
 
     if (!subreddits.length) {
@@ -225,17 +245,23 @@ export class OnDemandProcessingService {
         deferredAttempts: 0,
       };
 
-      await this.requestService.updateMetadataById(
-        record.requestId,
-        updatedMetadata,
-      );
-
-      this.logger.warn('Skipping on-demand request; no active subreddits found', {
-        requestId: record.requestId,
-        term: record.term,
-        entityType: record.entityType,
-        reason: record.reason,
+      await this.requestService.resetToPendingById(record.requestId, {
+        outcome: OnDemandOutcome.no_active_subreddits,
+        attemptedAt: new Date(),
+        deferredAttempts: 0,
+        attemptedSubreddits: [],
+        metadata: updatedMetadata,
       });
+
+      this.logger.warn(
+        'Skipping on-demand request; no active subreddits found',
+        {
+          requestId: record.requestId,
+          term: record.term,
+          entityType: record.entityType,
+          reason: record.reason,
+        },
+      );
 
       return;
     }
@@ -255,26 +281,30 @@ export class OnDemandProcessingService {
     try {
       await this.runOnDemandSearch(target, subreddits);
     } catch (error) {
-      this.logger.error('Failed to execute keyword search for on-demand request', {
-        requestId: target.requestId,
-        term: target.term,
-        entityType: target.entityType,
-        reason: target.reason,
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
+      this.logger.error(
+        'Failed to execute keyword search for on-demand request',
+        {
+          requestId: target.requestId,
+          term: target.term,
+          entityType: target.entityType,
+          reason: target.reason,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
+        },
+      );
+      const cooldownUntil = new Date(Date.now() + this.instantCooldownMs);
       await this.requestService.resetToPendingById(target.requestId, {
-        lastOutcome: 'error',
-        lastAttemptAt: new Date().toISOString(),
-        lastError: error instanceof Error ? error.message : String(error),
-        instantCooldownUntil: new Date(
-          Date.now() + this.instantCooldownMs,
-        ).toISOString(),
+        outcome: OnDemandOutcome.error,
+        attemptedAt: new Date(),
+        cooldownUntil,
         deferredAttempts: 0,
-        reason: target.reason,
         attemptedSubreddits: subreddits,
+        metadata: {
+          reason: target.reason,
+          lastError: error instanceof Error ? error.message : String(error),
+        },
       });
     }
   }
@@ -312,17 +342,16 @@ export class OnDemandProcessingService {
 
       if (success) {
         const entityId = await this.resolveSuccessfulEntityId(target);
-
+        const completedAt = new Date();
         await this.requestService.markCompletedById(target.requestId, {
-          entityId,
+          entityId: entityId ?? undefined,
+          outcome: OnDemandOutcome.success,
+          completedAt,
+          attemptedSubreddits,
           metadata: {
-            lastOutcome: 'success',
-            lastCompletedAt: new Date().toISOString(),
+            reason: target.reason,
             posts: searchResult?.posts.length ?? 0,
             comments: searchResult?.comments.length ?? 0,
-            attemptedSubreddits,
-            deferredAttempts: 0,
-            reason: target.reason,
           },
         });
 
@@ -330,7 +359,7 @@ export class OnDemandProcessingService {
           requestId: target.requestId,
           term: target.term,
           entityType: target.entityType,
-          entityId,
+          entityId: entityId ?? undefined,
           reason: target.reason,
           subreddit,
         });
@@ -339,15 +368,15 @@ export class OnDemandProcessingService {
       }
     }
 
+    const cooldownUntil = new Date(Date.now() + this.instantCooldownMs);
+
     await this.requestService.resetToPendingById(target.requestId, {
-      lastOutcome: 'no_results',
-      lastAttemptAt: new Date().toISOString(),
-      instantCooldownUntil: new Date(
-        Date.now() + this.instantCooldownMs,
-      ).toISOString(),
+      outcome: OnDemandOutcome.no_results,
+      attemptedAt: new Date(),
+      cooldownUntil,
       deferredAttempts: 0,
       attemptedSubreddits,
-      reason: target.reason,
+      metadata: { reason: target.reason },
     });
 
     this.logger.info('On-demand request yielded no new data', {
@@ -383,7 +412,11 @@ export class OnDemandProcessingService {
     }
 
     // For unresolved requests, create or reuse entity placeholder.
-    return this.ensureEntity(target.term, target.entityType, target.existingEntityId ?? undefined);
+    return this.ensureEntity(
+      target.term,
+      target.entityType,
+      target.existingEntityId ?? undefined,
+    );
   }
 
   private async ensureEntity(
@@ -523,12 +556,7 @@ export class OnDemandProcessingService {
     const latSw = this.toNumber(southWest.lat);
     const lngSw = this.toNumber(southWest.lng);
 
-    if (
-      latNe === null ||
-      lngNe === null ||
-      latSw === null ||
-      lngSw === null
-    ) {
+    if (latNe === null || lngNe === null || latSw === null || lngSw === null) {
       return undefined;
     }
 
@@ -536,6 +564,33 @@ export class OnDemandProcessingService {
       northEast: { lat: latNe, lng: lngNe },
       southWest: { lat: latSw, lng: lngSw },
     };
+  }
+
+  private extractFallbackLocation(
+    metadata: OnDemandMetadata,
+  ): { latitude: number; longitude: number } | null {
+    const context = metadata.context;
+    if (!context || typeof context !== 'object') {
+      return null;
+    }
+
+    const locationRaw = (context as Record<string, unknown>).location;
+    if (!locationRaw || typeof locationRaw !== 'object') {
+      return null;
+    }
+
+    const latitude = this.toNumber(
+      (locationRaw as Record<string, any>).latitude,
+    );
+    const longitude = this.toNumber(
+      (locationRaw as Record<string, any>).longitude,
+    );
+
+    if (latitude === null || longitude === null) {
+      return null;
+    }
+
+    return { latitude, longitude };
   }
 
   private toNumber(value: unknown): number | null {
@@ -606,7 +661,10 @@ export class OnDemandProcessingService {
         'Unable to inspect keyword queue depth; defaulting to immediate execution',
         {
           requestId: record.requestId,
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
         },
       );
       return { runNow: true };
@@ -656,7 +714,10 @@ export class OnDemandProcessingService {
           requestId: record.requestId,
           term: record.term,
           reason: record.reason,
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
         });
       }
     }

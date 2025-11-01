@@ -650,16 +650,27 @@ export class EntityResolutionService implements OnModuleInit {
           }
 
           // Calculate string similarity
+          const normalizedSearch = searchTerm.toLowerCase().trim();
+          const normalizedCandidate = candidateTerm.toLowerCase().trim();
+
           const similarity = stringSimilarity.compareTwoStrings(
-            searchTerm.toLowerCase().trim(),
-            candidateTerm.toLowerCase().trim(),
+            normalizedSearch,
+            normalizedCandidate,
           );
 
           // Calculate edit distance (approximate)
           const editDistance = this.calculateEditDistance(
-            searchTerm.toLowerCase().trim(),
-            candidateTerm.toLowerCase().trim(),
+            normalizedSearch,
+            normalizedCandidate,
           );
+
+          const firstCharMatches =
+            normalizedSearch.charAt(0) === normalizedCandidate.charAt(0);
+
+          const isSingleTokenMatch =
+            entityType === 'restaurant' &&
+            this.tokenizeEntityName(normalizedSearch).length === 1 &&
+            this.tokenizeEntityName(normalizedCandidate).length === 1;
 
           // Check if within thresholds
           const forceMerge = this.shouldForceRestaurantFuzzyMatch(
@@ -670,8 +681,12 @@ export class EntityResolutionService implements OnModuleInit {
 
           if (
             forceMerge ||
-            (similarity >= config.fuzzyMatchThreshold &&
-              editDistance <= config.maxEditDistance)
+            (similarity >=
+              (isSingleTokenMatch
+                ? Math.max(0.8, config.fuzzyMatchThreshold)
+                : config.fuzzyMatchThreshold) &&
+              editDistance <= config.maxEditDistance &&
+              (isSingleTokenMatch ? firstCharMatches : true))
           ) {
             if (!bestMatch || similarity > bestMatch.confidence) {
               bestMatch = {
@@ -897,7 +912,10 @@ export class EntityResolutionService implements OnModuleInit {
       normalizedCandidate,
     );
 
-    if (distance === 1) {
+    if (
+      distance === 1 &&
+      normalizedInput.charAt(0) === normalizedCandidate.charAt(0)
+    ) {
       return true;
     }
 

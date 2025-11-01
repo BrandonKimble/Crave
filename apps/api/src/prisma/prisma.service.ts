@@ -220,10 +220,20 @@ export class PrismaService
     });
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (this.$on as any)('error', (event: Error) => {
-      this.connectionMetrics.connectionErrors++;
-      this.logger.error('Database error:', event);
-    });
+    (this.$on as any)(
+      'error',
+      (event: { message: string; target?: string; timestamp?: Date }) => {
+        this.connectionMetrics.connectionErrors++;
+        if (this.isHandledGooglePlaceConflict(event?.message)) {
+          this.logger.warn('Database conflict on google_place_id', {
+            message: event.message,
+            target: event.target,
+          });
+        } else {
+          this.logger.error('Database error:', event);
+        }
+      },
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     (this.$on as any)('warn', (event: { message: string }) => {
@@ -286,6 +296,16 @@ export class PrismaService
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = undefined;
     }
+  }
+
+  private isHandledGooglePlaceConflict(message?: string): boolean {
+    if (!message) {
+      return false;
+    }
+    return (
+      message.includes('Unique constraint failed') &&
+      message.includes('`google_place_id`')
+    );
   }
 
   /**

@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Entity, EntityType, Prisma } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,8 +14,26 @@ import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 
-const DEFAULT_COUNTRY = 'us';
-const MIN_SCORE_THRESHOLD = 0.45;
+const DEFAULT_COUNTRY = 'US';
+const DEFAULT_MIN_SCORE_THRESHOLD = 0.2;
+const PREFERRED_PLACE_TYPES = new Set(['food', 'restaurant', 'cafe', 'bar']);
+const GOOGLE_DAY_NAMES = [
+  'sunday',
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+] as const;
+
+type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
+
+interface NormalizedOpeningHours {
+  hours?: Partial<Record<GoogleDayName, string | string[]>>;
+  utcOffsetMinutes?: number;
+  timezone?: string;
+}
 
 interface MatchMetadata {
   query: string;
@@ -62,9 +81,23 @@ type RestaurantEntity = Entity & {
   restaurantMetadata: Prisma.JsonValue | null;
 };
 
+interface EnrichmentSearchContext {
+  query: string | null;
+  city?: string;
+  region?: string;
+  country?: string;
+  locationBias?: { lat: number; lng: number };
+}
+
+type RankedPrediction = {
+  prediction: GooglePlacePrediction;
+  score: number;
+};
+
 @Injectable()
 export class RestaurantLocationEnrichmentService {
   private readonly logger: LoggerService;
+  private readonly minScoreThreshold: number;
 
   constructor(
     private readonly entityRepository: EntityRepository,
@@ -72,11 +105,13 @@ export class RestaurantLocationEnrichmentService {
     private readonly googlePlacesService: GooglePlacesService,
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
+    private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext(
       'RestaurantLocationEnrichmentService',
     );
+    this.minScoreThreshold = this.resolveMinScoreThreshold();
   }
 
   async enrichMissingRestaurants(
@@ -194,7 +229,22 @@ export class RestaurantLocationEnrichmentService {
         },
       );
 
-      if (autocomplete.predictions.length === 0) {
+      const ranked = this.rankPredictions(
+        autocomplete.predictions,
+        entity,
+        searchContext,
+      );
+
+      if (ranked.length === 0) {
+        const noMatchMetadata = this.buildNoMatchMetadata(
+          ranked,
+          searchContext,
+        );
+        await this.recordNoMatchCandidates(
+          entity,
+          'no predictions returned',
+          noMatchMetadata,
+        );
         return {
           entityId: entity.entityId,
           status: 'no_match',
@@ -202,18 +252,19 @@ export class RestaurantLocationEnrichmentService {
         };
       }
 
-      const ranked = this.rankPredictions(
-        autocomplete.predictions,
-        entity,
-        searchContext,
-      );
-      const best = ranked[0];
+      const best = this.selectQualifiedPrediction(ranked);
 
-      if (!best || best.score < MIN_SCORE_THRESHOLD) {
+      if (!best) {
+        const noMatchMetadata = this.buildNoMatchMetadata(
+          ranked,
+          searchContext,
+        );
+        const reason = `no prediction matched preferred place types with min score ${this.minScoreThreshold}`;
+        await this.recordNoMatchCandidates(entity, reason, noMatchMetadata);
         return {
           entityId: entity.entityId,
           status: 'no_match',
-          reason: 'no prediction exceeded score threshold',
+          reason,
         };
       }
 
@@ -223,6 +274,15 @@ export class RestaurantLocationEnrichmentService {
       );
 
       if (!details.result) {
+        const noMatchMetadata = this.buildNoMatchMetadata(
+          ranked,
+          searchContext,
+        );
+        await this.recordNoMatchCandidates(
+          entity,
+          'place details missing',
+          noMatchMetadata,
+        );
         return {
           entityId: entity.entityId,
           status: 'no_match',
@@ -399,15 +459,6 @@ export class RestaurantLocationEnrichmentService {
       );
     }
 
-    if (
-      canonicalTrimmed &&
-      currentTrimmed &&
-      canonicalTrimmed.toLowerCase() === currentTrimmed.toLowerCase() &&
-      canonicalTrimmed !== currentTrimmed
-    ) {
-      mergedAliases = this.ensureAliasPresence(mergedAliases, entity.name);
-    }
-
     if (!this.aliasListsEqual(entity.aliases ?? [], mergedAliases)) {
       updateData.aliases = mergedAliases;
       updatedFields.push('aliases');
@@ -427,19 +478,21 @@ export class RestaurantLocationEnrichmentService {
     value: string,
     position: 'front' | 'back' = 'back',
   ): string[] {
-    if (!value.trim().length) {
+    const trimmedValue = value.trim();
+    if (!trimmedValue.length) {
       return aliases;
     }
 
-    if (aliases.includes(value)) {
-      return aliases;
-    }
+    const lowerValue = trimmedValue.toLowerCase();
+    const filtered = aliases.filter(
+      (alias) => alias.trim().toLowerCase() !== lowerValue,
+    );
 
     if (position === 'front') {
-      return [value, ...aliases];
+      return [trimmedValue, ...filtered];
     }
 
-    return [...aliases, value];
+    return [...filtered, trimmedValue];
   }
 
   private aliasListsEqual(current: string[], next: string[]): boolean {
@@ -630,6 +683,18 @@ export class RestaurantLocationEnrichmentService {
     return { updateData, updatedFields };
   }
 
+  private setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
+    if (a.size !== b.size) {
+      return false;
+    }
+    for (const value of a) {
+      if (!b.has(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   private unionStringArrays(
     ...arrays: Array<string[] | null | undefined>
   ): string[] {
@@ -669,22 +734,63 @@ export class RestaurantLocationEnrichmentService {
     return new Prisma.Decimal(value);
   }
 
+  private resolveMinScoreThreshold(): number {
+    const configured = this.configService.get<string | number | undefined>(
+      'restaurantEnrichment.minScoreThreshold',
+    );
+
+    const numeric =
+      typeof configured === 'number'
+        ? configured
+        : typeof configured === 'string'
+          ? Number(configured)
+          : NaN;
+
+    if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
+      return Number(numeric.toFixed(3));
+    }
+
+    return DEFAULT_MIN_SCORE_THRESHOLD;
+  }
+
+  private normalizeCountryCodeForStorage(
+    country?: string | null,
+  ): string | undefined {
+    if (!country) {
+      return undefined;
+    }
+    const trimmed = country.trim();
+    return trimmed ? trimmed.toUpperCase() : undefined;
+  }
+
+  private normalizeCountryCodeForAutocomplete(
+    country?: string | null,
+  ): string | undefined {
+    if (!country) {
+      return undefined;
+    }
+    const trimmed = country.trim();
+    return trimmed ? trimmed.toLowerCase() : undefined;
+  }
+
   private buildSearchContext(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
-  ): {
-    query: string | null;
-    city?: string;
-    region?: string;
-    country?: string;
-    locationBias?: { lat: number; lng: number };
-  } {
+  ): EnrichmentSearchContext {
+    const countrySource =
+      entity.country ??
+      options.countryFallback ??
+      this.inferCountryFromAddress(entity.address) ??
+      DEFAULT_COUNTRY;
+    const normalizedCountry =
+      this.normalizeCountryCodeForAutocomplete(countrySource);
+
     if (options.overrideQuery) {
       return {
         query: options.overrideQuery,
         city: entity.city ?? undefined,
         region: entity.region ?? undefined,
-        country: entity.country ?? options.countryFallback ?? DEFAULT_COUNTRY,
+        country: normalizedCountry,
         locationBias: this.buildLocationBias(entity),
       };
     }
@@ -710,16 +816,11 @@ export class RestaurantLocationEnrichmentService {
     }
 
     const query = parts.filter(Boolean).join(' ');
-
     return {
       query: query.trim().length ? query : null,
       city: city ?? undefined,
       region: region ?? undefined,
-      country:
-        entity.country ??
-        options.countryFallback ??
-        this.inferCountryFromAddress(entity.address) ??
-        DEFAULT_COUNTRY,
+      country: normalizedCountry,
       locationBias: this.buildLocationBias(entity),
     };
   }
@@ -743,8 +844,8 @@ export class RestaurantLocationEnrichmentService {
   private rankPredictions(
     predictions: GooglePlacePrediction[],
     entity: RestaurantEntity,
-    context: { city?: string; region?: string },
-  ): Array<{ prediction: GooglePlacePrediction; score: number }> {
+    context: EnrichmentSearchContext,
+  ): RankedPrediction[] {
     return predictions
       .map((prediction) => ({
         prediction,
@@ -753,10 +854,26 @@ export class RestaurantLocationEnrichmentService {
       .sort((a, b) => b.score - a.score);
   }
 
+  private selectQualifiedPrediction(
+    ranked: RankedPrediction[],
+  ): RankedPrediction | undefined {
+    for (const candidate of ranked) {
+      const types = candidate.prediction.types;
+      if (
+        Array.isArray(types) &&
+        types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase())) &&
+        candidate.score >= this.minScoreThreshold
+      ) {
+        return candidate;
+      }
+    }
+    return undefined;
+  }
+
   private scorePrediction(
     prediction: GooglePlacePrediction,
     entity: RestaurantEntity,
-    context: { city?: string; region?: string },
+    context: EnrichmentSearchContext,
   ): number {
     const normalizedEntityName = entity.name.toLowerCase().trim();
     const candidateName =
@@ -802,28 +919,24 @@ export class RestaurantLocationEnrichmentService {
   private buildEntityUpdate(
     entity: RestaurantEntity,
     details: GooglePlaceDetailsResult,
-    fields: string[],
+    _requestedFields: string[],
     matchMetadata: MatchMetadata,
   ): {
     updateData: Prisma.EntityUpdateInput;
     updatedFields: string[];
   } {
     const addressParts = this.extractAddressParts(details);
-    const metadata = this.mergeRestaurantMetadata(entity.restaurantMetadata, {
-      placeId: details.place_id,
-      fetchedAt: new Date().toISOString(),
-      name: details.name,
-      formattedAddress: details.formatted_address,
-      businessStatus: details.business_status,
-      openingHours: details.opening_hours,
-      currentOpeningHours: details.current_opening_hours,
-      formattedPhoneNumber: details.formatted_phone_number,
-      internationalPhoneNumber: details.international_phone_number,
-      website: details.website,
-      types: details.types ?? [],
-      fields,
-      matchSummary: matchMetadata,
-    });
+    const normalizedHours = this.normalizeGoogleOpeningHours(details);
+    const googlePlacesMetadata = this.buildGooglePlacesMetadata(
+      details,
+      matchMetadata,
+    );
+    const metadata = this.mergeRestaurantMetadata(
+      entity.restaurantMetadata,
+      googlePlacesMetadata,
+      normalizedHours,
+      null,
+    );
 
     const updateData: Prisma.EntityUpdateInput = {
       googlePlaceId: details.place_id,
@@ -859,8 +972,13 @@ export class RestaurantLocationEnrichmentService {
     }
 
     if (addressParts.country) {
-      updateData.country = addressParts.country;
-      updatedFields.push('country');
+      const normalizedCountry = this.normalizeCountryCodeForStorage(
+        addressParts.country,
+      );
+      if (normalizedCountry) {
+        updateData.country = normalizedCountry;
+        updatedFields.push('country');
+      }
     }
 
     if (addressParts.postalCode) {
@@ -874,13 +992,436 @@ export class RestaurantLocationEnrichmentService {
   private mergeRestaurantMetadata(
     current: Prisma.JsonValue | null | undefined,
     googleMetadata: Record<string, unknown>,
+    normalizedHours: NormalizedOpeningHours,
+    extras?: Record<string, unknown> | null,
   ): Prisma.InputJsonValue {
     const base = this.toRecord(current);
+    const existingGooglePlaces = this.toRecord(base.googlePlaces);
+    delete existingGooglePlaces.fields;
+    delete existingGooglePlaces.openingHours;
+    delete existingGooglePlaces.currentOpeningHours;
+
     base.googlePlaces = {
-      ...this.toRecord(base.googlePlaces),
+      ...existingGooglePlaces,
       ...googleMetadata,
     };
+
+    if (normalizedHours.hours) {
+      base.hours = normalizedHours.hours;
+    }
+
+    if (
+      normalizedHours.utcOffsetMinutes !== undefined &&
+      normalizedHours.utcOffsetMinutes !== null
+    ) {
+      base.utc_offset_minutes = normalizedHours.utcOffsetMinutes;
+    }
+
+    if (normalizedHours.timezone) {
+      base.timezone = normalizedHours.timezone;
+    }
+
+    if (extras && Object.keys(extras).length > 0) {
+      base.lastEnrichmentAttempt = extras;
+    } else if (extras === null) {
+      delete base.lastEnrichmentAttempt;
+    }
+
     return base as Prisma.InputJsonValue;
+  }
+
+  private buildGooglePlacesMetadata(
+    details: GooglePlaceDetailsResult,
+    matchMetadata: MatchMetadata,
+  ): Record<string, unknown> {
+    const metadata: Record<string, unknown> = {
+      placeId: details.place_id,
+      fetchedAt: new Date().toISOString(),
+    };
+
+    if (details.name) {
+      metadata.name = details.name;
+    }
+
+    if (details.formatted_address) {
+      metadata.formattedAddress = details.formatted_address;
+    }
+
+    if (details.business_status) {
+      metadata.businessStatus = details.business_status;
+    }
+
+    if (details.formatted_phone_number) {
+      metadata.formattedPhoneNumber = details.formatted_phone_number;
+    }
+
+    if (details.international_phone_number) {
+      metadata.internationalPhoneNumber = details.international_phone_number;
+    }
+
+    if (details.website) {
+      metadata.website = details.website;
+    }
+
+    if (Array.isArray(details.types) && details.types.length > 0) {
+      metadata.types = details.types;
+    }
+
+    const matchSummary = this.buildMatchSummary(matchMetadata);
+    if (Object.keys(matchSummary).length > 0) {
+      metadata.matchSummary = matchSummary;
+    }
+
+    return metadata;
+  }
+
+  private buildMatchSummary(
+    matchMetadata: MatchMetadata,
+  ): Record<string, unknown> {
+    const summary: Record<string, unknown> = {};
+
+    if (matchMetadata.query) {
+      summary.query = matchMetadata.query;
+    }
+
+    if (typeof matchMetadata.score === 'number') {
+      summary.score = matchMetadata.score;
+    }
+
+    if (matchMetadata.mainText) {
+      summary.mainText = matchMetadata.mainText;
+    }
+
+    if (matchMetadata.timestamp) {
+      summary.timestamp = matchMetadata.timestamp;
+    }
+
+    return summary;
+  }
+
+  private buildNoMatchMetadata(
+    ranked: RankedPrediction[],
+    context: EnrichmentSearchContext,
+  ): Record<string, unknown> {
+    const storageCountry = this.normalizeCountryCodeForStorage(
+      context.country ?? null,
+    );
+
+    const candidates = ranked.slice(0, 5).map(({ prediction, score }) => {
+      const candidate: Record<string, unknown> = {
+        placeId: prediction.place_id,
+        score,
+      };
+
+      if (prediction.description) {
+        candidate.description = prediction.description;
+      }
+
+      const mainText = prediction.structured_formatting?.main_text;
+      if (mainText) {
+        candidate.mainText = mainText;
+      }
+
+      const secondaryText = prediction.structured_formatting?.secondary_text;
+      if (secondaryText) {
+        candidate.secondaryText = secondaryText;
+      }
+
+      if (Array.isArray(prediction.types) && prediction.types.length > 0) {
+        candidate.types = prediction.types;
+      }
+
+      if (typeof prediction.distance_meters === 'number') {
+        candidate.distanceMeters = prediction.distance_meters;
+      }
+
+      return candidate;
+    });
+
+    return {
+      query: context.query,
+      country: storageCountry,
+      city: context.city,
+      region: context.region,
+      preferredTypes: Array.from(PREFERRED_PLACE_TYPES),
+      threshold: this.minScoreThreshold,
+      attemptedAt: new Date().toISOString(),
+      count: ranked.length,
+      candidates,
+    };
+  }
+
+  private async recordNoMatchCandidates(
+    entity: RestaurantEntity,
+    reason: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const emptyHours: NormalizedOpeningHours = {};
+      const mergedMetadata = this.mergeRestaurantMetadata(
+        entity.restaurantMetadata,
+        {},
+        emptyHours,
+        {
+          status: 'no_match',
+          reason,
+          ...metadata,
+        },
+      );
+
+      await this.prisma.entity.update({
+        where: { entityId: entity.entityId },
+        data: {
+          restaurantMetadata: mergedMetadata,
+          lastUpdated: new Date(),
+        },
+      });
+
+      entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
+    } catch (error) {
+      this.logger.warn('Failed to record no-match candidates', {
+        entityId: entity.entityId,
+        reason,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
+  }
+
+  private normalizeGoogleOpeningHours(
+    details: GooglePlaceDetailsResult,
+  ): NormalizedOpeningHours {
+    const normalized: NormalizedOpeningHours = {};
+    const source =
+      details.current_opening_hours ?? details.opening_hours ?? null;
+    const sourceRecord = this.toRecord(source);
+    const hoursByDay: Partial<Record<GoogleDayName, string[]>> = {};
+
+    const periods = Array.isArray(sourceRecord.periods)
+      ? (sourceRecord.periods as Array<{
+          open?: { day?: number; time?: string };
+          close?: { day?: number; time?: string };
+        }>)
+      : [];
+
+    for (const period of periods) {
+      if (!period?.open) {
+        continue;
+      }
+
+      const dayKey = this.normalizeDayKeyFromIndex(period.open.day);
+      const openTime = this.formatGoogleTime(period.open.time);
+      const closeTime = this.formatGoogleTime(
+        period.close?.time ?? period.open.time,
+      );
+
+      if (!dayKey || !openTime || !closeTime) {
+        continue;
+      }
+
+      if (!hoursByDay[dayKey]) {
+        hoursByDay[dayKey] = [];
+      }
+
+      hoursByDay[dayKey].push(`${openTime}-${closeTime}`);
+    }
+
+    if (Object.keys(hoursByDay).length === 0) {
+      const weekdayText = Array.isArray(sourceRecord.weekday_text)
+        ? (sourceRecord.weekday_text as string[])
+        : [];
+      if (weekdayText.length > 0) {
+        this.populateHoursFromWeekdayText(weekdayText, hoursByDay);
+      }
+    }
+
+    if (Object.keys(hoursByDay).length > 0) {
+      normalized.hours = this.collapseHours(hoursByDay);
+    }
+
+    if (typeof details.utc_offset_minutes === 'number') {
+      normalized.utcOffsetMinutes = details.utc_offset_minutes;
+    } else if (typeof sourceRecord.utc_offset_minutes === 'number') {
+      normalized.utcOffsetMinutes = Number(sourceRecord.utc_offset_minutes);
+    }
+
+    const timezoneCandidate =
+      typeof sourceRecord.time_zone === 'string'
+        ? sourceRecord.time_zone
+        : typeof sourceRecord.timezone === 'string'
+          ? sourceRecord.timezone
+          : undefined;
+
+    if (timezoneCandidate) {
+      normalized.timezone = timezoneCandidate;
+    }
+
+    return normalized;
+  }
+
+  private collapseHours(
+    hoursByDay: Partial<Record<GoogleDayName, string[]>>,
+  ): Partial<Record<GoogleDayName, string | string[]>> {
+    const collapsed: Partial<Record<GoogleDayName, string | string[]>> = {};
+    for (const [day, ranges] of Object.entries(hoursByDay) as Array<
+      [GoogleDayName, string[]]
+    >) {
+      if (!ranges || ranges.length === 0) {
+        continue;
+      }
+
+      const deduped = Array.from(new Set(ranges));
+      collapsed[day] = deduped.length === 1 ? deduped[0] : deduped;
+    }
+    return collapsed;
+  }
+
+  private populateHoursFromWeekdayText(
+    weekdayText: string[],
+    hoursByDay: Partial<Record<GoogleDayName, string[]>>,
+  ): void {
+    for (const entry of weekdayText) {
+      if (typeof entry !== 'string' || !entry.includes(':')) {
+        continue;
+      }
+
+      const [rawDay, rawRange] = entry.split(':', 2);
+      const dayKey = this.normalizeDayKey(rawDay);
+      if (!dayKey) {
+        continue;
+      }
+
+      const range = this.normalizeWeekdayTextRange(rawRange);
+      if (!range) {
+        continue;
+      }
+
+      if (!hoursByDay[dayKey]) {
+        hoursByDay[dayKey] = [];
+      }
+
+      hoursByDay[dayKey].push(range);
+    }
+  }
+
+  private normalizeWeekdayTextRange(value: string): string | null {
+    if (!value) {
+      return null;
+    }
+
+    const ascii = value
+      .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+      .replace(/[\u2009\u202f\u00a0]/g, ' ')
+      .trim();
+
+    if (!ascii || /closed/i.test(ascii)) {
+      return null;
+    }
+
+    if (/open\s+24\s+hours/i.test(ascii)) {
+      return '00:00-23:59';
+    }
+
+    const times = Array.from(
+      ascii.matchAll(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/gi),
+    );
+
+    if (times.length < 2) {
+      return null;
+    }
+
+    const [openMatch, closeMatch] = times;
+    const closeMeridian =
+      closeMatch[3]?.toUpperCase() ?? openMatch[3]?.toUpperCase();
+    const openMeridian =
+      openMatch[3]?.toUpperCase() ?? closeMatch[3]?.toUpperCase();
+
+    const openTime = this.to24HourTime(
+      openMatch[1],
+      openMatch[2],
+      openMeridian,
+    );
+    const closeTime = this.to24HourTime(
+      closeMatch[1],
+      closeMatch[2],
+      closeMeridian,
+    );
+
+    if (!openTime || !closeTime) {
+      return null;
+    }
+
+    return `${openTime}-${closeTime}`;
+  }
+
+  private normalizeDayKey(value: string): GoogleDayName | null {
+    const normalized = value.trim().toLowerCase();
+    return GOOGLE_DAY_NAMES.find((day) => normalized.startsWith(day)) ?? null;
+  }
+
+  private normalizeDayKeyFromIndex(
+    index: number | undefined,
+  ): GoogleDayName | null {
+    if (typeof index !== 'number') {
+      return null;
+    }
+
+    if (index < 0 || index >= GOOGLE_DAY_NAMES.length) {
+      return null;
+    }
+
+    return GOOGLE_DAY_NAMES[index];
+  }
+
+  private formatGoogleTime(value: string | undefined): string | null {
+    if (!value || typeof value !== 'string') {
+      return null;
+    }
+
+    const trimmed = value.trim();
+    if (!/^\d{3,4}$/.test(trimmed)) {
+      return null;
+    }
+
+    const padded = trimmed.padStart(4, '0');
+    const hours = padded.slice(0, 2);
+    const minutes = padded.slice(2, 4);
+    return `${hours}:${minutes}`;
+  }
+
+  private to24HourTime(
+    hourValue: string | undefined,
+    minuteValue: string | undefined,
+    meridian: string | undefined,
+  ): string | null {
+    if (!hourValue) {
+      return null;
+    }
+
+    let hour = Number(hourValue);
+    if (!Number.isFinite(hour)) {
+      return null;
+    }
+
+    let minutes = minuteValue ? Number(minuteValue) : 0;
+    if (!Number.isFinite(minutes)) {
+      minutes = 0;
+    }
+
+    const normalizedMeridian = meridian?.toUpperCase();
+    if (normalizedMeridian === 'PM' && hour < 12) {
+      hour += 12;
+    } else if (normalizedMeridian === 'AM' && hour === 12) {
+      hour = 0;
+    }
+
+    hour %= 24;
+
+    return `${hour.toString().padStart(2, '0')}:${minutes
+      .toString()
+      .padStart(2, '0')}`;
   }
 
   private toRecord(
@@ -931,7 +1472,7 @@ export class RestaurantLocationEnrichmentService {
     return {
       city: cityComponent?.long_name,
       region: regionComponent?.short_name || regionComponent?.long_name,
-      country: countryComponent?.short_name?.toLowerCase(),
+      country: countryComponent?.short_name?.toUpperCase(),
       postalCode: postalCodeComponent?.long_name,
     };
   }
@@ -986,10 +1527,10 @@ export class RestaurantLocationEnrichmentService {
     }
     const lower = address.toLowerCase();
     if (lower.includes('united states') || lower.includes('usa')) {
-      return 'us';
+      return 'US';
     }
     if (lower.includes('canada')) {
-      return 'ca';
+      return 'CA';
     }
     return null;
   }

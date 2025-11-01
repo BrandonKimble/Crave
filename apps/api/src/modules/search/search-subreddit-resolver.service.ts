@@ -5,6 +5,10 @@ import { MapBoundsDto } from './dto/search-query.dto';
 
 interface ResolveOptions {
   bounds?: MapBoundsDto | null;
+  fallbackLocation?: {
+    latitude: number;
+    longitude: number;
+  } | null;
   referenceLocations?: Array<{
     latitude: number | null | undefined;
     longitude: number | null | undefined;
@@ -29,7 +33,11 @@ export class SearchSubredditResolverService {
       return [];
     }
 
-    const center = this.resolveCenter(options.bounds, options.referenceLocations);
+    const center = this.resolveCenter(
+      options.bounds,
+      options.fallbackLocation,
+      options.referenceLocations,
+    );
     if (!center) {
       return subreddits.map((row) => row.name);
     }
@@ -42,18 +50,20 @@ export class SearchSubredditResolverService {
       }))
       .filter(
         (row): row is { name: string; latitude: number; longitude: number } =>
-          typeof row.latitude === 'number' && Number.isFinite(row.latitude) &&
-          typeof row.longitude === 'number' && Number.isFinite(row.longitude),
+          typeof row.latitude === 'number' &&
+          Number.isFinite(row.latitude) &&
+          typeof row.longitude === 'number' &&
+          Number.isFinite(row.longitude),
       );
 
     if (!candidates.length) {
       return subreddits.map((row) => row.name);
     }
 
-    const nearest = candidates.reduce<
-      | null
-      | { name: string; distance: number }
-    >((best, current) => {
+    const nearest = candidates.reduce<null | {
+      name: string;
+      distance: number;
+    }>((best, current) => {
       const distance = this.haversineDistance(
         center.lat,
         center.lng,
@@ -70,7 +80,8 @@ export class SearchSubredditResolverService {
   }
 
   private resolveCenter(
-    bounds?: MapBoundsDto | null,
+    bounds: MapBoundsDto | null | undefined,
+    fallback: { latitude: number; longitude: number } | null | undefined,
     referenceLocations?: Array<{
       latitude: number | null | undefined;
       longitude: number | null | undefined;
@@ -89,6 +100,14 @@ export class SearchSubredditResolverService {
           lng: (northEast.lng + southWest.lng) / 2,
         };
       }
+    }
+
+    if (
+      fallback &&
+      this.isValidCoordinate(fallback.latitude) &&
+      this.isValidCoordinate(fallback.longitude)
+    ) {
+      return { lat: fallback.latitude, lng: fallback.longitude };
     }
 
     if (referenceLocations) {

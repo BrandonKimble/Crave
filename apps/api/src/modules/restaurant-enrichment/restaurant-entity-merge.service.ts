@@ -80,9 +80,6 @@ export class RestaurantEntityMergeService {
         where: {
           restaurantId: canonicalId,
           foodId: connection.foodId,
-          foodAttributes: {
-            equals: connection.foodAttributes,
-          },
         },
       });
 

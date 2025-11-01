@@ -35,6 +35,7 @@ export class KeywordSearchOrchestratorService
   private unifiedProcessing: any = null;
   private autoIntervalMs = 60 * 60 * 1000;
   private autoExecutionTimer?: NodeJS.Timeout;
+  private readonly keywordSearchLimit: number;
   constructor(
     private readonly redditService: RedditService,
     private readonly keywordScheduler: KeywordSearchSchedulerService,
@@ -45,7 +46,9 @@ export class KeywordSearchOrchestratorService
     @InjectQueue('keyword-search-execution')
     private readonly keywordSearchQueue: Queue,
     private readonly keywordSearchMetrics: KeywordSearchMetricsService,
-  ) {}
+  ) {
+    this.keywordSearchLimit = this.resolveKeywordSearchLimit();
+  }
 
   async onModuleInit(): Promise<void> {
     this.autoIntervalMs = this.resolveAutoInterval();
@@ -128,7 +131,7 @@ export class KeywordSearchOrchestratorService
           entityNames,
           {
             sort: 'relevance', // PRD specification
-            limit: 1000, // PRD limit
+            limit: this.keywordSearchLimit,
             batchDelay: 1200, // 1.2 seconds between searches for rate limiting
           },
         );
@@ -632,6 +635,15 @@ export class KeywordSearchOrchestratorService
       clearInterval(this.autoExecutionTimer);
       this.autoExecutionTimer = undefined;
     }
+  }
+
+  private resolveKeywordSearchLimit(): number {
+    const raw = this.configService.get<string>('KEYWORD_SEARCH_LIMIT');
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 1000;
+    }
+    return Math.min(Math.floor(parsed), 1000);
   }
 
   async getQueueDepth(): Promise<KeywordQueueDepth> {

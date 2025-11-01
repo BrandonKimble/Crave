@@ -255,6 +255,7 @@ Before handing tokens to composition, peel away modifiers that are attributes ra
   - "spicy ramen" -> attribute "spicy"; food tokens keep "ramen".
   - "breakfast burrito" -> attribute "breakfast"; food tokens keep "burrito".
   - "house-made carnitas taco" -> attribute "house-made"; food tokens keep "carnitas taco".
+- Treat generic filler nouns ("food", "foods", "meal", "dish", "the food", "restaurant", "place", "spot", etc.) as noise—drop them instead of emitting them as foods, food categories, or attributes.
 
 ### 3.3 Entity types
 
@@ -289,6 +290,7 @@ Determine scope by usage:
 ### 3.6 Food Attribute Guidance
 
 - Capture both preference-oriented signals (dietary/cuisine/filter words like "vegan", "gluten free", "breakfast") and descriptive language ("crispy", "rich", "smoky") in the single `food_attributes` array.
+- Explicitly treat meal-period terms ("breakfast", "brunch", "lunch", "dinner", "late-night", "happy hour", "tasting", etc.) as food attributes so time-of-day variants collapse onto a single dish (e.g., `food: "prix fixe"`, `food_attributes: ["lunch"]`).
 - Keep modifiers that truly define the dish (e.g., "fish sauce wings") with the food tokens; only peel off adjectives/adverbs that describe qualities, techniques, context, or filters.
 - When multiple attributes apply, include each one separately so downstream systems can match on any of them.
 
@@ -356,21 +358,22 @@ Represent each restaurant->food connection as one composed dish. Do not emit sep
 
 ### 4.2 Primary `food` Formation
 
-- Use the head food noun plus essential specifiers that change dish identity (e.g., protein, style, subtype): "duck carnitas tacos", "sesame noodles", "tonkotsu ramen".
-- If the phrase includes additive lists introduced by "with/and" (e.g., "with burrata, chanterelle mushrooms, and pesto"), keep `food` concise and push the additive list into `food_categories`.
-- Do not reattach attributes stripped in Step 3; rely on the attribute arrays produced there.
-- Never emit generic placeholders like "food", "foods", "meal", "dish", "some food", or "the food" as `food`. If the text only says "the food" (or similar) without a specific dish, omit the dish and rely on attributes/category fallback instead.
+- Keep the full composed dish phrase (head noun + identity-changing specifiers) as `food`: e.g., "spicy tuna roll", "duck carnitas taco", "tonkotsu ramen".
+- If the phrase includes additive lists introduced by "with/and" (e.g., "with burrata, chanterelle mushrooms, and pesto"), keep the core dish as `food` and push the additive list into `food_categories`.
+- Do not reattach modifiers already peeled into attributes in Step 3; rely on the attribute arrays produced there.
 - Normalize: lowercase; singularize where natural (avoid awkward singulars that reduce clarity); keep punctuation minimal and human-readable.
 
 ### 4.3 Hierarchical Decomposition to `food_categories`
 
 Create a concise, meaningful set of categories to support search, filtering, and aggregation. Work from the cleaned food tokens produced in Step 3 (after attribute removal):
 
-- **Dish nouns only**: Categories must remain food nouns or ingredient nouns. Do not include preparation styles, dietary flags, cuisines, or service periods—those belong in the attribute arrays.
-- Skip generic placeholders such as "food", "foods", "meal", or "stuff"; they provide no retrieval value and should not appear in `food_categories`.
-- Include component ingredients and related food nouns from the dish context (e.g., burrata, chanterelle mushrooms, pesto).
-- Include parent dish categories when a term is a subtype (e.g., "carnitas taco" → "taco"; "tonkotsu ramen" → "ramen").
-- Keep terms singular, lowercase, deduplicated; cap the list at ~3-6 salient entries to avoid combinatorial expansion.
+- **Dish nouns only**: Categories must remain food/ingredient nouns. Do not migrate preparation styles, dietary flags, cuisines, or service periods—those belong in the attribute arrays.
+- **Build a cascading hierarchy** that sheds modifiers in a noun-aware way:
+  - Treat common classifiers (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bao bun, slider, nacho, fry, etc.) as removable tail words once a more specific head exists.
+  - Strip leading modifiers that were not already placed into `food_attributes` (cuisines, meal periods, descriptors) one at a time while the remaining phrase stays coherent.
+  - Do not remove core nouns that appear mid-phrase (e.g., "pho tai" should keep "pho" as the base).
+- **Append individual component nouns** that remain after removing modifiers and classifiers (e.g., "tuna" from "tuna roll", "salad" from "caesar salad wrap") to improve cross-linking.
+- Include explicit ingredient nouns from additive lists (e.g., burrata, chanterelle mushrooms, pesto).
 
 ### 4.4 Inference Rules
 
@@ -388,10 +391,18 @@ Create a concise, meaningful set of categories to support search, filtering, and
   - `food`: "ramen"
   - `food_categories`: ["ramen"]
   - attributes: ["spicy"]
+- "spicy tuna roll" ->
+  - `food`: "spicy tuna roll"
+  - `food_categories`: ["tuna roll", "roll", "tuna"]
+  - attributes: ["spicy"]
 - "pasta with burrata, chanterelle mushrooms, and pesto" ->
   - `food`: "pasta"
   - `food_categories`: ["pasta", "burrata", "chanterelle mushrooms", "pesto"]
   - One mention only; ingredients captured as categories.
+- "chicken caesar salad wrap" ->
+  - `food`: "chicken caesar salad wrap"
+  - `food_categories`: ["chicken caesar salad wrap", "caesar salad wrap", "salad wrap", "wrap", "chicken", "caesar salad"]
+  - attributes: []
 - Two restaurants, same dish: "Get the carnitas tacos at Nixta and at Suerte." -> emit two `composedFoods` entries with identical `food`/`food_categories` but distinct `restaurant` values so later steps can keep the pairs separate.
 ## Step 5: Menu Item Identification
 

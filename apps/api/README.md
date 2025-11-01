@@ -101,7 +101,14 @@ DATABASE_CONNECTION_POOL_MIN=2
 REDIS_HOST=localhost
 REDIS_PORT=6379
 JWT_SECRET=your_jwt_secret_key
+# Restaurant enrichment tuning (optional)
+RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD=0.2
 ```
+
+- `RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD` controls the minimum
+  similarity score (0–1) a Google Places candidate must meet — in addition to
+  matching the preferred place types (`food`, `restaurant`, `cafe`, `bar`) —
+  before we fetch details. Defaults to `0.2` if not set.
 
 ### Database Configuration
 

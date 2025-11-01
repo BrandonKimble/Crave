@@ -94,9 +94,19 @@ export class SearchQueryBuilder {
     const connectionConditionPreview: string[] = [];
 
     if (foodIds.length) {
-      connectionConditions.push(this.buildInClause('c.food_id', foodIds));
+      const foodIdClause = this.buildInClause('c.food_id', foodIds);
+      const categoryClause = this.buildArrayOverlapClause(
+        'c.categories',
+        foodIds,
+      );
+
+      connectionConditions.push(
+        Prisma.sql`${foodIdClause} OR ${categoryClause}`,
+      );
       connectionConditionPreview.push(
-        `c.food_id = ANY(${this.formatUuidArray(foodIds)})`,
+        `(c.food_id = ANY(${this.formatUuidArray(
+          foodIds,
+        )}) OR c.categories && ${this.formatUuidArray(foodIds)})`,
       );
     }
 
