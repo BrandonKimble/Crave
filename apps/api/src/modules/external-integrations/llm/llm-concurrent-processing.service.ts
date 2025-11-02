@@ -150,7 +150,13 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       estimatedTimes: metadata.map((m) => m.estimatedProcessingTime),
       concurrencyLimit: this.concurrencyLimit,
       rateLimitingMode: 'delegated_to_smart_processor',
-      topRootScores: metadata.slice(0, 5).map((m) => m.rootCommentScore),
+      topRootScores: metadata
+        .flatMap((m) =>
+          Array.isArray(m.rootCommentScores) && m.rootCommentScores.length > 0
+            ? m.rootCommentScores
+            : [m.rootCommentScore],
+        )
+        .slice(0, 5),
     });
 
     // Process chunks with concurrency control and optional delay strategy
@@ -162,6 +168,11 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
         const chunkStart = Date.now();
         const meta = metadata[index];
+        const metaRootScores =
+          Array.isArray(meta.rootCommentScores) &&
+          meta.rootCommentScores.length > 0
+            ? meta.rootCommentScores
+            : [meta.rootCommentScore];
 
         await this.waitForGlobalCooldown(meta);
 
@@ -186,7 +197,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           position: index + 1,
           totalChunks: chunks.length,
           commentCount: meta.commentCount,
-          rootScore: meta.rootCommentScore,
+          rootScores: metaRootScores,
           estimatedTime: meta.estimatedProcessingTime,
           chunkSize: `${meta.commentCount} comments`,
         });
@@ -208,6 +219,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             correlationId: CorrelationUtils.getCorrelationId(),
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,
+            rootScores: metaRootScores,
             actualTime: duration,
             estimatedTime: meta.estimatedProcessingTime,
             variance: duration - meta.estimatedProcessingTime,
@@ -231,9 +243,9 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             correlationId: CorrelationUtils.getCorrelationId(),
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,
+            rootScores: metaRootScores,
             duration,
             error: error instanceof Error ? error.message : String(error),
-            rootScore: meta.rootCommentScore,
           });
 
           return {
@@ -276,10 +288,19 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
     const totalDuration = (Date.now() - startTime) / 1000;
     const successfulResults = successful.map((r) => r.result!);
-    const topCommentsCount = successful.filter((r) => {
+    let topCommentsCount = 0;
+    successful.forEach((r) => {
       const meta = metadata.find((m) => m.chunkId === r.chunkId);
-      return meta && meta.rootCommentScore > 10;
-    }).length;
+      if (!meta) {
+        return;
+      }
+      const scores =
+        Array.isArray(meta.rootCommentScores) &&
+        meta.rootCommentScores.length > 0
+          ? meta.rootCommentScores
+          : [meta.rootCommentScore];
+      topCommentsCount += scores.filter((score) => score > 10).length;
+    });
 
     // Calculate timing metrics
     const allDurations = successful.map((r) => r.duration);
