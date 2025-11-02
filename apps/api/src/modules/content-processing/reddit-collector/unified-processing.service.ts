@@ -15,7 +15,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma } from '@prisma/client';
+import { Prisma, EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -702,7 +702,10 @@ export class UnifiedProcessingService implements OnModuleInit {
             mention.restaurant,
           );
           entities.push({
-            normalizedName: mention.restaurant,
+            normalizedName: this.normalizeEntityName(
+              mention.restaurant,
+              'restaurant',
+            ),
             originalText: restaurantSurface,
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
@@ -724,7 +727,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             mention.food,
           );
           entities.push({
-            normalizedName: mention.food,
+            normalizedName: this.normalizeEntityName(mention.food, 'food'),
             originalText: foodSurface,
             entityType: 'food' as const,
             tempId: foodEntityTempId,
@@ -758,7 +761,10 @@ export class UnifiedProcessingService implements OnModuleInit {
             const categorySurface = categorySurfaces[i] || category;
 
             entities.push({
-              normalizedName: category,
+              normalizedName: this.normalizeEntityName(
+                category,
+                'food',
+              ),
               originalText: categorySurface || category,
               entityType: 'food' as const,
               tempId: categoryTempId,
@@ -795,7 +801,7 @@ export class UnifiedProcessingService implements OnModuleInit {
               seenFoodAttrIds.add(attributeTempId);
               const attrSurface = foodAttributeSurfaces[i] || attr;
               entities.push({
-                normalizedName: attr,
+                normalizedName: this.normalizeEntityName(attr, 'food_attribute'),
                 originalText: attrSurface || attr,
                 entityType: 'food_attribute' as const,
                 tempId: attributeTempId,
@@ -829,7 +835,10 @@ export class UnifiedProcessingService implements OnModuleInit {
               seenRestaurantAttrIds.add(attributeTempId);
               const attrSurface = restaurantAttrSurfaces[i] || attr;
               entities.push({
-                normalizedName: attr,
+                normalizedName: this.normalizeEntityName(
+                  attr,
+                  'restaurant_attribute',
+                ),
                 originalText: attrSurface || attr,
                 entityType: 'restaurant_attribute' as const,
                 tempId: attributeTempId,
@@ -912,6 +921,26 @@ export class UnifiedProcessingService implements OnModuleInit {
       return `food-category::${normalized}`;
     }
     return `food-category::${this.stableHash(categoryName ?? '')}`;
+  }
+
+  private normalizeEntityName(value: string | undefined, type: EntityType | string): string {
+    const sanitized = (value ?? '').trim().replace(/\s+/g, ' ');
+    if (!sanitized.length) {
+      return sanitized;
+    }
+
+    if (type === 'food' || type === 'food_attribute') {
+      return sanitized.toLowerCase();
+    }
+
+    return sanitized
+      .split(' ')
+      .map((word) =>
+        word.length > 0
+          ? word[0].toUpperCase() + word.slice(1).toLowerCase()
+          : word,
+      )
+      .join(' ');
   }
 
   private buildAttributeTempId(
@@ -1112,10 +1141,18 @@ export class UnifiedProcessingService implements OnModuleInit {
           const aggregatedAliases = Array.from(aggregatedAliasSet);
           resolution.validatedAliases = aggregatedAliases;
 
+          const canonicalName = this.normalizeEntityName(
+            resolution.normalizedName ||
+              resolution.originalInput.originalText ||
+              '',
+            resolution.entityType!,
+          );
+          resolution.normalizedName = canonicalName;
+
           const existing = await tx.entity.findUnique({
             where: {
               name_type: {
-                name: resolution.normalizedName!,
+                name: canonicalName,
                 type: resolution.entityType!,
               },
             },
@@ -1181,23 +1218,40 @@ export class UnifiedProcessingService implements OnModuleInit {
               },
             );
           } else {
+            const aliasSet =
+              resolution.validatedAliases &&
+              resolution.validatedAliases.length > 0
+                ? resolution.validatedAliases.map((alias) => alias.trim())
+                : [
+                    (resolution.originalInput.originalText || '')
+                      .trim()
+                      .replace(/\s+/g, ' '),
+                  ];
+
+            const entityData: Prisma.EntityCreateInput = {
+              name: this.normalizeEntityName(
+                resolution.normalizedName ||
+                  resolution.originalInput.originalText ||
+                  '',
+                resolution.entityType!,
+              ),
+              type: resolution.entityType!,
+              aliases: Array.from(new Set(aliasSet.filter(Boolean))),
+              createdAt: new Date(),
+              lastUpdated: new Date(),
+            };
+
+            if (resolution.entityType === 'restaurant') {
+              entityData.restaurantAttributes = { set: [] };
+              entityData.restaurantQualityScore = 0;
+              entityData.generalPraiseUpvotes = 0;
+              entityData.restaurantMetadata = Prisma.DbNull;
+            } else {
+              entityData.generalPraiseUpvotes = null;
+            }
+
             const createdEntity = await tx.entity.create({
-              data: {
-                name: resolution.normalizedName!,
-                type: resolution.entityType!,
-                aliases:
-                  resolution.validatedAliases &&
-                  resolution.validatedAliases.length > 0
-                    ? resolution.validatedAliases
-                    : [resolution.originalInput.originalText],
-                restaurantAttributes: [],
-                restaurantQualityScore: 0,
-                generalPraiseUpvotes:
-                  resolution.entityType === 'restaurant' ? 0 : null,
-                restaurantMetadata: {},
-                createdAt: new Date(),
-                lastUpdated: new Date(),
-              },
+              data: entityData,
             });
 
             entityId = createdEntity.entityId;
@@ -1734,9 +1788,9 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.5.3: Complex attribute logic for specific foods
       // PRD 6.5.2: Always create connections for specific foods
       if (foodEntityLookupKey && mention.is_menu_item === true) {
-        const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
-        if (foodEntityId) {
-          // Always use food_attribute_processing for consistent handling
+      const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
+      if (foodEntityId) {
+        // Always use food_attribute_processing for consistent handling
           // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
           // The handler will check for existing connections and decide whether to boost or create
           const foodAttributeOperation = {
@@ -1758,7 +1812,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           this.logger.debug('Component 4: Specific food processing queued', {
             batchId,
             restaurantEntityId,
-            foodEntityId: foodEntityId,
+          foodEntityId: foodEntityId,
             hasFoodAttrs,
           });
         }

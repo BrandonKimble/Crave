@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
@@ -6,6 +7,7 @@ import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking
 import { LLMConcurrentProcessingService } from '../../external-integrations/llm/llm-concurrent-processing.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { UnifiedProcessingService } from './unified-processing.service';
+import { PrismaService } from '../../../prisma/prisma.service';
 import {
   BatchJob,
   BatchProcessingResult,
@@ -14,6 +16,12 @@ import {
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
+  private keywordGateConfig!: {
+    lookbackMs: number;
+    commentSampleLimit: number;
+    minNewComments: number;
+    pipelineScope: string[];
+  };
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -25,10 +33,19 @@ export class RedditBatchProcessingService implements OnModuleInit {
     @Inject(LLMService) private readonly llmService: LLMService,
     @Inject(UnifiedProcessingService)
     private readonly unifiedProcessingService: UnifiedProcessingService,
+    private readonly configService: ConfigService,
+    @Inject(PrismaService) private readonly prismaService: PrismaService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RedditBatchProcessingService');
+    this.keywordGateConfig = this.buildKeywordGateConfig();
+    this.logger.debug('Loaded keyword gate configuration', {
+      lookbackMs: this.keywordGateConfig.lookbackMs,
+      commentSampleLimit: this.keywordGateConfig.commentSampleLimit,
+      minNewComments: this.keywordGateConfig.minNewComments,
+      pipelineScope: this.keywordGateConfig.pipelineScope,
+    });
   }
 
   async processBatch(
@@ -38,10 +55,54 @@ export class RedditBatchProcessingService implements OnModuleInit {
     const startTime = Date.now();
 
     try {
-      const llmPosts = await this.resolveLlmPosts(job, correlationId);
+      const {
+        posts: llmPosts,
+        skippedDueToFreshness,
+        skippedDueToDeltaThreshold,
+        totalCandidates,
+      } = await this.resolveLlmPosts(job, correlationId);
 
       if (!llmPosts.length) {
-        throw new Error('No valid posts retrieved for LLM processing');
+        const processingTimeMs = Date.now() - startTime;
+
+        this.logger.info('Skipping batch - no posts required after gating', {
+          correlationId,
+          batchId: job.batchId,
+          collectionType: job.collectionType,
+          totalCandidates,
+          skippedDueToFreshness,
+          skippedDueToDeltaThreshold,
+        });
+
+        return {
+          batchId: job.batchId,
+          parentJobId: job.parentJobId,
+          collectionType: job.collectionType,
+          success: true,
+          metrics: {
+            postsProcessed: 0,
+            mentionsExtracted: 0,
+            entitiesCreated: 0,
+            connectionsCreated: 0,
+            processingTimeMs,
+            llmProcessingTimeMs: 0,
+            dbProcessingTimeMs: 0,
+          },
+          completedAt: new Date(),
+          details: {
+            warnings: [
+              skippedDueToFreshness + skippedDueToDeltaThreshold > 0
+                ? `Skipped batch: ${skippedDueToFreshness} fresh posts, ${skippedDueToDeltaThreshold} without enough new comments`
+                : 'Skipped batch: no eligible posts after gating',
+            ],
+            keywordGateSummary: {
+              totalCandidates,
+              processedPosts: 0,
+              skippedDueToFreshness,
+              skippedDueToDeltaThreshold,
+            },
+          },
+        };
       }
 
       const llmInput = { posts: llmPosts };
@@ -162,6 +223,12 @@ export class RedditBatchProcessingService implements OnModuleInit {
           createdEntities: dbResult.createdEntitySummaries || [],
           reusedEntities: dbResult.reusedEntitySummaries || [],
           ...(llmPostSample ? { llmPostSample } : {}),
+          keywordGateSummary: {
+            totalCandidates,
+            processedPosts: llmPosts.length,
+            skippedDueToFreshness,
+            skippedDueToDeltaThreshold,
+          },
         },
         rawMentionsSample,
       };
@@ -181,14 +248,28 @@ export class RedditBatchProcessingService implements OnModuleInit {
   private async resolveLlmPosts(
     job: BatchJob,
     correlationId: string,
-  ): Promise<any[]> {
+  ): Promise<{
+    posts: any[];
+    skippedDueToFreshness: number;
+    skippedDueToDeltaThreshold: number;
+    totalCandidates: number;
+  }> {
+    if (!this.keywordGateConfig) {
+      this.keywordGateConfig = this.buildKeywordGateConfig();
+    }
+
     if (job.llmPosts?.length) {
       this.logger.debug('Using pre-transformed LLM posts from job payload', {
         correlationId,
         batchId: job.batchId,
         postCount: job.llmPosts.length,
       });
-      return job.llmPosts;
+      return {
+        posts: job.llmPosts,
+        skippedDueToFreshness: 0,
+        skippedDueToDeltaThreshold: 0,
+        totalCandidates: job.llmPosts.length,
+      };
     }
 
     if (!job.postIds?.length) {
@@ -197,16 +278,35 @@ export class RedditBatchProcessingService implements OnModuleInit {
       );
     }
 
+    const { fetchPostIds, skippedDueToFreshness, skippedDueToDeltaThreshold } =
+      await this.determinePostFetchPlan(
+        job.subreddit,
+        job.postIds,
+        correlationId,
+      );
+
+    if (!fetchPostIds.length) {
+      return {
+        posts: [],
+        skippedDueToFreshness,
+        skippedDueToDeltaThreshold,
+        totalCandidates: job.postIds.length,
+      };
+    }
+
     this.logger.debug('Retrieving Reddit content for batch', {
       correlationId,
-      postCount: job.postIds.length,
+      postCount: fetchPostIds.length,
       depth: job.options?.depth,
       subreddit: job.subreddit,
+      skippedDueToFreshness,
+      skippedDueToDeltaThreshold,
+      totalCandidates: job.postIds.length,
     });
 
     const llmPosts: any[] = [];
 
-    for (const postId of job.postIds) {
+    for (const postId of fetchPostIds) {
       try {
         const rawResult = await this.redditService.getCompletePostWithComments(
           job.subreddit,
@@ -250,7 +350,240 @@ export class RedditBatchProcessingService implements OnModuleInit {
       }
     }
 
-    return llmPosts;
+    return {
+      posts: llmPosts,
+      skippedDueToFreshness,
+      skippedDueToDeltaThreshold,
+      totalCandidates: job.postIds.length,
+    };
+  }
+
+  private async determinePostFetchPlan(
+    subreddit: string,
+    postIds: string[],
+    correlationId: string,
+  ): Promise<{
+    fetchPostIds: string[];
+    skippedDueToFreshness: number;
+    skippedDueToDeltaThreshold: number;
+  }> {
+    if (!postIds.length) {
+      return {
+        fetchPostIds: [],
+        skippedDueToFreshness: 0,
+        skippedDueToDeltaThreshold: 0,
+      };
+    }
+
+    const { pipelineScope, lookbackMs } = this.keywordGateConfig;
+    if (!pipelineScope.length) {
+      return {
+        fetchPostIds: [...postIds],
+        skippedDueToFreshness: 0,
+        skippedDueToDeltaThreshold: 0,
+      };
+    }
+
+    const postSourceIds = postIds.map((postId) =>
+      this.buildPostSourceId(postId),
+    );
+
+    const existingRecords = await this.prismaService.source.findMany({
+      where: {
+        pipeline: { in: pipelineScope },
+        sourceId: { in: postSourceIds },
+      },
+      select: {
+        sourceId: true,
+        processedAt: true,
+      },
+    });
+
+    const latestProcessedBySource = new Map<string, Date>();
+    for (const record of existingRecords) {
+      const prev = latestProcessedBySource.get(record.sourceId);
+      if (!prev || record.processedAt > prev) {
+        latestProcessedBySource.set(record.sourceId, record.processedAt);
+      }
+    }
+
+    const cutoff = lookbackMs > 0 ? new Date(Date.now() - lookbackMs) : null;
+
+    const fetchPostIds: string[] = [];
+    const requiresDeltaCheck: string[] = [];
+    let skippedDueToFreshness = 0;
+
+    for (const postId of postIds) {
+      const sourceId = this.buildPostSourceId(postId);
+      const lastProcessedAt = latestProcessedBySource.get(sourceId);
+
+      if (!lastProcessedAt) {
+        fetchPostIds.push(postId);
+        continue;
+      }
+
+      if (cutoff && lastProcessedAt >= cutoff) {
+        skippedDueToFreshness += 1;
+        continue;
+      }
+
+      requiresDeltaCheck.push(postId);
+    }
+
+    let skippedDueToDeltaThreshold = 0;
+
+    for (const postId of requiresDeltaCheck) {
+      const shouldFetch = await this.shouldFetchBasedOnComments(
+        subreddit,
+        postId,
+        correlationId,
+      );
+
+      if (shouldFetch) {
+        fetchPostIds.push(postId);
+      } else {
+        skippedDueToDeltaThreshold += 1;
+      }
+    }
+
+    return {
+      fetchPostIds,
+      skippedDueToFreshness,
+      skippedDueToDeltaThreshold,
+    };
+  }
+
+  private async shouldFetchBasedOnComments(
+    subreddit: string,
+    postId: string,
+    correlationId: string,
+  ): Promise<boolean> {
+    const { commentSampleLimit, minNewComments, pipelineScope } =
+      this.keywordGateConfig;
+
+    if (
+      commentSampleLimit <= 0 ||
+      minNewComments <= 0 ||
+      !pipelineScope.length
+    ) {
+      return true;
+    }
+
+    if (commentSampleLimit < minNewComments) {
+      this.logger.warn(
+        'Comment sample limit is smaller than minimum new comment threshold; defaulting to fetch',
+        {
+          correlationId,
+          postId,
+          subreddit,
+          commentSampleLimit,
+          minNewComments,
+        },
+      );
+      return true;
+    }
+
+    try {
+      const recentCommentIds = await this.redditService.fetchRecentCommentIds(
+        subreddit,
+        postId,
+        commentSampleLimit,
+        correlationId,
+      );
+
+      if (!recentCommentIds.length) {
+        this.logger.debug('Delta probe returned no comments', {
+          correlationId,
+          postId,
+          subreddit,
+          commentSampleLimit,
+        });
+        return false;
+      }
+
+      const existingComments = await this.prismaService.source.findMany({
+        where: {
+          pipeline: { in: pipelineScope },
+          sourceId: { in: recentCommentIds },
+        },
+        select: { sourceId: true },
+      });
+
+      const existingSet = new Set(existingComments.map((row) => row.sourceId));
+      const newCount = recentCommentIds.reduce((count, commentId) => {
+        return count + (existingSet.has(commentId) ? 0 : 1);
+      }, 0);
+
+      this.logger.debug('Delta probe evaluation', {
+        correlationId,
+        postId,
+        subreddit,
+        recentCommentCount: recentCommentIds.length,
+        minNewComments,
+        newCount,
+      });
+
+      return newCount >= minNewComments;
+    } catch (error) {
+      this.logger.warn('Delta probe failed - defaulting to fetch', {
+        correlationId,
+        postId,
+        subreddit,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+
+      return true;
+    }
+  }
+
+  private buildPostSourceId(postId: string): string {
+    return postId.startsWith('t3_') ? postId : `t3_${postId}`;
+  }
+
+  private buildKeywordGateConfig(): {
+    lookbackMs: number;
+    commentSampleLimit: number;
+    minNewComments: number;
+    pipelineScope: string[];
+  } {
+    const keywordProcessing =
+      (this.configService.get('keywordProcessing') as {
+        gateLookbackDays?: number;
+        commentSampleLimit?: number;
+        minNewComments?: number;
+        pipelineScope?: string[];
+      }) || {};
+
+    const lookbackDaysRaw = Number(keywordProcessing.gateLookbackDays ?? 21);
+    const commentSampleLimitRaw = Number(
+      keywordProcessing.commentSampleLimit ?? 5,
+    );
+    const minNewCommentsRaw = Number(keywordProcessing.minNewComments ?? 3);
+
+    const lookbackDays = Number.isFinite(lookbackDaysRaw)
+      ? lookbackDaysRaw
+      : 21;
+    const commentSampleLimit = Number.isFinite(commentSampleLimitRaw)
+      ? commentSampleLimitRaw
+      : 5;
+    const minNewComments = Number.isFinite(minNewCommentsRaw)
+      ? minNewCommentsRaw
+      : 3;
+    const pipelineScope = Array.isArray(keywordProcessing.pipelineScope)
+      ? keywordProcessing.pipelineScope
+          .map((value) => value.trim().toLowerCase())
+          .filter((value) => value.length > 0)
+      : ['chronological', 'archive', 'keyword', 'on-demand'];
+
+    return {
+      lookbackMs: Math.max(0, lookbackDays) * 24 * 60 * 60 * 1000,
+      commentSampleLimit: Math.max(0, commentSampleLimit),
+      minNewComments: Math.max(0, minNewComments),
+      pipelineScope,
+    };
   }
 
   private buildSourceEnrichmentMaps(llmPosts: any[]) {

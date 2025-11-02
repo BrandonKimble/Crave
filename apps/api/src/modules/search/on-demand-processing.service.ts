@@ -19,6 +19,7 @@ import {
   OnDemandRequestService,
 } from './on-demand-request.service';
 import { LoggerService } from '../../shared';
+import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { MapBoundsDto } from './dto/search-query.dto';
 
@@ -88,6 +89,7 @@ export class OnDemandProcessingService {
     private readonly requestService: OnDemandRequestService,
     private readonly subredditResolver: SearchSubredditResolverService,
     private readonly configService: ConfigService,
+    private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.maxPerBatch =
@@ -431,7 +433,7 @@ export class OnDemandProcessingService {
       }
     }
 
-    const normalizedName = this.normalizeEntityName(term);
+    const normalizedName = this.normalizeEntityName(term, entityType);
 
     const existing = await this.prisma.entity.findFirst({
       where: {
@@ -451,21 +453,16 @@ export class OnDemandProcessingService {
       name: normalizedName,
       type: entityType,
       aliases: {
-        set: [term],
+        set: [term.trim()],
       },
-      restaurantAttributes:
-        entityType === 'restaurant'
-          ? {
-              set: [],
-            }
-          : undefined,
-      restaurantMetadata:
-        entityType === 'restaurant'
-          ? ({ origin: 'on_demand' } as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
       restaurantQualityScore: entityType === 'restaurant' ? 0 : undefined,
       generalPraiseUpvotes: entityType === 'restaurant' ? 0 : null,
     };
+
+    if (entityType === 'restaurant') {
+      data.restaurantAttributes = { set: [] };
+      data.restaurantMetadata = Prisma.DbNull;
+    }
 
     const created = await this.entityRepository.create(data);
 
@@ -474,6 +471,22 @@ export class OnDemandProcessingService {
       name: created.name,
       entityType: created.type,
     });
+
+    if (entityType === EntityType.restaurant) {
+      try {
+        await this.restaurantLocationEnrichmentService.enrichRestaurantById(
+          created.entityId,
+        );
+      } catch (error) {
+        this.logger.warn('Failed to enrich on-demand restaurant placeholder', {
+          entityId: created.entityId,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
+        });
+      }
+    }
 
     return created.entityId;
   }
@@ -501,10 +514,13 @@ export class OnDemandProcessingService {
     };
   }
 
-  private normalizeEntityName(term: string): string {
-    return term
-      .trim()
-      .replace(/\s+/g, ' ')
+  private normalizeEntityName(term: string, entityType: EntityType): string {
+    const sanitized = term.trim().replace(/\s+/g, ' ');
+    if (entityType === 'food' || entityType === 'food_attribute') {
+      return sanitized.toLowerCase();
+    }
+
+    return sanitized
       .split(' ')
       .map((word) =>
         word.length > 0
@@ -525,7 +541,7 @@ export class OnDemandProcessingService {
     return {
       requestId: record.requestId,
       term: record.term,
-      normalizedTerm: this.normalizeEntityName(record.term),
+      normalizedTerm: this.normalizeEntityName(record.term, record.entityType),
       entityType: record.entityType,
       occurrenceCount: record.occurrenceCount,
       reason: record.reason,

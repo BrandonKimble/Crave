@@ -82,7 +82,7 @@ export interface KeywordSearchResponse {
     entityName: string;
     searchQuery: string;
     searchOptions: {
-      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      sort?: 'relevance' | 'new' | 'hot' | 'top' | 'comments';
       limit?: number;
       timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
     };
@@ -90,6 +90,7 @@ export interface KeywordSearchResponse {
     totalComments: number;
     totalItems: number;
     searchTimestamp: Date;
+    collectedSorts: Array<'relevance' | 'new' | 'hot' | 'top' | 'comments'>;
   };
   performance: {
     searchDuration: number;
@@ -109,7 +110,7 @@ export interface BatchKeywordSearchResponse {
     subreddit: string;
     entityNames: string[];
     searchOptions: {
-      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      sort?: 'relevance' | 'new' | 'hot' | 'top' | 'comments';
       limit?: number;
       timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
       batchDelay?: number;
@@ -1545,6 +1546,83 @@ export class RedditService implements OnModuleInit {
     return this.getRawPostWithComments(subreddit, postId, options);
   }
 
+  async fetchRecentCommentIds(
+    subreddit: string,
+    postId: string,
+    limit: number,
+    correlationId?: string,
+  ): Promise<string[]> {
+    if (limit <= 0) {
+      return [];
+    }
+
+    const cappedLimit = Math.min(Math.max(limit, 1), 100);
+    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?sort=new&limit=${cappedLimit}&depth=1`;
+    const corrId = correlationId ?? CorrelationUtils.getCorrelationId();
+
+    this.logger.debug('Fetching recent comment IDs for probe', {
+      correlationId: corrId,
+      operation: 'fetch_recent_comment_ids',
+      subreddit,
+      postId,
+      limit: cappedLimit,
+    });
+
+    try {
+      const response = await this.makeRequest<any[]>(
+        'GET',
+        url,
+        'fetch_recent_comment_ids',
+      );
+
+      if (!Array.isArray(response) || response.length < 2) {
+        return [];
+      }
+
+      const commentListing = response[1]?.data?.children ?? [];
+      const collected: string[] = [];
+
+      const traverse = (nodes: any[]): void => {
+        for (const node of nodes) {
+          if (collected.length >= cappedLimit) {
+            return;
+          }
+
+          if (node?.kind === 't1') {
+            const name = node?.data?.name;
+            if (typeof name === 'string' && name.length > 0) {
+              collected.push(name);
+            }
+          }
+
+          const replies = node?.data?.replies?.data?.children;
+          if (Array.isArray(replies) && replies.length > 0) {
+            traverse(replies);
+            if (collected.length >= cappedLimit) {
+              return;
+            }
+          }
+        }
+      };
+
+      traverse(commentListing);
+
+      return collected.slice(0, cappedLimit);
+    } catch (error) {
+      this.logger.warn('Failed to fetch recent comment IDs', {
+        correlationId: corrId,
+        operation: 'fetch_recent_comment_ids',
+        subreddit,
+        postId,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      throw error;
+    }
+  }
+
   /**
    * Batch post retrieval with complete comment threads
    * Implements batching optimization for API efficiency - PRD Section 6.1
@@ -1698,8 +1776,8 @@ export class RedditService implements OnModuleInit {
   async searchEntityKeywords(
     subreddit: string,
     entityName: string,
-    searchOptions: {
-      sort?: 'relevance' | 'new' | 'hot' | 'top';
+  searchOptions: {
+      sort?: 'relevance' | 'new' | 'hot' | 'top' | 'comments';
       limit?: number;
       timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
     } = {},
@@ -1828,6 +1906,12 @@ export class RedditService implements OnModuleInit {
 
       const duration = Date.now() - startTime;
       const totalItems = posts.length + comments.length;
+      const sortValue: 'relevance' | 'new' | 'hot' | 'top' | 'comments' =
+        searchOptions.sort ?? 'relevance';
+      const normalizedSearchOptions = {
+        ...searchOptions,
+        sort: sortValue,
+      };
 
       this.logger.info('Keyword entity search completed', {
         correlationId,
@@ -1847,11 +1931,12 @@ export class RedditService implements OnModuleInit {
           subreddit,
           entityName,
           searchQuery: entityName,
-          searchOptions,
+          searchOptions: normalizedSearchOptions,
           totalPosts: posts.length,
           totalComments: comments.length,
           totalItems,
           searchTimestamp: new Date(),
+          collectedSorts: [sortValue],
         },
         performance: {
           searchDuration: duration,
@@ -1900,7 +1985,7 @@ export class RedditService implements OnModuleInit {
     subreddit: string,
     entityNames: string[],
     searchOptions: {
-      sort?: 'relevance' | 'new' | 'hot' | 'top';
+      sort?: 'relevance' | 'new' | 'hot' | 'top' | 'comments';
       limit?: number;
       timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
       batchDelay?: number; // Delay between searches to respect rate limits

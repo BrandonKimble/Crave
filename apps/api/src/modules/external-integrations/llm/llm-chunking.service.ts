@@ -65,7 +65,7 @@ export class LLMChunkingService implements OnModuleInit {
       return { chunks: [], metadata: [] };
     }
 
-    this.logger.info('Creating chunks from multiple posts', {
+    this.logger.debug('Creating chunks from multiple posts', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'create_contextual_chunks',
       totalPosts: llmInput.posts.length,
@@ -80,7 +80,7 @@ export class LLMChunkingService implements OnModuleInit {
     for (let postIndex = 0; postIndex < llmInput.posts.length; postIndex++) {
       const post = llmInput.posts[postIndex];
 
-      this.logger.info(
+      this.logger.debug(
         `Processing post ${postIndex + 1}/${llmInput.posts.length}`,
         {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -91,7 +91,7 @@ export class LLMChunkingService implements OnModuleInit {
       );
 
       if (!post.comments || post.comments.length === 0) {
-        this.logger.info(
+        this.logger.debug(
           'No comments to chunk, adding single chunk with post only',
           {
             correlationId: CorrelationUtils.getCorrelationId(),
@@ -138,7 +138,7 @@ export class LLMChunkingService implements OnModuleInit {
         )
         .sort((a, b) => b.score - a.score); // Ensure top-scored first
 
-      this.logger.info('Creating chunks from top comments', {
+      this.logger.debug('Creating chunks from top comments', {
         correlationId: CorrelationUtils.getCorrelationId(),
         postId: post.id,
         totalTopLevel: topLevelComments.length,
@@ -264,7 +264,7 @@ export class LLMChunkingService implements OnModuleInit {
         0,
       );
 
-      this.logger.info('Chunk distribution analysis for post', {
+      this.logger.debug('Chunk distribution analysis for post', {
         correlationId: CorrelationUtils.getCorrelationId(),
         postId: post.id,
         postIndex: postIndex + 1,
@@ -286,7 +286,7 @@ export class LLMChunkingService implements OnModuleInit {
     const totalChunkSizes = chunkMetadata.map((m) => m.commentCount);
     const totalComments = totalChunkSizes.reduce((sum, size) => sum + size, 0);
 
-    this.logger.info('Final chunk distribution analysis - all posts', {
+    this.logger.debug('Final chunk distribution analysis - all posts', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'create_contextual_chunks',
       totalPosts: llmInput.posts.length,

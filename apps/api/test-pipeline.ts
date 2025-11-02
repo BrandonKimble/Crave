@@ -263,38 +263,50 @@ async function testPipeline() {
 
 
 
-    if (SHOULD_RESET_DB) {
-      console.log('\nStep 1b • Resetting database state for test run');
-      await prisma.$executeRawUnsafe(
-        [
-          'TRUNCATE TABLE',
+    let databasePrepared = false;
+    const prepareDatabaseForPopulation = async (): Promise<void> => {
+      if (databasePrepared) {
+        return;
+      }
+
+      if (SHOULD_RESET_DB) {
+        console.log('\nStep 1b • Resetting database state for test run (deferred)');
+        const resetStartTime = Date.now();
+        await prisma.$executeRawUnsafe(
           [
-            'boosts',
-            'category_aggregates',
-            'connections',
-            'entities',
-            'entity_priority',
-            'subscriptions',
-            'user_events',
-            'source',
-          ].join(', '),
-          'RESTART IDENTITY CASCADE',
-        ].join(' '),
-      );
-      await prisma.$executeRawUnsafe('UPDATE subreddits SET last_processed = NULL');
-      await cleanQueue(chronologicalQueue, 'chronological collection');
-      await cleanQueue(chronologicalBatchQueue, 'chronological batch');
-      await cleanQueue(archiveBatchQueue, 'archive batch');
-      await cleanQueue(archiveCollectionQueue, 'archive collection');
-      console.log('OK • Database and queues reset complete');
-    } else if (shouldCleanupQueues) {
-      console.log('\nStep 1b • Clearing queues (TEST_COLLECTION_JOBS_ENABLED=false)');
-      await cleanQueue(chronologicalQueue, 'chronological collection');
-      await cleanQueue(chronologicalBatchQueue, 'chronological batch');
-      await cleanQueue(archiveBatchQueue, 'archive batch');
-      await cleanQueue(archiveCollectionQueue, 'archive collection');
-      console.log('OK • Queues cleared for testing');
-    }
+            'TRUNCATE TABLE',
+            [
+              'boosts',
+              'category_aggregates',
+              'connections',
+              'entities',
+              'on_demand',
+              'entity_priority',
+              'subscriptions',
+              'user_events',
+              'source',
+            ].join(', '),
+            'RESTART IDENTITY CASCADE',
+          ].join(' '),
+        );
+        await prisma.$executeRawUnsafe('UPDATE subreddits SET last_processed = NULL');
+        await cleanQueue(chronologicalQueue, 'chronological collection');
+        await cleanQueue(chronologicalBatchQueue, 'chronological batch');
+        await cleanQueue(archiveBatchQueue, 'archive batch');
+        await cleanQueue(archiveCollectionQueue, 'archive collection');
+        const resetDuration = Date.now() - resetStartTime;
+        console.log(`OK • Database and queues reset complete (${resetDuration} ms)`);
+      } else if (shouldCleanupQueues) {
+        console.log('\nStep 1b • Clearing queues before scheduling');
+        await cleanQueue(chronologicalQueue, 'chronological collection');
+        await cleanQueue(chronologicalBatchQueue, 'chronological batch');
+        await cleanQueue(archiveBatchQueue, 'archive batch');
+        await cleanQueue(archiveCollectionQueue, 'archive collection');
+        console.log('OK • Queues cleared for testing');
+      }
+
+      databasePrepared = true;
+    };
 
     const step1Duration = Date.now() - step1StartTime;
     console.log(`Step 1 total: ${step1Duration} ms (${(step1Duration/1000).toFixed(1)} s)`);
@@ -571,6 +583,7 @@ async function testPipeline() {
         },
       };
 
+      await prepareDatabaseForPopulation();
       console.log('\n📦 Scheduling archive collection job...');
       const archiveJob = await archiveCollectionQueue.add(
         'execute-archive-collection',
@@ -655,6 +668,8 @@ async function testPipeline() {
     } else {
       console.log(`- Timing: DB-driven (scheduler)`);
       const limitOverride = CHRONO_MAX_POSTS_OVERRIDE ?? 1000;
+
+      await prepareDatabaseForPopulation();
 
       try {
         const jobId = await collectionJobScheduler.scheduleManualCollection(targetSubreddit, {

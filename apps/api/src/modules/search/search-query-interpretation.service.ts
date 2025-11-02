@@ -47,6 +47,11 @@ export class SearchQueryInterpretationService {
   ): Promise<InterpretationResult> {
     const analysis = await this.llmService.analyzeSearchQuery(request.query);
 
+    this.logger.debug('Query interpretation foods breakdown', {
+      query: request.query,
+      foods: analysis.foods,
+    });
+
     const resolutionInputs = this.buildResolutionInputs(analysis);
     const resolutionResults = resolutionInputs.length
       ? await this.entityResolutionService.resolveBatch(resolutionInputs, {

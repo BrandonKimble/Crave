@@ -356,24 +356,65 @@ Outcome: structured `food` with complementary `food_categories` for use in Steps
 Represent each restaurant->food connection as one composed dish. Do not emit separate mentions for component ingredients or related nouns; capture them under `food_categories` for the same dish connection.
 - Carry forward the canonical `restaurant`; the backend maps names to deterministic IDs.
 
-### 4.2 Primary `food` Formation
+### 4.2 `food` Construction Algorithm
 
-- Keep the full composed dish phrase (head noun + identity-changing specifiers) as `food`: e.g., "spicy tuna roll", "duck carnitas taco", "tonkotsu ramen".
-- If the phrase includes additive lists introduced by "with/and" (e.g., "with burrata, chanterelle mushrooms, and pesto"), keep the core dish as `food` and push the additive list into `food_categories`.
-- Do not reattach modifiers already peeled into attributes in Step 3; rely on the attribute arrays produced there.
-- Normalize: lowercase; singularize where natural (avoid awkward singulars that reduce clarity); keep punctuation minimal and human-readable.
+Run this procedure for each composed dish after Step 3 cleansing:
 
-### 4.3 Hierarchical Decomposition to `food_categories`
+1. Anchor the head dish noun phrase.
+   - Identify the noun chunk the diner would speak when ordering.
+   - If the phrase ends with a generic classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.), keep it attached to the specific head words for now; it can be trimmed later when building categories.
+   - When the specifier trails the head (e.g., "pho tai", "ramen abura soba"), keep the head noun inside the phrase—never drop it in pursuit of a shorter form.
 
-Create a concise, meaningful set of categories to support search, filtering, and aggregation. Work from the cleaned food tokens produced in Step 3 (after attribute removal):
+2. Attach only identity-defining specifiers.
+   - Retain proteins, broths, or preparation words that change the dish identity ("duck carnitas taco", "tonkotsu ramen").
+   - Do not reattach modifiers already exported to `food_attributes` in Step 3.
+   - For additive clauses introduced by "with/and", keep the core dish as `food` and push the list items into `food_categories`.
 
-- **Dish nouns only**: Categories must remain food/ingredient nouns. Do not migrate preparation styles, dietary flags, cuisines, or service periods—those belong in the attribute arrays.
-- **Build a cascading hierarchy** that sheds modifiers in a noun-aware way:
-  - Treat common classifiers (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bao bun, slider, nacho, fry, etc.) as removable tail words once a more specific head exists.
-  - Strip leading modifiers that were not already placed into `food_attributes` (cuisines, meal periods, descriptors) one at a time while the remaining phrase stays coherent.
-  - Do not remove core nouns that appear mid-phrase (e.g., "pho tai" should keep "pho" as the base).
-- **Append individual component nouns** that remain after removing modifiers and classifiers (e.g., "tuna" from "tuna roll", "salad" from "caesar salad wrap") to improve cross-linking.
-- Include explicit ingredient nouns from additive lists (e.g., burrata, chanterelle mushrooms, pesto).
+3. Sanity-check the phrase.
+   - Ask: "Would this exact wording appear on a menu?" If not, peel a modifier until it does while keeping the head noun intact.
+   - Confirm the remaining phrase is still an orderable dish rather than a single ingredient. If you end up with a lone ingredient, move that noun to `food_categories` and keep the broader dish for `food`.
+
+4. Normalize.
+   - Lowercase, singularize where natural (avoid awkward singulars that reduce clarity), and keep punctuation minimal.
+
+Self-check examples:
+- Good: "tuna melt sandwich" → `food: "tuna melt sandwich"` (guests order it verbatim).
+- Avoid: "melt sandwich" (dropped the anchor noun) or "spicy tuna" (attributes crept back in).
+- Good: "south indian filter coffee" → `food: "filter coffee"` with `food_attributes: ["south indian"]`.
+- Good: "pho tai" → `food: "pho tai"` (head-first phrasing keeps the base noun).
+
+### 4.3 `food_categories` Hierarchy Algorithm
+
+Produce a cascading, high-signal list of categories after locking the `food` phrase:
+
+1. Seed with the most specific dish noun.
+   - Start with the `food` phrase unless it still includes attribute words; otherwise use the first attribute-free variant (e.g., "tuna roll" instead of "spicy tuna roll").
+   - If no shorter variant exists, keep the single item as the seed.
+
+2. Derive progressive fallbacks.
+   - Iteratively remove leading modifiers that remain after Step 3, asking "Does the remainder still name a recognizable dish?" Only keep versions that pass.
+   - After each iteration, consider trimming a trailing classifier (wrap, taco, sandwich, roll, burger, pasta, soup, salad, pizza, bowl, plate, toast, skewer, snack, grain bowl, noodle, dumpling, bao, bun, slider, fry, sando, lavash, arepa, etc.) when the preceding chunk is dish-like. Treat the list as guidance—if a new tail word functions as a serving format, handle it the same way.
+   - Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`, not `["tai"]`.
+   - Stop before the remainder is a lone ingredient; ingredient nouns belong in the component step below.
+
+3. Append component nouns.
+   - Add distinct edible components revealed during the peeling process ("tuna" from "tuna roll", "pork belly" from "pork belly bao bun", "bao" in addition to "bao bun").
+   - Exclude adjectives, cuisines, meal periods, and service styles.
+
+4. Merge additive ingredients from "with/and" clauses (burrata, chanterelles, pesto, etc.).
+
+5. Deduplicate, sort by specificity (most specific first), and cap the list at roughly 4–6 high-signal entries.
+
+Self-check questions:
+- Does each category describe an orderable dish or core ingredient?
+- Does the chain broaden logically without jumping to unrelated attribute-only terms?
+- Are cuisines or dietary flags kept in attributes instead of categories?
+
+Example pairs:
+- Good: "spicy tuna roll" → `["tuna roll", "roll", "tuna"]`; avoid `["spicy", "tuna"]`.
+- Good: "tuna melt sandwich" → `["tuna melt sandwich", "tuna melt"]`; avoid emitting only `["sandwich"]`.
+- Good: "south indian filter coffee" → `["filter coffee", "coffee"]` with "south indian" as an attribute.
+- Good: "pho tai" → `["pho tai", "pho"]`.
 
 ### 4.4 Inference Rules
 

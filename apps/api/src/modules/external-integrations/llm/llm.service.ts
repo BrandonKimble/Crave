@@ -281,7 +281,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
    * Implements PRD Section 6.3 LLM Data Collection Input/Output Structures
    */
   async processContent(input: LLMInputStructure): Promise<LLMOutputStructure> {
-    this.logger.info('Processing content through Gemini', {
+    this.logger.debug('Processing content through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'process_content',
       postCount: input.posts.length,
@@ -314,7 +314,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         response.usageMetadata?.totalTokenCount || 0,
       );
 
-      this.logger.info('Content processing completed', {
+      this.logger.debug('Content processing completed', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'process_content',
         responseTime,
@@ -397,7 +397,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     const content = this.extractTextContent(response, 'analyze_search_query');
     const analysis = this.parseSearchQueryResponse(content);
 
-    this.logger.info('Search query analysis completed', {
+    this.logger.debug('Search query analysis completed', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'analyze_search_query',
       restaurants: analysis.restaurants.length,
@@ -475,7 +475,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         return sum + commentText;
       }, 0) / Math.max(totalComments, 1);
 
-    this.logger.info('🔍 INPUT SIZE DEBUG - LLM prompt built', {
+    this.logger.debug('🔍 INPUT SIZE DEBUG - LLM prompt built', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'build_processing_prompt',
       inputStats: {
@@ -749,7 +749,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         : (this.systemInstructionCache?.name ?? null));
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
-    this.logger.info('Generation config with @google/genai', {
+    this.logger.debug('Generation config with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'call_llm_api',
       hasResponseMimeType: !!(generationConfig as any).responseMimeType,
@@ -805,7 +805,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        this.logger.info('Making LLM API request via @google/genai', {
+        this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'call_llm_api',
           model: this.llmConfig.model,
@@ -890,7 +890,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           );
         }
 
-        this.logger.info('LLM API response received via @google/genai', {
+        this.logger.debug('LLM API response received via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'call_llm_api',
           candidatesCount: response.candidates?.length || 0,

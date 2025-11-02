@@ -42,6 +42,9 @@ function getDatabaseUrl(): string {
 
 export default () => ({
   port: parseInt(process.env.PORT || '3000', 10),
+  logging: {
+    level: (process.env.LOG_LEVEL || '').toLowerCase(),
+  },
   database: {
     url: getDatabaseUrl(),
     connectionPool: {
@@ -224,6 +227,24 @@ export default () => ({
     minScoreThreshold: parseFloat(
       process.env.RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD || '0.2',
     ),
+  },
+  keywordProcessing: {
+    gateLookbackDays: parseInt(
+      process.env.KEYWORD_GATE_LOOKBACK_DAYS || '21',
+      10,
+    ),
+    commentSampleLimit: parseInt(
+      process.env.KEYWORD_COMMENT_SAMPLE_LIMIT || '5',
+      10,
+    ),
+    minNewComments: parseInt(process.env.KEYWORD_MIN_NEW_COMMENTS || '3', 10),
+    pipelineScope: (
+      process.env.KEYWORD_GATE_PIPELINES ||
+      'chronological,archive,keyword,on-demand'
+    )
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0),
   },
   pushshift: {
     baseDirectory: process.env.PUSHSHIFT_BASE_DIR || 'data/pushshift/archives',

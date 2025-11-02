@@ -75,7 +75,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     }
     this.limit = pLimit(this.concurrencyLimit);
 
-    this.logger.info('LLM Concurrent Processing Service initialized', {
+    this.logger.debug('LLM Concurrent Processing Service initialized', {
       concurrencyLimit: this.concurrencyLimit,
       rateLimitingMode: 'delegated_to_smart_processor',
     });
@@ -93,7 +93,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       testDurationLimitMs?: number;
     } = {},
   ): Promise<void> {
-    this.logger.info(
+    this.logger.debug(
       'Concurrency optimization delegated to SmartLLMProcessor',
       {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -142,7 +142,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
       };
     }
 
-    this.logger.info('Starting concurrent chunk processing', {
+    this.logger.debug('Starting concurrent chunk processing', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'process_concurrent',
       totalChunks: chunks.length,
@@ -180,7 +180,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           await this.waitForGlobalCooldown(meta);
         }
 
-        this.logger.info('Starting chunk processing', {
+        this.logger.debug('Starting chunk processing', {
           correlationId: CorrelationUtils.getCorrelationId(),
           chunkId: meta.chunkId,
           position: index + 1,
@@ -204,7 +204,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
           // Validate all vital fields are present
           this.validateOutputStructure(result, meta.chunkId);
 
-          this.logger.info('Chunk processing completed', {
+          this.logger.debug('Chunk processing completed', {
             correlationId: CorrelationUtils.getCorrelationId(),
             chunkId: meta.chunkId,
             commentCount: meta.commentCount,

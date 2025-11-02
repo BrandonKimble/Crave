@@ -85,6 +85,20 @@ export function createWinstonConfig(
   const forceJson =
     (process.env.LOG_FORMAT || '').toLowerCase() === 'json' ? true : false;
   const useJsonFormat = forceJson || !isDevelopment;
+  const allowedLevels = [
+    'error',
+    'warn',
+    'info',
+    'http',
+    'verbose',
+    'debug',
+    'silly',
+  ];
+  const defaultLevel = isDevelopment ? 'debug' : 'info';
+  const requestedLevel = (process.env.LOG_LEVEL || '').toLowerCase();
+  const resolvedLevel = allowedLevels.includes(requestedLevel)
+    ? requestedLevel
+    : defaultLevel;
 
   // Base transports
   const transports: winston.transport[] = [];
@@ -93,7 +107,7 @@ export function createWinstonConfig(
   if (isDevelopment || process.env.LOG_CONSOLE === 'true') {
     transports.push(
       new winston.transports.Console({
-        level: isDevelopment ? 'debug' : 'info',
+        level: resolvedLevel,
         format: useJsonFormat ? jsonFormat : prettyFormat,
       }),
     );
@@ -119,7 +133,7 @@ export function createWinstonConfig(
       new DailyRotateFile({
         filename: 'logs/combined-%DATE%.log',
         datePattern: 'YYYY-MM-DD',
-        level: isProduction ? 'info' : 'debug',
+        level: resolvedLevel,
         format: jsonFormat,
         maxSize: '50m',
         maxFiles: '30d',
@@ -142,7 +156,7 @@ export function createWinstonConfig(
   }
 
   return {
-    level: isDevelopment ? 'debug' : 'info',
+    level: resolvedLevel,
     format: useJsonFormat ? jsonFormat : prettyFormat,
     defaultMeta: {
       service: DEFAULT_SERVICE_NAME,

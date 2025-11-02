@@ -146,6 +146,13 @@ export interface BatchProcessingResult {
         contentSnippet: string;
       }>;
     }>;
+    /** Summary of keyword gating decisions for observability */
+    keywordGateSummary?: {
+      totalCandidates: number;
+      processedPosts: number;
+      skippedDueToFreshness: number;
+      skippedDueToDeltaThreshold: number;
+    };
   };
 
   /** Optional raw mentions sample for debugging (unchanged objects) */

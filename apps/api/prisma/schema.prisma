@@ -21,7 +21,7 @@ model Entity {
   longitude              Decimal?     @db.Decimal(11, 8)
   address                String?      @db.VarChar(500)
   googlePlaceId          String?      @unique @map("google_place_id") @db.VarChar(255)
-  restaurantMetadata     Json         @default("{}") @map("restaurant_metadata")
+  restaurantMetadata     Json?        @map("restaurant_metadata")
   city                   String?      @map("city") @db.VarChar(255)
   region                 String?      @map("region") @db.VarChar(255)
   country                String?      @map("country") @db.VarChar(2)

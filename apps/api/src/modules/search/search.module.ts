@@ -5,6 +5,7 @@ import { RepositoryModule } from '../../repositories/repository.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
+import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
@@ -15,6 +16,7 @@ import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
+import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
 
 @Module({
   imports: [
@@ -24,6 +26,7 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,
+    RestaurantEnrichmentModule,
   ],
   controllers: [SearchController],
   providers: [
@@ -36,6 +39,7 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
     OnDemandProcessingService,
     SearchOrchestrationService,
     SearchSubredditResolverService,
+    OnDemandPlaceholderCleanupService,
   ],
   exports: [SearchService, SearchOrchestrationService],
 })

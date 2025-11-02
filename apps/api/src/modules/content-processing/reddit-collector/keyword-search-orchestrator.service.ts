@@ -11,6 +11,8 @@ import {
   RedditService,
   KeywordSearchResponse,
   BatchKeywordSearchResponse,
+  RedditPost,
+  RedditComment,
 } from '../../external-integrations/reddit/reddit.service';
 import {
   KeywordSearchSchedulerService,
@@ -20,6 +22,13 @@ import { EntityPriorityScore } from './entity-priority-selection.service';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
+
+type KeywordSearchSort =
+  | 'relevance'
+  | 'new'
+  | 'hot'
+  | 'top'
+  | 'comments';
 
 /**
  * Keyword Search Orchestrator Service
@@ -36,6 +45,7 @@ export class KeywordSearchOrchestratorService
   private autoIntervalMs = 60 * 60 * 1000;
   private autoExecutionTimer?: NodeJS.Timeout;
   private readonly keywordSearchLimit: number;
+  private readonly keywordSearchSorts: KeywordSearchSort[];
   constructor(
     private readonly redditService: RedditService,
     private readonly keywordScheduler: KeywordSearchSchedulerService,
@@ -48,6 +58,7 @@ export class KeywordSearchOrchestratorService
     private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {
     this.keywordSearchLimit = this.resolveKeywordSearchLimit();
+    this.keywordSearchSorts = this.resolveKeywordSearchSorts();
   }
 
   async onModuleInit(): Promise<void> {
@@ -102,6 +113,11 @@ export class KeywordSearchOrchestratorService
         processingErrors: 0,
         executionStartTime: new Date(startTime),
         executionEndTime: new Date(), // Will be updated
+        totalPosts: 0,
+        totalComments: 0,
+        totalItems: 0,
+        sortsAttempted: [],
+        sortSummaries: [],
       },
       performance: {
         searchDuration: 0,
@@ -115,45 +131,87 @@ export class KeywordSearchOrchestratorService
     try {
       // Extract entity names for batch search
       const entityNames = entities.map((entity) => entity.entityName);
+      const sortsToExecute =
+        this.keywordSearchSorts.length > 0
+          ? this.keywordSearchSorts
+          : (['relevance'] as KeywordSearchSort[]);
 
-      this.logger.debug('Executing batch keyword search', {
+      this.logger.debug('Executing batch keyword searches', {
         correlationId,
         subreddit,
         entityNames: entityNames.slice(0, 10), // Log first 10 entities
         totalCount: entityNames.length,
+        sorts: sortsToExecute,
       });
 
-      // Execute batch keyword search per PRD 5.1.2
+      const aggregateResults = new Map<string, AggregatedKeywordEntity>();
+      const sortSummaries: SortSummary[] = [];
+      let cumulativeSuccessfulSearches = 0;
+      let cumulativeFailedSearches = 0;
+      let cumulativeApiCalls = 0;
+
       const searchStartTime = Date.now();
-      const batchSearchResult =
-        await this.redditService.batchEntityKeywordSearch(
-          subreddit,
-          entityNames,
-          {
-            sort: 'relevance', // PRD specification
-            limit: this.keywordSearchLimit,
-            batchDelay: 1200, // 1.2 seconds between searches for rate limiting
-          },
+
+      for (const sort of sortsToExecute) {
+        const batchSearchResult =
+          await this.redditService.batchEntityKeywordSearch(
+            subreddit,
+            entityNames,
+            {
+              sort,
+              limit: this.keywordSearchLimit,
+              batchDelay: 1200, // 1.2 seconds between searches for rate limiting
+            },
+          );
+
+        cumulativeSuccessfulSearches +=
+          batchSearchResult.metadata.successfulSearches;
+        cumulativeFailedSearches +=
+          batchSearchResult.metadata.failedSearches;
+        cumulativeApiCalls += batchSearchResult.performance.totalApiCalls;
+
+        sortSummaries.push({
+          sort,
+          totalPosts: batchSearchResult.metadata.totalPosts,
+          totalComments: batchSearchResult.metadata.totalComments,
+          successfulSearches: batchSearchResult.metadata.successfulSearches,
+          failedSearches: batchSearchResult.metadata.failedSearches,
+          apiCalls: batchSearchResult.performance.totalApiCalls,
+          durationMs: batchSearchResult.performance.batchDuration,
+        });
+
+        this.mergeBatchKeywordResults(
+          aggregateResults,
+          batchSearchResult,
+          sort,
         );
+      }
+
+      const { results: aggregatedResults, totalPosts, totalComments } =
+        this.finalizeAggregatedResults(aggregateResults, sortsToExecute);
 
       const searchDuration = Date.now() - searchStartTime;
       results.performance.searchDuration = searchDuration;
-      results.performance.totalApiCalls =
-        batchSearchResult.performance.totalApiCalls;
-      results.metadata.successfulSearches =
-        batchSearchResult.metadata.successfulSearches;
-      results.metadata.failedSearches =
-        batchSearchResult.metadata.failedSearches;
-      results.searchResults = batchSearchResult.results;
+      results.performance.totalApiCalls = cumulativeApiCalls;
+      results.metadata.successfulSearches = cumulativeSuccessfulSearches;
+      results.metadata.failedSearches = cumulativeFailedSearches;
+      results.metadata.sortsAttempted = sortsToExecute;
+      results.metadata.sortSummaries = sortSummaries;
+      results.metadata.totalPosts = totalPosts;
+      results.metadata.totalComments = totalComments;
+      results.metadata.totalItems = totalPosts + totalComments;
+      results.searchResults = aggregatedResults;
 
-      this.logger.info('Batch keyword search completed', {
+      this.logger.info('Batch keyword searches completed', {
         correlationId,
         subreddit,
+        sorts: sortsToExecute,
         searchDuration,
-        successfulSearches: batchSearchResult.metadata.successfulSearches,
-        failedSearches: batchSearchResult.metadata.failedSearches,
-        totalPosts: batchSearchResult.metadata.totalPosts,
-        totalComments: batchSearchResult.metadata.totalComments,
+        successfulSearches: cumulativeSuccessfulSearches,
+        failedSearches: cumulativeFailedSearches,
+        uniquePosts: totalPosts,
+        uniqueComments: totalComments,
+        apiCalls: cumulativeApiCalls,
       });
 
       // Enqueue keyword search results as batches to async worker (mirrors chronological flow)
@@ -203,6 +261,195 @@ export class KeywordSearchOrchestratorService
 
       throw error;
     }
+  }
+
+  private mergeBatchKeywordResults(
+    aggregate: Map<string, AggregatedKeywordEntity>,
+    batchResult: BatchKeywordSearchResponse,
+    sort: KeywordSearchSort,
+  ): void {
+    for (const [entityName, response] of Object.entries(
+      batchResult.results,
+    )) {
+      const existing = aggregate.get(entityName);
+      const baseMetadata = existing?.baseMetadata ?? {
+        ...response.metadata,
+        searchOptions: { ...(response.metadata.searchOptions ?? {}) },
+      };
+
+      if (!existing) {
+        aggregate.set(entityName, {
+          baseMetadata,
+          posts: new Map(),
+          comments: new Map(),
+          collectedSorts: new Set(),
+          postUrls: new Set(),
+          commentUrls: new Set(),
+          totalSearchDuration: 0,
+          totalApiCalls: 0,
+          lastRateLimitStatus: response.performance.rateLimitStatus,
+        });
+      }
+
+      const accumulator = aggregate.get(entityName)!;
+      accumulator.collectedSorts.add(sort);
+      const baseSorts = accumulator.baseMetadata.collectedSorts ?? [];
+      if (!baseSorts.includes(sort)) {
+        accumulator.baseMetadata.collectedSorts = [...baseSorts, sort];
+      }
+      accumulator.totalSearchDuration += response.performance.searchDuration;
+      accumulator.totalApiCalls += response.performance.apiCallsUsed;
+      accumulator.lastRateLimitStatus = response.performance.rateLimitStatus;
+
+      if (
+        response.metadata.searchTimestamp >
+        accumulator.baseMetadata.searchTimestamp
+      ) {
+        accumulator.baseMetadata.searchTimestamp =
+          response.metadata.searchTimestamp;
+      }
+
+      if (response.metadata.searchOptions) {
+        accumulator.baseMetadata.searchOptions = {
+          ...(accumulator.baseMetadata.searchOptions ?? {}),
+          ...response.metadata.searchOptions,
+        };
+      }
+
+      for (const post of response.posts) {
+        const existingPost = accumulator.posts.get(post.id);
+        if (!existingPost) {
+          accumulator.posts.set(post.id, {
+            data: post,
+            sorts: new Set<KeywordSearchSort>([sort]),
+          });
+        } else {
+          existingPost.sorts.add(sort);
+        }
+        if (post.url) {
+          accumulator.postUrls.add(post.url);
+        }
+      }
+
+      for (const comment of response.comments) {
+        const existingComment = accumulator.comments.get(comment.id);
+        if (!existingComment) {
+          accumulator.comments.set(comment.id, {
+            data: comment,
+            sorts: new Set<KeywordSearchSort>([sort]),
+          });
+        } else {
+          existingComment.sorts.add(sort);
+        }
+        if (comment.url) {
+          accumulator.commentUrls.add(comment.url);
+        }
+      }
+
+      for (const url of response.attribution.postUrls) {
+        if (url) {
+          accumulator.postUrls.add(url);
+        }
+      }
+
+      for (const url of response.attribution.commentUrls) {
+        if (url) {
+          accumulator.commentUrls.add(url);
+        }
+      }
+    }
+  }
+
+  private finalizeAggregatedResults(
+    aggregate: Map<string, AggregatedKeywordEntity>,
+    defaultSorts: KeywordSearchSort[] = ['relevance'],
+  ): {
+    results: Record<string, KeywordSearchResponse>;
+    totalPosts: number;
+    totalComments: number;
+  } {
+    const aggregatedResults: Record<string, KeywordSearchResponse> = {};
+    let totalPosts = 0;
+    let totalComments = 0;
+
+    for (const [entityName, accumulator] of aggregate.entries()) {
+      const posts = Array.from(accumulator.posts.values()).map(
+        (entry) => entry.data,
+      );
+      const comments = Array.from(accumulator.comments.values()).map(
+        (entry) => entry.data,
+      );
+      const collectedSorts = Array.from(accumulator.collectedSorts);
+      const primarySort =
+        collectedSorts[0] ?? defaultSorts[0] ?? 'relevance';
+
+      totalPosts += posts.length;
+      totalComments += comments.length;
+
+      const metadata = {
+        ...accumulator.baseMetadata,
+        searchOptions: {
+          ...(accumulator.baseMetadata.searchOptions ?? {}),
+          sort: primarySort,
+        },
+        totalPosts: posts.length,
+        totalComments: comments.length,
+        totalItems: posts.length + comments.length,
+        collectedSorts,
+      };
+
+      const performance = {
+        searchDuration: accumulator.totalSearchDuration,
+        apiCallsUsed: accumulator.totalApiCalls,
+        rateLimitStatus: accumulator.lastRateLimitStatus,
+      };
+
+      const attribution = {
+        postUrls: Array.from(accumulator.postUrls),
+        commentUrls: Array.from(accumulator.commentUrls),
+      };
+
+      aggregatedResults[entityName] = {
+        posts,
+        comments,
+        metadata,
+        performance,
+        attribution,
+      };
+    }
+
+    return {
+      results: aggregatedResults,
+      totalPosts,
+      totalComments,
+    };
+  }
+
+  private resolveKeywordSearchSorts(): KeywordSearchSort[] {
+    const raw = this.configService.get<string>('KEYWORD_SEARCH_SORTS');
+    const defaultSorts: KeywordSearchSort[] = ['relevance', 'top', 'new'];
+
+    if (!raw) {
+      return defaultSorts;
+    }
+
+    const allowed: KeywordSearchSort[] = [
+      'relevance',
+      'new',
+      'hot',
+      'top',
+      'comments',
+    ];
+    const parsed = raw
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value): value is KeywordSearchSort =>
+        (allowed as string[]).includes(value),
+      );
+
+    const unique = Array.from(new Set(parsed));
+
+    return unique.length > 0 ? unique : defaultSorts;
   }
 
   /**
@@ -655,6 +902,31 @@ export class KeywordSearchOrchestratorService
   }
 }
 
+interface AggregatedKeywordEntity {
+  baseMetadata: KeywordSearchResponse['metadata'];
+  posts: Map<string, { data: RedditPost; sorts: Set<KeywordSearchSort> }>;
+  comments: Map<
+    string,
+    { data: RedditComment; sorts: Set<KeywordSearchSort> }
+  >;
+  collectedSorts: Set<KeywordSearchSort>;
+  postUrls: Set<string>;
+  commentUrls: Set<string>;
+  totalSearchDuration: number;
+  totalApiCalls: number;
+  lastRateLimitStatus: any;
+}
+
+interface SortSummary {
+  sort: KeywordSearchSort;
+  totalPosts: number;
+  totalComments: number;
+  successfulSearches: number;
+  failedSearches: number;
+  apiCalls: number;
+  durationMs: number;
+}
+
 /**
  * Keyword Search Execution Result
  */
@@ -671,6 +943,11 @@ export interface KeywordSearchExecutionResult {
     processingErrors: number;
     executionStartTime: Date;
     executionEndTime: Date;
+    totalPosts: number;
+    totalComments: number;
+    totalItems: number;
+    sortsAttempted: KeywordSearchSort[];
+    sortSummaries: SortSummary[];
   };
   performance: {
     searchDuration: number;
