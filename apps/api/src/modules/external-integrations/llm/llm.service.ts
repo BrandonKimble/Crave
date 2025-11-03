@@ -811,7 +811,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       options.cacheName ??
       (options.systemInstruction
         ? null
-        : (this.systemInstructionCache?.name ?? null));
+        : this.systemInstructionCache?.name ?? null);
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
     const hasResponseMimeType =
