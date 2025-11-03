@@ -1,4 +1,9 @@
-import { Prisma } from '@prisma/client';
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientUnknownRequestError,
+  PrismaClientRustPanicError,
+  PrismaClientValidationError,
+} from '@prisma/client/runtime/library';
 import {
   DatabaseException,
   ValidationException,
@@ -23,25 +28,25 @@ export class PrismaErrorMapper {
     entityType?: string,
     operation?: string,
   ): AppException {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error instanceof PrismaClientKnownRequestError) {
       return this.mapKnownRequestError(error, entityType, operation);
     }
 
-    if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    if (error instanceof PrismaClientUnknownRequestError) {
       return new DatabaseException(operation || 'unknown', entityType, error, {
         type: 'PrismaClientUnknownRequestError',
         prismaError: error.message,
       });
     }
 
-    if (error instanceof Prisma.PrismaClientRustPanicError) {
+    if (error instanceof PrismaClientRustPanicError) {
       return new DatabaseException(operation || 'unknown', entityType, error, {
         type: 'PrismaClientRustPanicError',
         prismaError: error.message,
       });
     }
 
-    if (error instanceof Prisma.PrismaClientValidationError) {
+    if (error instanceof PrismaClientValidationError) {
       return new ValidationException(
         'Invalid query parameters or data structure',
         {
@@ -69,7 +74,7 @@ export class PrismaErrorMapper {
    * Map known Prisma request errors based on error code
    */
   private static mapKnownRequestError(
-    error: Prisma.PrismaClientKnownRequestError,
+    error: PrismaClientKnownRequestError,
     entityType?: string,
     operation?: string,
   ): AppException {
@@ -265,10 +270,10 @@ export class PrismaErrorMapper {
    */
   static isPrismaError(error: any): boolean {
     return (
-      error instanceof Prisma.PrismaClientKnownRequestError ||
-      error instanceof Prisma.PrismaClientUnknownRequestError ||
-      error instanceof Prisma.PrismaClientValidationError ||
-      error instanceof Prisma.PrismaClientRustPanicError
+      error instanceof PrismaClientKnownRequestError ||
+      error instanceof PrismaClientUnknownRequestError ||
+      error instanceof PrismaClientValidationError ||
+      error instanceof PrismaClientRustPanicError
     );
   }
 

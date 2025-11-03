@@ -5,7 +5,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue, JobCounts } from 'bull';
+import { Queue, JobCounts, Job } from 'bull';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   RedditService,
@@ -14,21 +14,15 @@ import {
   RedditPost,
   RedditComment,
 } from '../../external-integrations/reddit/reddit.service';
-import {
-  KeywordSearchSchedulerService,
-  KeywordSearchSchedule,
-} from './keyword-search-scheduler.service';
+import { RateLimitResponse } from '../../external-integrations/shared/external-integrations.types';
+import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
 import { EntityPriorityScore } from './entity-priority-selection.service';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
+import { ProcessingResult } from './unified-processing.types';
 
-type KeywordSearchSort =
-  | 'relevance'
-  | 'new'
-  | 'hot'
-  | 'top'
-  | 'comments';
+type KeywordSearchSort = 'relevance' | 'new' | 'hot' | 'top' | 'comments';
 
 /**
  * Keyword Search Orchestrator Service
@@ -41,7 +35,7 @@ export class KeywordSearchOrchestratorService
   implements OnModuleInit, OnModuleDestroy
 {
   // Legacy field retained to avoid compile errors in deprecated methods retained below
-  private unifiedProcessing: any = null;
+  private unifiedProcessing: UnifiedProcessingAdapter | null = null;
   private autoIntervalMs = 60 * 60 * 1000;
   private autoExecutionTimer?: NodeJS.Timeout;
   private readonly keywordSearchLimit: number;
@@ -52,9 +46,9 @@ export class KeywordSearchOrchestratorService
     @Inject(LoggerService) private readonly logger: LoggerService,
     private readonly configService: ConfigService,
     @InjectQueue('keyword-batch-processing-queue')
-    private readonly keywordQueue: Queue,
+    private readonly keywordQueue: Queue<BatchJob>,
     @InjectQueue('keyword-search-execution')
-    private readonly keywordSearchQueue: Queue,
+    private readonly keywordSearchQueue: Queue<KeywordSearchJobData>,
     private readonly keywordSearchMetrics: KeywordSearchMetricsService,
   ) {
     this.keywordSearchLimit = this.resolveKeywordSearchLimit();
@@ -166,8 +160,7 @@ export class KeywordSearchOrchestratorService
 
         cumulativeSuccessfulSearches +=
           batchSearchResult.metadata.successfulSearches;
-        cumulativeFailedSearches +=
-          batchSearchResult.metadata.failedSearches;
+        cumulativeFailedSearches += batchSearchResult.metadata.failedSearches;
         cumulativeApiCalls += batchSearchResult.performance.totalApiCalls;
 
         sortSummaries.push({
@@ -187,8 +180,11 @@ export class KeywordSearchOrchestratorService
         );
       }
 
-      const { results: aggregatedResults, totalPosts, totalComments } =
-        this.finalizeAggregatedResults(aggregateResults, sortsToExecute);
+      const {
+        results: aggregatedResults,
+        totalPosts,
+        totalComments,
+      } = this.finalizeAggregatedResults(aggregateResults, sortsToExecute);
 
       const searchDuration = Date.now() - searchStartTime;
       results.performance.searchDuration = searchDuration;
@@ -268,27 +264,45 @@ export class KeywordSearchOrchestratorService
     batchResult: BatchKeywordSearchResponse,
     sort: KeywordSearchSort,
   ): void {
-    for (const [entityName, response] of Object.entries(
-      batchResult.results,
-    )) {
+    for (const entityName of Object.keys(batchResult.results)) {
+      const rawResponse = batchResult.results[entityName];
+      if (!rawResponse) {
+        this.logger.warn('Skipping missing keyword search response', {
+          entityName,
+        });
+        continue;
+      }
+
+      const response = this.normalizeKeywordSearchResponse(rawResponse);
+      const rateLimitStatus: RateLimitResponse = this.cloneRateLimitStatus(
+        response.performance.rateLimitStatus,
+      );
       const existing = aggregate.get(entityName);
-      const baseMetadata = existing?.baseMetadata ?? {
-        ...response.metadata,
-        searchOptions: { ...(response.metadata.searchOptions ?? {}) },
-      };
+      const baseMetadata: KeywordSearchResponse['metadata'] =
+        existing?.baseMetadata ?? {
+          ...response.metadata,
+          searchOptions: { ...(response.metadata.searchOptions ?? {}) },
+        };
 
       if (!existing) {
-        aggregate.set(entityName, {
+        const initialEntry: AggregatedKeywordEntity = {
           baseMetadata,
-          posts: new Map(),
-          comments: new Map(),
-          collectedSorts: new Set(),
-          postUrls: new Set(),
-          commentUrls: new Set(),
+          posts: new Map<
+            string,
+            { data: RedditPost; sorts: Set<KeywordSearchSort> }
+          >(),
+          comments: new Map<
+            string,
+            { data: RedditComment; sorts: Set<KeywordSearchSort> }
+          >(),
+          collectedSorts: new Set<KeywordSearchSort>(),
+          postUrls: new Set<string>(),
+          commentUrls: new Set<string>(),
           totalSearchDuration: 0,
           totalApiCalls: 0,
-          lastRateLimitStatus: response.performance.rateLimitStatus,
-        });
+          lastRateLimitStatus: rateLimitStatus,
+        };
+        aggregate.set(entityName, initialEntry);
       }
 
       const accumulator = aggregate.get(entityName)!;
@@ -299,7 +313,7 @@ export class KeywordSearchOrchestratorService
       }
       accumulator.totalSearchDuration += response.performance.searchDuration;
       accumulator.totalApiCalls += response.performance.apiCallsUsed;
-      accumulator.lastRateLimitStatus = response.performance.rateLimitStatus;
+      accumulator.lastRateLimitStatus = rateLimitStatus;
 
       if (
         response.metadata.searchTimestamp >
@@ -360,6 +374,169 @@ export class KeywordSearchOrchestratorService
     }
   }
 
+  private isValidSort(value: unknown): value is KeywordSearchSort {
+    return (
+      value === 'relevance' ||
+      value === 'new' ||
+      value === 'hot' ||
+      value === 'top' ||
+      value === 'comments'
+    );
+  }
+
+  private normalizeKeywordSearchResponse(
+    response: KeywordSearchResponse,
+  ): KeywordSearchResponse {
+    const posts: RedditPost[] = response.posts
+      .map((post) => {
+        const createdAt =
+          post.createdAt instanceof Date
+            ? post.createdAt
+            : new Date(post.createdAt);
+        const safeCreatedAt = Number.isNaN(createdAt.getTime())
+          ? new Date()
+          : createdAt;
+
+        return {
+          id: typeof post.id === 'string' ? post.id : '',
+          title: typeof post.title === 'string' ? post.title : '',
+          content: typeof post.content === 'string' ? post.content : '',
+          author: typeof post.author === 'string' ? post.author : '[unknown]',
+          subreddit:
+            typeof post.subreddit === 'string' ? post.subreddit : 'unknown',
+          url: typeof post.url === 'string' ? post.url : '',
+          upvotes: typeof post.upvotes === 'number' ? post.upvotes : 0,
+          createdAt: safeCreatedAt,
+          commentCount:
+            typeof post.commentCount === 'number' ? post.commentCount : 0,
+          sourceType: 'post' as const,
+        };
+      })
+      .filter((post) => post.id.length > 0);
+
+    const comments: RedditComment[] = response.comments
+      .map((comment) => {
+        const createdAt =
+          comment.createdAt instanceof Date
+            ? comment.createdAt
+            : new Date(comment.createdAt);
+        const safeCreatedAt = Number.isNaN(createdAt.getTime())
+          ? new Date()
+          : createdAt;
+
+        return {
+          id: typeof comment.id === 'string' ? comment.id : '',
+          content: typeof comment.content === 'string' ? comment.content : '',
+          author:
+            typeof comment.author === 'string' ? comment.author : '[unknown]',
+          subreddit:
+            typeof comment.subreddit === 'string'
+              ? comment.subreddit
+              : 'unknown',
+          url: typeof comment.url === 'string' ? comment.url : '',
+          upvotes: typeof comment.upvotes === 'number' ? comment.upvotes : 0,
+          createdAt: safeCreatedAt,
+          parentId:
+            typeof comment.parentId === 'string' ? comment.parentId : undefined,
+          sourceType: 'comment' as const,
+        };
+      })
+      .filter((comment) => comment.id.length > 0);
+
+    const metadata = response.metadata;
+    const searchTimestamp =
+      metadata.searchTimestamp instanceof Date
+        ? metadata.searchTimestamp
+        : new Date(metadata.searchTimestamp);
+    const normalizedTimestamp = Number.isNaN(searchTimestamp.getTime())
+      ? new Date()
+      : searchTimestamp;
+
+    const collectedSorts = Array.isArray(metadata.collectedSorts)
+      ? metadata.collectedSorts.filter((value): value is KeywordSearchSort =>
+          this.isValidSort(value),
+        )
+      : [];
+
+    const normalizedMetadata: KeywordSearchResponse['metadata'] = {
+      ...metadata,
+      searchOptions: { ...(metadata.searchOptions ?? {}) },
+      searchTimestamp: normalizedTimestamp,
+      totalPosts: posts.length,
+      totalComments: comments.length,
+      totalItems: posts.length + comments.length,
+      collectedSorts,
+    };
+
+    const performance: KeywordSearchResponse['performance'] = {
+      searchDuration:
+        typeof response.performance.searchDuration === 'number'
+          ? response.performance.searchDuration
+          : 0,
+      apiCallsUsed:
+        typeof response.performance.apiCallsUsed === 'number'
+          ? response.performance.apiCallsUsed
+          : 0,
+      rateLimitStatus: this.cloneRateLimitStatus(
+        response.performance.rateLimitStatus,
+      ),
+    };
+
+    const attribution = response.attribution ?? {
+      postUrls: [],
+      commentUrls: [],
+    };
+    const normalizedPostUrls = Array.isArray(attribution.postUrls)
+      ? attribution.postUrls.filter(
+          (url): url is string => typeof url === 'string',
+        )
+      : [];
+    const normalizedCommentUrls = Array.isArray(attribution.commentUrls)
+      ? attribution.commentUrls.filter(
+          (url): url is string => typeof url === 'string',
+        )
+      : [];
+
+    return {
+      posts,
+      comments,
+      metadata: normalizedMetadata,
+      performance,
+      attribution: {
+        postUrls: normalizedPostUrls,
+        commentUrls: normalizedCommentUrls,
+      },
+    };
+  }
+
+  private cloneRateLimitStatus(
+    status: RateLimitResponse | null | undefined,
+  ): RateLimitResponse {
+    if (status) {
+      const resetTime =
+        status.resetTime instanceof Date
+          ? status.resetTime
+          : new Date(status.resetTime);
+
+      return {
+        allowed: Boolean(status.allowed),
+        retryAfter:
+          typeof status.retryAfter === 'number' ? status.retryAfter : undefined,
+        currentUsage:
+          typeof status.currentUsage === 'number' ? status.currentUsage : 0,
+        limit: typeof status.limit === 'number' ? status.limit : 0,
+        resetTime: Number.isNaN(resetTime.getTime()) ? new Date() : resetTime,
+      };
+    }
+
+    return {
+      allowed: false,
+      currentUsage: 0,
+      limit: 0,
+      resetTime: new Date(),
+    };
+  }
+
   private finalizeAggregatedResults(
     aggregate: Map<string, AggregatedKeywordEntity>,
     defaultSorts: KeywordSearchSort[] = ['relevance'],
@@ -380,13 +557,12 @@ export class KeywordSearchOrchestratorService
         (entry) => entry.data,
       );
       const collectedSorts = Array.from(accumulator.collectedSorts);
-      const primarySort =
-        collectedSorts[0] ?? defaultSorts[0] ?? 'relevance';
+      const primarySort = collectedSorts[0] ?? defaultSorts[0] ?? 'relevance';
 
       totalPosts += posts.length;
       totalComments += comments.length;
 
-      const metadata = {
+      const metadata: KeywordSearchResponse['metadata'] = {
         ...accumulator.baseMetadata,
         searchOptions: {
           ...(accumulator.baseMetadata.searchOptions ?? {}),
@@ -398,10 +574,13 @@ export class KeywordSearchOrchestratorService
         collectedSorts,
       };
 
-      const performance = {
+      const rateLimitStatus: RateLimitResponse = this.cloneRateLimitStatus(
+        accumulator.lastRateLimitStatus,
+      );
+      const performance: KeywordSearchResponse['performance'] = {
         searchDuration: accumulator.totalSearchDuration,
         apiCallsUsed: accumulator.totalApiCalls,
-        rateLimitStatus: accumulator.lastRateLimitStatus,
+        rateLimitStatus,
       };
 
       const attribution = {
@@ -484,7 +663,7 @@ export class KeywordSearchOrchestratorService
     });
 
     const jobGroupId = `${subreddit}-keyword-${Date.now()}`;
-    const enqueuePromises: Promise<any>[] = [];
+    const enqueuePromises: Array<Promise<Job<BatchJob>>> = [];
     batches.forEach((ids, idx) => {
       const job: BatchJob = {
         batchId: `${jobGroupId}-${idx + 1}`,
@@ -553,8 +732,27 @@ export class KeywordSearchOrchestratorService
         );
 
         // Route through unified processing pipeline per PRD 5.1.2
-        const processingResult =
-          await this.unifiedProcessing.processUnifiedBatch(processingData);
+        const adapter = this.unifiedProcessing;
+        if (!adapter) {
+          this.logger.warn('Unified processing adapter not configured', {
+            correlationId,
+            entityName,
+            subreddit: searchResult.metadata.subreddit,
+          });
+
+          results.processingResults[entityName] = {
+            success: false,
+            error: 'Unified processing adapter not configured',
+            processingTime: 0,
+            entitiesProcessed: 0,
+            connectionsCreated: 0,
+          };
+
+          continue;
+        }
+
+        const processingResult: ProcessingResult =
+          await adapter.processUnifiedBatch(processingData);
 
         results.processingResults[entityName] = {
           success: true,
@@ -562,8 +760,7 @@ export class KeywordSearchOrchestratorService
             processingResult.entityResolution?.entitiesProcessed || 0,
           connectionsCreated:
             processingResult.databaseOperations?.connectionsCreated || 0,
-          processingTime:
-            processingResult.performance?.totalProcessingTime || 0,
+          processingTime: processingResult.processingTimeMs,
         };
 
         results.metadata.processedEntities++;
@@ -625,13 +822,13 @@ export class KeywordSearchOrchestratorService
   private convertSearchResultToProcessingFormat(
     entityName: string,
     searchResult: KeywordSearchResponse,
-  ): any {
+  ): UnifiedProcessingPayload {
     // Convert Reddit posts and comments to format expected by unified processing service
     // This matches the format used by other data collection services
     const posts = searchResult.posts.map((post) => ({
       id: post.id,
       title: post.title,
-      selftext: post.content,
+      selftext: post.content ?? '',
       author: post.author,
       created_utc: Math.floor(post.createdAt.getTime() / 1000),
       ups: post.upvotes,
@@ -647,7 +844,7 @@ export class KeywordSearchOrchestratorService
       author: comment.author,
       created_utc: Math.floor(comment.createdAt.getTime() / 1000),
       ups: comment.upvotes,
-      parent_id: comment.parentId,
+      parent_id: comment.parentId ?? undefined,
       permalink: comment.url.replace('https://reddit.com', ''),
     }));
 
@@ -683,7 +880,7 @@ export class KeywordSearchOrchestratorService
 
     try {
       // Check scheduler for due searches
-      const dueSchedules = await this.keywordScheduler.checkDueSearches();
+      const dueSchedules = this.keywordScheduler.checkDueSearches();
 
       if (dueSchedules.length === 0) {
         this.logger.debug('No keyword searches are currently due', {
@@ -756,10 +953,9 @@ export class KeywordSearchOrchestratorService
   /**
    * Get keyword search execution metrics
    */
-  async getKeywordSearchMetrics(): Promise<KeywordSearchMetrics> {
+  getKeywordSearchMetrics(): KeywordSearchMetrics {
     try {
       const schedules = this.keywordScheduler.getAllSchedules();
-      const now = new Date();
 
       const metrics: KeywordSearchMetrics = {
         totalSchedules: schedules.length,
@@ -782,18 +978,15 @@ export class KeywordSearchOrchestratorService
             ? schedules.reduce((sum, s) => sum + s.entities.length, 0) /
               schedules.length
             : 0,
-        schedulesBySubreddit: schedules.reduce(
-          (acc, s) => {
-            acc[s.subreddit] = {
-              status: s.status,
-              nextRun: s.nextRun,
-              lastRun: s.lastRun,
-              entityCount: s.entities.length,
-            };
-            return acc;
-          },
-          {} as Record<string, any>,
-        ),
+        schedulesBySubreddit: schedules.reduce((acc, s) => {
+          acc[s.subreddit] = {
+            status: s.status,
+            nextRun: s.nextRun,
+            lastRun: s.lastRun,
+            entityCount: s.entities.length,
+          };
+          return acc;
+        }, {} as Record<string, any>),
       };
 
       return metrics;
@@ -844,7 +1037,10 @@ export class KeywordSearchOrchestratorService
     }
   }
 
-  private async captureQueueMetrics(queue: Queue, name: string): Promise<void> {
+  private async captureQueueMetrics<T>(
+    queue: Queue<T>,
+    name: string,
+  ): Promise<void> {
     const counts: JobCounts = await queue.getJobCounts();
     this.keywordSearchMetrics.recordQueueSnapshot(name, counts);
   }
@@ -902,19 +1098,55 @@ export class KeywordSearchOrchestratorService
   }
 }
 
+interface UnifiedProcessingAdapter {
+  processUnifiedBatch(
+    payload: UnifiedProcessingPayload,
+  ): Promise<ProcessingResult>;
+}
+
+interface UnifiedProcessingPayload {
+  source: 'keyword_search';
+  subreddit: string;
+  searchEntity: string;
+  timestamp: Date;
+  posts: Array<{
+    id: string;
+    title: string;
+    selftext: string;
+    author: string;
+    created_utc: number;
+    ups: number;
+    num_comments: number;
+    subreddit: string;
+    permalink: string;
+    url: string;
+  }>;
+  comments: Array<{
+    id: string;
+    body: string;
+    author: string;
+    created_utc: number;
+    ups: number;
+    parent_id?: string;
+    permalink: string;
+  }>;
+  metadata: {
+    searchQuery: string;
+    totalItems: number;
+    searchOptions: KeywordSearchResponse['metadata']['searchOptions'];
+  };
+}
+
 interface AggregatedKeywordEntity {
   baseMetadata: KeywordSearchResponse['metadata'];
   posts: Map<string, { data: RedditPost; sorts: Set<KeywordSearchSort> }>;
-  comments: Map<
-    string,
-    { data: RedditComment; sorts: Set<KeywordSearchSort> }
-  >;
+  comments: Map<string, { data: RedditComment; sorts: Set<KeywordSearchSort> }>;
   collectedSorts: Set<KeywordSearchSort>;
   postUrls: Set<string>;
   commentUrls: Set<string>;
   totalSearchDuration: number;
   totalApiCalls: number;
-  lastRateLimitStatus: any;
+  lastRateLimitStatus: RateLimitResponse;
 }
 
 interface SortSummary {

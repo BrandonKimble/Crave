@@ -1,6 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Connection, Entity, CategoryAggregate } from '@prisma/client';
+import { Connection, Entity, CategoryAggregate, Prisma } from '@prisma/client';
 import { LoggerService } from '../../../shared';
 import { ConnectionRepository } from '../../../repositories/connection.repository';
 import { EntityRepository } from '../../../repositories/entity.repository';
@@ -247,8 +247,9 @@ export class QualityScoreService implements IQualityScoreService {
       }
 
       // Calculate quality components
-      const qualityComponents =
-        await this.calculateRestaurantQualityComponents(connections);
+      const qualityComponents = await this.calculateRestaurantQualityComponents(
+        connections,
+      );
 
       // Fetch restaurant context for general praise component
       const restaurantEntity = await this.getRestaurantEntity(restaurantId);
@@ -489,8 +490,9 @@ export class QualityScoreService implements IQualityScoreService {
 
       for (const restaurantId of updatedRestaurants) {
         try {
-          const restaurantScore =
-            await this.calculateRestaurantQualityScore(restaurantId);
+          const restaurantScore = await this.calculateRestaurantQualityScore(
+            restaurantId,
+          );
 
           await this.entityRepository.update(restaurantId, {
             restaurantQualityScore: restaurantScore,
@@ -717,31 +719,22 @@ export class QualityScoreService implements IQualityScoreService {
     lastUpdatedAt: Date | null;
     elapsedMs: number;
   } {
-    const decayedMentionScoreRaw = (connection as any).decayedMentionScore;
+    const decayedMentionScoreRaw = this.toNumberOrNull(
+      connection.decayedMentionScore,
+    );
     const baseMentionScore =
-      decayedMentionScoreRaw !== null && decayedMentionScoreRaw !== undefined
-        ? Number(decayedMentionScoreRaw)
-        : Math.max(0, connection.mentionCount);
+      decayedMentionScoreRaw ?? Math.max(0, connection.mentionCount);
 
-    const decayedUpvoteScoreRaw = (connection as any).decayedUpvoteScore;
+    const decayedUpvoteScoreRaw = this.toNumberOrNull(
+      connection.decayedUpvoteScore,
+    );
     const baseUpvoteScore =
-      decayedUpvoteScoreRaw !== null && decayedUpvoteScoreRaw !== undefined
-        ? Number(decayedUpvoteScoreRaw)
-        : Math.max(0, connection.totalUpvotes);
+      decayedUpvoteScoreRaw ?? Math.max(0, connection.totalUpvotes);
 
-    const lastUpdatedRaw =
-      (connection as any).decayedScoresUpdatedAt ||
-      connection.lastMentionedAt ||
-      connection.createdAt ||
-      null;
-
-    let lastUpdatedAt: Date | null = null;
-    if (lastUpdatedRaw instanceof Date) {
-      lastUpdatedAt = lastUpdatedRaw;
-    } else if (lastUpdatedRaw) {
-      const parsed = new Date(lastUpdatedRaw);
-      lastUpdatedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
+    const lastUpdatedAt =
+      this.toDate(connection.decayedScoresUpdatedAt) ??
+      this.toDate(connection.lastMentionedAt) ??
+      this.toDate(connection.createdAt);
 
     const now = new Date();
     const elapsedMs =
@@ -763,6 +756,38 @@ export class QualityScoreService implements IQualityScoreService {
     const upvoteScore = baseUpvoteScore * Math.exp(-elapsedMs / upvoteDecayMs);
 
     return { mentionScore, upvoteScore, lastUpdatedAt, elapsedMs };
+  }
+
+  private toNumberOrNull(
+    value: Prisma.Decimal | number | string | null | undefined,
+  ): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (value instanceof Prisma.Decimal) {
+      return value.toNumber();
+    }
+
+    if (typeof value === 'number') {
+      return Number.isNaN(value) ? null : value;
+    }
+
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  private toDate(value: Date | string | null | undefined): Date | null {
+    if (!value) {
+      return null;
+    }
+
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
   private getCurrentDecayedAggregateMetrics(signal: CategoryAggregate): {

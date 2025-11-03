@@ -8,7 +8,7 @@ async function bootstrap(): Promise<void> {
   const placeId = process.argv[2];
   if (!placeId) {
     console.error(
-      'Usage: pnpm ts-node -r tsconfig-paths/register scripts/probe-google-place.ts <placeId>',
+      'Usage: yarn ts-node -r tsconfig-paths/register scripts/probe-google-place.ts <placeId>',
     );
     process.exit(1);
   }

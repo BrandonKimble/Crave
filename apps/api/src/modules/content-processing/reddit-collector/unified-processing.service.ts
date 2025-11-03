@@ -15,7 +15,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma, EntityType } from '@prisma/client';
+import { Prisma, Connection, $Enums } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
@@ -26,15 +26,15 @@ import {
   ProcessingPerformanceMetrics,
   CreatedEntitySummary,
 } from './unified-processing.types';
-import { LLMOutputStructure } from '../../external-integrations/llm/llm.types';
+import {
+  LLMOutputStructure,
+  LLMMention,
+} from '../../external-integrations/llm/llm.types';
 import {
   EntityResolutionInput,
   BatchResolutionResult,
 } from '../entity-resolver/entity-resolution.types';
-import {
-  UnifiedProcessingException,
-  UnifiedProcessingExceptionFactory,
-} from './unified-processing.exceptions';
+import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptions';
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -58,6 +58,84 @@ type CategoryReplayKey = {
 };
 
 type SourceLedgerRecord = Prisma.SourceCreateManyInput;
+
+type SourceBreakdown = {
+  pushshift_archive: number;
+  reddit_api_chronological: number;
+  reddit_api_keyword_search: number;
+  reddit_api_on_demand: number;
+};
+
+interface SourceMetadata {
+  batchId: string;
+  collectionType?: string;
+  subreddit?: string;
+  searchEntity?: string;
+  sourceBreakdown: SourceBreakdown;
+  temporalRange?: {
+    earliest: number;
+    latest: number;
+  };
+}
+
+type ProcessableMention = LLMMention;
+type PrismaTransaction = Prisma.TransactionClient;
+
+interface ConnectionScoreSnapshot {
+  decayedMentionScore?: Prisma.Decimal | number | null;
+  decayedUpvoteScore?: Prisma.Decimal | number | null;
+  decayedScoresUpdatedAt?: Date | string | null;
+  lastMentionedAt?: Date | string | null;
+  createdAt?: Date | string | null;
+}
+
+interface RestaurantMetadataUpdateOperation {
+  type: 'restaurant_metadata_update';
+  restaurantEntityId: string;
+  attributeIds: string[];
+}
+
+interface FoodAttributeProcessingOperation {
+  type: 'food_attribute_processing';
+  restaurantEntityId: string;
+  foodEntityId: string;
+  upvotes: number;
+  isRecent: boolean;
+  mentionCreatedAt: Date;
+  activityLevel: $Enums.ActivityLevel;
+  foodAttributeIds: string[];
+  foodAttributeNames: string[];
+  hasFoodAttrs: boolean;
+  allowCreate: boolean;
+  categoryEntityIds: string[];
+}
+
+interface AttributeBoostOperation {
+  type: 'attribute_boost';
+  restaurantEntityId: string;
+  upvotes: number;
+  isRecent: boolean;
+  mentionCreatedAt: Date;
+  activityLevel: $Enums.ActivityLevel;
+  foodAttributeIds: string[];
+  foodAttributeNames: string[];
+  categoryEntityIds: string[];
+}
+
+interface GeneralPraiseBoostOperation {
+  type: 'general_praise_boost';
+}
+
+type ConnectionOperation =
+  | RestaurantMetadataUpdateOperation
+  | FoodAttributeProcessingOperation
+  | AttributeBoostOperation
+  | GeneralPraiseBoostOperation
+  | Prisma.ConnectionUpsertArgs;
+
+type ComponentResult = {
+  operations?: Array<{ connectionId?: string | null }>;
+};
 
 const createEmptySummary = (): OperationSummary => ({
   affectedConnectionIds: [],
@@ -219,7 +297,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return { values: filteredValues, surfaces: filteredSurfaces };
   }
 
-  private sanitizeMention(mention: any): void {
+  private sanitizeMention(mention: ProcessableMention): void {
     mention.food = this.sanitizeFoodTerm(mention.food);
 
     const categoryResult = this.filterMentionArray(
@@ -257,23 +335,8 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   async processLLMOutput(
     llmOutputData: {
-      mentions: any[];
-      sourceMetadata: {
-        batchId: string;
-        collectionType?: string;
-        subreddit?: string;
-        searchEntity?: string;
-        sourceBreakdown: {
-          pushshift_archive: number;
-          reddit_api_chronological: number;
-          reddit_api_keyword_search: number;
-          reddit_api_on_demand: number;
-        };
-        temporalRange?: {
-          earliest: number;
-          latest: number;
-        };
-      };
+      mentions: ProcessableMention[];
+      sourceMetadata: SourceMetadata;
     },
     config?: Partial<UnifiedProcessingConfig>,
   ): Promise<{
@@ -395,6 +458,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     } catch (error) {
       const processingTime = Date.now() - startTime;
       this.updatePerformanceMetrics(processingTime, false);
+      const errorCause = error instanceof Error ? error : undefined;
 
       this.logger.error('LLM output processing failed', {
         batchId,
@@ -406,7 +470,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
       throw UnifiedProcessingExceptionFactory.createProcessingFailed(
         `LLM output processing failed for batch ${batchId}`,
-        error,
+        errorCause,
         {
           batchId,
           mentionsCount: filteredMentions.length,
@@ -423,7 +487,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   private async processMentionsInBatches(
     llmOutput: LLMOutputStructure,
-    sourceMetadata: any,
+    sourceMetadata: SourceMetadata,
     parentBatchId: string,
     config: UnifiedProcessingConfig,
     ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
@@ -572,7 +636,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   private async processSingleBatch(
     llmOutput: LLMOutputStructure,
-    sourceMetadata: any,
+    sourceMetadata: SourceMetadata,
     batchId: string,
     processingConfig: UnifiedProcessingConfig,
     ledgerRecordsBySourceId: Map<string, SourceLedgerRecord>,
@@ -761,10 +825,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             const categorySurface = categorySurfaces[i] || category;
 
             entities.push({
-              normalizedName: this.normalizeEntityName(
-                category,
-                'food',
-              ),
+              normalizedName: this.normalizeEntityName(category, 'food'),
               originalText: categorySurface || category,
               entityType: 'food' as const,
               tempId: categoryTempId,
@@ -801,7 +862,10 @@ export class UnifiedProcessingService implements OnModuleInit {
               seenFoodAttrIds.add(attributeTempId);
               const attrSurface = foodAttributeSurfaces[i] || attr;
               entities.push({
-                normalizedName: this.normalizeEntityName(attr, 'food_attribute'),
+                normalizedName: this.normalizeEntityName(
+                  attr,
+                  'food_attribute',
+                ),
                 originalText: attrSurface || attr,
                 entityType: 'food_attribute' as const,
                 tempId: attributeTempId,
@@ -853,9 +917,10 @@ export class UnifiedProcessingService implements OnModuleInit {
       this.performanceMetrics.entitiesResolved += entities.length;
       return entities;
     } catch (error) {
+      const errorCause = error instanceof Error ? error : undefined;
       throw UnifiedProcessingExceptionFactory.createEntityExtractionFailed(
         'Failed to extract entities from LLM output',
-        error,
+        errorCause,
         { mentionsCount: llmOutput.mentions.length },
       );
     }
@@ -865,8 +930,19 @@ export class UnifiedProcessingService implements OnModuleInit {
     if (value === undefined || value === null) {
       return '';
     }
-    return value
-      .toString()
+
+    const stringValue =
+      typeof value === 'string'
+        ? value
+        : typeof value === 'number' || typeof value === 'boolean'
+        ? String(value)
+        : '';
+
+    if (!stringValue) {
+      return '';
+    }
+
+    return stringValue
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
@@ -879,7 +955,7 @@ export class UnifiedProcessingService implements OnModuleInit {
 
   private createFallbackId(
     scope: string,
-    mention?: any,
+    mention?: ProcessableMention,
     subject?: string,
   ): string {
     const parts = [
@@ -893,7 +969,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return `${scope}-${this.stableHash(parts.join('|'))}`;
   }
 
-  private buildRestaurantTempId(mention: any): string {
+  private buildRestaurantTempId(mention: ProcessableMention): string {
     const normalized = this.normalizeForId(mention?.restaurant);
     if (normalized) {
       return `restaurant::${normalized}`;
@@ -901,7 +977,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return this.createFallbackId('restaurant', mention);
   }
 
-  private buildFoodEntityTempId(mention: any): string {
+  private buildFoodEntityTempId(mention: ProcessableMention): string {
     const restaurantTempId =
       typeof mention?.__restaurantTempId === 'string' &&
       mention.__restaurantTempId
@@ -923,7 +999,10 @@ export class UnifiedProcessingService implements OnModuleInit {
     return `food-category::${this.stableHash(categoryName ?? '')}`;
   }
 
-  private normalizeEntityName(value: string | undefined, type: EntityType | string): string {
+  private normalizeEntityName(
+    value: string | undefined,
+    type?: string,
+  ): string {
     const sanitized = (value ?? '').trim().replace(/\s+/g, ' ');
     if (!sanitized.length) {
       return sanitized;
@@ -957,7 +1036,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     return `${prefix}::${this.stableHash(attributeName ?? '')}`;
   }
 
-  private getRestaurantEntityLookupKey(mention: any): string | null {
+  private getRestaurantEntityLookupKey(
+    mention: ProcessableMention,
+  ): string | null {
     if (
       mention &&
       typeof mention.__restaurantTempId === 'string' &&
@@ -975,7 +1056,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     return null;
   }
 
-  private getFoodEntityLookupKey(mention: any): string | null {
+  private getFoodEntityLookupKey(mention: ProcessableMention): string | null {
     if (
       mention &&
       typeof mention.__foodEntityTempId === 'string' &&
@@ -1001,7 +1082,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   private async performConsolidatedProcessing(
     llmOutput: LLMOutputStructure,
     resolutionResult: BatchResolutionResult,
-    sourceMetadata: any,
+    sourceMetadata: SourceMetadata,
     batchId: string,
     sourceLedgerRecords: SourceLedgerRecord[],
   ): Promise<{
@@ -1021,8 +1102,6 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.4: Single consolidated processing phase - all operations in-memory
       // Build temp_id to entity_id mapping from resolution result
       const tempIdToEntityIdMap = new Map<string, string>();
-      const entityDetails =
-        resolutionResult.entityDetails || new Map<string, any>();
       const newEntityTempGroups = new Map<string, Set<string>>();
       const resolutionByTempId = new Map<
         string,
@@ -1141,11 +1220,22 @@ export class UnifiedProcessingService implements OnModuleInit {
           const aggregatedAliases = Array.from(aggregatedAliasSet);
           resolution.validatedAliases = aggregatedAliases;
 
+          if (!resolution.entityType) {
+            this.logger.warn('Skipping new entity without type', {
+              batchId,
+              tempId: resolution.tempId,
+              originalText: resolution.originalInput.originalText,
+            });
+            continue;
+          }
+
+          const entityType = resolution.entityType;
+
           const canonicalName = this.normalizeEntityName(
             resolution.normalizedName ||
               resolution.originalInput.originalText ||
               '',
-            resolution.entityType!,
+            entityType,
           );
           resolution.normalizedName = canonicalName;
 
@@ -1153,7 +1243,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             where: {
               name_type: {
                 name: canonicalName,
-                type: resolution.entityType!,
+                type: entityType,
               },
             },
             select: {
@@ -1175,7 +1265,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 batchId,
                 tempId: resolution.tempId,
                 entityId,
-                entityType: resolution.entityType,
+                entityType,
                 normalizedName: resolution.normalizedName,
                 originalText: resolution.originalInput.originalText,
                 canonicalName: existing.name,
@@ -1213,7 +1303,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 batchId,
                 tempId: resolution.tempId,
                 entityId,
-                entityType: resolution.entityType,
+                entityType,
                 name: resolution.normalizedName,
               },
             );
@@ -1233,15 +1323,15 @@ export class UnifiedProcessingService implements OnModuleInit {
                 resolution.normalizedName ||
                   resolution.originalInput.originalText ||
                   '',
-                resolution.entityType!,
+                entityType,
               ),
-              type: resolution.entityType!,
+              type: entityType,
               aliases: Array.from(new Set(aliasSet.filter(Boolean))),
               createdAt: new Date(),
               lastUpdated: new Date(),
             };
 
-            if (resolution.entityType === 'restaurant') {
+            if (entityType === 'restaurant') {
               entityData.restaurantAttributes = { set: [] };
               entityData.restaurantQualityScore = 0;
               entityData.generalPraiseUpvotes = 0;
@@ -1261,14 +1351,14 @@ export class UnifiedProcessingService implements OnModuleInit {
               batchId,
               tempId: resolution.tempId,
               entityId,
-              entityType: resolution.entityType,
+              entityType,
               name: resolution.normalizedName,
             });
 
             createdEntitySummaries.push({
               entityId,
-              name: resolution.normalizedName!,
-              entityType: resolution.entityType!,
+              name: resolution.normalizedName,
+              entityType,
               primaryTempId: resolution.tempId,
               tempIds: tempGroup,
             });
@@ -1283,7 +1373,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 batchId,
                 tempId: resolution.tempId,
                 normalizedName: resolution.normalizedName,
-                entityType: resolution.entityType,
+                entityType,
               },
             );
           }
@@ -1318,17 +1408,15 @@ export class UnifiedProcessingService implements OnModuleInit {
           }
         }
 
-        const connectionOperations: any[] = [];
+        const connectionOperations: ConnectionOperation[] = [];
         const affectedConnectionIds: string[] = [];
         const restaurantPraiseUpvotes = new Map<string, number>();
 
         for (const mention of llmOutput.mentions) {
-          const mentionResult = await this.processConsolidatedMention(
+          const mentionResult = this.processConsolidatedMention(
             mention,
             tempIdToEntityIdMap,
-            entityDetails,
             batchId,
-            sourceMetadata?.subreddit,
           );
 
           connectionOperations.push(...mentionResult.connectionOperations);
@@ -1370,29 +1458,39 @@ export class UnifiedProcessingService implements OnModuleInit {
         };
 
         for (const connectionOp of connectionOperations) {
-          if (connectionOp.type === 'attribute_boost') {
-            const summary = await this.handleAttributeBoost(
-              tx,
-              connectionOp,
-              batchId,
-            );
-            mergeSummaries(summary);
-          } else if (connectionOp.type === 'food_attribute_processing') {
-            const summary = await this.handleFoodAttributeProcessing(
-              tx,
-              connectionOp,
-              batchId,
-            );
-            mergeSummaries(summary);
-          } else if (connectionOp.type === 'restaurant_metadata_update') {
-            await this.handleRestaurantMetadataUpdate(
-              tx,
-              connectionOp,
-              batchId,
-            );
-            // General praise no longer boosts connections; handled via entity-level upvote aggregation only
-          } else if (connectionOp.type === 'general_praise_boost') {
-            // No-op by design. General praise is persisted on the restaurant entity only.
+          if ('type' in connectionOp) {
+            switch (connectionOp.type) {
+              case 'attribute_boost': {
+                const summary = await this.handleAttributeBoost(
+                  tx,
+                  connectionOp,
+                  batchId,
+                );
+                mergeSummaries(summary);
+                break;
+              }
+              case 'food_attribute_processing': {
+                const summary = await this.handleFoodAttributeProcessing(
+                  tx,
+                  connectionOp,
+                  batchId,
+                );
+                mergeSummaries(summary);
+                break;
+              }
+              case 'restaurant_metadata_update': {
+                await this.handleRestaurantMetadataUpdate(
+                  tx,
+                  connectionOp,
+                  batchId,
+                );
+                break;
+              }
+              case 'general_praise_boost': {
+                // No-op by design. General praise is persisted on the restaurant entity only.
+                break;
+              }
+            }
           } else {
             // Regular upsert operation
             await tx.connection.upsert(connectionOp);
@@ -1490,9 +1588,11 @@ export class UnifiedProcessingService implements OnModuleInit {
         error: error instanceof Error ? error.message : String(error),
       });
 
+      const errorCause = error instanceof Error ? error : undefined;
+
       throw UnifiedProcessingExceptionFactory.createDatabaseIntegrationFailed(
         `Database operations failed for batch ${batchId}`,
-        error,
+        errorCause,
         { batchId, mentionsCount: llmOutput.mentions.length },
       );
     }
@@ -1505,7 +1605,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   private async performConsolidatedProcessingWithRetry(
     llmOutput: LLMOutputStructure,
     resolutionResult: BatchResolutionResult,
-    sourceMetadata: any,
+    sourceMetadata: SourceMetadata,
     batchId: string,
     maxRetries: number,
     sourceLedgerRecords: SourceLedgerRecord[],
@@ -1609,21 +1709,19 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Process individual mention with consolidated component logic (PRD 6.5)
    * Implements all 6 component processors inline within single processing phase
    */
-  private async processConsolidatedMention(
-    mention: any,
+  private processConsolidatedMention(
+    mention: ProcessableMention,
     tempIdToEntityIdMap: Map<string, string>,
-    entityDetails: Map<string, any>,
     batchId: string,
-    subredditFallback?: string,
-  ): Promise<{
-    connectionOperations: any[];
+  ): {
+    connectionOperations: ConnectionOperation[];
     categoryBoostEvents: CategoryBoostEvent[];
     categoryReplayKeys: CategoryReplayKey[];
     affectedConnectionIds: string[];
     generalPraiseUpvotes: number;
     restaurantEntityId: string;
-  }> {
-    const connectionOperations: any[] = [];
+  } {
+    const connectionOperations: ConnectionOperation[] = [];
     const categoryBoostEvents: CategoryBoostEvent[] = [];
     const categoryReplayKeys: CategoryReplayKey[] = [];
     const affectedConnectionIds: string[] = [];
@@ -1721,7 +1819,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const isRecent = daysSince <= 30; // Within last 30 days
 
       // PRD 6.4.2: Activity level calculation
-      let activityLevel = 'normal';
+      let activityLevel: $Enums.ActivityLevel = 'normal';
       if (daysSince <= 7) {
         activityLevel = 'active'; // 🕐 active if within 7 days
       }
@@ -1751,11 +1849,12 @@ export class UnifiedProcessingService implements OnModuleInit {
 
         // Add restaurant attributes to metadata operation
         if (restaurantAttributeIds.length > 0) {
-          connectionOperations.push({
+          const metadataOperation: RestaurantMetadataUpdateOperation = {
             type: 'restaurant_metadata_update',
             restaurantEntityId: restaurantEntityId,
             attributeIds: restaurantAttributeIds,
-          });
+          };
+          connectionOperations.push(metadataOperation);
 
           this.logger.debug(
             'Restaurant attributes queued for metadata update',
@@ -1788,15 +1887,15 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.5.3: Complex attribute logic for specific foods
       // PRD 6.5.2: Always create connections for specific foods
       if (foodEntityLookupKey && mention.is_menu_item === true) {
-      const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
-      if (foodEntityId) {
-        // Always use food_attribute_processing for consistent handling
+        const foodEntityId = tempIdToEntityIdMap.get(foodEntityLookupKey);
+        if (foodEntityId) {
+          // Always use food_attribute_processing for consistent handling
           // PRD 6.5.1 Component 4: Clear distinction between boost existing vs create new
           // The handler will check for existing connections and decide whether to boost or create
-          const foodAttributeOperation = {
+          const foodAttributeOperation: FoodAttributeProcessingOperation = {
             type: 'food_attribute_processing',
             restaurantEntityId,
-            foodEntityId: foodEntityId,
+            foodEntityId,
             upvotes: mention.source_ups,
             isRecent,
             mentionCreatedAt,
@@ -1812,7 +1911,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           this.logger.debug('Component 4: Specific food processing queued', {
             batchId,
             restaurantEntityId,
-          foodEntityId: foodEntityId,
+            foodEntityId: foodEntityId,
             hasFoodAttrs,
           });
         }
@@ -1850,7 +1949,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       // PRD 6.5.1: Find existing food connections with ANY overlapping attributes
       // PRD 6.5.2: Never create attribute connections - only boost existing ones
       if (!foodEntityLookupKey && hasFoodAttrs) {
-        const attributeBoostOperation = {
+        const attributeBoostOperation: AttributeBoostOperation = {
           type: 'attribute_boost',
           restaurantEntityId,
           upvotes: mention.source_ups,
@@ -1899,8 +1998,8 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Returns array of affected connection IDs for top mentions update
    */
   private async handleAttributeBoost(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: AttributeBoostOperation,
     batchId: string,
   ): Promise<OperationSummary> {
     const summary = createEmptySummary();
@@ -1949,6 +2048,11 @@ export class UnifiedProcessingService implements OnModuleInit {
           1,
           operation.upvotes ?? 0,
         );
+        const existingLastMentionedAt = connection.lastMentionedAt;
+        const shouldUpdateLastMentionedAt =
+          !existingLastMentionedAt ||
+          operation.mentionCreatedAt.getTime() >
+            existingLastMentionedAt.getTime();
 
         await tx.connection.update({
           where: { connectionId: connection.connectionId },
@@ -1956,10 +2060,9 @@ export class UnifiedProcessingService implements OnModuleInit {
             mentionCount: { increment: 1 },
             totalUpvotes: { increment: operation.upvotes ?? 0 },
             recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-            lastMentionedAt:
-              operation.mentionCreatedAt > connection.lastMentionedAt
-                ? operation.mentionCreatedAt
-                : undefined,
+            lastMentionedAt: shouldUpdateLastMentionedAt
+              ? operation.mentionCreatedAt
+              : undefined,
             activityLevel: operation.activityLevel,
             lastUpdated: new Date(),
             decayedMentionScore: decayUpdate.decayedMentionScore,
@@ -2003,8 +2106,8 @@ export class UnifiedProcessingService implements OnModuleInit {
    * PRD 6.5.2: Always creates connections for specific foods (is_menu_item = true)
    */
   private async handleFoodAttributeProcessing(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: FoodAttributeProcessingOperation,
     batchId: string,
   ): Promise<OperationSummary> {
     const summary = createEmptySummary();
@@ -2040,8 +2143,8 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Find or create restaurant→food connection and boost it
    */
   private async handleSimpleFoodConnection(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: FoodAttributeProcessingOperation,
     batchId: string,
   ): Promise<OperationSummary> {
     const summary = createEmptySummary();
@@ -2073,8 +2176,8 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async handleFoodAttributes(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: FoodAttributeProcessingOperation,
     batchId: string,
   ): Promise<OperationSummary> {
     const summary = createEmptySummary();
@@ -2122,9 +2225,9 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async boostConnection(
-    tx: any,
-    connection: any,
-    operation: any,
+    tx: PrismaTransaction,
+    connection: Connection,
+    operation: FoodAttributeProcessingOperation,
     options: { additionalAttributeIds?: string[] } = {},
   ): Promise<void> {
     const decayUpdate = this.computeDecayedScoreUpdate(
@@ -2134,14 +2237,18 @@ export class UnifiedProcessingService implements OnModuleInit {
       operation.upvotes ?? 0,
     );
 
-    const updateData: any = {
+    const currentLastMentionedAt = connection.lastMentionedAt;
+    const shouldUpdateLastMentionedAt =
+      !currentLastMentionedAt ||
+      operation.mentionCreatedAt.getTime() > currentLastMentionedAt.getTime();
+
+    const updateData: Prisma.ConnectionUpdateInput = {
       mentionCount: { increment: 1 },
       totalUpvotes: { increment: operation.upvotes ?? 0 },
       recentMentionCount: { increment: operation.isRecent ? 1 : 0 },
-      lastMentionedAt:
-        operation.mentionCreatedAt > connection.lastMentionedAt
-          ? operation.mentionCreatedAt
-          : undefined,
+      lastMentionedAt: shouldUpdateLastMentionedAt
+        ? operation.mentionCreatedAt
+        : undefined,
       activityLevel: operation.activityLevel,
       lastUpdated: new Date(),
       decayedMentionScore: decayUpdate.decayedMentionScore,
@@ -2178,7 +2285,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private computeDecayedScoreUpdate(
-    connection: any,
+    connection: ConnectionScoreSnapshot,
     mentionCreatedAtInput: Date | string | undefined,
     mentionWeight = 1,
     upvoteIncrement = 0,
@@ -2240,8 +2347,8 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async createNewFoodConnection(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: FoodAttributeProcessingOperation,
     attributes: string[],
   ): Promise<OperationSummary> {
     const summary = createEmptySummary();
@@ -2290,7 +2397,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async recordCategoryBoostEvents(
-    tx: any,
+    tx: PrismaTransaction,
     events: CategoryBoostEvent[],
     batchId: string,
   ): Promise<void> {
@@ -2326,7 +2433,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async applyCategoryAggregateUpdate(
-    tx: any,
+    tx: PrismaTransaction,
     event: CategoryBoostEvent,
   ): Promise<void> {
     const mentionCreatedAt =
@@ -2476,7 +2583,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           let recentIncrement = 0;
           let latestAppliedAt: Date | null = null;
           let latestProcessedAt: Date | null = null;
-          let activityLevel: string | null = null;
+          let activityLevel: $Enums.ActivityLevel | null = null;
           const attributeMerge = new Set(connection.foodAttributes || []);
 
           let decayedMentionScore = Number(connection.decayedMentionScore ?? 0);
@@ -2572,7 +2679,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             : 0;
           const latestProcessedTime = latestProcessedAt.getTime();
 
-          const updateData: any = {
+          const updateData: Prisma.ConnectionUpdateInput = {
             lastUpdated: new Date(),
             boostLastAppliedAt:
               latestProcessedTime > previousBoostApplied
@@ -2638,8 +2745,8 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Stores restaurant_attribute entity IDs directly on the restaurant entity
    */
   private async handleRestaurantMetadataUpdate(
-    tx: any,
-    operation: any,
+    tx: PrismaTransaction,
+    operation: RestaurantMetadataUpdateOperation,
     batchId: string,
   ): Promise<void> {
     try {
@@ -2742,7 +2849,7 @@ export class UnifiedProcessingService implements OnModuleInit {
    * Used to trigger quality score updates for affected connections
    */
   private extractConnectionIdsFromComponentResults(
-    componentResults: any[],
+    componentResults: ComponentResult[],
   ): string[] {
     const connectionIds = new Set<string>();
 
@@ -2821,11 +2928,11 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private async prepareSourceLedgerRecords(
-    mentions: any[],
+    mentions: ProcessableMention[],
     pipeline: string,
     defaultSubreddit?: string,
   ): Promise<{
-    filteredMentions: any[];
+    filteredMentions: ProcessableMention[];
     newRecordsBySourceId: Map<string, SourceLedgerRecord>;
     skippedCount: number;
   }> {
@@ -2841,9 +2948,8 @@ export class UnifiedProcessingService implements OnModuleInit {
     const sourceIdSet = new Set<string>();
 
     for (const mention of mentions) {
-      const sourceId =
-        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
-      if (sourceId) {
+      const sourceId = mention.source_id.trim();
+      if (sourceId.length > 0) {
         sourceIdSet.add(sourceId);
       }
     }
@@ -2868,14 +2974,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     const existingSet = new Set(
       existingRecords.map((record) => record.sourceId),
     );
-    const filteredMentions: any[] = [];
+    const filteredMentions: ProcessableMention[] = [];
     const newRecordsBySourceId = new Map<string, SourceLedgerRecord>();
     const seenInBatch = new Set<string>();
     let skippedCount = 0;
 
     for (const mention of mentions) {
-      const rawSourceId =
-        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
+      const rawSourceId = mention.source_id.trim();
 
       if (!rawSourceId) {
         filteredMentions.push(mention);
@@ -2890,14 +2995,20 @@ export class UnifiedProcessingService implements OnModuleInit {
       seenInBatch.add(rawSourceId);
       filteredMentions.push(mention);
 
+      let mentionSubreddit = '';
+      if (typeof mention.subreddit === 'string') {
+        mentionSubreddit = mention.subreddit.trim();
+      }
+
+      const subredditValue =
+        mentionSubreddit.length > 0
+          ? mentionSubreddit
+          : defaultSubreddit ?? null;
+
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,
         sourceId: rawSourceId,
-        subreddit:
-          typeof mention?.subreddit === 'string' &&
-          mention.subreddit.trim().length > 0
-            ? mention.subreddit.trim()
-            : (defaultSubreddit ?? null),
+        subreddit: subredditValue,
         processedAt: new Date(),
       });
     }
@@ -2910,7 +3021,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   }
 
   private collectLedgerRecordsForMentions(
-    mentions: any[],
+    mentions: ProcessableMention[],
     ledgerMap: Map<string, SourceLedgerRecord>,
   ): SourceLedgerRecord[] {
     if (!ledgerMap || ledgerMap.size === 0 || !Array.isArray(mentions)) {
@@ -2921,8 +3032,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     const seen = new Set<string>();
 
     for (const mention of mentions) {
-      const sourceId =
-        typeof mention?.source_id === 'string' ? mention.source_id.trim() : '';
+      const sourceId = mention.source_id.trim();
       if (!sourceId || seen.has(sourceId)) {
         continue;
       }

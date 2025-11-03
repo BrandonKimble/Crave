@@ -6,8 +6,14 @@ import { RedditService } from '../../external-integrations/reddit/reddit.service
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking.service';
-import { LLMConcurrentProcessingService } from '../../external-integrations/llm/llm-concurrent-processing.service';
-import { LLMOutputStructure } from '../../external-integrations/llm/llm.types';
+import {
+  LLMConcurrentProcessingService,
+  ProcessingResult as LlmProcessingResult,
+} from '../../external-integrations/llm/llm-concurrent-processing.service';
+import {
+  LLMInputStructure,
+  LLMOutputStructure,
+} from '../../external-integrations/llm/llm.types';
 
 /**
  * Job data for LLM processing queue
@@ -128,7 +134,8 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         },
       );
 
-      if (!rawResult.rawResponse || rawResult.rawResponse.length === 0) {
+      const { rawResponse } = rawResult;
+      if (!Array.isArray(rawResponse) || rawResponse.length === 0) {
         throw new Error(
           `No content retrieved for post ${postId} in subreddit ${subreddit}`,
         );
@@ -136,7 +143,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
 
       // Transform to LLM format
       const { post, comments } = filterAndTransformToLLM(
-        rawResult.rawResponse,
+        rawResponse,
         rawResult.attribution.postUrl,
       );
 
@@ -147,7 +154,7 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
       }
 
       post.comments = comments;
-      const llmInput = { posts: [post] };
+      const llmInput: LLMInputStructure = { posts: [post] };
 
       this.logger.info('Content retrieved successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -202,25 +209,25 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         chunkCount: chunkData.chunks.length,
       });
 
-      job.progress(25); // Update job progress
+      await job.progress(25); // Update job progress
 
       const processingResult = await this.concurrentService.processConcurrent(
         chunkData,
         this.llmService,
       );
 
-      job.progress(90); // Update job progress
+      await job.progress(90); // Update job progress
 
       // Step 4: Validate and log results
       this.validateCompleteResults(processingResult, postId);
 
       const totalDuration = (Date.now() - startTime) / 1000;
       const totalMentions = processingResult.results.reduce(
-        (sum, r) => sum + r.mentions.length,
+        (sum, result) => sum + result.mentions.length,
         0,
       );
 
-      job.progress(100); // Complete
+      await job.progress(100); // Complete
 
       this.logger.info('LLM processing job completed successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -275,8 +282,11 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
    * @param result - Processing result to validate
    * @param postId - Post ID for error context
    */
-  private validateCompleteResults(result: any, postId: string): void {
-    if (!result || !result.results || !Array.isArray(result.results)) {
+  private validateCompleteResults(
+    result: LlmProcessingResult,
+    postId: string,
+  ): void {
+    if (!Array.isArray(result.results)) {
       throw new Error(`Invalid processing result structure for post ${postId}`);
     }
 
@@ -288,10 +298,8 @@ export class LLMProcessingQueueProcessor implements OnModuleInit {
         failureCount: result.failures?.length || 0,
       });
     }
-
-    // Validate that we have some meaningful output
     const totalMentions = result.results.reduce(
-      (sum: number, r: any) => sum + (r.mentions?.length || 0),
+      (sum, llmResult) => sum + llmResult.mentions.length,
       0,
     );
     if (totalMentions === 0 && result.metrics.chunksProcessed > 0) {

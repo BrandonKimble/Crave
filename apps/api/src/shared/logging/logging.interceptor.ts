@@ -3,7 +3,6 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
-  Inject,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { FastifyRequest, FastifyReply } from 'fastify';

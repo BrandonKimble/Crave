@@ -9,7 +9,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { Queue, Job } from 'bull';
 import {
   IsString,
   IsOptional,
@@ -74,6 +74,12 @@ export interface JobStatusResponse {
   estimatedCompletion?: number;
 }
 
+type LlmProcessingJob = Job<LLMProcessingJobData> & {
+  returnvalue?: LLMProcessingJobResult;
+  failedReason?: string | null;
+  progress(): number | Record<string, unknown>;
+};
+
 /**
  * Content Processing Controller
  *
@@ -87,7 +93,8 @@ export class ContentProcessingController implements OnModuleInit {
   private logger!: LoggerService;
 
   constructor(
-    @InjectQueue('llm-processing-queue') private readonly llmQueue: Queue,
+    @InjectQueue('llm-processing-queue')
+    private readonly llmQueue: Queue<LLMProcessingJobData>,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -136,7 +143,10 @@ export class ContentProcessingController implements OnModuleInit {
       };
 
       // Simple FIFO queue processing
-      const job = await this.llmQueue.add('process-content', jobData);
+      const job = (await this.llmQueue.add(
+        'process-content',
+        jobData,
+      )) as LlmProcessingJob;
       const position = await this.llmQueue.getWaitingCount();
 
       // Estimate wait time based on queue position and average processing time
@@ -187,14 +197,18 @@ export class ContentProcessingController implements OnModuleInit {
     });
 
     try {
-      const job = await this.llmQueue.getJob(jobId);
+      const job = (await this.llmQueue.getJob(
+        jobId,
+      )) as LlmProcessingJob | null;
 
       if (!job) {
         throw new NotFoundException(`Job with ID ${jobId} not found`);
       }
 
       const state = await job.getState();
-      const progress = job.progress();
+      const progressValue: unknown = job.progress();
+      const progress =
+        typeof progressValue === 'number' ? progressValue : undefined;
 
       // Map Bull job states to our response types
       let status:
@@ -226,8 +240,8 @@ export class ContentProcessingController implements OnModuleInit {
       };
 
       // Add specific data based on job state
-      if (state === 'completed' && job.returnvalue) {
-        response.result = job.returnvalue as LLMProcessingJobResult;
+      if (state === 'completed' && this.isProcessingResult(job.returnvalue)) {
+        response.result = job.returnvalue;
 
         this.logger.info('Job completed successfully', {
           correlationId,
@@ -249,7 +263,8 @@ export class ContentProcessingController implements OnModuleInit {
       }
 
       if (state === 'waiting') {
-        const waitingJobs = await this.llmQueue.getWaiting();
+        const waitingJobs =
+          (await this.llmQueue.getWaiting()) as LlmProcessingJob[];
 
         // Find position of this job in the queue
         const position = waitingJobs.findIndex((j) => j.id === job.id) + 1;
@@ -351,6 +366,20 @@ export class ContentProcessingController implements OnModuleInit {
 
       throw error;
     }
+  }
+
+  private isProcessingResult(value: unknown): value is LLMProcessingJobResult {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const candidate = value as Partial<LLMProcessingJobResult>;
+    return (
+      typeof candidate.postId === 'string' &&
+      typeof candidate.subreddit === 'string' &&
+      typeof candidate.totalMentions === 'number' &&
+      typeof candidate.processingDuration === 'number'
+    );
   }
 
   /**

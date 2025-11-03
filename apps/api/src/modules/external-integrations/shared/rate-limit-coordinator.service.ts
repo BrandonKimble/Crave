@@ -1,10 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  LoggerService,
-  WinstonLoggerService,
-  CorrelationUtils,
-} from '../../../shared';
+import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   ExternalApiService,
   RateLimitConfig,

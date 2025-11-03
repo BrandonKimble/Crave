@@ -1,6 +1,7 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Entity, EntityType, Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntityRepository } from '../../repositories/entity.repository';
@@ -198,6 +199,13 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
+    let latestDetails: GooglePlaceDetailsResponse | null = null;
+    let latestMatchMetadata: MatchMetadata | null = null;
+    let combinedUpdateData: Prisma.EntityUpdateInput | null = null;
+    let combinedUpdatedFields: string[] = [];
+    let targetNameForUpdate: string | null = null;
+    let enrichmentScore = 0;
+
     if (entity.googlePlaceId && !options.force) {
       return {
         entityId: entity.entityId,
@@ -272,6 +280,7 @@ export class RestaurantLocationEnrichmentService {
         best.prediction.place_id,
         { includeRaw: true },
       );
+      latestDetails = details;
 
       if (!details.result) {
         const noMatchMetadata = this.buildNoMatchMetadata(
@@ -290,6 +299,8 @@ export class RestaurantLocationEnrichmentService {
         };
       }
 
+      enrichmentScore = best.score;
+
       const matchMetadata: MatchMetadata = {
         query: searchContext.query ?? '',
         score: best.score,
@@ -300,6 +311,7 @@ export class RestaurantLocationEnrichmentService {
         predictionsConsidered: ranked.length,
         timestamp: new Date().toISOString(),
       };
+      latestMatchMetadata = matchMetadata;
 
       const { updateData, updatedFields } = this.buildEntityUpdate(
         entity,
@@ -309,13 +321,14 @@ export class RestaurantLocationEnrichmentService {
       );
       const { updateData: aliasUpdate, updatedFields: aliasFields } =
         this.computeNameAndAliasUpdate(entity, details.result.name);
-      const combinedUpdateData = this.mergeEntityUpdates(
-        updateData,
-        aliasUpdate,
-      );
-      const combinedUpdatedFields = this.mergeUpdatedFieldLists(
+      combinedUpdateData = this.mergeEntityUpdates(updateData, aliasUpdate);
+      combinedUpdatedFields = this.mergeUpdatedFieldLists(
         updatedFields,
         aliasFields,
+      );
+      targetNameForUpdate = this.extractTargetNameFromUpdate(
+        combinedUpdateData,
+        details.result.name,
       );
 
       if (options.dryRun) {
@@ -348,6 +361,15 @@ export class RestaurantLocationEnrichmentService {
             score: best.score,
           });
         }
+        if (this.isEntityNameConflict(error) && combinedUpdateData) {
+          return this.handleEntityNameConflict({
+            entity,
+            canonicalName: targetNameForUpdate,
+            details,
+            matchMetadata,
+            score: best.score,
+          });
+        }
         throw error;
       }
 
@@ -370,6 +392,13 @@ export class RestaurantLocationEnrichmentService {
       this.logger.error('Failed to enrich restaurant', {
         entityId: entity.entityId,
         error: message,
+      });
+
+      await this.recordEnrichmentFailure(entity, message, {
+        placeId: latestDetails?.result?.place_id,
+        targetName: targetNameForUpdate ?? undefined,
+        score: enrichmentScore || undefined,
+        matchMetadata: latestMatchMetadata ?? undefined,
       });
 
       return {
@@ -534,7 +563,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private isGooglePlaceConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError)) {
+    if (!(error instanceof PrismaClientKnownRequestError)) {
       return false;
     }
     if (error.code !== 'P2002') {
@@ -545,6 +574,25 @@ export class RestaurantLocationEnrichmentService {
       : [];
     return target.some((value) =>
       value.toLowerCase().includes('google_place_id'),
+    );
+  }
+
+  private isEntityNameConflict(error: unknown): boolean {
+    if (!(error instanceof PrismaClientKnownRequestError)) {
+      return false;
+    }
+    if (error.code !== 'P2002') {
+      return false;
+    }
+    const metaTarget = error.meta?.target;
+    const targets: string[] = Array.isArray(metaTarget)
+      ? (metaTarget as string[])
+      : typeof metaTarget === 'string'
+      ? [metaTarget]
+      : [];
+    const normalizedTargets = targets.map((value) => value.toLowerCase());
+    return (
+      normalizedTargets.includes('name') && normalizedTargets.includes('type')
     );
   }
 
@@ -628,6 +676,91 @@ export class RestaurantLocationEnrichmentService {
       mergedInto: updatedCanonical.entityId,
       status: 'updated',
       placeId,
+      score,
+      updatedFields: mergedFields,
+    };
+  }
+
+  private async handleEntityNameConflict(params: {
+    entity: RestaurantEntity;
+    canonicalName: string | null;
+    details: GooglePlaceDetailsResponse;
+    matchMetadata: MatchMetadata;
+    score: number;
+  }): Promise<RestaurantEnrichmentResult> {
+    const { entity, canonicalName, details, matchMetadata, score } = params;
+
+    const resolvedName = canonicalName?.trim().length
+      ? canonicalName.trim()
+      : null;
+
+    if (!details.result) {
+      throw new Error('Google Place details missing for name conflict');
+    }
+
+    const canonical = await this.prisma.entity.findFirst({
+      where: {
+        type: EntityType.restaurant,
+        name: resolvedName ?? details.result.name ?? undefined,
+      },
+    });
+
+    if (!canonical) {
+      this.logger.error(
+        'Name conflict encountered but canonical restaurant missing',
+        {
+          entityId: entity.entityId,
+          targetName: resolvedName ?? details.result.name,
+        },
+      );
+      throw new Error('Canonical restaurant not found for name conflict');
+    }
+
+    const canonicalUpdate = this.buildEntityUpdate(
+      canonical,
+      details.result,
+      details.metadata?.fields ?? [],
+      matchMetadata,
+    );
+    const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
+      canonical,
+      details.result?.name,
+      this.collectAliasCandidates(entity),
+    );
+    const mergeAugmentations = this.buildCanonicalMergeAugmentations(
+      canonical,
+      entity,
+    );
+
+    const mergedUpdate = this.mergeEntityUpdates(
+      canonicalUpdate.updateData,
+      canonicalAliasUpdate.updateData,
+      mergeAugmentations.updateData,
+    );
+    const mergedFields = this.mergeUpdatedFieldLists(
+      canonicalUpdate.updatedFields,
+      canonicalAliasUpdate.updatedFields,
+      mergeAugmentations.updatedFields,
+    );
+
+    const updatedCanonical =
+      await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+        canonical,
+        duplicate: entity,
+        canonicalUpdate: mergedUpdate,
+      });
+
+    this.logger.info('Merged restaurant into existing canonical by name', {
+      duplicateId: entity.entityId,
+      canonicalId: updatedCanonical.entityId,
+      targetName: resolvedName ?? details.result.name,
+    });
+
+    return {
+      entityId: entity.entityId,
+      mergedInto: updatedCanonical.entityId,
+      status: 'updated',
+      placeId: details.result?.place_id,
       score,
       updatedFields: mergedFields,
     };
@@ -743,8 +876,8 @@ export class RestaurantLocationEnrichmentService {
       typeof configured === 'number'
         ? configured
         : typeof configured === 'string'
-          ? Number(configured)
-          : NaN;
+        ? Number(configured)
+        : NaN;
 
     if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
       return Number(numeric.toFixed(3));
@@ -1190,6 +1323,74 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
+  private async recordEnrichmentFailure(
+    entity: RestaurantEntity,
+    reason: string,
+    extras: Record<string, unknown> = {},
+  ): Promise<void> {
+    try {
+      const emptyHours: NormalizedOpeningHours = {};
+      const mergedMetadata = this.mergeRestaurantMetadata(
+        entity.restaurantMetadata,
+        {},
+        emptyHours,
+        {
+          status: 'error',
+          reason,
+          attemptedAt: new Date().toISOString(),
+          ...Object.fromEntries(
+            Object.entries(extras).filter(([, value]) => value !== undefined),
+          ),
+        },
+      );
+
+      await this.prisma.entity.update({
+        where: { entityId: entity.entityId },
+        data: {
+          restaurantMetadata: mergedMetadata,
+          lastUpdated: new Date(),
+        },
+      });
+
+      entity.restaurantMetadata = mergedMetadata as unknown as Prisma.JsonValue;
+    } catch (error) {
+      this.logger.warn('Failed to record enrichment failure metadata', {
+        entityId: entity.entityId,
+        reason,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
+  }
+
+  private extractTargetNameFromUpdate(
+    update: Prisma.EntityUpdateInput,
+    fallback?: string | null,
+  ): string | null {
+    const updateValue = update.name;
+
+    if (typeof updateValue === 'string' && updateValue.trim().length) {
+      return updateValue.trim();
+    }
+
+    if (
+      updateValue &&
+      typeof updateValue === 'object' &&
+      typeof updateValue.set === 'string' &&
+      updateValue.set.trim().length
+    ) {
+      return updateValue.set.trim();
+    }
+
+    if (typeof fallback === 'string' && fallback.trim().length) {
+      return fallback.trim();
+    }
+
+    return null;
+  }
+
   private normalizeGoogleOpeningHours(
     details: GooglePlaceDetailsResult,
   ): NormalizedOpeningHours {
@@ -1251,8 +1452,8 @@ export class RestaurantLocationEnrichmentService {
       typeof sourceRecord.time_zone === 'string'
         ? sourceRecord.time_zone
         : typeof sourceRecord.timezone === 'string'
-          ? sourceRecord.timezone
-          : undefined;
+        ? sourceRecord.timezone
+        : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;
@@ -1424,18 +1625,11 @@ export class RestaurantLocationEnrichmentService {
       .padStart(2, '0')}`;
   }
 
-  private toRecord(
-    value:
-      | Prisma.JsonValue
-      | Record<string, unknown>
-      | null
-      | undefined
-      | unknown,
-  ): Record<string, unknown> {
+  private toRecord(value: unknown): Record<string, unknown> {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return {};
     }
-    return { ...value };
+    return { ...(value as Record<string, unknown>) };
   }
 
   private extractAddressParts(details: GooglePlaceDetailsResult): {

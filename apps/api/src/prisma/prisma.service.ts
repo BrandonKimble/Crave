@@ -40,37 +40,23 @@ export class PrismaService
   ) {
     const dbConfig = configService?.get<DatabaseConfig>('database');
 
+    const logConfig: Prisma.LogDefinition[] = dbConfig?.performance?.logging
+      ?.enabled
+      ? [
+          { emit: 'event', level: 'query' },
+          { emit: 'event', level: 'error' },
+          { emit: 'event', level: 'warn' },
+          { emit: 'event', level: 'info' },
+        ]
+      : [{ emit: 'event', level: 'error' }];
+
     super({
       datasources: {
         db: {
           url: dbConfig?.url || process.env.DATABASE_URL || '',
         },
       },
-      log: dbConfig?.performance?.logging?.enabled
-        ? [
-            {
-              emit: 'event',
-              level: 'query',
-            },
-            {
-              emit: 'event',
-              level: 'error',
-            },
-            {
-              emit: 'event',
-              level: 'warn',
-            },
-            {
-              emit: 'event',
-              level: 'info',
-            },
-          ]
-        : [
-            {
-              emit: 'event',
-              level: 'error',
-            },
-          ],
+      log: logConfig,
     });
 
     this.queryDurationHistogram = this.metricsService.getHistogram({
@@ -91,8 +77,6 @@ export class PrismaService
       help: 'Number of Prisma ORM operations currently executing',
       labelNames: ['model', 'action'],
     });
-
-    this.setupMetricsMiddleware();
 
     // Configuration and logger initialization moved to onModuleInit
     // this.setupEventListeners(); // Moved to onModuleInit
@@ -119,6 +103,7 @@ export class PrismaService
         query: { retry: { attempts: 3, delay: 1000, factor: 2.0 } },
       } as DatabaseConfig); // Safe after validation
 
+    this.setupMetricsMiddleware();
     this.setupEventListeners();
 
     // Connect to database with retry logic
@@ -196,8 +181,12 @@ export class PrismaService
    * Setup event listeners for logging and monitoring
    */
   private setupEventListeners(): void {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (this.$on as any)('query', (event: { duration: number; query: string }) => {
+    const subscribe = this.$on.bind(this) as (
+      eventType: string,
+      callback: (event: Prisma.QueryEvent | Prisma.LogEvent) => void,
+    ) => PrismaClient;
+
+    subscribe('query', (event: Prisma.QueryEvent) => {
       this.connectionMetrics.totalQueries++;
 
       if (this.dbConfig.performance.logging.enabled) {
@@ -219,53 +208,58 @@ export class PrismaService
       }
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (this.$on as any)(
-      'error',
-      (event: { message: string; target?: string; timestamp?: Date }) => {
-        this.connectionMetrics.connectionErrors++;
-        if (this.isHandledGooglePlaceConflict(event?.message)) {
-          this.logger.warn('Database conflict on google_place_id', {
-            message: event.message,
-            target: event.target,
-          });
-        } else {
-          this.logger.error('Database error:', event);
-        }
-      },
-    );
+    subscribe('error', (event: Prisma.LogEvent) => {
+      this.connectionMetrics.connectionErrors++;
+      if (this.isHandledGooglePlaceConflict(event.message)) {
+        this.logger.warn('Database conflict on google_place_id', {
+          message: event.message,
+          target: event.target,
+        });
+      } else {
+        this.logger.error('Database error:', event);
+      }
+    });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (this.$on as any)('warn', (event: { message: string }) => {
+    subscribe('warn', (event: Prisma.LogEvent) => {
       this.logger.warn('Database warning:', { message: event.message });
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
-    (this.$on as any)('info', (event: { message: string }) => {
+    subscribe('info', (event: Prisma.LogEvent) => {
       this.logger.info('Database info', { message: event.message });
     });
   }
 
   private setupMetricsMiddleware(): void {
-    this.$use(async (params: Prisma.MiddlewareParams, next) => {
-      const model = params?.model ?? 'raw';
-      const action = params?.action ?? 'unknown';
-      const labels = { model, action };
-      const start = Date.now();
-
-      this.inFlightGauge.inc(labels, 1);
-      try {
-        const result = await next(params);
-        const durationSeconds = (Date.now() - start) / 1000;
-        this.queryDurationHistogram.observe(labels, durationSeconds);
-        return result;
-      } catch (error) {
-        this.queryErrorCounter.inc(labels, 1);
-        throw error;
-      } finally {
-        this.inFlightGauge.dec(labels, 1);
-      }
+    const metricsExtension = Prisma.defineExtension({
+      query: {
+        $allModels: {
+          $allOperations: async ({ model, operation, args, query }) => {
+            const labels: Record<string, string> = {
+              model: typeof model === 'string' ? model : 'raw',
+              action: typeof operation === 'string' ? operation : 'unknown',
+            };
+            const start = Date.now();
+            this.inFlightGauge.inc(labels, 1);
+            try {
+              const result = await query(args);
+              const durationSeconds = (Date.now() - start) / 1000;
+              this.queryDurationHistogram.observe(labels, durationSeconds);
+              return result;
+            } catch (error) {
+              this.queryErrorCounter.inc(labels, 1);
+              throw error;
+            } finally {
+              this.inFlightGauge.dec(labels, 1);
+            }
+          },
+        },
+      },
     });
+
+    const extendedClient = this.$extends(metricsExtension);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    Object.setPrototypeOf(this, Object.getPrototypeOf(extendedClient));
+    Object.assign(this, extendedClient);
   }
 
   /**

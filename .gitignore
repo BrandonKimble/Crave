@@ -53,3 +53,13 @@ web-build/
 
 # macOS
 .DS_Store
+
+# TypeScript compilation outputs
+*.tsbuildinfo
+*.d.ts
+*.js.map
+# Compiled JS in source directories (keep root config files)
+apps/*/src/**/*.js
+apps/*/test/**/*.js
+apps/*/scripts/**/*.js
+packages/*/src/**/*.js

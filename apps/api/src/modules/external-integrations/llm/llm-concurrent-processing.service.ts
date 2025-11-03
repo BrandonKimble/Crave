@@ -13,7 +13,7 @@ import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 export interface ChunkProcessingResult {
   success: boolean;
   result?: LLMOutputStructure;
-  error?: any;
+  error?: unknown;
   chunkId: string;
   commentCount: number;
   duration: number;
@@ -85,14 +85,7 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
    * Optimize concurrency settings based on actual performance testing
    * Note: Rate limiting optimization is handled by SmartLLMProcessor
    */
-  async optimizeConfiguration(
-    sampleChunks: ChunkResult,
-    llmService: LLMService,
-    options: {
-      maxWorkers?: number;
-      testDurationLimitMs?: number;
-    } = {},
-  ): Promise<void> {
+  optimizeConfiguration(): void {
     this.logger.debug(
       'Concurrency optimization delegated to SmartLLMProcessor',
       {
@@ -287,7 +280,9 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
     });
 
     const totalDuration = (Date.now() - startTime) / 1000;
-    const successfulResults = successful.map((r) => r.result!);
+    const successfulResults = successful
+      .map((r) => r.result)
+      .filter((r): r is LLMOutputStructure => r !== undefined);
     let topCommentsCount = 0;
     successful.forEach((r) => {
       const meta = metadata.find((m) => m.chunkId === r.chunkId);

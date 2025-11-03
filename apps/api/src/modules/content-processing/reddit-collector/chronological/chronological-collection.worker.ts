@@ -52,6 +52,16 @@ export interface ChronologicalCollectionJobResult {
   };
 }
 
+interface RedditListingChildData {
+  id?: string;
+  name?: string;
+  created_utc?: number;
+}
+
+interface RedditListingChild {
+  data?: RedditListingChildData;
+}
+
 // Helper function to chunk arrays
 function chunk<T>(array: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -90,7 +100,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(RedditService) private readonly redditService: RedditService,
     @InjectQueue('chronological-batch-processing-queue')
-    private readonly batchQueue: Queue,
+    private readonly batchQueue: Queue<BatchJob>,
   ) {}
 
   onModuleInit(): void {
@@ -138,13 +148,17 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
             : Date.now() - (sr.safeIntervalDays || 1) * 24 * 60 * 60 * 1000;
           effectiveLastProcessed = Math.floor(fallbackMs / 1000);
           await job.log(
-            `Using computed lastProcessed fallback: ${new Date(fallbackMs).toISOString()}`,
+            `Using computed lastProcessed fallback: ${new Date(
+              fallbackMs,
+            ).toISOString()}`,
           );
         } else {
           const defaultFallbackMs = Date.now() - 24 * 60 * 60 * 1000; // 24h default
           effectiveLastProcessed = Math.floor(defaultFallbackMs / 1000);
           await job.log(
-            `Subreddit not found; using 24h fallback: ${new Date(defaultFallbackMs).toISOString()}`,
+            `Subreddit not found; using 24h fallback: ${new Date(
+              defaultFallbackMs,
+            ).toISOString()}`,
           );
         }
       }
@@ -154,10 +168,14 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const collectionStartTime = Math.floor(Date.now() / 1000); // Unix timestamp
 
       await job.log(
-        `Collecting posts from r/${subreddit} since ${new Date(effectiveLastProcessed * 1000).toISOString()}`,
+        `Collecting posts from r/${subreddit} since ${new Date(
+          effectiveLastProcessed * 1000,
+        ).toISOString()}`,
       );
       await job.log(
-        `Collection start time: ${new Date(collectionStartTime * 1000).toISOString()} (for next cycle)`,
+        `Collection start time: ${new Date(
+          collectionStartTime * 1000,
+        ).toISOString()} (for next cycle)`,
       );
 
       // ALWAYS request maximum posts (1000) regardless of what's in options
@@ -169,7 +187,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         1000, // Always request Reddit's maximum to never miss posts
       );
 
-      const allPosts = postsResult.data || [];
+      const allPosts = this.normalizeListingChildren(postsResult.data);
       const jobLimit =
         typeof options.limit === 'number' && options.limit > 0
           ? Math.floor(options.limit)
@@ -184,8 +202,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const effectiveLimit = manualLimitProvided
         ? jobLimit
         : envLimit !== null && envLimit >= 0
-          ? envLimit
-          : jobLimit;
+        ? envLimit
+        : jobLimit;
       const posts =
         typeof effectiveLimit === 'number' && effectiveLimit > 0
           ? allPosts.slice(0, effectiveLimit)
@@ -199,10 +217,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const injectId = injectIdRaw.replace(/^t3_/i, '').trim();
       // Build IDs list (Reddit API post.data.id is the base id without t3_)
       const ids: string[] = posts
-        .map((p: any) =>
-          typeof p?.id === 'string' ? p.id : String(p?.id || ''),
-        )
-        .filter((id: string) => !!id);
+        .map((post) => this.extractPostId(post))
+        .filter((id): id is string => typeof id === 'string' && id.length > 0);
       if (injectId) {
         // If already present, move to front; otherwise, prepend
         const existingIndex = ids.indexOf(injectId);
@@ -267,19 +283,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         };
 
         // Queue the batch job
-        const queuedJob = this.batchQueue.add(
-          'process-chronological-batch',
-          batchJob,
-          {
-            priority: 1,
-            attempts: 3,
-            backoff: {
-              type: 'exponential',
-              delay: 2000,
-            },
-            delay: index * 1000, // Stagger batch processing by 1 second intervals
-          },
-        );
+        const queuedJob = this.queueChronologicalBatch(batchJob, index);
 
         batchJobs.push(queuedJob);
       }
@@ -296,8 +300,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
 
       // Update last processed timestamp in database for async queue approach
       const timestamps = posts
-        .map((p: any) => p.created_utc || 0)
-        .filter((t: number) => t > 0);
+        .map((post) => this.extractCreatedUtc(post) ?? 0)
+        .filter((timestamp) => timestamp > 0);
       if (timestamps.length > 0) {
         latestTimestamp = Math.max(...timestamps);
 
@@ -403,6 +407,78 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         error: errorMessage,
       };
     }
+  }
+
+  private queueChronologicalBatch(
+    batchJob: BatchJob,
+    batchIndex: number,
+  ): Promise<Job<BatchJob>> {
+    return this.batchQueue.add('process-chronological-batch', batchJob, {
+      priority: 1,
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      delay: batchIndex * 1000,
+    });
+  }
+
+  private normalizeListingChildren(data: unknown): RedditListingChild[] {
+    if (!Array.isArray(data)) {
+      return [];
+    }
+
+    return data.filter((value): value is RedditListingChild =>
+      this.isListingChild(value),
+    );
+  }
+
+  private isListingChild(value: unknown): value is RedditListingChild {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const candidate = (value as { data?: unknown }).data;
+    if (typeof candidate !== 'object' || candidate === null) {
+      return false;
+    }
+
+    const { id, name, created_utc } = candidate as RedditListingChildData;
+    return (
+      typeof id === 'string' ||
+      typeof name === 'string' ||
+      typeof created_utc === 'number'
+    );
+  }
+
+  private extractPostId(post: RedditListingChild): string | null {
+    if (!post.data) {
+      return null;
+    }
+
+    if (typeof post.data.id === 'string' && post.data.id.trim().length > 0) {
+      return post.data.id.replace(/^t3_/i, '').trim();
+    }
+
+    if (
+      typeof post.data.name === 'string' &&
+      post.data.name.trim().length > 0
+    ) {
+      return post.data.name.replace(/^t3_/i, '').trim();
+    }
+
+    return null;
+  }
+
+  private extractCreatedUtc(post: RedditListingChild): number | null {
+    if (!post.data || typeof post.data.created_utc !== 'number') {
+      return null;
+    }
+
+    return Number.isFinite(post.data.created_utc)
+      ? post.data.created_utc
+      : null;
   }
 
   /**

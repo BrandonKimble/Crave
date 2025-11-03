@@ -113,18 +113,14 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
         1000, // Get max posts for better sampling
       );
 
-      const posts = result.data || [];
+      const { timestamps, totalCount } = this.normalizeChronologicalTimestamps(
+        result.data,
+      );
 
-      if (posts.length === 0) {
+      if (totalCount === 0) {
         // No posts found, use conservative default
         return this.createVolumeRecord(subreddit, 5, 0, sampleDays, 0, 0);
       }
-
-      // Calculate actual time span from oldest to newest post
-      const timestamps = posts
-        .map((p: any) => p.created_utc || 0)
-        .filter((t: number) => t > 0)
-        .sort((a: number, b: number) => a - b);
 
       if (timestamps.length < 2) {
         // Not enough data, use conservative estimate
@@ -133,10 +129,13 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
           10,
           0,
           sampleDays,
-          posts.length,
+          totalCount,
           0.1,
         );
       }
+
+      // Calculate actual time span from oldest to newest post
+      timestamps.sort((a, b) => a - b);
 
       const oldestTimestamp = timestamps[0];
       const newestTimestamp = timestamps[timestamps.length - 1];
@@ -146,14 +145,14 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
 
       // Calculate averages
       const avgPostsPerDay =
-        actualSpanDays > 0 ? posts.length / actualSpanDays : posts.length;
+        actualSpanDays > 0 ? totalCount / actualSpanDays : totalCount;
       const avgPostsPerHour =
-        actualSpanHours > 0 ? posts.length / actualSpanHours : 0;
+        actualSpanHours > 0 ? totalCount / actualSpanHours : 0;
 
       // Calculate confidence based on sample size and span
       const confidence = Math.min(
         1,
-        (posts.length / 100) * // More posts = higher confidence
+        (totalCount / 100) * // More posts = higher confidence
           (actualSpanDays / 7), // Longer span = higher confidence
       );
 
@@ -162,7 +161,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
         avgPostsPerDay,
         avgPostsPerHour,
         actualSpanDays,
-        posts.length,
+        totalCount,
         confidence,
       );
 
@@ -176,7 +175,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
         subreddit,
         avgPostsPerDay: volume.avgPostsPerDay,
         avgPostsPerHour: volume.avgPostsPerHour,
-        totalPosts: posts.length,
+        totalPosts: totalCount,
         spanDays: actualSpanDays,
         confidence: volume.confidence,
       });
@@ -299,6 +298,46 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * Normalize raw Reddit listing data into timestamp values.
+   */
+  private normalizeChronologicalTimestamps(data: unknown): {
+    timestamps: number[];
+    totalCount: number;
+  } {
+    if (!Array.isArray(data)) {
+      return { timestamps: [], totalCount: 0 };
+    }
+
+    const timestamps: number[] = [];
+    for (const entry of data) {
+      const createdUtc = this.extractCreatedUtc(entry);
+      if (createdUtc !== null) {
+        timestamps.push(createdUtc);
+      }
+    }
+
+    return { timestamps, totalCount: data.length };
+  }
+
+  private extractCreatedUtc(entry: unknown): number | null {
+    if (typeof entry !== 'object' || entry === null) {
+      return null;
+    }
+
+    const container = entry as { data?: { created_utc?: unknown } };
+    if (typeof container.data !== 'object' || container.data === null) {
+      return null;
+    }
+
+    const createdUtc = container.data.created_utc;
+    if (typeof createdUtc !== 'number' || !Number.isFinite(createdUtc)) {
+      return null;
+    }
+
+    return createdUtc;
   }
 
   /**

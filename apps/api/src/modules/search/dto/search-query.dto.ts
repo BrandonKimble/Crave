@@ -15,14 +15,17 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ActivityLevel, EntityType } from '@prisma/client';
-
-export enum EntityScope {
-  RESTAURANT = 'restaurant',
-  FOOD = 'food',
-  FOOD_ATTRIBUTE = 'food_attribute',
-  RESTAURANT_ATTRIBUTE = 'restaurant_attribute',
-}
+import { EntityType } from '@prisma/client';
+import type {
+  FilterClause as SharedFilterClause,
+  FoodResult as SharedFoodResult,
+  QueryFormat as SharedQueryFormat,
+  QueryPlan as SharedQueryPlan,
+  RestaurantFoodSnippet as SharedRestaurantFoodSnippet,
+  RestaurantResult as SharedRestaurantResult,
+  SearchResponse as SharedSearchResponse,
+  SearchResponseMetadata as SharedSearchResponseMetadata,
+} from '@crave-search/shared';
 
 export class QueryEntityDto {
   @IsString()
@@ -123,102 +126,28 @@ export class SearchQueryRequestDto {
   userLocation?: CoordinateDto;
 }
 
-export type QueryFormat = 'single_list' | 'dual_list';
+export const EntityScope = {
+  RESTAURANT: 'restaurant',
+  FOOD: 'food',
+  FOOD_ATTRIBUTE: 'food_attribute',
+  RESTAURANT_ATTRIBUTE: 'restaurant_attribute',
+} as const satisfies Record<string, SharedFilterClause['entityType']>;
 
-export type FilterStage = 'restaurant' | 'connection';
-
-export interface FilterClause {
-  scope: FilterStage;
-  description: string;
-  entityType: EntityScope;
-  entityIds: string[];
-  payload?: Record<string, unknown>;
-}
-
-export interface QueryPlan {
-  format: QueryFormat;
-  restaurantFilters: FilterClause[];
-  connectionFilters: FilterClause[];
-  ranking: {
-    foodOrder: string;
-    restaurantOrder: string;
-  };
-  diagnostics: {
-    missingEntities: EntityScope[];
-    notes: string[];
-  };
-}
+export type EntityScope = (typeof EntityScope)[keyof typeof EntityScope];
+export type QueryFormat = SharedQueryFormat;
+export type FilterClause = SharedFilterClause;
+export type QueryPlan = SharedQueryPlan;
 
 export interface SearchPlanResponseDto {
   plan: QueryPlan;
   sqlPreview?: string | null;
 }
 
-export interface FoodResultDto {
-  connectionId: string;
-  foodId: string;
-  foodName: string;
-  foodAliases: string[];
-  restaurantId: string;
-  restaurantName: string;
-  restaurantAliases: string[];
-  qualityScore: number;
-  activityLevel: ActivityLevel;
-  mentionCount: number;
-  totalUpvotes: number;
-  recentMentionCount: number;
-  lastMentionedAt?: string | null;
-  categories: string[];
-  foodAttributes: string[];
-}
-
-export interface RestaurantFoodSnippetDto {
-  connectionId: string;
-  foodId: string;
-  foodName: string;
-  qualityScore: number;
-  activityLevel: ActivityLevel;
-}
-
-export interface RestaurantResultDto {
-  restaurantId: string;
-  restaurantName: string;
-  restaurantAliases: string[];
-  contextualScore: number;
-  restaurantQualityScore?: number | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  address?: string | null;
-  topFood: RestaurantFoodSnippetDto[];
-}
-
-export interface SearchResponseDto {
-  format: QueryFormat;
-  plan: QueryPlan;
-  food: FoodResultDto[];
-  restaurants?: RestaurantResultDto[];
-  sqlPreview?: string | null;
-  metadata: {
-    totalFoodResults: number;
-    totalRestaurantResults: number;
-    queryExecutionTimeMs: number;
-    boundsApplied: boolean;
-    openNowApplied: boolean;
-    openNowSupportedRestaurants: number;
-    openNowUnsupportedRestaurants: number;
-    openNowFilteredOut: number;
-    page: number;
-    pageSize: number;
-    perRestaurantLimit: number;
-    coverageStatus?: 'full' | 'partial' | 'unresolved';
-    unresolvedEntities?: Array<{
-      type: EntityType;
-      terms: string[];
-    }>;
-    sourceQuery?: string;
-    analysisMetadata?: Record<string, unknown>;
-  };
-}
+export type FoodResultDto = SharedFoodResult;
+export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
+export type RestaurantResultDto = SharedRestaurantResult;
+export type SearchResponseMetadataDto = SharedSearchResponseMetadata;
+export type SearchResponseDto = SharedSearchResponse;
 
 export class NaturalSearchRequestDto {
   @IsString()

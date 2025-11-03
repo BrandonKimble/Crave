@@ -301,7 +301,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const effectiveMaxPosts =
       typeof options.maxPosts === 'number'
         ? options.maxPosts
-        : (envMaxPosts ?? null);
+        : envMaxPosts ?? null;
 
     const posts =
       typeof effectiveMaxPosts === 'number' && effectiveMaxPosts > 0
@@ -474,7 +474,9 @@ export class ArchiveIngestionService implements OnModuleInit {
       });
     } catch (error) {
       throw new Error(
-        `Cannot access file: ${filePath} - ${error instanceof Error ? error.message : String(error)}`,
+        `Cannot access file: ${filePath} - ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -561,7 +563,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const submissionResult =
       await this.streamProcessor.processZstdNdjsonFile<RedditSubmission>(
         submissionFilePath,
-        async (submission) => {
+        (submission) => {
           const postId = this.normalizePostId(submission.id);
           const existing = postsById.get(postId);
           const createdAt = this.toIsoTimestamp(submission.created_utc);
@@ -616,7 +618,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const commentResult =
       await this.streamProcessor.processZstdNdjsonFile<RedditComment>(
         commentFilePath,
-        async (comment) => {
+        (comment) => {
           if (!comment.body || comment.body === '[deleted]') {
             return;
           }
@@ -753,7 +755,9 @@ export class ArchiveIngestionService implements OnModuleInit {
 
     const fallback = createHash('sha1')
       .update(
-        `${comment.link_id}-${comment.parent_id}-${comment.created_utc}-${Math.random()}`,
+        `${comment.link_id}-${comment.parent_id}-${
+          comment.created_utc
+        }-${Math.random()}`,
       )
       .digest('hex');
     return `t1_${fallback.slice(0, 10)}`;

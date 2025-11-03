@@ -56,6 +56,8 @@ export interface LLMComment {
  */
 export interface LLMOutputStructure {
   mentions: LLMMention[];
+  usageMetadata?: LLMUsageMetadata | null;
+  rateLimitInfo?: RateLimitInfo;
 }
 
 /**
@@ -94,6 +96,8 @@ export interface LLMMention {
   source_ups: number;
   source_url: string;
   source_created_at: string;
+  subreddit?: string;
+  post_context?: string;
 
   // Internal processing fields populated server-side
   __restaurantTempId?: string | null;
@@ -154,8 +158,10 @@ export interface LLMApiResponse {
     candidatesTokenCount: number;
     totalTokenCount: number;
     thoughtsTokenCount?: number;
+    cachedContentTokenCount?: number;
   };
   modelVersion?: string;
+  promptFeedback?: unknown;
 }
 
 /**
@@ -211,4 +217,17 @@ export interface LLMSearchQueryAnalysis {
   foodAttributes: string[];
   restaurantAttributes: string[];
   metadata?: Record<string, unknown>;
+}
+
+export type LLMUsageMetadata = NonNullable<LLMApiResponse['usageMetadata']>;
+
+export interface RateLimitInfo {
+  waitTimeMs: number;
+  totalDurationMs: number;
+  processingTimeMs: number;
+  guaranteed: boolean;
+  workerId: string;
+  utilizationPercent: number;
+  rpmUtilization: number;
+  tpmUtilization: number;
 }

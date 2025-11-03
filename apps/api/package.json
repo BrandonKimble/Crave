@@ -6,6 +6,8 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "clean": "rm -rf dist tsconfig.app.tsbuildinfo tsconfig.build.tsbuildinfo",
+    "prebuild": "yarn clean",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",

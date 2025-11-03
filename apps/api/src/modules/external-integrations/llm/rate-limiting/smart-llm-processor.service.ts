@@ -2,8 +2,18 @@ import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { LLMService } from '../llm.service';
 import { LLMRateLimitError } from '../llm.exceptions';
-import { CentralizedRateLimiter } from './centralized-rate-limiter.service';
+import {
+  CentralizedRateLimiter,
+  ReservationMetrics,
+  ReservationResult,
+} from './centralized-rate-limiter.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
+import {
+  LLMInputStructure,
+  LLMOutputStructure,
+  LLMUsageMetadata,
+  RateLimitInfo,
+} from '../llm.types';
 
 /**
  * Smart LLM Processor
@@ -87,18 +97,16 @@ export class SmartLLMProcessor implements OnModuleInit {
    * It uses a reservation system to guarantee each request gets a slot.
    */
   async processContent(
-    input: any,
+    input: LLMInputStructure,
     llmService: LLMService,
     workerId?: string,
-  ): Promise<any> {
+  ): Promise<LLMOutputStructure> {
     const startTime = Date.now();
     const effectiveWorkerId =
       workerId || `worker-${Math.floor(Math.random() * 16)}`;
 
     while (true) {
-      let reservation: Awaited<
-        ReturnType<CentralizedRateLimiter['reserveRequestSlot']>
-      > | null = null;
+      let reservation: ReservationResult | null = null;
 
       try {
         // 1. Estimate tokens to reserve budget (prompt + expected completion)
@@ -109,6 +117,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           effectiveWorkerId,
           estimatedTokens,
         );
+        const reservationMetrics = this.getReservationMetrics(reservation);
 
         // 3. Wait until the reserved time if necessary
         if (reservation.waitMs > 0) {
@@ -124,7 +133,7 @@ export class SmartLLMProcessor implements OnModuleInit {
               reservationTime: new Date(
                 reservation.reservationTime,
               ).toISOString(),
-              currentLoad: reservation.metrics.utilizationPercent,
+              currentLoad: reservationMetrics?.utilizationPercent ?? 0,
               baseWaitMs: waitMs,
               jitterMs,
             },
@@ -217,16 +226,16 @@ export class SmartLLMProcessor implements OnModuleInit {
 
         // 7. Aggregate request diagnostics for pipeline summary
         try {
-          const rpmWindowCount = reservation.metrics?.currentRPM ?? 0;
-          const tpmWindowTokens = reservation.metrics?.tpm?.windowTokens ?? 0;
+          const rpmWindowCount = reservationMetrics?.currentRPM ?? 0;
+          const tpmWindowTokens = reservationMetrics?.tpm.windowTokens ?? 0;
           const estTokens =
-            reservation.metrics?.tpm?.estTokens ?? estimatedTokens;
+            reservationMetrics?.tpm.estTokens ?? estimatedTokens;
           const actualTokens = tokenUsage?.totalTokens ?? estTokens;
-          const rpmUtil = reservation.metrics?.utilizationPercent ?? 0;
+          const rpmUtil = reservationMetrics?.utilizationPercent ?? 0;
           const tpmUtil = tpmUtilization ?? 0;
           const waitMs = reservation.waitMs || 0;
-          const mentionsLen = Array.isArray((result as any)?.mentions)
-            ? (result as any).mentions.length
+          const mentionsLen = Array.isArray(result.mentions)
+            ? result.mentions.length
             : 0;
 
           this.agg.count++;
@@ -287,7 +296,15 @@ export class SmartLLMProcessor implements OnModuleInit {
           this.agg.estError.absSum += Math.abs(err);
           this.agg.estError.min = Math.min(this.agg.estError.min, err);
           this.agg.estError.max = Math.max(this.agg.estError.max, err);
-        } catch {}
+        } catch (error) {
+          this.logger.debug('Failed to aggregate reservation diagnostics', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            workerId: effectiveWorkerId,
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
 
         // 6. Track performance metrics
         this.processedRequests++;
@@ -298,19 +315,21 @@ export class SmartLLMProcessor implements OnModuleInit {
           await this.logPerformanceMetrics();
         }
 
-        return {
-          ...result,
-          rateLimitInfo: {
-            waitTimeMs: reservation.waitMs,
-            totalDurationMs: totalDuration,
-            processingTimeMs: totalDuration - reservation.waitMs,
-            guaranteed: reservation.guaranteed,
-            workerId: effectiveWorkerId,
-            utilizationPercent: reservation.metrics.utilizationPercent || 0,
-            rpmUtilization: reservation.metrics.utilizationPercent || 0,
-            tpmUtilization,
-          },
+        const rateLimitInfo: RateLimitInfo = {
+          waitTimeMs: reservation.waitMs,
+          totalDurationMs: totalDuration,
+          processingTimeMs: totalDuration - reservation.waitMs,
+          guaranteed: reservation.guaranteed,
+          workerId: effectiveWorkerId,
+          utilizationPercent: reservationMetrics?.utilizationPercent ?? 0,
+          rpmUtilization: reservationMetrics?.utilizationPercent ?? 0,
+          tpmUtilization,
         };
+        const enrichedResult: LLMOutputStructure = {
+          ...result,
+          rateLimitInfo,
+        };
+        return enrichedResult;
       } catch (error) {
         if (reservation) {
           try {
@@ -355,7 +374,7 @@ export class SmartLLMProcessor implements OnModuleInit {
   /**
    * Estimate token usage for the upcoming request using recent TPM stats.
    */
-  private async estimateInputTokens(input: any): Promise<number> {
+  private async estimateInputTokens(input: LLMInputStructure): Promise<number> {
     // Char-based estimate for prompt tokens: tokens ~= chars / 4
     const promptEstimate = (() => {
       try {
@@ -372,7 +391,13 @@ export class SmartLLMProcessor implements OnModuleInit {
         const tokensFromChars = Math.floor(chars / 4);
         const overheadTokens = this.cachedInstructionTokens;
         return tokensFromChars + overheadTokens;
-      } catch (_) {
+      } catch (error) {
+        this.logger.debug('Falling back to cached prompt token estimate', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
         return this.cachedInstructionTokens;
       }
     })();
@@ -385,7 +410,13 @@ export class SmartLLMProcessor implements OnModuleInit {
     try {
       const tpm = await this.rateLimiter.getTPMAnalysis();
       avg = Math.max(1, tpm.avgTokensPerRequest || 0);
-    } catch (_) {
+    } catch (error) {
+      this.logger.debug('Failed to load TPM analysis for token estimation', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
       avg = 0;
     }
 
@@ -405,7 +436,10 @@ export class SmartLLMProcessor implements OnModuleInit {
    * Get comprehensive metrics for monitoring
    */
   async getMetrics(): Promise<RateLimitMetrics> {
-    const rateLimiterMetrics = await this.rateLimiter.getMetrics();
+    const [rpmAnalysis, tpmAnalysis] = await Promise.all([
+      this.rateLimiter.getRPMAnalysis(),
+      this.rateLimiter.getTPMAnalysis(),
+    ]);
     const avgWaitTime =
       this.processedRequests > 0
         ? Math.round(this.totalWaitTime / this.processedRequests)
@@ -416,23 +450,34 @@ export class SmartLLMProcessor implements OnModuleInit {
         ? Math.round((this.zeroWaitRequests / this.processedRequests) * 100)
         : 0;
 
+    const rpmSnapshot = {
+      current: rpmAnalysis.currentRPM,
+      currentRPS: rpmAnalysis.currentRPM / 60,
+      tokensAvailable: rpmAnalysis.availableCapacity,
+      utilizationPercent: rpmAnalysis.utilizationPercent,
+    };
+
+    const shouldThrottle = tpmAnalysis.utilizationPercent >= 95;
+    const recommendedDelayMs = shouldThrottle ? 1000 : 0;
+
+    const tpmSnapshot = {
+      current: tpmAnalysis.windowTokens,
+      currentTPM: tpmAnalysis.currentTPM,
+      utilizationPercent: tpmAnalysis.utilizationPercent,
+      shouldThrottle,
+      recommendedDelayMs,
+    };
+
     return {
-      rpm: rateLimiterMetrics.rpm,
-      tpm: {
-        current: 0, // Will be populated from rateLimiter if TPM tracking is added
-        max: 1000000,
-        utilizationPercent: 0,
-        shouldThrottle: false,
-        recommendedDelayMs: 0,
-      },
+      rpm: rpmSnapshot,
+      tpm: tpmSnapshot,
       performance: {
         totalRequests: this.processedRequests,
         successfulRequests: this.processedRequests, // All requests succeed with reservations
         averageWaitTime: avgWaitTime,
         rateLimitHits: 0, // ZERO by design!
         zeroWaitPercent,
-        reservationAccuracy:
-          rateLimiterMetrics.reservations?.avgAccuracyMs || 0,
+        reservationAccuracy: 0,
       },
     };
   }
@@ -534,40 +579,48 @@ export class SmartLLMProcessor implements OnModuleInit {
     return delay;
   }
 
-  private extractTokenUsage(llmResult: any): TokenUsage | null {
+  private extractTokenUsage(llmResult: LLMOutputStructure): TokenUsage | null {
     try {
-      const usageMetadata = llmResult?.usageMetadata || {};
+      const usageMetadata: LLMUsageMetadata | null | undefined =
+        llmResult.usageMetadata;
 
-      if (
-        usageMetadata.promptTokenCount &&
-        usageMetadata.candidatesTokenCount
-      ) {
-        const cachedInstructionTokens = usageMetadata.cachedContentTokenCount;
-        if (
-          typeof cachedInstructionTokens === 'number' &&
-          cachedInstructionTokens > 0
-        ) {
-          this.cachedInstructionTokens = cachedInstructionTokens;
-        }
-        const includeCached =
-          process.env.LLM_TPM_INCLUDE_CACHED === 'true' ||
-          process.env.LLM_TPM_INCLUDE_CACHED === '1';
-        const cached = includeCached
-          ? usageMetadata.cachedContentTokenCount || 0
-          : 0;
-        const promptTokens = usageMetadata.promptTokenCount + cached;
-        const outputTokens = usageMetadata.candidatesTokenCount;
-        const totalTokens =
-          usageMetadata.totalTokenCount || promptTokens + outputTokens;
-        this.trackTokenUsage(promptTokens, totalTokens, outputTokens);
-        return {
-          inputTokens: promptTokens,
-          outputTokens,
-          totalTokens,
-        };
+      if (!usageMetadata) {
+        return null;
       }
 
-      return null;
+      const { promptTokenCount, candidatesTokenCount, totalTokenCount } =
+        usageMetadata;
+      if (
+        typeof promptTokenCount !== 'number' ||
+        typeof candidatesTokenCount !== 'number'
+      ) {
+        return null;
+      }
+
+      const cachedInstructionTokens =
+        usageMetadata.cachedContentTokenCount ?? null;
+      if (
+        typeof cachedInstructionTokens === 'number' &&
+        cachedInstructionTokens > 0
+      ) {
+        this.cachedInstructionTokens = cachedInstructionTokens;
+      }
+      const includeCached =
+        process.env.LLM_TPM_INCLUDE_CACHED === 'true' ||
+        process.env.LLM_TPM_INCLUDE_CACHED === '1';
+      const cached = includeCached
+        ? usageMetadata.cachedContentTokenCount ?? 0
+        : 0;
+      const promptTokens = promptTokenCount + cached;
+      const outputTokens = candidatesTokenCount;
+      const totalTokens = totalTokenCount ?? promptTokens + outputTokens;
+
+      this.trackTokenUsage(promptTokens, totalTokens, outputTokens);
+      return {
+        inputTokens: promptTokens,
+        outputTokens,
+        totalTokens,
+      };
     } catch (error) {
       this.logger.debug('Could not extract token usage', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -615,6 +668,35 @@ export class SmartLLMProcessor implements OnModuleInit {
     this.logger.info('Metrics reset', {
       correlationId: CorrelationUtils.getCorrelationId(),
     });
+  }
+
+  private getReservationMetrics(
+    reservation: ReservationResult | null,
+  ): ReservationMetrics | undefined {
+    if (!reservation) {
+      return undefined;
+    }
+    const metrics = reservation.metrics as ReservationMetrics | undefined;
+    if (!metrics) {
+      return undefined;
+    }
+    if (typeof metrics.currentRPM !== 'number') {
+      return undefined;
+    }
+    if (typeof metrics.utilizationPercent !== 'number') {
+      return undefined;
+    }
+    const tpmMetrics = metrics.tpm;
+    if (!tpmMetrics) {
+      return undefined;
+    }
+    if (typeof tpmMetrics.windowTokens !== 'number') {
+      return undefined;
+    }
+    if (typeof tpmMetrics.estTokens !== 'number') {
+      return undefined;
+    }
+    return metrics;
   }
 
   private trackTokenUsage(

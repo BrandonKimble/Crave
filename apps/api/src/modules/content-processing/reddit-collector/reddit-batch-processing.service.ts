@@ -4,7 +4,10 @@ import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
 import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking.service';
-import { LLMConcurrentProcessingService } from '../../external-integrations/llm/llm-concurrent-processing.service';
+import {
+  LLMConcurrentProcessingService,
+  ProcessingResult as ConcurrentProcessingResult,
+} from '../../external-integrations/llm/llm-concurrent-processing.service';
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -12,6 +15,12 @@ import {
   BatchJob,
   BatchProcessingResult,
 } from './batch-processing-queue.types';
+import {
+  LLMInputStructure,
+  LLMPost,
+  LLMOutputStructure,
+  LLMMention,
+} from '../../external-integrations/llm/llm.types';
 
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
@@ -105,7 +114,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         };
       }
 
-      const llmInput = { posts: llmPosts };
+      const llmInput: LLMInputStructure = { posts: llmPosts };
 
       const llmPostSampleCount =
         this.parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
@@ -125,45 +134,48 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
       const chunkData =
         this.llmChunkingService.createContextualChunks(llmInput);
-      const processingResult =
+      const processingResult: ConcurrentProcessingResult =
         await this.llmConcurrentService.processConcurrent(
           chunkData,
           this.llmService,
         );
 
-      const flatMentions = processingResult.results.flatMap((r) => r.mentions);
+      const flatMentions: LLMMention[] = processingResult.results.flatMap(
+        (result) => result.mentions,
+      );
 
       const enrichment = this.buildSourceEnrichmentMaps(llmPosts);
 
-      const llmOutput = {
-        mentions: flatMentions.map((mention: any) => ({
-          ...mention,
-          source_content:
-            enrichment.contentById.get(mention?.source_id) ||
-            mention?.source_content ||
-            '',
-          source_type:
-            enrichment.metadataById.get(mention?.source_id)?.type ??
-            mention?.source_type,
-          source_ups:
-            enrichment.metadataById.get(mention?.source_id)?.ups ??
-            mention?.source_ups ??
-            0,
-          source_url:
-            enrichment.metadataById.get(mention?.source_id)?.url ??
-            mention?.source_url ??
-            '',
-          source_created_at:
-            enrichment.metadataById.get(mention?.source_id)?.created_at ??
-            mention?.source_created_at ??
-            new Date().toISOString(),
-          subreddit:
-            enrichment.metadataById.get(mention?.source_id)?.subreddit ??
-            mention?.subreddit ??
-            'unknown',
-          post_context:
-            enrichment.postContextBySource.get(mention?.source_id) || '',
-        })),
+      const llmOutput: LLMOutputStructure = {
+        mentions: flatMentions.map((mention) => {
+          const metadata = enrichment.metadataById.get(mention.source_id);
+          const contentOverride =
+            enrichment.contentById.get(mention.source_id) ??
+            mention.source_content ??
+            '';
+          const postContext =
+            enrichment.postContextBySource.get(mention.source_id) ?? '';
+          const sourceType = metadata?.type ?? mention.source_type;
+          const sourceUps = metadata?.ups ?? mention.source_ups ?? 0;
+          const sourceUrl = metadata?.url ?? mention.source_url ?? '';
+          const createdAt =
+            metadata?.created_at ??
+            mention.source_created_at ??
+            new Date().toISOString();
+          const subreddit =
+            metadata?.subreddit ?? mention.subreddit ?? 'unknown';
+
+          return {
+            ...mention,
+            source_content: contentOverride,
+            source_type: sourceType,
+            source_ups: sourceUps,
+            source_url: sourceUrl,
+            source_created_at: createdAt,
+            subreddit,
+            post_context: postContext,
+          };
+        }),
       };
 
       this.ensureSurfaceDefaults(llmOutput.mentions);
@@ -249,7 +261,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     job: BatchJob,
     correlationId: string,
   ): Promise<{
-    posts: any[];
+    posts: LLMPost[];
     skippedDueToFreshness: number;
     skippedDueToDeltaThreshold: number;
     totalCandidates: number;
@@ -304,7 +316,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       totalCandidates: job.postIds.length,
     });
 
-    const llmPosts: any[] = [];
+    const llmPosts: LLMPost[] = [];
 
     for (const postId of fetchPostIds) {
       try {
@@ -314,7 +326,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
           { depth: job.options?.depth },
         );
 
-        if (!rawResult.rawResponse || rawResult.rawResponse.length === 0) {
+        const { rawResponse } = rawResult;
+        if (!Array.isArray(rawResponse) || rawResponse.length === 0) {
           this.logger.warn(`Skipping post ${postId} - no raw response`, {
             correlationId,
             postId,
@@ -324,7 +337,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         }
 
         const { post, comments } = filterAndTransformToLLM(
-          rawResult.rawResponse,
+          rawResponse,
           rawResult.attribution.postUrl,
         );
 
@@ -586,7 +599,21 @@ export class RedditBatchProcessingService implements OnModuleInit {
     };
   }
 
-  private buildSourceEnrichmentMaps(llmPosts: any[]) {
+  private buildSourceEnrichmentMaps(llmPosts: LLMPost[]): {
+    contentById: Map<string, string>;
+    idToPostId: Map<string, string>;
+    metadataById: Map<
+      string,
+      {
+        type: 'post' | 'comment';
+        ups: number;
+        url: string;
+        created_at: string;
+        subreddit: string;
+      }
+    >;
+    postContextBySource: Map<string, string>;
+  } {
     const contentById = new Map<string, string>();
     const idToPostId = new Map<string, string>();
     const metadataById = new Map<
@@ -601,48 +628,34 @@ export class RedditBatchProcessingService implements OnModuleInit {
     >();
 
     for (const post of llmPosts) {
-      if (post?.id && typeof post.content === 'string') {
-        contentById.set(post.id, post.content);
-        idToPostId.set(post.id, post.id);
-        metadataById.set(post.id, {
-          type: 'post',
-          ups: typeof post.score === 'number' ? post.score : 0,
-          url: typeof post.url === 'string' ? post.url : '',
-          created_at:
-            typeof post.created_at === 'string'
-              ? post.created_at
-              : new Date().toISOString(),
-          subreddit:
-            typeof post.subreddit === 'string' ? post.subreddit : 'unknown',
-        });
-      }
+      contentById.set(post.id, post.content);
+      idToPostId.set(post.id, post.id);
+      metadataById.set(post.id, {
+        type: 'post',
+        ups: Math.max(0, post.score),
+        url: post.url,
+        created_at: post.created_at,
+        subreddit: post.subreddit || 'unknown',
+      });
 
-      const comments = Array.isArray(post?.comments) ? post.comments : [];
-      for (const comment of comments) {
-        if (comment?.id && typeof comment.content === 'string') {
-          contentById.set(comment.id, comment.content);
-          idToPostId.set(comment.id, post.id);
-          metadataById.set(comment.id, {
-            type: 'comment',
-            ups: typeof comment.score === 'number' ? comment.score : 0,
-            url: typeof comment.url === 'string' ? comment.url : '',
-            created_at:
-              typeof comment.created_at === 'string'
-                ? comment.created_at
-                : new Date().toISOString(),
-            subreddit:
-              typeof post.subreddit === 'string' ? post.subreddit : 'unknown',
-          });
-        }
+      for (const comment of post.comments) {
+        contentById.set(comment.id, comment.content);
+        idToPostId.set(comment.id, post.id);
+        metadataById.set(comment.id, {
+          type: 'comment',
+          ups: Math.max(0, comment.score),
+          url: comment.url,
+          created_at: comment.created_at,
+          subreddit: post.subreddit || 'unknown',
+        });
       }
     }
 
     const postContextBySource = new Map<string, string>();
     for (const post of llmPosts) {
-      postContextBySource.set(post.id, post.content || '');
-      const comments = Array.isArray(post?.comments) ? post.comments : [];
-      for (const comment of comments) {
-        postContextBySource.set(comment.id, post.content || '');
+      postContextBySource.set(post.id, post.content);
+      for (const comment of post.comments) {
+        postContextBySource.set(comment.id, post.content);
       }
     }
 
@@ -654,7 +667,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     };
   }
 
-  private ensureSurfaceDefaults(mentions: any[]): void {
+  private ensureSurfaceDefaults(mentions: LLMMention[]): void {
     const alignSurfaces = (
       canonicalValues: unknown,
       surfaceValues: unknown,
@@ -728,7 +741,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
   }
 
   private normalizeRestaurantNames(
-    mentions: any[],
+    mentions: LLMMention[],
     enrichment: ReturnType<typeof this.buildSourceEnrichmentMaps>,
   ): void {
     const tokenize = (s: string | null | undefined): string[] => {
@@ -759,9 +772,9 @@ export class RedditBatchProcessingService implements OnModuleInit {
     const idToPostId = enrichment.idToPostId;
 
     try {
-      const mentionsByPost = new Map<string, any[]>();
+      const mentionsByPost = new Map<string, LLMMention[]>();
       for (const mention of mentions) {
-        const postId = idToPostId.get(mention?.source_id);
+        const postId = idToPostId.get(mention.source_id);
         if (!postId) continue;
         if (!mentionsByPost.has(postId)) {
           mentionsByPost.set(postId, []);
@@ -786,9 +799,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           };
           nameCounts.set(key, {
             count: prev.count + 1,
-            upvotes:
-              prev.upvotes +
-              (typeof mention.source_ups === 'number' ? mention.source_ups : 0),
+            upvotes: prev.upvotes + mention.source_ups,
             tokens,
           });
         }
@@ -935,7 +946,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
   }
 
   private dropDuplicateRestaurantMentions(
-    mentions: any[],
+    mentions: LLMMention[],
     enrichment: ReturnType<typeof this.buildSourceEnrichmentMaps>,
   ): void {
     const tokenize = (s: string | null | undefined): string[] => {
@@ -953,7 +964,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     >();
 
     mentions.forEach((mention) => {
-      const postId = idToPostId.get(mention?.source_id);
+      const postId = idToPostId.get(mention.source_id);
       if (!postId) {
         return;
       }
@@ -1001,7 +1012,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
         }
       }
 
-      const postId = enrichment.idToPostId.get(mention?.source_id);
+      const postId = enrichment.idToPostId.get(mention.source_id);
       const stats = postId ? postNormalizationStats.get(postId) : null;
       const hasLongerVariant = stats?.nameCounts
         ? Array.from(stats.nameCounts.values()).some((info) => {
@@ -1029,7 +1040,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
   }
 
   private buildLlmPostSample(
-    llmPosts: any[],
+    llmPosts: LLMPost[],
     sampleCount: number,
     commentLimit: number,
   ): Array<{
@@ -1048,37 +1059,28 @@ export class RedditBatchProcessingService implements OnModuleInit {
       contentSnippet: string;
     }>;
   }> {
-    return llmPosts.slice(0, sampleCount).map((post: any) => {
-      const comments = Array.isArray(post?.comments) ? post.comments : [];
+    return llmPosts.slice(0, sampleCount).map((post) => {
+      const comments = post.comments ?? [];
       return {
-        id: post?.id ?? '',
-        title: post?.title ?? '',
-        subreddit: post?.subreddit ?? '',
-        author: post?.author ?? 'unknown',
-        score: typeof post?.score === 'number' ? post.score : 0,
-        created_at:
-          typeof post?.created_at === 'string'
-            ? post.created_at
-            : new Date().toISOString(),
+        id: post.id,
+        title: post.title,
+        subreddit: post.subreddit,
+        author: post.author,
+        score: Math.max(0, post.score),
+        created_at: post.created_at,
         commentCount: comments.length,
-        sampleComments: comments.slice(0, commentLimit).map((comment: any) => ({
-          id: comment?.id ?? '',
-          author: comment?.author ?? 'unknown',
-          score: typeof comment?.score === 'number' ? comment.score : 0,
-          created_at:
-            typeof comment?.created_at === 'string'
-              ? comment.created_at
-              : new Date().toISOString(),
-          contentSnippet:
-            typeof comment?.content === 'string'
-              ? comment.content.slice(0, 160)
-              : '',
+        sampleComments: comments.slice(0, commentLimit).map((comment) => ({
+          id: comment.id,
+          author: comment.author,
+          score: Math.max(0, comment.score),
+          created_at: comment.created_at,
+          contentSnippet: comment.content.slice(0, 160),
         })),
       };
     });
   }
 
-  private computeTemporalRange(llmPosts: any[]): {
+  private computeTemporalRange(llmPosts: LLMPost[]): {
     earliest: number;
     latest: number;
   } {

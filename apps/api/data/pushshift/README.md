@@ -13,7 +13,7 @@ apps/api/data/pushshift/
 │   ├── austinfood/                    # r/austinfood subreddit archives
 │   │   ├── austinfood_comments.zst    # Comment data (53.73 MB)
 │   │   └── austinfood_submissions.zst # Post submission data (6.71 MB)
-│   └── FoodNYC/                       # r/FoodNYC subreddit archives  
+│   └── FoodNYC/                       # r/FoodNYC subreddit archives
 │       ├── FoodNYC_comments.zst       # Comment data (49.07 MB)
 │       └── FoodNYC_submissions.zst    # Post submission data (8.75 MB)
 └── scripts/                           # Validation and utility scripts
@@ -24,14 +24,17 @@ apps/api/data/pushshift/
 ## Archive File Details
 
 ### Target Subreddits
+
 - **r/austinfood**: Primary Austin food community (60.44 MB total)
 - **r/FoodNYC**: New York food community (57.82 MB total)
 
 ### File Types
+
 - **Comments (.zst)**: User comments and discussions within posts
 - **Submissions (.zst)**: Original posts and threads
 
 ### Format Specifications
+
 - **Compression**: zstd (Zstandard) compression format
 - **Data Format**: ndjson (Newline-delimited JSON)
 - **Structure**: One JSON object per line, each representing a Reddit post or comment
@@ -40,7 +43,9 @@ apps/api/data/pushshift/
 ## Data Schema
 
 ### Comment Objects
+
 Typical fields in comment JSON objects:
+
 ```json
 {
   "id": "comment_id",
@@ -54,11 +59,13 @@ Typical fields in comment JSON objects:
 }
 ```
 
-### Submission Objects  
+### Submission Objects
+
 Typical fields in submission JSON objects:
+
 ```json
 {
-  "id": "post_id", 
+  "id": "post_id",
   "title": "post title",
   "selftext": "post body text",
   "author": "username",
@@ -73,12 +80,14 @@ Typical fields in submission JSON objects:
 ## Usage and Processing
 
 ### Stream Processing Requirements
+
 - **Memory Efficiency**: Files must be processed line-by-line using streaming
-- **Decompression**: Use zstd libraries for on-the-fly decompression  
+- **Decompression**: Use zstd libraries for on-the-fly decompression
 - **JSON Parsing**: Parse each line as individual JSON object
 - **Batch Processing**: Process in batches to optimize database operations
 
 ### Integration Points
+
 - **LLM Processing**: Extracted content feeds into existing M02 LLM integration
 - **Entity Resolution**: Posts/comments processed through entity resolution system
 - **Database Storage**: Processed entities stored in unified graph-based model
@@ -86,25 +95,33 @@ Typical fields in submission JSON objects:
 ## Validation and Quality Assurance
 
 ### Accessibility Validation
+
 Run the accessibility validation script:
+
 ```bash
 npx ts-node scripts/validate-pushshift-access.ts
 ```
 
 ### Integrity Validation
+
 Run the archive integrity validation script:
+
 ```bash
 npx ts-node scripts/validate-archive-integrity.ts
 ```
 
 ### Queueing Archive Ingestion
+
 To enqueue archive data into the shared batch pipeline (jobs remain paused for inspection):
+
 ```bash
-pnpm --dir apps/api ts-node scripts/archive-smoke-test.ts
+yarn --cwd apps/api ts-node scripts/archive-smoke-test.ts
 ```
+
 This script validates the environment, chunks archive posts into Bull jobs, and reports queue counts and archive metrics without triggering downstream LLM processing.
 
 ### Expected Results
+
 - ✅ All 4 archive files present and accessible
 - ✅ Valid zstd compression format
 - ✅ Valid ndjson structure with parseable JSON objects
@@ -113,11 +130,13 @@ This script validates the environment, chunks archive posts into Bull jobs, and 
 ## Production Storage Strategy
 
 ### Current: Local Development Storage
-- **Location**: `apps/api/data/pushshift/`  
+
+- **Location**: `apps/api/data/pushshift/`
 - **Purpose**: Development and initial processing
 - **Backup**: Files should be backed up regularly
 
 ### Future: S3 Production Storage
+
 - **Migration Path**: Archive files will be migrated to S3 for production deployment
 - **Access Pattern**: Download to processing instances as needed
 - **Cost Optimization**: Use S3 Intelligent Tiering for cost management
@@ -126,11 +145,13 @@ This script validates the environment, chunks archive posts into Bull jobs, and 
 ## Security and Access Control
 
 ### File Permissions
+
 - **Read Access**: Required for Node.js processing (✅ Verified)
 - **Write Access**: Not required for archive files (read-only)
 - **Execute Access**: Not applicable for data files
 
 ### Sensitive Data
+
 - **PII Handling**: Reddit usernames are public data, no additional PII expected
 - **Content Filtering**: LLM processing will filter for food-related content only
 - **Retention Policy**: Archives maintained for legitimate business purposes
@@ -145,11 +166,14 @@ This script validates the environment, chunks archive posts into Bull jobs, and 
 ## Support and Troubleshooting
 
 ### Common Issues
+
 1. **File Access Errors**: Check file permissions with `ls -la archives/*/`
-2. **Integrity Failures**: Re-run validation scripts to identify specific issues  
+2. **Integrity Failures**: Re-run validation scripts to identify specific issues
 3. **Processing Errors**: Verify zstd command-line tool is installed
 
 ### Contact
+
 For questions about archive processing or data issues, refer to:
+
 - Sprint documentation in `.simone/03_SPRINTS/M03_S01_Historical_Data_Foundation/`
 - Task-specific documentation in individual task files

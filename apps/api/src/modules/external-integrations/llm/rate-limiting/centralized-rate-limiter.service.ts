@@ -3,6 +3,33 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 
+export interface ReservationMetrics {
+  currentRPM: number;
+  utilizationPercent: number;
+  activeRequests: number;
+  nextSlotIn: number;
+  timestamp: number;
+  tpm: {
+    windowTokens: number;
+    reservedTokens: number;
+    estTokens: number;
+    safeTPM: number;
+  };
+}
+
+export interface ReservationErrorMetrics {
+  error: string;
+  fallbackMode: boolean;
+}
+
+export interface ReservationResult {
+  reservationTime: number;
+  waitMs: number;
+  guaranteed: boolean;
+  metrics: ReservationMetrics | ReservationErrorMetrics;
+  reservationMember: string;
+}
+
 /**
  * Centralized Redis-based Rate Limiter with Reservation System (Bulletproof Edition)
  *
@@ -71,13 +98,7 @@ export class CentralizedRateLimiter {
   async reserveRequestSlot(
     workerId: string,
     estimatedTokens?: number,
-  ): Promise<{
-    reservationTime: number;
-    waitMs: number;
-    guaranteed: boolean;
-    metrics: any;
-    reservationMember: string;
-  }> {
+  ): Promise<ReservationResult> {
     const now = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
 

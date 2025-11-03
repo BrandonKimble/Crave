@@ -26,11 +26,12 @@ services:
     command: >
       bash -lc "
         corepack enable &&
-        pnpm install --frozen-lockfile &&
+        corepack prepare yarn@1.22.22 --activate &&
+        yarn install --frozen-lockfile &&
         cd apps/api &&
-        pnpm prisma generate &&
-        pnpm prisma db push &&
-        LOG_CONSOLE=true LOG_FILES=false pnpm start:dev
+        yarn prisma:generate &&
+        yarn prisma db push &&
+        LOG_CONSOLE=true LOG_FILES=false yarn start:dev
       "
     environment:
       NODE_ENV: production
@@ -45,7 +46,6 @@ services:
       - '3000:3000'
     volumes:
       - .:/workspace
-      - pnpm-store:/root/.local/share/pnpm/store
       - root-node_modules:/workspace/node_modules
       - api-node_modules:/workspace/apps/api/node_modules
       - shared-node_modules:/workspace/packages/shared/node_modules
@@ -106,7 +106,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  pnpm-store:
   root-node_modules:
   api-node_modules:
   shared-node_modules:

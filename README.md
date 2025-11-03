@@ -15,23 +15,23 @@ This is a Turborepo monorepo containing:
 ```bash
 # 1. Clone and install
 git clone <repository-url>
-pnpm install
+yarn install
 
 # 2. Start services (PostgreSQL + Redis)
 make docker-up
 
-# 3. Setup databases and run migrations  
+# 3. Setup databases and run migrations
 make db-migrate
-pnpm --filter api db:seed
+yarn workspace api db:seed
 
 # 4. Start development servers
-pnpm dev
+yarn dev
 ```
 
 ## Prerequisites
 
-- **Node.js 18+** 
-- **PNPM 8+** (package manager)
+- **Node.js 18+**
+- **Yarn 1.22+** (package manager)
 - **Docker and Docker Compose** (for PostgreSQL and Redis)
 
 ### Installation
@@ -42,12 +42,13 @@ pnpm dev
 nvm install 18
 nvm use 18
 
-# Install pnpm
-npm install -g pnpm
+# Enable Yarn (via Corepack)
+corepack enable
+corepack prepare yarn@1.22.22 --activate
 
 # Verify versions
 node --version  # Should be v18+
-pnpm --version  # Should be v8+
+yarn --version  # Should be v1.22+
 docker --version # Should be v20+
 ```
 
@@ -91,7 +92,7 @@ docker ps  # Should show postgres and redis containers
 make db-migrate
 
 # Seed with sample data
-pnpm --filter api db:seed
+yarn workspace api db:seed
 
 # Open database browser (optional)
 make db-studio
@@ -103,16 +104,16 @@ make db-studio
 
 ```bash
 # Start all apps (API + Mobile)
-pnpm dev
+yarn dev
 
 # Start individual apps
-pnpm --filter api dev          # Backend only
-pnpm --filter mobile dev       # Mobile only
+yarn workspace api start:dev                # Backend only
+yarn workspace @crave-search/mobile dev     # Mobile only
 
 # Database operations
 make db-migrate                # Run migrations
 make db-studio                 # Open Prisma Studio
-pnpm --filter api db:seed      # Seed sample data
+yarn workspace api db:seed     # Seed sample data
 
 # Services
 make docker-up                 # Start PostgreSQL + Redis
@@ -123,16 +124,16 @@ make docker-down               # Stop services
 
 ```bash
 # Run tests
-pnpm test                      # All tests
-pnpm --filter api test         # API tests only
+yarn test                      # All tests
+yarn workspace api test        # API tests only
 
 # Code quality
-pnpm lint                      # ESLint
-pnpm type-check               # TypeScript check
-pnpm format                   # Prettier formatting
+yarn lint                      # ESLint
+yarn type-check                # TypeScript check
+yarn format                    # Prettier formatting
 
 # Build
-pnpm build                    # Build all apps
+yarn build                     # Build all apps
 ```
 
 ## Project Architecture
@@ -148,6 +149,7 @@ pnpm build                    # Build all apps
 ### Database Schema
 
 Core tables:
+
 - `entities`: Unified storage for restaurants, food, categories, attributes
 - `connections`: Relationships between restaurants and food with quality scores
 - `mentions`: Reddit community evidence with attribution
@@ -164,6 +166,7 @@ Core tables:
 ### Database Issues
 
 **Problem**: `Database connection failed`
+
 ```bash
 # Check if Docker services are running
 docker ps
@@ -176,15 +179,17 @@ docker exec -it $(docker ps -q -f name=postgres) psql -U postgres -l
 ```
 
 **Problem**: `Migration failed` or schema drift
+
 ```bash
 # Reset database (WARNING: destroys all data)
-pnpm --filter api db:migrate:reset --force
+yarn workspace api db:migrate:reset --force
 
 # Or apply migrations manually
-pnpm --filter api prisma:migrate
+yarn workspace api prisma:migrate
 ```
 
 **Problem**: `Permission denied` on database
+
 ```bash
 # Check environment variables
 cat apps/api/.env | grep DATABASE_URL
@@ -195,12 +200,15 @@ docker logs $(docker ps -q -f name=postgres)
 
 ### Installation Issues
 
-**Problem**: `pnpm command not found`
+**Problem**: `yarn command not found`
+
 ```bash
-npm install -g pnpm
+corepack enable
+corepack prepare yarn@1.22.22 --activate
 ```
 
 **Problem**: `Docker not available`
+
 ```bash
 # Install Docker Desktop or Docker Engine
 # macOS: https://docs.docker.com/desktop/mac/
@@ -208,6 +216,7 @@ npm install -g pnpm
 ```
 
 **Problem**: Node.js version issues
+
 ```bash
 # Use nvm to manage Node versions
 nvm install 18
@@ -217,6 +226,7 @@ nvm use 18
 ### Build/Runtime Issues
 
 **Problem**: `Port already in use`
+
 ```bash
 # Change port in apps/api/.env
 PORT=3001
@@ -226,21 +236,23 @@ lsof -ti:3000 | xargs kill -9
 ```
 
 **Problem**: `Module not found` errors
+
 ```bash
 # Reinstall dependencies
 rm -rf node_modules **/node_modules
-pnpm install
+yarn install
 ```
 
 ### Testing Issues
 
 **Problem**: Tests failing due to database
+
 ```bash
 # Ensure test database exists
 createdb crave_search_test
 
 # Reset test database
-pnpm --filter api db:migrate:reset --force
+yarn workspace api db:migrate:reset --force
 ```
 
 ## Production Deployment
@@ -248,12 +260,14 @@ pnpm --filter api db:migrate:reset --force
 **Note**: Production deployment is planned for later milestones (M02+). Current setup is optimized for local development.
 
 For production considerations, see:
+
 - `apps/api/README.md` - API deployment notes
 - `CLAUDE.md` - Architecture documentation
 
 ## API Documentation
 
 When the API is running locally:
+
 - **Swagger UI**: http://localhost:3000/api/docs
 - **Health Check**: http://localhost:3000/health
 

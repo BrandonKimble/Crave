@@ -233,7 +233,7 @@ _**Note**: This is a high-level overview of the technology stack. The actual imp
 
 #### 2.7.1 Essential
 
-- **pnpm** for package management
+- **Yarn** for package management
 - **Lefthook** for commit rules and git hooks
 - **dotenv** for environment management
 - **Postman** or **Insomnia** for API testing
@@ -272,7 +272,7 @@ crave-search/                      # Root monorepo
 │
 ├── turbo.json                     # Turborepo build pipeline
 ├── package.json                   # Workspace configuration
-├── pnpm-workspace.yaml            # pnpm workspace config
+├── yarn.lock                      # Yarn lockfile
 ├── .gitignore                     # Git ignore rules
 ├── lefthook.yml                   # Git hooks configuration
 └── PRD.md                         # This document
@@ -395,21 +395,21 @@ import { EntityType, ENTITY_TYPES } from '@crave-search/shared';
 
 ```bash
 # Development
-pnpm dev                       # Start all apps
-pnpm --filter api dev         # API only
+yarn dev                              # Start all apps
+yarn workspace api start:dev          # API only
 
 # Services
-pnpm --filter api docker:up    # PostgreSQL + Redis
-pnpm --filter api prisma:studio # Database browser
+yarn workspace api docker:up          # PostgreSQL + Redis
+yarn workspace api prisma:studio      # Database browser
 
 # Database
-turbo run db:migrate          # Run migrations
-turbo run db:generate         # Generate Prisma client
-pnpm --filter api db:seed      # Seed test data
+turbo run db:migrate                  # Run migrations
+turbo run db:generate                 # Generate Prisma client
+yarn workspace api db:seed            # Seed test data
 
 # Quality
-turbo run lint                # Lint all
-turbo run type-check         # TypeScript check
+turbo run lint                        # Lint all
+turbo run type-check                  # TypeScript check
 ```
 
 ### 3.3 Domain Responsibilities
@@ -1189,7 +1189,7 @@ _**Note**: Based on real Reddit API field analysis (NYC subreddit sample). Uses 
   "posts": [
     {
       "id": "string",
-      "title": "string", 
+      "title": "string",
       "selftext": "string",
       "subreddit": "string",
       "author": "string",
@@ -1214,7 +1214,7 @@ _**Note**: Based on real Reddit API field analysis (NYC subreddit sample). Uses 
   "comments": [
     {
       "id": "string",
-      "body": "string", 
+      "body": "string",
       "author": "string",
       "score": number,
       "parent_id": "string|null",
@@ -1228,9 +1228,10 @@ _**Note**: Based on real Reddit API field analysis (NYC subreddit sample). Uses 
 ```
 
 **Field Descriptions:**
+
 - **`id`**: Reddit ID with type prefix (e.g., `"t3_1mg7vy4"`, `"t1_n6mnqad"`) for type safety
 - **`title`**: Post title text
-- **`selftext`**: Post body text content (Reddit field name) 
+- **`selftext`**: Post body text content (Reddit field name)
 - **`body`**: Comment text content (Reddit field name)
 - **`author`**: Reddit username
 - **`subreddit`**: Subreddit name without "r/" prefix
@@ -1253,28 +1254,28 @@ _**Note**: This structure reflects the current production implementation. Key pr
   "mentions": [
     {
       "temp_id": "string",
-      
+
       // Restaurant fields (REQUIRED)
       "restaurant": "string",  // Normalized name only
-      
+
       // Food entity fields (optional - null when no food mentioned)
       "food": "string" | null,  // Normalized name only
       "food_categories": ["string"] | null,  // Hierarchical decomposition
       "is_menu_item": boolean | null,
-      
+
       // Attributes (preserved as arrays)
       "restaurant_attributes": ["string"] | null,
       "food_attributes": ["string"] | null,
-      
+
       // Core processing fields
       "general_praise": boolean,
-      
+
       // Source tracking (flattened for performance)
       "source_type": "post" | "comment",
       "source_id": "string",
       "source_content": "string",
       "source_ups": number,
-      "source_url": "string", 
+      "source_url": "string",
       "source_created_at": "string"
     }
   ]
@@ -1282,9 +1283,10 @@ _**Note**: This structure reflects the current production implementation. Key pr
 ```
 
 **Key Design Decisions**:
+
 - **Flattened Structure**: Optimized for LLM parsing performance vs nested objects
 - **Normalized Names Only**: LLM provides normalized names; entity resolution handles variations as aliases
-- **food_ Prefix**: Clearer than food_ since entities can be menu items OR category references
+- **food\_ Prefix**: Clearer than food\_ since entities can be menu items OR category references
 - **Complete Source Attribution**: All source fields included for traceability
 - **Selective vs Descriptive Attributes**: Separate arrays for different processing logic
 - **Null-Safe Design**: Optional fields explicitly nullable for robust processing
@@ -2372,7 +2374,7 @@ _Nothing works without this_
 **Reference Sections:**
 
 - **1** Overview & Core System Architecture (all subsections)
-- **2** Technology Stack (all subsections) 
+- **2** Technology Stack (all subsections)
 - **3** Hybrid Monorepo & Modular Monolith Architecture (all subsections)
 - **4** Data Model & Database Architecture (all subsections)
 - **9** PRE-MVP Implementation Roadmap (all subsections)
@@ -2654,6 +2656,7 @@ _Core value proposition with hybrid data foundation_
 - **8** Community Engagement & Growth Strategy (all subsections)
 - **9** PRE-MVP Implementation Roadmap (all subsections)
 - **10** POST-MVP Roadmap (all subsections)
+
 #### 9.8.1 Core Tasks
 
 **Backend Implementation:**

@@ -52,7 +52,10 @@ type OnDemandRecord = {
   lastCompletedAt: Date | null;
 };
 
-type OnDemandMetadata = Record<string, unknown>;
+type OnDemandMetadata = {
+  context?: unknown;
+  [key: string]: unknown;
+};
 
 interface QueueDecision {
   runNow: boolean;
@@ -551,21 +554,17 @@ export class OnDemandProcessingService {
 
   private extractBounds(metadata: OnDemandMetadata): MapBoundsDto | undefined {
     const context = metadata.context;
-    if (!context || typeof context !== 'object') {
+    if (!this.isRecord(context)) {
       return undefined;
     }
 
-    const boundsRaw = (context as Record<string, unknown>).bounds;
-    if (!boundsRaw || typeof boundsRaw !== 'object') {
+    const contextRecord = context;
+    const boundsRaw = contextRecord.bounds;
+    if (!this.isBoundsLike(boundsRaw)) {
       return undefined;
     }
 
-    const northEast = (boundsRaw as Record<string, any>).northEast;
-    const southWest = (boundsRaw as Record<string, any>).southWest;
-
-    if (!northEast || !southWest) {
-      return undefined;
-    }
+    const { northEast, southWest } = boundsRaw;
 
     const latNe = this.toNumber(northEast.lat);
     const lngNe = this.toNumber(northEast.lng);
@@ -586,21 +585,18 @@ export class OnDemandProcessingService {
     metadata: OnDemandMetadata,
   ): { latitude: number; longitude: number } | null {
     const context = metadata.context;
-    if (!context || typeof context !== 'object') {
+    if (!this.isRecord(context)) {
       return null;
     }
 
-    const locationRaw = (context as Record<string, unknown>).location;
-    if (!locationRaw || typeof locationRaw !== 'object') {
+    const contextRecord = context;
+    const locationRaw = contextRecord.location;
+    if (!this.isLatLongLike(locationRaw)) {
       return null;
     }
 
-    const latitude = this.toNumber(
-      (locationRaw as Record<string, any>).latitude,
-    );
-    const longitude = this.toNumber(
-      (locationRaw as Record<string, any>).longitude,
-    );
+    const latitude = this.toNumber(locationRaw.latitude);
+    const longitude = this.toNumber(locationRaw.longitude);
 
     if (latitude === null || longitude === null) {
       return null;
@@ -618,6 +614,42 @@ export class OnDemandProcessingService {
       return Number.isFinite(parsed) ? parsed : null;
     }
     return null;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
+  private isCoordinateLike(
+    value: unknown,
+  ): value is { lat: unknown; lng: unknown } {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+    return 'lat' in value && 'lng' in value;
+  }
+
+  private isBoundsLike(value: unknown): value is {
+    northEast: { lat: unknown; lng: unknown };
+    southWest: { lat: unknown; lng: unknown };
+  } {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+    const record = value;
+    return (
+      this.isCoordinateLike(record.northEast) &&
+      this.isCoordinateLike(record.southWest)
+    );
+  }
+
+  private isLatLongLike(
+    value: unknown,
+  ): value is { latitude: unknown; longitude: unknown } {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+    return 'latitude' in value && 'longitude' in value;
   }
 
   private parseMetadata(metadata: Prisma.JsonValue | null): OnDemandMetadata {

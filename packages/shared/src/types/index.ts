@@ -142,3 +142,5 @@ export interface LocationQuery {
   radiusKm: number;
   includeInactive?: boolean;
 }
+
+export * from './search';

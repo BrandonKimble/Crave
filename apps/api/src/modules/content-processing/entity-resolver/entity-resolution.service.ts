@@ -1386,7 +1386,7 @@ export class EntityResolutionService implements OnModuleInit {
 
       const repetitions = token.length / segmentLength;
       if (segment.repeat(repetitions) === token) {
-        return Array(repetitions).fill(segment);
+        return Array.from({ length: repetitions }, () => segment);
       }
     }
 

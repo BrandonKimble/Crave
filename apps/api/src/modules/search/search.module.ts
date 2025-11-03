@@ -17,6 +17,7 @@ import { OnDemandRequestService } from './on-demand-request.service';
 import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
+import { SearchFixtureService } from './search-fixture.service';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-clean
     SearchOrchestrationService,
     SearchSubredditResolverService,
     OnDemandPlaceholderCleanupService,
+    SearchFixtureService,
   ],
   exports: [SearchService, SearchOrchestrationService],
 })

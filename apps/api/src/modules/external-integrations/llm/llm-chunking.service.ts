@@ -385,8 +385,7 @@ export class LLMChunkingService implements OnModuleInit {
           postIndex: postIndex + 1,
           totalPostChunks: postChunkMetadata.length,
           chunkSizes,
-          averageChunkSize:
-            totalChunkComments / postChunkMetadata.length || 0,
+          averageChunkSize: totalChunkComments / postChunkMetadata.length || 0,
           largestChunk: Math.max(...chunkSizes),
           smallestChunk: Math.min(...chunkSizes),
           topRootScores: aggregatedRootScores.slice(0, 10),
@@ -421,9 +420,7 @@ export class LLMChunkingService implements OnModuleInit {
       topRootScores: allRootScores.slice(0, 10),
       estimatedTotalTime:
         chunkMetadata.length > 0
-          ? Math.max(
-              ...chunkMetadata.map((m) => m.estimatedProcessingTime),
-            )
+          ? Math.max(...chunkMetadata.map((m) => m.estimatedProcessingTime))
           : 0,
     });
 

@@ -339,8 +339,7 @@ export class EntityPrioritySelectionService {
           this.logger.warn('Failed to update lastSelectedAt for entity', {
             entityId: entity.entityId,
             error: {
-              message:
-                error instanceof Error ? error.message : String(error ?? ''),
+              message: this.formatUnknownError(error),
             },
           });
         }),
@@ -353,6 +352,22 @@ export class EntityPrioritySelectionService {
         failedUpdates: failures.length,
         totalUpdates: updates.length,
       });
+    }
+  }
+
+  private formatUnknownError(error: unknown): string {
+    if (error instanceof Error) {
+      return error.message;
+    }
+
+    if (typeof error === 'string') {
+      return error;
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
     }
   }
 
@@ -435,8 +450,8 @@ export class EntityPrioritySelectionService {
             entityType === 'food'
               ? { foodId: entityId }
               : entityType === 'food_attribute'
-                ? { foodAttributes: { has: entityId } }
-                : { restaurant: { restaurantAttributes: { has: entityId } } },
+              ? { foodAttributes: { has: entityId } }
+              : { restaurant: { restaurantAttributes: { has: entityId } } },
         });
 
         if (connections.length === 0) {
@@ -508,10 +523,10 @@ export class EntityPrioritySelectionService {
           entityType === 'restaurant'
             ? { restaurantId: entityId }
             : entityType === 'food'
-              ? { foodId: entityId }
-              : entityType === 'food_attribute'
-                ? { foodAttributes: { has: entityId } }
-                : { restaurant: { restaurantAttributes: { has: entityId } } },
+            ? { foodId: entityId }
+            : entityType === 'food_attribute'
+            ? { foodAttributes: { has: entityId } }
+            : { restaurant: { restaurantAttributes: { has: entityId } } },
         orderBy: { lastMentionedAt: 'desc' },
         take: 10, // Look at top 10 connections for this entity
       });

@@ -95,7 +95,7 @@ export interface KeywordSearchResponse {
   performance: {
     searchDuration: number;
     apiCallsUsed: number;
-    rateLimitStatus: any;
+    rateLimitStatus: RateLimitResponse;
   };
   attribution: {
     postUrls: string[];
@@ -126,7 +126,7 @@ export interface BatchKeywordSearchResponse {
     batchDuration: number;
     averageSearchTime: number;
     totalApiCalls: number;
-    rateLimitStatus: any;
+    rateLimitStatus: RateLimitResponse;
   };
 }
 
@@ -234,8 +234,32 @@ export interface CostMetrics {
   isWithinFreeTier: boolean;
 }
 
-export interface CollectionMethodResult {
-  data: any[];
+interface RedditListingChild<T extends Record<string, unknown>> {
+  data?: T;
+  [key: string]: unknown;
+}
+
+interface RedditListingResponse<T extends Record<string, unknown>> {
+  data?: {
+    children?: RedditListingChild<T>[];
+    after?: string | null;
+  };
+}
+
+type RedditPostData = Record<string, unknown> & {
+  created_utc?: number;
+};
+
+function extractChildData<T extends Record<string, unknown>>(
+  child: RedditListingChild<T>,
+): T | null {
+  return typeof child.data === 'object' && child.data !== null
+    ? child.data
+    : null;
+}
+
+export interface CollectionMethodResult<T = Record<string, unknown>> {
+  data: T[];
   metadata: {
     totalRetrieved: number;
     rateLimitStatus: RateLimitResponse;
@@ -1147,7 +1171,7 @@ export class RedditService implements OnModuleInit {
     subreddit: string,
     lastProcessedTimestamp?: number,
     limit = 100,
-  ): Promise<CollectionMethodResult> {
+  ): Promise<CollectionMethodResult<RedditPostData>> {
     this.logger.info('Fetching chronological posts for real-time collection', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'chronological_collection',
@@ -1164,7 +1188,7 @@ export class RedditService implements OnModuleInit {
     const postsPerPage = 100;
     const totalPages = Math.ceil(Math.min(limit, 1000) / postsPerPage);
 
-    let allPosts: any[] = [];
+    let allPosts: RedditPostData[] = [];
     let after: string | null = null;
     let apiCallsUsed = 0;
 
@@ -1177,15 +1201,15 @@ export class RedditService implements OnModuleInit {
           url += `&after=${after}`;
         }
 
-        const response = await this.makeRequest<{
-          data?: {
-            children?: any[];
-            after?: string | null;
-          };
-        }>('GET', url, 'chronological_collection');
+        const response = await this.makeRequest<
+          RedditListingResponse<RedditPostData>
+        >('GET', url, 'chronological_collection');
 
         apiCallsUsed++;
-        const pagePosts = response.data?.children || [];
+        const pagePosts =
+          response.data?.children
+            ?.map((child) => extractChildData(child))
+            .filter((post): post is RedditPostData => post !== null) ?? [];
 
         if (pagePosts.length === 0) {
           // No more posts available
@@ -1194,8 +1218,8 @@ export class RedditService implements OnModuleInit {
 
         // Filter posts by timestamp if provided
         const filteredPosts = lastProcessedTimestamp
-          ? pagePosts.filter((post: any) => {
-              const postTime = post?.data?.created_utc;
+          ? pagePosts.filter((post) => {
+              const postTime = post.created_utc;
               return (
                 typeof postTime === 'number' &&
                 postTime > lastProcessedTimestamp
@@ -1228,7 +1252,7 @@ export class RedditService implements OnModuleInit {
       const responseTime = Date.now() - startTime;
 
       // Transform Reddit API response to flatten the data structure
-      const transformedPosts = allPosts.map((post: any) => post.data || post);
+      const transformedPosts = allPosts;
 
       this.logger.info('Chronological collection completed', {
         correlationId: CorrelationUtils.getCorrelationId(),
@@ -1286,7 +1310,7 @@ export class RedditService implements OnModuleInit {
       limit?: number;
       timeframe?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
     } = {},
-  ): Promise<CollectionMethodResult> {
+  ): Promise<CollectionMethodResult<RedditPostData>> {
     const { sort = 'relevance', limit = 100, timeframe = 'all' } = options;
 
     this.logger.info('Searching by keyword for entity enrichment', {
@@ -1301,18 +1325,22 @@ export class RedditService implements OnModuleInit {
 
     const startTime = Date.now();
     const encodedKeyword = encodeURIComponent(keyword);
-    const url = `https://oauth.reddit.com/r/${subreddit}/search?q=${encodedKeyword}&sort=${sort}&limit=${Math.min(limit, 100)}&t=${timeframe}&restrict_sr=1`;
+    const url = `https://oauth.reddit.com/r/${subreddit}/search?q=${encodedKeyword}&sort=${sort}&limit=${Math.min(
+      limit,
+      100,
+    )}&t=${timeframe}&restrict_sr=1`;
 
     const rateLimitStatus = this.getRateLimitStatus();
 
     try {
-      const response = await this.makeRequest<{ data?: { children?: any[] } }>(
-        'GET',
-        url,
-        'keyword_entity_search',
-      );
+      const response = await this.makeRequest<
+        RedditListingResponse<RedditPostData>
+      >('GET', url, 'keyword_entity_search');
 
-      const posts = response.data?.children || [];
+      const posts =
+        response.data?.children
+          ?.map((child) => extractChildData(child))
+          .filter((post): post is RedditPostData => post !== null) ?? [];
       const responseTime = Date.now() - startTime;
 
       return {
@@ -1456,7 +1484,9 @@ export class RedditService implements OnModuleInit {
     );
 
     const startTime = Date.now();
-    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}${depth !== null ? `&depth=${depth}` : ''}`;
+    const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}?limit=${limit}&sort=${sort}${
+      depth !== null ? `&depth=${depth}` : ''
+    }`;
 
     const rateLimitStatus = this.getRateLimitStatus();
 
@@ -1475,7 +1505,9 @@ export class RedditService implements OnModuleInit {
 
       // Extract post permalink for URL generation
       const postData = response[0]?.data?.children?.[0]?.data;
-      const postUrl = `https://reddit.com${postData?.permalink || `/r/${subreddit}/comments/${postId}`}`;
+      const postUrl = `https://reddit.com${
+        postData?.permalink || `/r/${subreddit}/comments/${postId}`
+      }`;
 
       return {
         rawResponse: response,
@@ -1776,7 +1808,7 @@ export class RedditService implements OnModuleInit {
   async searchEntityKeywords(
     subreddit: string,
     entityName: string,
-  searchOptions: {
+    searchOptions: {
       sort?: 'relevance' | 'new' | 'hot' | 'top' | 'comments';
       limit?: number;
       timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
@@ -1805,7 +1837,7 @@ export class RedditService implements OnModuleInit {
       };
 
       const rateLimitResponse: RateLimitResponse =
-        await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
+        this.rateLimitCoordinator.requestPermission(rateLimitRequest);
 
       if (!rateLimitResponse.allowed) {
         throw new RedditRateLimitError(
@@ -1967,7 +1999,9 @@ export class RedditService implements OnModuleInit {
       }
 
       throw new RedditApiError(
-        `Failed to search entity keywords: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to search entity keywords: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }
@@ -2125,7 +2159,9 @@ export class RedditService implements OnModuleInit {
       });
 
       throw new RedditApiError(
-        `Failed to perform batch entity keyword search: ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to perform batch entity keyword search: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       );
     }
   }

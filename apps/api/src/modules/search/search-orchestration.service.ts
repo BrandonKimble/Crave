@@ -5,17 +5,25 @@ import {
   SearchResponseDto,
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
+import { SearchFixtureService } from './search-fixture.service';
 
 @Injectable()
 export class SearchOrchestrationService {
   constructor(
     private readonly interpretationService: SearchQueryInterpretationService,
     private readonly searchService: SearchService,
+    private readonly searchFixtureService: SearchFixtureService,
   ) {}
 
   async runNaturalQuery(
     request: NaturalSearchRequestDto,
   ): Promise<SearchResponseDto> {
+    const fixtureResponse =
+      this.searchFixtureService.getNaturalSearchResponse(request);
+    if (fixtureResponse) {
+      return fixtureResponse;
+    }
+
     const interpretation = await this.interpretationService.interpret(request);
     const response = await this.searchService.runQuery(
       interpretation.structuredRequest,

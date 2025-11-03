@@ -6,9 +6,11 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts",
-    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
-    "clean": "rm -rf dist",
+    "build": "yarn clean && yarn build:js && yarn build:types",
+    "build:js": "tsup src/index.ts --format cjs,esm",
+    "build:types": "tsc --emitDeclarationOnly -p tsconfig.json",
+    "dev": "tsup src/index.ts --format cjs,esm --watch",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "lint": "eslint src --fix",
     "test": "echo 'No tests configured yet'"
   },

@@ -6,6 +6,7 @@
     "paths": {
       "@/*": ["src/*"]
     },
+    "types": ["nativewind/types"],
     "composite": true,
     "noEmit": false
   }

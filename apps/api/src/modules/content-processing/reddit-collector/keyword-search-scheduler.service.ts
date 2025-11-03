@@ -208,7 +208,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   /**
    * Check if any keyword searches are due
    */
-  async checkDueSearches(): Promise<KeywordSearchSchedule[]> {
+  checkDueSearches(): KeywordSearchSchedule[] {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const now = new Date();
     const dueSchedules: KeywordSearchSchedule[] = [];
@@ -330,7 +330,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     });
   }
 
-  async stopScheduling(): Promise<void> {
+  stopScheduling(): void {
     this.logger.info('Stopping keyword search scheduler', {
       correlationId: CorrelationUtils.generateCorrelationId(),
       operation: 'stop_scheduler',

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, FinishReason } from '@google/genai';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
 import { readFileSync } from 'fs';
@@ -24,6 +24,52 @@ import {
   LLMResponseParsingError,
 } from './llm.exceptions';
 
+interface GeminiCacheEntry {
+  name: string;
+}
+
+interface LightweightComment {
+  id: string;
+  content: string;
+  parent_id: string | null;
+}
+
+interface LightweightPost {
+  id: string;
+  title: string;
+  content: string;
+  extract_from_post: boolean;
+  comments: LightweightComment[];
+}
+
+interface SearchQueryRawResponse {
+  restaurants?: unknown;
+  restaurantNames?: unknown;
+  restaurant_names?: unknown;
+  foods?: unknown;
+  dishes?: unknown;
+  food_items?: unknown;
+  foodAttributes?: unknown;
+  food_attributes?: unknown;
+  foodTraits?: unknown;
+  restaurantAttributes?: unknown;
+  restaurant_attributes?: unknown;
+  venueAttributes?: unknown;
+}
+
+type GeminiGenerationConfig = Record<string, unknown> & {
+  responseMimeType?: string;
+  responseSchema?: Record<string, unknown>;
+  cachedContent?: string;
+  systemInstruction?: string;
+};
+
+interface LLMGenerationOptions {
+  generationConfig?: GeminiGenerationConfig;
+  cacheName?: string | null;
+  systemInstruction?: string | null;
+}
+
 @Injectable()
 export class LLMService implements OnModuleInit {
   private logger!: LoggerService;
@@ -40,9 +86,9 @@ export class LLMService implements OnModuleInit {
   };
 
   private genAI!: GoogleGenAI;
-  private systemInstructionCache: any = null; // Cache for collection processing instructions
+  private systemInstructionCache: GeminiCacheEntry | null = null; // Cache for collection processing instructions
   private queryPrompt!: string;
-  private queryInstructionCache: any = null;
+  private queryInstructionCache: GeminiCacheEntry | null = null;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -143,18 +189,23 @@ export class LLMService implements OnModuleInit {
       });
 
       // Create explicit cache with system instructions
-      this.systemInstructionCache = await this.genAI.caches.create({
+      const cache = await this.genAI.caches.create({
         model: this.llmConfig.model,
         config: {
           systemInstruction: this.systemPrompt,
           ttl: '10800s', // 3 hour cache
         },
       });
+      const cacheName = cache?.name;
+      if (!cacheName) {
+        throw new Error('Cache name missing from Gemini cache create response');
+      }
+      this.systemInstructionCache = { name: cacheName };
 
       this.logger.info('System instruction cache created successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'init_system_cache',
-        cacheId: this.systemInstructionCache.name,
+        cacheId: this.systemInstructionCache?.name,
         ttl: '10800s',
       });
     } catch (error) {
@@ -181,18 +232,23 @@ export class LLMService implements OnModuleInit {
         promptLength: this.queryPrompt.length,
       });
 
-      this.queryInstructionCache = await this.genAI.caches.create({
+      const cache = await this.genAI.caches.create({
         model: this.llmConfig.model,
         config: {
           systemInstruction: this.queryPrompt,
           ttl: '10800s',
         },
       });
+      const cacheName = cache?.name;
+      if (!cacheName) {
+        throw new Error('Cache name missing from Gemini cache create response');
+      }
+      this.queryInstructionCache = { name: cacheName };
 
       this.logger.info('Query instruction cache created successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'init_query_cache',
-        cacheId: this.queryInstructionCache.name,
+        cacheId: this.queryInstructionCache?.name,
         ttl: '10800s',
       });
     } catch (error) {
@@ -297,16 +353,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       const prompt = this.buildProcessingPrompt(input);
       const response = await this.callLLMApi(prompt);
       const parsed = this.parseResponse(response);
-      // Attach usage metadata to parsed output for downstream TPM tracking
-      try {
-        Object.defineProperty(parsed as any, 'usageMetadata', {
-          value: response.usageMetadata || null,
-          enumerable: false,
-          writable: false,
-        });
-      } catch (_) {
-        // Non-fatal if property cannot be defined
-      }
+      parsed.usageMetadata = response.usageMetadata ?? null;
 
       const responseTime = Date.now() - startTime;
       this.recordSuccessMetrics(
@@ -416,7 +463,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     // Validate input structure first to prevent undefined access errors
     if (!input || !input.posts || !Array.isArray(input.posts)) {
       throw new Error(
-        `Invalid LLM input structure: ${JSON.stringify({ hasInput: !!input, hasPostsProperty: input && 'posts' in input, postsType: input && typeof input.posts })}`,
+        `Invalid LLM input structure: ${JSON.stringify({
+          hasInput: !!input,
+          hasPostsProperty: input && 'posts' in input,
+          postsType: input && typeof input.posts,
+        })}`,
       );
     }
 
@@ -444,18 +495,22 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
 
     // Return only the minimal data needed by the LLM (lightweight projection)
-    const lightweightPosts = validPosts.map((post) => {
+    const lightweightPosts: LightweightPost[] = validPosts.map((post) => {
       const comments = Array.isArray(post.comments) ? post.comments : [];
+      const formattedComments: LightweightComment[] = comments.map(
+        (comment) => ({
+          id: comment.id,
+          content: comment.content,
+          parent_id: comment.parent_id ?? null,
+        }),
+      );
+
       return {
         id: post.id,
         title: post.title,
         content: post.content,
-        extract_from_post: !!post.extract_from_post,
-        comments: comments.map((c) => ({
-          id: c.id,
-          content: c.content,
-          parent_id: c.parent_id ?? null,
-        })),
+        extract_from_post: Boolean(post.extract_from_post),
+        comments: formattedComments,
       };
     });
 
@@ -463,17 +518,20 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     // DEBUG LOGGING: Track input size for massive token generation issue
     const totalComments = lightweightPosts.reduce(
-      (sum, post: any) => sum + (post.comments?.length || 0),
+      (sum, post) => sum + post.comments.length,
+      0,
+    );
+    const totalCommentCharacters = lightweightPosts.reduce(
+      (sum, post) =>
+        sum +
+        post.comments.reduce(
+          (commentSum, comment) => commentSum + comment.content.length,
+          0,
+        ),
       0,
     );
     const avgCommentLength =
-      lightweightPosts.reduce((sum: number, post: any) => {
-        const commentText =
-          post.comments
-            ?.map((c: any) => (c.content || '').length)
-            .reduce((a: number, b: number) => a + b, 0) || 0;
-        return sum + commentText;
-      }, 0) / Math.max(totalComments, 1);
+      totalComments > 0 ? totalCommentCharacters / totalComments : 0;
 
     this.logger.debug('🔍 INPUT SIZE DEBUG - LLM prompt built', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -483,10 +541,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         totalComments,
         promptCharacters: promptData.length,
         avgCommentLength: Math.round(avgCommentLength),
-        postIds: lightweightPosts.map((p: any) => p.id),
-        commentCounts: lightweightPosts.map(
-          (p: any) => p.comments?.length || 0,
-        ),
+        postIds: lightweightPosts.map((post) => post.id),
+        commentCounts: lightweightPosts.map((post) => post.comments.length),
       },
       warning: totalComments > 50 ? 'HIGH_COMMENT_COUNT' : 'NORMAL',
     });
@@ -568,7 +624,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   private parseSearchQueryResponse(content: string): LLMSearchQueryAnalysis {
     const cleanContent = this.sanitizeJsonContent(content);
 
-    let parsed: any;
+    let parsed: unknown;
     try {
       parsed = JSON.parse(cleanContent);
     } catch (error) {
@@ -576,6 +632,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         error instanceof Error ? error.message : 'Unknown JSON parse error';
       throw new LLMResponseParsingError(
         `Failed to parse search query analysis response: ${reason}`,
+        content,
+      );
+    }
+
+    if (!this.isSearchQueryResponse(parsed)) {
+      throw new LLMResponseParsingError(
+        'Search query analysis response was not in the expected format',
         content,
       );
     }
@@ -622,22 +685,24 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return Array.from(set);
   }
 
+  private isSearchQueryResponse(
+    value: unknown,
+  ): value is SearchQueryRawResponse {
+    return typeof value === 'object' && value !== null;
+  }
+
   /**
    * Make authenticated API call to Gemini service using @google/genai library
    */
   private async callLLMApi(
     prompt: string,
-    options: {
-      generationConfig?: Record<string, unknown>;
-      cacheName?: string | null;
-      systemInstruction?: string | null;
-    } = {},
+    options: LLMGenerationOptions = {},
   ): Promise<LLMApiResponse> {
     const maxRetries = this.llmConfig.retryOptions?.maxRetries ?? 3;
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
 
-    const defaultGenerationConfig = {
+    const defaultGenerationConfig: GeminiGenerationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
@@ -740,66 +805,82 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       },
     };
 
-    const generationConfig =
+    const generationConfig: GeminiGenerationConfig =
       options.generationConfig ?? defaultGenerationConfig;
     const cacheName =
       options.cacheName ??
       (options.systemInstruction
         ? null
-        : (this.systemInstructionCache?.name ?? null));
+        : this.systemInstructionCache?.name ?? null);
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
+
+    const hasResponseMimeType =
+      typeof generationConfig.responseMimeType === 'string' &&
+      generationConfig.responseMimeType.length > 0;
+    const hasResponseSchema =
+      typeof generationConfig.responseSchema === 'object' &&
+      generationConfig.responseSchema !== null;
 
     this.logger.debug('Generation config with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'call_llm_api',
-      hasResponseMimeType: !!(generationConfig as any).responseMimeType,
-      hasResponseSchema: !!(generationConfig as any).responseSchema,
+      hasResponseMimeType,
+      hasResponseSchema,
       configKeys: Object.keys(generationConfig),
     });
 
     // Simple helper to classify transient errors from Gemini
-    const isRetryable = (err: any): { retry: boolean; reason: string } => {
-      try {
-        const msg = (err?.message || String(err) || '').toLowerCase();
-        // Try to parse JSON error bodies of the shape { error: { code, status, message } }
-        let code = 0;
-        let status = '';
-        const jsonMatch = String(err?.message || '').match(
-          /\{\"error\":\{[^}]*\}\}/,
-        );
-        if (jsonMatch) {
-          try {
-            const parsed = JSON.parse(jsonMatch[0]);
-            code = parsed?.error?.code || 0;
-            status = String(parsed?.error?.status || '').toLowerCase();
-          } catch {}
-        }
+    const isRetryable = (err: unknown): { retry: boolean; reason: string } => {
+      const message =
+        err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+      const lowerMessage = message.toLowerCase();
 
-        if (
-          code === 503 ||
-          status === 'unavailable' ||
-          msg.includes('service is currently unavailable') ||
-          msg.includes('model is overloaded') ||
-          msg.includes('temporarily unavailable') ||
-          msg.includes('unavailable') ||
-          msg.includes('503')
-        ) {
-          return { retry: true, reason: 'gemini_unavailable' };
+      let code = 0;
+      let status = '';
+      const jsonMatch = message.match(/\{"error":{[^}]*}}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]) as {
+            error?: { code?: number; status?: string };
+          };
+          code = parsed.error?.code ?? 0;
+          status = String(parsed.error?.status ?? '').toLowerCase();
+        } catch {
+          // ignore JSON parse failures
         }
-        if (msg.includes('timeout') || msg.includes('timed out')) {
-          return { retry: true, reason: 'timeout' };
-        }
-        if (msg.includes('ecconnreset') || msg.includes('econnrefused')) {
-          return { retry: true, reason: 'network' };
-        }
-        if (
-          msg.includes('rate limit') ||
-          msg.includes('quota') ||
-          msg.includes('429')
-        ) {
-          return { retry: true, reason: 'rate_limit' };
-        }
-      } catch {}
+      }
+
+      if (
+        code === 503 ||
+        status === 'unavailable' ||
+        lowerMessage.includes('service is currently unavailable') ||
+        lowerMessage.includes('model is overloaded') ||
+        lowerMessage.includes('temporarily unavailable') ||
+        lowerMessage.includes('unavailable') ||
+        lowerMessage.includes('503')
+      ) {
+        return { retry: true, reason: 'gemini_unavailable' };
+      }
+      if (
+        lowerMessage.includes('timeout') ||
+        lowerMessage.includes('timed out')
+      ) {
+        return { retry: true, reason: 'timeout' };
+      }
+      if (
+        lowerMessage.includes('ecconnreset') ||
+        lowerMessage.includes('econnrefused')
+      ) {
+        return { retry: true, reason: 'network' };
+      }
+      if (
+        lowerMessage.includes('rate limit') ||
+        lowerMessage.includes('quota') ||
+        lowerMessage.includes('429')
+      ) {
+        return { retry: true, reason: 'rate_limit' };
+      }
+
       return { retry: false, reason: 'non_retryable' };
     };
 
@@ -819,7 +900,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         });
 
         // Use explicit cache if available, otherwise fall back to system instruction in config
-        const requestConfig = cacheName
+        const requestConfig: GeminiGenerationConfig = cacheName
           ? {
               ...generationConfig,
               cachedContent: cacheName,
@@ -839,7 +920,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
         const outputTokens = response.usageMetadata?.candidatesTokenCount || 0;
 
-        if (finishReason === 'MAX_TOKENS') {
+        if (finishReason === FinishReason.MAX_TOKENS) {
           this.logger.warn('🚨 TOKEN LIMIT HIT - Response truncated!', {
             correlationId: CorrelationUtils.getCorrelationId(),
             operation: 'call_llm_api',
@@ -879,7 +960,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                     : 'N/A',
               },
               flags: {
-                isTokenLimit: finishReason === 'MAX_TOKENS',
+                isTokenLimit: finishReason === FinishReason.MAX_TOKENS,
                 isMassiveOutput: outputTokenCount > 50000,
                 isHugeContent: contentLength > 50000,
               },
@@ -906,19 +987,96 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           attempt: attempt + 1,
         });
 
-        return {
-          candidates: response.candidates || [],
-          usageMetadata: response.usageMetadata,
+        const normalizedCandidates = (response.candidates ?? [])
+          .map((candidate) => {
+            const contentParts =
+              candidate?.content?.parts?.map((part) => ({
+                text: typeof part?.text === 'string' ? part.text : '',
+              })) ?? [];
+
+            return {
+              content: {
+                parts: contentParts,
+                role:
+                  typeof candidate?.content?.role === 'string'
+                    ? candidate.content.role
+                    : undefined,
+              },
+              finishReason: candidate?.finishReason,
+              safetyRatings: candidate?.safetyRatings?.map((rating) => ({
+                category:
+                  typeof rating?.category === 'string' ? rating.category : '',
+                probability:
+                  typeof rating?.probability === 'string'
+                    ? rating.probability
+                    : '',
+              })),
+              citationMetadata:
+                candidate?.citationMetadata?.citations &&
+                Array.isArray(candidate.citationMetadata.citations)
+                  ? {
+                      citationSources: candidate.citationMetadata.citations.map(
+                        (source) => ({
+                          startIndex:
+                            typeof source?.startIndex === 'number'
+                              ? source.startIndex
+                              : 0,
+                          endIndex:
+                            typeof source?.endIndex === 'number'
+                              ? source.endIndex
+                              : 0,
+                          uri:
+                            typeof source?.uri === 'string' ? source.uri : '',
+                          license:
+                            typeof source?.license === 'string'
+                              ? source.license
+                              : '',
+                        }),
+                      ),
+                    }
+                  : undefined,
+            };
+          })
+          // Ensure only candidates with at least one part are returned
+          .filter(
+            (candidate) =>
+              Array.isArray(candidate.content.parts) &&
+              candidate.content.parts.length > 0,
+          );
+
+        const usageMetadata = response.usageMetadata
+          ? {
+              promptTokenCount: response.usageMetadata.promptTokenCount ?? 0,
+              candidatesTokenCount:
+                response.usageMetadata.candidatesTokenCount ?? 0,
+              totalTokenCount: response.usageMetadata.totalTokenCount ?? 0,
+              thoughtsTokenCount:
+                response.usageMetadata.thoughtsTokenCount ?? undefined,
+              cachedContentTokenCount:
+                response.usageMetadata.cachedContentTokenCount ?? undefined,
+            }
+          : undefined;
+
+        const normalizedResponse: LLMApiResponse = {
+          candidates: normalizedCandidates,
+          usageMetadata,
+          modelVersion: response.modelVersion,
           promptFeedback: response.promptFeedback,
-        } as LLMApiResponse;
+        };
+
+        return normalizedResponse;
       } catch (error) {
+        const errorConstructor =
+          error instanceof Error ? error.constructor.name : undefined;
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
         const errorDetails = {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'call_llm_api',
           library: '@google/genai',
           errorType: typeof error,
-          errorConstructor: error?.constructor?.name,
-          errorMessage: error instanceof Error ? error.message : String(error),
+          errorConstructor,
+          errorMessage,
           attempt: attempt + 1,
           maxRetries,
         };
@@ -1075,7 +1233,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   async testConnection(): Promise<{
     status: string;
     message: string;
-    details?: any;
+    details?: LLMPerformanceMetrics;
+    error?: string;
   }> {
     try {
       const testInput: LLMInputStructure = {
@@ -1100,12 +1259,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         status: 'connected',
         message: 'Gemini connection test passed',
         details: this.performanceMetrics,
+        error: undefined,
       };
     } catch (error) {
       return {
         status: 'failed',
         message: 'Gemini connection test failed',
-        details: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error.message : String(error),
       };
     }
   }

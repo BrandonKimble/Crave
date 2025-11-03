@@ -111,6 +111,7 @@ export class ArchiveCollectionWorker implements OnModuleInit {
         correlationId,
         jobId,
         subreddit,
+        processingTimeMs,
       });
 
       await job.log(`Archive collection failed: ${errorMessage}`);
