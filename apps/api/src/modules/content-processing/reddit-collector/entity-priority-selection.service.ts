@@ -450,8 +450,8 @@ export class EntityPrioritySelectionService {
             entityType === 'food'
               ? { foodId: entityId }
               : entityType === 'food_attribute'
-              ? { foodAttributes: { has: entityId } }
-              : { restaurant: { restaurantAttributes: { has: entityId } } },
+                ? { foodAttributes: { has: entityId } }
+                : { restaurant: { restaurantAttributes: { has: entityId } } },
         });
 
         if (connections.length === 0) {
@@ -523,10 +523,10 @@ export class EntityPrioritySelectionService {
           entityType === 'restaurant'
             ? { restaurantId: entityId }
             : entityType === 'food'
-            ? { foodId: entityId }
-            : entityType === 'food_attribute'
-            ? { foodAttributes: { has: entityId } }
-            : { restaurant: { restaurantAttributes: { has: entityId } } },
+              ? { foodId: entityId }
+              : entityType === 'food_attribute'
+                ? { foodAttributes: { has: entityId } }
+                : { restaurant: { restaurantAttributes: { has: entityId } } },
         orderBy: { lastMentionedAt: 'desc' },
         take: 10, // Look at top 10 connections for this entity
       });

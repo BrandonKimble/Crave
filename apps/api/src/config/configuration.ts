@@ -228,8 +228,8 @@ export default () => ({
       process.env.SEARCH_FIXTURES_ENABLED === 'true'
         ? true
         : process.env.SEARCH_FIXTURES_ENABLED === 'false'
-        ? false
-        : undefined,
+          ? false
+          : undefined,
   },
   restaurantEnrichment: {
     minScoreThreshold: parseFloat(

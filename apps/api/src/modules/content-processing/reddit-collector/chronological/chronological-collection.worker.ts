@@ -202,8 +202,8 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       const effectiveLimit = manualLimitProvided
         ? jobLimit
         : envLimit !== null && envLimit >= 0
-        ? envLimit
-        : jobLimit;
+          ? envLimit
+          : jobLimit;
       const posts =
         typeof effectiveLimit === 'number' && effectiveLimit > 0
           ? allPosts.slice(0, effectiveLimit)

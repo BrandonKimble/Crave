@@ -609,7 +609,7 @@ export class SmartLLMProcessor implements OnModuleInit {
         process.env.LLM_TPM_INCLUDE_CACHED === 'true' ||
         process.env.LLM_TPM_INCLUDE_CACHED === '1';
       const cached = includeCached
-        ? usageMetadata.cachedContentTokenCount ?? 0
+        ? (usageMetadata.cachedContentTokenCount ?? 0)
         : 0;
       const promptTokens = promptTokenCount + cached;
       const outputTokens = candidatesTokenCount;

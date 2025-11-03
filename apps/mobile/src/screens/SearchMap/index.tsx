@@ -97,7 +97,7 @@ const SearchMapScreen: React.FC = () => {
         logger.warn('Prefetch failed', error);
       }
     },
-    [bounds, openNow, prefetchSearch, recordSearch, resetPage, setQuery],
+    [bounds, openNow, prefetchSearch, recordSearch, resetPage, setQuery]
   );
 
   const handleSubmit = useCallback(() => {
@@ -109,7 +109,7 @@ const SearchMapScreen: React.FC = () => {
       setDraftQuery(value);
       void handleExecuteSearch(value);
     },
-    [handleExecuteSearch],
+    [handleExecuteSearch]
   );
 
   const handleRegionChangeComplete = useCallback(
@@ -122,7 +122,7 @@ const SearchMapScreen: React.FC = () => {
       });
       resetPage();
     },
-    [resetPage, setBounds],
+    [resetPage, setBounds]
   );
 
   const handleSelectPreset = useCallback(
@@ -145,7 +145,7 @@ const SearchMapScreen: React.FC = () => {
       });
       resetPage();
     },
-    [resetPage, setBounds],
+    [resetPage, setBounds]
   );
 
   const handleToggleOpenNow = useCallback(() => {
@@ -180,17 +180,10 @@ const SearchMapScreen: React.FC = () => {
       openNow,
       page,
       trimmedCommittedQuery,
-    ],
+    ]
   );
 
-  const {
-    data,
-    isLoading,
-    isFetching,
-    isError,
-    error,
-    refetch,
-  } = useSearchQuery(searchParams, {
+  const { data, isLoading, isFetching, isError, error, refetch } = useSearchQuery(searchParams, {
     enabled: trimmedCommittedQuery.length > 0,
   });
 
@@ -203,9 +196,7 @@ const SearchMapScreen: React.FC = () => {
       return;
     }
 
-    const restaurant = restaurants.find(
-      (item) => item.restaurantId === focusedRestaurantId,
-    );
+    const restaurant = restaurants.find((item) => item.restaurantId === focusedRestaurantId);
 
     if (
       restaurant &&
@@ -219,21 +210,20 @@ const SearchMapScreen: React.FC = () => {
           latitudeDelta: Math.max(region.latitudeDelta * 0.5, 0.01),
           longitudeDelta: Math.max(region.longitudeDelta * 0.5, 0.01),
         },
-        250,
+        250
       );
     }
   }, [focusedRestaurantId, region.latitudeDelta, region.longitudeDelta, restaurants]);
 
   const totalFoodResults = metadata?.totalFoodResults ?? foodResults.length;
-  const totalRestaurantResults =
-    metadata?.totalRestaurantResults ?? restaurants.length;
+  const totalRestaurantResults = metadata?.totalRestaurantResults ?? restaurants.length;
   const pageSize = metadata?.pageSize ?? DEFAULT_SEARCH_PAGE_SIZE;
   const totalPages =
     metadata && metadata.totalFoodResults > 0
       ? Math.ceil(metadata.totalFoodResults / pageSize)
       : trimmedCommittedQuery
-        ? Math.max(1, Math.ceil(foodResults.length / pageSize))
-        : 1;
+      ? Math.max(1, Math.ceil(foodResults.length / pageSize))
+      : 1;
   const resultCount = foodResults.length + restaurants.length;
 
   const items = useMemo<ExploreListItem[]>(() => {
@@ -250,7 +240,7 @@ const SearchMapScreen: React.FC = () => {
           key: `food-${item.connectionId}`,
           type: 'food' as const,
           item,
-        })),
+        }))
       );
     }
 
@@ -266,7 +256,7 @@ const SearchMapScreen: React.FC = () => {
           key: `restaurant-${item.restaurantId}`,
           type: 'restaurant' as const,
           item,
-        })),
+        }))
       );
     }
 
@@ -296,9 +286,7 @@ const SearchMapScreen: React.FC = () => {
             <Text variant="subtitle" weight="semibold">
               {item.title}
             </Text>
-            <Text className="text-muted text-xs uppercase tracking-wide">
-              {item.count} total
-            </Text>
+            <Text className="text-muted text-xs uppercase tracking-wide">{item.count} total</Text>
           </View>
         );
       }
@@ -319,9 +307,7 @@ const SearchMapScreen: React.FC = () => {
             <Text className="text-muted text-sm mt-1">{food.restaurantName}</Text>
             <View className="flex-row flex-wrap gap-x-3 gap-y-1 mt-2">
               <Text className="text-xs text-muted">Mentions: {food.mentionCount}</Text>
-              <Text className="text-xs text-muted">
-                Score: {food.qualityScore.toFixed(1)}
-              </Text>
+              <Text className="text-xs text-muted">Score: {food.qualityScore.toFixed(1)}</Text>
               <Text className="text-xs text-muted">Upvotes: {food.totalUpvotes}</Text>
             </View>
             {food.categories.length > 0 && (
@@ -339,7 +325,7 @@ const SearchMapScreen: React.FC = () => {
           onPress={() => setFocusedRestaurantId(restaurant.restaurantId)}
           className={clsx(
             'bg-surface border border-border rounded-xl p-3 mb-2 active:opacity-95',
-            focusedRestaurantId === restaurant.restaurantId ? 'border-primary' : null,
+            focusedRestaurantId === restaurant.restaurantId ? 'border-primary' : null
           )}
         >
           <View className="flex-row items-center justify-between">
@@ -360,8 +346,7 @@ const SearchMapScreen: React.FC = () => {
               <Text className="text-sm font-semibold text-text">Highlights</Text>
               {restaurant.topFood.map((food) => (
                 <Text key={food.connectionId} className="text-xs text-muted">
-                  • {food.foodName} ({food.activityLevel}) ·{' '}
-                  {food.qualityScore.toFixed(1)}
+                  • {food.foodName} ({food.activityLevel}) · {food.qualityScore.toFixed(1)}
                 </Text>
               ))}
             </View>
@@ -369,7 +354,7 @@ const SearchMapScreen: React.FC = () => {
         </Pressable>
       );
     },
-    [focusedRestaurantId],
+    [focusedRestaurantId]
   );
 
   const historyChips = useMemo(() => history.slice(0, 6), [history]);
@@ -386,8 +371,7 @@ const SearchMapScreen: React.FC = () => {
           {restaurants
             .filter(
               (restaurant) =>
-                typeof restaurant.latitude === 'number' &&
-                typeof restaurant.longitude === 'number',
+                typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
             )
             .map((restaurant) => (
               <Marker
@@ -397,27 +381,19 @@ const SearchMapScreen: React.FC = () => {
                   longitude: restaurant.longitude as number,
                 }}
                 title={restaurant.restaurantName}
-                description={
-                  restaurant.topFood[0]?.foodName ?? restaurant.restaurantName
-                }
+                description={restaurant.topFood[0]?.foodName ?? restaurant.restaurantName}
                 onPress={() => setFocusedRestaurantId(restaurant.restaurantId)}
               />
             ))}
         </MapView>
 
-        <View
-          style={{ paddingTop: insets.top + 12 }}
-          className="px-4"
-          pointerEvents="box-none"
-        >
+        <View style={{ paddingTop: insets.top + 12 }} className="px-4" pointerEvents="box-none">
           <View className="gap-3">
             <View className="border border-border rounded-2xl bg-surface/95 px-4 py-3">
               <View className="flex-row items-center justify-between">
                 <View className="flex-1 pr-3">
                   <Text weight="semibold">Open now</Text>
-                  <Text className="text-xs text-muted">
-                    Only show restaurants currently open
-                  </Text>
+                  <Text className="text-xs text-muted">Only show restaurants currently open</Text>
                 </View>
                 <Switch
                   value={openNow}
@@ -441,14 +417,14 @@ const SearchMapScreen: React.FC = () => {
                     accessibilityRole="button"
                     className={clsx(
                       'px-4 py-2 rounded-full border',
-                      isActive ? 'bg-primary/10 border-primary' : 'border-border bg-surface/95',
+                      isActive ? 'bg-primary/10 border-primary' : 'border-border bg-surface/95'
                     )}
                     onPress={() => handleSelectPreset(preset.id)}
                   >
                     <Text
                       className={clsx(
                         'text-sm',
-                        isActive ? 'text-primary font-semibold' : 'text-text',
+                        isActive ? 'text-primary font-semibold' : 'text-text'
                       )}
                     >
                       {preset.label}
@@ -458,9 +434,7 @@ const SearchMapScreen: React.FC = () => {
               })}
               {activePresetId === 'custom' && (
                 <View className="px-4 py-2 rounded-full border border-primary bg-primary/10">
-                  <Text className="text-sm text-primary font-semibold">
-                    Custom area
-                  </Text>
+                  <Text className="text-sm text-primary font-semibold">Custom area</Text>
                 </View>
               )}
             </ScrollView>
@@ -473,10 +447,7 @@ const SearchMapScreen: React.FC = () => {
           style={styles.keyboardContainer}
         >
           <View className="flex-1 justify-end">
-            <View
-              style={{ paddingBottom: insets.bottom + 16 }}
-              className="px-4 gap-4"
-            >
+            <View style={{ paddingBottom: insets.bottom + 16 }} className="px-4 gap-4">
               <View className="border border-border rounded-3xl bg-surface/95 p-4">
                 <View className="gap-1">
                   <Text variant="subtitle" weight="semibold">
@@ -488,12 +459,12 @@ const SearchMapScreen: React.FC = () => {
                     {isLoading
                       ? 'Searching for the strongest matches...'
                       : isError
-                        ? 'We hit a snag fetching results. Pull to refresh.'
-                        : resultCount
-                          ? `Showing ${resultCount} items`
-                          : trimmedCommittedQuery
-                            ? 'No matches yet—try widening your search.'
-                            : 'Describe what you are craving to get curated recommendations.'}
+                      ? 'We hit a snag fetching results. Pull to refresh.'
+                      : resultCount
+                      ? `Showing ${resultCount} items`
+                      : trimmedCommittedQuery
+                      ? 'No matches yet—try widening your search.'
+                      : 'Describe what you are craving to get curated recommendations.'}
                   </Text>
                 </View>
 
@@ -506,9 +477,7 @@ const SearchMapScreen: React.FC = () => {
                 {metadata && (
                   <View className="border border-border rounded-xl bg-surface px-3 py-2 mt-3 gap-1">
                     <View className="flex-row justify-between">
-                      <Text className="text-xs text-muted">
-                        Foods: {metadata.totalFoodResults}
-                      </Text>
+                      <Text className="text-xs text-muted">Foods: {metadata.totalFoodResults}</Text>
                       <Text className="text-xs text-muted">
                         Restaurants: {metadata.totalRestaurantResults}
                       </Text>
@@ -574,9 +543,7 @@ const SearchMapScreen: React.FC = () => {
 
               {historyChips.length > 0 && (
                 <View className="bg-surface/95 border border-border rounded-3xl px-4 py-3 gap-2">
-                  <Text className="text-sm font-semibold text-text">
-                    Recent searches
-                  </Text>
+                  <Text className="text-sm font-semibold text-text">Recent searches</Text>
                   <View className="flex-row flex-wrap gap-2">
                     {historyChips.map((entry) => (
                       <Pressable

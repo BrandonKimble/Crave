@@ -106,7 +106,9 @@ export class SearchFixtureService {
     };
 
     const sqlPreview =
-      request.includeSqlPreview === false ? null : template.sqlPreview ?? null;
+      request.includeSqlPreview === false
+        ? null
+        : (template.sqlPreview ?? null);
 
     return {
       ...template,
