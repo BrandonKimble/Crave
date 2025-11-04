@@ -103,22 +103,21 @@ export class PrismaService
         query: { retry: { attempts: 3, delay: 1000, factor: 2.0 } },
       } as DatabaseConfig); // Safe after validation
 
-    this.setupMetricsMiddleware();
-    this.setupEventListeners();
+    // FIXME: Temporarily simplified due to PrismaClient extension binding issues
+    // this.setupMetricsMiddleware();
+    // this.setupEventListeners();
 
-    // Connect to database with retry logic
-    await this.connectWithRetry();
+    // Connect to database directly (retry logic temporarily disabled)
+    await this.$connect();
 
-    this.startHealthChecks();
-    this.logger.info(
-      `Database connection pool initialized with max ${this.dbConfig.connectionPool.max} connections`,
-      { maxConnections: this.dbConfig.connectionPool.max },
-    );
+    // this.startHealthChecks();
+    this.logger.info('Database connection established');
   }
 
   async onModuleDestroy() {
-    this.stopHealthChecks();
-    await this.gracefulDisconnect();
+    // FIXME: Temporarily simplified due to PrismaClient extension binding issues
+    // this.stopHealthChecks();
+    await this.$disconnect();
     this.logger.info('Database connections closed gracefully');
   }
 

@@ -1,41 +1,44 @@
 import React from 'react';
-import { Text as RNText, TextProps as RNTextProps } from 'react-native';
-import clsx from 'clsx';
+import { Text as RNText, TextProps as RNTextProps, StyleProp, TextStyle, StyleSheet } from 'react-native';
 
 export interface TextProps extends RNTextProps {
   variant?: 'title' | 'subtitle' | 'body' | 'caption';
   weight?: 'regular' | 'medium' | 'semibold' | 'bold';
+  style?: StyleProp<TextStyle>;
 }
 
-const variantStyles: Record<NonNullable<TextProps['variant']>, string> = {
-  title: 'text-3xl',
-  subtitle: 'text-xl',
-  body: 'text-base',
-  caption: 'text-sm',
+const variantStyles: Record<NonNullable<TextProps['variant']>, TextStyle> = {
+  title: { fontSize: 28, lineHeight: 34 },
+  subtitle: { fontSize: 20, lineHeight: 26 },
+  body: { fontSize: 16, lineHeight: 22 },
+  caption: { fontSize: 14, lineHeight: 18 },
 };
 
-const weightStyles: Record<NonNullable<TextProps['weight']>, string> = {
-  regular: 'font-normal',
-  medium: 'font-medium',
-  semibold: 'font-semibold',
-  bold: 'font-bold',
+const weightStyles: Record<NonNullable<TextProps['weight']>, TextStyle> = {
+  regular: { fontWeight: '400' },
+  medium: { fontWeight: '500' },
+  semibold: { fontWeight: '600' },
+  bold: { fontWeight: '700' },
 };
 
 export const Text: React.FC<TextProps> = ({
   variant = 'body',
   weight = 'regular',
-  className,
+  style,
   children,
   ...rest
 }) => {
   return (
-    <RNText
-      className={clsx('text-text', variantStyles[variant], weightStyles[weight], className)}
-      {...rest}
-    >
+    <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], style]} {...rest}>
       {children}
     </RNText>
   );
 };
+
+const styles = StyleSheet.create({
+  base: {
+    color: '#0f172a',
+  },
+});
 
 export default Text;

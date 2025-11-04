@@ -1,6 +1,15 @@
 import React from 'react';
-import { Pressable, PressableProps, Text } from 'react-native';
-import clsx from 'clsx';
+import {
+  ActivityIndicator,
+  Pressable,
+  PressableProps,
+  PressableStateCallbackType,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextStyle,
+  ViewStyle,
+} from 'react-native';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -10,42 +19,85 @@ export interface ButtonProps extends PressableProps {
   isLoading?: boolean;
 }
 
-const baseStyles = 'h-12 rounded-lg flex-row items-center justify-center px-4 active:opacity-90';
+const styles = StyleSheet.create({
+  base: {
+    height: 48,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  label: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  primary: {
+    backgroundColor: '#6366f1',
+  },
+  primaryText: {
+    color: '#ffffff',
+  },
+  secondary: {
+    backgroundColor: '#1e293b',
+  },
+  secondaryText: {
+    color: '#ffffff',
+  },
+  ghost: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#6366f1',
+  },
+  ghostText: {
+    color: '#6366f1',
+  },
+  disabled: {
+    opacity: 0.5,
+  },
+});
 
-const variantStyles: Record<ButtonVariant, string> = {
-  primary: 'bg-primary',
-  secondary: 'bg-secondary',
-  ghost: 'bg-transparent border border-primary',
+const containerVariants: Record<ButtonVariant, StyleProp<ViewStyle>> = {
+  primary: styles.primary,
+  secondary: styles.secondary,
+  ghost: styles.ghost,
 };
 
-const textStyles: Record<ButtonVariant, string> = {
-  primary: 'text-white',
-  secondary: 'text-white',
-  ghost: 'text-primary',
+const labelVariants: Record<ButtonVariant, StyleProp<TextStyle>> = {
+  primary: styles.primaryText,
+  secondary: styles.secondaryText,
+  ghost: styles.ghostText,
 };
 
-export const Button: React.FC<ButtonProps> = ({
+const Button: React.FC<ButtonProps> = ({
   label,
   variant = 'primary',
   isLoading = false,
   disabled,
-  className,
+  style,
   ...pressableProps
 }) => {
   const isDisabled = disabled ?? isLoading;
 
+  const computedStyle = (state: PressableStateCallbackType) => [
+    styles.base,
+    containerVariants[variant],
+    isDisabled ? styles.disabled : null,
+    typeof style === 'function' ? style(state) : style,
+  ];
+
   return (
     <Pressable
       accessibilityRole="button"
-      className={clsx(baseStyles, variantStyles[variant], className, {
-        'opacity-50': isDisabled,
-      })}
+      style={computedStyle}
       disabled={isDisabled}
       {...pressableProps}
     >
-      <Text className={clsx('text-base font-semibold', textStyles[variant])}>
-        {isLoading ? 'Loading...' : label}
-      </Text>
+      {isLoading ? (
+        <ActivityIndicator color={variant === 'ghost' ? '#6366f1' : '#ffffff'} />
+      ) : (
+        <Text style={[styles.label, labelVariants[variant]]}>{label}</Text>
+      )}
     </Pressable>
   );
 };

@@ -113,7 +113,7 @@ export default () => ({
   },
   llm: {
     apiKey: process.env.LLM_API_KEY,
-    model: process.env.LLM_MODEL || 'gemini-2.5-flash',
+    model: process.env.LLM_MODEL || 'gemini-2.5-flash-preview-09-2025',
     baseUrl:
       process.env.LLM_BASE_URL ||
       'https://generativelanguage.googleapis.com/v1beta',
@@ -222,14 +222,6 @@ export default () => ({
         '300000',
       10,
     ),
-  },
-  searchFixtures: {
-    enabled:
-      process.env.SEARCH_FIXTURES_ENABLED === 'true'
-        ? true
-        : process.env.SEARCH_FIXTURES_ENABLED === 'false'
-          ? false
-          : undefined,
   },
   restaurantEnrichment: {
     minScoreThreshold: parseFloat(

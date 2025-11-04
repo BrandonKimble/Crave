@@ -1,6 +1,5 @@
 const path = require('path');
 const { getDefaultConfig } = require('expo/metro-config');
-const { withNativeWind } = require('nativewind/metro');
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '..', '..');
@@ -13,4 +12,21 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-module.exports = withNativeWind(config, { input: './global.css' });
+config.resolver.alias = {
+  ...(config.resolver.alias || {}),
+  'react-native$': path.resolve(projectRoot, 'src/shims/reactNativeProxy.js'),
+  'react-native/Libraries/Utilities/codegenNativeComponent': path.resolve(
+    projectRoot,
+    'src/shims/codegenNativeComponentShim.js'
+  ),
+  '@rnmapbox/maps': path.resolve(
+    workspaceRoot,
+    'node_modules/@rnmapbox/maps/lib/module/index.native.js'
+  ),
+  '@rnmapbox/maps$': path.resolve(
+    workspaceRoot,
+    'node_modules/@rnmapbox/maps/lib/module/index.native.js'
+  ),
+};
+
+module.exports = config;

@@ -134,6 +134,49 @@ export interface GooglePlaceAutocompleteResponse {
   };
 }
 
+export interface GoogleFindPlaceOptions {
+  fields?: string[];
+  language?: string;
+  sessionToken?: string;
+  includeRaw?: boolean;
+  locationBias?: {
+    lat: number;
+    lng: number;
+    radiusMeters?: number;
+  };
+}
+
+export interface GoogleFindPlaceCandidate {
+  place_id: string;
+  name?: string;
+  formatted_address?: string;
+  geometry?: {
+    location?: {
+      lat?: number;
+      lng?: number;
+    };
+  };
+  types?: string[];
+}
+
+export interface GoogleFindPlaceApiResponse {
+  status: string;
+  candidates: GoogleFindPlaceCandidate[];
+  error_message?: string;
+}
+
+export interface GoogleFindPlaceResponse {
+  status: string;
+  candidates: GoogleFindPlaceCandidate[];
+  errorMessage?: string;
+  raw?: GoogleFindPlaceApiResponse;
+  metadata: {
+    requestDurationMs: number;
+    locationBiasApplied: boolean;
+    candidateCount: number;
+  };
+}
+
 @Injectable()
 export class GooglePlacesService {
   private readonly logger: LoggerService;
@@ -464,6 +507,172 @@ export class GooglePlacesService {
 
       throw new InternalServerErrorException(
         'Failed to fetch Google autocomplete predictions',
+      );
+    }
+  }
+
+  async findPlaceFromText(
+    input: string,
+    options: GoogleFindPlaceOptions = {},
+  ): Promise<GoogleFindPlaceResponse> {
+    const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'Google Places API key is not configured',
+      );
+    }
+
+    const trimmedInput = input?.trim();
+    if (!trimmedInput) {
+      throw new BadRequestException('input is required for find place');
+    }
+
+    const rateLimit = this.rateLimitCoordinator.requestPermission({
+      service: ExternalApiService.GOOGLE_PLACES,
+      operation: 'findPlaceFromText',
+    });
+
+    if (!rateLimit.allowed) {
+      throw this.buildTooManyRequestsError(
+        'Google Places rate limit reached. Try again shortly.',
+      );
+    }
+
+    const fields = this.normalizeFields(options.fields);
+
+    const params: Record<string, string> = {
+      input: trimmedInput,
+      inputtype: 'textquery',
+      key: apiKey,
+      fields: fields.join(','),
+      language: options.language || 'en',
+    };
+
+    if (options.sessionToken) {
+      params.sessiontoken = options.sessionToken;
+    }
+
+    if (options.locationBias) {
+      const { lat, lng, radiusMeters } = options.locationBias;
+      if (
+        typeof lat === 'number' &&
+        Number.isFinite(lat) &&
+        typeof lng === 'number' &&
+        Number.isFinite(lng)
+      ) {
+        if (typeof radiusMeters === 'number' && Number.isFinite(radiusMeters)) {
+          const radius = Math.max(1, Math.min(Math.trunc(radiusMeters), 50000));
+          params.locationbias = `circle:${radius}@${lat},${lng}`;
+        } else {
+          params.locationbias = `point:${lat},${lng}`;
+        }
+      }
+    }
+
+    const requestStart = Date.now();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get<GoogleFindPlaceApiResponse>(
+          `${this.baseUrl}/findplacefromtext/json`,
+          {
+            params,
+            timeout: this.requestTimeout,
+          },
+        ),
+      );
+
+      const duration = Date.now() - requestStart;
+      const data = response.data;
+
+      if (!data) {
+        throw new InternalServerErrorException(
+          'Google Places find place response missing data',
+        );
+      }
+
+      if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
+        const candidates = Array.isArray(data.candidates)
+          ? data.candidates
+          : [];
+
+        this.logger.debug('Retrieved Google Places find place results', {
+          input: trimmedInput,
+          candidateCount: candidates.length,
+          duration,
+          status: data.status,
+        });
+
+        return {
+          status: data.status,
+          candidates,
+          raw: options.includeRaw ? data : undefined,
+          metadata: {
+            requestDurationMs: duration,
+            locationBiasApplied: Boolean(params.locationbias),
+            candidateCount: candidates.length,
+          },
+        };
+      }
+
+      if (data.status === 'OVER_QUERY_LIMIT') {
+        this.rateLimitCoordinator.reportRateLimitHit(
+          ExternalApiService.GOOGLE_PLACES,
+          60,
+          'findPlaceFromText',
+        );
+        throw this.buildTooManyRequestsError(
+          'Google Places rate limit exceeded',
+        );
+      }
+
+      if (
+        data.status === 'INVALID_REQUEST' ||
+        data.status === 'REQUEST_DENIED'
+      ) {
+        throw new BadRequestException(
+          data.error_message || 'Invalid find place request',
+        );
+      }
+
+      throw new ServiceUnavailableException(
+        data.error_message || `Google Places error: ${data.status}`,
+      );
+    } catch (error) {
+      const duration = Date.now() - requestStart;
+      const axiosError = error as AxiosError<GoogleFindPlaceApiResponse>;
+      const status = axiosError.response?.data?.status;
+      const message =
+        axiosError.response?.data?.error_message || axiosError.message;
+
+      this.logger.error('Failed to fetch Google find place results', {
+        input: trimmedInput,
+        status,
+        message,
+        duration,
+      });
+
+      if (axiosError.response?.status === 429) {
+        this.rateLimitCoordinator.reportRateLimitHit(
+          ExternalApiService.GOOGLE_PLACES,
+          60,
+          'findPlaceFromText',
+        );
+        throw this.buildTooManyRequestsError(
+          'Google Places rate limit exceeded',
+        );
+      }
+
+      if (axiosError.response?.status === 400) {
+        throw new BadRequestException(message);
+      }
+
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new InternalServerErrorException(
+        'Failed to fetch Google find place results',
       );
     }
   }

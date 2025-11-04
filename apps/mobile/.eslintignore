@@ -1,5 +1,7 @@
-# Ignore config files that don't need TypeScript rules
+src/polyfills/react-native-codegen.js
 .eslintrc.js
 babel.config.js
 metro.config.js
 tailwind.config.js
+src/shims/**
+AppEntry.js

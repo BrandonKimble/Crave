@@ -6,7 +6,8 @@
     "paths": {
       "@/*": ["src/*"]
     },
-    "types": ["nativewind/types"],
+    "types": ["minimatch"],
+    "skipLibCheck": true,
     "composite": true,
     "noEmit": false
   }

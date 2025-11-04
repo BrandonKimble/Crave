@@ -10,6 +10,7 @@ import {
   GooglePlaceDetailsResult,
   GooglePlacesService,
   GooglePlacePrediction,
+  GoogleFindPlaceCandidate,
 } from '../external-integrations/google-places';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
@@ -45,6 +46,7 @@ interface MatchMetadata {
   candidateTypes?: string[];
   predictionsConsidered: number;
   timestamp: string;
+  source?: 'autocomplete' | 'find_place';
 }
 
 export interface RestaurantEnrichmentOptions {
@@ -216,6 +218,17 @@ export class RestaurantLocationEnrichmentService {
 
     const searchContext = this.buildSearchContext(entity, options);
     if (!searchContext.query) {
+      await this.recordEnrichmentFailure(
+        entity,
+        'insufficient location context for enrichment query',
+        {
+          city: entity.city ?? undefined,
+          region: entity.region ?? undefined,
+          country: entity.country ?? undefined,
+          latitude: this.toNumberValue(entity.latitude) ?? undefined,
+          longitude: this.toNumberValue(entity.longitude) ?? undefined,
+        },
+      );
       return {
         entityId: entity.entityId,
         status: 'skipped',
@@ -237,27 +250,54 @@ export class RestaurantLocationEnrichmentService {
         },
       );
 
-      const ranked = this.rankPredictions(
+      let ranked = this.rankPredictions(
         autocomplete.predictions,
         entity,
         searchContext,
       );
 
+      let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
+      let fallbackAttempted = false;
+      let fallbackStatus: string | undefined;
+
       if (ranked.length === 0) {
-        const noMatchMetadata = this.buildNoMatchMetadata(
-          ranked,
-          searchContext,
-        );
-        await this.recordNoMatchCandidates(
+        fallbackAttempted = true;
+        const fallbackResult = await this.tryFindPlaceFallback(
           entity,
-          'no predictions returned',
-          noMatchMetadata,
+          searchContext,
+          options,
         );
-        return {
-          entityId: entity.entityId,
-          status: 'no_match',
-          reason: 'no predictions returned',
-        };
+
+        if (fallbackResult) {
+          fallbackStatus = fallbackResult.status;
+          ranked = fallbackResult.ranked;
+          if (ranked.length > 0) {
+            matchSource = 'find_place';
+          }
+        } else {
+          fallbackStatus = 'error';
+        }
+
+        if (ranked.length === 0) {
+          const noMatchMetadata = this.buildNoMatchMetadata(
+            ranked,
+            searchContext,
+            {
+              fallbackAttempted: true,
+              fallbackStatus,
+            },
+          );
+          await this.recordNoMatchCandidates(
+            entity,
+            'no predictions returned',
+            noMatchMetadata,
+          );
+          return {
+            entityId: entity.entityId,
+            status: 'no_match',
+            reason: 'no predictions returned',
+          };
+        }
       }
 
       const best = this.selectQualifiedPrediction(ranked);
@@ -266,6 +306,13 @@ export class RestaurantLocationEnrichmentService {
         const noMatchMetadata = this.buildNoMatchMetadata(
           ranked,
           searchContext,
+          fallbackAttempted
+            ? {
+                fallbackAttempted: true,
+                fallbackStatus,
+                fallbackUsed: matchSource === 'find_place',
+              }
+            : undefined,
         );
         const reason = `no prediction matched preferred place types with min score ${this.minScoreThreshold}`;
         await this.recordNoMatchCandidates(entity, reason, noMatchMetadata);
@@ -310,6 +357,7 @@ export class RestaurantLocationEnrichmentService {
         candidateTypes: best.prediction.types,
         predictionsConsidered: ranked.length,
         timestamp: new Date().toISOString(),
+        source: matchSource,
       };
       latestMatchMetadata = matchMetadata;
 
@@ -588,8 +636,8 @@ export class RestaurantLocationEnrichmentService {
     const targets: string[] = Array.isArray(metaTarget)
       ? (metaTarget as string[])
       : typeof metaTarget === 'string'
-      ? [metaTarget]
-      : [];
+        ? [metaTarget]
+        : [];
     const normalizedTargets = targets.map((value) => value.toLowerCase());
     return (
       normalizedTargets.includes('name') && normalizedTargets.includes('type')
@@ -876,8 +924,8 @@ export class RestaurantLocationEnrichmentService {
       typeof configured === 'number'
         ? configured
         : typeof configured === 'string'
-        ? Number(configured)
-        : NaN;
+          ? Number(configured)
+          : NaN;
 
     if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
       return Number(numeric.toFixed(3));
@@ -1229,12 +1277,17 @@ export class RestaurantLocationEnrichmentService {
       summary.timestamp = matchMetadata.timestamp;
     }
 
+    if (matchMetadata.source) {
+      summary.source = matchMetadata.source;
+    }
+
     return summary;
   }
 
   private buildNoMatchMetadata(
     ranked: RankedPrediction[],
     context: EnrichmentSearchContext,
+    extras: Record<string, unknown> = {},
   ): Record<string, unknown> {
     const storageCountry = this.normalizeCountryCodeForStorage(
       context.country ?? null,
@@ -1281,7 +1334,183 @@ export class RestaurantLocationEnrichmentService {
       attemptedAt: new Date().toISOString(),
       count: ranked.length,
       candidates,
+      ...extras,
     };
+  }
+
+  private async tryFindPlaceFallback(
+    entity: RestaurantEntity,
+    context: EnrichmentSearchContext,
+    options: RestaurantEnrichmentOptions,
+  ): Promise<{ status: string; ranked: RankedPrediction[] } | null> {
+    if (!context.query) {
+      return null;
+    }
+
+    try {
+      const response = await this.googlePlacesService.findPlaceFromText(
+        context.query,
+        {
+          language: 'en',
+          sessionToken: options.sessionToken,
+          includeRaw: false,
+          fields: [
+            'place_id',
+            'name',
+            'formatted_address',
+            'types',
+            'geometry/location',
+          ],
+          locationBias: context.locationBias
+            ? {
+                lat: context.locationBias.lat,
+                lng: context.locationBias.lng,
+              }
+            : undefined,
+        },
+      );
+
+      const predictions = response.candidates
+        .map((candidate) =>
+          this.mapFindPlaceCandidateToPrediction(candidate, context),
+        )
+        .filter(
+          (prediction): prediction is GooglePlacePrediction =>
+            prediction !== null,
+        );
+
+      const ranked = this.rankPredictions(predictions, entity, context);
+
+      this.logger.debug('Find place fallback attempt completed', {
+        entityId: entity.entityId,
+        query: context.query,
+        status: response.status,
+        candidateCount: response.candidates.length,
+        rankedCount: ranked.length,
+      });
+
+      return {
+        status: response.status,
+        ranked,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn('Find place fallback failed', {
+        entityId: entity.entityId,
+        query: context.query,
+        error: {
+          message,
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+      });
+      return null;
+    }
+  }
+
+  private mapFindPlaceCandidateToPrediction(
+    candidate: GoogleFindPlaceCandidate,
+    context: EnrichmentSearchContext,
+  ): GooglePlacePrediction | null {
+    if (
+      !candidate ||
+      typeof candidate.place_id !== 'string' ||
+      !candidate.place_id.trim()
+    ) {
+      return null;
+    }
+
+    const descriptionParts: string[] = [];
+    if (typeof candidate.name === 'string' && candidate.name.trim().length) {
+      descriptionParts.push(candidate.name.trim());
+    }
+    if (
+      typeof candidate.formatted_address === 'string' &&
+      candidate.formatted_address.trim().length
+    ) {
+      descriptionParts.push(candidate.formatted_address.trim());
+    }
+
+    const prediction: GooglePlacePrediction = {
+      place_id: candidate.place_id,
+      description: descriptionParts.join(', ') || candidate.place_id,
+      types: Array.isArray(candidate.types)
+        ? candidate.types.filter(
+            (value): value is string => typeof value === 'string',
+          )
+        : undefined,
+      structured_formatting: {
+        main_text:
+          typeof candidate.name === 'string' && candidate.name.trim().length
+            ? candidate.name.trim()
+            : undefined,
+        secondary_text:
+          typeof candidate.formatted_address === 'string' &&
+          candidate.formatted_address.trim().length
+            ? candidate.formatted_address.trim()
+            : undefined,
+      },
+    };
+
+    const distance = this.calculateCandidateDistanceMeters(candidate, context);
+    if (distance !== undefined) {
+      prediction.distance_meters = distance;
+    }
+
+    return prediction;
+  }
+
+  private calculateCandidateDistanceMeters(
+    candidate: GoogleFindPlaceCandidate,
+    context: EnrichmentSearchContext,
+  ): number | undefined {
+    const origin = context.locationBias;
+    const destination = candidate.geometry?.location;
+
+    if (
+      !origin ||
+      typeof origin.lat !== 'number' ||
+      typeof origin.lng !== 'number'
+    ) {
+      return undefined;
+    }
+
+    if (
+      !destination ||
+      typeof destination.lat !== 'number' ||
+      typeof destination.lng !== 'number'
+    ) {
+      return undefined;
+    }
+
+    return this.calculateDistanceMeters(
+      { lat: origin.lat, lng: origin.lng },
+      { lat: destination.lat, lng: destination.lng },
+    );
+  }
+
+  private calculateDistanceMeters(
+    origin: { lat: number; lng: number },
+    destination: { lat: number; lng: number },
+  ): number {
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const earthRadiusMeters = 6371000;
+
+    const originLatRad = toRadians(origin.lat);
+    const destinationLatRad = toRadians(destination.lat);
+    const deltaLat = toRadians(destination.lat - origin.lat);
+    const deltaLng = toRadians(destination.lng - origin.lng);
+
+    const a =
+      Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
+      Math.cos(originLatRad) *
+        Math.cos(destinationLatRad) *
+        Math.sin(deltaLng / 2) *
+        Math.sin(deltaLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const distance = earthRadiusMeters * c;
+    return Math.round(distance);
   }
 
   private async recordNoMatchCandidates(
@@ -1452,8 +1681,8 @@ export class RestaurantLocationEnrichmentService {
       typeof sourceRecord.time_zone === 'string'
         ? sourceRecord.time_zone
         : typeof sourceRecord.timezone === 'string'
-        ? sourceRecord.timezone
-        : undefined;
+          ? sourceRecord.timezone
+          : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;

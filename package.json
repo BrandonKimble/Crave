@@ -11,7 +11,11 @@
     "type-check": "turbo run type-check",
     "format": "prettier --write \"**/*.{ts,tsx,js,json,md}\"",
     "db:migrate": "turbo run db:migrate",
-    "db:generate": "turbo run db:generate"
+    "db:generate": "turbo run db:generate",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "ios:refresh": "bash ./scripts/ios-refresh.sh",
+    "postinstall": "patch-package"
   },
   "devDependencies": {
     "@commitlint/cli": "^17.6.5",
@@ -23,13 +27,21 @@
     "lint-staged": "^13.2.2",
     "prettier": "^2.8.8",
     "turbo": "^1.10.0",
-    "typescript": "^5.1.0"
+    "typescript": "^5.1.0",
+    "@babel/core": "^7.20.0",
+    "patch-package": "^8.0.0"
   },
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "dependencies": {
-    "@babel/runtime": "^7.28.4"
+    "24": "^0.0.0",
+    "@babel/runtime": "^7.28.4",
+    "expo": "~49.0.23",
+    "expo-splash-screen": "~0.20.5",
+    "expo-status-bar": "~1.6.0",
+    "react": "18.2.0",
+    "react-native": "0.72.10"
   }
 }

@@ -52,15 +52,11 @@ export interface ChronologicalCollectionJobResult {
   };
 }
 
-interface RedditListingChildData {
+type RedditPostDataCandidate = Record<string, unknown> & {
   id?: string;
   name?: string;
   created_utc?: number;
-}
-
-interface RedditListingChild {
-  data?: RedditListingChildData;
-}
+};
 
 // Helper function to chunk arrays
 function chunk<T>(array: T[], size: number): T[][] {
@@ -187,7 +183,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         1000, // Always request Reddit's maximum to never miss posts
       );
 
-      const allPosts = this.normalizeListingChildren(postsResult.data);
+      const allPosts: RedditPostDataCandidate[] = Array.isArray(
+        postsResult.data,
+      )
+        ? postsResult.data
+        : [];
       const jobLimit =
         typeof options.limit === 'number' && options.limit > 0
           ? Math.floor(options.limit)
@@ -424,61 +424,24 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
     });
   }
 
-  private normalizeListingChildren(data: unknown): RedditListingChild[] {
-    if (!Array.isArray(data)) {
-      return [];
+  private extractPostId(post: RedditPostDataCandidate): string | null {
+    if (typeof post.id === 'string' && post.id.trim().length > 0) {
+      return post.id.replace(/^t3_/i, '').trim();
     }
 
-    return data.filter((value): value is RedditListingChild =>
-      this.isListingChild(value),
-    );
-  }
-
-  private isListingChild(value: unknown): value is RedditListingChild {
-    if (typeof value !== 'object' || value === null) {
-      return false;
-    }
-
-    const candidate = (value as { data?: unknown }).data;
-    if (typeof candidate !== 'object' || candidate === null) {
-      return false;
-    }
-
-    const { id, name, created_utc } = candidate as RedditListingChildData;
-    return (
-      typeof id === 'string' ||
-      typeof name === 'string' ||
-      typeof created_utc === 'number'
-    );
-  }
-
-  private extractPostId(post: RedditListingChild): string | null {
-    if (!post.data) {
-      return null;
-    }
-
-    if (typeof post.data.id === 'string' && post.data.id.trim().length > 0) {
-      return post.data.id.replace(/^t3_/i, '').trim();
-    }
-
-    if (
-      typeof post.data.name === 'string' &&
-      post.data.name.trim().length > 0
-    ) {
-      return post.data.name.replace(/^t3_/i, '').trim();
+    if (typeof post.name === 'string' && post.name.trim().length > 0) {
+      return post.name.replace(/^t3_/i, '').trim();
     }
 
     return null;
   }
 
-  private extractCreatedUtc(post: RedditListingChild): number | null {
-    if (!post.data || typeof post.data.created_utc !== 'number') {
+  private extractCreatedUtc(post: RedditPostDataCandidate): number | null {
+    if (typeof post.created_utc !== 'number') {
       return null;
     }
 
-    return Number.isFinite(post.data.created_utc)
-      ? post.data.created_utc
-      : null;
+    return Number.isFinite(post.created_utc) ? post.created_utc : null;
   }
 
   /**

@@ -104,4 +104,8 @@ async function bootstrap() {
   await app.listen(port, '0.0.0.0'); // Fastify needs the host specified
   console.log(`Application is running on: http://localhost:${port}/api`);
 }
-void bootstrap();
+
+bootstrap().catch((err) => {
+  console.error('[BOOTSTRAP] Fatal error during bootstrap:', err);
+  process.exit(1);
+});

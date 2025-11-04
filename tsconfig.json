@@ -14,7 +14,12 @@
     "scripts/**/*"
   ],
   "references": [
-    { "path": "./apps/api" },
-    { "path": "./apps/mobile" }
-  ]
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/mobile"
+    }
+  ],
+  "extends": "expo/tsconfig.base"
 }

@@ -99,7 +99,9 @@ export class LLMService implements OnModuleInit {
     this.logger = this.loggerService.setContext('LLMService');
     this.llmConfig = {
       apiKey: this.configService.get<string>('llm.apiKey') || '',
-      model: this.configService.get<string>('llm.model') || 'gemini-2.5-flash',
+      model:
+        this.configService.get<string>('llm.model') ||
+        'gemini-2.5-flash-preview-09-2025',
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
@@ -811,7 +813,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       options.cacheName ??
       (options.systemInstruction
         ? null
-        : this.systemInstructionCache?.name ?? null);
+        : (this.systemInstructionCache?.name ?? null));
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
     const hasResponseMimeType =

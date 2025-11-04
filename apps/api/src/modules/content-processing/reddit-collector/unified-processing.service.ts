@@ -200,6 +200,10 @@ export class UnifiedProcessingService implements OnModuleInit {
   };
   private readonly defaultBatchSize: number;
   private readonly entityResolutionBatchSize: number;
+  private readonly subredditLocationCache = new Map<
+    string,
+    { latitude: number; longitude: number }
+  >();
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -935,8 +939,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       typeof value === 'string'
         ? value
         : typeof value === 'number' || typeof value === 'boolean'
-        ? String(value)
-        : '';
+          ? String(value)
+          : '';
 
     if (!stringValue) {
       return '';
@@ -1173,6 +1177,10 @@ export class UnifiedProcessingService implements OnModuleInit {
           originalText?: string;
           canonicalName?: string;
         }[] = [];
+        const subredditLocation = await this.resolveSubredditLocation(
+          tx,
+          sourceMetadata.subreddit,
+        );
         for (const resolution of resolutionResult.resolutionResults) {
           if (!resolution.isNewEntity) {
             continue;
@@ -1336,6 +1344,14 @@ export class UnifiedProcessingService implements OnModuleInit {
               entityData.restaurantQualityScore = 0;
               entityData.generalPraiseUpvotes = 0;
               entityData.restaurantMetadata = Prisma.DbNull;
+              if (subredditLocation) {
+                entityData.latitude = new Prisma.Decimal(
+                  subredditLocation.latitude.toFixed(8),
+                );
+                entityData.longitude = new Prisma.Decimal(
+                  subredditLocation.longitude.toFixed(8),
+                );
+              }
             } else {
               entityData.generalPraiseUpvotes = null;
             }
@@ -3003,7 +3019,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const subredditValue =
         mentionSubreddit.length > 0
           ? mentionSubreddit
-          : defaultSubreddit ?? null;
+          : (defaultSubreddit ?? null);
 
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,
@@ -3069,6 +3085,63 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     return parsed;
+  }
+
+  private async resolveSubredditLocation(
+    tx: PrismaTransaction,
+    subreddit?: string | null,
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    if (!subreddit || !subreddit.trim()) {
+      return null;
+    }
+
+    const cacheKey = subreddit.trim().toLowerCase();
+    const cached = this.subredditLocationCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const record = await tx.subreddit.findUnique({
+      where: { name: subreddit },
+      select: {
+        centerLatitude: true,
+        centerLongitude: true,
+      },
+    });
+
+    if (!record) {
+      return null;
+    }
+
+    const latitude = this.toNumeric(record.centerLatitude);
+    const longitude = this.toNumeric(record.centerLongitude);
+
+    if (
+      typeof latitude === 'number' &&
+      Number.isFinite(latitude) &&
+      typeof longitude === 'number' &&
+      Number.isFinite(longitude)
+    ) {
+      const coords = { latitude, longitude };
+      this.subredditLocationCache.set(cacheKey, coords);
+      return coords;
+    }
+
+    return null;
+  }
+
+  private toNumeric(
+    value: Prisma.Decimal | number | null | undefined,
+  ): number | null {
+    if (value instanceof Prisma.Decimal) {
+      return value.toNumber();
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    return null;
   }
 
   private async scheduleRestaurantEnrichment(
