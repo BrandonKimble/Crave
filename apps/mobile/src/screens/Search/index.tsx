@@ -28,9 +28,6 @@ const SearchScreen: React.FC = () => {
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
 
   React.useEffect(() => {
-    if (__DEV__) {
-      logger.debug('Mapbox access token prefix', accessToken?.slice(0, 8));
-    }
     if (accessToken) {
       MapboxGL.setAccessToken(accessToken);
     }
@@ -172,14 +169,19 @@ const SearchScreen: React.FC = () => {
       ) : null}
       <View style={styles.metricRow}>
         <Metric label="Context" value={restaurant.contextualScore.toFixed(1)} />
-        {restaurant.restaurantQualityScore !== null && restaurant.restaurantQualityScore !== undefined ? (
+        {restaurant.restaurantQualityScore !== null &&
+        restaurant.restaurantQualityScore !== undefined ? (
           <Metric label="Quality" value={restaurant.restaurantQualityScore.toFixed(1)} />
         ) : null}
       </View>
       {restaurant.topFood?.length ? (
         <View style={styles.topFoodSection}>
           {restaurant.topFood.map((food) => (
-            <Text key={food.connectionId} variant="caption" style={[styles.textSlate700, styles.topFoodText]}>
+            <Text
+              key={food.connectionId}
+              variant="caption"
+              style={[styles.textSlate700, styles.topFoodText]}
+            >
               • {food.foodName} ({food.qualityScore.toFixed(1)})
             </Text>
           ))}
@@ -232,7 +234,11 @@ const SearchScreen: React.FC = () => {
             {isLoading ? (
               <ActivityIndicator style={styles.micIcon} size="small" color="#FB923C" />
             ) : (
-              <Pressable onPress={handleVoicePress} accessibilityRole="button" accessibilityLabel="Search with your voice">
+              <Pressable
+                onPress={handleVoicePress}
+                accessibilityRole="button"
+                accessibilityLabel="Search with your voice"
+              >
                 <Feather name="mic" size={20} color="#FB923C" style={styles.micIcon} />
               </Pressable>
             )}
@@ -250,7 +256,11 @@ const SearchScreen: React.FC = () => {
             ]}
           >
             <View style={styles.grabHandleWrapper}>
-              <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
+              <Pressable
+                onPress={hidePanel}
+                accessibilityRole="button"
+                accessibilityLabel="Hide results"
+              >
                 <View style={styles.grabHandle} />
               </Pressable>
             </View>

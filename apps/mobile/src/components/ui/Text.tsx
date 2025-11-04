@@ -1,5 +1,11 @@
 import React from 'react';
-import { Text as RNText, TextProps as RNTextProps, StyleProp, TextStyle, StyleSheet } from 'react-native';
+import {
+  Text as RNText,
+  TextProps as RNTextProps,
+  StyleProp,
+  TextStyle,
+  StyleSheet,
+} from 'react-native';
 
 export interface TextProps extends RNTextProps {
   variant?: 'title' | 'subtitle' | 'body' | 'caption';

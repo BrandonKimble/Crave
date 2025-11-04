@@ -7,12 +7,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "exclude": [
-    "node_modules/**/*",
-    "dist/**/*",
-    "build/**/*",
-    "scripts/**/*"
-  ],
+  "exclude": ["node_modules/**/*", "dist/**/*", "build/**/*", "scripts/**/*"],
   "references": [
     {
       "path": "./apps/api"

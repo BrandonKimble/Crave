@@ -25,7 +25,13 @@ const BottomTabNavigator: React.FC = () => {
             Profile: 'user',
           };
 
-          return <Feather name={iconName[route.name as keyof MainTabParamList]} size={ICON_SIZE} color={color} />;
+          return (
+            <Feather
+              name={iconName[route.name as keyof MainTabParamList]}
+              size={ICON_SIZE}
+              color={color}
+            />
+          );
         },
       })}
     >

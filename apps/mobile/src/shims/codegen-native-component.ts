@@ -6,7 +6,10 @@ type CodegenNativeComponent = <T extends object>(
   options?: unknown
 ) => React.ComponentType<T>;
 
-if (typeof (ReactNative as unknown as { codegenNativeComponent?: unknown }).codegenNativeComponent !== 'function') {
+if (
+  typeof (ReactNative as unknown as { codegenNativeComponent?: unknown }).codegenNativeComponent !==
+  'function'
+) {
   const shim: CodegenNativeComponent = (componentName) => {
     return ReactNative.requireNativeComponent(componentName);
   };

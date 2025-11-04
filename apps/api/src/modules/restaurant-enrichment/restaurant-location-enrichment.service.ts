@@ -636,8 +636,8 @@ export class RestaurantLocationEnrichmentService {
     const targets: string[] = Array.isArray(metaTarget)
       ? (metaTarget as string[])
       : typeof metaTarget === 'string'
-        ? [metaTarget]
-        : [];
+      ? [metaTarget]
+      : [];
     const normalizedTargets = targets.map((value) => value.toLowerCase());
     return (
       normalizedTargets.includes('name') && normalizedTargets.includes('type')
@@ -924,8 +924,8 @@ export class RestaurantLocationEnrichmentService {
       typeof configured === 'number'
         ? configured
         : typeof configured === 'string'
-          ? Number(configured)
-          : NaN;
+        ? Number(configured)
+        : NaN;
 
     if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
       return Number(numeric.toFixed(3));
@@ -1681,8 +1681,8 @@ export class RestaurantLocationEnrichmentService {
       typeof sourceRecord.time_zone === 'string'
         ? sourceRecord.time_zone
         : typeof sourceRecord.timezone === 'string'
-          ? sourceRecord.timezone
-          : undefined;
+        ? sourceRecord.timezone
+        : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;

@@ -12,9 +12,7 @@
       "backgroundColor": "#ffffff"
     },
     "entryPoint": "./AppEntry.js",
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "plugins": [],
     "ios": {
       "supportsTablet": true,
