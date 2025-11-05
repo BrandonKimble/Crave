@@ -23,6 +23,8 @@ PODS:
     - ExpoModulesCore
   - ExpoKeepAwake (12.3.0):
     - ExpoModulesCore
+  - ExpoLinearGradient (12.3.0):
+    - ExpoModulesCore
   - ExpoModulesCore (1.5.13):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -549,6 +551,7 @@ DEPENDENCIES:
   - EXNotifications (from `../../../node_modules/expo-notifications/ios`)
   - Expo (from `../../../node_modules/expo`)
   - ExpoKeepAwake (from `../../../node_modules/expo-keep-awake/ios`)
+  - ExpoLinearGradient (from `../../../node_modules/expo-linear-gradient/ios`)
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
   - EXSplashScreen (from `../../../node_modules/expo-splash-screen/ios`)
   - EXStructuredHeaders (from `../../../node_modules/expo-structured-headers/ios`)
@@ -639,6 +642,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo"
   ExpoKeepAwake:
     :path: "../../../node_modules/expo-keep-awake/ios"
+  ExpoLinearGradient:
+    :path: "../../../node_modules/expo-linear-gradient/ios"
   ExpoModulesCore:
     :path: "../../../node_modules/expo-modules-core"
   EXSplashScreen:
@@ -751,6 +756,7 @@ SPEC CHECKSUMS:
   EXNotifications: aa416a5772ee7db622c3cd1ac4b258a30002c273
   Expo: 7bde63b84d4f6502de1e7963182333f39bedbf94
   ExpoKeepAwake: 8ab1087501f5ccb91146447756b787575b13f13e
+  ExpoLinearGradient: 1db30c60fe141f185b0ca5556cc85deb3ee9f245
   ExpoModulesCore: 3312621274fbba06fe382a37d8218a43cd522823
   EXSplashScreen: 84a7d9a965a2203e138528326fc3a511818e3fd1
   EXStructuredHeaders: 324cc3130571d2696357fafd8be7fd9a0b5fdf6e

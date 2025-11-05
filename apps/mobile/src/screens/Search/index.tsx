@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../../components';
 import { logger } from '../../utils';
@@ -21,10 +21,14 @@ import type { SearchResponse, FoodResult, RestaurantResult } from '../../types';
 const DEFAULT_STYLE_URL = 'mapbox://styles/brandonkimble/cmhjzgs6i00cl01s69ff1fsmf';
 const AUSTIN_COORDINATE: [number, number] = [-97.7431, 30.2672];
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+const CONTENT_HORIZONTAL_PADDING = 20;
+const CARD_GAP = 4;
+const ACTIVE_TAB_COLOR = '#f97384';
 
 MapboxGL.setTelemetryEnabled(false);
 
 const SearchScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
 
   React.useEffect(() => {
@@ -49,12 +53,28 @@ const SearchScreen: React.FC = () => {
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);
+  const [submittedQuery, setSubmittedQuery] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<'dishes' | 'restaurants'>('dishes');
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [searchBottom, setSearchBottom] = React.useState(0);
+  const [segmentWidth, setSegmentWidth] = React.useState(0);
+  const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const panelAnim = React.useRef(new Animated.Value(0)).current;
+  const inputRef = React.useRef<TextInput | null>(null);
+  const tabBarBasePadding = insets.bottom > 0 ? insets.bottom : 6;
+  const tabBarHeight = Math.max(60, 44 + tabBarBasePadding * 2);
+  const floatingSegmentBottom = tabBarHeight - tabBarBasePadding + 8;
+
+  React.useEffect(() => {
+    Animated.spring(segmentAnim, {
+      toValue: activeTab === 'restaurants' ? 0 : 1,
+      useNativeDriver: true,
+      bounciness: 10,
+      speed: 14,
+    }).start();
+  }, [activeTab, segmentAnim]);
 
   const dishes = results?.food ?? [];
   const restaurants = results?.restaurants ?? [];
@@ -91,9 +111,6 @@ const SearchScreen: React.FC = () => {
     });
   }, [panelAnim]);
 
-  const handleVoicePress = () => {
-    logger.info('Voice prompt pressed');
-  };
   const handleSubmit = React.useCallback(async () => {
     const trimmed = query.trim();
     if (!trimmed || isLoading) {
@@ -112,6 +129,7 @@ const SearchScreen: React.FC = () => {
       });
 
       setResults(response);
+      setSubmittedQuery(trimmed);
       setActiveTab(
         response?.format === 'dual_list' || response?.food?.length ? 'dishes' : 'restaurants'
       );
@@ -123,6 +141,17 @@ const SearchScreen: React.FC = () => {
       setIsLoading(false);
     }
   }, [query, isLoading, showPanel]);
+
+  const handleClear = React.useCallback(() => {
+    setQuery('');
+    setResults(null);
+    setSubmittedQuery('');
+    setError(null);
+    hidePanel();
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, [hidePanel]);
 
   // Calculate panel position: should start just below search bar
   const panelTopOffset = React.useMemo(() => {
@@ -139,10 +168,14 @@ const SearchScreen: React.FC = () => {
     inputRange: [0, 1],
     outputRange: [SCREEN_HEIGHT, 0],
   });
+  const floatingSegmentTranslate = panelAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [48, 0],
+  });
 
   const renderDishCard = (item: FoodResult) => (
     <View key={item.connectionId} style={styles.resultItem}>
-      <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
+      <Text variant="body" weight="semibold" style={[styles.textSlate900, styles.dishCardTitle]}>
         {item.foodName}
       </Text>
       <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
@@ -218,8 +251,10 @@ const SearchScreen: React.FC = () => {
           }}
         >
           <View style={styles.promptCard}>
+            <View pointerEvents="none" style={styles.glassHighlightSmall} />
             <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
             <TextInput
+              ref={inputRef}
               value={query}
               onChangeText={setQuery}
               placeholder="What are you craving?"
@@ -230,17 +265,22 @@ const SearchScreen: React.FC = () => {
               editable={!isLoading}
               autoCapitalize="none"
               autoCorrect={false}
+              clearButtonMode="never"
             />
             {isLoading ? (
-              <ActivityIndicator style={styles.micIcon} size="small" color="#FB923C" />
-            ) : (
+              <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
+            ) : query.length > 0 ? (
               <Pressable
-                onPress={handleVoicePress}
+                onPress={handleClear}
                 accessibilityRole="button"
-                accessibilityLabel="Search with your voice"
+                accessibilityLabel="Clear search"
+                style={styles.trailingAction}
+                hitSlop={8}
               >
-                <Feather name="mic" size={20} color="#FB923C" style={styles.micIcon} />
+                <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
               </Pressable>
+            ) : (
+              <View style={styles.trailingPlaceholder} />
             )}
           </View>
         </View>
@@ -255,41 +295,22 @@ const SearchScreen: React.FC = () => {
               },
             ]}
           >
-            <View style={styles.grabHandleWrapper}>
-              <Pressable
-                onPress={hidePanel}
-                accessibilityRole="button"
-                accessibilityLabel="Hide results"
-              >
-                <View style={styles.grabHandle} />
-              </Pressable>
-            </View>
-
-            <View style={styles.tabRow}>
-              <Pressable
-                style={[styles.tabButton, activeTab === 'restaurants' && styles.tabButtonActive]}
-                onPress={() => setActiveTab('restaurants')}
-              >
-                <Text
-                  variant="body"
-                  weight={activeTab === 'restaurants' ? 'semibold' : 'medium'}
-                  style={{ color: activeTab === 'restaurants' ? '#ffffff' : '#64748b' }}
+            <View pointerEvents="none" style={styles.glassHighlightLarge} />
+            <View style={styles.resultsHeader}>
+              <View style={styles.grabHandleWrapper}>
+                <Pressable
+                  onPress={hidePanel}
+                  accessibilityRole="button"
+                  accessibilityLabel="Hide results"
                 >
-                  Restaurants
+                  <View style={styles.grabHandle} />
+                </Pressable>
+              </View>
+              {submittedQuery ? (
+                <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
+                  {submittedQuery}
                 </Text>
-              </Pressable>
-              <Pressable
-                style={[styles.tabButton, activeTab === 'dishes' && styles.tabButtonActive]}
-                onPress={() => setActiveTab('dishes')}
-              >
-                <Text
-                  variant="body"
-                  weight={activeTab === 'dishes' ? 'semibold' : 'medium'}
-                  style={{ color: activeTab === 'dishes' ? '#ffffff' : '#64748b' }}
-                >
-                  Dishes
-                </Text>
-              </Pressable>
+              ) : null}
             </View>
 
             {error ? (
@@ -331,6 +352,81 @@ const SearchScreen: React.FC = () => {
             )}
           </Animated.View>
         )}
+        {panelVisible ? (
+          <Animated.View
+            pointerEvents={panelVisible ? 'auto' : 'none'}
+            style={[
+              styles.floatingSegmentWrapper,
+              {
+                bottom: floatingSegmentBottom,
+                opacity: panelAnim,
+                transform: [{ translateY: floatingSegmentTranslate }],
+              },
+            ]}
+          >
+            <View style={styles.floatingSegment}>
+              <View
+                style={styles.segmentedControl}
+                onLayout={(event) => setSegmentWidth(event.nativeEvent.layout.width)}
+              >
+                {segmentWidth > 0 && (
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.segmentedIndicator,
+                      {
+                        width: Math.max(segmentWidth / 2 - 8, 0),
+                        marginHorizontal: 4,
+                        transform: [
+                          {
+                            translateX: segmentAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [0, segmentWidth / 2],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                )}
+                <Pressable
+                  style={styles.segmentedOption}
+                  onPress={() => setActiveTab('restaurants')}
+                  accessibilityRole="button"
+                  accessibilityLabel="View restaurants"
+                >
+                  <Text
+                    variant="body"
+                    weight={activeTab === 'restaurants' ? 'semibold' : 'medium'}
+                    style={[
+                      styles.segmentedLabel,
+                      activeTab === 'restaurants' && styles.segmentedLabelActive,
+                    ]}
+                  >
+                    Restaurants
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.segmentedOption}
+                  onPress={() => setActiveTab('dishes')}
+                  accessibilityRole="button"
+                  accessibilityLabel="View dishes"
+                >
+                  <Text
+                    variant="body"
+                    weight={activeTab === 'dishes' ? 'semibold' : 'medium'}
+                    style={[
+                      styles.segmentedLabel,
+                      activeTab === 'dishes' && styles.segmentedLabelActive,
+                    ]}
+                  >
+                    Dishes
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </Animated.View>
+        ) : null}
       </SafeAreaView>
     </View>
   );
@@ -364,21 +460,26 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   searchContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 4,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingTop: 6,
   },
   promptCard: {
     borderRadius: 16,
-    paddingVertical: 12,
+    height: 52,
+    paddingVertical: 0,
     paddingHorizontal: 16,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#ffffff',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 18,
+    elevation: 8,
+    overflow: 'hidden',
   },
   searchIcon: {
     marginRight: 12,
@@ -387,8 +488,18 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     color: '#111827',
+    textAlign: 'left',
+    paddingVertical: 0,
   },
-  micIcon: {
+  trailingSpinner: {
+    marginLeft: 12,
+  },
+  trailingAction: {
+    marginLeft: 12,
+    padding: 8,
+  },
+  trailingPlaceholder: {
+    width: 28,
     marginLeft: 12,
   },
   resultsContainer: {
@@ -396,49 +507,90 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
+    backgroundColor: 'rgba(248, 250, 252, 0.94)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.74)',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+  resultsHeader: {
+    backgroundColor: '#ffffff',
+    paddingTop: 4,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingBottom: 16,
   },
   grabHandleWrapper: {
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingTop: 2,
+    paddingBottom: 2,
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
   },
   grabHandle: {
-    width: 40,
-    height: 5,
-    borderRadius: 3,
+    width: 68,
+    height: 3,
+    borderRadius: 2,
     backgroundColor: '#cbd5e1',
   },
-  tabRow: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 16,
-    backgroundColor: '#ffffff',
-  },
-  tabButton: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 12,
+  floatingSegmentWrapper: {
+    position: 'absolute',
+    left: CONTENT_HORIZONTAL_PADDING,
+    right: CONTENT_HORIZONTAL_PADDING,
     alignItems: 'center',
-    backgroundColor: '#f1f5f9',
   },
-  tabButtonActive: {
-    backgroundColor: '#A78BFA',
+  floatingSegment: {
+    width: '100%',
+    borderRadius: 28,
+    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    padding: 4,
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  segmentedControl: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  segmentedOption: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  segmentedLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  segmentedLabelActive: {
+    color: ACTIVE_TAB_COLOR,
+  },
+  segmentedIndicator: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 0,
+    borderRadius: 20,
+    backgroundColor: 'rgba(249, 115, 132, 0.18)',
   },
   resultsCard: {
     flex: 1,
     borderTopLeftRadius: 0,
     borderTopRightRadius: 0,
     paddingVertical: 0,
-    paddingHorizontal: 20,
-    backgroundColor: '#ffffff',
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
     alignSelf: 'stretch',
   },
   resultsCardCentered: {
@@ -452,23 +604,25 @@ const styles = StyleSheet.create({
   },
   resultsScrollContent: {
     paddingBottom: 100,
-    paddingTop: 8,
+    paddingTop: 0,
+  },
+  submittedQueryLabel: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+    color: '#0f172a',
+    fontSize: 16,
+    marginLeft: 0,
+    width: '100%',
   },
   resultsInner: {
     width: '100%',
   },
   resultItem: {
-    borderRadius: 16,
-    padding: 16,
+    paddingVertical: 18,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 1,
+    marginBottom: CARD_GAP,
+    alignSelf: 'stretch',
   },
   emptyState: {
     paddingVertical: 32,
@@ -506,6 +660,9 @@ const styles = StyleSheet.create({
   dishTitle: {
     fontSize: 17,
   },
+  dishCardTitle: {
+    fontSize: 14,
+  },
   dishSubtitle: {
     fontSize: 14,
     marginTop: 4,
@@ -521,6 +678,28 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: '#fb923c',
+  },
+  glassHighlightSmall: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    top: -60,
+    right: -30,
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    opacity: 0.35,
+    transform: [{ rotate: '25deg' }],
+  },
+  glassHighlightLarge: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    top: 120,
+    left: -40,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    opacity: 0.25,
+    transform: [{ rotate: '35deg' }],
   },
 });
 
