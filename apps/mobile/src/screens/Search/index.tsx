@@ -70,8 +70,6 @@ const boundsFromPairs = (first: [number, number], second: [number, number]): Map
 
 MapboxGL.setTelemetryEnabled(false);
 
-const AnimatedBlurView = Animated.createAnimatedComponent(BlurView);
-
 const FloatingSegmentBackground: React.FC = () => (
   <BlurView pointerEvents="none" intensity={90} tint="light" style={styles.floatingSegmentBlur} />
 );
@@ -215,13 +213,12 @@ const SearchScreen: React.FC = () => {
     const expanded = Math.max(searchLayout.top, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
-    const rawCollapsed = searchLayout.top + searchLayout.height + 12;
-    const collapsed = Math.max(rawCollapsed, middle + 80);
+    const collapsed = SCREEN_HEIGHT - 120;
     const hidden = SCREEN_HEIGHT + 80;
     return {
       expanded,
       middle: Math.min(middle, hidden - 120),
-      collapsed: Math.min(Math.max(collapsed, middle + 40), hidden - 40),
+      collapsed,
       hidden,
     };
   }, [insets.top, searchLayout]);
@@ -315,25 +312,14 @@ const SearchScreen: React.FC = () => {
     [animateSheetTo, snapPoints, sheetTranslateY]
   );
 
-  const blurFadeThreshold = snapPoints.expanded + (snapPoints.middle - snapPoints.expanded) * 0.35;
   const searchBarOpacity = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, blurFadeThreshold, snapPoints.middle],
-    outputRange: [0, 1, 1],
-    extrapolate: 'clamp',
-  });
-  const searchBarBlurIntensity = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, blurFadeThreshold, snapPoints.middle],
-    outputRange: [60, 40, 10],
-    extrapolate: 'clamp',
-  });
-  const searchBarBlurOpacity = sheetTranslateY.interpolate({
     inputRange: [snapPoints.expanded, snapPoints.middle],
-    outputRange: [1, 0],
+    outputRange: [0, 1],
     extrapolate: 'clamp',
   });
-  const searchBarTintOpacity = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, blurFadeThreshold, snapPoints.middle],
-    outputRange: [0.55, 0.4, 0],
+  const searchBarSolidBackground = sheetTranslateY.interpolate({
+    inputRange: [snapPoints.expanded, snapPoints.middle],
+    outputRange: [0, 1],
     extrapolate: 'clamp',
   });
   const floatingSegmentOpacity = sheetTranslateY.interpolate({
@@ -461,7 +447,7 @@ const SearchScreen: React.FC = () => {
       </Text>
       <View style={styles.metricRow}>
         <Metric label="Quality" value={item.qualityScore.toFixed(1)} />
-        <Metric label="Whole Volume" value={item.mentionCount} />
+        <Metric label="Poll Volume" value={item.mentionCount} />
         <Metric label="Consensus Votes" value={item.totalUpvotes} />
       </View>
     </View>
@@ -544,9 +530,9 @@ const SearchScreen: React.FC = () => {
         pointerEvents="box-none"
         edges={['top', 'left', 'right']}
       >
-        <Animated.View
+        <View
           pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
-          style={[styles.searchContainer, { opacity: searchBarOpacity }]}
+          style={styles.searchContainer}
           onLayout={({ nativeEvent: { layout } }) => {
             setSearchLayout((prev) => {
               if (prev.top === layout.y && prev.height === layout.height) {
@@ -558,49 +544,60 @@ const SearchScreen: React.FC = () => {
           }}
         >
           <View style={styles.promptCard}>
-            <AnimatedBlurView
+            <BlurView
               pointerEvents="none"
+              intensity={45}
               tint="light"
-              style={[styles.searchBlurOverlay, { opacity: searchBarBlurOpacity }]}
-              intensity={searchBarBlurIntensity}
+              style={StyleSheet.absoluteFillObject}
             />
             <Animated.View
               pointerEvents="none"
-              style={[styles.searchFrostOverlay, { opacity: searchBarTintOpacity }]}
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  backgroundColor: 'rgba(255, 255, 255, 1)',
+                  borderRadius: 16,
+                  opacity: searchBarSolidBackground,
+                },
+              ]}
             />
             <View pointerEvents="none" style={styles.glassHighlightSmall} />
-            <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-            <TextInput
-              ref={inputRef}
-              value={query}
-              onChangeText={setQuery}
-              placeholder="What are you craving?"
-              placeholderTextColor="#6b7280"
-              style={styles.promptInput}
-              returnKeyType="search"
-              onSubmitEditing={handleSubmit}
-              editable={!isLoading}
-              autoCapitalize="none"
-              autoCorrect={false}
-              clearButtonMode="never"
-            />
-            {isLoading ? (
-              <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
-            ) : query.length > 0 ? (
-              <Pressable
-                onPress={handleClear}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                style={styles.trailingAction}
-                hitSlop={8}
-              >
-                <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
-              </Pressable>
-            ) : (
-              <View style={styles.trailingPlaceholder} />
-            )}
+            <Animated.View style={{ opacity: searchBarOpacity, flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+              <TextInput
+                ref={inputRef}
+                value={query}
+                onChangeText={setQuery}
+                placeholder="What are you craving?"
+                placeholderTextColor="#6b7280"
+                style={styles.promptInput}
+                returnKeyType="search"
+                onSubmitEditing={handleSubmit}
+                editable={!isLoading}
+                autoCapitalize="none"
+                autoCorrect={false}
+                clearButtonMode="never"
+              />
+            </Animated.View>
+            <Animated.View style={{ opacity: searchBarOpacity }}>
+              {isLoading ? (
+                <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
+              ) : query.length > 0 ? (
+                <Pressable
+                  onPress={handleClear}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  style={styles.trailingAction}
+                  hitSlop={8}
+                >
+                  <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+                </Pressable>
+              ) : (
+                <View style={styles.trailingPlaceholder} />
+              )}
+            </Animated.View>
           </View>
-        </Animated.View>
+        </View>
         <LinearGradient
           pointerEvents="none"
           colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0)']}
@@ -826,9 +823,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#ffffff',
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    borderColor: 'transparent',
     shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.25,
@@ -1102,23 +1099,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
     opacity: 0.35,
     transform: [{ rotate: '25deg' }],
-  },
-  searchBlurOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: 16,
-  },
-  searchFrostOverlay: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    bottom: 0,
-    left: 0,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
   },
   glassHighlightLarge: {
     position: 'absolute',
