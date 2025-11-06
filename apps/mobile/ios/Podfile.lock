@@ -21,6 +21,8 @@ PODS:
     - ExpoModulesCore
   - Expo (49.0.23):
     - ExpoModulesCore
+  - ExpoBlur (12.4.1):
+    - ExpoModulesCore
   - ExpoKeepAwake (12.3.0):
     - ExpoModulesCore
   - ExpoLinearGradient (12.3.0):
@@ -550,6 +552,7 @@ DEPENDENCIES:
   - EXManifests (from `../../../node_modules/expo-manifests/ios`)
   - EXNotifications (from `../../../node_modules/expo-notifications/ios`)
   - Expo (from `../../../node_modules/expo`)
+  - ExpoBlur (from `../../../node_modules/expo-blur/ios`)
   - ExpoKeepAwake (from `../../../node_modules/expo-keep-awake/ios`)
   - ExpoLinearGradient (from `../../../node_modules/expo-linear-gradient/ios`)
   - ExpoModulesCore (from `../../../node_modules/expo-modules-core`)
@@ -640,6 +643,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/expo-notifications/ios"
   Expo:
     :path: "../../../node_modules/expo"
+  ExpoBlur:
+    :path: "../../../node_modules/expo-blur/ios"
   ExpoKeepAwake:
     :path: "../../../node_modules/expo-keep-awake/ios"
   ExpoLinearGradient:
@@ -755,6 +760,7 @@ SPEC CHECKSUMS:
   EXManifests: bb8592a34f5339c860b6c4bc71ad583d490374fb
   EXNotifications: aa416a5772ee7db622c3cd1ac4b258a30002c273
   Expo: 7bde63b84d4f6502de1e7963182333f39bedbf94
+  ExpoBlur: 98f8c3ead7693fa429e9e036957ee3527abedd5b
   ExpoKeepAwake: 8ab1087501f5ccb91146447756b787575b13f13e
   ExpoLinearGradient: 1db30c60fe141f185b0ca5556cc85deb3ee9f245
   ExpoModulesCore: 3312621274fbba06fe382a37d8218a43cd522823
@@ -814,6 +820,6 @@ SPEC CHECKSUMS:
   Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   Yoga: d0003f849d2b5224c072cef6568b540d8bb15cd3
 
-PODFILE CHECKSUM: 56a68f1b14394525b6b4c8db8d51960947901b79
+PODFILE CHECKSUM: b790b124d11dc69fe4cb4ba0eed9eb77603fd6eb
 
 COCOAPODS: 1.16.2

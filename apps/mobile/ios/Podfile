@@ -7,15 +7,12 @@ podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties
 ENV['RCT_NEW_ARCH_ENABLED'] = podfile_properties['newArchEnabled'] == 'true' ? '1' : '0'
 ENV['EX_DEV_CLIENT_NETWORK_INSPECTOR'] = podfile_properties['EX_DEV_CLIENT_NETWORK_INSPECTOR']
 
-platform :ios, podfile_properties['ios.deploymentTarget'] || '14.0'
+platform :ios, podfile_properties['ios.deploymentTarget'] || '13.0'
 install! 'cocoapods',
   :deterministic_uuids => false
 
 prepare_react_native_project!
 
-pre_install do |installer|
-  $RNMapboxMaps.pre_install(installer) if defined?($RNMapboxMaps)
-end
 
 # If you are using a `react-native-flipper` your iOS build will fail when `NO_FLIPPER=1` is set.
 # because `react-native-flipper` depends on (FlipperKit,...), which will be excluded. To fix this,
@@ -61,6 +58,12 @@ target 'cravesearch' do
     :flipper_configuration => flipper_config
   )
 
+  pre_install do |installer|
+    if defined?($RNMapboxMaps) && $RNMapboxMaps.respond_to?(:pre_install)
+      $RNMapboxMaps.pre_install(installer)
+    end
+  end
+
   post_install do |installer|
     react_native_post_install(
       installer,
@@ -69,10 +72,9 @@ target 'cravesearch' do
     )
     __apply_Xcode_12_5_M1_post_install_workaround(installer)
 
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |config|
-        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
-      end
+    # Configure RNMapbox (defines RNMBX_11, adjusts Mapbox settings, etc.)
+    if defined?($RNMapboxMaps) && $RNMapboxMaps.respond_to?(:post_install)
+      $RNMapboxMaps.post_install(installer)
     end
 
     # This is necessary for Xcode 14, because it signs resource bundles by default
@@ -86,7 +88,12 @@ target 'cravesearch' do
       end
     end
 
-    $RNMapboxMaps.post_install(installer) if defined?($RNMapboxMaps)
+    # Ensure all pods build with the same minimum deployment target as the app.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '14.0'
+      end
+    end
   end
 
   post_integrate do |installer|

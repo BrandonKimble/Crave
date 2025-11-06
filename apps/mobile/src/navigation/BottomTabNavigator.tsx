@@ -14,7 +14,7 @@ const ICON_SIZE = 22;
 const TabBarGradientBackground: React.FC = () => (
   <LinearGradient
     pointerEvents="none"
-    style={StyleSheet.absoluteFillObject}
+    style={[StyleSheet.absoluteFillObject, styles.gradientBackground]}
     colors={[
       'rgba(255, 255, 255, 0)',
       'rgba(255, 255, 255, 0.6)',
@@ -85,6 +85,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+  },
+  gradientBackground: {
+    zIndex: -1,
   },
   label: {
     fontSize: 12,
