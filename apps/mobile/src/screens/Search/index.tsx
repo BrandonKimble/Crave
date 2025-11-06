@@ -152,7 +152,9 @@ const SearchScreen: React.FC = () => {
     return map;
   }, [restaurants, dishes]);
 
-  const restaurantFeatures = React.useMemo<FeatureCollection<Point, RestaurantFeatureProperties>>(() => {
+  const restaurantFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
     const features: Feature<Point, RestaurantFeatureProperties>[] = [];
 
     restaurantsById.forEach((restaurant) => {
@@ -257,7 +259,7 @@ const SearchScreen: React.FC = () => {
         }
       });
     },
-    [sheetTranslateY, snapPoints],
+    [sheetTranslateY, snapPoints]
   );
 
   const panResponder = React.useMemo(
@@ -310,7 +312,7 @@ const SearchScreen: React.FC = () => {
           panOffset.current = 0;
         },
       }),
-    [animateSheetTo, snapPoints, sheetTranslateY],
+    [animateSheetTo, snapPoints, sheetTranslateY]
   );
 
   const blurFadeThreshold = snapPoints.expanded + (snapPoints.middle - snapPoints.expanded) * 0.35;
@@ -508,7 +510,12 @@ const SearchScreen: React.FC = () => {
         attributionEnabled={false}
         scaleBarEnabled={false}
       >
-        <MapboxGL.Camera ref={cameraRef} centerCoordinate={AUSTIN_COORDINATE} zoomLevel={12} pitch={32} />
+        <MapboxGL.Camera
+          ref={cameraRef}
+          centerCoordinate={AUSTIN_COORDINATE}
+          zoomLevel={12}
+          pitch={32}
+        />
         <MapboxGL.Images images={{ restaurantPin: restaurantPinImage }} />
         {restaurantFeatures.features.length ? (
           <MapboxGL.ShapeSource id="restaurant-results" shape={restaurantFeatures}>
@@ -638,10 +645,7 @@ const SearchScreen: React.FC = () => {
                   onPress={toggleOpenNow}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle open now results"
-                  style={[
-                    styles.openNowButton,
-                    openNowOnly && styles.openNowButtonActive,
-                  ]}
+                  style={[styles.openNowButton, openNowOnly && styles.openNowButtonActive]}
                 >
                   <Feather
                     name="clock"
@@ -652,10 +656,7 @@ const SearchScreen: React.FC = () => {
                   <Text
                     variant="caption"
                     weight="semibold"
-                    style={[
-                      styles.openNowText,
-                      openNowOnly && styles.openNowTextActive,
-                    ]}
+                    style={[styles.openNowText, openNowOnly && styles.openNowTextActive]}
                   >
                     Open now
                   </Text>
