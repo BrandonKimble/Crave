@@ -35,6 +35,7 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = 20;
 const CARD_GAP = 4;
 const ACTIVE_TAB_COLOR = '#f97384';
+const TAB_BUTTON_COLOR = '#8b5cf6';
 type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
 type RestaurantFeatureProperties = {
   restaurantId: string;
@@ -112,6 +113,7 @@ const SearchScreen: React.FC = () => {
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [segmentWidth, setSegmentWidth] = React.useState(0);
   const [openNowOnly, setOpenNowOnly] = React.useState(false);
+  const [likedItems, setLikedItems] = React.useState<Set<string>>(new Set());
   const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const panOffset = React.useRef(0);
@@ -437,54 +439,156 @@ const SearchScreen: React.FC = () => {
     setOpenNowOnly((prev) => !prev);
   }, []);
 
-  const renderDishCard = (item: FoodResult) => (
-    <View key={item.connectionId} style={styles.resultItem}>
-      <Text variant="body" weight="semibold" style={[styles.textSlate900, styles.dishCardTitle]}>
-        {item.foodName}
-      </Text>
-      <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
-        {item.restaurantName}
-      </Text>
-      <View style={styles.metricRow}>
-        <Metric label="Quality" value={item.qualityScore.toFixed(1)} />
-        <Metric label="Poll Volume" value={item.mentionCount} />
-        <Metric label="Consensus Votes" value={item.totalUpvotes} />
-      </View>
-    </View>
-  );
+  const toggleLike = React.useCallback((id: string) => {
+    setLikedItems((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
-  const renderRestaurantCard = (restaurant: RestaurantResult) => (
-    <View key={restaurant.restaurantId} style={styles.resultItem}>
-      <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
-        {restaurant.restaurantName}
-      </Text>
-      {restaurant.address ? (
-        <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
-          {restaurant.address}
-        </Text>
-      ) : null}
-      <View style={styles.metricRow}>
-        <Metric label="Context" value={restaurant.contextualScore.toFixed(1)} />
-        {restaurant.restaurantQualityScore !== null &&
-        restaurant.restaurantQualityScore !== undefined ? (
-          <Metric label="Quality" value={restaurant.restaurantQualityScore.toFixed(1)} />
-        ) : null}
-      </View>
-      {restaurant.topFood?.length ? (
-        <View style={styles.topFoodSection}>
-          {restaurant.topFood.map((food) => (
-            <Text
-              key={food.connectionId}
-              variant="caption"
-              style={[styles.textSlate700, styles.topFoodText]}
-            >
-              • {food.foodName} ({food.qualityScore.toFixed(1)})
+  const renderDishCard = (item: FoodResult, index: number) => {
+    const isLiked = likedItems.has(item.connectionId);
+    return (
+      <View key={item.connectionId} style={styles.resultItem}>
+        <View style={styles.resultHeader}>
+          <Text variant="body" weight="semibold" style={styles.rankNumber}>
+            {index + 1}
+          </Text>
+          <View style={styles.resultTitleContainer}>
+            <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
+              {item.foodName}
             </Text>
-          ))}
+            <Text variant="body" weight="medium" style={[styles.textSlate600, styles.dishCardTitle]}>
+              {' '}
+              • {item.restaurantName}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => toggleLike(item.connectionId)}
+            accessibilityRole="button"
+            accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+            style={styles.likeButton}
+            hitSlop={8}
+          >
+            {isLiked ? (
+              <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
+            ) : (
+              <Feather name="heart" size={20} color="#cbd5e1" />
+            )}
+          </Pressable>
         </View>
-      ) : null}
-    </View>
-  );
+        <View style={styles.resultContent}>
+          <View style={styles.metricsContainer}>
+            <View style={styles.primaryMetric}>
+              <Text variant="caption" style={styles.primaryMetricLabel}>
+                Quality
+              </Text>
+              <Text variant="h3" weight="bold" style={styles.primaryMetricValue}>
+                {item.qualityScore.toFixed(1)}
+              </Text>
+            </View>
+            <View style={styles.secondaryMetrics}>
+              <View style={styles.secondaryMetric}>
+                <Text variant="caption" style={styles.secondaryMetricLabel}>
+                  Poll Volume
+                </Text>
+                <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                  {item.mentionCount}
+                </Text>
+              </View>
+              <View style={styles.secondaryMetric}>
+                <Text variant="caption" style={styles.secondaryMetricLabel}>
+                  Consensus Votes
+                </Text>
+                <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                  {item.totalUpvotes}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
+    const isLiked = likedItems.has(restaurant.restaurantId);
+    return (
+      <View key={restaurant.restaurantId} style={styles.resultItem}>
+        <View style={styles.resultHeader}>
+          <Text variant="body" weight="semibold" style={styles.rankNumber}>
+            {index + 1}
+          </Text>
+          <View style={styles.resultTitleContainer}>
+            <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
+              {restaurant.restaurantName}
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => toggleLike(restaurant.restaurantId)}
+            accessibilityRole="button"
+            accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+            style={styles.likeButton}
+            hitSlop={8}
+          >
+            {isLiked ? (
+              <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
+            ) : (
+              <Feather name="heart" size={20} color="#cbd5e1" />
+            )}
+          </Pressable>
+        </View>
+        <View style={styles.resultContent}>
+          {restaurant.address ? (
+            <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
+              {restaurant.address}
+            </Text>
+          ) : null}
+          <View style={styles.metricsContainer}>
+            <View style={styles.primaryMetric}>
+              <Text variant="caption" style={styles.primaryMetricLabel}>
+                Context
+              </Text>
+              <Text variant="h3" weight="bold" style={styles.primaryMetricValue}>
+                {restaurant.contextualScore.toFixed(1)}
+              </Text>
+            </View>
+            {restaurant.restaurantQualityScore !== null &&
+            restaurant.restaurantQualityScore !== undefined ? (
+              <View style={styles.secondaryMetrics}>
+                <View style={styles.secondaryMetric}>
+                  <Text variant="caption" style={styles.secondaryMetricLabel}>
+                    Quality
+                  </Text>
+                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                    {restaurant.restaurantQualityScore.toFixed(1)}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+          {restaurant.topFood?.length ? (
+            <View style={styles.topFoodSection}>
+              {restaurant.topFood.map((food) => (
+                <Text
+                  key={food.connectionId}
+                  variant="caption"
+                  style={[styles.textSlate700, styles.topFoodText]}
+                >
+                  • {food.foodName} ({food.qualityScore.toFixed(1)})
+                </Text>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -562,7 +666,14 @@ const SearchScreen: React.FC = () => {
               ]}
             />
             <View pointerEvents="none" style={styles.glassHighlightSmall} />
-            <Animated.View style={{ opacity: searchBarOpacity, flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <Animated.View
+              style={{
+                opacity: searchBarOpacity,
+                flexDirection: 'row',
+                alignItems: 'center',
+                flex: 1,
+              }}
+            >
               <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
               <TextInput
                 ref={inputRef}
@@ -659,6 +770,48 @@ const SearchScreen: React.FC = () => {
                   </Text>
                 </Pressable>
               </View>
+              <View style={styles.integratedSegmentedControl}>
+                <Pressable
+                  style={[
+                    styles.integratedTab,
+                    activeTab === 'restaurants' && styles.integratedTabActive,
+                  ]}
+                  onPress={() => setActiveTab('restaurants')}
+                  accessibilityRole="button"
+                  accessibilityLabel="View restaurants"
+                >
+                  <Text
+                    variant="caption"
+                    weight={activeTab === 'restaurants' ? 'bold' : 'medium'}
+                    style={[
+                      styles.integratedTabText,
+                      activeTab === 'restaurants' && styles.integratedTabTextActive,
+                    ]}
+                  >
+                    Restaurants
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.integratedTab,
+                    activeTab === 'dishes' && styles.integratedTabActive,
+                  ]}
+                  onPress={() => setActiveTab('dishes')}
+                  accessibilityRole="button"
+                  accessibilityLabel="View dishes"
+                >
+                  <Text
+                    variant="caption"
+                    weight={activeTab === 'dishes' ? 'bold' : 'medium'}
+                    style={[
+                      styles.integratedTabText,
+                      activeTab === 'dishes' && styles.integratedTabTextActive,
+                    ]}
+                  >
+                    Dishes
+                  </Text>
+                </Pressable>
+              </View>
             </View>
 
             {error ? (
@@ -687,12 +840,12 @@ const SearchScreen: React.FC = () => {
                   <View style={styles.resultsInner}>
                     {activeTab === 'dishes' ? (
                       dishes.length ? (
-                        dishes.map(renderDishCard)
+                        dishes.map((dish, index) => renderDishCard(dish, index))
                       ) : (
                         <EmptyState message="No dishes found. Try adjusting your search." />
                       )
                     ) : restaurants.length ? (
-                      restaurants.map(renderRestaurantCard)
+                      restaurants.map((restaurant, index) => renderRestaurantCard(restaurant, index))
                     ) : (
                       <EmptyState message="No restaurants found. Try adjusting your search." />
                     )}
@@ -700,82 +853,6 @@ const SearchScreen: React.FC = () => {
                 </ScrollView>
               </View>
             )}
-          </Animated.View>
-        ) : null}
-        {shouldRenderSheet ? (
-          <Animated.View
-            pointerEvents={panelVisible ? 'auto' : 'none'}
-            style={[
-              styles.floatingSegmentWrapper,
-              {
-                bottom: floatingSegmentBottom,
-                opacity: floatingSegmentOpacity,
-                transform: [{ translateY: floatingSegmentTranslate }],
-              },
-            ]}
-          >
-            <View style={styles.floatingSegment}>
-              <FloatingSegmentBackground />
-              <View
-                style={styles.segmentedControl}
-                onLayout={(event) => setSegmentWidth(event.nativeEvent.layout.width)}
-              >
-                {segmentWidth > 0 && (
-                  <Animated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.segmentedIndicator,
-                      {
-                        width: Math.max(segmentWidth / 2 - 8, 0),
-                        marginHorizontal: 4,
-                        transform: [
-                          {
-                            translateX: segmentAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [0, segmentWidth / 2],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                )}
-                <Pressable
-                  style={styles.segmentedOption}
-                  onPress={() => setActiveTab('restaurants')}
-                  accessibilityRole="button"
-                  accessibilityLabel="View restaurants"
-                >
-                  <Text
-                    variant="body"
-                    weight={activeTab === 'restaurants' ? 'semibold' : 'medium'}
-                    style={[
-                      styles.segmentedLabel,
-                      activeTab === 'restaurants' && styles.segmentedLabelActive,
-                    ]}
-                  >
-                    Restaurants
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.segmentedOption}
-                  onPress={() => setActiveTab('dishes')}
-                  accessibilityRole="button"
-                  accessibilityLabel="View dishes"
-                >
-                  <Text
-                    variant="body"
-                    weight={activeTab === 'dishes' ? 'semibold' : 'medium'}
-                    style={[
-                      styles.segmentedLabel,
-                      activeTab === 'dishes' && styles.segmentedLabelActive,
-                    ]}
-                  >
-                    Dishes
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
           </Animated.View>
         ) : null}
       </SafeAreaView>
@@ -1024,6 +1101,34 @@ const styles = StyleSheet.create({
   openNowTextActive: {
     color: '#ffffff',
   },
+  integratedSegmentedControl: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  integratedTab: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  integratedTabActive: {
+    backgroundColor: TAB_BUTTON_COLOR,
+    borderColor: TAB_BUTTON_COLOR,
+    shadowColor: TAB_BUTTON_COLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  integratedTabText: {
+    fontSize: 13,
+    color: '#64748b',
+  },
+  integratedTabTextActive: {
+    color: '#ffffff',
+  },
   resultsInner: {
     width: '100%',
   },
@@ -1033,6 +1138,67 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     marginBottom: CARD_GAP,
     alignSelf: 'stretch',
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  rankNumber: {
+    fontSize: 20,
+    color: ACTIVE_TAB_COLOR,
+    minWidth: 28,
+  },
+  resultTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+  },
+  likeButton: {
+    padding: 4,
+  },
+  resultContent: {
+    marginLeft: 40,
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 24,
+    marginTop: 12,
+  },
+  primaryMetric: {
+    gap: 4,
+  },
+  primaryMetricLabel: {
+    fontSize: 11,
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  primaryMetricValue: {
+    fontSize: 32,
+    color: '#fb923c',
+  },
+  secondaryMetrics: {
+    flexDirection: 'row',
+    gap: 16,
+    alignItems: 'flex-start',
+    paddingTop: 4,
+  },
+  secondaryMetric: {
+    gap: 2,
+  },
+  secondaryMetricLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  secondaryMetricValue: {
+    fontSize: 14,
+    color: '#64748b',
   },
   emptyState: {
     paddingVertical: 32,
@@ -1071,7 +1237,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   dishCardTitle: {
-    fontSize: 14,
+    fontSize: 13,
   },
   dishSubtitle: {
     fontSize: 14,
