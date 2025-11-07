@@ -32,10 +32,11 @@ import restaurantPinImage from '../../assets/pins/restaurant-pin.png';
 const DEFAULT_STYLE_URL = 'mapbox://styles/brandonkimble/cmhjzgs6i00cl01s69ff1fsmf';
 const AUSTIN_COORDINATE: [number, number] = [-97.7431, 30.2672];
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const CONTENT_HORIZONTAL_PADDING = 20;
+const CONTENT_HORIZONTAL_PADDING = 15;
 const CARD_GAP = 4;
 const ACTIVE_TAB_COLOR = '#f97384';
-const TAB_BUTTON_COLOR = '#8b5cf6';
+const TAB_BUTTON_COLOR = '#a78bfa';
+const QUALITY_COLOR = '#fbbf24';
 type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
 type RestaurantFeatureProperties = {
   restaurantId: string;
@@ -215,7 +216,7 @@ const SearchScreen: React.FC = () => {
     const expanded = Math.max(searchLayout.top, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
-    const collapsed = SCREEN_HEIGHT - 120;
+    const collapsed = SCREEN_HEIGHT - 160;
     const hidden = SCREEN_HEIGHT + 80;
     return {
       expanded,
@@ -463,7 +464,11 @@ const SearchScreen: React.FC = () => {
             <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
               {item.foodName}
             </Text>
-            <Text variant="body" weight="medium" style={[styles.textSlate600, styles.dishCardTitle]}>
+            <Text
+              variant="body"
+              weight="medium"
+              style={[styles.textSlate600, styles.dishCardTitle]}
+            >
               {' '}
               • {item.restaurantName}
             </Text>
@@ -488,7 +493,7 @@ const SearchScreen: React.FC = () => {
               <Text variant="caption" style={styles.primaryMetricLabel}>
                 Quality
               </Text>
-              <Text variant="h3" weight="bold" style={styles.primaryMetricValue}>
+              <Text variant="title" weight="bold" style={styles.primaryMetricValue}>
                 {item.qualityScore.toFixed(1)}
               </Text>
             </View>
@@ -554,7 +559,7 @@ const SearchScreen: React.FC = () => {
               <Text variant="caption" style={styles.primaryMetricLabel}>
                 Context
               </Text>
-              <Text variant="h3" weight="bold" style={styles.primaryMetricValue}>
+              <Text variant="title" weight="bold" style={styles.primaryMetricValue}>
                 {restaurant.contextualScore.toFixed(1)}
               </Text>
             </View>
@@ -701,7 +706,7 @@ const SearchScreen: React.FC = () => {
                   style={styles.trailingAction}
                   hitSlop={8}
                 >
-                  <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+                  <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
                 </Pressable>
               ) : (
                 <View style={styles.trailingPlaceholder} />
@@ -750,6 +755,17 @@ const SearchScreen: React.FC = () => {
                   {submittedQuery || 'Results'}
                 </Text>
                 <Pressable
+                  onPress={hidePanel}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close results"
+                  style={styles.closeButton}
+                  hitSlop={8}
+                >
+                  <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
+                </Pressable>
+              </View>
+              <View style={styles.headerSecondRow}>
+                <Pressable
                   onPress={toggleOpenNow}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle open now results"
@@ -769,48 +785,48 @@ const SearchScreen: React.FC = () => {
                     Open now
                   </Text>
                 </Pressable>
-              </View>
-              <View style={styles.integratedSegmentedControl}>
-                <Pressable
-                  style={[
-                    styles.integratedTab,
-                    activeTab === 'restaurants' && styles.integratedTabActive,
-                  ]}
-                  onPress={() => setActiveTab('restaurants')}
-                  accessibilityRole="button"
-                  accessibilityLabel="View restaurants"
-                >
-                  <Text
-                    variant="caption"
-                    weight={activeTab === 'restaurants' ? 'bold' : 'medium'}
+                <View style={styles.integratedSegmentedControl}>
+                  <Pressable
                     style={[
-                      styles.integratedTabText,
-                      activeTab === 'restaurants' && styles.integratedTabTextActive,
+                      styles.integratedTab,
+                      activeTab === 'restaurants' && styles.integratedTabActive,
                     ]}
+                    onPress={() => setActiveTab('restaurants')}
+                    accessibilityRole="button"
+                    accessibilityLabel="View restaurants"
                   >
-                    Restaurants
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.integratedTab,
-                    activeTab === 'dishes' && styles.integratedTabActive,
-                  ]}
-                  onPress={() => setActiveTab('dishes')}
-                  accessibilityRole="button"
-                  accessibilityLabel="View dishes"
-                >
-                  <Text
-                    variant="caption"
-                    weight={activeTab === 'dishes' ? 'bold' : 'medium'}
+                    <Text
+                      variant="caption"
+                      weight={activeTab === 'restaurants' ? 'bold' : 'medium'}
+                      style={[
+                        styles.integratedTabText,
+                        activeTab === 'restaurants' && styles.integratedTabTextActive,
+                      ]}
+                    >
+                      Restaurants
+                    </Text>
+                  </Pressable>
+                  <Pressable
                     style={[
-                      styles.integratedTabText,
-                      activeTab === 'dishes' && styles.integratedTabTextActive,
+                      styles.integratedTab,
+                      activeTab === 'dishes' && styles.integratedTabActive,
                     ]}
+                    onPress={() => setActiveTab('dishes')}
+                    accessibilityRole="button"
+                    accessibilityLabel="View dishes"
                   >
-                    Dishes
-                  </Text>
-                </Pressable>
+                    <Text
+                      variant="caption"
+                      weight={activeTab === 'dishes' ? 'bold' : 'medium'}
+                      style={[
+                        styles.integratedTabText,
+                        activeTab === 'dishes' && styles.integratedTabTextActive,
+                      ]}
+                    >
+                      Dishes
+                    </Text>
+                  </Pressable>
+                </View>
               </View>
             </View>
 
@@ -845,7 +861,9 @@ const SearchScreen: React.FC = () => {
                         <EmptyState message="No dishes found. Try adjusting your search." />
                       )
                     ) : restaurants.length ? (
-                      restaurants.map((restaurant, index) => renderRestaurantCard(restaurant, index))
+                      restaurants.map((restaurant, index) =>
+                        renderRestaurantCard(restaurant, index)
+                      )
                     ) : (
                       <EmptyState message="No restaurants found. Try adjusting your search." />
                     )}
@@ -951,15 +969,15 @@ const styles = StyleSheet.create({
   },
   resultsHeader: {
     backgroundColor: '#ffffff',
-    paddingTop: 2,
+    paddingTop: 0,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingBottom: CARD_GAP * 2,
     marginBottom: CARD_GAP,
   },
   grabHandleWrapper: {
     alignItems: 'center',
-    paddingTop: 4,
-    paddingBottom: 3,
+    paddingTop: 6,
+    paddingBottom: 2,
     backgroundColor: '#ffffff',
   },
   grabHandle: {
@@ -972,8 +990,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 2,
+    marginTop: 0,
+  },
+  headerSecondRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  closeButton: {
+    padding: 0,
   },
   floatingSegmentWrapper: {
     position: 'absolute',
@@ -1076,11 +1102,11 @@ const styles = StyleSheet.create({
   openNowButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 18,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#cbd5e1',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
     backgroundColor: '#ffffff',
   },
   openNowButtonActive: {
@@ -1104,12 +1130,11 @@ const styles = StyleSheet.create({
   integratedSegmentedControl: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
   },
   integratedTab: {
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    paddingVertical: 4,
+    paddingHorizontal: 14,
+    borderRadius: 10,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: '#e2e8f0',
@@ -1141,9 +1166,9 @@ const styles = StyleSheet.create({
   },
   resultHeader: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   rankNumber: {
     fontSize: 20,
@@ -1166,7 +1191,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 24,
-    marginTop: 12,
   },
   primaryMetric: {
     gap: 4,
@@ -1179,7 +1203,7 @@ const styles = StyleSheet.create({
   },
   primaryMetricValue: {
     fontSize: 32,
-    color: '#fb923c',
+    color: QUALITY_COLOR,
   },
   secondaryMetrics: {
     flexDirection: 'row',
