@@ -4,6 +4,7 @@ import {
   Animated,
   Dimensions,
   Keyboard,
+  Modal,
   PanResponder,
   Pressable,
   ScrollView,
@@ -17,7 +18,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import { Text } from '../../components';
+import { Text, Button } from '../../components';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
 import { useSearchStore } from '../../store/searchStore';
@@ -82,10 +83,6 @@ const boundsFromPairs = (first: [number, number], second: [number, number]): Map
 
 MapboxGL.setTelemetryEnabled(false);
 
-const FloatingSegmentBackground: React.FC = () => (
-  <BlurView pointerEvents="none" intensity={90} tint="light" style={styles.floatingSegmentBlur} />
-);
-
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
@@ -122,15 +119,16 @@ const SearchScreen: React.FC = () => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
-  const [segmentWidth, setSegmentWidth] = React.useState(0);
   const [likedItems, setLikedItems] = React.useState<Set<string>>(new Set());
+  const [hasUnlockedFullResults, setHasUnlockedFullResults] = React.useState(false);
+  const [hasPreviewedResults, setHasPreviewedResults] = React.useState(false);
+  const [previewQuery, setPreviewQuery] = React.useState('');
+  const [isPaywallVisible, setIsPaywallVisible] = React.useState(false);
+  const [selectedPlan, setSelectedPlan] = React.useState<'monthly' | 'annual'>('monthly');
   const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const panOffset = React.useRef(0);
   const isAnimating = React.useRef(false);
-  const tabBarBasePadding = insets.bottom > 0 ? insets.bottom : 6;
-  const tabBarHeight = Math.max(60, 44 + tabBarBasePadding * 2);
-  const floatingSegmentBottom = tabBarHeight - tabBarBasePadding + 8;
   const inputRef = React.useRef<TextInput | null>(null);
   const openNow = useSearchStore((state) => state.openNow);
   const setOpenNow = useSearchStore((state) => state.setOpenNow);
@@ -198,6 +196,18 @@ const SearchScreen: React.FC = () => {
       features,
     };
   }, [restaurantsById]);
+
+  const activeList = activeTab === 'dishes' ? dishes : restaurants;
+  const shouldGateResults = Boolean(
+    results && hasPreviewedResults && !hasUnlockedFullResults && activeList.length > 3
+  );
+  const lockedCount = shouldGateResults ? Math.min(3, activeList.length) : 0;
+  const previewItems = React.useMemo<(FoodResult | RestaurantResult)[]>(
+    () => activeList.slice(0, lockedCount || 0),
+    [activeList, lockedCount]
+  );
+  const remainingResults = Math.max(activeList.length - lockedCount, 0);
+  const shouldShowPreview = shouldGateResults && previewItems.length > 0;
 
   const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
     if (!openNow || !results?.metadata) {
@@ -371,17 +381,6 @@ const SearchScreen: React.FC = () => {
     outputRange: [0, 1],
     extrapolate: 'clamp',
   });
-  const floatingSegmentOpacity = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.collapsed, snapPoints.hidden],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-  const floatingSegmentTranslate = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, snapPoints.hidden],
-    outputRange: [0, 28],
-    extrapolate: 'clamp',
-  });
-
   React.useEffect(() => {
     Animated.spring(segmentAnim, {
       toValue: activeTab === 'restaurants' ? 0 : 1,
@@ -462,6 +461,14 @@ const SearchScreen: React.FC = () => {
         setActiveTab(
           response?.format === 'dual_list' || response?.food?.length ? 'dishes' : 'restaurants'
         );
+
+        const hasAnyResults =
+          (response?.food?.length ?? 0) > 0 || (response?.restaurants?.length ?? 0) > 0;
+        if (hasAnyResults && !hasUnlockedFullResults) {
+          setHasPreviewedResults(true);
+          setPreviewQuery(trimmed);
+        }
+
         Keyboard.dismiss();
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
@@ -470,7 +477,7 @@ const SearchScreen: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [query, isLoading, showPanel, openNow]
+    [query, isLoading, showPanel, openNow, hasUnlockedFullResults]
   );
 
   const handleSubmit = React.useCallback(() => {
@@ -482,6 +489,8 @@ const SearchScreen: React.FC = () => {
     setResults(null);
     setSubmittedQuery('');
     setError(null);
+    setHasPreviewedResults(false);
+    setPreviewQuery('');
     hidePanel();
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -512,14 +521,116 @@ const SearchScreen: React.FC = () => {
     });
   }, []);
 
+  const openPaywall = React.useCallback(() => {
+    setIsPaywallVisible(true);
+  }, []);
+
+  const closePaywall = React.useCallback(() => {
+    setIsPaywallVisible(false);
+  }, []);
+
+  const handleUnlockResults = React.useCallback(() => {
+    setHasUnlockedFullResults(true);
+    setIsPaywallVisible(false);
+  }, []);
+
+  const renderPaywallPreview = () => (
+    <View style={styles.previewContainer}>
+      <Text variant="body" weight="bold" style={styles.previewTitle}>
+        {previewQuery ? `Top ${lockedCount} picks for “${previewQuery}”` : 'Top ranked picks'}
+      </Text>
+      <Text variant="caption" style={styles.previewSubtitle}>
+        Unlock the first {lockedCount} results to see why they lead. The other {remainingResults}{' '}
+        spots stay visible below.
+      </Text>
+      <View style={styles.previewList}>
+        {previewItems.map((item, index) => {
+          const isDishTab = activeTab === 'dishes';
+          const key = isDishTab
+            ? (item as FoodResult).connectionId
+            : (item as RestaurantResult).restaurantId;
+          const primaryText = isDishTab
+            ? (item as FoodResult).foodName
+            : (item as RestaurantResult).restaurantName;
+          const secondaryText = isDishTab
+            ? (item as FoodResult).restaurantName
+            : (item as RestaurantResult).address ?? 'Neighborhood intel ready';
+          return (
+            <View key={key} style={styles.previewItem}>
+              <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
+                <Text variant="body" weight="bold" style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}>
+                  {index + 1}
+                </Text>
+              </View>
+              <View style={styles.previewItemBody}>
+                <Text variant="body" weight="semibold" style={styles.previewItemTitle}>
+                  {primaryText}
+                </Text>
+                <Text variant="caption" style={styles.previewItemMeta}>
+                  {secondaryText}
+                </Text>
+                <Text variant="caption" style={styles.previewBlurText}>
+                  Quality score hidden · Unlock to reveal
+                </Text>
+              </View>
+            </View>
+          );
+        })}
+      </View>
+      <View style={styles.previewOverlayCard}>
+        <Text variant="subtitle" weight="bold" style={styles.previewOverlayTitle}>
+          Unlock the top {lockedCount} results + live scores
+        </Text>
+        <Text variant="body" style={styles.previewOverlayDescription}>
+          Includes map view, filters, bookmarks, and real-time trend alerts.
+        </Text>
+        <Button
+          label="Unlock full results"
+          onPress={openPaywall}
+          style={styles.previewPrimaryButton}
+        />
+        <Button
+          label="See pricing options"
+          variant="ghost"
+          onPress={openPaywall}
+          style={styles.previewGhostButton}
+        />
+      </View>
+    </View>
+  );
+
+  const getQualityColor = (index: number, total: number): string => {
+    const ratio = index / Math.max(total - 1, 1);
+    // Warmer light green: #a3e635 to lighter warm orange: #fb923c
+    const green = {
+      r: 163,
+      g: 230,
+      b: 53,
+    };
+    const orange = {
+      r: 251,
+      g: 146,
+      b: 60,
+    };
+
+    const r = Math.round(green.r + (orange.r - green.r) * ratio);
+    const g = Math.round(green.g + (orange.g - green.g) * ratio);
+    const b = Math.round(green.b + (orange.b - green.b) * ratio);
+
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
   const renderDishCard = (item: FoodResult, index: number) => {
     const isLiked = likedItems.has(item.connectionId);
+    const qualityColor = getQualityColor(index, dishes.length);
     return (
       <View key={item.connectionId} style={styles.resultItem}>
         <View style={styles.resultHeader}>
-          <Text variant="body" weight="semibold" style={styles.rankNumber}>
-            {index + 1}
-          </Text>
+          <View style={styles.rankBadge}>
+            <Text variant="body" weight="bold" style={styles.rankBadgeText}>
+              {index + 1}
+            </Text>
+          </View>
           <View style={styles.resultTitleContainer}>
             <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
               {item.foodName}
@@ -551,16 +662,20 @@ const SearchScreen: React.FC = () => {
           <View style={styles.metricsContainer}>
             <View style={styles.primaryMetric}>
               <Text variant="caption" style={styles.primaryMetricLabel}>
-                Quality
+                Score
               </Text>
-              <Text variant="title" weight="bold" style={styles.primaryMetricValue}>
+              <Text
+                variant="title"
+                weight="bold"
+                style={[styles.primaryMetricValue, { color: qualityColor }]}
+              >
                 {item.qualityScore.toFixed(1)}
               </Text>
             </View>
             <View style={styles.secondaryMetrics}>
               <View style={styles.secondaryMetric}>
                 <Text variant="caption" style={styles.secondaryMetricLabel}>
-                  Poll Volume
+                  Poll Count
                 </Text>
                 <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
                   {item.mentionCount}
@@ -568,7 +683,7 @@ const SearchScreen: React.FC = () => {
               </View>
               <View style={styles.secondaryMetric}>
                 <Text variant="caption" style={styles.secondaryMetricLabel}>
-                  Consensus Votes
+                  Total Votes
                 </Text>
                 <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
                   {item.totalUpvotes}
@@ -583,12 +698,15 @@ const SearchScreen: React.FC = () => {
 
   const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
     const isLiked = likedItems.has(restaurant.restaurantId);
+    const qualityColor = getQualityColor(index, restaurants.length);
     return (
       <View key={restaurant.restaurantId} style={styles.resultItem}>
         <View style={styles.resultHeader}>
-          <Text variant="body" weight="semibold" style={styles.rankNumber}>
-            {index + 1}
-          </Text>
+          <View style={styles.rankBadge}>
+            <Text variant="body" weight="bold" style={styles.rankBadgeText}>
+              {index + 1}
+            </Text>
+          </View>
           <View style={styles.resultTitleContainer}>
             <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
               {restaurant.restaurantName}
@@ -619,7 +737,11 @@ const SearchScreen: React.FC = () => {
               <Text variant="caption" style={styles.primaryMetricLabel}>
                 Context
               </Text>
-              <Text variant="title" weight="bold" style={styles.primaryMetricValue}>
+              <Text
+                variant="title"
+                weight="bold"
+                style={[styles.primaryMetricValue, { color: qualityColor }]}
+              >
                 {restaurant.contextualScore.toFixed(1)}
               </Text>
             </View>
@@ -652,6 +774,50 @@ const SearchScreen: React.FC = () => {
           ) : null}
         </View>
       </View>
+    );
+  };
+
+  const renderDishResults = () => {
+    if (!dishes.length) {
+      return <EmptyState message="No dishes found. Try adjusting your search." />;
+    }
+
+    const offset = shouldGateResults ? lockedCount : 0;
+    const visibleDishes = shouldGateResults ? dishes.slice(lockedCount) : dishes;
+
+    if (!visibleDishes.length && shouldShowPreview) {
+      return (
+        <View style={styles.lockedEmptyState}>
+          <Text variant="caption" style={styles.lockedEmptyText}>
+            Unlock to reveal the top {lockedCount} dishes.
+          </Text>
+        </View>
+      );
+    }
+
+    return visibleDishes.map((dish, index) => renderDishCard(dish, index + offset));
+  };
+
+  const renderRestaurantResults = () => {
+    if (!restaurants.length) {
+      return <EmptyState message="No restaurants found. Try adjusting your search." />;
+    }
+
+    const offset = shouldGateResults ? lockedCount : 0;
+    const visibleRestaurants = shouldGateResults ? restaurants.slice(lockedCount) : restaurants;
+
+    if (!visibleRestaurants.length && shouldShowPreview) {
+      return (
+        <View style={styles.lockedEmptyState}>
+          <Text variant="caption" style={styles.lockedEmptyText}>
+            Unlock to reveal the top {lockedCount} restaurants.
+          </Text>
+        </View>
+      );
+    }
+
+    return visibleRestaurants.map((restaurant, index) =>
+      renderRestaurantCard(restaurant, index + offset)
     );
   };
 
@@ -934,19 +1100,10 @@ const SearchScreen: React.FC = () => {
                   keyboardShouldPersistTaps="handled"
                 >
                   <View style={styles.resultsInner}>
-                    {activeTab === 'dishes' ? (
-                      dishes.length ? (
-                        dishes.map((dish, index) => renderDishCard(dish, index))
-                      ) : (
-                        <EmptyState message="No dishes found. Try adjusting your search." />
-                      )
-                    ) : restaurants.length ? (
-                      restaurants.map((restaurant, index) =>
-                        renderRestaurantCard(restaurant, index)
-                      )
-                    ) : (
-                      <EmptyState message="No restaurants found. Try adjusting your search." />
-                    )}
+                    {shouldShowPreview ? renderPaywallPreview() : null}
+                    {activeTab === 'dishes'
+                      ? renderDishResults()
+                      : renderRestaurantResults()}
                   </View>
                 </ScrollView>
               </View>
@@ -954,25 +1111,86 @@ const SearchScreen: React.FC = () => {
           </Animated.View>
         ) : null}
       </SafeAreaView>
+      <Modal
+        transparent
+        animationType="slide"
+        visible={isPaywallVisible}
+        onRequestClose={closePaywall}
+      >
+        <View style={styles.paywallBackdrop}>
+          <View style={styles.paywallCard}>
+            <View style={styles.paywallHeader}>
+              <Text variant="subtitle" weight="bold" style={styles.paywallTitle}>
+                Unlock full results
+              </Text>
+              <Pressable
+                onPress={closePaywall}
+                accessibilityRole="button"
+                accessibilityLabel="Close paywall"
+                style={styles.paywallCloseButton}
+              >
+                <Feather name="x" size={22} color="#475569" />
+              </Pressable>
+            </View>
+            <Text variant="body" style={styles.paywallSubtitle}>
+              Reveal the top-ranked spots, live quality scores, and pro tools for every search.
+            </Text>
+            <View style={styles.planToggle}>
+              {(['monthly', 'annual'] as const).map((plan) => (
+                <Pressable
+                  key={plan}
+                  onPress={() => setSelectedPlan(plan)}
+                  style={[
+                    styles.planOption,
+                    selectedPlan === plan && styles.planOptionActive,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select ${plan} plan`}
+                >
+                  <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
+                    {plan === 'monthly' ? 'Monthly' : 'Annual'}
+                  </Text>
+                  <Text variant="title" weight="bold" style={styles.planOptionPrice}>
+                    {plan === 'monthly' ? '$9.99' : '$99'}
+                  </Text>
+                  <Text variant="caption" style={styles.planOptionSubtext}>
+                    {plan === 'monthly' ? 'Cancel anytime' : '2 months free'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.paywallFeatureList}>
+              {[
+                'Unlock the top 3 ranked spots',
+                'Live quality & context scores',
+                'Bookmarks, filters, and alerts',
+              ].map((feature) => (
+                <View key={feature} style={styles.paywallFeatureItem}>
+                  <View style={styles.paywallFeatureBullet} />
+                  <Text variant="body" style={styles.paywallFeatureText}>
+                    {feature}
+                  </Text>
+                </View>
+              ))}
+            </View>
+            <Button
+              label={`Continue with ${selectedPlan === 'monthly' ? 'Monthly' : 'Annual'}`}
+              onPress={handleUnlockResults}
+              style={styles.paywallPrimaryButton}
+            />
+            <Button
+              label="Maybe later"
+              variant="ghost"
+              onPress={closePaywall}
+              style={styles.paywallSecondaryButton}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
+
 };
-
-interface MetricProps {
-  label: string;
-  value: string | number;
-}
-
-const Metric: React.FC<MetricProps> = ({ label, value }) => (
-  <View style={styles.metric}>
-    <Text variant="caption" style={styles.textSlate500}>
-      {label}
-    </Text>
-    <Text variant="body" weight="bold" style={styles.metricValue}>
-      {value}
-    </Text>
-  </View>
-);
 
 const styles = StyleSheet.create({
   container: {
@@ -1170,7 +1388,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   resultsScrollContent: {
-    paddingBottom: 100,
+    paddingBottom: 500,
     paddingTop: 0,
   },
   submittedQueryLabel: {
@@ -1265,6 +1483,66 @@ const styles = StyleSheet.create({
   resultsInner: {
     width: '100%',
   },
+  previewContainer: {
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingVertical: 16,
+    borderRadius: 18,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  previewTitle: {
+    color: '#0f172a',
+  },
+  previewSubtitle: {
+    color: '#475569',
+    marginTop: 4,
+  },
+  previewList: {
+    marginTop: 12,
+  },
+  previewItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  previewItemBody: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  previewItemTitle: {
+    color: '#111827',
+  },
+  previewItemMeta: {
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  previewBlurText: {
+    color: '#c026d3',
+    marginTop: 4,
+  },
+  previewOverlayCard: {
+    marginTop: 16,
+    borderRadius: 16,
+    padding: 16,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  previewOverlayTitle: {
+    color: '#0f172a',
+  },
+  previewOverlayDescription: {
+    color: '#475569',
+    marginTop: 6,
+  },
+  previewPrimaryButton: {
+    marginTop: 16,
+  },
+  previewGhostButton: {
+    marginTop: 10,
+  },
   resultItem: {
     paddingVertical: 18,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
@@ -1278,10 +1556,31 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 2,
   },
-  rankNumber: {
-    fontSize: 20,
+  rankBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#f97384',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  rankBadgeText: {
     color: ACTIVE_TAB_COLOR,
-    minWidth: 28,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  rankBadgeMuted: {
+    backgroundColor: '#f1f5f9',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  rankBadgeTextMuted: {
+    color: '#94a3b8',
   },
   resultTitleContainer: {
     flex: 1,
@@ -1337,6 +1636,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  lockedEmptyState: {
+    paddingVertical: 32,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedEmptyText: {
+    color: '#94a3b8',
+    textAlign: 'center',
+  },
   metricRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1369,11 +1678,14 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
   dishCardTitle: {
-    fontSize: 13,
+    fontSize: 15,
   },
   dishSubtitle: {
     fontSize: 14,
     marginTop: 4,
+  },
+  dishSubtitleSmall: {
+    fontSize: 12,
   },
   topFoodText: {
     fontSize: 13,
@@ -1386,6 +1698,91 @@ const styles = StyleSheet.create({
   },
   metricValue: {
     color: '#fb923c',
+  },
+  paywallBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    padding: 20,
+  },
+  paywallCard: {
+    width: '100%',
+    borderRadius: 24,
+    padding: 24,
+    backgroundColor: '#ffffff',
+  },
+  paywallHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  paywallTitle: {
+    color: '#0f172a',
+  },
+  paywallSubtitle: {
+    color: '#475569',
+    marginTop: 12,
+  },
+  paywallCloseButton: {
+    padding: 4,
+  },
+  planToggle: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  planOption: {
+    flex: 1,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  planOptionActive: {
+    borderColor: ACTIVE_TAB_COLOR,
+    backgroundColor: '#fff1f2',
+    shadowColor: ACTIVE_TAB_COLOR,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  planOptionLabel: {
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  planOptionPrice: {
+    color: '#0f172a',
+  },
+  planOptionSubtext: {
+    color: '#475569',
+    marginTop: 2,
+  },
+  paywallFeatureList: {
+    marginTop: 20,
+    gap: 10,
+  },
+  paywallFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  paywallFeatureBullet: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: ACTIVE_TAB_COLOR,
+  },
+  paywallFeatureText: {
+    color: '#0f172a',
+  },
+  paywallPrimaryButton: {
+    marginTop: 24,
+  },
+  paywallSecondaryButton: {
+    marginTop: 12,
   },
   glassHighlightSmall: {
     position: 'absolute',

@@ -8,7 +8,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from 'expo-status-bar';
 import { enableScreens } from 'react-native-screens';
-import { BottomTabNavigator } from './src/navigation';
+import { RootNavigator } from './src/navigation';
 
 const queryClient = new QueryClient();
 
@@ -19,7 +19,7 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <NavigationContainer>
-          <BottomTabNavigator />
+          <RootNavigator />
         </NavigationContainer>
         <StatusBar style="auto" />
       </SafeAreaProvider>

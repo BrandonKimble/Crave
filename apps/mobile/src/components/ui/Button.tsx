@@ -69,7 +69,7 @@ const labelVariants: Record<ButtonVariant, StyleProp<TextStyle>> = {
   ghost: styles.ghostText,
 };
 
-const Button: React.FC<ButtonProps> = ({
+export const Button: React.FC<ButtonProps> = ({
   label,
   variant = 'primary',
   isLoading = false,

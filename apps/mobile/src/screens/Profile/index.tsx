@@ -1,9 +1,12 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Text } from '../../components';
+import { Text, Button } from '../../components';
+import { useOnboardingStore } from '../../store/onboardingStore';
 
 const ProfileScreen: React.FC = () => {
+  const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -19,6 +22,12 @@ const ProfileScreen: React.FC = () => {
           <Text variant="body" style={styles.emptyText}>
             Profile coming soon
           </Text>
+          <Button
+            label="Replay onboarding"
+            variant="ghost"
+            onPress={resetOnboarding}
+            style={styles.resetButton}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -58,6 +67,9 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: '#64748b',
+  },
+  resetButton: {
+    marginTop: 16,
   },
 });
 
