@@ -206,7 +206,8 @@ const SearchScreen: React.FC = () => {
     () => activeList.slice(0, lockedCount || 0),
     [activeList, lockedCount]
   );
-  const remainingResults = Math.max(activeList.length - lockedCount, 0);
+  // Unused - was for old preview copy
+  // const remainingResults = Math.max(activeList.length - lockedCount, 0);
   const shouldShowPreview = shouldGateResults && previewItems.length > 0;
 
   const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
@@ -534,74 +535,77 @@ const SearchScreen: React.FC = () => {
     setIsPaywallVisible(false);
   }, []);
 
-  const renderPaywallPreview = () => (
-    <View style={styles.previewContainer}>
-      <Text variant="body" weight="bold" style={styles.previewTitle}>
-        {previewQuery ? `Top ${lockedCount} picks for “${previewQuery}”` : 'Top ranked picks'}
-      </Text>
-      <Text variant="caption" style={styles.previewSubtitle}>
-        Unlock the first {lockedCount} results to see why they lead. The other {remainingResults}{' '}
-        spots stay visible below.
-      </Text>
-      <View style={styles.previewList}>
-        {previewItems.map((item, index) => {
-          const isDishTab = activeTab === 'dishes';
-          const key = isDishTab
-            ? (item as FoodResult).connectionId
-            : (item as RestaurantResult).restaurantId;
-          const primaryText = isDishTab
-            ? (item as FoodResult).foodName
-            : (item as RestaurantResult).restaurantName;
-          const secondaryText = isDishTab
-            ? (item as FoodResult).restaurantName
-            : (item as RestaurantResult).address ?? 'Neighborhood intel ready';
-          return (
-            <View key={key} style={styles.previewItem}>
-              <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
-                <Text
-                  variant="body"
-                  weight="bold"
-                  style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}
-                >
-                  {index + 1}
-                </Text>
-              </View>
-              <View style={styles.previewItemBody}>
-                <Text variant="body" weight="semibold" style={styles.previewItemTitle}>
-                  {primaryText}
-                </Text>
-                <Text variant="caption" style={styles.previewItemMeta}>
-                  {secondaryText}
-                </Text>
-                <Text variant="caption" style={styles.previewBlurText}>
-                  Quality score hidden · Unlock to reveal
-                </Text>
-              </View>
-            </View>
-          );
-        })}
-      </View>
-      <View style={styles.previewOverlayCard}>
-        <Text variant="subtitle" weight="bold" style={styles.previewOverlayTitle}>
-          Unlock the top {lockedCount} results + live scores
+  const renderPaywallPreview = () => {
+    const totalResults = activeTab === 'dishes' ? dishes.length : restaurants.length;
+    return (
+      <View style={styles.previewContainer}>
+        <Text variant="body" weight="bold" style={styles.previewTitle}>
+          {previewQuery ? `Preview: "${previewQuery}"` : 'Search results preview'}
         </Text>
-        <Text variant="body" style={styles.previewOverlayDescription}>
-          Includes map view, filters, bookmarks, and real-time trend alerts.
+        <Text variant="caption" style={styles.previewSubtitle}>
+          You're seeing {lockedCount} of {totalResults} results. Unlock to see full quality scores,
+          filters, and map view.
         </Text>
-        <Button
-          label="Unlock full results"
-          onPress={openPaywall}
-          style={styles.previewPrimaryButton}
-        />
-        <Button
-          label="See pricing options"
-          variant="ghost"
-          onPress={openPaywall}
-          style={styles.previewGhostButton}
-        />
+        <View style={styles.previewList}>
+          {previewItems.map((item, index) => {
+            const isDishTab = activeTab === 'dishes';
+            const key = isDishTab
+              ? (item as FoodResult).connectionId
+              : (item as RestaurantResult).restaurantId;
+            const primaryText = isDishTab
+              ? (item as FoodResult).foodName
+              : (item as RestaurantResult).restaurantName;
+            const secondaryText = isDishTab
+              ? (item as FoodResult).restaurantName
+              : (item as RestaurantResult).address ?? 'Neighborhood intel ready';
+            return (
+              <View key={key} style={styles.previewItem}>
+                <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
+                  <Text
+                    variant="body"
+                    weight="bold"
+                    style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}
+                  >
+                    {index + 1}
+                  </Text>
+                </View>
+                <View style={styles.previewItemBody}>
+                  <Text variant="body" weight="semibold" style={styles.previewItemTitle}>
+                    {primaryText}
+                  </Text>
+                  <Text variant="caption" style={styles.previewItemMeta}>
+                    {secondaryText}
+                  </Text>
+                  <Text variant="caption" style={styles.previewBlurText}>
+                    🔒 Quality score hidden · Unlock to reveal
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+        <View style={styles.previewOverlayCard}>
+          <Text variant="subtitle" weight="bold" style={styles.previewOverlayTitle}>
+            Unlock all {totalResults} dishes + quality scores
+          </Text>
+          <Text variant="body" style={styles.previewOverlayDescription}>
+            See exactly what to order, not just where to go. Vote-powered rankings for every dish.
+          </Text>
+          <Button
+            label="Start 7-day free trial"
+            onPress={openPaywall}
+            style={styles.previewPrimaryButton}
+          />
+          <Button
+            label="See pricing"
+            variant="ghost"
+            onPress={openPaywall}
+            style={styles.previewGhostButton}
+          />
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const getQualityColor = (index: number, total: number): string => {
     const ratio = index / Math.max(total - 1, 1);
@@ -1123,7 +1127,7 @@ const SearchScreen: React.FC = () => {
           <View style={styles.paywallCard}>
             <View style={styles.paywallHeader}>
               <Text variant="subtitle" weight="bold" style={styles.paywallTitle}>
-                Unlock full results
+                Get unlimited access to Crave
               </Text>
               <Pressable
                 onPress={closePaywall}
@@ -1135,37 +1139,74 @@ const SearchScreen: React.FC = () => {
               </Pressable>
             </View>
             <Text variant="body" style={styles.paywallSubtitle}>
-              Reveal the top-ranked spots, live quality scores, and pro tools for every search.
+              Dish-level rankings, live quality scores, and instant "what to order" answers for every
+              restaurant.
             </Text>
             <View style={styles.planToggle}>
-              {(['monthly', 'annual'] as const).map((plan) => (
-                <Pressable
-                  key={plan}
-                  onPress={() => setSelectedPlan(plan)}
-                  style={[styles.planOption, selectedPlan === plan && styles.planOptionActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Select ${plan} plan`}
-                >
-                  <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
-                    {plan === 'monthly' ? 'Monthly' : 'Annual'}
-                  </Text>
+              <Pressable
+                onPress={() => setSelectedPlan('annual')}
+                style={[
+                  styles.planOption,
+                  selectedPlan === 'annual' && styles.planOptionActive,
+                  selectedPlan === 'annual' && styles.planOptionBestValue,
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Select annual plan"
+              >
+                {selectedPlan === 'annual' ? (
+                  <View style={styles.mostPopularBadge}>
+                    <Text variant="caption" weight="bold" style={styles.mostPopularBadgeText}>
+                      BEST VALUE
+                    </Text>
+                  </View>
+                ) : null}
+                <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
+                  Annual
+                </Text>
+                <View style={styles.planPriceRow}>
                   <Text variant="title" weight="bold" style={styles.planOptionPrice}>
-                    {plan === 'monthly' ? '$9.99' : '$99'}
+                    $59.99
                   </Text>
-                  <Text variant="caption" style={styles.planOptionSubtext}>
-                    {plan === 'monthly' ? 'Cancel anytime' : '2 months free'}
+                  <Text variant="caption" style={styles.planOptionPriceDetail}>
+                    /year
                   </Text>
-                </Pressable>
-              ))}
+                </View>
+                <Text variant="caption" style={styles.planOptionSubtext}>
+                  $5/month • Save 40%
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setSelectedPlan('monthly')}
+                style={[styles.planOption, selectedPlan === 'monthly' && styles.planOptionActive]}
+                accessibilityRole="button"
+                accessibilityLabel="Select monthly plan"
+              >
+                <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
+                  Monthly
+                </Text>
+                <View style={styles.planPriceRow}>
+                  <Text variant="title" weight="bold" style={styles.planOptionPrice}>
+                    $9.99
+                  </Text>
+                  <Text variant="caption" style={styles.planOptionPriceDetail}>
+                    /month
+                  </Text>
+                </View>
+                <Text variant="caption" style={styles.planOptionSubtext}>
+                  Cancel anytime
+                </Text>
+              </Pressable>
             </View>
             <View style={styles.paywallFeatureList}>
               {[
-                'Unlock the top 3 ranked spots',
-                'Live quality & context scores',
-                'Bookmarks, filters, and alerts',
+                'See what to order at any restaurant, instantly',
+                'Dish-level rankings (not vague restaurant reviews)',
+                'Vote-powered scores from real meals, not bots',
+                'Interactive map + neighborhood filters',
+                'Unlimited bookmarks & trend alerts',
               ].map((feature) => (
                 <View key={feature} style={styles.paywallFeatureItem}>
-                  <View style={styles.paywallFeatureBullet} />
+                  <Text style={styles.paywallFeatureBullet}>✓</Text>
                   <Text variant="body" style={styles.paywallFeatureText}>
                     {feature}
                   </Text>
@@ -1173,16 +1214,22 @@ const SearchScreen: React.FC = () => {
               ))}
             </View>
             <Button
-              label={`Continue with ${selectedPlan === 'monthly' ? 'Monthly' : 'Annual'}`}
+              label="Start 7-day free trial"
               onPress={handleUnlockResults}
               style={styles.paywallPrimaryButton}
             />
+            <Text variant="caption" style={styles.paywallFineprint}>
+              Then {selectedPlan === 'monthly' ? '$9.99/month' : '$59.99/year'}. Cancel anytime.
+            </Text>
             <Button
               label="Maybe later"
               variant="ghost"
               onPress={closePaywall}
               style={styles.paywallSecondaryButton}
             />
+            <Text variant="caption" style={styles.paywallDisclaimer}>
+              By continuing, you agree to Crave's Terms & Privacy Policy.
+            </Text>
           </View>
         </View>
       </Modal>
@@ -1768,13 +1815,49 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   paywallFeatureBullet: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: ACTIVE_TAB_COLOR,
+    fontSize: 18,
+    color: '#10b981',
+    marginRight: 8,
+    fontWeight: 'bold',
   },
   paywallFeatureText: {
     color: '#0f172a',
+    flex: 1,
+  },
+  planPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+  },
+  planOptionPriceDetail: {
+    color: '#64748b',
+  },
+  mostPopularBadge: {
+    position: 'absolute',
+    top: -8,
+    right: 8,
+    backgroundColor: '#10b981',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  mostPopularBadgeText: {
+    color: '#ffffff',
+    fontSize: 9,
+    letterSpacing: 0.5,
+  },
+  planOptionBestValue: {
+    borderWidth: 2,
+  },
+  paywallFineprint: {
+    color: '#64748b',
+    textAlign: 'center',
+    marginTop: 12,
+  },
+  paywallDisclaimer: {
+    color: '#94a3b8',
+    textAlign: 'center',
+    marginTop: 8,
   },
   paywallPrimaryButton: {
     marginTop: 24,

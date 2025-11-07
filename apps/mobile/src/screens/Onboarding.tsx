@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -13,7 +14,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { Text, Button } from '../components';
-import { onboardingSteps, type OnboardingStep } from '../constants/onboarding';
+import {
+  onboardingSteps,
+  getSingleChoiceLabel,
+  getMultiChoiceLabels,
+  type OnboardingStep,
+} from '../constants/onboarding';
 import { useOnboardingStore } from '../store/onboardingStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
@@ -66,10 +72,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     });
   }, []);
 
+  // Processing screen timer with dynamic duration
   React.useEffect(() => {
     if (currentStep.type === 'processing') {
       setProcessingReady(false);
-      const timer = setTimeout(() => setProcessingReady(true), 1400);
+      const duration = currentStep.durationMs ?? 2000;
+      const timer = setTimeout(() => setProcessingReady(true), duration);
       return () => clearTimeout(timer);
     }
     setProcessingReady(true);
@@ -117,51 +125,19 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     return stepIndex === totalSteps - 1 ? 'Finish' : 'Continue';
   }, [currentStep, stepIndex, totalSteps]);
 
-  const stepMap = React.useMemo(() => {
-    const map = new Map<string, OnboardingStep>();
-    onboardingSteps.forEach((step) => map.set(step.id, step));
-    return map;
-  }, []);
-
-  const getSingleLabel = React.useCallback(
-    (stepId: string) => {
-      const step = stepMap.get(stepId);
-      const value = answers[stepId];
-      if (!step || typeof value !== 'string') {
-        return undefined;
-      }
-      if (step.type === 'single-choice') {
-        return step.options.find((option) => option.id === value)?.label;
-      }
-      if (step.type === 'location') {
-        return value;
-      }
-      return undefined;
-    },
-    [answers, stepMap]
-  );
-
-  const getMultiLabels = React.useCallback(
-    (stepId: string) => {
-      const step = stepMap.get(stepId);
-      const selected = answers[stepId];
-      if (!step || !Array.isArray(selected)) {
-        return [];
-      }
-      if (step.type === 'multi-choice') {
-        return selected
-          .map((value) => step.options.find((option) => option.id === value)?.label ?? '')
-          .filter(Boolean);
-      }
-      return [];
-    },
-    [answers, stepMap]
-  );
-
   const renderHero = (step: Extract<OnboardingStep, { type: 'hero' }>) => (
     <View style={styles.heroContainer}>
       {step.image ? (
-        <Image source={step.image} style={styles.heroImage} resizeMode="contain" />
+        <View style={styles.heroImageWrapper}>
+          <Image source={step.image} style={styles.heroImage} resizeMode="contain" />
+          {step.showAppScreenshot ? (
+            <View style={styles.screenshotBadge}>
+              <Text variant="caption" weight="semibold" style={styles.screenshotBadgeText}>
+                👆 Replace with actual app screenshot
+              </Text>
+            </View>
+          ) : null}
+        </View>
       ) : null}
       <Text variant="title" weight="bold" style={styles.heroTitle}>
         {step.title}
@@ -314,8 +290,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         {showWaitlistMessage ? (
           <View style={styles.waitlistMessage}>
             <Text variant="caption" style={styles.waitlistMessageText}>
-              We’ll notify you when we launch in {requestValue.trim()}. 2,847 people are waiting for
-              Chicago.
+              ✅ We'll notify you when we launch in {requestValue.trim()}.
             </Text>
           </View>
         ) : null}
@@ -334,8 +309,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         </Text>
       ) : null}
       <View style={styles.comparisonRow}>
-        {[step.left, step.right].map((column) => (
-          <View key={column.title} style={styles.comparisonColumn}>
+        {[step.left, step.right].map((column, index) => (
+          <View
+            key={column.title}
+            style={[styles.comparisonColumn, index === 1 && styles.comparisonColumnHighlight]}
+          >
             <Text variant="body" weight="semibold" style={styles.comparisonColumnTitle}>
               {column.title}
             </Text>
@@ -348,7 +326,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         ))}
       </View>
       {step.body ? (
-        <Text variant="body" style={styles.helperText}>
+        <Text variant="body" weight="bold" style={styles.comparisonBodyText}>
           {step.body}
         </Text>
       ) : null}
@@ -390,18 +368,26 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const renderProcessing = (step: Extract<OnboardingStep, { type: 'processing' }>) => {
     const highlights = step.showSummary
       ? [
-          { label: 'Budget', value: getSingleLabel('budget') ?? 'Flexible' },
+          {
+            label: 'Budget',
+            value: getSingleChoiceLabel('budget', answers.budget as string) ?? 'Flexible',
+          },
           {
             label: 'Cravings',
-            value: getMultiLabels('cuisines').join(', ') || 'Open to anything',
+            value:
+              getMultiChoiceLabels('cuisines', answers.cuisines as string[]).join(', ') ||
+              'Open to anything',
           },
           {
             label: 'Vibe',
-            value: getSingleLabel('ambiance') ?? 'Any vibe',
+            value: getSingleChoiceLabel('ambiance', answers.ambiance as string) ?? 'Any vibe',
           },
           {
             label: 'Outings',
-            value: getMultiLabels('outing-types').join(', ') || 'All outings',
+            value:
+              getMultiChoiceLabels('outing-types', answers['outing-types'] as string[]).join(
+                ', '
+              ) || 'All types',
           },
         ]
       : [];
@@ -436,7 +422,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                       : styles.processingBadgeTextPending,
                   ]}
                 >
-                  {item.status === 'complete' ? '✓' : '•'}
+                  {item.status === 'complete' ? '✓' : '○'}
                 </Text>
               </View>
               <Text variant="body" style={styles.processingChecklistLabel}>
@@ -452,7 +438,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 <Text variant="caption" style={styles.processingHighlightLabel}>
                   {highlight.label}
                 </Text>
-                <Text variant="body" weight="semibold" style={styles.processingHighlightValue}>
+                <Text
+                  variant="body"
+                  weight="semibold"
+                  style={styles.processingHighlightValue}
+                  numberOfLines={1}
+                >
                   {highlight.value}
                 </Text>
               </View>
@@ -461,15 +452,25 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         ) : null}
         {!processingReady ? (
           <View style={styles.processingSpinnerRow}>
-            <ActivityIndicator color="#f97384" />
+            <ActivityIndicator color="#a78bfa" size="small" />
             <Text variant="caption" style={styles.processingSpinnerLabel}>
-              Working…
+              Processing…
             </Text>
           </View>
         ) : null}
       </View>
     );
   };
+
+  const openTerms = React.useCallback(() => {
+    // TODO: Replace with actual Terms of Service URL
+    void Linking.openURL('https://example.com/terms');
+  }, []);
+
+  const openPrivacy = React.useCallback(() => {
+    // TODO: Replace with actual Privacy Policy URL
+    void Linking.openURL('https://example.com/privacy');
+  }, []);
 
   const renderAccount = (step: Extract<OnboardingStep, { type: 'account' }>) => (
     <View>
@@ -480,20 +481,46 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         {step.description}
       </Text>
       <View style={styles.accountButtons}>
-        <Pressable style={styles.accountButtonStub}>
-          <Text variant="body" style={styles.accountButtonText}>
-            Continue with Apple
+        <Pressable
+          style={styles.accountButton}
+          onPress={() => {
+            // TODO: Implement Apple Sign In
+            logger.info('Apple Sign In tapped');
+            handleContinue();
+          }}
+        >
+          <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+            🍎 Continue with Apple
           </Text>
         </Pressable>
-        <Pressable style={styles.accountButtonStub}>
-          <Text variant="body" style={styles.accountButtonText}>
-            Continue with Google
+        <Pressable
+          style={styles.accountButton}
+          onPress={() => {
+            // TODO: Implement Google Sign In
+            logger.info('Google Sign In tapped');
+            handleContinue();
+          }}
+        >
+          <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+            🔍 Continue with Google
           </Text>
         </Pressable>
       </View>
-      <Text variant="caption" style={styles.accountDisclaimer}>
-        (Stub) Account creation coming soon. Continue to explore your feed.
-      </Text>
+      {step.disclaimer ? (
+        <View style={styles.disclaimerContainer}>
+          <Text variant="caption" style={styles.disclaimerText}>
+            {step.disclaimer.split('Terms of Service')[0]}
+            <Text variant="caption" style={styles.disclaimerLink} onPress={openTerms}>
+              Terms of Service
+            </Text>
+            {' and '}
+            <Text variant="caption" style={styles.disclaimerLink} onPress={openPrivacy}>
+              Privacy Policy
+            </Text>
+            {step.disclaimer.split('Privacy Policy')[1]}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -613,6 +640,7 @@ const styles = StyleSheet.create({
   },
   betaChipText: {
     color: '#be123c',
+    fontSize: 10,
   },
   progressWrapper: {
     flexDirection: 'row',
@@ -646,9 +674,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 16,
   },
+  heroImageWrapper: {
+    position: 'relative',
+    width: '100%',
+    alignItems: 'center',
+  },
   heroImage: {
     width: '80%',
     height: 220,
+  },
+  screenshotBadge: {
+    position: 'absolute',
+    bottom: 8,
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fbbf24',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  screenshotBadgeText: {
+    color: '#92400e',
+    fontSize: 10,
   },
   heroTitle: {
     textAlign: 'center',
@@ -737,16 +784,16 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 12,
     borderRadius: 12,
-    backgroundColor: '#fefce8',
+    backgroundColor: '#d1fae5',
     borderWidth: 1,
-    borderColor: '#fde68a',
+    borderColor: '#6ee7b7',
   },
   waitlistMessageText: {
-    color: '#92400e',
+    color: '#065f46',
   },
   comparisonRow: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   comparisonColumn: {
     flex: 1,
@@ -757,23 +804,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     gap: 8,
   },
+  comparisonColumnHighlight: {
+    borderColor: '#a78bfa',
+    backgroundColor: '#faf5ff',
+    borderWidth: 2,
+  },
   comparisonColumnTitle: {
     color: '#0f172a',
+    marginBottom: 4,
   },
   comparisonRowText: {
     color: '#475569',
+    lineHeight: 20,
+  },
+  comparisonBodyText: {
+    color: '#0f172a',
+    marginTop: 16,
+    textAlign: 'center',
   },
   ratingRow: {
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
+    justifyContent: 'center',
     marginTop: 8,
   },
   ratingStar: {
     padding: 12,
   },
   ratingStarText: {
-    fontSize: 28,
+    fontSize: 32,
     color: '#e2e8f0',
   },
   ratingStarFilled: {
@@ -815,19 +875,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#dcfce7',
   },
   processingBadgePending: {
-    backgroundColor: '#fee2e2',
+    backgroundColor: '#f1f5f9',
   },
   processingBadgeText: {
     fontWeight: 'bold',
+    fontSize: 16,
   },
   processingBadgeTextComplete: {
     color: '#15803d',
   },
   processingBadgeTextPending: {
-    color: '#b91c1c',
+    color: '#94a3b8',
   },
   processingChecklistLabel: {
     color: '#0f172a',
+    flex: 1,
   },
   processingHighlights: {
     borderRadius: 16,
@@ -835,10 +897,12 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     padding: 16,
     gap: 12,
+    backgroundColor: '#fafafa',
   },
   processingHighlightRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
   },
   processingHighlightLabel: {
     color: '#94a3b8',
@@ -846,11 +910,15 @@ const styles = StyleSheet.create({
   processingHighlightValue: {
     color: '#0f172a',
     textAlign: 'right',
+    flex: 1,
+    marginLeft: 12,
   },
   processingSpinnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 8,
+    marginTop: 8,
   },
   processingSpinnerLabel: {
     color: '#94a3b8',
@@ -875,23 +943,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   accountButtons: {
-    marginTop: 16,
+    marginTop: 24,
     gap: 12,
   },
-  accountButtonStub: {
+  accountButton: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     paddingVertical: 14,
     alignItems: 'center',
+    backgroundColor: '#ffffff',
   },
   accountButtonText: {
     color: '#0f172a',
   },
-  accountDisclaimer: {
+  disclaimerContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  disclaimerText: {
     color: '#94a3b8',
-    marginTop: 8,
     textAlign: 'center',
+    lineHeight: 18,
+  },
+  disclaimerLink: {
+    color: '#a78bfa',
+    textDecorationLine: 'underline',
   },
   footer: {
     flexDirection: 'row',
