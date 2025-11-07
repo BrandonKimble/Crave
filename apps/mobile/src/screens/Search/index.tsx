@@ -1139,8 +1139,8 @@ const SearchScreen: React.FC = () => {
               </Pressable>
             </View>
             <Text variant="body" style={styles.paywallSubtitle}>
-              Dish-level rankings, live quality scores, and instant "what to order" answers for every
-              restaurant.
+              Dish-level rankings, live quality scores, and instant "what to order" answers for
+              every restaurant.
             </Text>
             <View style={styles.planToggle}>
               <Pressable

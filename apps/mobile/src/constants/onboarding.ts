@@ -121,7 +121,7 @@ export const onboardingSteps: OnboardingStep[] = [
     description:
       'Google ranks restaurants by everything—service, parking, even bathroom reviews. We rank by the only thing that matters: the food.',
     bullets: [
-      'Dish-level scores: See what\'s worth ordering before you commit',
+      "Dish-level scores: See what's worth ordering before you commit",
       'Vote-powered: Every upvote counts as much as the original review',
       'Already at the restaurant? Search it and know what to order in 10 seconds',
     ],
@@ -133,7 +133,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'location',
     type: 'location',
     question: 'Where are you eating?',
-    helper: 'We\'re live in Austin & NYC. Request early access for your city below.',
+    helper: "We're live in Austin & NYC. Request early access for your city below.",
     allowedCities: [
       { id: 'austin', label: '🤠 Austin', value: 'Austin' },
       { id: 'new-york', label: '🗽 New York', value: 'New York' },
@@ -145,8 +145,8 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'budget',
     type: 'single-choice',
-    question: 'What\'s your usual spend per person?',
-    helper: 'We\'ll prioritize spots in your price range.',
+    question: "What's your usual spend per person?",
+    helper: "We'll prioritize spots in your price range.",
     options: [
       { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
       { id: '20-40', label: '$$', detail: '$20–$40 • Solid everyday spots' },
@@ -159,7 +159,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'dining-frequency',
     type: 'single-choice',
     question: 'How often do you eat out?',
-    helper: 'We\'ll pace notifications based on your habits.',
+    helper: "We'll pace notifications based on your habits.",
     options: [
       { id: 'rarely', label: '1-2 times/week', detail: 'Mostly cook at home' },
       { id: 'weekly', label: '3-4 times/week', detail: 'Regular lunches + dinner' },
@@ -226,7 +226,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'ambiance',
     type: 'single-choice',
     question: 'What vibe are you usually after?',
-    helper: 'We\'ll match restaurants to your mood.',
+    helper: "We'll match restaurants to your mood.",
     options: [
       { id: 'romantic', label: '💕 Romantic & intimate', detail: 'Perfect for dates' },
       { id: 'lively', label: '🎉 Lively & social', detail: 'High energy buzz' },
@@ -239,13 +239,13 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'pain-points',
     type: 'multi-choice',
     question: 'What frustrates you most about finding good food?',
-    helper: 'We\'ve solved these exact problems. Pick all that apply.',
+    helper: "We've solved these exact problems. Pick all that apply.",
     options: [
       { id: 'mediocre', label: '😤 Too many mediocre options' },
-      { id: 'reviews', label: '⭐ Can\'t trust online reviews' },
+      { id: 'reviews', label: "⭐ Can't trust online reviews" },
       { id: 'overhyped', label: '💸 Waste money on overhyped spots' },
       { id: 'no-time', label: '⏰ No time to research everything' },
-      { id: 'lost', label: '🤷 Don\'t know what\'s good anymore' },
+      { id: 'lost', label: "🤷 Don't know what's good anymore" },
       { id: 'new-area', label: '📍 Hard to find gems in new areas' },
     ],
     required: false,
@@ -263,7 +263,7 @@ export const onboardingSteps: OnboardingStep[] = [
         '⭐ Restaurant-level ratings',
         '📝 Long reviews you skip',
         '🤷 Great chef, bad service = low rating',
-        '📍 Can\'t tell what to order',
+        "📍 Can't tell what to order",
         '😤 Wasted meals on wrong dishes',
       ],
     },
@@ -273,7 +273,7 @@ export const onboardingSteps: OnboardingStep[] = [
         '🍽️ Dish-level rankings',
         '👍 Quick upvotes = more signal',
         '✅ Food quality rises above noise',
-        '⚡ Know what\'s good in 10 seconds',
+        "⚡ Know what's good in 10 seconds",
         '🎯 Every order is the right order',
       ],
     },
@@ -293,12 +293,12 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'notifications',
     type: 'single-choice',
     question: 'When should we notify you about new spots?',
-    helper: 'We\'ll only send updates worth your attention.',
+    helper: "We'll only send updates worth your attention.",
     options: [
       { id: 'daily', label: '🔥 Daily', detail: 'Hot new dishes every morning' },
       { id: 'weekly', label: '📅 Few times a week', detail: 'Top trends, no spam' },
       { id: 'alerts', label: '🚨 Only major alerts', detail: 'Rare gems & big openings' },
-      { id: 'manual', label: '🔕 I\'ll check manually', detail: 'No notifications' },
+      { id: 'manual', label: "🔕 I'll check manually", detail: 'No notifications' },
     ],
     required: true,
     ctaLabel: 'Save preferences',
@@ -339,7 +339,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'processing-summary',
     type: 'processing',
     title: 'Your personalized feed is ready!',
-    subtitle: 'Here\'s what we prioritized based on your answers:',
+    subtitle: "Here's what we prioritized based on your answers:",
     progress: 1,
     checklist: [
       { label: 'Preferences applied', status: 'complete' },
@@ -360,7 +360,7 @@ export const onboardingSteps: OnboardingStep[] = [
     description:
       'Create an account so your preferences, bookmarks, and search history sync across all devices.',
     disclaimer:
-      'By continuing, you agree to Crave\'s Terms of Service and Privacy Policy. We\'ll never sell your data.',
+      "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Create account',
   },
 ];
