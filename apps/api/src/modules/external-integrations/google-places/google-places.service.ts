@@ -23,6 +23,7 @@ const DEFAULT_DETAIL_FIELDS = [
   'international_phone_number',
   'opening_hours',
   'current_opening_hours',
+  'utc_offset_minutes',
   'business_status',
   'types',
   'website',

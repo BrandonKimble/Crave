@@ -467,8 +467,8 @@ const SearchScreen: React.FC = () => {
         logger.error('Search request failed', { message: (err as Error).message });
         setError('Unable to fetch results. Please try again.');
       } finally {
-      setIsLoading(false);
-    }
+        setIsLoading(false);
+      }
     },
     [query, isLoading, showPanel, openNow]
   );
