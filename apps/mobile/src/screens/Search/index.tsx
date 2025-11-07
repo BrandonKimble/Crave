@@ -558,7 +558,11 @@ const SearchScreen: React.FC = () => {
           return (
             <View key={key} style={styles.previewItem}>
               <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
-                <Text variant="body" weight="bold" style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}>
+                <Text
+                  variant="body"
+                  weight="bold"
+                  style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}
+                >
                   {index + 1}
                 </Text>
               </View>
@@ -1101,9 +1105,7 @@ const SearchScreen: React.FC = () => {
                 >
                   <View style={styles.resultsInner}>
                     {shouldShowPreview ? renderPaywallPreview() : null}
-                    {activeTab === 'dishes'
-                      ? renderDishResults()
-                      : renderRestaurantResults()}
+                    {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
                   </View>
                 </ScrollView>
               </View>
@@ -1140,10 +1142,7 @@ const SearchScreen: React.FC = () => {
                 <Pressable
                   key={plan}
                   onPress={() => setSelectedPlan(plan)}
-                  style={[
-                    styles.planOption,
-                    selectedPlan === plan && styles.planOptionActive,
-                  ]}
+                  style={[styles.planOption, selectedPlan === plan && styles.planOptionActive]}
                   accessibilityRole="button"
                   accessibilityLabel={`Select ${plan} plan`}
                 >
@@ -1189,7 +1188,6 @@ const SearchScreen: React.FC = () => {
       </Modal>
     </View>
   );
-
 };
 
 const styles = StyleSheet.create({
