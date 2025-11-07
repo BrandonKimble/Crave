@@ -20,6 +20,7 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
+import { useSearchStore } from '../../store/searchStore';
 import type {
   SearchResponse,
   FoodResult,
@@ -42,6 +43,15 @@ type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
   contextualScore: number;
+};
+
+type SubmitSearchOptions = {
+  openNow?: boolean;
+};
+
+type OpenNowNotice = {
+  variant: 'warning' | 'info' | 'success';
+  message: string;
 };
 type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
@@ -113,7 +123,6 @@ const SearchScreen: React.FC = () => {
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [segmentWidth, setSegmentWidth] = React.useState(0);
-  const [openNowOnly, setOpenNowOnly] = React.useState(false);
   const [likedItems, setLikedItems] = React.useState<Set<string>>(new Set());
   const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
@@ -123,6 +132,8 @@ const SearchScreen: React.FC = () => {
   const tabBarHeight = Math.max(60, 44 + tabBarBasePadding * 2);
   const floatingSegmentBottom = tabBarHeight - tabBarBasePadding + 8;
   const inputRef = React.useRef<TextInput | null>(null);
+  const openNow = useSearchStore((state) => state.openNow);
+  const setOpenNow = useSearchStore((state) => state.setOpenNow);
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
 
@@ -187,6 +198,41 @@ const SearchScreen: React.FC = () => {
       features,
     };
   }, [restaurantsById]);
+
+  const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
+    if (!openNow || !results?.metadata) {
+      return null;
+    }
+
+    const {
+      openNowApplied,
+      openNowUnsupportedRestaurants = 0,
+      openNowFilteredOut = 0,
+    } = results.metadata;
+
+    if (!openNowApplied) {
+      return {
+        variant: 'warning',
+        message: 'Open-now filtering could not run because these spots are missing hours.',
+      };
+    }
+
+    if (openNowUnsupportedRestaurants > 0) {
+      return {
+        variant: 'info',
+        message: `${openNowUnsupportedRestaurants} places without hours were skipped.`,
+      };
+    }
+
+    if (openNowFilteredOut > 0) {
+      return {
+        variant: 'success',
+        message: `${openNowFilteredOut} closed places were filtered out.`,
+      };
+    }
+
+    return null;
+  }, [openNow, results]);
 
   React.useEffect(() => {
     const features = restaurantFeatures.features;
@@ -361,70 +407,75 @@ const SearchScreen: React.FC = () => {
     animateSheetTo('hidden');
   }, [panelVisible, animateSheetTo]);
 
-  const handleSubmit = React.useCallback(async () => {
-    const trimmed = query.trim();
-    if (!trimmed || isLoading) {
-      return;
-    }
-
-    showPanel();
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      const payload: NaturalSearchRequest = {
-        query: trimmed,
-        pagination: { page: 1, pageSize: 10 },
-      };
-
-      if (openNowOnly) {
-        payload.openNow = true;
+  const submitSearch = React.useCallback(
+    async (options?: SubmitSearchOptions) => {
+      const trimmed = query.trim();
+      if (!trimmed || isLoading) {
+        return;
       }
 
-      if (mapRef.current?.getVisibleBounds) {
-        try {
-          const visibleBounds = await mapRef.current.getVisibleBounds();
-          if (
-            Array.isArray(visibleBounds) &&
-            visibleBounds.length >= 2 &&
-            isLngLatTuple(visibleBounds[0]) &&
-            isLngLatTuple(visibleBounds[1])
-          ) {
-            payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-            latestBoundsRef.current = payload.bounds;
-          }
-        } catch (boundsError) {
-          logger.warn('Unable to determine map bounds before submitting search', {
-            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-          });
+      const effectiveOpenNow = options?.openNow ?? openNow;
+
+      showPanel();
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const payload: NaturalSearchRequest = {
+          query: trimmed,
+          pagination: { page: 1, pageSize: 10 },
+        };
+
+        if (effectiveOpenNow) {
+          payload.openNow = true;
         }
-      }
 
-      if (!payload.bounds && latestBoundsRef.current) {
-        payload.bounds = latestBoundsRef.current;
-      }
+        if (mapRef.current?.getVisibleBounds) {
+          try {
+            const visibleBounds = await mapRef.current.getVisibleBounds();
+            if (
+              Array.isArray(visibleBounds) &&
+              visibleBounds.length >= 2 &&
+              isLngLatTuple(visibleBounds[0]) &&
+              isLngLatTuple(visibleBounds[1])
+            ) {
+              payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
+              latestBoundsRef.current = payload.bounds;
+            }
+          } catch (boundsError) {
+            logger.warn('Unable to determine map bounds before submitting search', {
+              message: boundsError instanceof Error ? boundsError.message : 'unknown error',
+            });
+          }
+        }
 
-      logger.info('Submitting search request', {
-        query: trimmed,
-        openNow: openNowOnly,
-        hasBounds: Boolean(payload.bounds),
-      });
+        if (!payload.bounds && latestBoundsRef.current) {
+          payload.bounds = latestBoundsRef.current;
+        }
 
-      const response = await searchService.naturalSearch(payload);
+        const response = await searchService.naturalSearch(payload);
 
-      setResults(response);
-      setSubmittedQuery(trimmed);
-      setActiveTab(
-        response?.format === 'dual_list' || response?.food?.length ? 'dishes' : 'restaurants'
-      );
-      Keyboard.dismiss();
-    } catch (err) {
-      logger.error('Search request failed', { message: (err as Error).message });
-      setError('Unable to fetch results. Please try again.');
-    } finally {
+        logger.info('Search response payload', response);
+
+        setResults(response);
+        setSubmittedQuery(trimmed);
+        setActiveTab(
+          response?.format === 'dual_list' || response?.food?.length ? 'dishes' : 'restaurants'
+        );
+        Keyboard.dismiss();
+      } catch (err) {
+        logger.error('Search request failed', { message: (err as Error).message });
+        setError('Unable to fetch results. Please try again.');
+      } finally {
       setIsLoading(false);
     }
-  }, [query, isLoading, showPanel, openNowOnly]);
+    },
+    [query, isLoading, showPanel, openNow]
+  );
+
+  const handleSubmit = React.useCallback(() => {
+    void submitSearch();
+  }, [submitSearch]);
 
   const handleClear = React.useCallback(() => {
     setQuery('');
@@ -437,8 +488,17 @@ const SearchScreen: React.FC = () => {
     });
   }, [hidePanel]);
   const toggleOpenNow = React.useCallback(() => {
-    setOpenNowOnly((prev) => !prev);
-  }, []);
+    if (isLoading) {
+      return;
+    }
+
+    const nextValue = !openNow;
+    setOpenNow(nextValue);
+
+    if (query.trim()) {
+      void submitSearch({ openNow: nextValue });
+    }
+  }, [isLoading, openNow, query, setOpenNow, submitSearch]);
 
   const toggleLike = React.useCallback((id: string) => {
     setLikedItems((prev) => {
@@ -767,20 +827,26 @@ const SearchScreen: React.FC = () => {
               <View style={styles.headerSecondRow}>
                 <Pressable
                   onPress={toggleOpenNow}
+                  disabled={isLoading}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle open now results"
-                  style={[styles.openNowButton, openNowOnly && styles.openNowButtonActive]}
+                  accessibilityState={{ disabled: isLoading }}
+                  style={[
+                    styles.openNowButton,
+                    openNow && styles.openNowButtonActive,
+                    isLoading && styles.openNowButtonDisabled,
+                  ]}
                 >
                   <Feather
                     name="clock"
                     size={14}
-                    color={openNowOnly ? '#ffffff' : '#475569'}
+                    color={openNow ? '#ffffff' : '#475569'}
                     style={styles.openNowIcon}
                   />
                   <Text
                     variant="caption"
                     weight="semibold"
-                    style={[styles.openNowText, openNowOnly && styles.openNowTextActive]}
+                    style={[styles.openNowText, openNow && styles.openNowTextActive]}
                   >
                     Open now
                   </Text>
@@ -828,6 +894,20 @@ const SearchScreen: React.FC = () => {
                   </Pressable>
                 </View>
               </View>
+              {openNowNotice ? (
+                <View
+                  style={[
+                    styles.openNowNotice,
+                    openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
+                    openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
+                    openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
+                  ]}
+                >
+                  <Text variant="caption" style={styles.openNowNoticeText}>
+                    {openNowNotice.message}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             {error ? (
@@ -918,7 +998,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: 'rgba(255, 255, 255, 0.94)',
     borderWidth: 0,
     borderColor: 'transparent',
     shadowColor: '#0f172a',
@@ -1020,7 +1100,7 @@ const styles = StyleSheet.create({
   floatingSegment: {
     width: '100%',
     borderRadius: 28,
-    backgroundColor: 'transparent',
+    backgroundColor: '#ffffff',
     padding: 4,
     overflow: 'hidden',
     shadowColor: '#0f172a',
@@ -1117,6 +1197,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 12,
   },
+  openNowButtonDisabled: {
+    opacity: 0.6,
+  },
   openNowIcon: {
     marginRight: 6,
   },
@@ -1126,6 +1209,31 @@ const styles = StyleSheet.create({
   },
   openNowTextActive: {
     color: '#ffffff',
+  },
+  openNowNotice: {
+    marginTop: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+  },
+  openNowNoticeWarning: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  openNowNoticeInfo: {
+    backgroundColor: '#f8fafc',
+    borderColor: '#c7d2fe',
+  },
+  openNowNoticeSuccess: {
+    backgroundColor: '#ecfdf5',
+    borderColor: '#a7f3d0',
+  },
+  openNowNoticeText: {
+    color: '#0f172a',
+    fontSize: 12,
   },
   integratedSegmentedControl: {
     flexDirection: 'row',
