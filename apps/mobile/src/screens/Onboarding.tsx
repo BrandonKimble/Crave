@@ -118,13 +118,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     });
   }, []);
 
-  const handleRegretTrackLayout = React.useCallback(
-    (event: LayoutChangeEvent) => {
-      const { width } = event.nativeEvent.layout;
-      setGraphTrackWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
-    },
-    []
-  );
+  const handleRegretTrackLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const { width } = event.nativeEvent.layout;
+    setGraphTrackWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
+  }, []);
 
   const currencyFormatter = React.useMemo(
     () =>
@@ -164,13 +161,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const regretGraphData = React.useMemo(() => {
     const frequencySelection =
-      typeof answers['dining-frequency'] === 'string' ? (answers['dining-frequency'] as string) : undefined;
+      typeof answers['dining-frequency'] === 'string'
+        ? (answers['dining-frequency'] as string)
+        : undefined;
     const budgetSelection =
       typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
     const frequencyLabel = frequencySelection
       ? getSingleChoiceLabel('dining-frequency', frequencySelection)
       : undefined;
-    const budgetLabel = budgetSelection ? getSingleChoiceLabel('budget', budgetSelection) : undefined;
+    const budgetLabel = budgetSelection
+      ? getSingleChoiceLabel('budget', budgetSelection)
+      : undefined;
     const monthlyMealsAverage = Math.max(1, Math.round(diningFrequencyPerMonth));
     const frequencyRange = frequencySelection ? FREQUENCY_RANGES[frequencySelection] : undefined;
     const monthlyMealRange = frequencyRange?.monthly;
@@ -181,16 +182,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     const perMealLabel = budgetRange
       ? budgetRange.label
       : budgetLabel
-        ? `${budgetLabel} each`
-        : `${formatCurrency(budgetAmount)} each`;
+      ? `${budgetLabel} each`
+      : `${formatCurrency(budgetAmount)} each`;
     const monthlySpendMin =
       (monthlyMealRange?.[0] ?? monthlyMealsAverage) * (budgetRange?.min ?? budgetAmount);
     const monthlySpendMax =
       monthlyMealRange?.[1] && budgetRange?.max
         ? monthlyMealRange[1] * budgetRange.max
         : budgetRange?.max
-          ? (monthlyMealRange?.[1] ?? monthlyMealsAverage) * budgetRange.max
-          : undefined;
+        ? (monthlyMealRange?.[1] ?? monthlyMealsAverage) * budgetRange.max
+        : undefined;
     const monthlySpendRangeLabel = monthlySpendMax
       ? `${formatCurrency(monthlySpendMin)}–${formatCurrency(monthlySpendMax)}`
       : `${formatCurrency(monthlySpendMin)}+`;
@@ -564,12 +565,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
               🚀 {requestedCity} is coming soon!
             </Text>
             <Text variant="body" style={styles.waitlistMessageText}>
-              You just told us what you crave ({cuisineLabels.join(', ') || 'top dishes'}), your spend{' '}
-              {budgetLabel ? `(~${budgetLabel})` : ''} and how often you go out{' '}
-              {frequencyLabel ? `(${frequencyLabel})` : ''}. Finish setup so we can point curated drops, polls,
-              and early alerts at {requestedCity} while we scout the neighborhoods that matter to you.
+              You just told us what you crave ({cuisineLabels.join(', ') || 'top dishes'}), your
+              spend {budgetLabel ? `(~${budgetLabel})` : ''} and how often you go out{' '}
+              {frequencyLabel ? `(${frequencyLabel})` : ''}. Finish setup so we can point curated
+              drops, polls, and early alerts at {requestedCity} while we scout the neighborhoods
+              that matter to you.
             </Text>
-            {(budgetLabel || frequencyLabel || outingLabels.length || cuisineLabels.length) ? (
+            {budgetLabel || frequencyLabel || outingLabels.length || cuisineLabels.length ? (
               <View style={styles.waitlistPreferenceChips}>
                 {budgetLabel ? (
                   <Text style={styles.waitlistPreferenceChip}>{budgetLabel} spend</Text>
@@ -822,47 +824,47 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           </View>
         ) : null}
         <View style={styles.accountButtons}>
-        <Pressable
-          style={styles.accountButton}
-          onPress={() => {
-            // TODO: Implement Apple Sign In
-            logger.info('Apple Sign In tapped');
-            handleContinue();
-          }}
-        >
-          <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-            🍎 Continue with Apple
-          </Text>
-        </Pressable>
-        <Pressable
-          style={styles.accountButton}
-          onPress={() => {
-            // TODO: Implement Google Sign In
-            logger.info('Google Sign In tapped');
-            handleContinue();
-          }}
-        >
-          <Text variant="body" weight="semibold" style={styles.accountButtonText}>
-            🔍 Continue with Google
-          </Text>
-        </Pressable>
-      </View>
-      {step.disclaimer ? (
-        <View style={styles.disclaimerContainer}>
-          <Text variant="caption" style={styles.disclaimerText}>
-            {step.disclaimer.split('Terms of Service')[0]}
-            <Text variant="caption" style={styles.disclaimerLink} onPress={openTerms}>
-              Terms of Service
+          <Pressable
+            style={styles.accountButton}
+            onPress={() => {
+              // TODO: Implement Apple Sign In
+              logger.info('Apple Sign In tapped');
+              handleContinue();
+            }}
+          >
+            <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+              🍎 Continue with Apple
             </Text>
-            {' and '}
-            <Text variant="caption" style={styles.disclaimerLink} onPress={openPrivacy}>
-              Privacy Policy
+          </Pressable>
+          <Pressable
+            style={styles.accountButton}
+            onPress={() => {
+              // TODO: Implement Google Sign In
+              logger.info('Google Sign In tapped');
+              handleContinue();
+            }}
+          >
+            <Text variant="body" weight="semibold" style={styles.accountButtonText}>
+              🔍 Continue with Google
             </Text>
-            {step.disclaimer.split('Privacy Policy')[1]}
-          </Text>
+          </Pressable>
         </View>
-      ) : null}
-    </View>
+        {step.disclaimer ? (
+          <View style={styles.disclaimerContainer}>
+            <Text variant="caption" style={styles.disclaimerText}>
+              {step.disclaimer.split('Terms of Service')[0]}
+              <Text variant="caption" style={styles.disclaimerLink} onPress={openTerms}>
+                Terms of Service
+              </Text>
+              {' and '}
+              <Text variant="caption" style={styles.disclaimerLink} onPress={openPrivacy}>
+                Privacy Policy
+              </Text>
+              {step.disclaimer.split('Privacy Policy')[1]}
+            </Text>
+          </View>
+        ) : null}
+      </View>
     );
   };
 
@@ -883,20 +885,22 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             often: '5-6 times/week',
             daily: 'every day',
           };
-          const frequencyLabel = frequencySelection && frequencyMap[frequencySelection]
-            ? frequencyMap[frequencySelection]
-            : 'regularly';
+          const frequencyLabel =
+            frequencySelection && frequencyMap[frequencySelection]
+              ? frequencyMap[frequencySelection]
+              : 'regularly';
 
           // Map frequency to meals per week for visualization
           const mealsPerWeekMap: Record<string, number> = {
-            rarely: 1.5,   // 1-2 times/week
-            weekly: 3.5,   // 3-4 times/week
-            often: 5.5,    // 5-6 times/week
-            daily: 7,      // every day
+            rarely: 1.5, // 1-2 times/week
+            weekly: 3.5, // 3-4 times/week
+            often: 5.5, // 5-6 times/week
+            daily: 7, // every day
           };
-          const mealsPerWeek = frequencySelection && mealsPerWeekMap[frequencySelection]
-            ? mealsPerWeekMap[frequencySelection]
-            : 3.5;
+          const mealsPerWeek =
+            frequencySelection && mealsPerWeekMap[frequencySelection]
+              ? mealsPerWeekMap[frequencySelection]
+              : 3.5;
 
           const budgetSelection =
             typeof answers.budget === 'string' ? (answers.budget as string) : undefined;
@@ -908,9 +912,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             '40-70': '$40-$70',
             '70-plus': '$70+',
           };
-          const budgetLabel = budgetSelection && budgetMap[budgetSelection]
-            ? budgetMap[budgetSelection]
-            : '$20-$40';
+          const budgetLabel =
+            budgetSelection && budgetMap[budgetSelection] ? budgetMap[budgetSelection] : '$20-$40';
 
           // Generate calendar pattern based on frequency
           // 30 days (full month), weighted towards weekends with some clustering
@@ -960,7 +963,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             // Add some clustering (back-to-back days)
             // ~30% chance of adding adjacent day if not already selected
             const clusteredDays = [...eatingDays];
-            eatingDays.forEach(day => {
+            eatingDays.forEach((day) => {
               if (Math.random() < 0.3 && clusteredDays.length < totalMealsInMonth) {
                 const nextDay = day + 1;
                 if (nextDay < totalDays && !clusteredDays.includes(nextDay)) {
@@ -976,7 +979,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             const targetBad = Math.round(finalEatingDays.length * disappointmentRate);
 
             // Randomly select which eating days are disappointing
-            const shuffledIndices = finalEatingDays.map((_, i) => i).sort(() => Math.random() - 0.5);
+            const shuffledIndices = finalEatingDays
+              .map((_, i) => i)
+              .sort(() => Math.random() - 0.5);
 
             finalEatingDays.forEach((dayIndex, i) => {
               const isBad = shuffledIndices.indexOf(i) < targetBad;
@@ -1036,7 +1041,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 </View>
               </View>
               <Text variant="caption" style={styles.graphCallout}>
-                At {frequencyLabel} and {budgetLabel} per meal, you could save ~{formatCurrency(regretGraphData.regretSavings)}/month on meals you'd regret.
+                At {frequencyLabel} and {budgetLabel} per meal, you could save ~
+                {formatCurrency(regretGraphData.regretSavings)}/month on meals you'd regret.
               </Text>
             </View>
           );
@@ -1052,7 +1058,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                   Without Crave:
                 </Text>
                 <View style={styles.graphBarTrack}>
-                  <View style={[styles.graphBarFill, { width: '100%', backgroundColor: '#fca5a5' }]} />
+                  <View
+                    style={[styles.graphBarFill, { width: '100%', backgroundColor: '#fca5a5' }]}
+                  />
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
                   High effort
@@ -1063,14 +1071,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                   With Crave:
                 </Text>
                 <View style={styles.graphBarTrack}>
-                  <View style={[styles.graphBarFill, { width: '25%', backgroundColor: '#34d399' }]} />
+                  <View
+                    style={[styles.graphBarFill, { width: '25%', backgroundColor: '#34d399' }]}
+                  />
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
                   Low effort
                 </Text>
               </View>
               <Text variant="body" weight="bold" style={styles.graphCallout}>
-                4x less time and effort. At {diningFrequencyPerMonth} times/month, that's {formatCurrency(regretGraphData.monthlySpendAverage * 0.33)}/month saved from disappointing meals.
+                4x less time and effort. At {diningFrequencyPerMonth} times/month, that's{' '}
+                {formatCurrency(regretGraphData.monthlySpendAverage * 0.33)}/month saved from
+                disappointing meals.
               </Text>
             </View>
           );
@@ -1094,7 +1106,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 Meals you regret after ordering
               </Text>
               <Text variant="body" style={styles.graphBody}>
-                {`Based on your ${frequencyLabel ?? 'current'} habit (${monthlyMealRangeText}) at ${perMealLabel}, you're putting ${monthlySpendRangeLabel}/mo into eating out.`}
+                {`Based on your ${
+                  frequencyLabel ?? 'current'
+                } habit (${monthlyMealRangeText}) at ${perMealLabel}, you're putting ${monthlySpendRangeLabel}/mo into eating out.`}
               </Text>
               <Text variant="caption" style={styles.graphDetailText}>
                 ~ {formatCurrency(monthlySpendAverage)} each month on food.
@@ -1106,10 +1120,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 <View style={styles.graphBarTrack} onLayout={handleRegretTrackLayout}>
                   {graphTrackWidth > 0 ? (
                     <Animated.View
-                      style={[styles.graphBarFill, styles.graphBarFillBaseline, { width: regretBaselineAnim }]}
+                      style={[
+                        styles.graphBarFill,
+                        styles.graphBarFillBaseline,
+                        { width: regretBaselineAnim },
+                      ]}
                     />
                   ) : (
-                    <View style={[styles.graphBarFill, styles.graphBarFillBaseline, styles.graphBarFillFull]} />
+                    <View
+                      style={[
+                        styles.graphBarFill,
+                        styles.graphBarFillBaseline,
+                        styles.graphBarFillFull,
+                      ]}
+                    />
                   )}
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
@@ -1123,10 +1147,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 <View style={styles.graphBarTrack}>
                   {graphTrackWidth > 0 ? (
                     <Animated.View
-                      style={[styles.graphBarFill, styles.graphBarFillCrave, { width: regretCraveAnim }]}
+                      style={[
+                        styles.graphBarFill,
+                        styles.graphBarFillCrave,
+                        { width: regretCraveAnim },
+                      ]}
                     />
                   ) : (
-                    <View style={[styles.graphBarFill, styles.graphBarFillCrave, styles.graphBarFillPartial]} />
+                    <View
+                      style={[
+                        styles.graphBarFill,
+                        styles.graphBarFillCrave,
+                        styles.graphBarFillPartial,
+                      ]}
+                    />
                   )}
                 </View>
                 <Text variant="caption" style={styles.graphBarValue}>
@@ -1134,7 +1168,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 </Text>
               </View>
               <Text variant="body" weight="bold" style={styles.graphCallout}>
-                Crave keeps roughly {formatCurrency(Math.max(regretSavings, 0))} of that budget in play every month.
+                Crave keeps roughly {formatCurrency(Math.max(regretSavings, 0))} of that budget in
+                play every month.
               </Text>
             </View>
           );
@@ -1151,7 +1186,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                     Trial & Error:
                   </Text>
                   <View style={styles.graphBarTrack}>
-                    <View style={[styles.graphBarFill, { width: '100%', backgroundColor: '#fca5a5' }]} />
+                    <View
+                      style={[styles.graphBarFill, { width: '100%', backgroundColor: '#fca5a5' }]}
+                    />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
                     6 months
@@ -1162,7 +1199,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                     Friend Recs:
                   </Text>
                   <View style={styles.graphBarTrack}>
-                    <View style={[styles.graphBarFill, { width: '50%', backgroundColor: '#fbbf24' }]} />
+                    <View
+                      style={[styles.graphBarFill, { width: '50%', backgroundColor: '#fbbf24' }]}
+                    />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
                     3 months
@@ -1173,7 +1212,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                     Crave:
                   </Text>
                   <View style={styles.graphBarTrack}>
-                    <View style={[styles.graphBarFill, { width: '11%', backgroundColor: '#34d399' }]} />
+                    <View
+                      style={[styles.graphBarFill, { width: '11%', backgroundColor: '#34d399' }]}
+                    />
                   </View>
                   <Text variant="caption" style={styles.graphBarValue}>
                     2 weeks

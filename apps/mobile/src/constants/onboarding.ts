@@ -157,7 +157,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'dining-frequency',
     type: 'single-choice',
     question: 'How often do you eat out?',
-    helper: 'We\'ll pace notifications based on your habits.',
+    helper: "We'll pace notifications based on your habits.",
     options: [
       { id: 'rarely', label: '1-2 times/week', detail: 'Mostly cook at home' },
       { id: 'weekly', label: '3-4 times/week', detail: 'Regular lunches + dinner' },
@@ -169,8 +169,8 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'budget',
     type: 'single-choice',
-    question: 'What\'s your usual spend per person?',
-    helper: 'We\'ll prioritize spots in your price range.',
+    question: "What's your usual spend per person?",
+    helper: "We'll prioritize spots in your price range.",
     options: [
       { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
       { id: '20-40', label: '$$', detail: '$20–$40 • Solid everyday spots' },
@@ -183,7 +183,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'attribution',
     type: 'single-choice',
     question: 'How did you hear about us?',
-    helper: 'Helps us understand what\'s working so we can reach more food lovers like you.',
+    helper: "Helps us understand what's working so we can reach more food lovers like you.",
     options: [
       { id: 'app-store', label: 'App Store' },
       { id: 'tiktok', label: 'TikTok' },
@@ -280,13 +280,13 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'barriers',
     type: 'multi-choice',
     question: 'What stops you from finding great food consistently?',
-    helper: 'We\'ve solved these exact problems. Pick all that apply.',
+    helper: "We've solved these exact problems. Pick all that apply.",
     options: [
       { id: 'no-time', label: '⏰ No time to research every meal' },
-      { id: 'cant-afford', label: '💸 Can\'t afford to gamble on mediocre spots' },
-      { id: 'no-trust', label: '🤷 Can\'t trust online reviews anymore' },
+      { id: 'cant-afford', label: "💸 Can't afford to gamble on mediocre spots" },
+      { id: 'no-trust', label: "🤷 Can't trust online reviews anymore" },
       { id: 'new-neighborhoods', label: '📍 Hard to find quality in new neighborhoods' },
-      { id: 'friends-taste', label: '👥 Friends\' taste is hit-or-miss for me' },
+      { id: 'friends-taste', label: "👥 Friends' taste is hit-or-miss for me" },
       { id: 'paralysis', label: '😤 Menu paralysis - too many options' },
     ],
     required: false,
@@ -304,7 +304,7 @@ export const onboardingSteps: OnboardingStep[] = [
         '⭐ Restaurant-level ratings',
         '📝 Long reviews you skip',
         '🤷 Great chef, bad service = low rating',
-        'Can\'t tell what to order',
+        "Can't tell what to order",
         '😤 Wasted meals on wrong dishes',
       ],
     },
@@ -314,7 +314,7 @@ export const onboardingSteps: OnboardingStep[] = [
         '🍽️ Dish-level rankings',
         '👍 Quick votes = more signal',
         '✅ Food quality rises above noise',
-        'Know what\'s good in 10 seconds',
+        "Know what's good in 10 seconds",
         '🎯 Every order is the right order',
       ],
     },
@@ -349,14 +349,14 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'pre-loading',
     type: 'processing',
-    title: 'Let\'s cut through the noise',
+    title: "Let's cut through the noise",
     subtitle:
-      'Austin has 2,000+ restaurants. We\'re about to filter 12,000+ dishes down to the ones you\'d actually want to know about.',
+      "Austin has 2,000+ restaurants. We're about to filter 12,000+ dishes down to the ones you'd actually want to know about.",
     progress: 0,
     checklist: [],
     durationMs: 0,
     isAnimated: false,
-    ctaLabel: 'Show me what\'s relevant',
+    ctaLabel: "Show me what's relevant",
   },
   {
     id: 'processing-feed',
@@ -379,7 +379,8 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'feed-ready',
     type: 'processing',
     title: 'Your feed is live',
-    subtitle: 'You\'re now seeing the top 10% of Austin dishes—the stuff people who eat like you actually love.',
+    subtitle:
+      "You're now seeing the top 10% of Austin dishes—the stuff people who eat like you actually love.",
     progress: 1,
     checklist: [
       { label: '2,147 restaurants scanned', status: 'complete' },
@@ -391,7 +392,7 @@ export const onboardingSteps: OnboardingStep[] = [
     showSummary: true,
     durationMs: 0,
     isAnimated: false,
-    ctaLabel: 'Show me what\'s hot',
+    ctaLabel: "Show me what's hot",
   },
 
   // PHASE 6: DISCOVERY PROJECTION & ACCOUNT (3 screens)
@@ -407,7 +408,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'notifications',
     type: 'notification',
     title: 'Get notified when something hits your feed',
-    body: 'Now that we know your taste, we\'ll only notify you about stuff you\'d actually care about.',
+    body: "Now that we know your taste, we'll only notify you about stuff you'd actually care about.",
     features: [
       'Tuesday polls: Vote on "Best tacos" or "Date night pasta"',
       'New discoveries: Spots matching your taste just got added',
@@ -417,7 +418,7 @@ export const onboardingSteps: OnboardingStep[] = [
       { id: '2-3-week', label: '2-3 times per week', recommended: true },
       { id: 'weekly', label: 'Weekly digest only' },
       { id: 'poll-only', label: 'Just the Tuesday poll' },
-      { id: 'manual', label: 'I\'ll check the app myself' },
+      { id: 'manual', label: "I'll check the app myself" },
     ],
     ctaLabel: 'Enable notifications',
   },
@@ -428,7 +429,7 @@ export const onboardingSteps: OnboardingStep[] = [
     description:
       'Create an account so your taste cues, curated notifications, and saved spots sync everywhere. Search and bookmarking stay totally in your control.',
     disclaimer:
-      'By continuing, you agree to Crave\'s Terms of Service and Privacy Policy. We\'ll never sell your data.',
+      "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Create account',
   },
 ];
