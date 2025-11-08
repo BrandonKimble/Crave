@@ -12,6 +12,8 @@ import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
 import { SearchModule } from './modules/search/search.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
+import { IdentityModule } from './modules/identity/identity.module';
+import { BillingModule } from './modules/billing/billing.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { MetricsModule } from './modules/metrics/metrics.module';
     RedditCollectorModule,
     SearchModule,
     MetricsModule,
+    IdentityModule,
+    BillingModule,
   ],
   controllers: [AppController],
   providers: [],

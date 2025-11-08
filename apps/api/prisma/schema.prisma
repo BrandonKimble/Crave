@@ -209,7 +209,7 @@ model User {
   events              UserEvent[]
   referrer            User?              @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals           User[]             @relation("UserReferrals")
-  CheckoutSession     CheckoutSession[]
+  checkoutSessions    CheckoutSession[]
 
   @@index([email], map: "idx_users_email")
   @@index([authProvider], map: "idx_users_auth_provider")
@@ -246,6 +246,7 @@ model Subscription {
   lastEventReceivedAt    DateTime?             @map("last_event_received_at")
   user                   User                  @relation(fields: [userId], references: [userId])
 
+  @@unique([provider, externalSubscriptionId], map: "subscriptions_provider_external_unique")
   @@index([userId], map: "idx_subscriptions_user_id")
   @@index([status], map: "idx_subscriptions_status")
   @@index([currentPeriodEnd], map: "idx_subscriptions_period_end")
@@ -324,6 +325,7 @@ model CheckoutSession {
   @@index([userId], map: "idx_checkout_sessions_user_id")
   @@index([provider], map: "idx_checkout_sessions_provider")
   @@index([status], map: "idx_checkout_sessions_status")
+  @@index([externalSessionId], map: "idx_checkout_sessions_external_id")
   @@map("checkout_sessions")
 }
 

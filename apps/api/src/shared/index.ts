@@ -11,6 +11,10 @@ export { ErrorResponseDto } from './dto/error-response.dto';
 export { createValidationPipeConfig } from './pipes/validation.config';
 export * from './pipes/custom-validators';
 
+// Decorators & types
+export { CurrentUser } from './decorators/current-user.decorator';
+export type { AuthenticatedRequest } from './types/authenticated-request.type';
+
 // Logging
 export {
   createWinstonConfig,

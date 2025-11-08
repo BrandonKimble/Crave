@@ -66,6 +66,24 @@ cp apps/api/.env.example apps/api/.env
 cp apps/mobile/.env.example apps/mobile/.env
 ```
 
+Identity & billing now rely on external providers. Populate the following keys in the respective `.env` files before running auth-guarded endpoints:
+
+```
+# apps/api/.env
+CLERK_SECRET_KEY=sk_test_...
+CLERK_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_DEFAULT_PRICE_ID=price_...
+REVENUECAT_API_KEY=rc_...
+REVENUECAT_WEBHOOK_SECRET=rc_webhook_secret
+
+# apps/mobile/.env
+EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+```
+
+Ask your platform admin (or create the accounts yourself) for the Clerk publishable/secret keys, a Stripe test secret + webhook signing secret, and the RevenueCat API/webhook tokens. Without them, the new identity and billing endpoints will return 401/503 errors.
+
 ### 2. Database Configuration
 
 The API uses PostgreSQL with Prisma ORM. Default development configuration:

@@ -8,10 +8,17 @@ import {
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { createValidationPipeConfig } from './shared';
+import fastifyRawBody from 'fastify-raw-body';
 
 async function bootstrap() {
   // Create with Fastify adapter
   const fastifyAdapter = new FastifyAdapter();
+  await fastifyAdapter.getInstance().register(fastifyRawBody, {
+    field: 'rawBody',
+    global: false,
+    encoding: 'utf8',
+    runFirst: true,
+  });
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     fastifyAdapter,

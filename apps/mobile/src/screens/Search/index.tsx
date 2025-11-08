@@ -586,10 +586,10 @@ const SearchScreen: React.FC = () => {
         </View>
         <View style={styles.previewOverlayCard}>
           <Text variant="subtitle" weight="bold" style={styles.previewOverlayTitle}>
-            Unlock all {totalResults} dishes + quality scores
+            Unlock all {totalResults} dishes + community scores
           </Text>
           <Text variant="body" style={styles.previewOverlayDescription}>
-            See exactly what to order, not just where to go. Vote-powered rankings for every dish.
+            See exactly what to order, not just where to go. Rankings from weekly community polls.
           </Text>
           <Button
             label="Start 7-day free trial"
@@ -1139,8 +1139,8 @@ const SearchScreen: React.FC = () => {
               </Pressable>
             </View>
             <Text variant="body" style={styles.paywallSubtitle}>
-              Dish-level rankings, live quality scores, and instant "what to order" answers for
-              every restaurant.
+              Dish-level rankings, live community scores, and instant "what to order" answers for
+              every restaurant in Austin.
             </Text>
             <View style={styles.planToggle}>
               <Pressable
@@ -1200,10 +1200,11 @@ const SearchScreen: React.FC = () => {
             <View style={styles.paywallFeatureList}>
               {[
                 'See what to order at any restaurant, instantly',
-                'Dish-level rankings (not vague restaurant reviews)',
-                'Vote-powered scores from real meals, not bots',
+                'Dish-level rankings from weekly community polls',
+                'Live scores updated as votes come in',
                 'Interactive map + neighborhood filters',
-                'Unlimited bookmarks & trend alerts',
+                'Unlimited saved spots & poll votes',
+                'Get notified before spots blow up',
               ].map((feature) => (
                 <View key={feature} style={styles.paywallFeatureItem}>
                   <Text style={styles.paywallFeatureBullet}>✓</Text>

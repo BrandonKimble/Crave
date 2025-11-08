@@ -92,6 +92,34 @@ export default () => ({
     host: process.env.REDIS_HOST || 'localhost',
     port: parseInt(process.env.REDIS_PORT || '6379', 10),
   },
+  clerk: {
+    secretKey: process.env.CLERK_SECRET_KEY,
+    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+    jwtAudience: process.env.CLERK_JWT_AUDIENCE,
+  },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY,
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+    defaultPriceId: process.env.STRIPE_DEFAULT_PRICE_ID,
+    successUrl:
+      process.env.STRIPE_SUCCESS_URL ||
+      'http://localhost:3000/payments/success',
+    cancelUrl:
+      process.env.STRIPE_CANCEL_URL || 'http://localhost:3000/payments/cancel',
+    billingPortalReturnUrl:
+      process.env.STRIPE_PORTAL_RETURN_URL ||
+      'http://localhost:3000/account/subscription',
+  },
+  revenueCat: {
+    apiKey: process.env.REVENUECAT_API_KEY,
+    webhookSecret: process.env.REVENUECAT_WEBHOOK_SECRET,
+    entitlementMap:
+      process.env.REVENUECAT_ENTITLEMENT_MAP || 'premium:premium_monthly',
+  },
+  billing: {
+    defaultEntitlement: process.env.BILLING_DEFAULT_ENTITLEMENT || 'premium',
+    trialDays: parseInt(process.env.BILLING_TRIAL_DAYS || '0', 10),
+  },
   reddit: {
     clientId: process.env.REDDIT_CLIENT_ID,
     clientSecret: process.env.REDDIT_CLIENT_SECRET,
