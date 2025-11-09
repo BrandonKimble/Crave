@@ -48,6 +48,7 @@ type RestaurantFeatureProperties = {
 
 type SubmitSearchOptions = {
   openNow?: boolean;
+  priceLevels?: number[] | null;
 };
 
 type OpenNowNotice = {
@@ -79,6 +80,36 @@ const boundsFromPairs = (first: [number, number], second: [number, number]): Map
       lng: Math.min(lngs[0], lngs[1]),
     },
   };
+};
+
+const PRICE_LEVEL_OPTIONS = [
+  { label: 'Free', value: 0 },
+  { label: '$', value: 1 },
+  { label: '$$', value: 2 },
+  { label: '$$$', value: 3 },
+  { label: '$$$$', value: 4 },
+] as const;
+
+const normalizePriceFilter = (levels?: number[] | null): number[] => {
+  if (!Array.isArray(levels) || levels.length === 0) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      levels
+        .map((level) => Math.round(level))
+        .filter((level) => Number.isInteger(level) && level >= 0 && level <= 4)
+    )
+  ).sort((a, b) => a - b);
+};
+
+const priceLevelToSymbol = (level: number): string => {
+  if (level <= 0) {
+    return 'Free';
+  }
+  const clamped = Math.max(1, Math.min(4, level));
+  return '$'.repeat(clamped);
 };
 
 MapboxGL.setTelemetryEnabled(false);
@@ -125,6 +156,7 @@ const SearchScreen: React.FC = () => {
   const [previewQuery, setPreviewQuery] = React.useState('');
   const [isPaywallVisible, setIsPaywallVisible] = React.useState(false);
   const [selectedPlan, setSelectedPlan] = React.useState<'monthly' | 'annual'>('monthly');
+  const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const panOffset = React.useRef(0);
@@ -132,6 +164,16 @@ const SearchScreen: React.FC = () => {
   const inputRef = React.useRef<TextInput | null>(null);
   const openNow = useSearchStore((state) => state.openNow);
   const setOpenNow = useSearchStore((state) => state.setOpenNow);
+  const priceLevels = useSearchStore((state) => state.priceLevels);
+  const setPriceLevels = useSearchStore((state) => state.setPriceLevels);
+  const priceFiltersActive = priceLevels.length > 0;
+  const priceButtonSummary = React.useMemo(() => {
+    if (!priceLevels.length) {
+      return 'Any price';
+    }
+    return priceLevels.map(priceLevelToSymbol).join(' · ');
+  }, [priceLevels]);
+  const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
 
@@ -391,6 +433,12 @@ const SearchScreen: React.FC = () => {
     }).start();
   }, [activeTab, segmentAnim]);
 
+  React.useEffect(() => {
+    if (!panelVisible && isPriceSelectorVisible) {
+      setIsPriceSelectorVisible(false);
+    }
+  }, [panelVisible, isPriceSelectorVisible]);
+
   const showPanel = React.useCallback(() => {
     if (!panelVisible) {
       setPanelVisible(true);
@@ -404,8 +452,16 @@ const SearchScreen: React.FC = () => {
     if (!panelVisible) {
       return;
     }
+    setIsPriceSelectorVisible(false);
     animateSheetTo('hidden');
   }, [panelVisible, animateSheetTo]);
+
+  const togglePriceSelector = React.useCallback(() => {
+    if (isLoading) {
+      return;
+    }
+    setIsPriceSelectorVisible((visible) => !visible);
+  }, [isLoading]);
 
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions) => {
@@ -415,6 +471,9 @@ const SearchScreen: React.FC = () => {
       }
 
       const effectiveOpenNow = options?.openNow ?? openNow;
+      const effectivePriceLevels =
+        options?.priceLevels !== undefined ? options.priceLevels : priceLevels;
+      const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
 
       showPanel();
       try {
@@ -428,6 +487,10 @@ const SearchScreen: React.FC = () => {
 
         if (effectiveOpenNow) {
           payload.openNow = true;
+        }
+
+        if (normalizedPriceLevels.length > 0) {
+          payload.priceLevels = normalizedPriceLevels;
         }
 
         if (mapRef.current?.getVisibleBounds) {
@@ -478,7 +541,7 @@ const SearchScreen: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [query, isLoading, showPanel, openNow, hasUnlockedFullResults]
+    [query, isLoading, showPanel, openNow, priceLevels, hasUnlockedFullResults]
   );
 
   const handleSubmit = React.useCallback(() => {
@@ -502,6 +565,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
 
+    setIsPriceSelectorVisible(false);
     const nextValue = !openNow;
     setOpenNow(nextValue);
 
@@ -509,6 +573,40 @@ const SearchScreen: React.FC = () => {
       void submitSearch({ openNow: nextValue });
     }
   }, [isLoading, openNow, query, setOpenNow, submitSearch]);
+
+  const togglePriceLevel = React.useCallback(
+    (level: number) => {
+      if (isLoading) {
+        return;
+      }
+
+      const normalizedLevel = Math.max(0, Math.min(4, Math.round(level)));
+      const nextSet = new Set(priceLevels);
+      if (nextSet.has(normalizedLevel)) {
+        nextSet.delete(normalizedLevel);
+      } else {
+        nextSet.add(normalizedLevel);
+      }
+      const nextLevels = Array.from(nextSet).sort((a, b) => a - b);
+      setPriceLevels(nextLevels);
+
+      if (query.trim()) {
+        void submitSearch({ priceLevels: nextLevels });
+      }
+    },
+    [isLoading, priceLevels, query, setPriceLevels, submitSearch]
+  );
+
+  const clearPriceLevels = React.useCallback(() => {
+    if (isLoading || priceLevels.length === 0) {
+      return;
+    }
+
+    setPriceLevels([]);
+    if (query.trim()) {
+      void submitSearch({ priceLevels: [] });
+    }
+  }, [isLoading, priceLevels.length, query, setPriceLevels, submitSearch]);
 
   const toggleLike = React.useCallback((id: string) => {
     setLikedItems((prev) => {
@@ -739,6 +837,18 @@ const SearchScreen: React.FC = () => {
             <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
               {restaurant.address}
             </Text>
+          ) : null}
+          {restaurant.priceSymbol ? (
+            <View style={styles.priceBadge}>
+              <Text variant="caption" style={styles.priceBadgeText}>
+                {restaurant.priceSymbol}
+              </Text>
+              {restaurant.priceText ? (
+                <Text variant="caption" style={styles.priceBadgeSubtext}>
+                  {restaurant.priceText}
+                </Text>
+              ) : null}
+            </View>
           ) : null}
           <View style={styles.metricsContainer}>
             <View style={styles.primaryMetric}>
@@ -999,32 +1109,84 @@ const SearchScreen: React.FC = () => {
                 </Pressable>
               </View>
               <View style={styles.headerSecondRow}>
-                <Pressable
-                  onPress={toggleOpenNow}
-                  disabled={isLoading}
-                  accessibilityRole="button"
-                  accessibilityLabel="Toggle open now results"
-                  accessibilityState={{ disabled: isLoading }}
-                  style={[
-                    styles.openNowButton,
-                    openNow && styles.openNowButtonActive,
-                    isLoading && styles.openNowButtonDisabled,
-                  ]}
-                >
-                  <Feather
-                    name="clock"
-                    size={14}
-                    color={openNow ? '#ffffff' : '#475569'}
-                    style={styles.openNowIcon}
-                  />
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.openNowText, openNow && styles.openNowTextActive]}
+                <View style={styles.filterButtonsRow}>
+                  <Pressable
+                    onPress={toggleOpenNow}
+                    disabled={isLoading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Toggle open now results"
+                    accessibilityState={{ disabled: isLoading, selected: openNow }}
+                    style={[
+                      styles.openNowButton,
+                      openNow && styles.openNowButtonActive,
+                      isLoading && styles.openNowButtonDisabled,
+                    ]}
                   >
-                    Open now
-                  </Text>
-                </Pressable>
+                    <Feather
+                      name="clock"
+                      size={14}
+                      color={openNow ? '#ffffff' : '#475569'}
+                      style={styles.openNowIcon}
+                    />
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.openNowText, openNow && styles.openNowTextActive]}
+                    >
+                      Open now
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={togglePriceSelector}
+                    disabled={isLoading}
+                    accessibilityRole="button"
+                    accessibilityLabel="Select price filters"
+                    accessibilityState={{
+                      disabled: isLoading,
+                      expanded: isPriceSelectorVisible,
+                      selected: priceFiltersActive,
+                    }}
+                    style={[
+                      styles.priceButton,
+                      priceButtonIsActive && styles.priceButtonActive,
+                      isLoading && styles.priceButtonDisabled,
+                    ]}
+                  >
+                    <Feather
+                      name="dollar-sign"
+                      size={14}
+                      color={priceButtonIsActive ? '#ffffff' : '#475569'}
+                      style={styles.priceButtonIcon}
+                    />
+                    <View style={styles.priceButtonTextWrapper}>
+                      <Text
+                        variant="caption"
+                        weight="semibold"
+                        style={[
+                          styles.priceButtonLabel,
+                          priceButtonIsActive && styles.priceButtonLabelActive,
+                        ]}
+                      >
+                        Price
+                      </Text>
+                      <Text
+                        variant="caption"
+                        style={[
+                          styles.priceButtonSummary,
+                          priceButtonIsActive && styles.priceButtonSummaryActive,
+                        ]}
+                      >
+                        {priceButtonSummary}
+                      </Text>
+                    </View>
+                    <Feather
+                      name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
+                      size={14}
+                      color={priceButtonIsActive ? '#ffffff' : '#475569'}
+                      style={styles.priceButtonChevron}
+                    />
+                  </Pressable>
+                </View>
                 <View style={styles.integratedSegmentedControl}>
                   <Pressable
                     style={[
@@ -1068,6 +1230,95 @@ const SearchScreen: React.FC = () => {
                   </Pressable>
                 </View>
               </View>
+              {isPriceSelectorVisible ? (
+                <View style={styles.priceSelector}>
+                  <View style={styles.priceSelectorHeader}>
+                    <Text variant="caption" style={styles.priceFilterLabel}>
+                      Select price range
+                    </Text>
+                    <Pressable
+                      onPress={clearPriceLevels}
+                      disabled={isLoading || priceLevels.length === 0}
+                      accessibilityRole="button"
+                      accessibilityLabel="Clear selected price filters"
+                      accessibilityState={{
+                        disabled: isLoading || priceLevels.length === 0,
+                      }}
+                      style={[
+                        styles.clearPriceButton,
+                        (isLoading || priceLevels.length === 0) &&
+                          styles.clearPriceButtonDisabled,
+                      ]}
+                    >
+                      <Text
+                        variant="caption"
+                        style={[
+                          styles.clearPriceButtonText,
+                          (isLoading || priceLevels.length === 0) &&
+                            styles.clearPriceButtonTextDisabled,
+                        ]}
+                      >
+                        Clear
+                      </Text>
+                    </Pressable>
+                  </View>
+                  <View style={styles.priceFilterChips}>
+                    {PRICE_LEVEL_OPTIONS.map((option) => {
+                      const selected = priceLevels.includes(option.value);
+                      return (
+                        <Pressable
+                          key={option.value}
+                          onPress={() => togglePriceLevel(option.value)}
+                          disabled={isLoading}
+                          accessibilityRole="button"
+                          accessibilityState={{ disabled: isLoading, selected }}
+                          style={[
+                            styles.priceChip,
+                            selected && styles.priceChipSelected,
+                            isLoading && styles.priceChipDisabled,
+                          ]}
+                        >
+                          <Text
+                            variant="caption"
+                            weight="semibold"
+                            style={[
+                              styles.priceChipText,
+                              selected && styles.priceChipTextSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                    <Pressable
+                      onPress={clearPriceLevels}
+                      disabled={isLoading || priceLevels.length === 0}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        disabled: isLoading,
+                        selected: priceLevels.length === 0,
+                      }}
+                      style={[
+                        styles.priceChip,
+                        priceLevels.length === 0 && styles.priceChipSelected,
+                        isLoading && styles.priceChipDisabled,
+                      ]}
+                    >
+                      <Text
+                        variant="caption"
+                        weight="semibold"
+                        style={[
+                          styles.priceChipText,
+                          priceLevels.length === 0 && styles.priceChipTextSelected,
+                        ]}
+                      >
+                        All
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
               {openNowNotice ? (
                 <View
                   style={[
@@ -1341,6 +1592,110 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 8,
+  },
+  filterButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  priceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#ffffff',
+  },
+  priceButtonActive: {
+    backgroundColor: '#0f172a',
+    borderColor: '#0f172a',
+  },
+  priceButtonDisabled: {
+    opacity: 0.6,
+  },
+  priceButtonIcon: {
+    marginRight: 6,
+  },
+  priceButtonTextWrapper: {
+    flexDirection: 'column',
+  },
+  priceButtonLabel: {
+    color: '#475569',
+    fontSize: 11,
+  },
+  priceButtonLabelActive: {
+    color: '#ffffff',
+  },
+  priceButtonSummary: {
+    color: '#0f172a',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  priceButtonSummaryActive: {
+    color: '#ffffff',
+  },
+  priceButtonChevron: {
+    marginLeft: 8,
+  },
+  priceSelector: {
+    marginTop: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#ffffff',
+  },
+  priceSelectorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  priceFilterLabel: {
+    color: '#475569',
+  },
+  clearPriceButton: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  clearPriceButtonDisabled: {
+    opacity: 0.5,
+  },
+  clearPriceButtonText: {
+    color: '#475569',
+  },
+  clearPriceButtonTextDisabled: {
+    color: '#94a3b8',
+  },
+  priceFilterChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  priceChip: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginRight: 6,
+    marginBottom: 6,
+    backgroundColor: '#ffffff',
+  },
+  priceChipSelected: {
+    backgroundColor: '#f97384',
+    borderColor: '#f97384',
+  },
+  priceChipDisabled: {
+    opacity: 0.5,
+  },
+  priceChipText: {
+    color: '#475569',
+  },
+  priceChipTextSelected: {
+    color: '#ffffff',
   },
   closeButton: {
     padding: 0,
@@ -1729,6 +2084,23 @@ const styles = StyleSheet.create({
   dishSubtitle: {
     fontSize: 14,
     marginTop: 4,
+  },
+  priceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#f1f5f9',
+    borderRadius: 9999,
+    paddingHorizontal: 10,
+    paddingVertical: 2,
+    marginTop: 4,
+  },
+  priceBadgeText: {
+    color: '#0f172a',
+    marginRight: 6,
+  },
+  priceBadgeSubtext: {
+    color: '#475569',
   },
   dishSubtitleSmall: {
     fontSize: 12,

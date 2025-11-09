@@ -15,6 +15,7 @@ export interface SearchQueryParams {
   bounds?: MapBounds | null;
   userLocation?: Coordinate;
   includeSqlPreview?: boolean;
+  priceLevels?: number[];
 }
 
 export interface SearchQueryCacheKey {
@@ -23,6 +24,7 @@ export interface SearchQueryCacheKey {
   pageSize: number;
   openNow: boolean;
   bounds: MapBounds | null;
+  priceLevels: number[] | null;
 }
 
 export const searchKeys = {
@@ -52,6 +54,10 @@ const buildRequestPayload = (
     payload.openNow = params.openNow;
   }
 
+  if (params.priceLevels && params.priceLevels.length > 0) {
+    payload.priceLevels = params.priceLevels;
+  }
+
   if (params.userLocation) {
     payload.userLocation = params.userLocation;
   }
@@ -67,6 +73,7 @@ const normalizeParams = (params: SearchQueryParams, query: string): SearchQueryC
   const page = params.page ?? 1;
   const pageSize = params.pageSize ?? DEFAULT_SEARCH_PAGE_SIZE;
   const bounds = params.bounds ?? null;
+  const priceLevels = normalizePriceLevels(params.priceLevels);
 
   return {
     query,
@@ -74,7 +81,24 @@ const normalizeParams = (params: SearchQueryParams, query: string): SearchQueryC
     pageSize,
     openNow: params.openNow ?? false,
     bounds,
+    priceLevels,
   };
+};
+
+const normalizePriceLevels = (levels?: number[] | null): number[] | null => {
+  if (!Array.isArray(levels) || levels.length === 0) {
+    return null;
+  }
+
+  const normalized = Array.from(
+    new Set(
+      levels
+        .map((level) => Math.round(level))
+        .filter((level) => Number.isInteger(level) && level >= 0 && level <= 4)
+    )
+  ).sort((a, b) => a - b);
+
+  return normalized.length ? normalized : null;
 };
 
 export interface UseSearchQueryOptions {

@@ -73,6 +73,7 @@ export class SearchService {
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
     const presence = this.getEntityPresenceSummary(request);
+    const priceLevels = this.normalizePriceLevels(request.priceLevels);
 
     const format: QueryPlan['format'] =
       presence.restaurants > 0 &&
@@ -82,7 +83,7 @@ export class SearchService {
         ? 'single_list'
         : 'dual_list';
 
-    const restaurantFilters = this.buildRestaurantFilters(request);
+    const restaurantFilters = this.buildRestaurantFilters(request, priceLevels);
     const connectionFilters = this.buildConnectionFilters(request);
 
     const plan: QueryPlan = {
@@ -98,7 +99,7 @@ export class SearchService {
       },
       diagnostics: {
         missingEntities: this.getMissingScopes(presence),
-        notes: this.buildDiagnosticNotes(request, presence),
+        notes: this.buildDiagnosticNotes(request, presence, priceLevels),
       },
     };
 
@@ -178,6 +179,7 @@ export class SearchService {
         openNowUnsupportedRestaurants:
           execution.metadata.openNowUnsupportedRestaurants,
         openNowFilteredOut: execution.metadata.openNowFilteredOut,
+        priceFilterApplied: execution.metadata.priceFilterApplied,
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
@@ -303,6 +305,7 @@ export class SearchService {
 
   private buildRestaurantFilters(
     request: SearchQueryRequestDto,
+    priceLevels: number[],
   ): FilterClause[] {
     const filters: FilterClause[] = [];
     const now = new Date();
@@ -342,6 +345,16 @@ export class SearchService {
         entityType: EntityScope.RESTAURANT,
         entityIds: [],
         payload: { openNow: { requestedAt: now.toISOString() } },
+      });
+    }
+
+    if (priceLevels.length) {
+      filters.push({
+        scope: 'restaurant',
+        description: `Restrict to price levels (${priceLevels.join(', ')})`,
+        entityType: EntityScope.RESTAURANT,
+        entityIds: [],
+        payload: { priceLevels },
       });
     }
 
@@ -411,6 +424,7 @@ export class SearchService {
   private buildDiagnosticNotes(
     request: SearchQueryRequestDto,
     presence: EntityPresenceSummary,
+    priceLevels: number[],
   ): string[] {
     const notes: string[] = [];
 
@@ -430,6 +444,10 @@ export class SearchService {
       notes.push(
         'Open-now filter requested; requires restaurant hour metadata.',
       );
+    }
+
+    if (priceLevels.length) {
+      notes.push('Price filter requested; ensure price metadata is available.');
     }
 
     return notes;
@@ -463,6 +481,16 @@ export class SearchService {
         ),
       ),
     );
+  }
+
+  private normalizePriceLevels(levels?: number[]): number[] {
+    if (!Array.isArray(levels)) {
+      return [];
+    }
+    const normalized = levels
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value <= 4);
+    return Array.from(new Set(normalized)).sort((a, b) => a - b);
   }
 
   private gatherEntityImpressionTargets(

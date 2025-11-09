@@ -272,6 +272,7 @@ export class SearchQueryInterpretationService {
       openNow: request.openNow,
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
+      priceLevels: request.priceLevels,
     };
   }
 }

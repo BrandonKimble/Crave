@@ -22,6 +22,14 @@ const DAY_KEYS = [
 ] as const;
 
 const TOP_RESTAURANT_FOOD_SNIPPETS = 3;
+const PRICE_SYMBOLS = ['Free', '$', '$$', '$$$', '$$$$'] as const;
+const PRICE_DESCRIPTORS = [
+  'Free',
+  'Budget friendly',
+  'Moderate',
+  'Expensive',
+  'Very expensive',
+] as const;
 
 type DayKey = (typeof DAY_KEYS)[number];
 
@@ -66,6 +74,8 @@ interface QueryResultRow {
   latitude?: Prisma.Decimal | number | string | null;
   longitude?: Prisma.Decimal | number | string | null;
   address?: string | null;
+  price_level?: Prisma.Decimal | number | string | null;
+  price_level_updated_at?: Date | null;
   restaurant_attributes: string[];
   restaurant_metadata?: Prisma.JsonValue | null;
   food_name: string;
@@ -91,6 +101,7 @@ interface ExecuteResult {
     openNowSupportedRestaurants: number;
     openNowUnsupportedRestaurants: number;
     openNowFilteredOut: number;
+    priceFilterApplied: boolean;
   };
   sqlPreview?: string | null;
 }
@@ -192,6 +203,7 @@ export class SearchQueryExecutor {
         openNowSupportedRestaurants: openFilter.supportedCount,
         openNowUnsupportedRestaurants: openFilter.unsupportedCount,
         openNowFilteredOut,
+        priceFilterApplied: query.metadata.priceFilterApplied,
       },
       sqlPreview: includeSqlPreview ? query.preview : null,
     };
@@ -333,6 +345,10 @@ export class SearchQueryExecutor {
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
         address?: string | null;
+        priceLevel?: number | null;
+        priceLevelUpdatedAt?: Date | null;
+        priceSymbol?: string | null;
+        priceText?: string | null;
         snippets: RestaurantFoodSnippetDto[];
         scoreSum: number;
         count: number;
@@ -353,7 +369,25 @@ export class SearchQueryExecutor {
         existing.snippets.push(snippet);
         existing.scoreSum += snippet.qualityScore;
         existing.count += 1;
+        if (
+          (existing.priceLevel === null || existing.priceLevel === undefined) &&
+          connection.price_level != null
+        ) {
+          const parsedPrice = this.toOptionalNumber(connection.price_level);
+          const priceDetails = this.describePriceLevel(parsedPrice);
+          existing.priceLevel = parsedPrice;
+          existing.priceSymbol = priceDetails.symbol;
+          existing.priceText = priceDetails.text;
+        }
+        if (
+          !existing.priceLevelUpdatedAt &&
+          connection.price_level_updated_at
+        ) {
+          existing.priceLevelUpdatedAt = connection.price_level_updated_at;
+        }
       } else {
+        const parsedPrice = this.toOptionalNumber(connection.price_level);
+        const priceDetails = this.describePriceLevel(parsedPrice);
         grouped.set(connection.restaurant_id, {
           restaurantId: connection.restaurant_id,
           name: connection.restaurant_name,
@@ -362,6 +396,10 @@ export class SearchQueryExecutor {
           latitude: connection.latitude,
           longitude: connection.longitude,
           address: connection.address,
+          priceLevel: parsedPrice,
+          priceSymbol: priceDetails.symbol,
+          priceText: priceDetails.text,
+          priceLevelUpdatedAt: connection.price_level_updated_at || null,
           snippets: [snippet],
           scoreSum: snippet.qualityScore,
           count: 1,
@@ -378,6 +416,10 @@ export class SearchQueryExecutor {
         latitude,
         longitude,
         address,
+        priceLevel,
+        priceSymbol,
+        priceText,
+        priceLevelUpdatedAt,
         snippets,
         scoreSum,
         count,
@@ -400,6 +442,12 @@ export class SearchQueryExecutor {
             ? null
             : this.toNumber(longitude),
         address: address ?? null,
+        priceLevel: priceLevel ?? null,
+        priceSymbol: priceSymbol ?? null,
+        priceText: priceText ?? null,
+        priceLevelUpdatedAt: priceLevelUpdatedAt
+          ? priceLevelUpdatedAt.toISOString()
+          : null,
         topFood: snippets
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
@@ -793,5 +841,44 @@ export class SearchQueryExecutor {
     }
 
     return Number(value) || 0;
+  }
+
+  private toOptionalNumber(
+    value?: Prisma.Decimal | number | string | null,
+  ): number | null {
+    if (value === null || value === undefined) {
+      return null;
+    }
+
+    if (value instanceof Prisma.Decimal) {
+      return value.toNumber();
+    }
+
+    if (typeof value === 'string') {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+
+    return null;
+  }
+
+  private describePriceLevel(level: number | null): {
+    symbol: string | null;
+    text: string | null;
+  } {
+    if (level === null) {
+      return { symbol: null, text: null };
+    }
+
+    const normalized = Math.round(level);
+    const clamped = Math.max(0, Math.min(PRICE_SYMBOLS.length - 1, normalized));
+    return {
+      symbol: PRICE_SYMBOLS[clamped],
+      text: PRICE_DESCRIPTORS[clamped],
+    };
   }
 }

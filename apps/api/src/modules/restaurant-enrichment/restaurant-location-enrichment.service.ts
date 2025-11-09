@@ -1167,6 +1167,19 @@ export class RestaurantLocationEnrichmentService {
       updatedFields.push('postalCode');
     }
 
+    if (
+      typeof details.price_level === 'number' &&
+      Number.isFinite(details.price_level)
+    ) {
+      const normalizedPrice = Math.max(
+        0,
+        Math.min(4, Math.round(details.price_level)),
+      );
+      updateData.priceLevel = normalizedPrice;
+      updateData.priceLevelUpdatedAt = new Date();
+      updatedFields.push('priceLevel', 'priceLevelUpdatedAt');
+    }
+
     return { updateData, updatedFields };
   }
 
@@ -1242,6 +1255,18 @@ export class RestaurantLocationEnrichmentService {
 
     if (details.website) {
       metadata.website = details.website;
+    }
+
+    if (
+      typeof details.price_level === 'number' &&
+      Number.isFinite(details.price_level)
+    ) {
+      const normalizedPrice = Math.max(
+        0,
+        Math.min(4, Math.round(details.price_level)),
+      );
+      metadata.priceLevel = normalizedPrice;
+      metadata.priceLevelUpdatedAt = new Date().toISOString();
     }
 
     if (Array.isArray(details.types) && details.types.length > 0) {

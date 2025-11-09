@@ -11,7 +11,7 @@ interface BaseStep {
 interface HeroStep extends BaseStep {
   type: 'hero';
   title: string;
-  description: string;
+  description?: string;
   image?: ImageSourcePropType;
   showAppScreenshot?: boolean;
 }
@@ -134,56 +134,15 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'hero',
     type: 'hero',
     title: 'Know what to order, not just where to go',
-    description:
-      'Every dish ranked by community votes so you can see what actually hits before you order.',
+    description: 'We rank dishes, not just restaurants—so you know what\'s worth ordering.',
     image: placeholderImage,
     showAppScreenshot: true,
     ctaLabel: 'Show me how',
   },
   {
-    id: 'identity',
-    type: 'single-choice',
-    question: 'How do you like to be addressed?',
-    helper: 'Helps us personalize copy and saved profiles later.',
-    options: [
-      { id: 'woman', label: 'Woman' },
-      { id: 'man', label: 'Man' },
-      { id: 'non-binary', label: 'Non-binary' },
-      { id: 'prefer-not', label: 'Prefer not to say' },
-    ],
-    required: false,
-  },
-  {
-    id: 'dining-frequency',
-    type: 'single-choice',
-    question: 'How often do you eat out?',
-    helper: "We'll pace notifications based on your habits.",
-    options: [
-      { id: 'rarely', label: '1-2 times/week', detail: 'Mostly cook at home' },
-      { id: 'weekly', label: '3-4 times/week', detail: 'Regular lunches + dinner' },
-      { id: 'often', label: '5-6 times/week', detail: 'Always on the go' },
-      { id: 'daily', label: 'Every day', detail: 'Professional food scout' },
-    ],
-    required: true,
-  },
-  {
-    id: 'budget',
-    type: 'single-choice',
-    question: "What's your usual spend per person?",
-    helper: "We'll prioritize spots in your price range.",
-    options: [
-      { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
-      { id: '20-40', label: '$$', detail: '$20–$40 • Solid everyday spots' },
-      { id: '40-70', label: '$$$', detail: '$40–$70 • Nice dinners & dates' },
-      { id: '70-plus', label: '$$$$', detail: '$70+ • Special experiences' },
-    ],
-    required: true,
-  },
-  {
     id: 'attribution',
     type: 'single-choice',
     question: 'How did you hear about us?',
-    helper: "Helps us understand what's working so we can reach more food lovers like you.",
     options: [
       { id: 'app-store', label: 'App Store' },
       { id: 'tiktok', label: 'TikTok' },
@@ -197,15 +156,40 @@ export const onboardingSteps: OnboardingStep[] = [
     ],
     required: false,
   },
+  {
+    id: 'dining-frequency',
+    type: 'single-choice',
+    question: 'How often do you eat out?',
+    helper: 'Helps us personalize your recommendations',
+    options: [
+      { id: 'rarely', label: '1-2 times/week', detail: 'Mostly cook at home' },
+      { id: 'weekly', label: '3-4 times/week', detail: 'Regular lunches + dinner' },
+      { id: 'often', label: '5-6 times/week', detail: 'Always on the go' },
+      { id: 'daily', label: 'Every day', detail: 'Professional food scout' },
+    ],
+    required: true,
+  },
+  {
+    id: 'budget',
+    type: 'single-choice',
+    question: "What's your usual spend per person?",
+    helper: 'Helps us personalize your recommendations',
+    options: [
+      { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
+      { id: '20-40', label: '$$', detail: '$20–$40 • Solid everyday spots' },
+      { id: '40-70', label: '$$$', detail: '$40–$70 • Nice dinners & dates' },
+      { id: '70-plus', label: '$$$$', detail: '$70+ • Special experiences' },
+    ],
+    required: true,
+  },
 
   // PHASE 2: VALUE PROP GRAPH + EXPLANATION (1 combined screen)
   {
     id: 'calendar-graph',
     type: 'graph',
     graphType: 'calendar-comparison',
-    title: 'Crave eliminates disappointing meals',
-    body: 'We rank dishes, not just restaurants—so you always order the best.',
-    ctaLabel: 'Makes sense',
+    title: 'Never waste money on disappointing meals',
+    ctaLabel: 'Let\'s do it',
   },
 
   // PHASE 3: NOTIFICATION PERSONALIZATION (4 screens)
@@ -213,7 +197,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'occasion-vibe',
     type: 'multi-choice',
     question: 'What kind of experience are you planning?',
-    helper: 'This helps us send you perfectly timed recommendations.',
+    helper: 'Helps us personalize your recommendations',
     options: [
       { id: 'date', label: '💕 Romantic date nights' },
       { id: 'family', label: '👨‍👩‍👧 Family-friendly outings' },
@@ -232,7 +216,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'cuisines',
     type: 'multi-choice',
     question: 'What are you craving lately?',
-    helper: 'This helps us send you perfectly timed recommendations. Pick at least 3.',
+    helper: 'Helps us personalize your recommendations. Pick at least 3.',
     options: [
       { id: 'mexican', label: '🌮 Mexican' },
       { id: 'bbq', label: '🍖 BBQ' },
@@ -252,7 +236,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'dining-goals',
     type: 'multi-choice',
     question: 'What matters most when you eat out?',
-    helper: 'This helps us send you perfectly timed recommendations. Pick 2-3.',
+    helper: 'Helps us personalize your recommendations. Pick 2-3.',
     options: [
       { id: 'trending', label: '🔥 Trending & buzzy' },
       { id: 'reliable', label: '⭐ Reliable classics' },

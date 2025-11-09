@@ -28,6 +28,7 @@ const DEFAULT_DETAIL_FIELDS = [
   'types',
   'website',
   'formatted_phone_number',
+  'price_level',
 ];
 
 export interface GooglePlaceDetailsOptions {
@@ -68,6 +69,7 @@ export interface GooglePlaceDetailsResult {
   current_opening_hours?: Record<string, unknown>;
   utc_offset_minutes?: number;
   business_status?: string;
+  price_level?: number;
   [key: string]: unknown;
 }
 

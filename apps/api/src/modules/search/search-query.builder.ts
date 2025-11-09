@@ -13,12 +13,17 @@ interface BuildQueryResult {
   preview: string;
   metadata: {
     boundsApplied: boolean;
+    priceFilterApplied: boolean;
   };
 }
 
 interface BoundsPayload {
   northEast: { lat: number; lng: number };
   southWest: { lat: number; lng: number };
+}
+
+interface PriceFilterPayload {
+  priceLevels: number[];
 }
 
 @Injectable()
@@ -35,6 +40,7 @@ export class SearchQueryBuilder {
       EntityScope.RESTAURANT_ATTRIBUTE,
     );
     const boundsPayload = this.extractBoundsPayload(plan.restaurantFilters);
+    const priceLevels = this.extractPriceLevels(plan.restaurantFilters);
 
     const foodIds = this.collectEntityIds(
       plan.connectionFilters,
@@ -74,6 +80,7 @@ export class SearchQueryBuilder {
     }
 
     let boundsApplied = false;
+    let priceFilterApplied = false;
     if (boundsPayload) {
       restaurantConditions.push(
         Prisma.sql`r.latitude BETWEEN ${boundsPayload.southWest.lat} AND ${boundsPayload.northEast.lat}`,
@@ -88,6 +95,16 @@ export class SearchQueryBuilder {
         `r.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
       );
       boundsApplied = true;
+    }
+
+    if (priceLevels.length) {
+      restaurantConditions.push(
+        this.buildNumberInClause('r.price_level', priceLevels),
+      );
+      restaurantConditionPreview.push(
+        `r.price_level = ANY(${this.formatNumberArray(priceLevels)})`,
+      );
+      priceFilterApplied = true;
     }
 
     const connectionConditions: Prisma.Sql[] = [];
@@ -139,6 +156,8 @@ filtered_restaurants AS (
     r.latitude,
     r.longitude,
     r.address,
+    r.price_level,
+    r.price_level_updated_at,
     r.restaurant_attributes,
     r.restaurant_metadata
   FROM entities r
@@ -147,7 +166,7 @@ filtered_restaurants AS (
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.latitude, r.longitude, r.address, r.restaurant_attributes, r.restaurant_metadata
+  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.latitude, r.longitude, r.address, r.price_level, r.price_level_updated_at, r.restaurant_attributes, r.restaurant_metadata
   FROM entities r
   WHERE ${restaurantWherePreview}
 )`.trim();
@@ -172,6 +191,8 @@ filtered_connections AS (
     fr.latitude,
     fr.longitude,
     fr.address,
+    fr.price_level,
+    fr.price_level_updated_at,
     fr.restaurant_attributes,
     fr.restaurant_metadata,
     f.name AS food_name,
@@ -185,7 +206,7 @@ filtered_connections AS (
     const filteredConnectionsPreview = `
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
-         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.latitude, fr.longitude, fr.address, fr.restaurant_attributes, fr.restaurant_metadata,
+         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.latitude, fr.longitude, fr.address, fr.price_level, fr.price_level_updated_at, fr.restaurant_attributes, fr.restaurant_metadata,
          f.name AS food_name, f.aliases AS food_aliases
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
@@ -230,7 +251,7 @@ LIMIT ${pagination.take};`.trim();
       dataSql,
       countSql,
       preview,
-      metadata: { boundsApplied },
+      metadata: { boundsApplied, priceFilterApplied },
     };
   }
 
@@ -253,6 +274,27 @@ LIMIT ${pagination.take};`.trim();
       }
     }
     return null;
+  }
+
+  private extractPriceLevels(filters: FilterClause[]): number[] {
+    for (const filter of filters) {
+      const payload = filter.payload as PriceFilterPayload | undefined;
+      if (
+        payload?.priceLevels &&
+        Array.isArray(payload.priceLevels) &&
+        payload.priceLevels.length
+      ) {
+        const normalized = payload.priceLevels
+          .map((value) => Number(value))
+          .filter(
+            (value) => Number.isInteger(value) && value >= 0 && value <= 4,
+          );
+        if (normalized.length) {
+          return Array.from(new Set(normalized)).sort((a, b) => a - b);
+        }
+      }
+    }
+    return [];
   }
 
   private isBoundsPayload(value: unknown): value is BoundsPayload {
@@ -284,6 +326,15 @@ LIMIT ${pagination.take};`.trim();
     return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildUuidArray(values)})`;
   }
 
+  private buildNumberInClause(column: string, values: number[]): Prisma.Sql {
+    if (!values.length) {
+      return Prisma.sql`TRUE`;
+    }
+    return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildSmallintArray(
+      values,
+    )})`;
+  }
+
   private buildArrayOverlapClause(
     column: string,
     values: string[],
@@ -301,6 +352,18 @@ LIMIT ${pagination.take};`.trim();
 
   private formatUuidArray(values: string[]): string {
     return `ARRAY[${values.map((value) => `'${value}'`).join(', ')}]::uuid[]`;
+  }
+
+  private buildSmallintArray(values: number[]): Prisma.Sql {
+    const mapped = Prisma.join(
+      values.map((value) => Prisma.sql`${value}`),
+      ', ',
+    );
+    return Prisma.sql`ARRAY[${mapped}]::smallint[]`;
+  }
+
+  private formatNumberArray(values: number[]): string {
+    return `ARRAY[${values.join(', ')}]::smallint[]`;
   }
 
   private combineSqlClauses(clauses: Prisma.Sql[]): Prisma.Sql {

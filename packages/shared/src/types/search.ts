@@ -63,6 +63,10 @@ export interface RestaurantResult {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  priceLevel?: number | null;
+  priceSymbol?: string | null;
+  priceText?: string | null;
+  priceLevelUpdatedAt?: string | null;
   topFood: RestaurantFoodSnippet[];
 }
 
@@ -75,6 +79,7 @@ export interface SearchResponseMetadata {
   openNowSupportedRestaurants: number;
   openNowUnsupportedRestaurants: number;
   openNowFilteredOut: number;
+  priceFilterApplied?: boolean;
   page: number;
   pageSize: number;
   perRestaurantLimit: number;
@@ -115,6 +120,7 @@ export interface NaturalSearchRequest {
   query: string;
   bounds?: MapBounds;
   openNow?: boolean;
+  priceLevels?: number[];
   pagination?: Pagination;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;

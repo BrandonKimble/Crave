@@ -7,6 +7,7 @@ import {
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -124,6 +125,14 @@ export class SearchQueryRequestDto {
   @ValidateNested()
   @Type(() => CoordinateDto)
   userLocation?: CoordinateDto;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(4, { each: true })
+  priceLevels?: number[];
 }
 
 export const EntityScope = {
@@ -176,6 +185,14 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => CoordinateDto)
   userLocation?: CoordinateDto;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsInt({ each: true })
+  @Min(0, { each: true })
+  @Max(4, { each: true })
+  priceLevels?: number[];
 }
 
 export class SearchResultClickDto {

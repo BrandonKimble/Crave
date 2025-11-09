@@ -16,6 +16,7 @@ export interface SearchFilters {
   bounds: MapBounds | null;
   boundsLabel?: string | null;
   boundsPresetId?: string | null;
+  priceLevels: number[];
 }
 
 interface SearchState extends SearchFilters {
@@ -31,6 +32,7 @@ interface SearchState extends SearchFilters {
     bounds: MapBounds | null,
     options?: { label?: string | null; presetId?: string | null }
   ) => void;
+  setPriceLevels: (levels: number[]) => void;
   recordSearch: (query: string) => void;
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
@@ -43,6 +45,7 @@ const defaultState = {
   bounds: null,
   boundsLabel: null,
   boundsPresetId: null,
+  priceLevels: [],
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
@@ -78,6 +81,21 @@ export const useSearchStore = create<SearchState>()(
           bounds,
           boundsLabel: options?.label ?? null,
           boundsPresetId: options?.presetId ?? null,
+        })),
+      setPriceLevels: (levels) =>
+        set(() => ({
+          priceLevels: Array.isArray(levels)
+            ? Array.from(
+                new Set(
+                  levels
+                    .map((level) => Math.round(level))
+                    .filter(
+                      (level) =>
+                        Number.isInteger(level) && level >= 0 && level <= 4
+                    )
+                )
+              ).sort((a, b) => a - b)
+            : [],
         })),
       recordSearch: (query) => {
         const trimmed = query.trim();
@@ -165,6 +183,7 @@ export const useSearchStore = create<SearchState>()(
         bounds: state.bounds,
         boundsLabel: state.boundsLabel,
         boundsPresetId: state.boundsPresetId,
+        priceLevels: state.priceLevels,
         history: state.history,
       }),
     }

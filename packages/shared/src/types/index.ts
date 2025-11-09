@@ -9,6 +9,10 @@ export interface RestaurantMetadata {
   hours?: Record<string, string>;
   last_places_update?: string;
   additional_place_details?: Record<string, unknown>;
+  priceLevel?: number;
+  priceLevelUpdatedAt?: string;
+  priceSymbol?: string;
+  priceText?: string;
   [key: string]: unknown;
 }
 

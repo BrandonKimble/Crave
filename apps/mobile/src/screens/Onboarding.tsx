@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { Text, Button } from '../components';
 import {
@@ -30,6 +31,9 @@ import { logger } from '../utils';
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
 type AnswerValue = string | string[] | number | undefined;
+
+const CRAVE_ACCENT = '#f97384';
+const CRAVE_ACCENT_LIGHT = '#fee2e2';
 
 const FREQUENCY_TO_MONTHLY: Record<string, number> = {
   rarely: 6,
@@ -78,9 +82,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
   const currentStep = onboardingSteps[stepIndex];
   const totalSteps = onboardingSteps.length;
+  const isAttributionStep = currentStep.id === 'attribution';
+  const showHeaderQuestion = isAttributionStep;
   const regretBaselineAnim = React.useRef(new Animated.Value(0)).current;
   const regretCraveAnim = React.useRef(new Animated.Value(0)).current;
   const [graphTrackWidth, setGraphTrackWidth] = React.useState(0);
+  const calendarAnimation = React.useRef<Animated.CompositeAnimation | null>(null);
+  const calendarDayAnims = React.useRef<Animated.Value[]>([]).current;
+  const calendarColorAnims = React.useRef<Animated.Value[]>([]).current;
+  if (calendarDayAnims.length === 0) {
+    for (let i = 0; i < 60; i += 1) {
+      calendarDayAnims.push(new Animated.Value(0));
+      calendarColorAnims.push(new Animated.Value(0));
+    }
+  }
 
   const goToTabs = React.useCallback(() => {
     completeOnboarding();
@@ -122,6 +137,64 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     const { width } = event.nativeEvent.layout;
     setGraphTrackWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
   }, []);
+
+  const startCalendarAnimation = React.useCallback(() => {
+    if (calendarDayAnims.length === 0) {
+      for (let i = 0; i < 60; i++) {
+        calendarDayAnims.push(new Animated.Value(0));
+        calendarColorAnims.push(new Animated.Value(0));
+      }
+    }
+    calendarAnimation.current?.stop();
+    calendarAnimation.current = null;
+    calendarDayAnims.forEach((anim) => anim.setValue(0));
+    calendarColorAnims.forEach((anim) => anim.setValue(0));
+
+    const firstDayAnims = calendarDayAnims.slice(0, 30);
+    const secondDayAnims = calendarDayAnims.slice(30);
+    const firstColorAnims = calendarColorAnims.slice(0, 30);
+    const secondColorAnims = calendarColorAnims.slice(30);
+    const createAppear = (animations: Animated.Value[]) =>
+      Animated.stagger(
+        10,
+        animations.map((anim) =>
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 110,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: false,
+          })
+        )
+      );
+    const createColor = (animations: Animated.Value[]) =>
+      Animated.stagger(
+        25,
+        animations.map((anim) =>
+          Animated.timing(anim, {
+            toValue: 1,
+            duration: 240,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: false,
+          })
+        )
+      );
+
+    const animationSequence = Animated.sequence([
+      createAppear(firstDayAnims),
+      Animated.delay(40),
+      createColor(firstColorAnims),
+      Animated.delay(140),
+      createAppear(secondDayAnims),
+      Animated.delay(40),
+      createColor(secondColorAnims),
+    ]);
+    calendarAnimation.current = animationSequence;
+    requestAnimationFrame(() => {
+      calendarAnimation.current?.start(() => {
+        calendarAnimation.current = null;
+      });
+    });
+  }, [calendarColorAnims, calendarDayAnims]);
 
   const currencyFormatter = React.useMemo(
     () =>
@@ -260,6 +333,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         }),
       ]).start();
     }
+
   }, [
     currentStep,
     graphTrackWidth,
@@ -268,6 +342,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     regretGraphData.baselineWaste,
     regretGraphData.craveWaste,
   ]);
+
+  React.useEffect(() => {
+    if (currentStep.id === 'calendar-graph') {
+      startCalendarAnimation();
+    }
+    return () => {
+      calendarAnimation.current?.stop();
+      calendarAnimation.current = null;
+    };
+  }, [currentStep.id, startCalendarAnimation]);
 
   const isStepComplete = React.useMemo(() => {
     switch (currentStep.type) {
@@ -357,19 +441,32 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     </View>
   );
 
-  const renderSingleChoice = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => {
+  const renderSingleChoiceIntroContent = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => (
+    <View style={styles.choiceIntro}>
+      <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
+        {step.question}
+      </Text>
+      {step.helper ? (
+        <Text variant="body" style={styles.helperText}>
+          {step.helper}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const renderSingleChoiceOptionsContent = (
+    step: Extract<OnboardingStep, { type: 'single-choice' }>,
+    centerContent: boolean
+  ) => {
     const selected = answers[step.id];
 
     return (
-      <View>
-        <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
-          {step.question}
-        </Text>
-        {step.helper ? (
-          <Text variant="body" style={styles.helperText}>
-            {step.helper}
-          </Text>
-        ) : null}
+      <View
+        style={[
+          styles.choiceColumnWrapper,
+          centerContent && styles.choiceColumnWrapperCentered,
+        ]}
+      >
         <View style={styles.choiceColumn}>
           {step.options.map((option) => {
             const isActive = selected === option.id;
@@ -379,7 +476,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 onPress={() => updateAnswer(step.id, option.id)}
                 style={[styles.choiceCard, isActive && styles.choiceCardActive]}
               >
-                <Text variant="body" weight="semibold" style={styles.choiceCardLabel}>
+                <Text
+                  variant="body"
+                  weight="semibold"
+                  style={[styles.choiceCardLabel, isActive && styles.choiceCardLabelActive]}
+                >
                   {option.label}
                 </Text>
                 {option.detail ? (
@@ -391,6 +492,18 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             );
           })}
         </View>
+      </View>
+    );
+  };
+
+  const renderSingleChoice = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => {
+    const hideIntro = step.id === 'attribution' && showHeaderQuestion;
+    const centerContent = shouldCenterChoices;
+
+    return (
+      <View style={[styles.choiceStep, centerContent && styles.choiceStepCentered]}>
+        {!hideIntro ? renderSingleChoiceIntroContent(step) : null}
+        {renderSingleChoiceOptionsContent(step, centerContent)}
       </View>
     );
   };
@@ -996,26 +1109,67 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
           return (
             <View style={styles.graphContainer}>
+              <LinearGradient
+                colors={['rgba(252, 165, 165, 0.18)', 'rgba(252, 165, 165, 0.05)', 'transparent']}
+                locations={[0, 0.4, 1]}
+                start={{ x: 0, y: 0.8 }}
+                end={{ x: 0.5, y: 0.4 }}
+                style={styles.calendarGradientBackground}
+              />
+              <LinearGradient
+                colors={['transparent', 'rgba(126, 232, 154, 0.05)', 'rgba(126, 232, 154, 0.14)']}
+                locations={[0, 0.6, 1]}
+                start={{ x: 0.5, y: 0.4 }}
+                end={{ x: 1, y: 0.8 }}
+                style={styles.calendarGradientBackground}
+              />
+              <LinearGradient
+                colors={['rgba(255, 250, 245, 0.6)', 'rgba(255, 250, 245, 0.2)', 'transparent']}
+                locations={[0, 0.4, 1]}
+                start={{ x: 1, y: 0 }}
+                end={{ x: 0.4, y: 0.6 }}
+                style={styles.calendarGradientBackground}
+              />
+              <Text variant="body" weight="semibold" style={styles.calendarGraphTitle}>
+                Your Month
+              </Text>
               <View style={styles.calendarComparisonRow}>
                 <View style={styles.calendarColumn}>
                   <Text variant="caption" style={styles.calendarColumnLabel}>
                     Without Crave
                   </Text>
                   <View style={styles.calendarGrid}>
-                    {withoutCraveCalendar.map((dayType, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.calendarDay,
-                          dayType === 'none' && styles.calendarDayNone,
-                          dayType === 'good' && styles.calendarDayGood,
-                          dayType === 'bad' && styles.calendarDayBad,
-                        ]}
-                      />
-                    ))}
+                    {withoutCraveCalendar.map((dayType, index) => {
+                      const appearAnim = calendarDayAnims[index] || new Animated.Value(1);
+                      const colorAnim = calendarColorAnims[index] || new Animated.Value(1);
+
+                      // Interpolate background color from gray to final color
+                      const backgroundColor = colorAnim.interpolate({
+                        inputRange: [0, 1],
+                          outputRange: dayType === 'none'
+                            ? ['#d8d8d8', '#d8d8d8']
+                            : dayType === 'good'
+                            ? ['#d8d8d8', '#8ce48b']
+                            : ['#d8d8d8', '#fb6b6b']
+                      });
+
+                      return (
+                        <Animated.View
+                          key={index}
+                          style={[
+                            styles.calendarDay,
+                            {
+                              opacity: appearAnim,
+                              transform: [{ scale: appearAnim }],
+                              backgroundColor,
+                            },
+                          ]}
+                        />
+                      );
+                    })}
                   </View>
                   <Text variant="caption" style={styles.calendarStat}>
-                    1 in 3 meals disappoint
+                    1 in 3 meals miss
                   </Text>
                 </View>
                 <View style={styles.calendarColumn}>
@@ -1023,26 +1177,43 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                     With Crave
                   </Text>
                   <View style={styles.calendarGrid}>
-                    {withCraveCalendar.map((dayType, index) => (
-                      <View
-                        key={index}
-                        style={[
-                          styles.calendarDay,
-                          dayType === 'none' && styles.calendarDayNone,
-                          dayType === 'good' && styles.calendarDayGood,
-                          dayType === 'bad' && styles.calendarDayBad,
-                        ]}
-                      />
-                    ))}
+                    {withCraveCalendar.map((dayType, index) => {
+                      const appearAnim = calendarDayAnims[index + 30] || new Animated.Value(1);
+                      const colorAnim = calendarColorAnims[index + 30] || new Animated.Value(1);
+
+                      // Interpolate background color from gray to final color
+                      const backgroundColor = colorAnim.interpolate({
+                        inputRange: [0, 1],
+                          outputRange: dayType === 'none'
+                            ? ['#d8d8d8', '#d8d8d8']
+                            : dayType === 'good'
+                            ? ['#d8d8d8', '#8ce48b']
+                            : ['#d8d8d8', '#fb6b6b']
+                      });
+
+                      return (
+                        <Animated.View
+                          key={index}
+                          style={[
+                            styles.calendarDay,
+                            {
+                              opacity: appearAnim,
+                              transform: [{ scale: appearAnim }],
+                              backgroundColor,
+                            },
+                          ]}
+                        />
+                      );
+                    })}
                   </View>
                   <Text variant="caption" style={styles.calendarStat}>
-                    11 in 12 meals satisfy
+                    11 in 12 meals hit
                   </Text>
                 </View>
               </View>
               <Text variant="caption" style={styles.graphCallout}>
-                At {frequencyLabel} and {budgetLabel} per meal, you could save ~
-                {formatCurrency(regretGraphData.regretSavings)}/month on meals you'd regret.
+                At {frequencyLabel} and {budgetLabel} per meal, you'll redirect ~
+                {formatCurrency(regretGraphData.regretSavings)}/month toward meals actually worth your time and money.
               </Text>
             </View>
           );
@@ -1236,7 +1407,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         <View style={styles.graphContentGroup}>
           <View style={styles.graphBundle}>
             {renderGraphVisualization()}
-            <Text variant="body" style={styles.graphBody}>
+            <Text
+              variant="body"
+              style={[
+                styles.graphBody,
+                step.graphType === 'calendar-comparison' && styles.graphBodyCentered,
+              ]}
+            >
               {step.body}
             </Text>
           </View>
@@ -1332,6 +1509,21 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const canContinue =
     isStepComplete && (currentStep.type === 'processing' ? processingReady : true);
   const canGoBack = stepIndex > 0;
+  const shouldCenterChoices = currentStep.type === 'single-choice';
+  const shouldScroll = isAttributionStep || currentStep.type === 'graph';
+  const showHeader = currentStep.type !== 'hero';
+  const contentPaddingTop = showHeader ? (showHeaderQuestion ? 12 : 4) : 24;
+  const contentContainerStyle = React.useMemo(
+    () => [styles.contentContainer, { paddingTop: contentPaddingTop }],
+    [contentPaddingTop]
+  );
+  const contentArea = shouldScroll ? (
+    <ScrollView contentContainerStyle={contentContainerStyle} keyboardShouldPersistTaps="handled">
+      {renderStep()}
+    </ScrollView>
+  ) : (
+    <View style={contentContainerStyle}>{renderStep()}</View>
+  );
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -1339,42 +1531,53 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.header}>
-          <Pressable
-            style={[styles.backButton, !canGoBack && styles.backButtonDisabled]}
-            onPress={handleBack}
-            disabled={!canGoBack}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Text variant="body" weight="bold" style={styles.backButtonIcon}>
-              ‹
-            </Text>
-          </Pressable>
-          <View style={styles.progressArea}>
-            <View style={styles.progressTrack}>
-              <View
-                style={[styles.progressFill, { width: `${((stepIndex + 1) / totalSteps) * 100}%` }]}
-              />
-            </View>
-            <View style={styles.headerBrand}>
-              <Text variant="body" weight="bold" style={styles.headerTitle}>
-                crave
-              </Text>
-              <View style={styles.betaChip}>
-                <Text variant="caption" weight="semibold" style={styles.betaChipText}>
-                  BETA
+        {showHeader ? (
+          <View style={styles.header}>
+            <View style={styles.headerTopRow}>
+              <Pressable
+                style={[styles.backButton, !canGoBack && styles.backButtonDisabled]}
+                onPress={handleBack}
+                disabled={!canGoBack}
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+              >
+                <Text variant="body" weight="bold" style={styles.backButtonIcon}>
+                  ←
                 </Text>
+              </Pressable>
+              <View style={styles.progressArea}>
+                <View style={styles.headerBrand}>
+                  <Text variant="body" weight="bold" style={styles.headerTitle}>
+                    crave
+                  </Text>
+                  <View style={styles.betaChip}>
+                    <Text variant="caption" weight="semibold" style={styles.betaChipText}>
+                      BETA
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[styles.progressFill, { width: `${((stepIndex + 1) / totalSteps) * 100}%` }]}
+                  />
+                </View>
               </View>
             </View>
+            {showHeaderQuestion ? (
+              <View style={styles.headerQuestionBlock}>
+                <Text variant="subtitle" weight="bold" style={styles.headerQuestionTitle}>
+                  {currentStep.question}
+                </Text>
+                {currentStep.helper ? (
+                  <Text variant="body" style={styles.headerQuestionSubtitle}>
+                    {currentStep.helper}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
           </View>
-        </View>
-        <ScrollView
-          contentContainerStyle={styles.contentContainer}
-          keyboardShouldPersistTaps="handled"
-        >
-          {renderStep()}
-        </ScrollView>
+        ) : null}
+        {contentArea}
         <View style={styles.footer}>
           <Button
             label={continueLabel}
@@ -1399,15 +1602,29 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 24,
     paddingVertical: 12,
+    gap: 12,
+  },
+  headerTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
+  headerQuestionBlock: {
+    gap: 4,
+  },
+  headerQuestionTitle: {
+    color: '#0f172a',
+    fontSize: 26,
+    lineHeight: 34,
+  },
+  headerQuestionSubtitle: {
+    color: '#64748b',
+  },
   backButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#fee2e2',
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: CRAVE_ACCENT_LIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1415,13 +1632,13 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   backButtonIcon: {
-    color: '#be123c',
-    fontSize: 22,
-    lineHeight: 34,
+    color: CRAVE_ACCENT,
+    fontSize: 20,
+    lineHeight: 30,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontWeight: '400',
-    transform: [{ translateY: -1 }],
+    transform: [{ translateY: 0 }],
   },
   headerBrand: {
     flexDirection: 'row',
@@ -1439,12 +1656,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: '#fee2e2',
+    backgroundColor: CRAVE_ACCENT_LIGHT,
     borderWidth: 1,
-    borderColor: '#fca5a5',
+    borderColor: CRAVE_ACCENT,
   },
   betaChipText: {
-    color: '#be123c',
+    color: CRAVE_ACCENT,
     fontSize: 10,
   },
   progressArea: {
@@ -1457,17 +1674,18 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 4,
     borderRadius: 999,
-    backgroundColor: '#fee2e2',
+    backgroundColor: CRAVE_ACCENT_LIGHT,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#f97384',
+    backgroundColor: CRAVE_ACCENT,
   },
   contentContainer: {
+    flex: 1,
     flexGrow: 1,
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 32,
     gap: 16,
   },
@@ -1501,8 +1719,8 @@ const styles = StyleSheet.create({
   heroTitle: {
     textAlign: 'left',
     color: '#0f172a',
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 26,
+    lineHeight: 34,
   },
   heroDescription: {
     textAlign: 'left',
@@ -1511,15 +1729,38 @@ const styles = StyleSheet.create({
   questionTitle: {
     color: '#0f172a',
     marginBottom: 8,
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 26,
+    lineHeight: 34,
   },
   helperText: {
     color: '#64748b',
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  choiceStep: {
+    flex: 1,
+    minHeight: 0,
+  },
+  choiceStepCentered: {
+    minHeight: 0,
+    paddingBottom: 24,
+  },
+  choiceIntro: {
+    gap: 4,
+  },
+  choiceColumnWrapper: {
+    width: '100%',
+    marginTop: 12,
+  },
+  choiceColumnWrapperCentered: {
+    flexGrow: 1,
+    width: '100%',
+    justifyContent: 'center',
+    paddingVertical: 16,
   },
   choiceColumn: {
     gap: 12,
+    alignSelf: 'stretch',
+    alignItems: 'stretch',
   },
   choiceCard: {
     borderRadius: 16,
@@ -1527,13 +1768,18 @@ const styles = StyleSheet.create({
     borderColor: '#e2e8f0',
     padding: 16,
     backgroundColor: '#ffffff',
+    width: '100%',
+    maxWidth: 360,
   },
   choiceCardActive: {
-    borderColor: '#a78bfa',
-    backgroundColor: '#f5f3ff',
+    borderColor: '#fb7185',
+    backgroundColor: '#fff1f2',
   },
   choiceCardLabel: {
     color: '#111827',
+  },
+  choiceCardLabelActive: {
+    color: '#be123c',
   },
   choiceCardDetail: {
     color: '#475569',
@@ -1846,21 +2092,22 @@ const styles = StyleSheet.create({
   },
   graphContentGroup: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    paddingTop: 95,
   },
   graphBundle: {
     width: '100%',
-    gap: 16,
+    gap: 20,
   },
   graphContainer: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#fafbfc',
     borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    paddingVertical: 24,
+    paddingHorizontal: 20,
     gap: 16,
+    overflow: 'hidden',
   },
   graphLabel: {
     color: '#64748b',
@@ -1895,7 +2142,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   graphBarFillBaseline: {
-    backgroundColor: '#fca5a5',
+    backgroundColor: CRAVE_ACCENT,
   },
   graphBarFillCrave: {
     backgroundColor: '#34d399',
@@ -1922,17 +2169,35 @@ const styles = StyleSheet.create({
   graphTitle: {
     color: '#0f172a',
     textAlign: 'left',
-    fontSize: 24,
-    lineHeight: 32,
+    fontSize: 26,
+    lineHeight: 34,
     paddingHorizontal: 4,
     marginBottom: 0,
   },
   graphBody: {
-    color: '#475569',
+    color: '#0f172a',
     textAlign: 'left',
     lineHeight: 22,
   },
+  graphBodyCentered: {
+    textAlign: 'center',
+  },
   // Calendar graph styles
+  calendarGradientBackground: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 16,
+    opacity: 0.6,
+  },
+  calendarGraphTitle: {
+    color: '#0f172a',
+    textAlign: 'left',
+    marginBottom: 16,
+    fontSize: 15,
+  },
   calendarComparisonRow: {
     flexDirection: 'row',
     gap: 16,
@@ -1960,13 +2225,13 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   calendarDayNone: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#d8d8d8',
   },
   calendarDayGood: {
-    backgroundColor: '#86efac',
+    backgroundColor: '#8ce48b',
   },
   calendarDayBad: {
-    backgroundColor: '#fca5a5',
+    backgroundColor: '#fb6b6b',
   },
   calendarStat: {
     color: '#0f172a',
@@ -2026,11 +2291,13 @@ const styles = StyleSheet.create({
   },
   footer: {
     paddingHorizontal: 24,
-    paddingBottom: 24,
+    paddingTop: 12,
+    paddingBottom: 12,
     alignItems: 'stretch',
   },
   ctaButton: {
     width: '100%',
+    height: 50,
   },
 });
 
