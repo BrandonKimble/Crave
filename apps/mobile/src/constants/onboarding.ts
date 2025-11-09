@@ -134,7 +134,7 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'hero',
     type: 'hero',
     title: 'Know what to order, not just where to go',
-    description: 'We rank dishes, not just restaurants—so you know what\'s worth ordering.',
+    description: "We rank dishes, not just restaurants—so you know what's worth ordering.",
     image: placeholderImage,
     showAppScreenshot: true,
     ctaLabel: 'Show me how',
@@ -189,7 +189,7 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'graph',
     graphType: 'calendar-comparison',
     title: 'Never waste money on disappointing meals',
-    ctaLabel: 'Let\'s do it',
+    ctaLabel: "Let's do it",
   },
 
   // PHASE 3: NOTIFICATION PERSONALIZATION (4 screens)

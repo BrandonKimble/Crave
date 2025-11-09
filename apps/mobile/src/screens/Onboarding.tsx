@@ -333,7 +333,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         }),
       ]).start();
     }
-
   }, [
     currentStep,
     graphTrackWidth,
@@ -441,7 +440,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     </View>
   );
 
-  const renderSingleChoiceIntroContent = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => (
+  const renderSingleChoiceIntroContent = (
+    step: Extract<OnboardingStep, { type: 'single-choice' }>
+  ) => (
     <View style={styles.choiceIntro}>
       <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
         {step.question}
@@ -462,10 +463,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
     return (
       <View
-        style={[
-          styles.choiceColumnWrapper,
-          centerContent && styles.choiceColumnWrapperCentered,
-        ]}
+        style={[styles.choiceColumnWrapper, centerContent && styles.choiceColumnWrapperCentered]}
       >
         <View style={styles.choiceColumn}>
           {step.options.map((option) => {
@@ -1146,11 +1144,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                       // Interpolate background color from gray to final color
                       const backgroundColor = colorAnim.interpolate({
                         inputRange: [0, 1],
-                          outputRange: dayType === 'none'
+                        outputRange:
+                          dayType === 'none'
                             ? ['#d8d8d8', '#d8d8d8']
                             : dayType === 'good'
                             ? ['#d8d8d8', '#8ce48b']
-                            : ['#d8d8d8', '#fb6b6b']
+                            : ['#d8d8d8', '#fb6b6b'],
                       });
 
                       return (
@@ -1184,11 +1183,12 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                       // Interpolate background color from gray to final color
                       const backgroundColor = colorAnim.interpolate({
                         inputRange: [0, 1],
-                          outputRange: dayType === 'none'
+                        outputRange:
+                          dayType === 'none'
                             ? ['#d8d8d8', '#d8d8d8']
                             : dayType === 'good'
                             ? ['#d8d8d8', '#8ce48b']
-                            : ['#d8d8d8', '#fb6b6b']
+                            : ['#d8d8d8', '#fb6b6b'],
                       });
 
                       return (
@@ -1213,7 +1213,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
               </View>
               <Text variant="caption" style={styles.graphCallout}>
                 At {frequencyLabel} and {budgetLabel} per meal, you'll redirect ~
-                {formatCurrency(regretGraphData.regretSavings)}/month toward meals actually worth your time and money.
+                {formatCurrency(regretGraphData.regretSavings)}/month toward meals actually worth
+                your time and money.
               </Text>
             </View>
           );
@@ -1558,7 +1559,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 </View>
                 <View style={styles.progressTrack}>
                   <View
-                    style={[styles.progressFill, { width: `${((stepIndex + 1) / totalSteps) * 100}%` }]}
+                    style={[
+                      styles.progressFill,
+                      { width: `${((stepIndex + 1) / totalSteps) * 100}%` },
+                    ]}
                   />
                 </View>
               </View>

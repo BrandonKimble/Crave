@@ -331,7 +331,13 @@ export class SearchService {
     if (request.bounds) {
       filters.push({
         scope: 'restaurant',
-        description: `Restrict to map bounds (${request.bounds.southWest.lat.toFixed(4)}, ${request.bounds.southWest.lng.toFixed(4)}) ↔ (${request.bounds.northEast.lat.toFixed(4)}, ${request.bounds.northEast.lng.toFixed(4)})`,
+        description: `Restrict to map bounds (${request.bounds.southWest.lat.toFixed(
+          4,
+        )}, ${request.bounds.southWest.lng.toFixed(
+          4,
+        )}) ↔ (${request.bounds.northEast.lat.toFixed(
+          4,
+        )}, ${request.bounds.northEast.lng.toFixed(4)})`,
         entityType: EntityScope.RESTAURANT,
         entityIds: [],
         payload: { bounds: request.bounds },
@@ -634,7 +640,9 @@ export class SearchService {
         if (!sanitizedTerm.length) {
           continue;
         }
-        const dedupeKey = `${entityType}:${(entityId ?? sanitizedTerm).toLowerCase()}`;
+        const dedupeKey = `${entityType}:${(
+          entityId ?? sanitizedTerm
+        ).toLowerCase()}`;
         if (seen.has(dedupeKey)) {
           continue;
         }

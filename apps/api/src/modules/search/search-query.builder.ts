@@ -323,7 +323,9 @@ LIMIT ${pagination.take};`.trim();
     if (!values.length) {
       return Prisma.sql`FALSE`;
     }
-    return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildUuidArray(values)})`;
+    return Prisma.sql`${Prisma.raw(column)} = ANY(${this.buildUuidArray(
+      values,
+    )})`;
   }
 
   private buildNumberInClause(column: string, values: number[]): Prisma.Sql {

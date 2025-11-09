@@ -1246,8 +1246,7 @@ const SearchScreen: React.FC = () => {
                       }}
                       style={[
                         styles.clearPriceButton,
-                        (isLoading || priceLevels.length === 0) &&
-                          styles.clearPriceButtonDisabled,
+                        (isLoading || priceLevels.length === 0) && styles.clearPriceButtonDisabled,
                       ]}
                     >
                       <Text
@@ -1281,10 +1280,7 @@ const SearchScreen: React.FC = () => {
                           <Text
                             variant="caption"
                             weight="semibold"
-                            style={[
-                              styles.priceChipText,
-                              selected && styles.priceChipTextSelected,
-                            ]}
+                            style={[styles.priceChipText, selected && styles.priceChipTextSelected]}
                           >
                             {option.label}
                           </Text>
