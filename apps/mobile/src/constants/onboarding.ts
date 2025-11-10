@@ -185,7 +185,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'budget',
     type: 'single-choice',
-    question: 'What\'s your usual spend per person?',
+    question: "What's your usual spend per person?",
     helper: 'Helps us personalize your recommendations',
     options: [
       { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
@@ -202,7 +202,7 @@ export const onboardingSteps: OnboardingStep[] = [
     type: 'graph',
     graphType: 'calendar-comparison',
     title: 'Never waste money on disappointing meals',
-    ctaLabel: 'Let\'s do it',
+    ctaLabel: "Let's do it",
   },
 
   // PHASE 3: PERSONALIZATION (4 screens)
@@ -267,9 +267,9 @@ export const onboardingSteps: OnboardingStep[] = [
     helper: 'Pick all that apply',
     options: [
       { id: 'no-time', label: '⏰ Limited time to research' },
-      { id: 'dont-know-menus', label: '📋 Don\'t know what restaurants offer' },
-      { id: 'cant-afford-misses', label: '💸 Can\'t afford to gamble on mediocre spots' },
-      { id: 'review-fatigue', label: '🤷 Can\'t trust online reviews anymore' },
+      { id: 'dont-know-menus', label: "📋 Don't know what restaurants offer" },
+      { id: 'cant-afford-misses', label: "💸 Can't afford to gamble on mediocre spots" },
+      { id: 'review-fatigue', label: "🤷 Can't trust online reviews anymore" },
       { id: 'new-neighborhoods', label: '📍 New to the area' },
       { id: 'menu-paralysis', label: '😤 Too many options, hard to choose' },
     ],
@@ -364,8 +364,10 @@ export const onboardingSteps: OnboardingStep[] = [
     id: 'account-live',
     type: 'account',
     title: 'Save your progress',
-    description: 'Create an account so your bookmarks, preferences, and saved searches sync everywhere.',
-    disclaimer: "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
+    description:
+      'Create an account so your bookmarks, preferences, and saved searches sync everywhere.',
+    disclaimer:
+      "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Create account',
   },
   {
@@ -374,7 +376,8 @@ export const onboardingSteps: OnboardingStep[] = [
     title: 'Save your waitlist spot',
     description:
       'Create an account to keep your preferences saved, get notified when your city launches, and use your 5 preview searches.',
-    disclaimer: "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
+    disclaimer:
+      "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Join waitlist',
   },
 ];

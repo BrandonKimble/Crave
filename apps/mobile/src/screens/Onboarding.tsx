@@ -99,15 +99,13 @@ const BUDGET_RANGES: Record<
 type CarouselStepType = Extract<OnboardingStep, { type: 'carousel' }>;
 
 const isLocationStep = (
-  step: OnboardingStep,
+  step: OnboardingStep
 ): step is Extract<OnboardingStep, { id: 'location'; type: 'location' }> =>
   step.id === 'location' && step.type === 'location';
 
-const locationStepDefinition =
-  onboardingSteps.find(isLocationStep) as Extract<
-    OnboardingStep,
-    { type: 'location' }
-  > | undefined;
+const locationStepDefinition = onboardingSteps.find(isLocationStep) as
+  | Extract<OnboardingStep, { type: 'location' }>
+  | undefined;
 
 const locationAllowedCityValues =
   locationStepDefinition?.allowedCities.map((city) => city.value) ?? [];
@@ -182,7 +180,10 @@ const CarouselStepView: React.FC<{ step: CarouselStepType }> = ({ step }) => {
         <Pressable
           onPress={() => setCurrentSlide((prev) => Math.min(prev + 1, totalSlides - 1))}
           disabled={currentSlide === totalSlides - 1}
-          style={[styles.carouselArrow, currentSlide === totalSlides - 1 && styles.carouselArrowDisabled]}
+          style={[
+            styles.carouselArrow,
+            currentSlide === totalSlides - 1 && styles.carouselArrowDisabled,
+          ]}
         >
           <Text style={styles.carouselArrowText}>→</Text>
         </Pressable>
@@ -236,7 +237,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const isStepVisible = React.useCallback(
     (step: OnboardingStep) => {
-      if (step.id === 'waitlist-info' || step.id === 'waitlist-preview' || step.id === 'account-waitlist') {
+      if (
+        step.id === 'waitlist-info' ||
+        step.id === 'waitlist-preview' ||
+        step.id === 'account-waitlist'
+      ) {
         return isWaitlistSelection;
       }
       if (step.id === 'account-live') {
@@ -638,11 +643,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const renderSummary = (step: Extract<OnboardingStep, { type: 'summary' }>) => {
     const isWaitlistSummary = step.id === 'waitlist-info';
     const waitlistDisplay = waitlistCityLabel || 'your city';
-    const summaryTitle = isWaitlistSummary
-      ? `We're building ${waitlistDisplay} next`
-      : step.title;
+    const summaryTitle = isWaitlistSummary ? `We're building ${waitlistDisplay} next` : step.title;
     const summaryDescription = isWaitlistSummary
-      ? `Crave is live in Austin and NYC today. ${waitlistDisplay.charAt(0).toUpperCase()}${waitlistDisplay.slice(1)} is coming soon. Join the waitlist and get 5 preview searches while we build it.`
+      ? `Crave is live in Austin and NYC today. ${waitlistDisplay
+          .charAt(0)
+          .toUpperCase()}${waitlistDisplay.slice(
+          1
+        )} is coming soon. Join the waitlist and get 5 preview searches while we build it.`
       : step.description;
 
     return (
@@ -664,7 +671,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       </View>
     );
   };
-
 
   const renderChoicePanelHeader = (question: string, helper?: string) => (
     <View style={styles.choicePanelHeader}>
@@ -1703,7 +1709,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const stepHasHeader = (step: OnboardingStep) => step.type !== 'hero';
   const stepShouldScroll = (step: OnboardingStep) =>
-    step.id === 'attribution' || step.type === 'graph' || step.type === 'carousel' || step.type === 'location';
+    step.id === 'attribution' ||
+    step.type === 'graph' ||
+    step.type === 'carousel' ||
+    step.type === 'location';
 
   const renderStepBody = (step: OnboardingStep) => {
     switch (step.type) {
@@ -1814,8 +1823,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     transitionToStep(previousIndex);
   }, [findPreviousVisibleIndex, stepIndex, transitionToStep]);
 
-  const canContinue =
-    isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
+  const canContinue = isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
   const canGoBack = findPreviousVisibleIndex(stepIndex) !== stepIndex;
   const showHeader = stepHasHeader(activeStep);
   const stepAnimatedStyle = isTransitioning
