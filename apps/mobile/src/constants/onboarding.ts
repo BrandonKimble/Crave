@@ -102,8 +102,20 @@ interface GraphStep extends BaseStep {
   type: 'graph';
   graphType: 'time-saved' | 'regret-rate' | 'discovery-curve' | 'calendar-comparison';
   title: string;
-  body: string;
+  body?: string;
   subtitle?: string; // For calendar graph explanation
+}
+
+// Use cases carousel step
+interface CarouselStep extends BaseStep {
+  type: 'carousel';
+  title: string;
+  subtitle?: string;
+  slides: Array<{
+    scenario: string;
+    visual: string;
+    copy: string;
+  }>;
 }
 
 // New notification permission step
@@ -126,6 +138,7 @@ export type OnboardingStep =
   | ProcessingStep
   | AccountStep
   | GraphStep
+  | CarouselStep
   | NotificationStep;
 
 export const onboardingSteps: OnboardingStep[] = [
@@ -172,7 +185,7 @@ export const onboardingSteps: OnboardingStep[] = [
   {
     id: 'budget',
     type: 'single-choice',
-    question: "What's your usual spend per person?",
+    question: 'What\'s your usual spend per person?',
     helper: 'Helps us personalize your recommendations',
     options: [
       { id: 'under-20', label: '$', detail: 'Under $20 • Quick bites & value' },
@@ -183,16 +196,16 @@ export const onboardingSteps: OnboardingStep[] = [
     required: true,
   },
 
-  // PHASE 2: VALUE PROP GRAPH + EXPLANATION (1 combined screen)
+  // PHASE 2: FINANCIAL PROOF (1 screen)
   {
     id: 'calendar-graph',
     type: 'graph',
     graphType: 'calendar-comparison',
     title: 'Never waste money on disappointing meals',
-    ctaLabel: "Let's do it",
+    ctaLabel: 'Let\'s do it',
   },
 
-  // PHASE 3: NOTIFICATION PERSONALIZATION (4 screens)
+  // PHASE 3: PERSONALIZATION (4 screens)
   {
     id: 'occasion-vibe',
     type: 'multi-choice',
@@ -231,7 +244,6 @@ export const onboardingSteps: OnboardingStep[] = [
     minSelect: 3,
     ctaLabel: 'Looks delicious',
   },
-
   {
     id: 'dining-goals',
     type: 'multi-choice',
@@ -248,155 +260,55 @@ export const onboardingSteps: OnboardingStep[] = [
     required: true,
     minSelect: 2,
   },
-
-  // PHASE 4: PERSONALIZED EFFORT GRAPH (1 screen)
-  {
-    id: 'effort-savings',
-    type: 'graph',
-    graphType: 'time-saved',
-    title: 'Finding great food, simplified',
-    body: 'With Crave, you get 4x less time and effort to find amazing meals. That means more time enjoying food, less time researching it.',
-    ctaLabel: 'Save my time',
-  },
-
-  // PHASE 5: OBJECTION HANDLING (1 screen)
   {
     id: 'barriers',
     type: 'multi-choice',
-    question: 'What stops you from finding great food consistently?',
-    helper: "We've solved these exact problems. Pick all that apply.",
+    question: 'What makes finding great food hard for you?',
+    helper: 'Pick all that apply',
     options: [
-      { id: 'no-time', label: '⏰ No time to research every meal' },
-      { id: 'cant-afford', label: "💸 Can't afford to gamble on mediocre spots" },
-      { id: 'no-trust', label: "🤷 Can't trust online reviews anymore" },
-      { id: 'new-neighborhoods', label: '📍 Hard to find quality in new neighborhoods' },
-      { id: 'friends-taste', label: "👥 Friends' taste is hit-or-miss for me" },
-      { id: 'paralysis', label: '😤 Menu paralysis - too many options' },
+      { id: 'no-time', label: '⏰ Limited time to research' },
+      { id: 'dont-know-menus', label: '📋 Don\'t know what restaurants offer' },
+      { id: 'cant-afford-misses', label: '💸 Can\'t afford to gamble on mediocre spots' },
+      { id: 'review-fatigue', label: '🤷 Can\'t trust online reviews anymore' },
+      { id: 'new-neighborhoods', label: '📍 New to the area' },
+      { id: 'menu-paralysis', label: '😤 Too many options, hard to choose' },
     ],
-    required: false,
-  },
-
-  // PHASE 4: SOCIAL PROOF & COMMITMENT (2 screens)
-  {
-    id: 'comparison',
-    type: 'comparison',
-    title: 'The Crave difference',
-    helper: 'Why dishes beat restaurants.',
-    left: {
-      title: 'Google / Yelp',
-      rows: [
-        '⭐ Restaurant-level ratings',
-        '📝 Long reviews you skip',
-        '🤷 Great chef, bad service = low rating',
-        "Can't tell what to order",
-        '😤 Wasted meals on wrong dishes',
-      ],
-    },
-    right: {
-      title: 'Crave',
-      rows: [
-        '🍽️ Dish-level rankings',
-        '👍 Quick votes = more signal',
-        '✅ Food quality rises above noise',
-        "Know what's good in 10 seconds",
-        '🎯 Every order is the right order',
-      ],
-    },
-    body: 'Crave ranks restaurants by their food, not their parking lot.',
-    ctaLabel: 'Makes sense',
-  },
-  {
-    id: 'rating',
-    type: 'rating',
-    question: 'Excited to try Crave? Drop us a rating!',
-    helper: 'Early ratings help us grow and serve more cities. Totally optional.',
-    maxRating: 5,
     required: false,
     ctaLabel: 'Continue',
   },
+  // PHASE 4: DEMONSTRATION & COMMITMENT (3 shared screens)
   {
-    id: 'location',
-    type: 'location',
-    question: 'Which city should we scout for you?',
-    helper:
-      'Austin + NYC have full coverage today. If you’re elsewhere, request your city—we’ll tailor notifications/polls around your taste and give you a handful of free searches in our live markets so you can see Crave in action.',
-    allowedCities: [
-      { id: 'austin', label: '🤠 Austin', value: 'Austin' },
-      { id: 'new-york', label: '🗽 New York', value: 'New York' },
+    id: 'use-cases',
+    type: 'carousel',
+    title: 'Crave works for every food decision',
+    slides: [
+      {
+        scenario: 'Planning where to eat',
+        visual: 'map-icon',
+        copy: 'Type “ramen” or “birthday dinner” and see ranked dishes with real vote counts.',
+      },
+      {
+        scenario: 'Stuck in line at a new spot',
+        visual: 'menu-icon',
+        copy: 'Open the menu view and get instant guidance on the top-performing dishes.',
+      },
+      {
+        scenario: 'Exploring a new neighborhood',
+        visual: 'explore-icon',
+        copy: "Drag the map anywhere—results follow the area you're looking at in real time.",
+      },
     ],
-    placeholder: 'Enter your city',
-    required: true,
-    ctaLabel: 'Continue',
-  },
-
-  // PHASE 5: PROCESSING - "BUILDING YOUR FEED" (3 screens)
-  {
-    id: 'pre-loading',
-    type: 'processing',
-    title: "Let's cut through the noise",
-    subtitle:
-      "Austin has 2,000+ restaurants. We're about to filter 12,000+ dishes down to the ones you'd actually want to know about.",
-    progress: 0,
-    checklist: [],
-    durationMs: 0,
-    isAnimated: false,
-    ctaLabel: "Show me what's relevant",
-  },
-  {
-    id: 'processing-feed',
-    type: 'processing',
-    title: 'Filtering the noise...',
-    subtitle: 'Prioritizing spots with 50+ votes for accuracy',
-    progress: 0.68,
-    checklist: [
-      { label: 'Scanned 2,147 restaurants in Austin', status: 'complete' },
-      { label: 'Found 487 dishes in your cuisines', status: 'complete' },
-      { label: 'Filtered to your price range', status: 'complete' },
-      { label: 'Ranking by community vote strength', status: 'pending' },
-      { label: 'Mapping your 3 neighborhoods', status: 'pending' },
-    ],
-    durationMs: 4000,
-    isAnimated: true,
-    ctaLabel: 'Processing...',
-  },
-  {
-    id: 'feed-ready',
-    type: 'processing',
-    title: 'Your feed is live',
-    subtitle:
-      "You're now seeing the top 10% of Austin dishes—the stuff people who eat like you actually love.",
-    progress: 1,
-    checklist: [
-      { label: '2,147 restaurants scanned', status: 'complete' },
-      { label: '487 dishes matched your taste', status: 'complete' },
-      { label: 'Focused on your price range', status: 'complete' },
-      { label: '3 neighborhoods mapped', status: 'complete' },
-      { label: '50+ community votes minimum', status: 'complete' },
-    ],
-    showSummary: true,
-    durationMs: 0,
-    isAnimated: false,
-    ctaLabel: "Show me what's hot",
-  },
-
-  // PHASE 6: DISCOVERY PROJECTION & ACCOUNT (3 screens)
-  {
-    id: 'discovery-curve',
-    type: 'graph',
-    graphType: 'discovery-curve',
-    title: 'Find your favorites 10x faster',
-    body: 'Most people take 4-6 months to find 10 solid spots in a new city. Crave users find their first 10 in 2 weeks—because we surface what people like you already love.',
-    ctaLabel: 'Fast-track my discovery',
+    ctaLabel: "Let's go",
   },
   {
     id: 'notifications',
     type: 'notification',
-    title: 'Get notified when something hits your feed',
-    body: "Now that we know your taste, we'll only notify you about stuff you'd actually care about.",
+    title: "Get notified about dishes you'd care about",
+    body: "We'll keep you updated on what's worth trying.",
     features: [
-      'Tuesday polls: Vote on "Best tacos" or "Date night pasta"',
-      'New discoveries: Spots matching your taste just got added',
-      'Score updates: A saved spot just jumped in rankings',
+      'Tuesday polls: Vote on "Best tacos" in 30 seconds',
+      'New spots: Dishes matching your taste just got added',
+      'Your saves: A bookmarked spot just jumped in rankings',
     ],
     options: [
       { id: '2-3-week', label: '2-3 times per week', recommended: true },
@@ -407,14 +319,63 @@ export const onboardingSteps: OnboardingStep[] = [
     ctaLabel: 'Enable notifications',
   },
   {
-    id: 'account',
-    type: 'account',
-    title: 'Save your taste profile',
+    id: 'rating',
+    type: 'rating',
+    question: 'Excited to try Crave? Drop us a rating!',
+    helper: 'Early ratings help us grow and serve more cities. Totally optional.',
+    maxRating: 5,
+    required: false,
+    ctaLabel: 'Continue',
+  },
+
+  // PHASE 5: LOCATION & BRANCHING
+  {
+    id: 'location',
+    type: 'location',
+    question: 'Where are you eating?',
+    helper: "Pick a live city or request yours—we'll tailor everything around it.",
+    allowedCities: [
+      { id: 'austin', label: '🤠 Austin', value: 'Austin' },
+      { id: 'new-york', label: '🗽 New York', value: 'New York' },
+    ],
+    placeholder: 'Enter your city',
+    required: true,
+    ctaLabel: 'Continue',
+  },
+  {
+    id: 'waitlist-info',
+    type: 'summary',
+    title: "We're building your city next",
     description:
-      'Create an account so your taste cues, curated notifications, and saved spots sync everywhere. Search and bookmarking stay totally in your control.',
-    disclaimer:
-      "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
+      'Crave is live in Austin and NYC today. Join the waitlist and get 5 free preview searches while we build your city.',
+  },
+  {
+    id: 'waitlist-preview',
+    type: 'single-choice',
+    question: 'Where do you want to preview?',
+    helper: 'Pick a live city to explore while we finish yours.',
+    options: [
+      { id: 'preview-austin', label: '🤠 Austin', detail: '5 free searches' },
+      { id: 'preview-new-york', label: '🗽 New York', detail: '5 free searches' },
+    ],
+    required: true,
+  },
+  {
+    id: 'account-live',
+    type: 'account',
+    title: 'Save your progress',
+    description: 'Create an account so your bookmarks, preferences, and saved searches sync everywhere.',
+    disclaimer: "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Create account',
+  },
+  {
+    id: 'account-waitlist',
+    type: 'account',
+    title: 'Save your waitlist spot',
+    description:
+      'Create an account to keep your preferences saved, get notified when your city launches, and use your 5 preview searches.',
+    disclaimer: "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
+    ctaLabel: 'Join waitlist',
   },
 ];
 

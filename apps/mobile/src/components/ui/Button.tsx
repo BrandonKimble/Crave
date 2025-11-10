@@ -10,6 +10,7 @@ import {
   TextStyle,
   ViewStyle,
 } from 'react-native';
+import { colors as themeColors } from '../../constants/theme';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -17,7 +18,11 @@ export interface ButtonProps extends PressableProps {
   label: string;
   variant?: ButtonVariant;
   isLoading?: boolean;
+  labelStyle?: StyleProp<TextStyle>;
 }
+
+const PRIMARY_BUTTON_COLOR = themeColors.accentDark ?? '#6366f1';
+const SECONDARY_BUTTON_COLOR = themeColors.secondary;
 
 const styles = StyleSheet.create({
   base: {
@@ -33,13 +38,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   primary: {
-    backgroundColor: '#6366f1',
+    backgroundColor: PRIMARY_BUTTON_COLOR,
   },
   primaryText: {
     color: '#ffffff',
   },
   secondary: {
-    backgroundColor: '#1e293b',
+    backgroundColor: SECONDARY_BUTTON_COLOR,
   },
   secondaryText: {
     color: '#ffffff',
@@ -47,10 +52,10 @@ const styles = StyleSheet.create({
   ghost: {
     backgroundColor: 'transparent',
     borderWidth: 1,
-    borderColor: '#6366f1',
+    borderColor: PRIMARY_BUTTON_COLOR,
   },
   ghostText: {
-    color: '#6366f1',
+    color: PRIMARY_BUTTON_COLOR,
   },
   disabled: {
     opacity: 0.5,
@@ -75,6 +80,7 @@ export const Button: React.FC<ButtonProps> = ({
   isLoading = false,
   disabled,
   style,
+  labelStyle,
   ...pressableProps
 }) => {
   const isDisabled = disabled ?? isLoading;
@@ -94,9 +100,9 @@ export const Button: React.FC<ButtonProps> = ({
       {...pressableProps}
     >
       {isLoading ? (
-        <ActivityIndicator color={variant === 'ghost' ? '#6366f1' : '#ffffff'} />
+        <ActivityIndicator color={variant === 'ghost' ? PRIMARY_BUTTON_COLOR : '#ffffff'} />
       ) : (
-        <Text style={[styles.label, labelVariants[variant]]}>{label}</Text>
+        <Text style={[styles.label, labelVariants[variant], labelStyle]}>{label}</Text>
       )}
     </Pressable>
   );

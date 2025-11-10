@@ -19,6 +19,7 @@ import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text, Button } from '../../components';
+import { colors as themeColors } from '../../constants/theme';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
 import { useSearchStore } from '../../store/searchStore';
@@ -37,7 +38,7 @@ const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = 15;
 const CARD_GAP = 4;
 const ACTIVE_TAB_COLOR = '#f97384';
-const TAB_BUTTON_COLOR = '#a78bfa';
+const TAB_BUTTON_COLOR = themeColors.accentDark;
 const QUALITY_COLOR = '#fbbf24';
 type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
 type RestaurantFeatureProperties = {

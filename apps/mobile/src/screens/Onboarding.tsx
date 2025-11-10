@@ -12,12 +12,14 @@ import {
   StyleSheet,
   TextInput,
   View,
+  useWindowDimensions,
 } from 'react-native';
 import type { LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { Text, Button } from '../components';
+import { colors as themeColors } from '../constants/theme';
 import {
   onboardingSteps,
   getSingleChoiceLabel,
@@ -32,8 +34,27 @@ type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
 type AnswerValue = string | string[] | number | undefined;
 
-const CRAVE_ACCENT = '#f97384';
-const CRAVE_ACCENT_LIGHT = '#fee2e2';
+const SCREEN_BACKGROUND = '#fff9fb';
+const OPEN_NOW_COLOR = '#f97384';
+const CRAVE_ACCENT = OPEN_NOW_COLOR;
+const CRAVE_ACCENT_LIGHT = '#ffe4e6';
+const CRAVE_ACCENT_MEDIUM = '#fb7185';
+const CRAVE_ACCENT_DARK = '#d61f45';
+const PRIMARY_TEXT = '#0f172a';
+const SECONDARY_TEXT = '#475569';
+const MUTED_TEXT = '#94a3b8';
+const SURFACE_COLOR = '#ffffff';
+const CTA_BUTTON_COLOR = themeColors.accentDark ?? '#4f3bff';
+const PROGRESS_DOT_BASE_WIDTH = 8;
+const PROGRESS_DOT_ACTIVE_WIDTH = 28;
+const INTERACTIVE_BORDER_WIDTH = 2;
+const INTERACTIVE_SHADOW = {
+  shadowColor: '#111827',
+  shadowOffset: { width: 0, height: 4 },
+  shadowOpacity: 0.05,
+  shadowRadius: 10,
+  elevation: 1,
+};
 
 const FREQUENCY_TO_MONTHLY: Record<string, number> = {
   rarely: 6,
@@ -75,15 +96,108 @@ const BUDGET_RANGES: Record<
   '70-plus': { label: '$70+ each', min: 70 },
 };
 
+type CarouselStepType = Extract<OnboardingStep, { type: 'carousel' }>;
+
+const isLocationStep = (
+  step: OnboardingStep,
+): step is Extract<OnboardingStep, { id: 'location'; type: 'location' }> =>
+  step.id === 'location' && step.type === 'location';
+
+const locationStepDefinition =
+  onboardingSteps.find(isLocationStep) as Extract<
+    OnboardingStep,
+    { type: 'location' }
+  > | undefined;
+
+const locationAllowedCityValues =
+  locationStepDefinition?.allowedCities.map((city) => city.value) ?? [];
+
+const CarouselStepView: React.FC<{ step: CarouselStepType }> = ({ step }) => {
+  const [currentSlide, setCurrentSlide] = React.useState(0);
+  const totalSlides = step.slides.length;
+
+  React.useEffect(() => {
+    setCurrentSlide(0);
+  }, [step.id]);
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % totalSlides);
+    }, 3200);
+    return () => clearInterval(timer);
+  }, [totalSlides]);
+
+  const slide = step.slides[currentSlide];
+
+  const getVisualIcon = (visual: string) => {
+    switch (visual) {
+      case 'map-icon':
+        return '🗺️';
+      case 'menu-icon':
+        return '🍽️';
+      case 'explore-icon':
+        return '🧭';
+      default:
+        return '✨';
+    }
+  };
+
+  return (
+    <View style={styles.carouselContainer}>
+      <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
+        {step.title}
+      </Text>
+      {step.subtitle ? (
+        <Text variant="body" style={styles.helperText}>
+          {step.subtitle}
+        </Text>
+      ) : null}
+      <View style={styles.carouselSlide}>
+        <View style={styles.carouselVisual}>
+          <Text style={styles.carouselIcon}>{getVisualIcon(slide.visual)}</Text>
+        </View>
+        <Text variant="body" weight="semibold" style={styles.carouselScenario}>
+          {slide.scenario}
+        </Text>
+        <Text variant="body" style={styles.carouselCopy}>
+          {slide.copy}
+        </Text>
+      </View>
+      <View style={styles.carouselControls}>
+        <Pressable
+          onPress={() => setCurrentSlide((prev) => Math.max(prev - 1, 0))}
+          disabled={currentSlide === 0}
+          style={[styles.carouselArrow, currentSlide === 0 && styles.carouselArrowDisabled]}
+        >
+          <Text style={styles.carouselArrowText}>←</Text>
+        </Pressable>
+        <View style={styles.carouselDots}>
+          {step.slides.map((_, index) => (
+            <View
+              key={index}
+              style={[styles.carouselDot, index === currentSlide && styles.carouselDotActive]}
+            />
+          ))}
+        </View>
+        <Pressable
+          onPress={() => setCurrentSlide((prev) => Math.min(prev + 1, totalSlides - 1))}
+          disabled={currentSlide === totalSlides - 1}
+          style={[styles.carouselArrow, currentSlide === totalSlides - 1 && styles.carouselArrowDisabled]}
+        >
+          <Text style={styles.carouselArrowText}>→</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+};
+
 const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
-  const [stepIndex, setStepIndex] = React.useState(0);
+  const [stepIndex, setStepIndexState] = React.useState(0);
   const [answers, setAnswers] = React.useState<Record<string, AnswerValue>>({});
   const [processingReady, setProcessingReady] = React.useState(true);
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
-  const currentStep = onboardingSteps[stepIndex];
+  const activeStep = onboardingSteps[stepIndex];
   const totalSteps = onboardingSteps.length;
-  const isAttributionStep = currentStep.id === 'attribution';
-  const showHeaderQuestion = isAttributionStep;
   const regretBaselineAnim = React.useRef(new Animated.Value(0)).current;
   const regretCraveAnim = React.useRef(new Animated.Value(0)).current;
   const [graphTrackWidth, setGraphTrackWidth] = React.useState(0);
@@ -96,24 +210,123 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       calendarColorAnims.push(new Animated.Value(0));
     }
   }
+  const { width: viewportWidth } = useWindowDimensions();
+  const scrollAnim = React.useRef(new Animated.Value(0)).current;
+  const shouldAnimateRef = React.useRef(false);
+  const [isAnimating, setIsAnimating] = React.useState(false);
+
+  const locationValue = typeof answers.location === 'string' ? answers.location.trim() : '';
+  const isLiveCitySelection =
+    locationValue.length > 0 && locationAllowedCityValues.includes(locationValue);
+  const isWaitlistSelection = locationValue.length > 0 && !isLiveCitySelection;
+
+  const waitlistCityLabel = React.useMemo(() => {
+    if (!isWaitlistSelection) {
+      return '';
+    }
+    if (!locationValue) {
+      return 'your city';
+    }
+    return locationValue
+      .split(' ')
+      .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : ''))
+      .filter(Boolean)
+      .join(' ');
+  }, [isWaitlistSelection, locationValue]);
+
+  const isStepVisible = React.useCallback(
+    (step: OnboardingStep) => {
+      if (step.id === 'waitlist-info' || step.id === 'waitlist-preview' || step.id === 'account-waitlist') {
+        return isWaitlistSelection;
+      }
+      if (step.id === 'account-live') {
+        return isLiveCitySelection;
+      }
+      return true;
+    },
+    [isLiveCitySelection, isWaitlistSelection]
+  );
+
+  const findNextVisibleIndex = React.useCallback(
+    (startIndex: number) => {
+      for (let i = startIndex + 1; i < onboardingSteps.length; i += 1) {
+        if (isStepVisible(onboardingSteps[i])) {
+          return i;
+        }
+      }
+      return startIndex;
+    },
+    [isStepVisible]
+  );
+
+  const findPreviousVisibleIndex = React.useCallback(
+    (startIndex: number) => {
+      for (let i = startIndex - 1; i >= 0; i -= 1) {
+        if (isStepVisible(onboardingSteps[i])) {
+          return i;
+        }
+      }
+      return startIndex;
+    },
+    [isStepVisible]
+  );
+
+  React.useEffect(() => {
+    const step = onboardingSteps[stepIndex];
+    if (step && !isStepVisible(step)) {
+      const previousIndex = findPreviousVisibleIndex(stepIndex);
+      if (previousIndex !== stepIndex) {
+        setStepIndexState(previousIndex);
+        return;
+      }
+      const nextIndex = findNextVisibleIndex(stepIndex);
+      if (nextIndex !== stepIndex) {
+        setStepIndexState(nextIndex);
+      }
+    }
+  }, [findNextVisibleIndex, findPreviousVisibleIndex, isStepVisible, stepIndex]);
+
+  const getPositionForIndex = React.useCallback(
+    (index: number) => {
+      let position = 0;
+      for (let i = 0; i <= index; i += 1) {
+        if (isStepVisible(onboardingSteps[i])) {
+          position += 1;
+        }
+      }
+      return Math.max(1, position);
+    },
+    [isStepVisible]
+  );
+
+  const totalVisibleSteps = React.useMemo(() => {
+    const count = onboardingSteps.reduce((acc, step) => (isStepVisible(step) ? acc + 1 : acc), 0);
+    return Math.max(1, count);
+  }, [isStepVisible]);
+
+  const currentStepPosition = React.useMemo(
+    () => getPositionForIndex(stepIndex),
+    [getPositionForIndex, stepIndex]
+  );
+
+  const isFinalStep = React.useMemo(
+    () => findNextVisibleIndex(stepIndex) === stepIndex,
+    [findNextVisibleIndex, stepIndex]
+  );
+
+  React.useEffect(() => {
+    if (!isTransitioning) {
+      dotProgressRef.current = {
+        from: currentStepPosition,
+        to: currentStepPosition,
+      };
+    }
+  }, [currentStepPosition, isTransitioning]);
 
   const goToTabs = React.useCallback(() => {
     completeOnboarding();
     navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
   }, [completeOnboarding, navigation]);
-
-  const handleContinue = React.useCallback(() => {
-    if (stepIndex === totalSteps - 1) {
-      logger.info('Onboarding preferences', answers);
-      goToTabs();
-      return;
-    }
-    setStepIndex((prev) => Math.min(prev + 1, totalSteps - 1));
-  }, [answers, goToTabs, stepIndex, totalSteps]);
-
-  const handleBack = React.useCallback(() => {
-    setStepIndex((prev) => Math.max(prev - 1, 0));
-  }, []);
 
   const updateAnswer = React.useCallback((stepId: string, value: AnswerValue) => {
     setAnswers((prev) => ({ ...prev, [stepId]: value }));
@@ -293,20 +506,20 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   // Processing screen timer with dynamic duration
   React.useEffect(() => {
-    if (currentStep.type === 'processing') {
+    if (activeStep.type === 'processing') {
       setProcessingReady(false);
-      const duration = currentStep.durationMs ?? 2000;
+      const duration = activeStep.durationMs ?? 2000;
       const timer = setTimeout(() => setProcessingReady(true), duration);
       return () => clearTimeout(timer);
     }
     setProcessingReady(true);
     return undefined;
-  }, [currentStep]);
+  }, [activeStep]);
 
   React.useEffect(() => {
     if (
-      currentStep.type === 'graph' &&
-      currentStep.graphType === 'regret-rate' &&
+      activeStep.type === 'graph' &&
+      activeStep.graphType === 'regret-rate' &&
       graphTrackWidth > 0
     ) {
       regretBaselineAnim.setValue(0);
@@ -334,7 +547,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       ]).start();
     }
   }, [
-    currentStep,
+    activeStep,
     graphTrackWidth,
     regretBaselineAnim,
     regretCraveAnim,
@@ -343,60 +556,61 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   ]);
 
   React.useEffect(() => {
-    if (currentStep.id === 'calendar-graph') {
+    if (activeStep.id === 'calendar-graph') {
       startCalendarAnimation();
     }
     return () => {
       calendarAnimation.current?.stop();
       calendarAnimation.current = null;
     };
-  }, [currentStep.id, startCalendarAnimation]);
+  }, [activeStep.id, startCalendarAnimation]);
 
   const isStepComplete = React.useMemo(() => {
-    switch (currentStep.type) {
+    switch (activeStep.type) {
       case 'hero':
       case 'summary':
       case 'comparison':
       case 'processing':
       case 'account':
       case 'graph':
+      case 'carousel':
         return true;
       case 'single-choice': {
-        const selected = answers[currentStep.id];
-        return currentStep.required ? typeof selected === 'string' && selected.length > 0 : true;
+        const selected = answers[activeStep.id];
+        return activeStep.required ? typeof selected === 'string' && selected.length > 0 : true;
       }
       case 'multi-choice': {
-        const selected = answers[currentStep.id];
+        const selected = answers[activeStep.id];
         const count = Array.isArray(selected) ? selected.length : 0;
-        const min = currentStep.minSelect ?? (currentStep.required ? 1 : 0);
+        const min = activeStep.minSelect ?? (activeStep.required ? 1 : 0);
         return count >= min;
       }
       case 'location': {
-        const value = answers[currentStep.id];
+        const value = answers[activeStep.id];
         return typeof value === 'string' && value.trim().length > 0;
       }
       case 'rating': {
-        const value = answers[currentStep.id];
-        if (!currentStep.required) {
+        const value = answers[activeStep.id];
+        if (!activeStep.required) {
           return true;
         }
         return typeof value === 'number' && value > 0;
       }
       case 'notification': {
-        const selected = answers[currentStep.id];
+        const selected = answers[activeStep.id];
         return typeof selected === 'string' && selected.length > 0;
       }
       default:
         return true;
     }
-  }, [answers, currentStep]);
+  }, [answers, activeStep]);
 
   const continueLabel = React.useMemo(() => {
-    if (currentStep.ctaLabel) {
-      return currentStep.ctaLabel;
+    if (activeStep.ctaLabel) {
+      return activeStep.ctaLabel;
     }
-    return stepIndex === totalSteps - 1 ? 'Finish' : 'Continue';
-  }, [currentStep, stepIndex, totalSteps]);
+    return isFinalStep ? 'Finish' : 'Continue';
+  }, [activeStep, isFinalStep]);
 
   const renderHero = (step: Extract<OnboardingStep, { type: 'hero' }>) => (
     <View style={styles.heroContainer}>
@@ -421,35 +635,45 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     </View>
   );
 
-  const renderSummary = (step: Extract<OnboardingStep, { type: 'summary' }>) => (
-    <View style={styles.summaryContainer}>
-      <Text variant="title" weight="bold" style={styles.heroTitle}>
-        {step.title}
-      </Text>
-      <Text variant="body" style={styles.heroDescription}>
-        {step.description}
-      </Text>
-      {step.bullets?.map((bullet) => (
-        <View key={bullet} style={styles.summaryBulletRow}>
-          <View style={styles.summaryBulletDot} />
-          <Text variant="body" style={styles.summaryBulletText}>
-            {bullet}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
+  const renderSummary = (step: Extract<OnboardingStep, { type: 'summary' }>) => {
+    const isWaitlistSummary = step.id === 'waitlist-info';
+    const waitlistDisplay = waitlistCityLabel || 'your city';
+    const summaryTitle = isWaitlistSummary
+      ? `We're building ${waitlistDisplay} next`
+      : step.title;
+    const summaryDescription = isWaitlistSummary
+      ? `Crave is live in Austin and NYC today. ${waitlistDisplay.charAt(0).toUpperCase()}${waitlistDisplay.slice(1)} is coming soon. Join the waitlist and get 5 preview searches while we build it.`
+      : step.description;
 
-  const renderSingleChoiceIntroContent = (
-    step: Extract<OnboardingStep, { type: 'single-choice' }>
-  ) => (
-    <View style={styles.choiceIntro}>
+    return (
+      <View style={styles.summaryContainer}>
+        <Text variant="title" weight="bold" style={styles.heroTitle}>
+          {summaryTitle}
+        </Text>
+        <Text variant="body" style={styles.heroDescription}>
+          {summaryDescription}
+        </Text>
+        {step.bullets?.map((bullet) => (
+          <View key={bullet} style={styles.summaryBulletRow}>
+            <View style={styles.summaryBulletDot} />
+            <Text variant="body" style={styles.summaryBulletText}>
+              {bullet}
+            </Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
+
+  const renderChoicePanelHeader = (question: string, helper?: string) => (
+    <View style={styles.choicePanelHeader}>
       <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
-        {step.question}
+        {question}
       </Text>
-      {step.helper ? (
+      {helper ? (
         <Text variant="body" style={styles.helperText}>
-          {step.helper}
+          {helper}
         </Text>
       ) : null}
     </View>
@@ -466,6 +690,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         style={[styles.choiceColumnWrapper, centerContent && styles.choiceColumnWrapperCentered]}
       >
         <View style={styles.choiceColumn}>
+          {renderChoicePanelHeader(step.question, step.helper)}
           {step.options.map((option) => {
             const isActive = selected === option.id;
             return (
@@ -474,11 +699,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 onPress={() => updateAnswer(step.id, option.id)}
                 style={[styles.choiceCard, isActive && styles.choiceCardActive]}
               >
-                <Text
-                  variant="body"
-                  weight="semibold"
-                  style={[styles.choiceCardLabel, isActive && styles.choiceCardLabelActive]}
-                >
+                <Text variant="body" weight="semibold" style={styles.choiceCardLabel}>
                   {option.label}
                 </Text>
                 {option.detail ? (
@@ -495,12 +716,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   };
 
   const renderSingleChoice = (step: Extract<OnboardingStep, { type: 'single-choice' }>) => {
-    const hideIntro = step.id === 'attribution' && showHeaderQuestion;
-    const centerContent = shouldCenterChoices;
+    const centerContent = step.id === 'attribution';
 
     return (
       <View style={[styles.choiceStep, centerContent && styles.choiceStepCentered]}>
-        {!hideIntro ? renderSingleChoiceIntroContent(step) : null}
         {renderSingleChoiceOptionsContent(step, centerContent)}
       </View>
     );
@@ -536,76 +755,77 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     };
 
     return (
-      <View>
-        <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
-          {step.question}
-        </Text>
-        {step.helper ? (
-          <Text variant="body" style={styles.helperText}>
-            {step.helper}
-          </Text>
-        ) : null}
-        <View style={styles.chipGrid}>
-          {step.options.map((option) => {
-            const isActive = selected.includes(option.id);
-            return (
-              <Pressable
-                key={option.id}
-                onPress={() => toggleMultiValue(step.id, option.id)}
-                style={[styles.chip, isActive && styles.chipActive]}
-              >
-                <Text
-                  variant="body"
-                  weight="semibold"
-                  style={[styles.chipLabel, isActive && styles.chipLabelActive]}
+      <View style={styles.choiceStep}>
+        <View style={styles.choiceColumnWrapper}>
+          <View style={styles.choiceColumn}>
+            {renderChoicePanelHeader(step.question, step.helper)}
+            <View style={styles.chipGrid}>
+              {step.options.map((option) => {
+                const isActive = selected.includes(option.id);
+                return (
+                  <Pressable
+                    key={option.id}
+                    onPress={() => toggleMultiValue(step.id, option.id)}
+                    style={[styles.chip, isActive && styles.chipActive]}
+                  >
+                    <Text
+                      variant="body"
+                      weight="semibold"
+                      style={[styles.chipLabel, isActive && styles.chipLabelActive]}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+              {customSelections.map((value) => (
+                <Pressable
+                  key={value}
+                  onPress={() => toggleMultiValue(step.id, value)}
+                  style={styles.chipCustom}
                 >
-                  {option.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-          {customSelections.map((value) => (
-            <Pressable
-              key={value}
-              onPress={() => toggleMultiValue(step.id, value)}
-              style={styles.chipCustom}
-            >
-              <Text variant="body" weight="semibold" style={styles.chipLabel}>
-                {value}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        {step.allowCustomInput ? (
-          <View style={styles.customInputRow}>
-            <TextInput
-              style={[styles.textInput, styles.customInputField]}
-              placeholder={step.customPlaceholder ?? 'Add your own'}
-              placeholderTextColor="#94a3b8"
-              value={customInputValue}
-              onChangeText={(text) => updateAnswer(customInputKey, text)}
-            />
-            <Pressable
-              style={[
-                styles.addCustomButton,
-                !customInputValue.trim() && styles.addCustomButtonDisabled,
-              ]}
-              onPress={handleAddCustomValue}
-              disabled={!customInputValue.trim()}
-            >
-              <Text
-                variant="body"
-                weight="semibold"
-                style={[
-                  styles.addCustomButtonText,
-                  !customInputValue.trim() && styles.addCustomButtonTextDisabled,
-                ]}
-              >
-                Add
-              </Text>
-            </Pressable>
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    style={[styles.chipLabel, styles.chipLabelActive]}
+                  >
+                    {value}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {step.allowCustomInput ? (
+              <View style={styles.customInputRow}>
+                <TextInput
+                  style={[styles.textInput, styles.customInputField]}
+                  placeholder={step.customPlaceholder ?? 'Add your own'}
+                  placeholderTextColor="#94a3b8"
+                  value={customInputValue}
+                  onChangeText={(text) => updateAnswer(customInputKey, text)}
+                />
+                <Pressable
+                  style={[
+                    styles.addCustomButton,
+                    !customInputValue.trim() && styles.addCustomButtonDisabled,
+                  ]}
+                  onPress={handleAddCustomValue}
+                  disabled={!customInputValue.trim()}
+                >
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    style={[
+                      styles.addCustomButtonText,
+                      !customInputValue.trim() && styles.addCustomButtonTextDisabled,
+                    ]}
+                  >
+                    Add
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-        ) : null}
+        </View>
       </View>
     );
   };
@@ -631,29 +851,24 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
     return (
       <View>
-        <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
-          {step.question}
-        </Text>
-        {step.helper ? (
-          <Text variant="body" style={styles.helperText}>
-            {step.helper}
-          </Text>
-        ) : null}
-        <View style={styles.choiceColumn}>
-          {step.allowedCities.map((city) => {
-            const isActive = activeCity?.id === city.id;
-            return (
-              <Pressable
-                key={city.id}
-                onPress={() => updateAnswer(step.id, city.value)}
-                style={[styles.choiceCard, isActive && styles.choiceCardActive]}
-              >
-                <Text variant="body" weight="semibold" style={styles.choiceCardLabel}>
-                  {city.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+        <View style={styles.choiceColumnWrapper}>
+          <View style={styles.choiceColumn}>
+            {renderChoicePanelHeader(step.question, step.helper)}
+            {step.allowedCities.map((city) => {
+              const isActive = activeCity?.id === city.id;
+              return (
+                <Pressable
+                  key={city.id}
+                  onPress={() => updateAnswer(step.id, city.value)}
+                  style={[styles.choiceCard, isActive && styles.choiceCardActive]}
+                >
+                  <Text variant="body" weight="semibold" style={styles.choiceCardLabel}>
+                    {city.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
         <View style={styles.locationDivider}>
           <View style={styles.locationDividerLine} />
@@ -879,7 +1094,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         ) : null}
         {!processingReady ? (
           <View style={styles.processingSpinnerRow}>
-            <ActivityIndicator color="#a78bfa" size="small" />
+            <ActivityIndicator color={CRAVE_ACCENT} size="small" />
             <Text variant="caption" style={styles.processingSpinnerLabel}>
               Processing…
             </Text>
@@ -1408,15 +1623,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         <View style={styles.graphContentGroup}>
           <View style={styles.graphBundle}>
             {renderGraphVisualization()}
-            <Text
-              variant="body"
-              style={[
-                styles.graphBody,
-                step.graphType === 'calendar-comparison' && styles.graphBodyCentered,
-              ]}
-            >
-              {step.body}
-            </Text>
+            {step.body ? (
+              <Text
+                variant="body"
+                style={[
+                  styles.graphBody,
+                  step.graphType === 'calendar-comparison' && styles.graphBodyCentered,
+                ]}
+              >
+                {step.body}
+              </Text>
+            ) : null}
           </View>
         </View>
       </View>
@@ -1425,13 +1642,19 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const renderNotification = (step: Extract<OnboardingStep, { type: 'notification' }>) => {
     const selected = answers[step.id];
+    const barrierSelections = Array.isArray(answers.barriers) ? (answers.barriers as string[]) : [];
+    const notificationBody = barrierSelections.includes('no-time')
+      ? "You said finding time to research is hard. We'll do the work for you."
+      : barrierSelections.length === 0
+      ? "We'll keep you updated on what's worth trying."
+      : step.body;
     return (
       <View>
         <Text variant="subtitle" weight="bold" style={styles.questionTitle}>
           {step.title}
         </Text>
         <Text variant="body" style={styles.helperText}>
-          {step.body}
+          {notificationBody}
         </Text>
         <View style={styles.notificationFeatureList}>
           <Text variant="body" weight="semibold" style={styles.notificationFeatureTitle}>
@@ -1478,53 +1701,139 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     );
   };
 
-  const renderStep = () => {
-    switch (currentStep.type) {
+  const stepHasHeader = (step: OnboardingStep) => step.type !== 'hero';
+  const stepShouldScroll = (step: OnboardingStep) =>
+    step.id === 'attribution' || step.type === 'graph' || step.type === 'carousel' || step.type === 'location';
+
+  const renderStepBody = (step: OnboardingStep) => {
+    switch (step.type) {
       case 'hero':
-        return renderHero(currentStep);
+        return renderHero(step);
       case 'summary':
-        return renderSummary(currentStep);
+        return renderSummary(step);
       case 'single-choice':
-        return renderSingleChoice(currentStep);
+        return renderSingleChoice(step);
       case 'multi-choice':
-        return renderMultiChoice(currentStep);
+        return renderMultiChoice(step);
       case 'location':
-        return renderLocation(currentStep);
+        return renderLocation(step);
       case 'comparison':
-        return renderComparison(currentStep);
+        return renderComparison(step);
       case 'rating':
-        return renderRating(currentStep);
+        return renderRating(step);
       case 'processing':
-        return renderProcessing(currentStep);
+        return renderProcessing(step);
       case 'account':
-        return renderAccount(currentStep);
+        return renderAccount(step);
       case 'graph':
-        return renderGraph(currentStep);
+        return renderGraph(step);
+      case 'carousel':
+        return <CarouselStepView step={step} />;
       case 'notification':
-        return renderNotification(currentStep);
+        return renderNotification(step);
       default:
         return null;
     }
   };
 
+  const renderStepContent = (step: OnboardingStep, options?: { disableScroll?: boolean }) => {
+    const paddingTop = stepHasHeader(step) ? 4 : 24;
+    const containerStyle = [styles.contentContainer, { paddingTop }];
+    const body = renderStepBody(step);
+    if (stepShouldScroll(step) && !options?.disableScroll) {
+      return (
+        <ScrollView
+          contentContainerStyle={containerStyle}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+        >
+          {body}
+        </ScrollView>
+      );
+    }
+    return <View style={containerStyle}>{body}</View>;
+  };
+
+  const transitionToStep = React.useCallback(
+    (nextIndex: number) => {
+      if (nextIndex === stepIndex || isTransitioning) {
+        return;
+      }
+      const direction = nextIndex > stepIndex ? 1 : -1;
+      transitionDirectionRef.current = direction;
+      setPreviousSnapshot(renderStepContent(activeStep, { disableScroll: true }));
+      const nextPosition = getPositionForIndex(nextIndex);
+      dotProgressRef.current = {
+        from: currentStepPosition,
+        to: nextPosition,
+      };
+      setIsTransitioning(true);
+      transitionAnim.setValue(0);
+      setStepIndexState(nextIndex);
+      Animated.timing(transitionAnim, {
+        toValue: 1,
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }).start(() => {
+        setIsTransitioning(false);
+        setPreviousSnapshot(null);
+        transitionAnim.setValue(0);
+        dotProgressRef.current = { from: nextPosition, to: nextPosition };
+      });
+    },
+    [
+      activeStep,
+      currentStepPosition,
+      getPositionForIndex,
+      renderStepContent,
+      stepIndex,
+      isTransitioning,
+      renderStepContent,
+      transitionAnim,
+    ]
+  );
+
+  const handleContinue = React.useCallback(() => {
+    const nextIndex = findNextVisibleIndex(stepIndex);
+    if (nextIndex === stepIndex) {
+      logger.info('Onboarding preferences', answers);
+      goToTabs();
+      return;
+    }
+    transitionToStep(nextIndex);
+  }, [answers, findNextVisibleIndex, goToTabs, stepIndex, transitionToStep]);
+
+  const handleBack = React.useCallback(() => {
+    const previousIndex = findPreviousVisibleIndex(stepIndex);
+    if (previousIndex === stepIndex) {
+      return;
+    }
+    transitionToStep(previousIndex);
+  }, [findPreviousVisibleIndex, stepIndex, transitionToStep]);
+
   const canContinue =
-    isStepComplete && (currentStep.type === 'processing' ? processingReady : true);
-  const canGoBack = stepIndex > 0;
-  const shouldCenterChoices = currentStep.type === 'single-choice';
-  const shouldScroll = isAttributionStep || currentStep.type === 'graph';
-  const showHeader = currentStep.type !== 'hero';
-  const contentPaddingTop = showHeader ? (showHeaderQuestion ? 12 : 4) : 24;
-  const contentContainerStyle = React.useMemo(
-    () => [styles.contentContainer, { paddingTop: contentPaddingTop }],
-    [contentPaddingTop]
-  );
-  const contentArea = shouldScroll ? (
-    <ScrollView contentContainerStyle={contentContainerStyle} keyboardShouldPersistTaps="handled">
-      {renderStep()}
-    </ScrollView>
-  ) : (
-    <View style={contentContainerStyle}>{renderStep()}</View>
-  );
+    isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
+  const canGoBack = findPreviousVisibleIndex(stepIndex) !== stepIndex;
+  const showHeader = stepHasHeader(activeStep);
+  const stepAnimatedStyle = isTransitioning
+    ? {
+        transform: [
+          {
+            translateX: transitionAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [transitionDirectionRef.current * viewportWidth, 0],
+            }),
+          },
+        ],
+        opacity: transitionAnim.interpolate({
+          inputRange: [0, 0.3, 1],
+          outputRange: [0.2, 0.6, 1],
+        }),
+      }
+    : null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -1535,60 +1844,88 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         {showHeader ? (
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
-              <Pressable
-                style={[styles.backButton, !canGoBack && styles.backButtonDisabled]}
-                onPress={handleBack}
-                disabled={!canGoBack}
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-              >
-                <Text variant="body" weight="bold" style={styles.backButtonIcon}>
-                  ←
-                </Text>
-              </Pressable>
+              <View style={styles.headerSide} />
               <View style={styles.progressArea}>
-                <View style={styles.headerBrand}>
-                  <Text variant="body" weight="bold" style={styles.headerTitle}>
-                    crave
-                  </Text>
-                  <View style={styles.betaChip}>
-                    <Text variant="caption" weight="semibold" style={styles.betaChipText}>
-                      BETA
-                    </Text>
-                  </View>
+                <View style={styles.progressDots}>
+                  {Array.from({ length: totalVisibleSteps }).map((_, index) => {
+                    const position = index + 1;
+                    const isCurrent = position === currentStepPosition;
+                    const isCompleted = position < currentStepPosition;
+                    const animatedWidthStyle = isTransitioning
+                      ? {
+                          width: transitionAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [
+                              position === dotProgressRef.current.from
+                                ? PROGRESS_DOT_ACTIVE_WIDTH
+                                : PROGRESS_DOT_BASE_WIDTH,
+                              position === dotProgressRef.current.to
+                                ? PROGRESS_DOT_ACTIVE_WIDTH
+                                : PROGRESS_DOT_BASE_WIDTH,
+                            ],
+                          }),
+                        }
+                      : {
+                          width: isCurrent ? PROGRESS_DOT_ACTIVE_WIDTH : PROGRESS_DOT_BASE_WIDTH,
+                        };
+                    return (
+                      <Animated.View
+                        key={`progress-dot-${position}`}
+                        style={[
+                          styles.progressDot,
+                          animatedWidthStyle,
+                          isCompleted && styles.progressDotCompleted,
+                          isCurrent && styles.progressDotCurrent,
+                        ]}
+                      />
+                    );
+                  })}
                 </View>
-                <View style={styles.progressTrack}>
-                  <View
-                    style={[
-                      styles.progressFill,
-                      { width: `${((stepIndex + 1) / totalSteps) * 100}%` },
-                    ]}
-                  />
+              </View>
+              <View style={[styles.headerSide, styles.headerSideRight]}>
+                <View style={styles.betaChip}>
+                  <Text variant="caption" weight="semibold" style={styles.betaChipText}>
+                    BETA
+                  </Text>
                 </View>
               </View>
             </View>
-            {showHeaderQuestion ? (
-              <View style={styles.headerQuestionBlock}>
-                <Text variant="subtitle" weight="bold" style={styles.headerQuestionTitle}>
-                  {currentStep.question}
-                </Text>
-                {currentStep.helper ? (
-                  <Text variant="body" style={styles.headerQuestionSubtitle}>
-                    {currentStep.helper}
-                  </Text>
-                ) : null}
-              </View>
-            ) : null}
           </View>
         ) : null}
-        {contentArea}
-        <View style={styles.footer}>
-          <Button
-            label={continueLabel}
-            onPress={handleContinue}
-            disabled={!canContinue}
-            style={styles.ctaButton}
-          />
+        <View style={styles.stepContentArea}>
+          {previousSnapshot && isTransitioning ? (
+            <View style={styles.previousStepSnapshot} pointerEvents="none">
+              {previousSnapshot}
+            </View>
+          ) : null}
+          <Animated.View style={[styles.stepContentWrapper, stepAnimatedStyle]}>
+            {renderStepContent(activeStep)}
+          </Animated.View>
+        </View>
+        <View pointerEvents="box-none" style={styles.ctaFloatingWrapper}>
+          <View style={styles.ctaRow}>
+            <Pressable
+              style={[
+                styles.backButton,
+                styles.ctaBackButton,
+                (!canGoBack || isTransitioning) && styles.backButtonDisabled,
+              ]}
+              onPress={handleBack}
+              disabled={!canGoBack || isTransitioning}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Text variant="body" weight="bold" style={styles.backButtonIcon}>
+                ←
+              </Text>
+            </Pressable>
+            <Button
+              label={continueLabel}
+              onPress={handleContinue}
+              disabled={!canContinue || isTransitioning}
+              style={({ pressed }) => [styles.ctaButton, pressed && styles.ctaButtonPressed]}
+            />
+          </View>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -1598,7 +1935,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: SCREEN_BACKGROUND,
   },
   flex: {
     flex: 1,
@@ -1613,30 +1950,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  headerQuestionBlock: {
-    gap: 4,
+  headerSide: {
+    minWidth: 64,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
   },
-  headerQuestionTitle: {
-    color: '#0f172a',
-    fontSize: 26,
-    lineHeight: 34,
-  },
-  headerQuestionSubtitle: {
-    color: '#64748b',
+  headerSideRight: {
+    alignItems: 'flex-end',
   },
   backButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: CRAVE_ACCENT_LIGHT,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: SURFACE_COLOR,
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
   },
   backButtonDisabled: {
     opacity: 0.4,
   },
   backButtonIcon: {
-    color: CRAVE_ACCENT,
+    color: MUTED_TEXT,
     fontSize: 20,
     lineHeight: 30,
     textAlign: 'center',
@@ -1644,46 +1982,55 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     transform: [{ translateY: 0 }],
   },
-  headerBrand: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flexShrink: 0,
-  },
-  headerTitle: {
-    fontSize: 18,
-    textTransform: 'uppercase',
-    letterSpacing: 2,
-    color: '#111827',
-  },
   betaChip: {
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
     backgroundColor: CRAVE_ACCENT_LIGHT,
-    borderWidth: 1,
-    borderColor: CRAVE_ACCENT,
+    marginLeft: 8,
   },
   betaChipText: {
     color: CRAVE_ACCENT,
     fontSize: 10,
   },
   progressArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 8,
+  },
+  progressDots: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    flex: 1,
+    gap: 6,
+    justifyContent: 'center',
   },
-  progressTrack: {
-    flex: 1,
-    height: 4,
-    borderRadius: 999,
+  progressDot: {
+    width: PROGRESS_DOT_BASE_WIDTH,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: CRAVE_ACCENT_LIGHT,
-    overflow: 'hidden',
   },
-  progressFill: {
-    height: '100%',
-    backgroundColor: CRAVE_ACCENT,
+  progressDotCompleted: {
+    backgroundColor: CRAVE_ACCENT_MEDIUM,
+  },
+  progressDotCurrent: {
+    backgroundColor: CRAVE_ACCENT_DARK,
+    width: PROGRESS_DOT_ACTIVE_WIDTH,
+  },
+  stepContentArea: {
+    flex: 1,
+    width: '100%',
+    position: 'relative',
+    minHeight: 0,
+  },
+  previousStepSnapshot: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: SCREEN_BACKGROUND,
+  },
+  stepContentWrapper: {
+    flex: 1,
+    width: '100%',
   },
   contentContainer: {
     flex: 1,
@@ -1748,8 +2095,10 @@ const styles = StyleSheet.create({
     minHeight: 0,
     paddingBottom: 24,
   },
-  choiceIntro: {
+  choicePanelHeader: {
     gap: 4,
+    marginBottom: 8,
+    alignSelf: 'stretch',
   },
   choiceColumnWrapper: {
     width: '100%',
@@ -1768,22 +2117,19 @@ const styles = StyleSheet.create({
   },
   choiceCard: {
     borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
     padding: 16,
-    backgroundColor: '#ffffff',
+    backgroundColor: SURFACE_COLOR,
     width: '100%',
     maxWidth: 360,
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: 'transparent',
+    ...INTERACTIVE_SHADOW,
   },
   choiceCardActive: {
-    borderColor: '#fb7185',
-    backgroundColor: '#fff1f2',
+    borderColor: CRAVE_ACCENT,
   },
   choiceCardLabel: {
     color: '#111827',
-  },
-  choiceCardLabelActive: {
-    color: '#be123c',
   },
   choiceCardDetail: {
     color: '#475569',
@@ -1798,27 +2144,28 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: 'transparent',
+    backgroundColor: SURFACE_COLOR,
+    ...INTERACTIVE_SHADOW,
   },
   chipActive: {
-    borderColor: '#fb7185',
-    backgroundColor: '#fff1f2',
+    borderColor: CRAVE_ACCENT,
   },
   chipLabel: {
     color: '#0f172a',
   },
   chipLabelActive: {
-    color: '#be123c',
+    color: CRAVE_ACCENT,
   },
   chipCustom: {
     borderRadius: 999,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: '#f87171',
-    backgroundColor: '#fff1f2',
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: CRAVE_ACCENT,
+    backgroundColor: SURFACE_COLOR,
+    ...INTERACTIVE_SHADOW,
   },
   customInputRow: {
     marginTop: 16,
@@ -1832,18 +2179,23 @@ const styles = StyleSheet.create({
   addCustomButton: {
     paddingHorizontal: 18,
     paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f97384',
+    borderRadius: 12,
+    backgroundColor: SURFACE_COLOR,
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: 'transparent',
+    ...INTERACTIVE_SHADOW,
   },
   addCustomButtonDisabled: {
-    backgroundColor: '#fed7d7',
+    opacity: 0.45,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   addCustomButtonText: {
-    color: '#ffffff',
+    color: CRAVE_ACCENT,
   },
   addCustomButtonTextDisabled: {
-    color: '#ffffff',
-    opacity: 0.6,
+    color: CRAVE_ACCENT,
+    opacity: 0.4,
   },
   textInput: {
     borderWidth: 1,
@@ -1923,8 +2275,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   comparisonColumnHighlight: {
-    borderColor: '#a78bfa',
-    backgroundColor: '#faf5ff',
+    borderColor: CRAVE_ACCENT,
+    backgroundColor: '#fff5f7',
     borderWidth: 2,
   },
   comparisonColumnTitle: {
@@ -1969,7 +2321,7 @@ const styles = StyleSheet.create({
   },
   processingProgressFill: {
     height: '100%',
-    backgroundColor: '#a78bfa',
+    backgroundColor: CRAVE_ACCENT,
   },
   processingTitle: {
     color: '#0f172a',
@@ -2054,7 +2406,7 @@ const styles = StyleSheet.create({
     height: 6,
     borderRadius: 3,
     marginTop: 7,
-    backgroundColor: '#a78bfa',
+    backgroundColor: CRAVE_ACCENT,
   },
   summaryBulletText: {
     color: '#475569',
@@ -2065,12 +2417,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   accountButton: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderRadius: 16,
     paddingVertical: 14,
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: SURFACE_COLOR,
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: 'transparent',
+    ...INTERACTIVE_SHADOW,
   },
   accountButtonText: {
     color: '#0f172a',
@@ -2087,7 +2440,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   disclaimerLink: {
-    color: '#a78bfa',
+    color: CRAVE_ACCENT,
     textDecorationLine: 'underline',
   },
   // Graph styles
@@ -2264,7 +2617,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   notificationFeatureBullet: {
-    color: '#a78bfa',
+    color: CRAVE_ACCENT,
     fontSize: 16,
     fontWeight: 'bold',
   },
@@ -2293,15 +2646,109 @@ const styles = StyleSheet.create({
     color: '#15803d',
     fontSize: 10,
   },
-  footer: {
+  carouselContainer: {
+    gap: 24,
+  },
+  carouselSlide: {
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#fff5f5',
+    padding: 24,
+    gap: 16,
+    alignItems: 'center',
+  },
+  carouselVisual: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: CRAVE_ACCENT_LIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  carouselIcon: {
+    fontSize: 32,
+  },
+  carouselScenario: {
+    color: PRIMARY_TEXT,
+    textAlign: 'center',
+    fontSize: 18,
+  },
+  carouselCopy: {
+    color: SECONDARY_TEXT,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  carouselControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  carouselArrow: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: INTERACTIVE_BORDER_WIDTH,
+    borderColor: 'transparent',
+    backgroundColor: SURFACE_COLOR,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...INTERACTIVE_SHADOW,
+  },
+  carouselArrowDisabled: {
+    opacity: 0.35,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  carouselArrowText: {
+    fontSize: 18,
+    color: CRAVE_ACCENT,
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  carouselDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#e2e8f0',
+  },
+  carouselDotActive: {
+    backgroundColor: CRAVE_ACCENT,
+    width: 22,
+  },
+  ctaFloatingWrapper: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 32,
     paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 12,
-    alignItems: 'stretch',
+    alignItems: 'flex-end',
+  },
+  ctaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+  },
+  ctaBackButton: {
+    alignSelf: 'center',
   },
   ctaButton: {
-    width: '100%',
-    height: 50,
+    width: '34%',
+    minWidth: 150,
+    maxWidth: 220,
+    alignSelf: 'flex-end',
+    borderRadius: 999,
+    shadowColor: CTA_BUTTON_COLOR,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    elevation: 18,
+  },
+  ctaButtonPressed: {
+    transform: [{ scale: 0.97 }],
   },
 });
 
