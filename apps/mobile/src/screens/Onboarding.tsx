@@ -330,10 +330,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     () => findNextVisibleIndex(stepIndex) === stepIndex,
     [findNextVisibleIndex, stepIndex]
   );
-  const visibleSteps = React.useMemo(
-    () => onboardingSteps.filter(isStepVisible),
-    [isStepVisible]
-  );
+  const visibleSteps = React.useMemo(() => onboardingSteps.filter(isStepVisible), [isStepVisible]);
 
   React.useEffect(() => {
     if (!isAnimating) {
@@ -1903,10 +1900,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             extrapolate: 'clamp',
           });
           return (
-            <Animated.View
-              key={step.id}
-              style={[styles.progressDot, { width, backgroundColor }]}
-            />
+            <Animated.View key={step.id} style={[styles.progressDot, { width, backgroundColor }]} />
           );
         })}
       </View>
@@ -1999,7 +1993,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 onPressIn={handleCTAPressIn}
                 onPressOut={handleCTAPressOut}
                 disabled={isCTAInteractionDisabled}
-                style={[styles.ctaButton, isCTAInteractionDisabled ? styles.ctaButtonDisabled : null]}
+                style={[
+                  styles.ctaButton,
+                  isCTAInteractionDisabled ? styles.ctaButtonDisabled : null,
+                ]}
               />
             </Animated.View>
           </View>

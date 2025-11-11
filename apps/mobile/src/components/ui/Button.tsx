@@ -102,9 +102,7 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <ActivityIndicator color={variant === 'ghost' ? PRIMARY_BUTTON_COLOR : '#ffffff'} />
       ) : (
-        <Text style={[styles.label, labelVariants[variant], labelStyle]}>
-          {label}
-        </Text>
+        <Text style={[styles.label, labelVariants[variant], labelStyle]}>{label}</Text>
       )}
     </Pressable>
   );

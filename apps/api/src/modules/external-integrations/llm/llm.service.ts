@@ -250,13 +250,10 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const { expiresAt, refreshedAt, cacheId } =
-        persisted as SystemInstructionCacheState;
+      const { expiresAt, refreshedAt, cacheId } = persisted;
 
       if (this.isCacheStateFresh({ expiresAt, refreshedAt, cacheId })) {
-        const expiresAtIso = new Date(
-          Number(expiresAt),
-        ).toISOString();
+        const expiresAtIso = new Date(Number(expiresAt)).toISOString();
         const refreshedAtIso = new Date(Number(refreshedAt)).toISOString();
         this.systemInstructionCache = { name: cacheId };
         this.systemInstructionCacheExpiresAt = expiresAt;
@@ -272,9 +269,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         return;
       }
 
-      const expiresAtIso = new Date(
-        Number(expiresAt),
-      ).toISOString();
+      const expiresAtIso = new Date(Number(expiresAt)).toISOString();
       this.logger.debug('Persisted cache is stale or expired, refreshing', {
         correlationId,
         operation: 'init_system_cache',
