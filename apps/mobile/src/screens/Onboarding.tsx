@@ -34,17 +34,32 @@ type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
 type AnswerValue = string | string[] | number | undefined;
 
-const SCREEN_BACKGROUND = '#fff9fb';
-const OPEN_NOW_COLOR = '#f97384';
-const CRAVE_ACCENT = OPEN_NOW_COLOR;
-const CRAVE_ACCENT_LIGHT = '#ffe4e6';
-const CRAVE_ACCENT_MEDIUM = '#fb7185';
-const CRAVE_ACCENT_DARK = '#d61f45';
+const PRIMARY_ACCENT_COLOR = themeColors.primary ?? '#F97383';
+const CTA_BUTTON_COLOR = themeColors.accentDark ?? PRIMARY_ACCENT_COLOR;
+const SCREEN_BACKGROUND = '#ffffff';
+const SCREEN_BACKGROUND_TINT = 'rgba(249, 115, 131, 0.03)';
+const CTA_BUTTON_PULSE_COLOR = 'rgba(249, 115, 131, 0.7)';
+const CRAVE_ACCENT = PRIMARY_ACCENT_COLOR;
+const CRAVE_ACCENT_LIGHT = 'rgba(249, 115, 131, 0.25)';
+const CRAVE_ACCENT_DARK = PRIMARY_ACCENT_COLOR;
 const PRIMARY_TEXT = '#0f172a';
 const SECONDARY_TEXT = '#475569';
 const MUTED_TEXT = '#94a3b8';
 const SURFACE_COLOR = '#ffffff';
-const CTA_BUTTON_COLOR = themeColors.accentDark ?? '#4f3bff';
+const CTA_PRESS_SCALE = 0.95;
+const CTA_OVERSHOOT_SCALE = 1.05;
+const CTA_PRESS_DURATION_MS = 110;
+const CTA_RELEASE_DURATION_MS = 230;
+const CTA_PRESS_EASING = Easing.bezier(0.3, 0.8, 0.4, 1);
+const CTA_RELEASE_EASING = Easing.bezier(0.2, 0, 0, 1);
+const CTA_OVERSHOOT_EASING_OUT = Easing.bezier(0.22, 1, 0.36, 1);
+const CTA_OVERSHOOT_EASING_IN = Easing.bezier(0.4, 0, 0.2, 1);
+const CTA_PULSE_EASING = Easing.bezier(0.4, 0, 0.2, 1);
+const DOT_COLOR_LIGHT = 'rgba(249, 115, 131, 0.25)';
+const DOT_COLOR_MEDIUM = 'rgba(249, 115, 131, 0.65)';
+const DOT_COLOR_DARK = 'rgba(249, 115, 131, 1)';
+const TRANSITION_DURATION_MS = 620;
+const TRANSITION_EASING = Easing.bezier(0.7, 0, 0.35, 1);
 const PROGRESS_DOT_BASE_WIDTH = 8;
 const PROGRESS_DOT_ACTIVE_WIDTH = 28;
 const INTERACTIVE_BORDER_WIDTH = 2;
@@ -212,8 +227,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
   }
   const { width: viewportWidth } = useWindowDimensions();
-  const scrollAnim = React.useRef(new Animated.Value(0)).current;
-  const shouldAnimateRef = React.useRef(false);
+  const progress = React.useRef(new Animated.Value(0)).current;
+  const ctaPulse = React.useRef(new Animated.Value(0)).current;
+  const ctaPressScale = React.useRef(new Animated.Value(1)).current;
+  const ctaTransitionScale = React.useRef(new Animated.Value(1)).current;
   const [isAnimating, setIsAnimating] = React.useState(false);
 
   const locationValue = typeof answers.location === 'string' ? answers.location.trim() : '';
@@ -304,11 +321,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     [isStepVisible]
   );
 
-  const totalVisibleSteps = React.useMemo(() => {
-    const count = onboardingSteps.reduce((acc, step) => (isStepVisible(step) ? acc + 1 : acc), 0);
-    return Math.max(1, count);
-  }, [isStepVisible]);
-
   const currentStepPosition = React.useMemo(
     () => getPositionForIndex(stepIndex),
     [getPositionForIndex, stepIndex]
@@ -318,15 +330,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     () => findNextVisibleIndex(stepIndex) === stepIndex,
     [findNextVisibleIndex, stepIndex]
   );
+  const visibleSteps = React.useMemo(
+    () => onboardingSteps.filter(isStepVisible),
+    [isStepVisible]
+  );
 
   React.useEffect(() => {
-    if (!isTransitioning) {
-      dotProgressRef.current = {
-        from: currentStepPosition,
-        to: currentStepPosition,
-      };
+    if (!isAnimating) {
+      progress.setValue(currentStepPosition - 1);
     }
-  }, [currentStepPosition, isTransitioning]);
+  }, [currentStepPosition, isAnimating, progress]);
 
   const goToTabs = React.useCallback(() => {
     completeOnboarding();
@@ -1745,11 +1758,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
   };
 
-  const renderStepContent = (step: OnboardingStep, options?: { disableScroll?: boolean }) => {
+  const renderStepContent = (step: OnboardingStep) => {
     const paddingTop = stepHasHeader(step) ? 4 : 24;
     const containerStyle = [styles.contentContainer, { paddingTop }];
     const body = renderStepBody(step);
-    if (stepShouldScroll(step) && !options?.disableScroll) {
+    if (stepShouldScroll(step)) {
       return (
         <ScrollView
           contentContainerStyle={containerStyle}
@@ -1767,42 +1780,63 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const transitionToStep = React.useCallback(
     (nextIndex: number) => {
-      if (nextIndex === stepIndex || isTransitioning) {
+      if (nextIndex === stepIndex || isAnimating) {
         return;
       }
-      const direction = nextIndex > stepIndex ? 1 : -1;
-      transitionDirectionRef.current = direction;
-      setPreviousSnapshot(renderStepContent(activeStep, { disableScroll: true }));
-      const nextPosition = getPositionForIndex(nextIndex);
-      dotProgressRef.current = {
-        from: currentStepPosition,
-        to: nextPosition,
-      };
-      setIsTransitioning(true);
-      transitionAnim.setValue(0);
+      const targetPosition = getPositionForIndex(nextIndex) - 1;
+      setIsAnimating(true);
       setStepIndexState(nextIndex);
-      Animated.timing(transitionAnim, {
-        toValue: 1,
-        duration: 320,
-        easing: Easing.out(Easing.cubic),
+      const isForward = nextIndex > stepIndex;
+      if (isForward) {
+        ctaPulse.setValue(0);
+        ctaTransitionScale.setValue(1);
+        Animated.parallel([
+          Animated.timing(progress, {
+            toValue: targetPosition,
+            duration: TRANSITION_DURATION_MS,
+            easing: TRANSITION_EASING,
+            useNativeDriver: false,
+          }),
+          Animated.timing(ctaPulse, {
+            toValue: 1,
+            duration: TRANSITION_DURATION_MS,
+            easing: CTA_PULSE_EASING,
+            useNativeDriver: false,
+          }),
+          Animated.sequence([
+            Animated.timing(ctaTransitionScale, {
+              toValue: CTA_OVERSHOOT_SCALE,
+              duration: TRANSITION_DURATION_MS / 2,
+              easing: CTA_OVERSHOOT_EASING_OUT,
+              useNativeDriver: false,
+            }),
+            Animated.timing(ctaTransitionScale, {
+              toValue: 1,
+              duration: TRANSITION_DURATION_MS / 2,
+              easing: CTA_OVERSHOOT_EASING_IN,
+              useNativeDriver: false,
+            }),
+          ]),
+        ]).start(() => {
+          progress.setValue(targetPosition);
+          ctaPulse.setValue(0);
+          setIsAnimating(false);
+        });
+        return;
+      }
+      ctaPulse.setValue(0);
+      ctaTransitionScale.setValue(1);
+      Animated.timing(progress, {
+        toValue: targetPosition,
+        duration: TRANSITION_DURATION_MS,
+        easing: TRANSITION_EASING,
         useNativeDriver: false,
       }).start(() => {
-        setIsTransitioning(false);
-        setPreviousSnapshot(null);
-        transitionAnim.setValue(0);
-        dotProgressRef.current = { from: nextPosition, to: nextPosition };
+        progress.setValue(targetPosition);
+        setIsAnimating(false);
       });
     },
-    [
-      activeStep,
-      currentStepPosition,
-      getPositionForIndex,
-      renderStepContent,
-      stepIndex,
-      isTransitioning,
-      renderStepContent,
-      transitionAnim,
-    ]
+    [ctaPulse, ctaTransitionScale, getPositionForIndex, isAnimating, progress, stepIndex]
   );
 
   const handleContinue = React.useCallback(() => {
@@ -1824,27 +1858,69 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   }, [findPreviousVisibleIndex, stepIndex, transitionToStep]);
 
   const canContinue = isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
+  const isCTAInteractionDisabled = !canContinue || isAnimating;
+  const handleCTAPressIn = React.useCallback(() => {
+    if (isCTAInteractionDisabled) {
+      return;
+    }
+    Animated.timing(ctaPressScale, {
+      toValue: CTA_PRESS_SCALE,
+      duration: CTA_PRESS_DURATION_MS,
+      easing: CTA_PRESS_EASING,
+      useNativeDriver: false,
+    }).start();
+  }, [ctaPressScale, isCTAInteractionDisabled]);
+  const handleCTAPressOut = React.useCallback(() => {
+    Animated.timing(ctaPressScale, {
+      toValue: 1,
+      duration: CTA_RELEASE_DURATION_MS,
+      easing: CTA_RELEASE_EASING,
+      useNativeDriver: false,
+    }).start();
+  }, [ctaPressScale]);
   const canGoBack = findPreviousVisibleIndex(stepIndex) !== stepIndex;
   const showHeader = stepHasHeader(activeStep);
-  const stepAnimatedStyle = isTransitioning
-    ? {
-        transform: [
-          {
-            translateX: transitionAnim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [transitionDirectionRef.current * viewportWidth, 0],
-            }),
-          },
-        ],
-        opacity: transitionAnim.interpolate({
-          inputRange: [0, 0.3, 1],
-          outputRange: [0.2, 0.6, 1],
-        }),
-      }
-    : null;
-
+  const translateX = React.useMemo(
+    () => Animated.multiply(progress, -viewportWidth),
+    [progress, viewportWidth]
+  );
+  const renderProgressDots = React.useCallback(
+    () => (
+      <View style={styles.progressDots}>
+        {visibleSteps.map((step, index) => {
+          const width = progress.interpolate({
+            inputRange: [index - 1, index, index + 1],
+            outputRange: [
+              PROGRESS_DOT_BASE_WIDTH,
+              PROGRESS_DOT_ACTIVE_WIDTH,
+              PROGRESS_DOT_BASE_WIDTH,
+            ],
+            extrapolate: 'clamp',
+          });
+          const backgroundColor = progress.interpolate({
+            inputRange: [index - 1, index, index + 1],
+            outputRange: [DOT_COLOR_LIGHT, DOT_COLOR_DARK, DOT_COLOR_MEDIUM],
+            extrapolate: 'clamp',
+          });
+          return (
+            <Animated.View
+              key={step.id}
+              style={[styles.progressDot, { width, backgroundColor }]}
+            />
+          );
+        })}
+      </View>
+    ),
+    [progress, visibleSteps]
+  );
+  const progressDots = renderProgressDots();
+  const ctaBackgroundColor = ctaPulse.interpolate({
+    inputRange: [0, 0.5, 1],
+    outputRange: [CTA_BUTTON_COLOR, CTA_BUTTON_PULSE_COLOR, CTA_BUTTON_COLOR],
+  });
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View pointerEvents="none" style={styles.backgroundTint} />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -1853,43 +1929,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           <View style={styles.header}>
             <View style={styles.headerTopRow}>
               <View style={styles.headerSide} />
-              <View style={styles.progressArea}>
-                <View style={styles.progressDots}>
-                  {Array.from({ length: totalVisibleSteps }).map((_, index) => {
-                    const position = index + 1;
-                    const isCurrent = position === currentStepPosition;
-                    const isCompleted = position < currentStepPosition;
-                    const animatedWidthStyle = isTransitioning
-                      ? {
-                          width: transitionAnim.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [
-                              position === dotProgressRef.current.from
-                                ? PROGRESS_DOT_ACTIVE_WIDTH
-                                : PROGRESS_DOT_BASE_WIDTH,
-                              position === dotProgressRef.current.to
-                                ? PROGRESS_DOT_ACTIVE_WIDTH
-                                : PROGRESS_DOT_BASE_WIDTH,
-                            ],
-                          }),
-                        }
-                      : {
-                          width: isCurrent ? PROGRESS_DOT_ACTIVE_WIDTH : PROGRESS_DOT_BASE_WIDTH,
-                        };
-                    return (
-                      <Animated.View
-                        key={`progress-dot-${position}`}
-                        style={[
-                          styles.progressDot,
-                          animatedWidthStyle,
-                          isCompleted && styles.progressDotCompleted,
-                          isCurrent && styles.progressDotCurrent,
-                        ]}
-                      />
-                    );
-                  })}
-                </View>
-              </View>
+              <View style={styles.progressArea}>{progressDots}</View>
               <View style={[styles.headerSide, styles.headerSideRight]}>
                 <View style={styles.betaChip}>
                   <Text variant="caption" weight="semibold" style={styles.betaChipText}>
@@ -1899,27 +1939,44 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
               </View>
             </View>
           </View>
-        ) : null}
-        <View style={styles.stepContentArea}>
-          {previousSnapshot && isTransitioning ? (
-            <View style={styles.previousStepSnapshot} pointerEvents="none">
-              {previousSnapshot}
+        ) : (
+          <View style={[styles.header, styles.heroHeader]}>
+            <View style={styles.headerTopRow}>
+              <View style={styles.headerSide} />
+              <View style={styles.progressArea}>{progressDots}</View>
+              <View style={[styles.headerSide, styles.headerSideRight]}>
+                <View style={styles.betaChip}>
+                  <Text variant="caption" weight="semibold" style={styles.betaChipText}>
+                    BETA
+                  </Text>
+                </View>
+              </View>
             </View>
-          ) : null}
-          <Animated.View style={[styles.stepContentWrapper, stepAnimatedStyle]}>
-            {renderStepContent(activeStep)}
+          </View>
+        )}
+        <View style={styles.stepContentArea}>
+          <Animated.View
+            style={[
+              styles.pagerStrip,
+              {
+                width: Math.max(visibleSteps.length, 1) * viewportWidth,
+                transform: [{ translateX }],
+              },
+            ]}
+          >
+            {visibleSteps.map((step) => (
+              <View key={step.id} style={[styles.stepPane, { width: viewportWidth }]}>
+                {renderStepContent(step)}
+              </View>
+            ))}
           </Animated.View>
         </View>
         <View pointerEvents="box-none" style={styles.ctaFloatingWrapper}>
           <View style={styles.ctaRow}>
             <Pressable
-              style={[
-                styles.backButton,
-                styles.ctaBackButton,
-                (!canGoBack || isTransitioning) && styles.backButtonDisabled,
-              ]}
+              style={[styles.backButton, styles.ctaBackButton]}
               onPress={handleBack}
-              disabled={!canGoBack || isTransitioning}
+              disabled={!canGoBack || isAnimating}
               accessibilityRole="button"
               accessibilityLabel="Go back"
             >
@@ -1927,12 +1984,24 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 ←
               </Text>
             </Pressable>
-            <Button
-              label={continueLabel}
-              onPress={handleContinue}
-              disabled={!canContinue || isTransitioning}
-              style={({ pressed }) => [styles.ctaButton, pressed && styles.ctaButtonPressed]}
-            />
+            <Animated.View
+              style={[
+                styles.ctaButtonWrapper,
+                {
+                  transform: [{ scale: ctaPressScale }, { scale: ctaTransitionScale }],
+                  backgroundColor: ctaBackgroundColor,
+                },
+              ]}
+            >
+              <Button
+                label={continueLabel}
+                onPress={handleContinue}
+                onPressIn={handleCTAPressIn}
+                onPressOut={handleCTAPressOut}
+                disabled={isCTAInteractionDisabled}
+                style={[styles.ctaButton, isCTAInteractionDisabled ? styles.ctaButtonDisabled : null]}
+              />
+            </Animated.View>
           </View>
         </View>
       </KeyboardAvoidingView>
@@ -1944,6 +2013,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: SCREEN_BACKGROUND,
+    position: 'relative',
+  },
+  backgroundTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: SCREEN_BACKGROUND_TINT,
   },
   flex: {
     flex: 1,
@@ -1978,9 +2052,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 6,
   },
-  backButtonDisabled: {
-    opacity: 0.4,
-  },
   backButtonIcon: {
     color: MUTED_TEXT,
     fontSize: 20,
@@ -1994,11 +2065,11 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    backgroundColor: CRAVE_ACCENT_LIGHT,
+    backgroundColor: 'rgba(249, 115, 131, 0.15)',
     marginLeft: 8,
   },
   betaChipText: {
-    color: CRAVE_ACCENT,
+    color: CRAVE_ACCENT_DARK,
     fontSize: 10,
   },
   progressArea: {
@@ -2006,6 +2077,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 8,
+  },
+  heroHeader: {
+    paddingBottom: 8,
   },
   progressDots: {
     flexDirection: 'row',
@@ -2019,26 +2093,17 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: CRAVE_ACCENT_LIGHT,
   },
-  progressDotCompleted: {
-    backgroundColor: CRAVE_ACCENT_MEDIUM,
-  },
-  progressDotCurrent: {
-    backgroundColor: CRAVE_ACCENT_DARK,
-    width: PROGRESS_DOT_ACTIVE_WIDTH,
-  },
   stepContentArea: {
     flex: 1,
     width: '100%',
-    position: 'relative',
-    minHeight: 0,
+    overflow: 'hidden',
   },
-  previousStepSnapshot: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: SCREEN_BACKGROUND,
-  },
-  stepContentWrapper: {
+  pagerStrip: {
+    flexDirection: 'row',
     flex: 1,
-    width: '100%',
+  },
+  stepPane: {
+    flex: 1,
   },
   contentContainer: {
     flex: 1,
@@ -2731,7 +2796,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 32,
+    bottom: 24,
     paddingHorizontal: 24,
     alignItems: 'flex-end',
   },
@@ -2743,11 +2808,11 @@ const styles = StyleSheet.create({
   ctaBackButton: {
     alignSelf: 'center',
   },
-  ctaButton: {
+  ctaButtonWrapper: {
+    alignSelf: 'flex-end',
     width: '34%',
     minWidth: 150,
     maxWidth: 220,
-    alignSelf: 'flex-end',
     borderRadius: 999,
     shadowColor: CTA_BUTTON_COLOR,
     shadowOffset: { width: 0, height: 14 },
@@ -2755,8 +2820,14 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 18,
   },
-  ctaButtonPressed: {
-    transform: [{ scale: 0.97 }],
+  ctaButton: {
+    borderRadius: 999,
+    width: '100%',
+    backgroundColor: 'transparent',
+    height: 54,
+  },
+  ctaButtonDisabled: {
+    opacity: 1,
   },
 });
 

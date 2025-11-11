@@ -18,6 +18,11 @@ export interface LLMConfig {
     budget: number;
   };
   retryOptions: RetryOptions;
+  cache?: {
+    systemTtlSeconds: number;
+    systemRefreshLeadSeconds: number;
+    redisKey: string;
+  };
 }
 
 /**
@@ -230,4 +235,10 @@ export interface RateLimitInfo {
   utilizationPercent: number;
   rpmUtilization: number;
   tpmUtilization: number;
+}
+
+export interface SystemInstructionCacheState {
+  cacheId: string;
+  expiresAt: number;
+  refreshedAt: number;
 }

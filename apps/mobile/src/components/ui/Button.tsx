@@ -57,9 +57,6 @@ const styles = StyleSheet.create({
   ghostText: {
     color: PRIMARY_BUTTON_COLOR,
   },
-  disabled: {
-    opacity: 0.5,
-  },
 });
 
 const containerVariants: Record<ButtonVariant, StyleProp<ViewStyle>> = {
@@ -88,7 +85,10 @@ export const Button: React.FC<ButtonProps> = ({
   const computedStyle = (state: PressableStateCallbackType) => [
     styles.base,
     containerVariants[variant],
-    isDisabled ? styles.disabled : null,
+    state.pressed && variant === 'primary' ? { transform: [{ scale: 0.97 }] } : null,
+    isDisabled && variant === 'primary'
+      ? { backgroundColor: PRIMARY_BUTTON_COLOR, opacity: 0.9 }
+      : null,
     typeof style === 'function' ? style(state) : style,
   ];
 
@@ -102,7 +102,9 @@ export const Button: React.FC<ButtonProps> = ({
       {isLoading ? (
         <ActivityIndicator color={variant === 'ghost' ? PRIMARY_BUTTON_COLOR : '#ffffff'} />
       ) : (
-        <Text style={[styles.label, labelVariants[variant], labelStyle]}>{label}</Text>
+        <Text style={[styles.label, labelVariants[variant], labelStyle]}>
+          {label}
+        </Text>
       )}
     </Pressable>
   );

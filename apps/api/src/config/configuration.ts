@@ -157,6 +157,19 @@ export default () => ({
       enabled: process.env.LLM_THINKING_ENABLED === 'true',
       budget: parseInt(process.env.LLM_THINKING_BUDGET || '0', 10),
     },
+    cache: {
+      systemTtlSeconds: parseInt(
+        process.env.LLM_SYSTEM_CACHE_TTL_SECONDS || '10800',
+        10,
+      ),
+      systemRefreshLeadSeconds: parseInt(
+        process.env.LLM_SYSTEM_CACHE_REFRESH_LEAD_SECONDS || '600',
+        10,
+      ),
+      redisKey:
+        process.env.LLM_SYSTEM_CACHE_REDIS_KEY ||
+        'llm:system-instruction-cache',
+    },
   },
   googlePlaces: {
     apiKey: process.env.GOOGLE_PLACES_API_KEY,

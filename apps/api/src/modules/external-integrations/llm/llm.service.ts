@@ -1,10 +1,17 @@
-import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Inject,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI, FinishReason } from '@google/genai';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { RedisService } from '@liaoliaots/nestjs-redis';
+import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import {
   LLMConfig,
@@ -13,6 +20,7 @@ import {
   LLMApiResponse,
   LLMPerformanceMetrics,
   LLMSearchQueryAnalysis,
+  SystemInstructionCacheState,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
 import {
@@ -70,8 +78,10 @@ interface LLMGenerationOptions {
   systemInstruction?: string | null;
 }
 
+type CacheRefreshReason = 'bootstrap' | 'scheduled' | 'gemini_403';
+
 @Injectable()
-export class LLMService implements OnModuleInit {
+export class LLMService implements OnModuleInit, OnModuleDestroy {
   private logger!: LoggerService;
   private llmConfig!: LLMConfig;
   private systemPrompt!: string;
@@ -86,13 +96,21 @@ export class LLMService implements OnModuleInit {
   };
 
   private genAI!: GoogleGenAI;
+  private redisClient: Redis | null = null;
   private systemInstructionCache: GeminiCacheEntry | null = null; // Cache for collection processing instructions
+  private systemInstructionCacheExpiresAt: number | null = null;
+  private systemCacheRefreshTimer: NodeJS.Timeout | null = null;
+  private systemCacheRefreshInFlight: Promise<void> | null = null;
+  private systemCacheTtlMs = 0;
+  private systemCacheRefreshLeadMs = 0;
+  private systemCacheRedisKey = 'llm:system-instruction-cache';
   private queryPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly redisService: RedisService,
   ) {}
 
   onModuleInit(): void {
@@ -126,10 +144,22 @@ export class LLMService implements OnModuleInit {
             'llm.retryOptions.retryBackoffFactor',
           ) || 2.0,
       },
+      cache: {
+        systemTtlSeconds:
+          this.configService.get<number>('llm.cache.systemTtlSeconds') ?? 10800,
+        systemRefreshLeadSeconds:
+          this.configService.get<number>(
+            'llm.cache.systemRefreshLeadSeconds',
+          ) ?? 600,
+        redisKey:
+          this.configService.get<string>('llm.cache.redisKey') ??
+          'llm:system-instruction-cache',
+      },
     };
 
     // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
+    this.redisClient = this.redisService.getOrThrow();
 
     // Load system prompt from collection-prompt.md
     this.systemPrompt = this.loadSystemPrompt();
@@ -151,8 +181,9 @@ export class LLMService implements OnModuleInit {
       thinkingBudget: this.llmConfig.thinking?.budget,
     });
 
+    this.initializeSystemCacheConfig();
     // Initialize explicit cache for system instructions (async, non-blocking)
-    this.initializeSystemInstructionCache().catch((error) => {
+    this.bootstrapSystemInstructionCache().catch((error) => {
       this.logger.warn(
         'System instruction cache initialization failed, continuing with fallback',
         {
@@ -179,51 +210,271 @@ export class LLMService implements OnModuleInit {
     });
   }
 
-  /**
-   * Initialize explicit cache for system instructions to optimize token usage
-   */
-  private async initializeSystemInstructionCache(): Promise<void> {
+  onModuleDestroy(): void {
+    if (this.systemCacheRefreshTimer) {
+      clearTimeout(this.systemCacheRefreshTimer);
+      this.systemCacheRefreshTimer = null;
+    }
+  }
+
+  private initializeSystemCacheConfig(): void {
+    const cacheConfig = this.llmConfig.cache;
+    const ttlSeconds =
+      typeof cacheConfig?.systemTtlSeconds === 'number' &&
+      !Number.isNaN(cacheConfig.systemTtlSeconds)
+        ? cacheConfig.systemTtlSeconds
+        : 10800;
+    this.systemCacheTtlMs = Math.max(60_000, ttlSeconds * 1000);
+
+    const refreshLeadSeconds =
+      typeof cacheConfig?.systemRefreshLeadSeconds === 'number' &&
+      !Number.isNaN(cacheConfig.systemRefreshLeadSeconds)
+        ? cacheConfig.systemRefreshLeadSeconds
+        : 600;
+    let refreshLeadMs = Math.max(30_000, refreshLeadSeconds * 1000);
+    if (refreshLeadMs >= this.systemCacheTtlMs) {
+      refreshLeadMs = Math.max(30_000, Math.floor(this.systemCacheTtlMs / 2));
+    }
+    this.systemCacheRefreshLeadMs = refreshLeadMs;
+
+    this.systemCacheRedisKey =
+      cacheConfig?.redisKey ?? 'llm:system-instruction-cache';
+  }
+
+  private async bootstrapSystemInstructionCache(): Promise<void> {
+    const correlationId = CorrelationUtils.getCorrelationId();
     try {
-      this.logger.info('Creating explicit cache for system instructions', {
-        correlationId: CorrelationUtils.getCorrelationId(),
+      const persisted = await this.loadPersistedSystemCacheState();
+      if (!persisted) {
+        await this.refreshSystemInstructionCache('bootstrap');
+        return;
+      }
+
+      const { expiresAt, refreshedAt, cacheId } =
+        persisted as SystemInstructionCacheState;
+
+      if (this.isCacheStateFresh({ expiresAt, refreshedAt, cacheId })) {
+        const expiresAtIso = new Date(
+          Number(expiresAt),
+        ).toISOString();
+        const refreshedAtIso = new Date(Number(refreshedAt)).toISOString();
+        this.systemInstructionCache = { name: cacheId };
+        this.systemInstructionCacheExpiresAt = expiresAt;
+        this.logger.info('Using persisted system instruction cache', {
+          correlationId,
+          operation: 'init_system_cache',
+          cacheId,
+          expiresAt: expiresAtIso,
+          refreshedAt: refreshedAtIso,
+          source: 'redis',
+        });
+        this.scheduleSystemCacheRefresh();
+        return;
+      }
+
+      const expiresAtIso = new Date(
+        Number(expiresAt),
+      ).toISOString();
+      this.logger.debug('Persisted cache is stale or expired, refreshing', {
+        correlationId,
         operation: 'init_system_cache',
-        systemPromptLength: this.systemPrompt.length,
+        cacheId,
+        expiresAt: expiresAtIso,
+        now: new Date().toISOString(),
       });
 
-      // Create explicit cache with system instructions
-      const cache = await this.genAI.caches.create({
-        model: this.llmConfig.model,
-        config: {
-          systemInstruction: this.systemPrompt,
-          ttl: '10800s', // 3 hour cache
+      await this.refreshSystemInstructionCache('bootstrap');
+    } catch (error) {
+      this.logger.warn('Failed to bootstrap system instruction cache', {
+        correlationId,
+        operation: 'init_system_cache',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
         },
       });
-      const cacheName = cache?.name;
-      if (!cacheName) {
-        throw new Error('Cache name missing from Gemini cache create response');
-      }
-      this.systemInstructionCache = { name: cacheName };
+      this.systemInstructionCache = null;
+      this.systemInstructionCacheExpiresAt = null;
+    }
+  }
 
-      this.logger.info('System instruction cache created successfully', {
-        correlationId: CorrelationUtils.getCorrelationId(),
-        operation: 'init_system_cache',
-        cacheId: this.systemInstructionCache?.name,
-        ttl: '10800s',
-      });
-    } catch (error) {
-      this.logger.warn(
-        'Failed to create explicit cache, falling back to implicit caching',
-        {
+  private async refreshSystemInstructionCache(
+    reason: CacheRefreshReason = 'scheduled',
+  ): Promise<void> {
+    if (this.systemCacheRefreshInFlight) {
+      return this.systemCacheRefreshInFlight;
+    }
+
+    const refreshPromise = this.performSystemCacheRefresh(reason).finally(
+      () => {
+        this.systemCacheRefreshInFlight = null;
+      },
+    );
+
+    this.systemCacheRefreshInFlight = refreshPromise;
+    return refreshPromise;
+  }
+
+  private async performSystemCacheRefresh(
+    reason: CacheRefreshReason,
+  ): Promise<void> {
+    const correlationId = CorrelationUtils.getCorrelationId();
+    const previousCacheId = this.systemInstructionCache?.name ?? null;
+
+    this.logger.info('Creating explicit cache for system instructions', {
+      correlationId,
+      operation: 'refresh_system_cache',
+      reason,
+      systemPromptLength: this.systemPrompt.length,
+    });
+
+    const ttlSeconds = Math.max(1, Math.floor(this.systemCacheTtlMs / 1000));
+    const cache = await this.genAI.caches.create({
+      model: this.llmConfig.model,
+      config: {
+        systemInstruction: this.systemPrompt,
+        ttl: `${ttlSeconds}s`,
+      },
+    });
+    const cacheName = cache?.name;
+    if (!cacheName) {
+      throw new Error('Cache name missing from Gemini cache create response');
+    }
+
+    const refreshedAt = Date.now();
+    const expiresAt = refreshedAt + this.systemCacheTtlMs;
+    this.systemInstructionCache = { name: cacheName };
+    this.systemInstructionCacheExpiresAt = expiresAt;
+
+    await this.persistSystemInstructionCacheState({
+      cacheId: cacheName,
+      refreshedAt,
+      expiresAt,
+    });
+
+    this.logger.info('System instruction cache created successfully', {
+      correlationId,
+      operation: 'refresh_system_cache',
+      cacheId: cacheName,
+      ttlSeconds,
+      reason,
+      previousCacheId,
+      expiresAt: new Date(expiresAt).toISOString(),
+    });
+
+    this.scheduleSystemCacheRefresh();
+  }
+
+  private scheduleSystemCacheRefresh(): void {
+    if (!this.systemInstructionCacheExpiresAt || this.systemCacheTtlMs <= 0) {
+      return;
+    }
+
+    if (this.systemCacheRefreshTimer) {
+      clearTimeout(this.systemCacheRefreshTimer);
+    }
+
+    const now = Date.now();
+    const triggerAt =
+      this.systemInstructionCacheExpiresAt - this.systemCacheRefreshLeadMs;
+    const delay = Math.max(triggerAt - now, 0);
+
+    this.systemCacheRefreshTimer = setTimeout(() => {
+      this.refreshSystemInstructionCache('scheduled').catch((error) => {
+        this.logger.error('Scheduled system instruction cache refresh failed', {
           correlationId: CorrelationUtils.getCorrelationId(),
-          operation: 'init_system_cache',
+          operation: 'refresh_system_cache',
           error: {
             message: error instanceof Error ? error.message : String(error),
           },
-        },
-      );
-      // Continue without explicit caching - implicit caching will still work
-      this.systemInstructionCache = null;
+        });
+      });
+    }, delay);
+  }
+
+  private isCacheStateFresh(
+    state: SystemInstructionCacheState | null,
+  ): state is SystemInstructionCacheState {
+    if (
+      !state ||
+      typeof state.cacheId !== 'string' ||
+      typeof state.expiresAt !== 'number'
+    ) {
+      return false;
     }
+    const freshnessBoundary = state.expiresAt - this.systemCacheRefreshLeadMs;
+    return Date.now() < freshnessBoundary;
+  }
+
+  private async loadPersistedSystemCacheState(): Promise<SystemInstructionCacheState | null> {
+    if (!this.redisClient) {
+      return null;
+    }
+    try {
+      const raw = await this.redisClient.get(this.systemCacheRedisKey);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as SystemInstructionCacheState;
+      if (
+        typeof parsed?.cacheId === 'string' &&
+        typeof parsed?.expiresAt === 'number' &&
+        typeof parsed?.refreshedAt === 'number'
+      ) {
+        return parsed;
+      }
+    } catch (error) {
+      this.logger.warn('Failed to load cached system instruction metadata', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'load_system_cache_state',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+    return null;
+  }
+
+  private async persistSystemInstructionCacheState(
+    state: SystemInstructionCacheState | null,
+  ): Promise<void> {
+    if (!this.redisClient) {
+      return;
+    }
+    try {
+      if (!state) {
+        await this.redisClient.del(this.systemCacheRedisKey);
+        return;
+      }
+
+      const ttl = Math.max(
+        60_000,
+        state.expiresAt - Date.now() + this.systemCacheRefreshLeadMs,
+      );
+      await this.redisClient.set(
+        this.systemCacheRedisKey,
+        JSON.stringify(state),
+        'PX',
+        ttl,
+      );
+    } catch (error) {
+      this.logger.warn('Failed to persist system instruction cache metadata', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'persist_system_cache_state',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private async clearSystemInstructionCache(): Promise<void> {
+    if (this.systemCacheRefreshTimer) {
+      clearTimeout(this.systemCacheRefreshTimer);
+      this.systemCacheRefreshTimer = null;
+    }
+    this.systemInstructionCache = null;
+    this.systemInstructionCacheExpiresAt = null;
+    await this.persistSystemInstructionCacheState(null);
   }
 
   private async initializeQueryInstructionCache(): Promise<void> {
@@ -623,6 +874,54 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return cleanContent;
   }
 
+  private isCachedContentMissingError(error: unknown): boolean {
+    if (!error) {
+      return false;
+    }
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : '';
+    if (!message) {
+      return false;
+    }
+
+    if (message.includes('CachedContent not found')) {
+      return true;
+    }
+
+    const lowerMessage = message.toLowerCase();
+    if (
+      lowerMessage.includes('cachedcontent') &&
+      lowerMessage.includes('permission_denied')
+    ) {
+      return true;
+    }
+
+    const jsonMatch = message.match(/\{"error":\{[\s\S]*\}\}/);
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]) as {
+          error?: { code?: number; status?: string; message?: string };
+        };
+        if (
+          parsed?.error?.code === 403 &&
+          (parsed.error.status === 'PERMISSION_DENIED' ||
+            parsed.error.message?.includes('CachedContent'))
+        ) {
+          return true;
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+
+    return false;
+  }
+
   private parseSearchQueryResponse(content: string): LLMSearchQueryAnalysis {
     const cleanContent = this.sanitizeJsonContent(content);
 
@@ -809,11 +1108,6 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     const generationConfig: GeminiGenerationConfig =
       options.generationConfig ?? defaultGenerationConfig;
-    const cacheName =
-      options.cacheName ??
-      (options.systemInstruction
-        ? null
-        : (this.systemInstructionCache?.name ?? null));
     const systemInstruction = options.systemInstruction ?? this.systemPrompt;
 
     const hasResponseMimeType =
@@ -887,6 +1181,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     };
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const cacheName =
+        options.cacheName ??
+        (options.systemInstruction
+          ? null
+          : (this.systemInstructionCache?.name ?? null));
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -1084,6 +1383,41 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         };
 
         this.logger.error('Detailed @google/genai API error', errorDetails);
+
+        const cacheableRequest =
+          !options.cacheName && !options.systemInstruction;
+        if (cacheableRequest && this.isCachedContentMissingError(error)) {
+          this.logger.warn(
+            'Gemini cache handle invalid; attempting refresh before retry',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              operation: 'call_llm_api',
+              cacheId: this.systemInstructionCache?.name ?? null,
+              attempt: attempt + 1,
+            },
+          );
+          try {
+            await this.refreshSystemInstructionCache('gemini_403');
+          } catch (refreshError) {
+            this.logger.error(
+              'Failed to refresh system instruction cache after Gemini 403, falling back to inline instructions',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                operation: 'call_llm_api',
+                cacheId: this.systemInstructionCache?.name ?? null,
+                error: {
+                  message:
+                    refreshError instanceof Error
+                      ? refreshError.message
+                      : String(refreshError),
+                },
+              },
+            );
+            await this.clearSystemInstructionCache();
+          }
+          attempt--;
+          continue;
+        }
 
         const { retry, reason } = isRetryable(error);
         if (retry && attempt < maxRetries) {
