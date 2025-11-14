@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { SearchScreen, BookmarksScreen, ProfileScreen } from '../screens';
+import { SearchScreen, BookmarksScreen, ProfileScreen, PollsScreen } from '../screens';
 import type { MainTabParamList } from '../types/navigation';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -51,6 +51,7 @@ const BottomTabNavigator: React.FC = () => {
         tabBarIcon: ({ color }) => {
           const iconName: Record<keyof MainTabParamList, keyof typeof Feather.glyphMap> = {
             Search: 'search',
+            Polls: 'bar-chart-2',
             Bookmarks: 'bookmark',
             Profile: 'user',
           };
@@ -66,6 +67,7 @@ const BottomTabNavigator: React.FC = () => {
       })}
     >
       <Tab.Screen name="Search" component={SearchScreen} />
+      <Tab.Screen name="Polls" component={PollsScreen} />
       <Tab.Screen name="Bookmarks" component={BookmarksScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>

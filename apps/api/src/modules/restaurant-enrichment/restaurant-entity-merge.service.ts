@@ -334,8 +334,6 @@ export class RestaurantEntityMergeService {
           queryImpressions:
             canonicalPriority.queryImpressions +
             duplicatePriority.queryImpressions,
-          queryClicks:
-            canonicalPriority.queryClicks + duplicatePriority.queryClicks,
           isNewEntity:
             canonicalPriority.isNewEntity || duplicatePriority.isNewEntity,
           lastCalculatedAt: this.maxDate(

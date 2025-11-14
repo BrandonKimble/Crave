@@ -62,17 +62,32 @@ export class SmartLLMProcessor implements OnModuleInit {
   private cachedInstructionTokens = 10000;
   private readonly usageWindowSize = 10;
   private readonly promptCeilingBuffer = 2000;
-  private readonly hardTokenCap = 80000; // protects TPM if an estimate goes wild
+  private readonly maxRequestTokens: number;
+  private readonly hardTokenCap: number;
   private recentPromptTokens: number[] = [];
   private recentTotalTokens: number[] = [];
   private recentOutputTokens: number[] = [];
   private recentTpmUtilizations: number[] = [];
+  private estimationBiasTokens = 0;
+  private estimationSamples = 0;
 
   constructor(
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(CentralizedRateLimiter)
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
-  ) {}
+  ) {
+    const envMaxTokens = parseInt(
+      process.env.LLM_MAX_REQUEST_TOKENS || '60000',
+      10,
+    );
+    const defaultMax = 60000;
+    const sanitizedMax =
+      Number.isFinite(envMaxTokens) && envMaxTokens > 0
+        ? Math.min(envMaxTokens, 65000)
+        : defaultMax;
+    this.maxRequestTokens = sanitizedMax;
+    this.hardTokenCap = sanitizedMax;
+  }
 
   onModuleInit() {
     this.logger = this.loggerService.setContext('SmartLLMProcessor');
@@ -296,6 +311,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           this.agg.estError.absSum += Math.abs(err);
           this.agg.estError.min = Math.min(this.agg.estError.min, err);
           this.agg.estError.max = Math.max(this.agg.estError.max, err);
+          this.updateEstimationBias(estTokens, actualTokens);
         } catch (error) {
           this.logger.debug('Failed to aggregate reservation diagnostics', {
             correlationId: CorrelationUtils.getCorrelationId(),
@@ -422,13 +438,29 @@ export class SmartLLMProcessor implements OnModuleInit {
 
     // Choose conservative estimate: max(char-based, moving average)
     const estimate = Math.max(charEstimate, avg);
+    const bias =
+      this.estimationSamples > 5
+        ? Math.max(0, Math.round(this.estimationBiasTokens))
+        : 0;
+    const biasedEstimate = estimate + bias;
     // Clamp to reasonable bounds to avoid pathological reservations
     const minFloor = Math.max(
       1500,
       this.cachedInstructionTokens + expectedOutputTokens,
     );
-    const adaptiveCeiling = this.getAdaptiveCeiling(minFloor, estimate);
-    const clamped = Math.max(minFloor, Math.min(estimate, adaptiveCeiling));
+    const estimateTarget = Math.min(biasedEstimate, this.maxRequestTokens);
+    if (biasedEstimate > this.maxRequestTokens) {
+      this.logger.warn('Estimated token usage exceeds configured maximum', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        estimatedTokens: Math.round(biasedEstimate),
+        maxRequestTokens: this.maxRequestTokens,
+      });
+    }
+    const adaptiveCeiling = this.getAdaptiveCeiling(minFloor, estimateTarget);
+    const clamped = Math.max(
+      minFloor,
+      Math.min(estimateTarget, adaptiveCeiling),
+    );
     return clamped;
   }
 
@@ -588,8 +620,12 @@ export class SmartLLMProcessor implements OnModuleInit {
         return null;
       }
 
-      const { promptTokenCount, candidatesTokenCount, totalTokenCount } =
-        usageMetadata;
+      const {
+        promptTokenCount,
+        candidatesTokenCount,
+        totalTokenCount,
+        thoughtsTokenCount,
+      } = usageMetadata;
       if (
         typeof promptTokenCount !== 'number' ||
         typeof candidatesTokenCount !== 'number'
@@ -597,6 +633,10 @@ export class SmartLLMProcessor implements OnModuleInit {
         return null;
       }
 
+      const thinkingTokens =
+        typeof thoughtsTokenCount === 'number' && thoughtsTokenCount > 0
+          ? thoughtsTokenCount
+          : 0;
       const cachedInstructionTokens =
         usageMetadata.cachedContentTokenCount ?? null;
       if (
@@ -612,7 +652,7 @@ export class SmartLLMProcessor implements OnModuleInit {
         ? (usageMetadata.cachedContentTokenCount ?? 0)
         : 0;
       const promptTokens = promptTokenCount + cached;
-      const outputTokens = candidatesTokenCount;
+      const outputTokens = candidatesTokenCount + thinkingTokens;
       const totalTokens = totalTokenCount ?? promptTokens + outputTokens;
 
       this.trackTokenUsage(promptTokens, totalTokens, outputTokens);
@@ -755,5 +795,21 @@ export class SmartLLMProcessor implements OnModuleInit {
     const avg = Math.max(0, Math.round(sum / this.recentOutputTokens.length));
     // Give a little cushion above the rolling average
     return avg + this.promptCeilingBuffer;
+  }
+
+  private updateEstimationBias(estimated: number, actual: number): void {
+    if (!Number.isFinite(actual) || !Number.isFinite(estimated)) {
+      return;
+    }
+    const error = actual - estimated;
+    const positiveError = Math.max(0, error);
+    const alpha = 0.2;
+    if (this.estimationSamples === 0) {
+      this.estimationBiasTokens = positiveError;
+    } else {
+      this.estimationBiasTokens =
+        (1 - alpha) * this.estimationBiasTokens + alpha * positiveError;
+    }
+    this.estimationSamples++;
   }
 }

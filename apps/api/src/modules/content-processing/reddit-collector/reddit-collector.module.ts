@@ -29,6 +29,7 @@ import { ArchiveBatchProcessingWorker } from './archive/archive-batch.worker';
 import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
+import { AnalyticsModule } from '../../analytics/analytics.module';
 
 /**
  * Reddit Collector Module
@@ -103,6 +104,7 @@ import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaura
       name: 'archive-collection',
     }),
     RestaurantEnrichmentModule,
+    AnalyticsModule,
   ],
   providers: [
     ArchiveZstdDecompressor,

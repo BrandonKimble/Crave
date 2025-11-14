@@ -5,6 +5,7 @@ import { LLMCommentDto } from './dto/llm-input.dto';
 
 const DEFAULT_MAX_CHUNK_COMMENTS = 80;
 const DEFAULT_MAX_CHUNK_CHAR_LENGTH = 12000;
+const DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE = 35000;
 
 /**
  * Chunk metadata for tracking processing information
@@ -17,6 +18,9 @@ export interface ChunkMetadata {
   threadRootId: string;
   rootCommentIds?: string[];
   rootCommentScores?: number[];
+  postId?: string;
+  postChunkIndex?: number;
+  estimatedTokenCount?: number;
 }
 
 /**
@@ -51,6 +55,7 @@ export class LLMChunkingService implements OnModuleInit {
   private getChunkingLimits(): {
     maxCommentsPerChunk: number;
     maxCharsPerChunk: number;
+    maxTokensPerChunk: number;
   } {
     const parsePositiveInt = (value: string | undefined, fallback: number) => {
       const parsed = Number.parseInt(value ?? '', 10);
@@ -66,7 +71,18 @@ export class LLMChunkingService implements OnModuleInit {
         process.env.LLM_MAX_CHUNK_CHARS,
         DEFAULT_MAX_CHUNK_CHAR_LENGTH,
       ),
+      maxTokensPerChunk: parsePositiveInt(
+        process.env.LLM_CHUNK_TARGET_TOKENS,
+        DEFAULT_MAX_CHUNK_TOKEN_ESTIMATE,
+      ),
     };
+  }
+
+  private estimateTokensFromChars(charCount: number): number {
+    if (!Number.isFinite(charCount) || charCount <= 0) {
+      return 0;
+    }
+    return Math.max(1, Math.floor(charCount / 4));
   }
 
   /**
@@ -117,6 +133,9 @@ export class LLMChunkingService implements OnModuleInit {
       );
 
       if (!post.comments || post.comments.length === 0) {
+        const postContextCharLength =
+          (post.title?.length || 0) + (post.content?.length || 0);
+        const postTokens = this.estimateTokensFromChars(postContextCharLength);
         this.logger.debug(
           'No comments to chunk, adding single chunk with post only',
           {
@@ -148,6 +167,9 @@ export class LLMChunkingService implements OnModuleInit {
           rootCommentScore: 0,
           estimatedProcessingTime: 5, // Base processing time for post only
           threadRootId: post.id,
+          postId: post.id,
+          postChunkIndex: 0,
+          estimatedTokenCount: postTokens,
         });
 
         continue; // Continue to next post instead of returning
@@ -174,8 +196,12 @@ export class LLMChunkingService implements OnModuleInit {
 
       const postChunkStartIndex = chunks.length;
       const postMetadataStartIndex = chunkMetadata.length;
-      const { maxCommentsPerChunk, maxCharsPerChunk } =
+      const { maxCommentsPerChunk, maxCharsPerChunk, maxTokensPerChunk } =
         this.getChunkingLimits();
+      const softTokenThreshold = Math.max(
+        1000,
+        Math.floor(maxTokensPerChunk * 0.8),
+      );
       const postContextCharLength =
         (post.title?.length || 0) + (post.content?.length || 0);
 
@@ -210,6 +236,7 @@ export class LLMChunkingService implements OnModuleInit {
 
       const groupedThreads: ThreadGroup[] = [];
       let currentGroup: ThreadGroup | null = null;
+      let chunkSequenceForPost = 0;
 
       for (const thread of threadInfos) {
         if (!currentGroup) {
@@ -224,10 +251,14 @@ export class LLMChunkingService implements OnModuleInit {
         const proposedCommentCount =
           currentGroup.commentCount + thread.commentCount;
         const proposedCharLength = currentGroup.charLength + thread.charLength;
+        const proposedTokenEstimate =
+          this.estimateTokensFromChars(proposedCharLength);
 
         const exceedsLimits =
-          proposedCommentCount > maxCommentsPerChunk ||
-          proposedCharLength > maxCharsPerChunk;
+          proposedCharLength > maxCharsPerChunk ||
+          proposedTokenEstimate > maxTokensPerChunk ||
+          (proposedCommentCount > maxCommentsPerChunk &&
+            proposedTokenEstimate >= softTokenThreshold);
 
         if (exceedsLimits) {
           groupedThreads.push(currentGroup);
@@ -289,6 +320,7 @@ export class LLMChunkingService implements OnModuleInit {
           group.threads.length === 1
             ? `chunk_${rootCommentIds[0]}`
             : `chunk_${post.id}_group_${groupIndex + 1}`;
+        const tokenEstimate = this.estimateTokensFromChars(group.charLength);
 
         chunks.push({
           posts: [
@@ -310,6 +342,9 @@ export class LLMChunkingService implements OnModuleInit {
               : `group:${rootCommentIds.join(',')}`,
           rootCommentIds,
           rootCommentScores,
+          postId: post.id,
+          postChunkIndex: chunkSequenceForPost++,
+          estimatedTokenCount: tokenEstimate,
         });
       });
 
@@ -327,6 +362,14 @@ export class LLMChunkingService implements OnModuleInit {
         (c) => !processedCommentIds.has(c.id),
       );
       if (orphanedComments.length > 0) {
+        const orphanCharLength =
+          postContextCharLength +
+          orphanedComments.reduce(
+            (sum, comment) => sum + (comment.content?.length || 0),
+            0,
+          );
+        const orphanTokens = this.estimateTokensFromChars(orphanCharLength);
+
         this.logger.warn('Found orphaned comments, adding as separate chunk', {
           correlationId: CorrelationUtils.getCorrelationId(),
           postId: post.id,
@@ -361,6 +404,9 @@ export class LLMChunkingService implements OnModuleInit {
           ),
           estimatedProcessingTime: orphanedComments.length * 6.4,
           threadRootId: 'orphaned',
+          postId: post.id,
+          postChunkIndex: chunkSequenceForPost++,
+          estimatedTokenCount: orphanTokens,
         });
       }
 

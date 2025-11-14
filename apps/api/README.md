@@ -97,6 +97,11 @@ NODE_ENV=development
 DATABASE_CONNECTION_POOL_MAX=10
 DATABASE_CONNECTION_POOL_MIN=2
 
+# Moderation
+GOOGLE_MODERATION_API_KEY=your_key
+# Optional override for the moderation endpoint
+# GOOGLE_MODERATION_ENDPOINT=https://contentmoderation.googleapis.com/v1beta/moderations:moderateText
+
 # Future features (optional for M01)
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -109,6 +114,17 @@ RESTAURANT_ENRICHMENT_MIN_SCORE_THRESHOLD=0.2
   similarity score (0–1) a Google Places candidate must meet — in addition to
   matching the preferred place types (`food`, `restaurant`, `cafe`, `bar`) —
   before we fetch details. Defaults to `0.2` if not set.
+
+### Poll & Demand Controls
+
+To tune poll scheduling, search logging, and keyword demand targeting, set:
+
+- `SEARCH_LOG_ENABLED` — toggle per-query logging for demand analytics (default `true`).
+- `POLL_TOPIC_LIMIT` / `POLL_MAX_PER_CITY` — cap how many topics/polls are created per refresh and per Thursday drop.
+- `POLL_DEFAULT_COOLDOWN_DAYS` / `POLL_TREND_COOLDOWN_DAYS` — control how long an entity must wait before being polled again, with a shorter override for trending demand.
+- `POLL_CITY_DEMAND_WINDOW_DAYS` / `POLL_CITY_MIN_IMPRESSIONS` / `POLL_TREND_MIN_IMPRESSIONS` — define the lookback window and minimum search impressions required to create a poll topic.
+- `POLL_PSEUDO_MENTION_CAP` / `POLL_PSEUDO_UPVOTE_CAP` — bound how much a single poll can influence the connection quality scores.
+- `KEYWORD_CITY_DEMAND_WINDOW_DAYS` / `KEYWORD_CITY_MIN_IMPRESSIONS` — limit keyword collection to entities that are trending in the subreddit’s city.
 
 ### Database Configuration
 

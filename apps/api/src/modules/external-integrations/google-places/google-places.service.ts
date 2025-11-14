@@ -23,12 +23,25 @@ const DEFAULT_DETAIL_FIELDS = [
   'international_phone_number',
   'opening_hours',
   'current_opening_hours',
-  'utc_offset_minutes',
+  'utc_offset',
   'business_status',
   'types',
   'website',
   'formatted_phone_number',
   'price_level',
+  'curbside_pickup',
+  'delivery',
+  'dine_in',
+  'editorial_summary',
+  'reservable',
+  'serves_beer',
+  'serves_breakfast',
+  'serves_brunch',
+  'serves_dinner',
+  'serves_lunch',
+  'serves_vegetarian_food',
+  'serves_wine',
+  'takeout',
 ];
 
 export interface GooglePlaceDetailsOptions {
@@ -67,6 +80,20 @@ export interface GooglePlaceDetailsResult {
   formatted_phone_number?: string;
   opening_hours?: Record<string, unknown>;
   current_opening_hours?: Record<string, unknown>;
+  curbside_pickup?: boolean;
+  delivery?: boolean;
+  dine_in?: boolean;
+  editorial_summary?: Record<string, unknown>;
+  reservable?: boolean;
+  serves_beer?: boolean;
+  serves_breakfast?: boolean;
+  serves_brunch?: boolean;
+  serves_dinner?: boolean;
+  serves_lunch?: boolean;
+  serves_vegetarian_food?: boolean;
+  serves_wine?: boolean;
+  takeout?: boolean;
+  utc_offset?: number;
   utc_offset_minutes?: number;
   business_status?: string;
   price_level?: number;
@@ -267,10 +294,11 @@ export class GooglePlacesService {
           placeId,
           duration,
         });
+        const normalizedResult = this.normalizeDetailResult(data.result);
 
         return {
           status: data.status,
-          result: data.result,
+          result: normalizedResult,
           raw: options.includeRaw ? data : undefined,
           metadata: {
             fields,
@@ -512,6 +540,27 @@ export class GooglePlacesService {
         'Failed to fetch Google autocomplete predictions',
       );
     }
+  }
+
+  private normalizeDetailResult(
+    result?: GooglePlaceDetailsResult,
+  ): GooglePlaceDetailsResult | undefined {
+    if (!result) {
+      return result;
+    }
+
+    const needsUtcOffsetMinutes =
+      typeof result.utc_offset_minutes !== 'number' &&
+      typeof result.utc_offset === 'number';
+
+    if (needsUtcOffsetMinutes) {
+      return {
+        ...result,
+        utc_offset_minutes: result.utc_offset,
+      };
+    }
+
+    return result;
   }
 
   async findPlaceFromText(

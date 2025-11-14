@@ -1,7 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 
 // TODO: Replace with actual app screenshot showing search results
-import placeholderImage from '../assets/onboarding/placeholder.png';
+import placeholderImage from '../assets/splash.png';
 
 interface BaseStep {
   id: string;

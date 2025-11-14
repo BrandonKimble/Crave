@@ -30,7 +30,8 @@
     "src/**/*",
     "test/**/*",
     "scripts/**/*",
-    "../../packages/shared/src/**/*"
+    "../../packages/shared/src/**/*",
+    "calculate-volumes.ts"
   ],
   "exclude": ["dist/**/*", "node_modules/**/*", "../../scripts/**/*"]
 }

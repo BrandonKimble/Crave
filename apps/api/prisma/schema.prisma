@@ -1,7 +1,7 @@
 generator client {
   provider        = "prisma-client-js"
-  binaryTargets   = ["native", "darwin"]
   previewFeatures = ["postgresqlExtensions"]
+  binaryTargets   = ["native", "darwin"]
 }
 
 datasource db {
@@ -11,30 +11,38 @@ datasource db {
 }
 
 model Entity {
-  entityId               String                @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
-  name                   String                @db.VarChar(255)
-  type                   EntityType
-  aliases                String[]              @default([])
-  restaurantAttributes   String[]              @default([]) @map("restaurant_attributes") @db.Uuid
-  restaurantQualityScore Decimal?              @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
-  generalPraiseUpvotes   Int?                  @default(0) @map("general_praise_upvotes")
-  latitude               Decimal?              @db.Decimal(10, 8)
-  longitude              Decimal?              @db.Decimal(11, 8)
-  address                String?               @db.VarChar(500)
-  googlePlaceId          String?               @unique @map("google_place_id") @db.VarChar(255)
-  restaurantMetadata     Json?                 @map("restaurant_metadata")
-  city                   String?               @map("city") @db.VarChar(255)
-  region                 String?               @map("region") @db.VarChar(255)
-  country                String?               @map("country") @db.VarChar(2)
-  postalCode             String?               @map("postal_code") @db.VarChar(32)
-  priceLevel             Int?                  @map("price_level")
-  priceLevelUpdatedAt    DateTime?             @map("price_level_updated_at")
-  lastUpdated            DateTime              @default(now()) @map("last_updated")
-  createdAt              DateTime              @default(now()) @map("created_at")
-  foodConnections        Connection[]          @relation("FoodEntity")
-  restaurantConnections  Connection[]          @relation("RestaurantEntity")
-  priorityMetrics        EntityPriorityMetric?
-  onDemandRequests       OnDemandRequest[]
+  entityId                   String                @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
+  name                       String                @db.VarChar(255)
+  type                       EntityType
+  aliases                    String[]              @default([])
+  restaurantAttributes       String[]              @default([]) @map("restaurant_attributes") @db.Uuid
+  restaurantQualityScore     Decimal?              @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
+  latitude                   Decimal?              @db.Decimal(10, 8)
+  longitude                  Decimal?              @db.Decimal(11, 8)
+  address                    String?               @db.VarChar(500)
+  googlePlaceId              String?               @unique @map("google_place_id") @db.VarChar(255)
+  restaurantMetadata         Json?                 @map("restaurant_metadata")
+  lastUpdated                DateTime              @default(now()) @map("last_updated")
+  createdAt                  DateTime              @default(now()) @map("created_at")
+  generalPraiseUpvotes       Int?                  @default(0) @map("general_praise_upvotes")
+  city                       String?               @map("city") @db.VarChar(255)
+  region                     String?               @map("region") @db.VarChar(255)
+  country                    String?               @map("country") @db.VarChar(2)
+  postalCode                 String?               @map("postal_code") @db.VarChar(32)
+  priceLevel                 Int?                  @map("price_level")
+  priceLevelUpdatedAt        DateTime?             @map("price_level_updated_at")
+  lastPolledAt               DateTime?             @map("last_polled_at")
+  foodConnections            Connection[]          @relation("FoodEntity")
+  restaurantConnections      Connection[]          @relation("RestaurantEntity")
+  priorityMetrics            EntityPriorityMetric?
+  onDemandRequests           OnDemandRequest[]
+  pollOptionCategories       PollOption[]          @relation("PollOptionCategoryEntity")
+  pollOptions                PollOption[]          @relation("PollOptionPrimaryEntity")
+  pollOptionFoods            PollOption[]          @relation("PollOptionFoodEntity")
+  pollOptionRestaurants      PollOption[]          @relation("PollOptionRestaurantEntity")
+  pollTopicDishTargets       PollTopic[]           @relation("PollTopicTargetDish")
+  pollTopicRestaurantTargets PollTopic[]           @relation("PollTopicTargetRestaurant")
+  searchLogs                 SearchLog[]
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -49,6 +57,7 @@ model Entity {
   @@index([region], map: "idx_entities_region")
   @@index([country], map: "idx_entities_country")
   @@index([priceLevel], map: "idx_entities_price_level")
+  @@index([lastPolledAt], map: "idx_entities_last_polled_at")
   @@index([lastUpdated(sort: Desc)], map: "idx_entities_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_entities_created_at")
   @@map("entities")
@@ -66,16 +75,17 @@ model Connection {
   lastMentionedAt        DateTime?     @map("last_mentioned_at")
   activityLevel          ActivityLevel @default(normal) @map("activity_level")
   foodQualityScore       Decimal       @default(0) @map("food_quality_score") @db.Decimal(10, 4)
+  lastUpdated            DateTime      @default(now()) @map("last_updated")
+  createdAt              DateTime      @default(now()) @map("created_at")
   decayedMentionScore    Decimal       @default(0) @map("decayed_mention_score") @db.Decimal(18, 6)
   decayedUpvoteScore     Decimal       @default(0) @map("decayed_upvote_score") @db.Decimal(18, 6)
   decayedScoresUpdatedAt DateTime?     @map("decayed_scores_updated_at")
   boostLastAppliedAt     DateTime?     @map("boost_last_applied_at")
-  lastUpdated            DateTime      @default(now()) @map("last_updated")
-  createdAt              DateTime      @default(now()) @map("created_at")
   food                   Entity        @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant             Entity        @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
+  pollOptions            PollOption[]  @relation("PollOptionConnection")
 
-  @@unique([restaurantId, foodId], map: "connections_restaurant_id_food_id_key")
+  @@unique([restaurantId, foodId])
   @@index([restaurantId], map: "idx_connections_restaurant")
   @@index([foodId], map: "idx_connections_food")
   @@index([categories], map: "idx_connections_categories_gin", type: Gin)
@@ -93,35 +103,6 @@ model Connection {
   @@index([createdAt(sort: Desc)], map: "idx_connections_created_at")
   @@index([recentMentionCount(sort: Desc)], map: "idx_connections_recent_mentions")
   @@map("connections")
-}
-
-model ConnectionEntityDetails {
-  restaurantName         String        @map("restaurant_name")
-  restaurantAliases      String[]      @map("restaurant_aliases")
-  restaurantQualityScore Decimal?      @map("restaurant_quality_score") @db.Decimal(10, 4)
-  foodName               String        @map("food_name")
-  foodAliases            String[]      @map("food_aliases")
-  foodQualityScore       Decimal       @map("food_quality_score") @db.Decimal(10, 4)
-  connectionId           String        @id @map("connection_id") @db.Uuid
-  restaurantId           String        @map("restaurant_id") @db.Uuid
-  foodId                 String        @map("food_id") @db.Uuid
-  categories             String[]      @map("categories") @db.Uuid
-  categoryNames          String[]      @map("category_names")
-  foodAttributes         String[]      @map("food_attributes") @db.Uuid
-  foodAttributeNames     String[]      @map("food_attribute_names")
-  activityLevel          ActivityLevel @map("activity_level")
-  decayedUpvoteScore     Decimal       @map("decayed_upvote_score") @db.Decimal(18, 6)
-  decayedMentionScore    Decimal       @map("decayed_mention_score") @db.Decimal(18, 6)
-  totalUpvotes           Int           @map("total_upvotes")
-  mentionCount           Int           @map("mention_count")
-  recentMentionCount     Int           @map("recent_mention_count")
-  lastMentionedAt        DateTime?     @map("last_mentioned_at")
-  decayedScoresUpdatedAt DateTime?     @map("decayed_scores_updated_at")
-  boostLastAppliedAt     DateTime?     @map("boost_last_applied_at")
-  lastUpdated            DateTime      @map("last_updated")
-  createdAt              DateTime      @map("created_at")
-
-  @@map("connection_entity_details")
 }
 
 model Boost {
@@ -145,8 +126,8 @@ model CategoryAggregate {
   categoryId             String    @map("category_id") @db.Uuid
   mentionsCount          Int       @default(0) @map("mentions_count")
   totalUpvotes           Int       @default(0) @map("total_upvotes")
-  lastMentionedAt        DateTime  @map("last_mentioned_at")
   firstMentionedAt       DateTime  @default(now()) @map("first_mentioned_at")
+  lastMentionedAt        DateTime  @map("last_mentioned_at")
   decayedMentionScore    Decimal   @default(0) @map("decayed_mention_score") @db.Decimal(18, 6)
   decayedUpvoteScore     Decimal   @default(0) @map("decayed_upvote_score") @db.Decimal(18, 6)
   decayedScoresUpdatedAt DateTime? @map("decayed_scores_updated_at")
@@ -157,9 +138,24 @@ model CategoryAggregate {
   @@map("category_aggregates")
 }
 
+model PollCategoryAggregate {
+  restaurantId   String    @map("restaurant_id") @db.Uuid
+  categoryId     String    @map("category_id") @db.Uuid
+  pseudoMentions Decimal   @default(0) @map("pseudo_mentions") @db.Decimal(18, 6)
+  pseudoUpvotes  Decimal   @default(0) @map("pseudo_upvotes") @db.Decimal(18, 6)
+  voteCount      Int       @default(0) @map("vote_count")
+  lastVoteAt     DateTime? @map("last_vote_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  @@id([restaurantId, categoryId])
+  @@index([categoryId], map: "idx_poll_category_aggregate_category")
+  @@map("poll_category_aggregates")
+}
+
 model Source {
-  sourceId    String   @map("source_id") @db.VarChar(64)
   pipeline    String   @db.VarChar(32)
+  sourceId    String   @map("source_id") @db.VarChar(64)
   subreddit   String?  @db.VarChar(100)
   processedAt DateTime @default(now()) @map("processed_at")
 
@@ -171,7 +167,7 @@ model Source {
 }
 
 model EntityPriorityMetric {
-  entityId         String     @map("entity_id") @db.Uuid
+  entityId         String     @id @map("entity_id") @db.Uuid
   entityType       EntityType @map("entity_type")
   priorityScore    Decimal?   @default(0) @map("priority_score") @db.Decimal(9, 4)
   dataRecencyScore Decimal?   @default(0) @map("data_recency_score") @db.Decimal(9, 4)
@@ -181,38 +177,206 @@ model EntityPriorityMetric {
   lastCalculatedAt DateTime   @default(now()) @map("last_calculated_at")
   lastSelectedAt   DateTime?  @map("last_selected_at")
   queryImpressions Int        @default(0) @map("query_impressions")
-  queryClicks      Int        @default(0) @map("query_clicks")
   lastQueryAt      DateTime?  @map("last_query_at")
   entity           Entity     @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
 
-  @@id([entityId])
   @@index([entityType], map: "idx_entity_priority_type")
   @@index([lastCalculatedAt(sort: Desc)], map: "idx_entity_priority_calculated")
   @@map("entity_priority")
 }
 
+model PollTopic {
+  topicId            String          @id @default(dbgenerated("gen_random_uuid()")) @map("topic_id") @db.Uuid
+  title              String          @db.VarChar(255)
+  description        String?         @db.VarChar(500)
+  city               String?         @db.VarChar(255)
+  region             String?         @db.VarChar(255)
+  country            String?         @db.VarChar(2)
+  categoryEntityIds  String[]        @default([]) @map("category_entity_ids") @db.Uuid
+  seedEntityIds      String[]        @default([]) @map("seed_entity_ids") @db.Uuid
+  status             PollTopicStatus @default(draft)
+  metadata           Json?           @default("{}")
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+  targetDishId       String?         @map("target_dish_id") @db.Uuid
+  targetRestaurantId String?         @map("target_restaurant_id") @db.Uuid
+  topicType          PollTopicType   @default(best_dish) @map("topic_type")
+  targetDish         Entity?         @relation("PollTopicTargetDish", fields: [targetDishId], references: [entityId])
+  targetRestaurant   Entity?         @relation("PollTopicTargetRestaurant", fields: [targetRestaurantId], references: [entityId])
+  polls              Poll[]
+
+  @@index([city], map: "idx_poll_topics_city")
+  @@index([status], map: "idx_poll_topics_status")
+  @@map("poll_topics")
+}
+
+model Poll {
+  pollId             String       @id @default(dbgenerated("gen_random_uuid()")) @map("poll_id") @db.Uuid
+  topicId            String       @map("topic_id") @db.Uuid
+  question           String       @db.VarChar(500)
+  state              PollState    @default(draft)
+  city               String?      @db.VarChar(255)
+  region             String?      @db.VarChar(255)
+  scheduledFor       DateTime?    @map("scheduled_for")
+  launchedAt         DateTime?    @map("launched_at")
+  closedAt           DateTime?    @map("closed_at")
+  allowUserAdditions Boolean      @default(true) @map("allow_user_additions")
+  audienceFilters    Json?        @map("audience_filters")
+  metadata           Json?        @default("{}")
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  metrics            PollMetric?
+  options            PollOption[]
+  votes              PollVote[]
+  topic              PollTopic    @relation(fields: [topicId], references: [topicId], onDelete: Cascade)
+
+  @@index([topicId], map: "idx_polls_topic_id")
+  @@index([state], map: "idx_polls_state")
+  @@index([city], map: "idx_polls_city")
+  @@index([scheduledFor], map: "idx_polls_scheduled_for")
+  @@map("polls")
+}
+
+model PollOption {
+  optionId         String                     @id @default(dbgenerated("gen_random_uuid()")) @map("option_id") @db.Uuid
+  pollId           String                     @map("poll_id") @db.Uuid
+  entityId         String?                    @map("entity_id") @db.Uuid
+  label            String                     @db.VarChar(255)
+  source           PollOptionSource           @default(user)
+  resolutionStatus PollOptionResolutionStatus @default(pending) @map("resolution_status")
+  addedByUserId    String?                    @map("added_by_user_id") @db.Uuid
+  voteCount        Int                        @default(0) @map("vote_count")
+  consensus        Decimal?                   @default(0) @db.Decimal(7, 4)
+  lastVoteAt       DateTime?                  @map("last_vote_at")
+  metadata         Json?                      @default("{}")
+  createdAt        DateTime                   @default(now()) @map("created_at")
+  updatedAt        DateTime                   @updatedAt @map("updated_at")
+  categoryId       String?                    @map("category_id") @db.Uuid
+  connectionId     String?                    @map("connection_id") @db.Uuid
+  foodId           String?                    @map("food_id") @db.Uuid
+  restaurantId     String?                    @map("restaurant_id") @db.Uuid
+  category         Entity?                    @relation("PollOptionCategoryEntity", fields: [categoryId], references: [entityId])
+  connection       Connection?                @relation("PollOptionConnection", fields: [connectionId], references: [connectionId])
+  entity           Entity?                    @relation("PollOptionPrimaryEntity", fields: [entityId], references: [entityId])
+  food             Entity?                    @relation("PollOptionFoodEntity", fields: [foodId], references: [entityId])
+  poll             Poll                       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+  restaurant       Entity?                    @relation("PollOptionRestaurantEntity", fields: [restaurantId], references: [entityId])
+  votes            PollVote[]
+
+  @@index([pollId], map: "idx_poll_options_poll_id")
+  @@index([entityId], map: "idx_poll_options_entity_id")
+  @@index([restaurantId], map: "idx_poll_options_restaurant_id")
+  @@index([foodId], map: "idx_poll_options_food_id")
+  @@index([connectionId], map: "idx_poll_options_connection_id")
+  @@index([categoryId], map: "idx_poll_options_category_id")
+  @@map("poll_options")
+}
+
+model PollVote {
+  pollId    String     @map("poll_id") @db.Uuid
+  optionId  String     @map("option_id") @db.Uuid
+  userId    String     @map("user_id") @db.Uuid
+  weight    Int        @default(1)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  option    PollOption @relation(fields: [optionId], references: [optionId], onDelete: Cascade)
+  poll      Poll       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+
+  @@id([pollId, userId])
+  @@index([optionId], map: "idx_poll_votes_option_id")
+  @@map("poll_votes")
+}
+
+model PollMetric {
+  pollId            String    @id @map("poll_id") @db.Uuid
+  totalVotes        Int       @default(0) @map("total_votes")
+  totalParticipants Int       @default(0) @map("total_participants")
+  lastAggregatedAt  DateTime? @map("last_aggregated_at")
+  metadata          Json?     @default("{}")
+  poll              Poll      @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
+
+  @@map("poll_metrics")
+}
+
+model NotificationDevice {
+  deviceId      String               @id @default(dbgenerated("gen_random_uuid()")) @map("device_id") @db.Uuid
+  userId        String?              @map("user_id") @db.VarChar(255)
+  expoPushToken String               @unique @map("expo_push_token") @db.VarChar(255)
+  provider      NotificationProvider @default(expo)
+  platform      String?              @db.VarChar(50)
+  appVersion    String?              @map("app_version") @db.VarChar(32)
+  locale        String?              @db.VarChar(16)
+  city          String?              @db.VarChar(255)
+  metadata      Json?                @default("{}")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  notifications Notification[]
+
+  @@index([userId], map: "idx_notification_devices_user_id")
+  @@index([city], map: "idx_notification_devices_city")
+  @@map("notification_devices")
+}
+
+model Notification {
+  notificationId String              @id @default(dbgenerated("gen_random_uuid()")) @map("notification_id") @db.Uuid
+  type           NotificationType    @map("notification_type")
+  status         NotificationStatus  @default(pending) @map("status")
+  payload        Json?               @default("{}")
+  scheduledFor   DateTime?           @map("scheduled_for")
+  sentAt         DateTime?           @map("sent_at")
+  attempts       Int                 @default(0)
+  lastError      String?             @map("last_error") @db.VarChar(500)
+  deviceId       String?             @map("device_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  device         NotificationDevice? @relation(fields: [deviceId], references: [deviceId])
+
+  @@index([status], map: "idx_notifications_status")
+  @@index([scheduledFor], map: "idx_notifications_scheduled_for")
+  @@index([deviceId], map: "idx_notifications_device_id")
+  @@map("notifications")
+}
+
+model SearchLog {
+  logId       String          @id @default(dbgenerated("gen_random_uuid()")) @map("log_id") @db.Uuid
+  entityId    String          @map("entity_id") @db.Uuid
+  entityType  EntityType      @map("entity_type")
+  locationKey String?         @map("location_key") @db.VarChar(255)
+  queryText   String?         @map("query_text") @db.VarChar(500)
+  source      SearchLogSource @default(search)
+  metadata    Json?           @default("{}")
+  loggedAt    DateTime        @default(now()) @map("logged_at")
+  entity      Entity          @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  @@index([entityId], map: "idx_search_log_entity")
+  @@index([locationKey], map: "idx_search_log_location")
+  @@index([loggedAt(sort: Desc)], map: "idx_search_log_logged_at")
+  @@index([entityId, locationKey, loggedAt], map: "idx_search_log_entity_location_time")
+  @@map("search_log")
+}
+
 model User {
   userId              String             @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
   email               String             @unique @db.VarChar(255)
-  authProvider        AuthProvider       @default(clerk) @map("auth_provider")
-  authProviderUserId  String?            @unique @map("auth_provider_user_id") @db.VarChar(255)
-  revenueCatAppUserId String?            @unique @map("revenuecat_app_user_id") @db.VarChar(255)
   createdAt           DateTime           @default(now()) @map("created_at")
-  updatedAt           DateTime           @updatedAt @map("updated_at")
   trialStartedAt      DateTime?          @map("trial_started_at")
   trialEndsAt         DateTime?          @map("trial_ends_at")
   subscriptionStatus  SubscriptionStatus @default(trialing) @map("subscription_status")
   stripeCustomerId    String?            @map("stripe_customer_id") @db.VarChar(255)
-  lastSignInAt        DateTime?          @map("last_sign_in_at")
-  deletedAt           DateTime?          @map("deleted_at")
   referralCode        String?            @unique @map("referral_code") @db.VarChar(50)
   referredBy          String?            @map("referred_by") @db.Uuid
+  authProvider        AuthProvider       @default(clerk) @map("auth_provider")
+  authProviderUserId  String?            @unique @map("auth_provider_user_id") @db.VarChar(255)
+  deletedAt           DateTime?          @map("deleted_at")
+  lastSignInAt        DateTime?          @map("last_sign_in_at")
+  revenueCatAppUserId String?            @unique @map("revenuecat_app_user_id") @db.VarChar(255)
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+  checkoutSessions    CheckoutSession[]
   subscriptions       Subscription[]
   entitlements        UserEntitlement[]
   events              UserEvent[]
   referrer            User?              @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals           User[]             @relation("UserReferrals")
-  checkoutSessions    CheckoutSession[]
 
   @@index([email], map: "idx_users_email")
   @@index([authProvider], map: "idx_users_auth_provider")
@@ -229,24 +393,24 @@ model User {
 model Subscription {
   subscriptionId         String                @id @default(dbgenerated("gen_random_uuid()")) @map("subscription_id") @db.Uuid
   userId                 String                @map("user_id") @db.Uuid
-  provider               SubscriptionProvider  @map("provider")
-  externalSubscriptionId String?               @map("external_subscription_id") @db.VarChar(255)
-  externalCustomerId     String?               @map("external_customer_id") @db.VarChar(255)
-  platform               SubscriptionPlatform? @map("platform")
-  productId              String?               @map("product_id") @db.VarChar(255)
-  priceId                String?               @map("price_id") @db.VarChar(255)
-  planName               String?               @map("plan_name") @db.VarChar(255)
-  entitlementCode        String?               @map("entitlement_code") @db.VarChar(255)
-  metadata               Json?                 @default("{}")
   status                 SubscriptionStatus
   currentPeriodStart     DateTime?             @map("current_period_start")
   currentPeriodEnd       DateTime?             @map("current_period_end")
   cancelAtPeriodEnd      Boolean               @default(false) @map("cancel_at_period_end")
   cancelledAt            DateTime?             @map("cancelled_at")
   createdAt              DateTime              @default(now()) @map("created_at")
-  updatedAt              DateTime              @updatedAt @map("updated_at")
+  entitlementCode        String?               @map("entitlement_code") @db.VarChar(255)
+  externalCustomerId     String?               @map("external_customer_id") @db.VarChar(255)
+  externalSubscriptionId String?               @map("external_subscription_id") @db.VarChar(255)
   lastEventId            String?               @map("last_event_id") @db.VarChar(255)
   lastEventReceivedAt    DateTime?             @map("last_event_received_at")
+  metadata               Json?                 @default("{}")
+  planName               String?               @map("plan_name") @db.VarChar(255)
+  platform               SubscriptionPlatform? @map("platform")
+  priceId                String?               @map("price_id") @db.VarChar(255)
+  productId              String?               @map("product_id") @db.VarChar(255)
+  provider               SubscriptionProvider  @map("provider")
+  updatedAt              DateTime              @updatedAt @map("updated_at")
   user                   User                  @relation(fields: [userId], references: [userId])
 
   @@unique([provider, externalSubscriptionId], map: "subscriptions_provider_external_unique")
@@ -296,7 +460,7 @@ model BillingEventLog {
   payload         Json                  @default("{}")
   receivedAt      DateTime              @default(now()) @map("received_at")
   processedAt     DateTime?             @map("processed_at")
-  errorMessage    String?               @map("error_message") @db.Text
+  errorMessage    String?               @map("error_message")
   retryCount      Int                   @default(0) @map("retry_count")
   correlationId   String?               @map("correlation_id") @db.VarChar(255)
   createdAt       DateTime              @default(now()) @map("created_at")
@@ -357,7 +521,7 @@ model Subreddit {
   isActive         Boolean   @default(true) @map("is_active")
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   safeIntervalDays Float     @map("safe_interval_days")
-  centerLatitude   Decimal?  @map("center_latitude") @db.Decimal(10, 8)
+  centerLatitude   Decimal?  @map("center_latitude") @db.Decimal(11, 8)
   centerLongitude  Decimal?  @map("center_longitude") @db.Decimal(11, 8)
 
   @@index([name])
@@ -371,12 +535,15 @@ model OnDemandRequest {
   requestId             String           @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
   term                  String           @db.VarChar(255)
   entityType            EntityType       @map("entity_type")
-  reason                OnDemandReason
   occurrenceCount       Int              @default(1) @map("occurrence_count")
-  entityId              String?          @map("entity_id") @db.Uuid
-  status                OnDemandStatus   @default(pending)
   lastSeenAt            DateTime         @default(now()) @map("last_seen_at")
+  metadata              Json?            @default("{}")
+  createdAt             DateTime         @default(now()) @map("created_at")
+  updatedAt             DateTime         @updatedAt @map("updated_at")
+  status                OnDemandStatus   @default(pending)
+  entityId              String?          @map("entity_id") @db.Uuid
   lastEnqueuedAt        DateTime?        @map("last_enqueued_at")
+  reason                OnDemandReason
   resultRestaurantCount Int              @default(0) @map("result_restaurant_count")
   resultFoodCount       Int              @default(0) @map("result_food_count")
   attemptedSubreddits   String[]         @default([]) @map("attempted_subreddits")
@@ -384,13 +551,9 @@ model OnDemandRequest {
   lastOutcome           OnDemandOutcome? @map("last_outcome")
   lastAttemptAt         DateTime?        @map("last_attempt_at")
   lastCompletedAt       DateTime?        @map("last_completed_at")
-  metadata              Json?            @default("{}")
-  createdAt             DateTime         @default(now()) @map("created_at")
-  updatedAt             DateTime         @updatedAt @map("updated_at")
+  entity                Entity?          @relation(fields: [entityId], references: [entityId])
 
-  entity Entity? @relation(fields: [entityId], references: [entityId])
-
-  @@unique([term, entityType, reason], map: "on_demand_term_entity_type_reason_key")
+  @@unique([term, entityType, reason])
   @@map("on_demand")
 }
 
@@ -421,6 +584,69 @@ enum EntityType {
   restaurant_attribute
 
   @@map("entity_type")
+}
+
+enum PollTopicStatus {
+  draft
+  ready
+  archived
+
+  @@map("poll_topic_status")
+}
+
+enum PollTopicType {
+  best_dish
+  what_to_order
+
+  @@map("poll_topic_type")
+}
+
+enum PollState {
+  draft
+  scheduled
+  active
+  closed
+  archived
+
+  @@map("poll_state")
+}
+
+enum PollOptionSource {
+  user
+  seed
+  curator
+
+  @@map("poll_option_source")
+}
+
+enum PollOptionResolutionStatus {
+  pending
+  matched
+  rejected
+
+  @@map("poll_option_resolution_status")
+}
+
+enum NotificationStatus {
+  pending
+  scheduled
+  sending
+  sent
+  failed
+
+  @@map("notification_status")
+}
+
+enum NotificationType {
+  poll_release
+
+  @@map("notification_type")
+}
+
+enum NotificationProvider {
+  expo
+
+  @@map("notification_provider")
 }
 
 enum ActivityLevel {
@@ -497,4 +723,11 @@ enum MentionSource {
   comment
 
   @@map("mention_source")
+}
+
+enum SearchLogSource {
+  search
+  poll
+
+  @@map("search_log_source")
 }

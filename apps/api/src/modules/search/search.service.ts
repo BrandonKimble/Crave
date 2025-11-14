@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, OnDemandReason } from '@prisma/client';
-import { LoggerService } from '../../shared';
+import { EntityType, OnDemandReason, SearchLogSource } from '@prisma/client';
+import { PrismaService } from '../../prisma/prisma.service';
+import { LoggerService, TextSanitizerService } from '../../shared';
 import { EntityPriorityMetricsRepository } from '../../repositories/entity-priority-metrics.repository';
 import {
   EntityScope,
@@ -21,6 +22,7 @@ import {
 } from './on-demand-request.service';
 import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
+import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -51,6 +53,7 @@ export class SearchService {
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
   private readonly openNowFetchMultiplier: number;
+  private readonly searchLogEnabled: boolean;
 
   constructor(
     loggerService: LoggerService,
@@ -60,6 +63,9 @@ export class SearchService {
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly onDemandProcessingService: OnDemandProcessingService,
     private readonly searchMetrics: SearchMetricsService,
+    private readonly textSanitizer: TextSanitizerService,
+    private readonly prisma: PrismaService,
+    private readonly subredditResolver: SearchSubredditResolverService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -69,9 +75,11 @@ export class SearchService {
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
     this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
+    this.searchLogEnabled = this.resolveSearchLogEnabled();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
+    this.sanitizeEntityGroups(request);
     const presence = this.getEntityPresenceSummary(request);
     const priceLevels = this.normalizePriceLevels(request.priceLevels);
 
@@ -487,6 +495,8 @@ export class SearchService {
         ),
       ),
     );
+
+    await this.recordSearchLogEntries(request, targets, now);
   }
 
   private normalizePriceLevels(levels?: number[]): number[] {
@@ -535,22 +545,70 @@ export class SearchService {
     }));
   }
 
-  async recordResultClick(dto: SearchResultClickDto): Promise<void> {
-    const now = new Date();
-    await this.entityPriorityMetricsRepository.upsertMetrics(
-      { entityId: dto.entityId },
-      {
-        entity: { connect: { entityId: dto.entityId } },
-        entityType: dto.entityType,
-        queryClicks: 1,
-        lastQueryAt: now,
-      },
-      {
-        entityType: dto.entityType,
-        queryClicks: { increment: 1 },
-        lastQueryAt: now,
-      },
-    );
+  private async recordSearchLogEntries(
+    request: SearchQueryRequestDto,
+    targets: { entityId: string; entityType: EntityType }[],
+    loggedAt: Date,
+  ): Promise<void> {
+    if (!this.searchLogEnabled || !targets.length) {
+      return;
+    }
+
+    try {
+      const locationKey = await this.resolveLocationKey(request);
+      const rows = targets.map(({ entityId, entityType }) => ({
+        entityId,
+        entityType,
+        locationKey,
+        queryText: null,
+        source: SearchLogSource.search,
+        loggedAt,
+      }));
+
+      await this.prisma.searchLog.createMany({
+        data: rows,
+      });
+    } catch (error) {
+      this.logger.warn('Failed to log search impressions', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+    }
+  }
+
+  private async resolveLocationKey(
+    request: SearchQueryRequestDto,
+  ): Promise<string | null> {
+    try {
+      const fallbackLocation = this.resolveFallbackLocation(request);
+      const matches = await this.subredditResolver.resolve({
+        bounds: request.bounds ?? null,
+        fallbackLocation: fallbackLocation ?? null,
+        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+      });
+
+      if (!matches.length) {
+        return null;
+      }
+      return matches[0]?.toLowerCase() ?? null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve search location key', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return null;
+    }
+  }
+
+  recordResultClick(dto: SearchResultClickDto): void {
+    this.logger.debug('Search result click recorded', {
+      entityId: dto.entityId,
+      entityType: dto.entityType,
+    });
   }
 
   private calculateCoverageStatus(params: {
@@ -741,6 +799,14 @@ export class SearchService {
     return raw.toLowerCase() === 'true';
   }
 
+  private resolveSearchLogEnabled(): boolean {
+    const raw = process.env.SEARCH_LOG_ENABLED;
+    if (typeof raw === 'string' && raw.length > 0) {
+      return raw.toLowerCase() === 'true';
+    }
+    return true;
+  }
+
   private resolveOnDemandMinResults(): number {
     const raw = process.env.SEARCH_ON_DEMAND_MIN_RESULTS;
     if (raw) {
@@ -791,5 +857,31 @@ export class SearchService {
       skip: 0,
       take,
     };
+  }
+
+  private sanitizeEntityGroups(request: SearchQueryRequestDto): void {
+    const sanitizeList = (entities?: QueryEntityDto[]) => {
+      if (!Array.isArray(entities)) {
+        return;
+      }
+      for (const entity of entities) {
+        entity.normalizedName = this.textSanitizer.sanitizeOrThrow(
+          entity.normalizedName,
+          { maxLength: 140 },
+        );
+        if (entity.originalText) {
+          const result = this.textSanitizer.sanitize(entity.originalText, {
+            maxLength: 200,
+            allowEmpty: true,
+          });
+          entity.originalText = result.rejected ? undefined : result.text;
+        }
+      }
+    };
+
+    sanitizeList(request.entities.restaurants);
+    sanitizeList(request.entities.food);
+    sanitizeList(request.entities.foodAttributes);
+    sanitizeList(request.entities.restaurantAttributes);
   }
 }

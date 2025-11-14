@@ -41,6 +41,11 @@ import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-clean
     SearchSubredditResolverService,
     OnDemandPlaceholderCleanupService,
   ],
-  exports: [SearchService, SearchOrchestrationService],
+  exports: [
+    SearchService,
+    SearchOrchestrationService,
+    OnDemandRequestService,
+    OnDemandProcessingService,
+  ],
 })
 export class SearchModule {}

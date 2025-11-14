@@ -2,6 +2,7 @@ import axios from 'axios';
 import { logger } from '../utils';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
+export const API_BASE_URL = API_URL;
 
 type TokenResolver = () => Promise<string | null>;
 

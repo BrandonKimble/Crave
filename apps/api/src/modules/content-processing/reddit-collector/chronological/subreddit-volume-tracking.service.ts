@@ -327,17 +327,32 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
       return null;
     }
 
+    // Modern RedditService returns flattened post data (created_utc at top level)
+    const post = entry as { created_utc?: unknown };
+    if (
+      typeof post.created_utc === 'number' &&
+      Number.isFinite(post.created_utc)
+    ) {
+      return post.created_utc;
+    }
+
+    // Fallback for legacy listing shape where data.created_utc exists
     const container = entry as { data?: { created_utc?: unknown } };
-    if (typeof container.data !== 'object' || container.data === null) {
-      return null;
+    if (
+      container.data &&
+      typeof container.data === 'object' &&
+      container.data !== null
+    ) {
+      const nestedCreatedUtc = container.data.created_utc;
+      if (
+        typeof nestedCreatedUtc === 'number' &&
+        Number.isFinite(nestedCreatedUtc)
+      ) {
+        return nestedCreatedUtc;
+      }
     }
 
-    const createdUtc = container.data.created_utc;
-    if (typeof createdUtc !== 'number' || !Number.isFinite(createdUtc)) {
-      return null;
-    }
-
-    return createdUtc;
+    return null;
   }
 
   /**

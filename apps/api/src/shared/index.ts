@@ -27,6 +27,7 @@ export { CorrelationUtils } from './logging/correlation.utils';
 
 // Utilities
 export { PrismaErrorMapper } from './utils/prisma-error-mapper';
+export { TextSanitizerService } from './sanitization/text-sanitizer.service';
 
 // Module
 export { SharedModule } from './shared.module';

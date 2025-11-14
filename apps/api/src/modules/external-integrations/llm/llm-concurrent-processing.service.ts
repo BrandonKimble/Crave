@@ -167,6 +167,11 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
             ? meta.rootCommentScores
             : [meta.rootCommentScore];
 
+        const dispatchJitter = this.getChunkDispatchJitter(meta);
+        if (dispatchJitter > 0) {
+          await this.sleep(dispatchJitter);
+        }
+
         await this.waitForGlobalCooldown(meta);
 
         const throttleDelay = this.smartProcessor.getThrottleDelayMs();
@@ -187,12 +192,15 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
         this.logger.debug('Starting chunk processing', {
           correlationId: CorrelationUtils.getCorrelationId(),
           chunkId: meta.chunkId,
+          postId: meta.postId ?? null,
+          chunkSequence: meta.postChunkIndex ?? 0,
           position: index + 1,
           totalChunks: chunks.length,
           commentCount: meta.commentCount,
           rootScores: metaRootScores,
           estimatedTime: meta.estimatedProcessingTime,
           chunkSize: `${meta.commentCount} comments`,
+          estimatedTokens: meta.estimatedTokenCount ?? null,
         });
 
         try {
@@ -399,6 +407,23 @@ export class LLMConcurrentProcessingService implements OnModuleInit {
 
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private getChunkDispatchJitter(meta: ChunkMetadata): number {
+    if (typeof meta.postChunkIndex !== 'number' || meta.postChunkIndex <= 0) {
+      return 0;
+    }
+    const base = Number.parseInt(
+      process.env.LLM_CHUNK_DISPATCH_JITTER_BASE || '40',
+      10,
+    );
+    const max = Number.parseInt(
+      process.env.LLM_CHUNK_DISPATCH_JITTER_MAX || '250',
+      10,
+    );
+    const safeBase = Number.isFinite(base) && base > 0 ? base : 40;
+    const safeMax = Number.isFinite(max) && max > 0 ? max : 250;
+    return Math.min(safeMax, safeBase * meta.postChunkIndex);
   }
 
   /**

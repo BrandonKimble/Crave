@@ -10,6 +10,7 @@ import {
   ScrollView,
   StyleSheet,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
@@ -22,6 +23,7 @@ import { Text, Button } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
+import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
 import type {
   SearchResponse,
@@ -113,6 +115,24 @@ const priceLevelToSymbol = (level: number): string => {
   return '$'.repeat(clamped);
 };
 
+const derivePriceMeta = (
+  priceLevel?: number | null
+): { symbol: string; description?: string } | null => {
+  if (priceLevel === null || priceLevel === undefined) {
+    return null;
+  }
+  const rounded = Math.round(priceLevel);
+  if (rounded <= 0) {
+    return { symbol: 'Free', description: 'No cost' };
+  }
+  const clamped = Math.max(1, Math.min(4, rounded));
+  const descriptions = ['Budget friendly', 'Casual', 'Special night', 'Premium'];
+  return {
+    symbol: '$'.repeat(clamped),
+    description: descriptions[clamped - 1],
+  };
+};
+
 MapboxGL.setTelemetryEnabled(false);
 
 const SearchScreen: React.FC = () => {
@@ -147,6 +167,9 @@ const SearchScreen: React.FC = () => {
   const [submittedQuery, setSubmittedQuery] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [isAutocompleteLoading, setIsAutocompleteLoading] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<'dishes' | 'restaurants'>('dishes');
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
@@ -204,6 +227,51 @@ const SearchScreen: React.FC = () => {
 
     return map;
   }, [restaurants, dishes]);
+
+  React.useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setIsAutocompleteLoading(false);
+      return;
+    }
+
+    setIsAutocompleteLoading(true);
+    let isActive = true;
+    const debounceHandle = setTimeout(() => {
+      autocompleteService
+        .fetchEntities(trimmed)
+        .then((response) => {
+          if (!isActive) {
+            return;
+          }
+          setSuggestions(response.matches);
+          setShowSuggestions(response.matches.length > 0);
+        })
+        .catch((err) => {
+          if (!isActive) {
+            return;
+          }
+          logger.warn('Autocomplete request failed', {
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+          setSuggestions([]);
+          setShowSuggestions(false);
+        })
+        .finally(() => {
+          if (!isActive) {
+            return;
+          }
+          setIsAutocompleteLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      isActive = false;
+      clearTimeout(debounceHandle);
+    };
+  }, [query]);
 
   const restaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
@@ -465,9 +533,17 @@ const SearchScreen: React.FC = () => {
   }, [isLoading]);
 
   const submitSearch = React.useCallback(
-    async (options?: SubmitSearchOptions) => {
-      const trimmed = query.trim();
-      if (!trimmed || isLoading) {
+    async (options?: SubmitSearchOptions, overrideQuery?: string) => {
+      if (isLoading) {
+        return;
+      }
+
+      const baseQuery = overrideQuery ?? query;
+      const trimmed = baseQuery.trim();
+      if (!trimmed) {
+        setResults(null);
+        setSubmittedQuery('');
+        setError(null);
         return;
       }
 
@@ -477,6 +553,8 @@ const SearchScreen: React.FC = () => {
       const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
 
       showPanel();
+      setShowSuggestions(false);
+
       try {
         setIsLoading(true);
         setError(null);
@@ -549,6 +627,17 @@ const SearchScreen: React.FC = () => {
     void submitSearch();
   }, [submitSearch]);
 
+  const handleSuggestionPress = React.useCallback(
+    (match: AutocompleteMatch) => {
+      const nextQuery = match.name;
+      setQuery(nextQuery);
+      setShowSuggestions(false);
+      setSuggestions([]);
+      void submitSearch(undefined, nextQuery);
+    },
+    [submitSearch]
+  );
+
   const handleClear = React.useCallback(() => {
     setQuery('');
     setResults(null);
@@ -556,6 +645,8 @@ const SearchScreen: React.FC = () => {
     setError(null);
     setHasPreviewedResults(false);
     setPreviewQuery('');
+    setSuggestions([]);
+    setShowSuggestions(false);
     hidePanel();
     requestAnimationFrame(() => {
       inputRef.current?.focus();
@@ -839,18 +930,24 @@ const SearchScreen: React.FC = () => {
               {restaurant.address}
             </Text>
           ) : null}
-          {restaurant.priceSymbol ? (
-            <View style={styles.priceBadge}>
-              <Text variant="caption" style={styles.priceBadgeText}>
-                {restaurant.priceSymbol}
-              </Text>
-              {restaurant.priceText ? (
-                <Text variant="caption" style={styles.priceBadgeSubtext}>
-                  {restaurant.priceText}
+          {(() => {
+            const priceMeta = derivePriceMeta(restaurant.priceLevel);
+            if (!priceMeta) {
+              return null;
+            }
+            return (
+              <View style={styles.priceBadge}>
+                <Text variant="caption" style={styles.priceBadgeText}>
+                  {priceMeta.symbol}
                 </Text>
-              ) : null}
-            </View>
-          ) : null}
+                {priceMeta.description ? (
+                  <Text variant="caption" style={styles.priceBadgeSubtext}>
+                    {priceMeta.description}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })()}
           <View style={styles.metricsContainer}>
             <View style={styles.primaryMetric}>
               <Text variant="caption" style={styles.primaryMetricLabel}>
@@ -1058,6 +1155,35 @@ const SearchScreen: React.FC = () => {
               )}
             </Animated.View>
           </View>
+          {(showSuggestions || isAutocompleteLoading) && query.trim().length >= 2 && (
+            <View style={styles.autocompleteContainer}>
+              {isAutocompleteLoading && (
+                <View style={styles.autocompleteLoadingRow}>
+                  <ActivityIndicator size="small" color="#6366f1" />
+                  <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                </View>
+              )}
+              {!isAutocompleteLoading && suggestions.length === 0 ? (
+                <Text style={styles.autocompleteEmptyText}>Keep typing to add a dish or spot</Text>
+              ) : (
+                suggestions.map((match, index) => (
+                  <TouchableOpacity
+                    key={`${match.entityId}-${index}`}
+                    onPress={() => handleSuggestionPress(match)}
+                    style={[
+                      styles.autocompleteItem,
+                      index === suggestions.length - 1 && styles.autocompleteItemLast,
+                    ]}
+                  >
+                    <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                    <Text style={styles.autocompleteSecondaryText}>
+                      {match.entityType.replace(/_/g, ' ')}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
         </View>
         <LinearGradient
           pointerEvents="none"
@@ -1519,6 +1645,55 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     elevation: 8,
     overflow: 'hidden',
+  },
+  autocompleteContainer: {
+    marginTop: 8,
+    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  autocompleteLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  autocompleteLoadingText: {
+    fontSize: 13,
+    color: '#475569',
+    marginLeft: 8,
+  },
+  autocompleteEmptyText: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 13,
+    color: '#94a3b8',
+  },
+  autocompleteItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  autocompleteItemLast: {
+    borderBottomWidth: 0,
+  },
+  autocompletePrimaryText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  autocompleteSecondaryText: {
+    fontSize: 12,
+    color: '#64748b',
+    textTransform: 'capitalize',
   },
   searchIcon: {
     marginRight: 12,

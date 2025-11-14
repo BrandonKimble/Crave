@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { DiscoveryModule } from '@nestjs/core';
@@ -14,6 +15,10 @@ import { SearchModule } from './modules/search/search.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { AutocompleteModule } from './modules/autocomplete/autocomplete.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ModerationModule } from './modules/moderation/moderation.module';
+import { PollsModule } from './modules/polls/polls.module';
 
 @Module({
   imports: [
@@ -21,6 +26,7 @@ import { BillingModule } from './modules/billing/billing.module';
       isGlobal: true,
       load: [configuration],
     }),
+    ScheduleModule.forRoot(),
     DiscoveryModule, // Add DiscoveryModule for BullModule dependencies
     SharedModule,
     // SecurityModule, // TODO: Re-enable when validating security features - currently causing ThrottlerGuard dependency issues
@@ -42,6 +48,10 @@ import { BillingModule } from './modules/billing/billing.module';
     MetricsModule,
     IdentityModule,
     BillingModule,
+    AutocompleteModule,
+    NotificationsModule,
+    ModerationModule,
+    PollsModule,
   ],
   controllers: [AppController],
   providers: [],

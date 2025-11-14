@@ -45,10 +45,8 @@ export class SearchController {
   }
 
   @Post('events/click')
-  async recordClick(
-    @Body() dto: SearchResultClickDto,
-  ): Promise<{ status: string }> {
-    await this.searchService.recordResultClick(dto);
+  recordClick(@Body() dto: SearchResultClickDto): { status: string } {
+    this.searchService.recordResultClick(dto);
     return { status: 'ok' };
   }
 }

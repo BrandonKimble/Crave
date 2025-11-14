@@ -49,7 +49,14 @@ const defaultState = {
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
-  'query' | 'page' | 'openNow' | 'bounds' | 'boundsLabel' | 'boundsPresetId' | 'history'
+  | 'query'
+  | 'page'
+  | 'openNow'
+  | 'bounds'
+  | 'boundsLabel'
+  | 'boundsPresetId'
+  | 'priceLevels'
+  | 'history'
 >;
 
 export const useSearchStore = create<SearchState>()(

@@ -70,6 +70,9 @@ type GeminiGenerationConfig = Record<string, unknown> & {
   responseSchema?: Record<string, unknown>;
   cachedContent?: string;
   systemInstruction?: string;
+  thinkingConfig?: {
+    thinkingBudget: number;
+  };
 };
 
 interface LLMGenerationOptions {
@@ -78,7 +81,11 @@ interface LLMGenerationOptions {
   systemInstruction?: string | null;
 }
 
-type CacheRefreshReason = 'bootstrap' | 'scheduled' | 'gemini_403';
+type CacheRefreshReason =
+  | 'bootstrap'
+  | 'scheduled'
+  | 'gemini_403'
+  | 'model_mismatch';
 
 @Injectable()
 export class LLMService implements OnModuleInit, OnModuleDestroy {
@@ -472,6 +479,48 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     await this.persistSystemInstructionCacheState(null);
   }
 
+  private async rebuildQueryInstructionCache(
+    reason: CacheRefreshReason,
+  ): Promise<void> {
+    this.queryInstructionCache = null;
+    this.logger.info('Reinitializing query instruction cache', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'refresh_query_cache',
+      reason,
+    });
+    await this.initializeQueryInstructionCache();
+  }
+
+  private async handleCachedContentModelMismatch(
+    cacheName: string,
+  ): Promise<void> {
+    const correlationId = CorrelationUtils.getCorrelationId();
+    if (this.systemInstructionCache?.name === cacheName) {
+      this.logger.warn('System instruction cache model mismatch detected', {
+        correlationId,
+        operation: 'handle_cache_model_mismatch',
+        cacheId: cacheName,
+      });
+      await this.refreshSystemInstructionCache('model_mismatch');
+      return;
+    }
+    if (this.queryInstructionCache?.name === cacheName) {
+      this.logger.warn('Query instruction cache model mismatch detected', {
+        correlationId,
+        operation: 'handle_cache_model_mismatch',
+        cacheId: cacheName,
+      });
+      await this.rebuildQueryInstructionCache('model_mismatch');
+      return;
+    }
+
+    this.logger.warn('Cache model mismatch detected for unknown cache', {
+      correlationId,
+      operation: 'handle_cache_model_mismatch',
+      cacheId: cacheName,
+    });
+  }
+
   private async initializeQueryInstructionCache(): Promise<void> {
     try {
       this.logger.info('Creating explicit cache for query instructions', {
@@ -641,7 +690,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     });
 
     const prompt = this.buildSearchQueryPrompt(query);
-    const queryGenerationConfig = {
+    const queryGenerationConfig: GeminiGenerationConfig = {
       temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
       topP: this.llmConfig.topP,
       topK: this.llmConfig.topK,
@@ -677,12 +726,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         },
         additionalProperties: false,
       },
-      thinkingConfig: {
-        thinkingBudget: this.llmConfig.thinking?.enabled
-          ? this.llmConfig.thinking.budget || -1
-          : 0,
-      },
     };
+    const queryThinkingConfig = this.getThinkingConfig();
+    if (queryThinkingConfig) {
+      queryGenerationConfig.thinkingConfig = queryThinkingConfig;
+    }
 
     const response = await this.callLLMApi(prompt, {
       generationConfig: queryGenerationConfig,
@@ -917,6 +965,25 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return false;
   }
 
+  private isCachedContentModelMismatchError(error: unknown): boolean {
+    if (!error) {
+      return false;
+    }
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : '';
+    if (!message) {
+      return false;
+    }
+    return (
+      message.includes('Model used by GenerateContent request') &&
+      message.includes('CachedContent')
+    );
+  }
+
   private parseSearchQueryResponse(content: string): LLMSearchQueryAnalysis {
     const cleanContent = this.sanitizeJsonContent(content);
 
@@ -1094,12 +1161,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         required: ['mentions'],
         propertyOrdering: ['mentions'],
       },
-      thinkingConfig: {
-        thinkingBudget: this.llmConfig.thinking?.enabled
-          ? this.llmConfig.thinking.budget || -1
-          : 0,
-      },
     };
+    const baseThinkingConfig = this.getThinkingConfig();
+    if (baseThinkingConfig) {
+      defaultGenerationConfig.thinkingConfig = baseThinkingConfig;
+    }
 
     const generationConfig: GeminiGenerationConfig =
       options.generationConfig ?? defaultGenerationConfig;
@@ -1379,6 +1445,28 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
         this.logger.error('Detailed @google/genai API error', errorDetails);
 
+        if (cacheName && this.isCachedContentModelMismatchError(error)) {
+          try {
+            await this.handleCachedContentModelMismatch(cacheName);
+          } catch (refreshError) {
+            this.logger.error('Failed to rebuild cache after model mismatch', {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              operation: 'call_llm_api',
+              cacheId: cacheName,
+              error: {
+                message:
+                  refreshError instanceof Error
+                    ? refreshError.message
+                    : String(refreshError),
+              },
+            });
+            await this.clearSystemInstructionCache();
+            this.queryInstructionCache = null;
+          }
+          attempt--;
+          continue;
+        }
+
         const cacheableRequest =
           !options.cacheName && !options.systemInstruction;
         if (cacheableRequest && this.isCachedContentMissingError(error)) {
@@ -1499,6 +1587,27 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  private getThinkingConfig():
+    | {
+        thinkingBudget: number;
+      }
+    | undefined {
+    const enabled = this.llmConfig.thinking?.enabled === true;
+    if (!enabled) {
+      return undefined;
+    }
+    const configuredBudget = this.llmConfig.thinking?.budget ?? 0;
+    if (!Number.isFinite(configuredBudget) || configuredBudget <= 0) {
+      return undefined;
+    }
+    const maxTokens = this.llmConfig.maxTokens || 65536;
+    const safeBudget = Math.min(configuredBudget, maxTokens);
+    if (safeBudget <= 0) {
+      return undefined;
+    }
+    return { thinkingBudget: safeBudget };
+  }
+
   /**
    * Parse and validate Gemini response
    */
@@ -1522,10 +1631,45 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     try {
       const cleanContent = this.sanitizeJsonContent(content);
-      const parsed = JSON.parse(cleanContent) as LLMOutputStructure;
+      let parsed = JSON.parse(cleanContent) as
+        | LLMOutputStructure
+        | LLMOutputStructure[]
+        | null;
+
+      if (Array.isArray(parsed)) {
+        this.logger.warn(
+          'Gemini response returned array, using first element',
+          {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'parse_response',
+            arrayLength: parsed.length,
+          },
+        );
+        parsed = parsed[0] ?? null;
+      }
 
       // Basic validation
-      if (!parsed.mentions || !Array.isArray(parsed.mentions)) {
+      if (!parsed || typeof parsed !== 'object') {
+        this.logger.warn('Gemini response parsed to empty value', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'parse_response',
+          rawContentSnippet: content.substring(0, 500),
+        });
+        throw new LLMResponseParsingError(
+          'Missing JSON object in Gemini response',
+          content,
+        );
+      }
+
+      const normalized = parsed;
+
+      if (!normalized.mentions || !Array.isArray(normalized.mentions)) {
+        this.logger.warn('Gemini response missing mentions array', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'parse_response',
+          candidateContentLength: content.length,
+          rawContentSnippet: content.substring(0, 500),
+        });
         throw new LLMResponseParsingError(
           'Invalid mentions structure in Gemini response',
           content,
@@ -1535,10 +1679,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       this.logger.debug('LLM response successfully parsed', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'parse_response',
-        mentionsCount: parsed.mentions.length,
+        mentionsCount: normalized.mentions.length,
         mentions:
-          parsed.mentions.length > 0
-            ? parsed.mentions.map((m) => ({
+          normalized.mentions.length > 0
+            ? normalized.mentions.map((m) => ({
                 temp_id: m.temp_id,
                 restaurant: m.restaurant,
                 food: m.food,
@@ -1547,7 +1691,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
             : [],
       });
 
-      return parsed;
+      return normalized;
     } catch (error) {
       throw new LLMResponseParsingError(
         `Failed to parse JSON from Gemini response: ${

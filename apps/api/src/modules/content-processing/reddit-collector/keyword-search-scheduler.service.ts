@@ -1,7 +1,9 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { SearchDemandService } from '../../analytics/search-demand.service';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
 import {
   EntityPrioritySelectionService,
@@ -13,6 +15,8 @@ export interface KeywordSearchConfig {
   entityCount: number;
   intervalDays: number;
   searchLimit: number;
+  cityWindowDays: number;
+  cityMinImpressions: number;
 }
 
 export interface KeywordSearchSchedule {
@@ -23,6 +27,14 @@ export interface KeywordSearchSchedule {
   lastRun?: Date;
   nextRun: Date;
 }
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const KEYWORD_ENTITY_TYPES: EntityType[] = [
+  'restaurant',
+  'food',
+  'food_attribute',
+  'restaurant_attribute',
+];
 
 /**
  * Keyword Search Scheduler Service
@@ -54,6 +66,8 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     entityCount: 25,
     intervalDays: 7,
     searchLimit: 1000,
+    cityWindowDays: 14,
+    cityMinImpressions: 5,
   };
 
   constructor(
@@ -61,6 +75,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     private readonly entityPriorityService: EntityPrioritySelectionService,
     private readonly prisma: PrismaService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly demandService: SearchDemandService,
   ) {}
 
   onModuleInit(): void {
@@ -158,31 +173,47 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     });
 
     try {
-      // Use real entity priority selection service per PRD 5.1.2
+      const since = new Date(
+        Date.now() - this.config.cityWindowDays * MS_PER_DAY,
+      );
+      const demand = await this.demandService.getTopEntitiesForLocation({
+        locationKey: subreddit,
+        since,
+        entityTypes: KEYWORD_ENTITY_TYPES,
+        minImpressions: this.config.cityMinImpressions,
+        limit: this.config.entityCount * 3,
+      });
+
+      if (!demand.length) {
+        this.logger.debug('No city-specific demand found for subreddit', {
+          subreddit,
+        });
+        return [];
+      }
+
+      const demandIds = new Set(demand.map((record) => record.entityId));
       const prioritizedEntities =
         await this.entityPriorityService.selectTopPriorityEntities({
-          maxEntities: this.config.entityCount,
+          maxEntities: this.config.entityCount * 4,
         });
+
+      const filtered = prioritizedEntities.filter((entity) =>
+        demandIds.has(entity.entityId),
+      );
 
       this.logger.info('Entity priority scores calculated', {
         correlationId,
         subreddit,
-        totalCandidates: 'N/A', // EntityPriorityService provides top entities directly
-        selectedCount: prioritizedEntities.length,
-        averageScore:
-          prioritizedEntities.length > 0
-            ? prioritizedEntities.reduce((sum, e) => sum + e.score, 0) /
-              prioritizedEntities.length
-            : 0,
-        entityTypes: this.getEntityTypeDistribution(prioritizedEntities),
-        topEntities: prioritizedEntities.slice(0, 5).map((e) => ({
+        selectedCount: filtered.length,
+        locationDemand: demand.length,
+        topEntities: filtered.slice(0, 5).map((e) => ({
           name: e.entityName,
           type: e.entityType,
           score: e.score,
         })),
       });
 
-      return prioritizedEntities;
+      return filtered.slice(0, this.config.entityCount);
     } catch (error: unknown) {
       this.logger.error('Failed to calculate entity priority scores', {
         correlationId,
@@ -377,11 +408,22 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       this.DEFAULT_CONFIG.searchLimit,
     );
 
+    const cityWindowDays = this.parseNumberEnv(
+      'KEYWORD_CITY_DEMAND_WINDOW_DAYS',
+      this.DEFAULT_CONFIG.cityWindowDays,
+    );
+    const cityMinImpressions = this.parseNumberEnv(
+      'KEYWORD_CITY_MIN_IMPRESSIONS',
+      this.DEFAULT_CONFIG.cityMinImpressions,
+    );
+
     return {
       enabled,
       entityCount,
       intervalDays,
       searchLimit,
+      cityWindowDays,
+      cityMinImpressions,
     };
   }
 

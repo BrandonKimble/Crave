@@ -131,7 +131,9 @@ export function createWinstonConfig(
     // Combined log file
     transports.push(
       new DailyRotateFile({
-        filename: 'logs/combined-%DATE%.log',
+        filename: `logs/combined-${new Date()
+          .toISOString()
+          .replace(/[:.]/g, '-')}-%DATE%.log`,
         datePattern: 'YYYY-MM-DD',
         level: resolvedLevel,
         format: jsonFormat,

@@ -1150,17 +1150,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             : step.description}
         </Text>
         {isWaitlistUser ? (
-          <View style={styles.waitlistAccountBenefits}>
-            <Text variant="caption" weight="semibold" style={styles.waitlistAccountBenefitTitle}>
+          <View style={styles.waitlistBenefits}>
+            <Text variant="caption" weight="semibold" style={styles.waitlistBenefitTitle}>
               Your waitlist benefits:
             </Text>
-            <Text variant="caption" style={styles.waitlistAccountBenefitText}>
+            <Text variant="caption" style={styles.waitlistBenefitText}>
               ✓ Early access notification (est. Q2 2025)
             </Text>
-            <Text variant="caption" style={styles.waitlistAccountBenefitText}>
+            <Text variant="caption" style={styles.waitlistBenefitText}>
               ✓ 2-3 free searches in Austin & NYC today
             </Text>
-            <Text variant="caption" style={styles.waitlistAccountBenefitText}>
+            <Text variant="caption" style={styles.waitlistBenefitText}>
               ✓ Priority access to vote on neighborhoods we rank first
             </Text>
           </View>

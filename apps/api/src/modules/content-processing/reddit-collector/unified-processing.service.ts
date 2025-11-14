@@ -446,6 +446,10 @@ export class UnifiedProcessingService implements OnModuleInit {
         startTime,
       );
 
+      const singleBatchEntitySummaries =
+        batchResult.databaseOperations?.createdEntitySummaries || [];
+      await this.scheduleRestaurantEnrichment(singleBatchEntitySummaries);
+
       return {
         entitiesCreated: batchResult.entityResolution?.newEntitiesCreated || 0,
         connectionsCreated:

@@ -5,6 +5,7 @@ import { LoggerService } from './logging/logger.interface';
 import { WinstonLoggerService } from './logging/winston-logger.service';
 import { LoggingInterceptor } from './logging/logging.interceptor';
 import { GlobalExceptionFilter } from './filters/global-exception.filter';
+import { TextSanitizerService } from './sanitization/text-sanitizer.service';
 
 /**
  * Global shared module providing common utilities across the application
@@ -18,6 +19,7 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
   providers: [
     // Winston logger service - direct implementation
     WinstonLoggerService,
+    TextSanitizerService,
     // Provide WinstonLoggerService as LoggerService for backward compatibility
     {
       provide: LoggerService,
@@ -45,6 +47,7 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
     WinstonLoggerService,
     LoggerService, // Export both for compatibility
     ConfigModule, // Also export ConfigModule since many services need it
+    TextSanitizerService,
   ],
 })
 export class SharedModule {}

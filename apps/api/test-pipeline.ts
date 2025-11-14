@@ -28,6 +28,20 @@ import { format } from 'util';
 // Load .env file which has all the necessary configuration
 dotenv.config({ path: path.join(__dirname, '.env') });
 
+// Ensure winston rotating files land inside apps/api/logs rather than repo root
+const apiRootDir = path.resolve(__dirname);
+if (process.cwd() !== apiRootDir) {
+  try {
+    process.chdir(apiRootDir);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      'Failed to change working directory for log output scoping',
+      error,
+    );
+  }
+}
+
 // Set log level to info for cleaner test output (removes debug logs)
 // process.env.NODE_ENV = 'production';  // This sets winston log level to 'info' instead of 'debug'
 
