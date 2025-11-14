@@ -926,8 +926,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-          ? error
-          : '';
+        ? error
+        : '';
     if (!message) {
       return false;
     }
@@ -973,8 +973,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-          ? error
-          : '';
+        ? error
+        : '';
     if (!message) {
       return false;
     }
@@ -1246,7 +1246,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         options.cacheName ??
         (options.systemInstruction
           ? null
-          : (this.systemInstructionCache?.name ?? null));
+          : this.systemInstructionCache?.name ?? null);
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),

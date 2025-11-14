@@ -1,21 +1,21 @@
 /**
  * TRUE PRODUCTION SIMULATION TEST - Dual Mode Testing
- * 
+ *
  * Supports two TRUE production testing modes:
  * 1. TEST_MODE=bull - Complete Bull queue simulation with result extraction (RECOMMENDED)
  * 2. TEST_MODE=observe - Observation mode (monitor queue status without scheduling new work)
- * 
+ *
  * Key Features:
  * ✅ Uses actual ChronologicalCollectionWorker (same code as production)
  * ✅ Bull queue mode extracts real job results via Bull API
  * ✅ Database-driven timing calculations via CollectionJobSchedulerService
  * ✅ No manual orchestration - pure production service testing
- * 
+ *
  * Production Fidelity: TRUE - Both modes use identical code paths as production
- * 
+ *
  * IMPORTANT: Set TEST_COLLECTION_JOBS_ENABLED=false in .env to prevent background jobs
  * from automatically starting and consuming quota while testing.
- * 
+ *
  * Goal: Validate that production services work end-to-end with real data
  */
 
@@ -57,22 +57,35 @@ const parsePositiveInt = (value?: string | null): number | null => {
   return parsed;
 };
 
-const PIPELINE_COLLECTION = (process.env.TEST_COLLECTION ?? 'chronological').toLowerCase() as
-  | 'chronological'
-  | 'archive';
-const EXECUTION_MODE = (process.env.TEST_EXECUTION_MODE ?? process.env.TEST_MODE ?? 'bull').toLowerCase();
+const PIPELINE_COLLECTION = (
+  process.env.TEST_COLLECTION ?? 'chronological'
+).toLowerCase() as 'chronological' | 'archive';
+const EXECUTION_MODE = (
+  process.env.TEST_EXECUTION_MODE ??
+  process.env.TEST_MODE ??
+  'bull'
+).toLowerCase();
 const SUPPORTED_MODES = new Set(['bull', 'observe']);
-let TEST_MODE = (SUPPORTED_MODES.has(EXECUTION_MODE) ? EXECUTION_MODE : 'bull') as 'bull' | 'observe';
+let TEST_MODE = (
+  SUPPORTED_MODES.has(EXECUTION_MODE) ? EXECUTION_MODE : 'bull'
+) as 'bull' | 'observe';
 
 const SHOULD_RESET_DB = process.env.TEST_RESET_DB === 'true';
 
 const CHRONO_SUBREDDIT = process.env.TEST_CHRONO_SUBREDDIT ?? 'foodnyc';
 const ARCHIVE_SUBREDDIT = process.env.TEST_ARCHIVE_SUBREDDIT ?? 'austinfood';
 
-const CHRONO_MAX_POSTS_OVERRIDE = parsePositiveInt(process.env.TEST_CHRONO_MAX_POSTS);
-const ARCHIVE_MAX_POSTS_OVERRIDE = parsePositiveInt(process.env.TEST_ARCHIVE_MAX_POSTS);
-const ARCHIVE_BATCH_SIZE_OVERRIDE = parsePositiveInt(process.env.TEST_ARCHIVE_BATCH_SIZE);
-const LLM_POST_SAMPLE_COUNT = parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
+const CHRONO_MAX_POSTS_OVERRIDE = parsePositiveInt(
+  process.env.TEST_CHRONO_MAX_POSTS,
+);
+const ARCHIVE_MAX_POSTS_OVERRIDE = parsePositiveInt(
+  process.env.TEST_ARCHIVE_MAX_POSTS,
+);
+const ARCHIVE_BATCH_SIZE_OVERRIDE = parsePositiveInt(
+  process.env.TEST_ARCHIVE_BATCH_SIZE,
+);
+const LLM_POST_SAMPLE_COUNT =
+  parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COUNT) ?? 0;
 const LLM_POST_SAMPLE_COMMENT_LIMIT =
   parsePositiveInt(process.env.TEST_LLM_POST_SAMPLE_COMMENT_COUNT) ?? 2;
 
@@ -117,14 +130,18 @@ const originalConsole = {
   debug: console.debug.bind(console),
 };
 
-const mirrorToLog = (level: ConsoleMethod) =>
+const mirrorToLog =
+  (level: ConsoleMethod) =>
   (...args: any[]) => {
     try {
       const message = format(...args);
       const line = `${new Date().toISOString()} [${level.toUpperCase()}] ${message}\n`;
       runLogStream.write(line);
     } catch (streamError) {
-      originalConsole.error('Failed to write to test pipeline log stream', streamError);
+      originalConsole.error(
+        'Failed to write to test pipeline log stream',
+        streamError,
+      );
     }
     originalConsole[level](...args);
   };
@@ -153,11 +170,12 @@ console.log(`Test pipeline console output mirrored to ${runLogPath}`);
 
 async function testPipeline() {
   const overallStartTime = Date.now();
-  
+
   console.log(`Crave API • Production Batch Test (${TEST_MODE.toUpperCase()})`);
   console.log(`Started: ${new Date().toISOString()}`);
   console.log('Configuration:');
-  const pipelineLabel = PIPELINE_COLLECTION === 'archive' ? 'Archive' : 'Chronological';
+  const pipelineLabel =
+    PIPELINE_COLLECTION === 'archive' ? 'Archive' : 'Chronological';
   const targetSubreddit =
     PIPELINE_COLLECTION === 'archive' ? ARCHIVE_SUBREDDIT : CHRONO_SUBREDDIT;
   console.log(`- Mode: ${TEST_MODE}`);
@@ -165,10 +183,14 @@ async function testPipeline() {
   console.log(`- Subreddit: r/${targetSubreddit}`);
   if (PIPELINE_COLLECTION === 'archive') {
     if (ARCHIVE_BATCH_SIZE_OVERRIDE) {
-      console.log(`- Archive batch size override: ${ARCHIVE_BATCH_SIZE_OVERRIDE}`);
+      console.log(
+        `- Archive batch size override: ${ARCHIVE_BATCH_SIZE_OVERRIDE}`,
+      );
     }
     if (ARCHIVE_MAX_POSTS_OVERRIDE) {
-      console.log(`- Archive max posts override: ${ARCHIVE_MAX_POSTS_OVERRIDE}`);
+      console.log(
+        `- Archive max posts override: ${ARCHIVE_MAX_POSTS_OVERRIDE}`,
+      );
     }
   } else {
     if (process.env.TEST_CHRONO_BATCH_SIZE) {
@@ -177,7 +199,9 @@ async function testPipeline() {
       );
     }
     if (CHRONO_MAX_POSTS_OVERRIDE) {
-      console.log(`- Chronological max posts override: ${CHRONO_MAX_POSTS_OVERRIDE}`);
+      console.log(
+        `- Chronological max posts override: ${CHRONO_MAX_POSTS_OVERRIDE}`,
+      );
     }
     console.log(`- Reddit API limit: 1000 posts`);
   }
@@ -195,9 +219,13 @@ async function testPipeline() {
   let archiveBatchQueue: Queue | null = null;
   let archiveCollectionQueue: Queue | null = null;
 
-  const shouldCleanupQueues = process.env.TEST_COLLECTION_JOBS_ENABLED !== 'true';
+  const shouldCleanupQueues =
+    process.env.TEST_COLLECTION_JOBS_ENABLED !== 'true';
 
-  const cleanQueue = async (queue: Queue | null | undefined, label: string): Promise<void> => {
+  const cleanQueue = async (
+    queue: Queue | null | undefined,
+    label: string,
+  ): Promise<void> => {
     if (!queue) {
       return;
     }
@@ -216,7 +244,11 @@ async function testPipeline() {
         ]);
       }
     } catch (error) {
-      console.log(`   ⚠️  Unable to fully clean ${label} queue: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(
+        `   ⚠️  Unable to fully clean ${label} queue: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     } finally {
       try {
         await queue.resume(true);
@@ -226,26 +258,24 @@ async function testPipeline() {
     }
   };
 
-  
-  
   try {
     // ========================================
     // STEP 1: Initialize NestJS Application (NO COMPROMISES)
     // ========================================
     console.log('\nStep 1 • Initialize NestJS application');
     const step1StartTime = Date.now();
-    
+
     // Use create with Fastify adapter (same as main.ts)
     app = await NestFactory.create<NestFastifyApplication>(
       AppModule,
       new FastifyAdapter(),
-      { 
-        logger: ['error', 'warn', 'log'] // Enable logging to see what's happening
-      }
+      {
+        logger: ['error', 'warn', 'log'], // Enable logging to see what's happening
+      },
     );
     const appCreateTime = Date.now();
     console.log(`- App create: ${appCreateTime - step1StartTime} ms`);
-    
+
     await app.init();
     const appInitTime = Date.now();
     console.log(`- App init: ${appInitTime - appCreateTime} ms`);
@@ -256,7 +286,9 @@ async function testPipeline() {
     const serviceStartTime = Date.now();
     // Get production services from DI container
     const collectionJobScheduler = app.get(CollectionJobSchedulerService);
-    chronologicalQueue = app.get<Queue>(getQueueToken('chronological-collection'));
+    chronologicalQueue = app.get<Queue>(
+      getQueueToken('chronological-collection'),
+    );
     chronologicalBatchQueue = app.get<Queue>(
       getQueueToken('chronological-batch-processing-queue'),
     );
@@ -275,8 +307,6 @@ async function testPipeline() {
     console.log(`- DI retrieval: ${serviceDuration} ms`);
     console.log('OK • Production services retrieved (shared batch pipeline)');
 
-
-
     let databasePrepared = false;
     const prepareDatabaseForPopulation = async (): Promise<void> => {
       if (databasePrepared) {
@@ -284,7 +314,9 @@ async function testPipeline() {
       }
 
       if (SHOULD_RESET_DB) {
-        console.log('\nStep 1b • Resetting database state for test run (deferred)');
+        console.log(
+          '\nStep 1b • Resetting database state for test run (deferred)',
+        );
         const resetStartTime = Date.now();
         await prisma.$executeRawUnsafe(
           [
@@ -303,13 +335,17 @@ async function testPipeline() {
             'RESTART IDENTITY CASCADE',
           ].join(' '),
         );
-        await prisma.$executeRawUnsafe('UPDATE subreddits SET last_processed = NULL');
+        await prisma.$executeRawUnsafe(
+          'UPDATE subreddits SET last_processed = NULL',
+        );
         await cleanQueue(chronologicalQueue, 'chronological collection');
         await cleanQueue(chronologicalBatchQueue, 'chronological batch');
         await cleanQueue(archiveBatchQueue, 'archive batch');
         await cleanQueue(archiveCollectionQueue, 'archive collection');
         const resetDuration = Date.now() - resetStartTime;
-        console.log(`OK • Database and queues reset complete (${resetDuration} ms)`);
+        console.log(
+          `OK • Database and queues reset complete (${resetDuration} ms)`,
+        );
       } else if (shouldCleanupQueues) {
         console.log('\nStep 1b • Clearing queues before scheduling');
         await cleanQueue(chronologicalQueue, 'chronological collection');
@@ -323,7 +359,11 @@ async function testPipeline() {
     };
 
     const step1Duration = Date.now() - step1StartTime;
-    console.log(`Step 1 total: ${step1Duration} ms (${(step1Duration/1000).toFixed(1)} s)`);
+    console.log(
+      `Step 1 total: ${step1Duration} ms (${(step1Duration / 1000).toFixed(
+        1,
+      )} s)`,
+    );
 
     const seenBatchIds = new Set<string>();
     const batchSummaries: any[] = [];
@@ -334,7 +374,6 @@ async function testPipeline() {
     let collectedPostIds: string[] = [];
     let reportedPostsCount = 0;
     let totalMentionsExtracted = 0;
-
 
     const addBatchSummary = (
       job: any,
@@ -403,7 +442,7 @@ async function testPipeline() {
       }
 
       return true;
-    }
+    };
     const waitForChildBatches = async (
       queue: Queue | null | undefined,
       parentJobId: string,
@@ -427,27 +466,38 @@ async function testPipeline() {
           queue.getFailed(),
         ]);
 
-        completed = completedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
-        failed = failedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+        completed = completedAll.filter(
+          (job: any) => job?.data?.parentJobId === parentJobId,
+        );
+        failed = failedAll.filter(
+          (job: any) => job?.data?.parentJobId === parentJobId,
+        );
 
         const totalPending = waiting.length + active.length;
         const ourBatchTotal = completed.length + failed.length;
-        const expected = expectedBatchCount > 0 ? expectedBatchCount : ourBatchTotal;
+        const expected =
+          expectedBatchCount > 0 ? expectedBatchCount : ourBatchTotal;
 
         if (totalPending === 0 && ourBatchTotal >= expected) {
-          console.log(`✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`);
+          console.log(
+            `✅ All batch jobs completed: ${completed.length} completed, ${failed.length} failed`,
+          );
           return { completed, failed };
         }
 
         if (iterations % 50 === 0) {
-          const elapsedSeconds = Math.round((Date.now() - startWaitTime) / 1000);
+          const elapsedSeconds = Math.round(
+            (Date.now() - startWaitTime) / 1000,
+          );
           console.log(
             `   📊 Queue status (${elapsedSeconds}s): ${waiting.length} waiting, ${active.length} active, ${completed.length} completed, ${failed.length} failed`,
           );
           if (active.length > 0) {
             const activeJob = active[0];
             console.log(
-              `   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${activeJob.data?.postCount || 'unknown'} posts)`,
+              `   🔄 Active job: ${activeJob.data?.batchId || activeJob.id} (${
+                activeJob.data?.postCount || 'unknown'
+              } posts)`,
             );
           }
         }
@@ -460,15 +510,11 @@ async function testPipeline() {
       return { completed, failed };
     };
 
-;
-
-;
-
     // ========================================
     // MANUAL KEYWORD SEARCH APPROACH (PRESERVED FOR KEYWORD COLLECTION PHASE)
     // ========================================
     // This approach will be used for keyword entity search (PRD Section 5.1.2)
-    // 
+    //
     // Implementation tested and validated:
     // 1. redditService.searchByKeyword('austinfood', 'best special', {sort: 'relevance', limit: 10})
     // 2. Search returns posts.data array with nested post.data objects
@@ -492,13 +538,21 @@ async function testPipeline() {
     // ========================================
     // STEP 2: Collect Posts (Chronological or Archive)
     // ========================================
-    console.log(`\nStep 2 • Collect posts via ${pipelineLabel} pipeline (${TEST_MODE.toUpperCase()} mode)`);
+    console.log(
+      `\nStep 2 • Collect posts via ${pipelineLabel} pipeline (${TEST_MODE.toUpperCase()} mode)`,
+    );
     console.log(`- Started: ${new Date().toISOString()}`);
     console.log(`- Target subreddit: r/${targetSubreddit}`);
     const step2StartTime = Date.now();
 
-    const targetQueue = PIPELINE_COLLECTION === 'archive' ? archiveBatchQueue : chronologicalBatchQueue;
-    const queueLabel = PIPELINE_COLLECTION === 'archive' ? 'Archive batch' : 'Chronological batch';
+    const targetQueue =
+      PIPELINE_COLLECTION === 'archive'
+        ? archiveBatchQueue
+        : chronologicalBatchQueue;
+    const queueLabel =
+      PIPELINE_COLLECTION === 'archive'
+        ? 'Archive batch'
+        : 'Chronological batch';
 
     collectedPostIds = [];
     reportedPostsCount = 0;
@@ -527,22 +581,37 @@ async function testPipeline() {
           queue.getFailed(0, -1),
         ]);
 
-        const completedJobs = completedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
-        const failedJobs = failedAll.filter((job: any) => job?.data?.parentJobId === parentJobId);
+        const completedJobs = completedAll.filter(
+          (job: any) => job?.data?.parentJobId === parentJobId,
+        );
+        const failedJobs = failedAll.filter(
+          (job: any) => job?.data?.parentJobId === parentJobId,
+        );
         const totalHandled = completedJobs.length + failedJobs.length;
         const pending = waiting.length + active.length;
 
-        if ((expectedTotal > 0 && totalHandled >= expectedTotal && pending === 0) || (expectedTotal === 0 && pending === 0)) {
-          console.log(`✅ ${label} jobs completed: ${completedJobs.length} completed, ${failedJobs.length} failed`);
+        if (
+          (expectedTotal > 0 &&
+            totalHandled >= expectedTotal &&
+            pending === 0) ||
+          (expectedTotal === 0 && pending === 0)
+        ) {
+          console.log(
+            `✅ ${label} jobs completed: ${completedJobs.length} completed, ${failedJobs.length} failed`,
+          );
           return { completedJobs, failedJobs };
         }
 
         if (attempts % 50 === 0) {
           const elapsed = Math.round((Date.now() - startWait) / 1000);
-          console.log(`   ⏳ ${label} queue (${elapsed}s): waiting=${waiting.length}, active=${active.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`);
+          console.log(
+            `   ⏳ ${label} queue (${elapsed}s): waiting=${waiting.length}, active=${active.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`,
+          );
           if (active.length > 0) {
             const activeJob = active[0];
-            console.log(`   🔄 Active job: ${activeJob.data?.batchId || activeJob.id}`);
+            console.log(
+              `   🔄 Active job: ${activeJob.data?.batchId || activeJob.id}`,
+            );
           }
         }
 
@@ -551,7 +620,10 @@ async function testPipeline() {
       }
     };
 
-    const observeQueue = async (queue: Queue | null | undefined, label: string): Promise<void> => {
+    const observeQueue = async (
+      queue: Queue | null | undefined,
+      label: string,
+    ): Promise<void> => {
       if (!queue) {
         console.log(`⚠️  ${label} queue not available`);
         return;
@@ -570,7 +642,7 @@ async function testPipeline() {
         ]);
 
         console.log(
-          `   status: waiting=${waiting.length}, active=${active.length}, delayed=${delayed.length}, completed=${completedCount}, failed=${failedCount}`
+          `   status: waiting=${waiting.length}, active=${active.length}, delayed=${delayed.length}, completed=${completedCount}, failed=${failedCount}`,
         );
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
@@ -613,8 +685,7 @@ async function testPipeline() {
       try {
         archiveResult = await archiveJob.finished();
       } catch (error) {
-        const message =
-          error instanceof Error ? error.message : String(error);
+        const message = error instanceof Error ? error.message : String(error);
         console.log(`   ❌ Archive collection job failed: ${message}`);
         throw error;
       }
@@ -651,19 +722,29 @@ async function testPipeline() {
 
         const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
         if (summaryAdded) {
-          if (Array.isArray(rv.rawMentionsSample) && rv.rawMentionsSample.length > 0) {
+          if (
+            Array.isArray(rv.rawMentionsSample) &&
+            rv.rawMentionsSample.length > 0
+          ) {
             aggregatedRawMentions.push(...rv.rawMentionsSample);
           }
-          if (Array.isArray(rv.details?.llmPostSample) && rv.details.llmPostSample.length > 0) {
+          if (
+            Array.isArray(rv.details?.llmPostSample) &&
+            rv.details.llmPostSample.length > 0
+          ) {
             aggregatedLlmPostSamples.push(...rv.details.llmPostSample);
           }
         }
 
-        const llmPosts = Array.isArray(job?.data?.llmPosts) ? job.data.llmPosts : [];
+        const llmPosts = Array.isArray(job?.data?.llmPosts)
+          ? job.data.llmPosts
+          : [];
         collectedPostIds.push(...llmPosts.map((post: any) => post?.id || ''));
       }
 
-      failedJobs.forEach((job) => addBatchSummary(job, job?.returnvalue || {}, false));
+      failedJobs.forEach((job) =>
+        addBatchSummary(job, job?.returnvalue || {}, false),
+      );
 
       totalMentionsExtracted = archiveMentions;
       batchesProcessed = completedJobs.length;
@@ -677,7 +758,9 @@ async function testPipeline() {
       } as any;
 
       if (failedJobs.length > 0) {
-        console.log(`⚠️  ${failedJobs.length} archive batches failed. Check batch summaries for details.`);
+        console.log(
+          `⚠️  ${failedJobs.length} archive batches failed. Check batch summaries for details.`,
+        );
       }
     } else {
       console.log(`- Timing: DB-driven (scheduler)`);
@@ -686,10 +769,13 @@ async function testPipeline() {
       await prepareDatabaseForPopulation();
 
       try {
-        const jobId = await collectionJobScheduler.scheduleManualCollection(targetSubreddit, {
-          limit: limitOverride,
-          priority: 10,
-        });
+        const jobId = await collectionJobScheduler.scheduleManualCollection(
+          targetSubreddit,
+          {
+            limit: limitOverride,
+            priority: 10,
+          },
+        );
         console.log(`OK • Bull job scheduled: ${jobId}`);
 
         let jobComplete = false;
@@ -708,7 +794,8 @@ async function testPipeline() {
             }
             jobResult = bullJob.returnvalue;
           } else if (bullJob && bullJob.processedOn && !bullJob.finishedOn) {
-            if (attempts % 10 === 0) console.log(`- Job processing... (${attempts}s)`);
+            if (attempts % 10 === 0)
+              console.log(`- Job processing... (${attempts}s)`);
           }
           attempts += 1;
         }
@@ -743,10 +830,16 @@ async function testPipeline() {
 
           const summaryAdded = addBatchSummary(job, rv, rv?.success !== false);
           if (summaryAdded) {
-            if (Array.isArray(rv.rawMentionsSample) && rv.rawMentionsSample.length > 0) {
+            if (
+              Array.isArray(rv.rawMentionsSample) &&
+              rv.rawMentionsSample.length > 0
+            ) {
               aggregatedRawMentions.push(...rv.rawMentionsSample);
             }
-            if (Array.isArray(rv.details?.llmPostSample) && rv.details.llmPostSample.length > 0) {
+            if (
+              Array.isArray(rv.details?.llmPostSample) &&
+              rv.details.llmPostSample.length > 0
+            ) {
               aggregatedLlmPostSamples.push(...rv.details.llmPostSample);
             }
           }
@@ -759,24 +852,33 @@ async function testPipeline() {
           collectedPostIds.push(...jobPostIds.map((id: string) => id || ''));
         }
 
-        failedJobs.forEach((job) => addBatchSummary(job, job?.returnvalue || {}, false));
+        failedJobs.forEach((job) =>
+          addBatchSummary(job, job?.returnvalue || {}, false),
+        );
         totalMentionsExtracted = batchMentions || totalMentionsExtracted;
         batchesProcessed = completedJobs.length || batchesProcessed;
-
       } catch (error) {
-        console.log(`   ❌ Production service failed: ${error instanceof Error ? error.message : String(error)}`);
+        console.log(
+          `   ❌ Production service failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
         throw error;
       }
     }
 
     collectedPostIds = Array.from(new Set(collectedPostIds.filter(Boolean)));
     const step2Duration = Date.now() - step2StartTime;
-    console.log(`Step 2 Total Duration: ${step2Duration}ms (${(step2Duration / 1000).toFixed(1)}s)`);
+    console.log(
+      `Step 2 Total Duration: ${step2Duration}ms (${(
+        step2Duration / 1000
+      ).toFixed(1)}s)`,
+    );
 
-// ========================================
+    // ========================================
     // REMAINING STEPS COMMENTED OUT FOR FOCUSED LLM TESTING
     // ========================================
-    
+
     // ========================================
     // STEP 10: Log Data State at Each Pipeline Step (TRANSPARENCY) [COMMENTED OUT]
     // ========================================
@@ -785,7 +887,7 @@ async function testPipeline() {
     // const pipelineStates = {
     //   timestamp: new Date().toISOString(),
     //   testName: 'FOCUSED LLM PROCESSING TEST - "Best Special in Austin?" Post',
-      
+
     //   step3_posts: {
     //       [ALL PIPELINE STATES COMMENTED OUT FOR FOCUSED LLM TESTING]
     //     }
@@ -805,15 +907,16 @@ async function testPipeline() {
     console.log(`Date: ${new Date().toISOString()}`);
     console.log(`Mode: ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer'}`);
     console.log(`Pipeline: ${pipelineLabel}`);
-    
+
     // ========================================
     // COLLECT PERFORMANCE METRICS
     // ========================================
     const overallDurationSeconds = (Date.now() - overallStartTime) / 1000;
     const mentionsCount = totalMentionsExtracted || 0;
     const actualPostsCount = collectedPostIds.length;
-    const postsCount = actualPostsCount > 0 ? actualPostsCount : reportedPostsCount;
-    
+    const postsCount =
+      actualPostsCount > 0 ? actualPostsCount : reportedPostsCount;
+
     // Get comprehensive metrics from rate limiter and LLM service
     let rateLimitMetrics: any = null;
     let llmMetrics: any = null;
@@ -821,14 +924,22 @@ async function testPipeline() {
       const centralizedRateLimiter = app.get(CentralizedRateLimiter);
       rateLimitMetrics = await centralizedRateLimiter.getMetrics();
     } catch (error) {
-      console.log(`   ⚠️  Rate limit metrics unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(
+        `   ⚠️  Rate limit metrics unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
-    
+
     try {
       const llmService = app.get(LLMService);
       llmMetrics = llmService.getPerformanceMetrics();
     } catch (error) {
-      console.log(`   ⚠️  LLM metrics unavailable: ${error instanceof Error ? error.message : String(error)}`);
+      console.log(
+        `   ⚠️  LLM metrics unavailable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
 
     console.log(`\nCore Results:`);
@@ -836,13 +947,16 @@ async function testPipeline() {
     console.log(`- Posts: ${postsCount}`);
     console.log(`- Batches processed: ${batchesProcessed}`);
     console.log(`- Duration: ${overallDurationSeconds.toFixed(1)} s`);
-    
+
     if (postsCount > 0) {
       const avgTimePerPost = overallDurationSeconds / postsCount;
-      const postsPerMinute = (postsCount / (overallDurationSeconds / 60)).toFixed(1);
+      const postsPerMinute = (
+        postsCount /
+        (overallDurationSeconds / 60)
+      ).toFixed(1);
       const mentionsPerPost = (mentionsCount / postsCount).toFixed(2);
       const extractionRate = ((mentionsCount / postsCount) * 100).toFixed(1);
-      
+
       console.log(`\nThroughput:`);
       console.log(`- Posts/min: ${postsPerMinute}`);
       console.log(`- Avg time/post: ${avgTimePerPost.toFixed(2)} s`);
@@ -857,11 +971,15 @@ async function testPipeline() {
       console.log(`\nLLM Post Sample Preview:`);
       samplePreview.forEach((sample, index) => {
         console.log(
-          `#${index + 1} ${sample.title} (${sample.id}) • ${sample.commentCount} comments`,
+          `#${index + 1} ${sample.title} (${sample.id}) • ${
+            sample.commentCount
+          } comments`,
         );
         sample.sampleComments?.forEach((comment: any, i: number) => {
           console.log(
-            `   ↳ Comment ${i + 1}: ${comment.author} (${comment.score}) - ${comment.contentSnippet}`,
+            `   ↳ Comment ${i + 1}: ${comment.author} (${comment.score}) - ${
+              comment.contentSnippet
+            }`,
           );
         });
       });
@@ -870,13 +988,30 @@ async function testPipeline() {
     // Rate limiting performance summary
     const concurrencyCfg = parseInt(process.env.CONCURRENCY || '16', 10);
     if (rateLimitMetrics && !rateLimitMetrics.error) {
-      const bottleneck = rateLimitMetrics.optimization.currentBottleneck === 'none' ? 'None' : String(rateLimitMetrics.optimization.currentBottleneck).toUpperCase();
+      const bottleneck =
+        rateLimitMetrics.optimization.currentBottleneck === 'none'
+          ? 'None'
+          : String(
+              rateLimitMetrics.optimization.currentBottleneck,
+            ).toUpperCase();
       console.log(`\nRate Limiting:`);
-      console.log(`- RPM utilization: ${rateLimitMetrics.rpm.actualUtilizationPercent}% (current ${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})`);
-      console.log(`- TPM(input) utilization: ${rateLimitMetrics.tpm.utilizationPercent}% (used ${rateLimitMetrics.tpm.current.toLocaleString()}, reserved ${(rateLimitMetrics.tpm as any).reserved?.toLocaleString?.() || 0})`);
+      console.log(
+        `- RPM utilization: ${rateLimitMetrics.rpm.actualUtilizationPercent}% (current ${rateLimitMetrics.rpm.current}/${rateLimitMetrics.rpm.safe})`,
+      );
+      console.log(
+        `- TPM(input) utilization: ${
+          rateLimitMetrics.tpm.utilizationPercent
+        }% (used ${rateLimitMetrics.tpm.current.toLocaleString()}, reserved ${
+          (rateLimitMetrics.tpm as any).reserved?.toLocaleString?.() || 0
+        })`,
+      );
       console.log(`- Bottleneck: ${bottleneck}`);
-      console.log(`- Reservation accuracy (avg): ${rateLimitMetrics.reservations.avgAccuracyMs} ms`);
-      console.log(`- Reservation confirmation: ${rateLimitMetrics.reservations.confirmationRate}% (${rateLimitMetrics.reservations.confirmed}/${rateLimitMetrics.reservations.total})`);
+      console.log(
+        `- Reservation accuracy (avg): ${rateLimitMetrics.reservations.avgAccuracyMs} ms`,
+      );
+      console.log(
+        `- Reservation confirmation: ${rateLimitMetrics.reservations.confirmationRate}% (${rateLimitMetrics.reservations.confirmed}/${rateLimitMetrics.reservations.total})`,
+      );
     }
 
     // Aggregated per-request diagnostics (from SmartLLMProcessor)
@@ -886,29 +1021,52 @@ async function testPipeline() {
       console.log(`\nPer-Request Aggregates:`);
       console.log(`- Requests observed: ${diag.requests}`);
       if (typeof diag.mentionYield?.withMentions === 'number') {
-        console.log(`- Requests with mentions: ${diag.mentionYield.withMentions} (${diag.mentionYield.percent}%)`);
+        console.log(
+          `- Requests with mentions: ${diag.mentionYield.withMentions} (${diag.mentionYield.percent}%)`,
+        );
       }
-      console.log(`- Wait(ms): avg ${diag.waits.avgMs}, min ${diag.waits.minMs}, max ${diag.waits.maxMs}`);
-      console.log(`- RPM util(%): avg ${diag.rpmUtilization.avg}, min ${diag.rpmUtilization.min}, max ${diag.rpmUtilization.max}`);
-      console.log(`- TPM(input) util(%): avg ${diag.tpmUtilization.avg}, min ${diag.tpmUtilization.min}, max ${diag.tpmUtilization.max}`);
-      console.log(`- RPM window count: avg ${diag.rpmWindowCount.avg}, min ${diag.rpmWindowCount.min}, max ${diag.rpmWindowCount.max}`);
-      console.log(`- TPM window tokens: avg ${diag.tpmWindowTokens.avg}, min ${diag.tpmWindowTokens.min}, max ${diag.tpmWindowTokens.max}`);
-      console.log(`- Input tokens (estimated): avg ${diag.inputTokens.estimated.avg}, min ${diag.inputTokens.estimated.min}, max ${diag.inputTokens.estimated.max}`);
-      console.log(`- Input tokens (actual): avg ${diag.inputTokens.actual.avg}, min ${diag.inputTokens.actual.min}, max ${diag.inputTokens.actual.max}`);
-      console.log(`- Estimation error(tokens): avg ${diag.inputTokens.estimationError.avg}, avgAbs ${diag.inputTokens.estimationError.avgAbs}, min ${diag.inputTokens.estimationError.min}, max ${diag.inputTokens.estimationError.max}`);
-      if (diag.noUsageMetadataCount > 0) console.log(`- Missing usageMetadata count: ${diag.noUsageMetadataCount}`);
+      console.log(
+        `- Wait(ms): avg ${diag.waits.avgMs}, min ${diag.waits.minMs}, max ${diag.waits.maxMs}`,
+      );
+      console.log(
+        `- RPM util(%): avg ${diag.rpmUtilization.avg}, min ${diag.rpmUtilization.min}, max ${diag.rpmUtilization.max}`,
+      );
+      console.log(
+        `- TPM(input) util(%): avg ${diag.tpmUtilization.avg}, min ${diag.tpmUtilization.min}, max ${diag.tpmUtilization.max}`,
+      );
+      console.log(
+        `- RPM window count: avg ${diag.rpmWindowCount.avg}, min ${diag.rpmWindowCount.min}, max ${diag.rpmWindowCount.max}`,
+      );
+      console.log(
+        `- TPM window tokens: avg ${diag.tpmWindowTokens.avg}, min ${diag.tpmWindowTokens.min}, max ${diag.tpmWindowTokens.max}`,
+      );
+      console.log(
+        `- Input tokens (estimated): avg ${diag.inputTokens.estimated.avg}, min ${diag.inputTokens.estimated.min}, max ${diag.inputTokens.estimated.max}`,
+      );
+      console.log(
+        `- Input tokens (actual): avg ${diag.inputTokens.actual.avg}, min ${diag.inputTokens.actual.min}, max ${diag.inputTokens.actual.max}`,
+      );
+      console.log(
+        `- Estimation error(tokens): avg ${diag.inputTokens.estimationError.avg}, avgAbs ${diag.inputTokens.estimationError.avgAbs}, min ${diag.inputTokens.estimationError.min}, max ${diag.inputTokens.estimationError.max}`,
+      );
+      if (diag.noUsageMetadataCount > 0)
+        console.log(
+          `- Missing usageMetadata count: ${diag.noUsageMetadataCount}`,
+        );
     } catch {}
 
     // ========================================
     // GENERATE STRUCTURED JSON RESULTS FILE
     // ========================================
     const overallDuration = Date.now() - overallStartTime;
-    
+
     // Calculate comprehensive stats
     const avgTimePerPost = postsCount > 0 ? overallDuration / postsCount : 0;
-    const postsPerSecond = postsCount > 0 ? postsCount / (overallDuration / 1000) : 0;
-    const mentionsPerPost = postsCount > 0 ? (totalMentionsExtracted || 0) / postsCount : 0;
-    
+    const postsPerSecond =
+      postsCount > 0 ? postsCount / (overallDuration / 1000) : 0;
+    const mentionsPerPost =
+      postsCount > 0 ? (totalMentionsExtracted || 0) / postsCount : 0;
+
     // Build structured results (revamped)
     const headroom = parseFloat(process.env.LLM_RATE_HEADROOM || '0.95');
     const perReqAgg = (() => {
@@ -921,7 +1079,9 @@ async function testPipeline() {
     })();
     const structuredResults = {
       testMetadata: {
-        testName: `Production Orchestration - ${TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer'} Mode`,
+        testName: `Production Orchestration - ${
+          TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer'
+        } Mode`,
         timestamp: new Date().toISOString(),
         durationMs: overallDuration,
         mode: TEST_MODE === 'bull' ? 'Bull Queue' : 'Observer',
@@ -937,38 +1097,57 @@ async function testPipeline() {
         mentions: totalMentionsExtracted || 0,
         batches: batchesProcessed,
         postsPerSecond: Number(postsPerSecond.toFixed(2)),
-        postsPerMinute: postsCount > 0 ? Number((postsCount / (overallDuration / 1000 / 60)).toFixed(1)) : 0,
+        postsPerMinute:
+          postsCount > 0
+            ? Number((postsCount / (overallDuration / 1000 / 60)).toFixed(1))
+            : 0,
         avgTimePerPostMs: Math.round(avgTimePerPost),
-        mentionsPerPost: postsCount > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
+        mentionsPerPost:
+          postsCount > 0 ? Number(mentionsPerPost.toFixed(2)) : 0,
       },
-      rateLimiting: rateLimitMetrics && !rateLimitMetrics.error ? {
-        rpm: {
-          current: rateLimitMetrics.rpm?.current,
-          safe: rateLimitMetrics.rpm?.safe,
-          utilizationPercent: rateLimitMetrics.rpm?.actualUtilizationPercent,
-        },
-        tpmInput: {
-          used: rateLimitMetrics.tpm?.current,
-          reserved: (rateLimitMetrics.tpm as any)?.reserved || 0,
-          windowTokens: (rateLimitMetrics.tpm as any)?.windowTokens || 0,
-          utilizationPercent: rateLimitMetrics.tpm?.utilizationPercent,
-          avgTokensPerRequest: rateLimitMetrics.tpm?.avgTokensPerRequest || 0,
-        },
-        reservations: {
-          avgAccuracyMs: rateLimitMetrics.reservations?.avgAccuracyMs || 0,
-          confirmationRate: rateLimitMetrics.reservations?.confirmationRate || 0,
-          confirmed: rateLimitMetrics.reservations?.confirmed || 0,
-          total: rateLimitMetrics.reservations?.total || 0,
-        },
-        bottleneck: rateLimitMetrics.optimization?.currentBottleneck || 'unknown',
-      } : null,
-      llmPerformance: llmMetrics ? {
-        totalCalls: llmMetrics.requestCount,
-        avgResponseTimeMs: Math.round(llmMetrics.averageResponseTime),
-        successRate: llmMetrics.successRate,
-        totalTokensProcessed: llmMetrics.totalTokensUsed,
-        avgTokensPerRequest: llmMetrics.requestCount > 0 ? Math.round(llmMetrics.totalTokensUsed / llmMetrics.requestCount) : 0,
-      } : null,
+      rateLimiting:
+        rateLimitMetrics && !rateLimitMetrics.error
+          ? {
+              rpm: {
+                current: rateLimitMetrics.rpm?.current,
+                safe: rateLimitMetrics.rpm?.safe,
+                utilizationPercent:
+                  rateLimitMetrics.rpm?.actualUtilizationPercent,
+              },
+              tpmInput: {
+                used: rateLimitMetrics.tpm?.current,
+                reserved: (rateLimitMetrics.tpm as any)?.reserved || 0,
+                windowTokens: (rateLimitMetrics.tpm as any)?.windowTokens || 0,
+                utilizationPercent: rateLimitMetrics.tpm?.utilizationPercent,
+                avgTokensPerRequest:
+                  rateLimitMetrics.tpm?.avgTokensPerRequest || 0,
+              },
+              reservations: {
+                avgAccuracyMs:
+                  rateLimitMetrics.reservations?.avgAccuracyMs || 0,
+                confirmationRate:
+                  rateLimitMetrics.reservations?.confirmationRate || 0,
+                confirmed: rateLimitMetrics.reservations?.confirmed || 0,
+                total: rateLimitMetrics.reservations?.total || 0,
+              },
+              bottleneck:
+                rateLimitMetrics.optimization?.currentBottleneck || 'unknown',
+            }
+          : null,
+      llmPerformance: llmMetrics
+        ? {
+            totalCalls: llmMetrics.requestCount,
+            avgResponseTimeMs: Math.round(llmMetrics.averageResponseTime),
+            successRate: llmMetrics.successRate,
+            totalTokensProcessed: llmMetrics.totalTokensUsed,
+            avgTokensPerRequest:
+              llmMetrics.requestCount > 0
+                ? Math.round(
+                    llmMetrics.totalTokensUsed / llmMetrics.requestCount,
+                  )
+                : 0,
+          }
+        : null,
       perRequestAggregates: perReqAgg,
       collection: latestCollectionResult
         ? {
@@ -995,7 +1174,10 @@ async function testPipeline() {
           LLM_POST_SAMPLE_COUNT > 0
             ? aggregatedLlmPostSamples.slice(
                 0,
-                Math.min(LLM_POST_SAMPLE_COUNT, aggregatedLlmPostSamples.length),
+                Math.min(
+                  LLM_POST_SAMPLE_COUNT,
+                  aggregatedLlmPostSamples.length,
+                ),
               )
             : undefined,
       },
@@ -1006,22 +1188,36 @@ async function testPipeline() {
     const resultsDir = path.resolve(__dirname, 'logs');
     const resultsPath = path.join(resultsDir, 'test-pipeline-output.json');
     await fsPromises.mkdir(resultsDir, { recursive: true });
-    await fsPromises.writeFile(resultsPath, JSON.stringify(structuredResults, null, 2));
+    await fsPromises.writeFile(
+      resultsPath,
+      JSON.stringify(structuredResults, null, 2),
+    );
     console.log(`\nStructured results file: ${resultsPath}`);
 
     // Overall timing summary
     console.log(`\n⏰ OVERALL TEST TIMING:`);
-    console.log(`   Total test duration: ${overallDuration}ms (${(overallDuration/1000).toFixed(1)}s)`);
+    console.log(
+      `   Total test duration: ${overallDuration}ms (${(
+        overallDuration / 1000
+      ).toFixed(1)}s)`,
+    );
     console.log(`   Test completed at: ${new Date().toISOString()}`);
-
   } catch (error) {
     const overallDuration = Date.now() - overallStartTime;
-    console.error(`\n❌ UNCOMPROMISING FAILURE after ${overallDuration}ms:`, error instanceof Error ? error.message : String(error));
-    console.error('Stack trace:', error instanceof Error ? error.stack : 'No stack trace');
+    console.error(
+      `\n❌ UNCOMPROMISING FAILURE after ${overallDuration}ms:`,
+      error instanceof Error ? error.message : String(error),
+    );
+    console.error(
+      'Stack trace:',
+      error instanceof Error ? error.stack : 'No stack trace',
+    );
     throw error;
   } finally {
     if (shouldCleanupQueues) {
-      console.log('\n🧹 Post-run queue cleanup (TEST_COLLECTION_JOBS_ENABLED=false)');
+      console.log(
+        '\n🧹 Post-run queue cleanup (TEST_COLLECTION_JOBS_ENABLED=false)',
+      );
       await cleanQueue(chronologicalQueue, 'chronological collection');
       await cleanQueue(chronologicalBatchQueue, 'chronological batch');
       await cleanQueue(archiveBatchQueue, 'archive batch');

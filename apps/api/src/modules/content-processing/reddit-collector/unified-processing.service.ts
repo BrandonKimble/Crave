@@ -943,8 +943,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       typeof value === 'string'
         ? value
         : typeof value === 'number' || typeof value === 'boolean'
-          ? String(value)
-          : '';
+        ? String(value)
+        : '';
 
     if (!stringValue) {
       return '';
@@ -3023,7 +3023,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const subredditValue =
         mentionSubreddit.length > 0
           ? mentionSubreddit
-          : (defaultSubreddit ?? null);
+          : defaultSubreddit ?? null;
 
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,
