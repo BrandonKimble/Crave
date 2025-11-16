@@ -13,4 +13,7 @@ export const notificationsService = {
   async registerDevice(body: RegisterDeviceRequest): Promise<void> {
     await api.post('/notifications/devices/register', body);
   },
+  async unregisterDevice(token: string): Promise<void> {
+    await api.post('/notifications/devices/unregister', { token });
+  },
 };

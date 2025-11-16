@@ -43,6 +43,7 @@ model Entity {
   pollTopicDishTargets       PollTopic[]           @relation("PollTopicTargetDish")
   pollTopicRestaurantTargets PollTopic[]           @relation("PollTopicTargetRestaurant")
   searchLogs                 SearchLog[]
+  userFavorites              UserFavorite[]
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -246,6 +247,7 @@ model PollOption {
   resolutionStatus PollOptionResolutionStatus @default(pending) @map("resolution_status")
   addedByUserId    String?                    @map("added_by_user_id") @db.Uuid
   voteCount        Int                        @default(0) @map("vote_count")
+  aggregatedVoteCount Int                     @default(0) @map("aggregated_vote_count")
   consensus        Decimal?                   @default(0) @db.Decimal(7, 4)
   lastVoteAt       DateTime?                  @map("last_vote_at")
   metadata         Json?                      @default("{}")
@@ -341,18 +343,36 @@ model SearchLog {
   logId       String          @id @default(dbgenerated("gen_random_uuid()")) @map("log_id") @db.Uuid
   entityId    String          @map("entity_id") @db.Uuid
   entityType  EntityType      @map("entity_type")
+  userId      String?         @map("user_id") @db.Uuid
   locationKey String?         @map("location_key") @db.VarChar(255)
   queryText   String?         @map("query_text") @db.VarChar(500)
   source      SearchLogSource @default(search)
   metadata    Json?           @default("{}")
   loggedAt    DateTime        @default(now()) @map("logged_at")
   entity      Entity          @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+  user        User?           @relation(fields: [userId], references: [userId], onDelete: SetNull)
 
   @@index([entityId], map: "idx_search_log_entity")
   @@index([locationKey], map: "idx_search_log_location")
   @@index([loggedAt(sort: Desc)], map: "idx_search_log_logged_at")
   @@index([entityId, locationKey, loggedAt], map: "idx_search_log_entity_location_time")
+  @@index([userId], map: "idx_search_log_user_id")
   @@map("search_log")
+}
+
+model UserFavorite {
+  favoriteId String   @id @default(dbgenerated("gen_random_uuid()")) @map("favorite_id") @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  entityId   String   @map("entity_id") @db.Uuid
+  entityType EntityType @map("entity_type")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  entity     Entity   @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
+
+  @@unique([userId, entityId], map: "user_favorites_user_entity_unique")
+  @@index([userId], map: "idx_user_favorites_user")
+  @@map("user_favorites")
 }
 
 model User {
@@ -375,6 +395,8 @@ model User {
   subscriptions       Subscription[]
   entitlements        UserEntitlement[]
   events              UserEvent[]
+  favorites           UserFavorite[]
+  searchLogs          SearchLog[]
   referrer            User?              @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals           User[]             @relation("UserReferrals")
 

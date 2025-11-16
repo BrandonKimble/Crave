@@ -133,6 +133,14 @@ export class SearchQueryRequestDto {
   @Min(0, { each: true })
   @Max(4, { each: true })
   priceLevels?: number[];
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceQuery?: string;
 }
 
 export const EntityScope = {
@@ -193,6 +201,14 @@ export class NaturalSearchRequestDto {
   @Min(0, { each: true })
   @Max(4, { each: true })
   priceLevels?: number[];
+
+  @IsOptional()
+  @IsUUID()
+  userId?: string;
+
+  @IsOptional()
+  @IsString()
+  sourceQuery?: string;
 }
 
 export class SearchResultClickDto {

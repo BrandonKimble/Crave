@@ -496,7 +496,7 @@ export class SearchService {
       ),
     );
 
-    await this.recordSearchLogEntries(request, targets, now);
+    await this.recordSearchLogEntries(request, targets, now, request.userId);
   }
 
   private normalizePriceLevels(levels?: number[]): number[] {
@@ -549,6 +549,7 @@ export class SearchService {
     request: SearchQueryRequestDto,
     targets: { entityId: string; entityType: EntityType }[],
     loggedAt: Date,
+    userId?: string,
   ): Promise<void> {
     if (!this.searchLogEnabled || !targets.length) {
       return;
@@ -560,9 +561,10 @@ export class SearchService {
         entityId,
         entityType,
         locationKey,
-        queryText: null,
+        queryText: request.sourceQuery ?? null,
         source: SearchLogSource.search,
         loggedAt,
+        userId: userId ?? null,
       }));
 
       await this.prisma.searchLog.createMany({
@@ -609,6 +611,33 @@ export class SearchService {
       entityId: dto.entityId,
       entityType: dto.entityType,
     });
+  }
+
+  async listRecentSearches(userId: string, limit?: number): Promise<string[]> {
+    if (!userId) {
+      return [];
+    }
+    const take = Math.max(1, Math.min(limit ?? 8, 50));
+    const rows = await this.prisma.searchLog.groupBy({
+      by: ['queryText'],
+      where: {
+        userId,
+        queryText: { not: null },
+      },
+      _max: {
+        loggedAt: true,
+      },
+      orderBy: {
+        _max: {
+          loggedAt: 'desc',
+        },
+      },
+      take,
+    });
+
+    return rows
+      .map((row) => row.queryText)
+      .filter((text): text is string => typeof text === 'string');
   }
 
   private calculateCoverageStatus(params: {

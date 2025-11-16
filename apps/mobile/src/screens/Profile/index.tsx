@@ -1,11 +1,56 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '@clerk/clerk-expo';
 import { Text, Button } from '../../components';
 import { useOnboardingStore } from '../../store/onboardingStore';
+import { useNotificationStore } from '../../store/notificationStore';
+import { logger } from '../../utils';
+import { notificationsService } from '../../services/notifications';
 
 const ProfileScreen: React.FC = () => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
+  const { signOut, isSignedIn } = useAuth();
+  const pushToken = useNotificationStore((state) => state.pushToken);
+  const setPushToken = useNotificationStore((state) => state.setPushToken);
+
+  const unregisterPushToken = React.useCallback(async () => {
+    if (!pushToken) {
+      return;
+    }
+    try {
+      await notificationsService.unregisterDevice(pushToken);
+    } catch (error) {
+      logger.warn('Failed to unregister push token', error);
+    } finally {
+      setPushToken(null);
+    }
+  }, [pushToken, setPushToken]);
+
+  const handleSignOut = React.useCallback(async () => {
+    try {
+      await unregisterPushToken();
+      await signOut();
+      Alert.alert('Signed out', 'Sign in again the next time you open the app.');
+    } catch (error) {
+      logger.error('Sign out failed', error);
+      Alert.alert(
+        'Unable to sign out',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    }
+  }, [signOut, unregisterPushToken]);
+  const handleReplayOnboarding = React.useCallback(async () => {
+    try {
+      await unregisterPushToken();
+      await signOut();
+    } catch (error) {
+      logger.warn('Replay onboarding sign-out failed', error);
+    } finally {
+      resetOnboarding();
+      Alert.alert('Onboarding reset', 'Restart the app to walk through onboarding again.');
+    }
+  }, [resetOnboarding, signOut, unregisterPushToken]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -25,9 +70,17 @@ const ProfileScreen: React.FC = () => {
           <Button
             label="Replay onboarding"
             variant="ghost"
-            onPress={resetOnboarding}
+            onPress={handleReplayOnboarding}
             style={styles.resetButton}
           />
+          {isSignedIn ? (
+            <Button
+              label="Sign out"
+              variant="ghost"
+              onPress={handleSignOut}
+              style={styles.resetButton}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

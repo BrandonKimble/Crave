@@ -1,8 +1,19 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
+import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
+import { CurrentUser } from '../../shared';
 
 @Controller('polls')
 export class PollsController {
@@ -19,12 +30,22 @@ export class PollsController {
   }
 
   @Post(':pollId/options')
-  addOption(@Param('pollId') pollId: string, @Body() dto: CreatePollOptionDto) {
-    return this.pollsService.addOption(pollId, dto);
+  @UseGuards(ClerkAuthGuard)
+  addOption(
+    @Param('pollId') pollId: string,
+    @Body() dto: CreatePollOptionDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.addOption(pollId, dto, user.userId);
   }
 
   @Post(':pollId/votes')
-  castVote(@Param('pollId') pollId: string, @Body() dto: CastPollVoteDto) {
-    return this.pollsService.castVote(pollId, dto);
+  @UseGuards(ClerkAuthGuard)
+  castVote(
+    @Param('pollId') pollId: string,
+    @Body() dto: CastPollVoteDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.pollsService.castVote(pollId, dto, user.userId);
   }
 }

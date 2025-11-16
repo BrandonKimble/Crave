@@ -6,6 +6,7 @@ import { RedditCollectorModule } from '../content-processing/reddit-collector/re
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
+import { IdentityModule } from '../identity/identity.module';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
@@ -27,6 +28,7 @@ import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-clean
     EntityResolverModule,
     ExternalIntegrationsModule,
     RestaurantEnrichmentModule,
+    IdentityModule,
   ],
   controllers: [SearchController],
   providers: [

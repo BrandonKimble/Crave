@@ -13,6 +13,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
 import { RootNavigator } from './src/navigation';
 import { AuthProvider } from './src/providers/AuthProvider';
+import { navigationRef } from './src/navigation/navigationRef';
 
 const queryClient = new QueryClient();
 
@@ -60,7 +61,7 @@ export default function App() {
       <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
         <SafeAreaProvider>
           <AuthProvider>
-            <NavigationContainer>
+            <NavigationContainer ref={navigationRef}>
               <RootNavigator />
             </NavigationContainer>
           </AuthProvider>

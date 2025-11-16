@@ -78,7 +78,7 @@ describe('BaseRepository', () => {
     }).compile();
 
     repository = module.get<TestRepository>(TestRepository);
-    // prismaService = module.get<PrismaService>(PrismaService);
+    repository.onModuleInit();
   });
 
   afterEach(async () => {

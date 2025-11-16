@@ -570,8 +570,14 @@ async function testPipeline() {
         return { completedJobs: [], failedJobs: [] };
       }
 
+      const pollDelayMs =
+        Number(process.env.TEST_QUEUE_POLL_MS || '300') || 300;
+      const progressIntervalMs =
+        Number(process.env.TEST_QUEUE_PROGRESS_INTERVAL_MS || '30000') ||
+        30000;
       let attempts = 0;
       const startWait = Date.now();
+      let lastProgressLog = 0;
 
       while (true) {
         const [waiting, active, completedAll, failedAll] = await Promise.all([
@@ -602,8 +608,10 @@ async function testPipeline() {
           return { completedJobs, failedJobs };
         }
 
-        if (attempts % 50 === 0) {
-          const elapsed = Math.round((Date.now() - startWait) / 1000);
+        const now = Date.now();
+        if (now - lastProgressLog >= progressIntervalMs) {
+          lastProgressLog = now;
+          const elapsed = Math.round((now - startWait) / 1000);
           console.log(
             `   ⏳ ${label} queue (${elapsed}s): waiting=${waiting.length}, active=${active.length}, completed=${completedJobs.length}, failed=${failedJobs.length}`,
           );
@@ -615,7 +623,7 @@ async function testPipeline() {
           }
         }
 
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
         attempts += 1;
       }
     };

@@ -16,7 +16,9 @@ import {
 import { BlurView } from 'expo-blur';
 import MapboxGL from '@rnmapbox/maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Feather } from '@expo/vector-icons';
+import { useAuth } from '@clerk/clerk-expo';
 import { LinearGradient } from 'expo-linear-gradient';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text, Button } from '../../components';
@@ -24,6 +26,7 @@ import { colors as themeColors } from '../../constants/theme';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import { favoritesService, type Favorite } from '../../services/favorites';
 import { useSearchStore } from '../../store/searchStore';
 import type {
   SearchResponse,
@@ -93,6 +96,8 @@ const PRICE_LEVEL_OPTIONS = [
   { label: '$$$$', value: 4 },
 ] as const;
 
+const RECENT_HISTORY_LIMIT = 8;
+
 const normalizePriceFilter = (levels?: number[] | null): number[] => {
   if (!Array.isArray(levels) || levels.length === 0) {
     return [];
@@ -137,6 +142,7 @@ MapboxGL.setTelemetryEnabled(false);
 
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { isSignedIn } = useAuth();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
@@ -174,16 +180,20 @@ const SearchScreen: React.FC = () => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
-  const [likedItems, setLikedItems] = React.useState<Set<string>>(new Set());
+  const [favoriteMap, setFavoriteMap] = React.useState<Map<string, Favorite>>(new Map());
   const [hasUnlockedFullResults, setHasUnlockedFullResults] = React.useState(false);
   const [hasPreviewedResults, setHasPreviewedResults] = React.useState(false);
   const [previewQuery, setPreviewQuery] = React.useState('');
   const [isPaywallVisible, setIsPaywallVisible] = React.useState(false);
   const [selectedPlan, setSelectedPlan] = React.useState<'monthly' | 'annual'>('monthly');
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
+  const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
+  const [isRecentLoading, setIsRecentLoading] = React.useState(false);
+  const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const panOffset = React.useRef(0);
+  const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
   const isAnimating = React.useRef(false);
   const inputRef = React.useRef<TextInput | null>(null);
   const openNow = useSearchStore((state) => state.openNow);
@@ -197,9 +207,36 @@ const SearchScreen: React.FC = () => {
     }
     return priceLevels.map(priceLevelToSymbol).join(' · ');
   }, [priceLevels]);
+  const trimmedQuery = query.trim();
+  const shouldRenderAutocompleteSection = trimmedQuery.length >= 2;
+  const shouldRenderSuggestionPanel =
+    isSearchFocused ||
+    (shouldRenderAutocompleteSection && (isAutocompleteLoading || showSuggestions));
+  const shouldShowRecentSection = isSearchFocused;
+  const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
+
+  const loadFavorites = React.useCallback(async () => {
+    try {
+      const data = await favoritesService.list();
+      setFavoriteMap(new Map(data.map((favorite) => [favorite.entityId, favorite])));
+    } catch (favoriteError) {
+      logger.warn('Failed to load favorites', {
+        error:
+          favoriteError instanceof Error
+            ? favoriteError.message
+            : 'unknown',
+      });
+    }
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadFavorites();
+    }, [loadFavorites]),
+  );
 
   const restaurantsById = React.useMemo(() => {
     const map = new Map<string, RestaurantResult>();
@@ -532,6 +569,48 @@ const SearchScreen: React.FC = () => {
     setIsPriceSelectorVisible((visible) => !visible);
   }, [isLoading]);
 
+  const loadRecentHistory = React.useCallback(async () => {
+    if (!isSignedIn) {
+      setIsRecentLoading(false);
+      setRecentSearches([]);
+      return;
+    }
+
+    if (recentHistoryRequest.current) {
+      return recentHistoryRequest.current;
+    }
+
+    const request = (async () => {
+      setIsRecentLoading(true);
+      try {
+        const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
+        setRecentSearches(history);
+      } catch (err) {
+        logger.warn('Unable to load recent searches', {
+          message: err instanceof Error ? err.message : 'unknown error',
+        });
+      } finally {
+        setIsRecentLoading(false);
+        recentHistoryRequest.current = null;
+      }
+    })();
+
+    recentHistoryRequest.current = request;
+    return request;
+  }, [isSignedIn]);
+
+  const updateLocalRecentSearches = React.useCallback((value: string) => {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) {
+      return;
+    }
+    const normalized = trimmedValue.toLowerCase();
+    setRecentSearches((prev) => {
+      const withoutMatch = prev.filter((entry) => entry.toLowerCase() !== normalized);
+      return [trimmedValue, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT);
+    });
+  }, []);
+
   const submitSearch = React.useCallback(
     async (options?: SubmitSearchOptions, overrideQuery?: string) => {
       if (isLoading) {
@@ -605,6 +684,9 @@ const SearchScreen: React.FC = () => {
           response?.format === 'dual_list' || response?.food?.length ? 'dishes' : 'restaurants'
         );
 
+        updateLocalRecentSearches(trimmed);
+        void loadRecentHistory();
+
         const hasAnyResults =
           (response?.food?.length ?? 0) > 0 || (response?.restaurants?.length ?? 0) > 0;
         if (hasAnyResults && !hasUnlockedFullResults) {
@@ -620,7 +702,16 @@ const SearchScreen: React.FC = () => {
         setIsLoading(false);
       }
     },
-    [query, isLoading, showPanel, openNow, priceLevels, hasUnlockedFullResults]
+    [
+      query,
+      isLoading,
+      showPanel,
+      openNow,
+      priceLevels,
+      hasUnlockedFullResults,
+      loadRecentHistory,
+      updateLocalRecentSearches,
+    ]
   );
 
   const handleSubmit = React.useCallback(() => {
@@ -652,6 +743,31 @@ const SearchScreen: React.FC = () => {
       inputRef.current?.focus();
     });
   }, [hidePanel]);
+
+  const handleSearchFocus = React.useCallback(() => {
+    setIsSearchFocused(true);
+    void loadRecentHistory();
+  }, [loadRecentHistory]);
+
+  const handleSearchBlur = React.useCallback(() => {
+    setIsSearchFocused(false);
+    setShowSuggestions(false);
+  }, []);
+
+  const handleRecentSearchPress = React.useCallback(
+    (value: string) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue) {
+        return;
+      }
+      setQuery(trimmedValue);
+      setShowSuggestions(false);
+      setSuggestions([]);
+      updateLocalRecentSearches(trimmedValue);
+      void submitSearch(undefined, trimmedValue);
+    },
+    [submitSearch, updateLocalRecentSearches]
+  );
   const toggleOpenNow = React.useCallback(() => {
     if (isLoading) {
       return;
@@ -700,17 +816,66 @@ const SearchScreen: React.FC = () => {
     }
   }, [isLoading, priceLevels.length, query, setPriceLevels, submitSearch]);
 
-  const toggleLike = React.useCallback((id: string) => {
-    setLikedItems((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+  const toggleFavorite = React.useCallback(
+    async (entityId: string) => {
+      if (!entityId) {
+        return;
       }
-      return next;
-    });
-  }, []);
+      const existing = favoriteMap.get(entityId);
+      if (existing) {
+        setFavoriteMap((prev) => {
+          const next = new Map(prev);
+          next.delete(entityId);
+          return next;
+        });
+        try {
+          await favoritesService.remove(existing.favoriteId);
+        } catch (error) {
+          logger.error('Failed to remove favorite', error);
+          setFavoriteMap((prev) => {
+            const next = new Map(prev);
+            next.set(entityId, existing);
+            return next;
+          });
+        }
+        return;
+      }
+
+      const optimistic: Favorite = {
+        favoriteId: `temp-${entityId}`,
+        entityId,
+        entityType: 'restaurant',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        entity: null,
+      };
+
+      setFavoriteMap((prev) => {
+        const next = new Map(prev);
+        next.set(entityId, optimistic);
+        return next;
+      });
+
+      try {
+        const saved = await favoritesService.add(entityId);
+        setFavoriteMap((prev) => {
+          const next = new Map(prev);
+          next.set(entityId, saved);
+          return next;
+        });
+      } catch (error) {
+        logger.error('Failed to add favorite', error);
+        setFavoriteMap((prev) => {
+          const next = new Map(prev);
+          if (next.get(entityId)?.favoriteId === optimistic.favoriteId) {
+            next.delete(entityId);
+          }
+          return next;
+        });
+      }
+    },
+    [favoriteMap],
+  );
 
   const openPaywall = React.useCallback(() => {
     setIsPaywallVisible(true);
@@ -819,7 +984,7 @@ const SearchScreen: React.FC = () => {
   };
 
   const renderDishCard = (item: FoodResult, index: number) => {
-    const isLiked = likedItems.has(item.connectionId);
+    const isLiked = favoriteMap.has(item.foodId);
     const qualityColor = getQualityColor(index, dishes.length);
     return (
       <View key={item.connectionId} style={styles.resultItem}>
@@ -843,7 +1008,7 @@ const SearchScreen: React.FC = () => {
             </Text>
           </View>
           <Pressable
-            onPress={() => toggleLike(item.connectionId)}
+            onPress={() => toggleFavorite(item.foodId)}
             accessibilityRole="button"
             accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
             style={styles.likeButton}
@@ -895,7 +1060,7 @@ const SearchScreen: React.FC = () => {
   };
 
   const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
-    const isLiked = likedItems.has(restaurant.restaurantId);
+    const isLiked = favoriteMap.has(restaurant.restaurantId);
     const qualityColor = getQualityColor(index, restaurants.length);
     return (
       <View key={restaurant.restaurantId} style={styles.resultItem}>
@@ -911,7 +1076,7 @@ const SearchScreen: React.FC = () => {
             </Text>
           </View>
           <Pressable
-            onPress={() => toggleLike(restaurant.restaurantId)}
+            onPress={() => toggleFavorite(restaurant.restaurantId)}
             accessibilityRole="button"
             accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
             style={styles.likeButton}
@@ -1131,6 +1296,8 @@ const SearchScreen: React.FC = () => {
                 style={styles.promptInput}
                 returnKeyType="search"
                 onSubmitEditing={handleSubmit}
+                onFocus={handleSearchFocus}
+                onBlur={handleSearchBlur}
                 editable={!isLoading}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -1155,32 +1322,70 @@ const SearchScreen: React.FC = () => {
               )}
             </Animated.View>
           </View>
-          {(showSuggestions || isAutocompleteLoading) && query.trim().length >= 2 && (
+          {shouldRenderSuggestionPanel && (
             <View style={styles.autocompleteContainer}>
-              {isAutocompleteLoading && (
-                <View style={styles.autocompleteLoadingRow}>
-                  <ActivityIndicator size="small" color="#6366f1" />
-                  <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+              {shouldRenderAutocompleteSection && (
+                <View style={styles.autocompleteSection}>
+                  {isAutocompleteLoading && (
+                    <View style={styles.autocompleteLoadingRow}>
+                      <ActivityIndicator size="small" color="#6366f1" />
+                      <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                    </View>
+                  )}
+                  {!isAutocompleteLoading && suggestions.length === 0 ? (
+                    <Text style={styles.autocompleteEmptyText}>
+                      Keep typing to add a dish or spot
+                    </Text>
+                  ) : (
+                    suggestions.map((match, index) => (
+                      <TouchableOpacity
+                        key={`${match.entityId}-${index}`}
+                        onPress={() => handleSuggestionPress(match)}
+                        style={[
+                          styles.autocompleteItem,
+                          index === suggestions.length - 1 && styles.autocompleteItemLast,
+                        ]}
+                      >
+                        <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                        <Text style={styles.autocompleteSecondaryText}>
+                          {match.entityType.replace(/_/g, ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
                 </View>
               )}
-              {!isAutocompleteLoading && suggestions.length === 0 ? (
-                <Text style={styles.autocompleteEmptyText}>Keep typing to add a dish or spot</Text>
-              ) : (
-                suggestions.map((match, index) => (
-                  <TouchableOpacity
-                    key={`${match.entityId}-${index}`}
-                    onPress={() => handleSuggestionPress(match)}
-                    style={[
-                      styles.autocompleteItem,
-                      index === suggestions.length - 1 && styles.autocompleteItemLast,
-                    ]}
-                  >
-                    <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                    <Text style={styles.autocompleteSecondaryText}>
-                      {match.entityType.replace(/_/g, ' ')}
+              {shouldRenderAutocompleteSection && shouldShowRecentSection && (
+                <View style={styles.autocompleteDivider} />
+              )}
+              {shouldShowRecentSection && (
+                <View style={styles.recentSection}>
+                  <View style={styles.recentHeaderRow}>
+                    <Text style={styles.recentHeaderText}>Recent searches</Text>
+                    {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+                  </View>
+                  {!isRecentLoading && !hasRecentSearches ? (
+                    <Text style={styles.autocompleteEmptyText}>
+                      Start exploring to build your history
                     </Text>
-                  </TouchableOpacity>
-                ))
+                  ) : (
+                    recentSearches.map((term, index) => (
+                      <TouchableOpacity
+                        key={`${term}-${index}`}
+                        onPress={() => handleRecentSearchPress(term)}
+                        style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
+                      >
+                        <Feather
+                          name="clock"
+                          size={16}
+                          color="#6b7280"
+                          style={styles.recentIcon}
+                        />
+                        <Text style={styles.recentText}>{term}</Text>
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
               )}
             </View>
           )}
@@ -1657,6 +1862,9 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 6,
   },
+  autocompleteSection: {
+    paddingVertical: 4,
+  },
   autocompleteLoadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1676,6 +1884,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#94a3b8',
   },
+  autocompleteDivider: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+  },
   autocompleteItem: {
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -1694,6 +1906,41 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     textTransform: 'capitalize',
+  },
+  recentSection: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  recentHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  recentHeaderText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0f172a',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  recentRowFirst: {
+    borderTopWidth: 0,
+  },
+  recentIcon: {
+    marginRight: 10,
+  },
+  recentText: {
+    fontSize: 14,
+    color: '#1f2937',
+    flex: 1,
   },
   searchIcon: {
     marginRight: 12,

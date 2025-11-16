@@ -16,6 +16,10 @@ export class NotificationDeviceService {
 
   async registerDevice(dto: RegisterDeviceDto): Promise<void> {
     const normalizedToken = dto.token.trim();
+    const normalizedCity =
+      typeof dto.city === 'string' && dto.city.trim().length
+        ? dto.city.trim()
+        : null;
     await this.prisma.notificationDevice.upsert({
       where: { expoPushToken: normalizedToken },
       create: {
@@ -24,14 +28,14 @@ export class NotificationDeviceService {
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
-        city: dto.city ?? null,
+        city: normalizedCity,
       },
       update: {
         userId: dto.userId ?? null,
         platform: dto.platform ?? null,
         appVersion: dto.appVersion ?? null,
         locale: dto.locale ?? null,
-        city: dto.city ?? null,
+        city: normalizedCity,
         updatedAt: new Date(),
       },
     });
@@ -50,6 +54,20 @@ export class NotificationDeviceService {
           ? { equals: filter.city, mode: 'insensitive' }
           : undefined,
       },
+    });
+  }
+
+  async unregisterDevice(token: string): Promise<void> {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
+      return;
+    }
+    await this.prisma.notificationDevice.deleteMany({
+      where: { expoPushToken: normalizedToken },
+    });
+
+    this.logger.debug('Unregistered notification device', {
+      hasToken: Boolean(normalizedToken),
     });
   }
 }

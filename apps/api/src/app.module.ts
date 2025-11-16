@@ -19,6 +19,7 @@ import { AutocompleteModule } from './modules/autocomplete/autocomplete.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { PollsModule } from './modules/polls/polls.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { PollsModule } from './modules/polls/polls.module';
     NotificationsModule,
     ModerationModule,
     PollsModule,
+    FavoritesModule,
   ],
   controllers: [AppController],
   providers: [],

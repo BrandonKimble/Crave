@@ -83,13 +83,13 @@ export const fetchPoll = async (pollId: string): Promise<Poll> => {
 
 export const addPollOption = async (
   pollId: string,
-  body: { label: string; userId: string; restaurantId?: string; dishEntityId?: string }
+  body: { label: string; restaurantId?: string; dishEntityId?: string }
 ) => {
   const response = await api.post(`/polls/${pollId}/options`, body);
   return response.data;
 };
 
-export const voteOnPoll = async (pollId: string, body: { optionId: string; userId: string }) => {
+export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
   const response = await api.post(`/polls/${pollId}/votes`, body);
   return response.data;
 };

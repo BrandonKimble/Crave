@@ -52,10 +52,11 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
       );
     }
 
-    this.logger.info('Processing keyword batch', {
+    this.logger.info('Collection batch started', {
       correlationId,
       batchId: batch.batchId,
       subreddit: batch.subreddit,
+      collectionType: batch.collectionType,
       batch: `${batch.batchNumber}/${batch.totalBatches}`,
       posts: batch.postIds?.length ?? 0,
     });
@@ -65,11 +66,20 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
         batch,
         correlationId,
       );
-      return result;
-    } catch (error) {
-      this.logger.error('Keyword batch processing failed', {
+      this.logger.info('Collection batch completed', {
         correlationId,
         batchId: batch.batchId,
+        collectionType: batch.collectionType,
+        subreddit: batch.subreddit,
+        postsProcessed: result.metrics.postsProcessed,
+        mentionsExtracted: result.metrics.mentionsExtracted,
+      });
+      return result;
+    } catch (error) {
+      this.logger.error('Collection batch failed', {
+        correlationId,
+        batchId: batch.batchId,
+        collectionType: batch.collectionType,
         error: error instanceof Error ? error.message : String(error),
       });
       throw error;

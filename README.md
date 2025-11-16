@@ -84,6 +84,36 @@ EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 
 Ask your platform admin (or create the accounts yourself) for the Clerk publishable/secret keys, a Stripe test secret + webhook signing secret, and the RevenueCat API/webhook tokens. Without them, the new identity and billing endpoints will return 401/503 errors.
 
+#### Clerk setup checklist
+
+The mobile onboarding and poll actions depend on these Clerk settings. Whenever you bring up a new environment:
+
+1. **JWT template**
+   - Create a template named `mobile`.
+   - Include: `id`, `email`, `email_verified`, `public_metadata`, and a literal `"aud": "crave-mobile"`.
+   - Set `CLERK_JWT_AUDIENCE=crave-mobile` in `apps/api/.env`.
+2. **Redirect URLs**
+   - Add native schemes: `crave://oauth-native-callback` and `com.crave://oauth-native-callback`.
+   - When using Expo Go, also add the `exp://…/oauth-native-callback` value printed in Metro logs (it changes with your LAN IP).
+3. **Email delivery**
+   - Enable Clerk’s dev email sender or configure SMTP so the email passcode flow can send six-digit codes.
+4. **OAuth providers**
+   - Enable Google + Apple in Clerk and point them at the same redirect URLs above.
+
+Without these entries, the social sign-in buttons or email modal will fail to complete, and the API will reject requests due to a missing audience claim.
+
+#### Native Apple sign-in flow
+
+- The mobile Apple button now prioritizes Expo's `expo-apple-authentication` module, which presents the native sheet and returns Apple identity + authorization tokens. This requires an iOS build (simulator or device) created with EAS or `expo run:ios`; Expo Go cannot render the sheet because it lacks the Apple capability.
+- `app.config.js` enables the `usesAppleSignIn` entitlement and registers the `expo-apple-authentication` config plugin. Make sure the bundle identifier `com.crave.search` is provisioned for Sign in with Apple in the Apple Developer portal.
+- The API exposes `POST /api/auth/apple/native` which accepts `{ identityToken, authorizationCode, email?, givenName?, familyName? }`, exchanges the payload with Clerk's Backend API (`strategy=oauth_native`), and returns the Clerk `sessionId` needed by the mobile client.
+- Clerk must have the Apple provider fully configured (Services ID, Key ID, Team ID, and the same redirect URI `com.crave://oauth-native-callback`). You can override the Clerk REST base with `CLERK_API_URL`, but it defaults to `https://api.clerk.com/v1`.
+- When testing locally, verify that `CLERK_SECRET_KEY` in `apps/api/.env` belongs to the same instance where you configured Apple, otherwise Clerk will reject the token exchange.
+
+#### Gemini query interpretation model
+
+Reddit ingestion now uses an experimental Gemini preview build, but the natural-language search endpoint still requires the stable GA release to respect the structured JSON schema. Set the new `LLM_QUERY_MODEL` env var in `apps/api/.env` (and in every deployment secret) to `gemini-2.5-flash`. Leave `LLM_MODEL` pointed at the preview build if you want, and the API will automatically route natural-query calls through the stable model while collection workers keep the preview. Without this override the `/api/search/natural` pipeline returns empty entity arrays for simple queries like “burger”.
+
 ### 2. Database Configuration
 
 The API uses PostgreSQL with Prisma ORM. Default development configuration:

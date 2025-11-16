@@ -17,6 +17,8 @@ export class SearchOrchestrationService {
     request: NaturalSearchRequestDto,
   ): Promise<SearchResponseDto> {
     const interpretation = await this.interpretationService.interpret(request);
+    interpretation.structuredRequest.sourceQuery = request.query;
+    interpretation.structuredRequest.userId = request.userId;
     const response = await this.searchService.runQuery(
       interpretation.structuredRequest,
     );

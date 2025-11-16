@@ -79,6 +79,7 @@ interface LLMGenerationOptions {
   generationConfig?: GeminiGenerationConfig;
   cacheName?: string | null;
   systemInstruction?: string | null;
+  model?: string | null;
 }
 
 type CacheRefreshReason =
@@ -113,6 +114,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private systemCacheRedisKey = 'llm:system-instruction-cache';
   private queryPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
+  private queryModel!: string;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -163,6 +165,9 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
           'llm:system-instruction-cache',
       },
     };
+    this.queryModel =
+      this.configService.get<string>('llm.queryModel') || this.llmConfig.model;
+    this.llmConfig.queryModel = this.queryModel;
 
     // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
@@ -177,6 +182,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'module_init',
       model: this.llmConfig.model,
+      queryModel: this.queryModel,
       provider: 'google-genai-library',
       apiKeyExists: !!this.llmConfig.apiKey,
       apiKeyLength: this.llmConfig.apiKey ? this.llmConfig.apiKey.length : 0,
@@ -526,11 +532,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       this.logger.info('Creating explicit cache for query instructions', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'init_query_cache',
+        model: this.queryModel,
         promptLength: this.queryPrompt.length,
       });
 
       const cache = await this.genAI.caches.create({
-        model: this.llmConfig.model,
+        model: this.queryModel,
         config: {
           systemInstruction: this.queryPrompt,
           ttl: '10800s',
@@ -545,6 +552,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       this.logger.info('Query instruction cache created successfully', {
         correlationId: CorrelationUtils.getCorrelationId(),
         operation: 'init_query_cache',
+        model: this.queryModel,
         cacheId: this.queryInstructionCache?.name,
         ttl: '10800s',
       });
@@ -684,9 +692,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   }
 
   async analyzeSearchQuery(query: string): Promise<LLMSearchQueryAnalysis> {
+    const usingQueryCache = Boolean(this.queryInstructionCache?.name);
     this.logger.info('Analyzing search query through Gemini', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'analyze_search_query',
+      query,
+      usingQueryInstructionCache: usingQueryCache,
+      systemInstructionSource: usingQueryCache ? 'cache_reference' : 'inline',
     });
 
     const prompt = this.buildSearchQueryPrompt(query);
@@ -736,9 +748,24 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       generationConfig: queryGenerationConfig,
       cacheName: this.queryInstructionCache?.name ?? null,
       systemInstruction: this.queryPrompt,
+      model: this.queryModel,
     });
     const content = this.extractTextContent(response, 'analyze_search_query');
     const analysis = this.parseSearchQueryResponse(content);
+
+    const totalInterpretedEntities =
+      analysis.restaurants.length +
+      analysis.foods.length +
+      analysis.foodAttributes.length +
+      analysis.restaurantAttributes.length;
+    if (totalInterpretedEntities === 0) {
+      this.logger.warn('LLM returned empty search query interpretation', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'analyze_search_query',
+        query,
+        rawResponsePreview: content.slice(0, 500),
+      });
+    }
 
     this.logger.debug('Search query analysis completed', {
       correlationId: CorrelationUtils.getCorrelationId(),
@@ -1061,6 +1088,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     prompt: string,
     options: LLMGenerationOptions = {},
   ): Promise<LLMApiResponse> {
+    const targetModel = options.model ?? this.llmConfig.model;
     const maxRetries = this.llmConfig.retryOptions?.maxRetries ?? 3;
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
@@ -1251,7 +1279,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
           operation: 'call_llm_api',
-          model: this.llmConfig.model,
+          model: targetModel,
           hasApiKey: !!this.llmConfig.apiKey,
           promptLength: prompt.length,
           library: '@google/genai',
@@ -1273,7 +1301,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
             };
 
         const response = await this.genAI.models.generateContent({
-          model: this.llmConfig.model,
+          model: targetModel,
           contents: [{ parts: [{ text: prompt }] }],
           config: requestConfig,
         });
@@ -1751,6 +1779,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   getLLMConfig(): Omit<LLMConfig, 'apiKey'> {
     return {
       model: this.llmConfig.model,
+      queryModel: this.queryModel,
       baseUrl: this.llmConfig.baseUrl,
       timeout: this.llmConfig.timeout,
       maxTokens: this.llmConfig.maxTokens,

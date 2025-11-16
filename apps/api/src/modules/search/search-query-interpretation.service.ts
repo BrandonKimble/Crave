@@ -47,6 +47,16 @@ export class SearchQueryInterpretationService {
   ): Promise<InterpretationResult> {
     const analysis = await this.llmService.analyzeSearchQuery(request.query);
 
+    const analysisCounts = this.getAnalysisEntityCounts(analysis);
+    this.logger.info('Search query LLM analysis summary', {
+      query: request.query,
+      analysisCounts,
+      sampleRestaurants: analysis.restaurants.slice(0, 3),
+      sampleFoods: analysis.foods.slice(0, 3),
+      sampleFoodAttributes: analysis.foodAttributes.slice(0, 3),
+      sampleRestaurantAttributes: analysis.restaurantAttributes.slice(0, 3),
+    });
+
     this.logger.debug('Query interpretation foods breakdown', {
       query: request.query,
       foods: analysis.foods,
@@ -90,6 +100,17 @@ export class SearchQueryInterpretationService {
     const unresolved = this.collectUnresolvedTerms(
       resolutionResults.resolutionResults,
     );
+
+    const structuredEntityCounts = this.getEntityGroupCounts(
+      structuredRequest.entities,
+    );
+    this.logger.info('Entity resolution summary for natural query', {
+      query: request.query,
+      resolutionInputs: resolutionInputs.length,
+      resolvedCounts: structuredEntityCounts,
+      unresolved,
+    });
+
     if (unresolved.length) {
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
@@ -273,6 +294,28 @@ export class SearchQueryInterpretationService {
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
       priceLevels: request.priceLevels,
+    };
+  }
+
+  private getAnalysisEntityCounts(
+    analysis: LLMSearchQueryAnalysis,
+  ): Record<string, number> {
+    return {
+      restaurants: analysis.restaurants.length,
+      foods: analysis.foods.length,
+      foodAttributes: analysis.foodAttributes.length,
+      restaurantAttributes: analysis.restaurantAttributes.length,
+    };
+  }
+
+  private getEntityGroupCounts(
+    group: QueryEntityGroupDto,
+  ): Record<string, number> {
+    return {
+      restaurants: group.restaurants?.length ?? 0,
+      food: group.food?.length ?? 0,
+      foodAttributes: group.foodAttributes?.length ?? 0,
+      restaurantAttributes: group.restaurantAttributes?.length ?? 0,
     };
   }
 }

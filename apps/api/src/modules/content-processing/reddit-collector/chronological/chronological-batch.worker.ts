@@ -46,11 +46,12 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
       );
     }
 
-    this.logger.info('Starting chronological batch processing', {
+    this.logger.info('Collection batch started', {
       correlationId,
       batchId,
       parentJobId,
       subreddit,
+      collectionType,
       postCount: postIds.length,
       progress: `${batchNumber}/${totalBatches}`,
     });
@@ -64,19 +65,17 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
       await job.progress(100);
 
       const processingTime = Date.now() - startTime;
-      this.logger.info(
-        'Chronological batch processing completed successfully',
-        {
-          correlationId,
-          batchId,
-          parentJobId,
-          subreddit,
-          processingTimeMs: processingTime,
-          mentionsExtracted: result.metrics.mentionsExtracted,
-          entitiesCreated: result.metrics.entitiesCreated,
-          connectionsCreated: result.metrics.connectionsCreated,
-        },
-      );
+      this.logger.info('Collection batch completed', {
+        correlationId,
+        batchId,
+        parentJobId,
+        subreddit,
+        collectionType,
+        processingTimeMs: processingTime,
+        mentionsExtracted: result.metrics.mentionsExtracted,
+        entitiesCreated: result.metrics.entitiesCreated,
+        connectionsCreated: result.metrics.connectionsCreated,
+      });
 
       return result;
     } catch (error) {
@@ -84,11 +83,12 @@ export class ChronologicalBatchProcessingWorker implements OnModuleInit {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
 
-      this.logger.error('Chronological batch processing failed', {
+      this.logger.error('Collection batch failed', {
         correlationId,
         batchId,
         parentJobId,
         subreddit,
+        collectionType,
         processingTimeMs: processingTime,
         error: errorMessage,
         stack: error instanceof Error ? error.stack : undefined,

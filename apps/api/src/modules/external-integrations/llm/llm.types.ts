@@ -6,6 +6,7 @@ import { RetryOptions } from '../shared/external-integrations.types';
 export interface LLMConfig {
   apiKey: string;
   model: string;
+  queryModel?: string | null;
   baseUrl?: string;
   timeout?: number;
   maxTokens?: number;

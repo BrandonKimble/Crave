@@ -77,7 +77,8 @@ export class PollAggregationService {
       }
 
       const votesForOption = group._sum.weight ?? 0;
-      const deltaVotes = votesForOption - (option.voteCount ?? 0);
+      const lastAggregated = option.aggregatedVoteCount ?? 0;
+      const deltaVotes = votesForOption - lastAggregated;
       const consensus =
         totalVotes > 0
           ? Math.round((votesForOption / totalVotes) * 1000) / 1000
@@ -87,6 +88,7 @@ export class PollAggregationService {
         where: { optionId: option.optionId },
         data: {
           voteCount: votesForOption,
+          aggregatedVoteCount: votesForOption,
           consensus: new Prisma.Decimal(consensus),
           lastVoteAt: new Date(),
         },

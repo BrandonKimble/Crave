@@ -96,6 +96,7 @@ export default () => ({
     secretKey: process.env.CLERK_SECRET_KEY,
     publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
     jwtAudience: process.env.CLERK_JWT_AUDIENCE,
+    apiUrl: process.env.CLERK_API_URL || 'https://api.clerk.com/v1',
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY,
@@ -142,6 +143,7 @@ export default () => ({
   llm: {
     apiKey: process.env.LLM_API_KEY,
     model: process.env.LLM_MODEL || 'gemini-2.5-flash-preview-09-2025',
+    queryModel: process.env.LLM_QUERY_MODEL || 'gemini-2.5-flash',
     baseUrl:
       process.env.LLM_BASE_URL ||
       'https://generativelanguage.googleapis.com/v1beta',

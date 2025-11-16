@@ -5,6 +5,7 @@ import { ModerationModule } from '../moderation/moderation.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { SearchModule } from '../search/search.module';
 import { AnalyticsModule } from '../analytics/analytics.module';
+import { IdentityModule } from '../identity/identity.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
 import { PollsGateway } from './polls.gateway';
@@ -20,6 +21,7 @@ import { PollCategoryReplayService } from './poll-category-replay.service';
     NotificationsModule,
     forwardRef(() => SearchModule),
     AnalyticsModule,
+    IdentityModule,
   ],
   controllers: [PollsController],
   providers: [

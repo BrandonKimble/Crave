@@ -3,7 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
-import { LLMChunkingService } from '../../external-integrations/llm/llm-chunking.service';
+import {
+  LLMChunkingService,
+  ChunkMetadata,
+} from '../../external-integrations/llm/llm-chunking.service';
 import {
   LLMConcurrentProcessingService,
   ProcessingResult as ConcurrentProcessingResult,
@@ -62,26 +65,57 @@ export class RedditBatchProcessingService implements OnModuleInit {
     correlationId: string,
   ): Promise<BatchProcessingResult> {
     const startTime = Date.now();
+    this.logStage(
+      'info',
+      'batch',
+      'Batch processing started',
+      job,
+      correlationId,
+      {
+        candidatePosts: job.postIds?.length ?? job.llmPosts?.length ?? 0,
+      },
+    );
 
     try {
+      const gatingStart = Date.now();
       const {
         posts: llmPosts,
         skippedDueToFreshness,
         skippedDueToDeltaThreshold,
         totalCandidates,
       } = await this.resolveLlmPosts(job, correlationId);
+      const gatingDuration = Date.now() - gatingStart;
+      this.logStage(
+        'info',
+        'gate',
+        'Post gating completed',
+        job,
+        correlationId,
+        {
+          durationMs: gatingDuration,
+          candidates: totalCandidates,
+          processedPosts: llmPosts.length,
+          skippedDueToFreshness,
+          skippedDueToDeltaThreshold,
+        },
+      );
 
       if (!llmPosts.length) {
         const processingTimeMs = Date.now() - startTime;
 
-        this.logger.info('Skipping batch - no posts required after gating', {
+        this.logStage(
+          'info',
+          'batch',
+          'Batch skipped after gating',
+          job,
           correlationId,
-          batchId: job.batchId,
-          collectionType: job.collectionType,
-          totalCandidates,
-          skippedDueToFreshness,
-          skippedDueToDeltaThreshold,
-        });
+          {
+            durationMs: processingTimeMs,
+            totalCandidates,
+            skippedDueToFreshness,
+            skippedDueToDeltaThreshold,
+          },
+        );
 
         return {
           batchId: job.batchId,
@@ -132,8 +166,16 @@ export class RedditBatchProcessingService implements OnModuleInit {
 
       const llmStartTime = Date.now();
 
+      const chunkStartTime = Date.now();
       const chunkData =
         this.llmChunkingService.createContextualChunks(llmInput);
+      const chunkDuration = Date.now() - chunkStartTime;
+      const chunkStats = this.summarizeChunkMetadata(chunkData.metadata);
+      this.logStage('info', 'chunk', 'Chunking completed', job, correlationId, {
+        durationMs: chunkDuration,
+        ...chunkStats,
+      });
+
       const processingResult: ConcurrentProcessingResult =
         await this.llmConcurrentService.processConcurrent(
           chunkData,
@@ -185,6 +227,22 @@ export class RedditBatchProcessingService implements OnModuleInit {
       const rawMentionsSample = [...llmOutput.mentions];
 
       const llmProcessingTime = Date.now() - llmStartTime;
+      this.logStage(
+        'info',
+        'llm',
+        'LLM processing completed',
+        job,
+        correlationId,
+        {
+          durationMs: llmProcessingTime,
+          chunksProcessed: processingResult.metrics.chunksProcessed,
+          successRate: processingResult.metrics.successRate,
+          failures: processingResult.failures.length,
+          averageChunkTime: processingResult.metrics.averageChunkTime,
+          totalDuration: processingResult.metrics.totalDuration,
+          mentionsExtracted: llmOutput.mentions.length,
+        },
+      );
       const dbStartTime = Date.now();
 
       const sourceBreakdown = {
@@ -213,8 +271,20 @@ export class RedditBatchProcessingService implements OnModuleInit {
       });
 
       const dbProcessingTime = Date.now() - dbStartTime;
+      this.logStage(
+        'info',
+        'persist',
+        'Persistence completed',
+        job,
+        correlationId,
+        {
+          durationMs: dbProcessingTime,
+          entitiesCreated: dbResult.entitiesCreated,
+          connectionsCreated: dbResult.connectionsCreated,
+        },
+      );
 
-      return {
+      const result: BatchProcessingResult = {
         batchId: job.batchId,
         parentJobId: job.parentJobId,
         collectionType: job.collectionType,
@@ -244,14 +314,32 @@ export class RedditBatchProcessingService implements OnModuleInit {
         },
         rawMentionsSample,
       };
-    } catch (error) {
-      this.logger.error('Batch processing failed', {
+      this.logStage(
+        'info',
+        'batch',
+        'Batch processing completed',
+        job,
         correlationId,
-        batchId: job.batchId,
-        subreddit: job.subreddit,
-        collectionType: job.collectionType,
-        error: error instanceof Error ? error.message : String(error),
-      });
+        {
+          durationMs: Date.now() - startTime,
+          postsProcessed: llmPosts.length,
+          mentionsExtracted: llmOutput.mentions.length,
+          entitiesCreated: dbResult.entitiesCreated,
+          connectionsCreated: dbResult.connectionsCreated,
+        },
+      );
+      return result;
+    } catch (error) {
+      this.logStage(
+        'error',
+        'batch',
+        'Batch processing failed',
+        job,
+        correlationId,
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
 
       throw error;
     }
@@ -1107,5 +1195,70 @@ export class RedditBatchProcessingService implements OnModuleInit {
       earliest: Math.min(...timestamps),
       latest: Math.max(...timestamps),
     };
+  }
+
+  private summarizeChunkMetadata(metadata: ChunkMetadata[]): {
+    chunkCount: number;
+    totalComments: number;
+    avgComments: number;
+    minComments: number;
+    maxComments: number;
+    avgEstimatedTokens: number;
+    maxEstimatedTokens: number;
+  } {
+    if (!metadata.length) {
+      return {
+        chunkCount: 0,
+        totalComments: 0,
+        avgComments: 0,
+        minComments: 0,
+        maxComments: 0,
+        avgEstimatedTokens: 0,
+        maxEstimatedTokens: 0,
+      };
+    }
+
+    const commentCounts = metadata.map((m) => m.commentCount || 0);
+    const totalComments = commentCounts.reduce((sum, value) => sum + value, 0);
+    const minComments = Math.min(...commentCounts);
+    const maxComments = Math.max(...commentCounts);
+    const avgComments = Math.round(totalComments / metadata.length);
+
+    const tokenEstimates = metadata.map((m) => m.estimatedTokenCount || 0);
+    const totalTokens = tokenEstimates.reduce((sum, value) => sum + value, 0);
+    const avgEstimatedTokens =
+      tokenEstimates.length > 0
+        ? Math.round(totalTokens / tokenEstimates.length)
+        : 0;
+    const maxEstimatedTokens = Math.max(...tokenEstimates);
+
+    return {
+      chunkCount: metadata.length,
+      totalComments,
+      avgComments,
+      minComments,
+      maxComments,
+      avgEstimatedTokens,
+      maxEstimatedTokens,
+    };
+  }
+
+  private logStage(
+    level: 'debug' | 'info' | 'warn' | 'error',
+    stage: 'gate' | 'chunk' | 'llm' | 'persist' | 'batch',
+    message: string,
+    job: BatchJob,
+    correlationId: string,
+    metadata: Record<string, unknown> = {},
+  ): void {
+    this.logger[level](message, {
+      correlationId,
+      stage,
+      batchId: job.batchId,
+      parentJobId: job.parentJobId,
+      collectionType: job.collectionType,
+      subreddit: job.subreddit,
+      ...metadata,
+    });
   }
 }

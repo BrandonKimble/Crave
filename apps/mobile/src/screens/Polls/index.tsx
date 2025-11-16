@@ -4,22 +4,28 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   ActivityIndicator,
   StyleSheet,
   ScrollView,
   Alert,
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
+import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { fetchPolls, voteOnPoll, addPollOption, Poll } from '../../services/polls';
 import { API_BASE_URL } from '../../services/api';
 import { logger } from '../../utils';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import type { MainTabParamList } from '../../types/navigation';
+import { useCityStore } from '../../store/cityStore';
 
-const DEFAULT_USER_ID = 'mobile-demo-user';
+type PollsScreenProps = BottomTabScreenProps<MainTabParamList, 'Polls'>;
 
-const PollsScreen: React.FC = () => {
-  const [city, setCity] = useState('Austin');
+const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
+  const persistedCity = useCityStore((state) => state.selectedCity);
+  const setPersistedCity = useCityStore((state) => state.setSelectedCity);
+  const [cityInput, setCityInput] = useState(persistedCity);
   const [polls, setPolls] = useState<Poll[]>([]);
   const [selectedPollId, setSelectedPollId] = useState<string | null>(null);
   const [restaurantQuery, setRestaurantQuery] = useState('');
@@ -34,35 +40,98 @@ const PollsScreen: React.FC = () => {
   const [dishLoading, setDishLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const pendingPollIdRef = useRef<string | null>(null);
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = activePoll?.topic?.topicType ?? 'best_dish';
 
-  const loadPolls = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchPolls(city.trim() || undefined);
-      const normalized = Array.isArray(data)
-        ? data
-        : Array.isArray((data as Record<string, any>)?.polls?.data)
-        ? (data as Record<string, any>).polls.data
-        : Array.isArray((data as Record<string, any>)?.polls)
-        ? (data as Record<string, any>).polls
-        : [];
-      setPolls(normalized);
-      if (normalized.length && !selectedPollId) {
-        setSelectedPollId(normalized[0].pollId);
-      }
-    } catch (error) {
-      logger.error('Failed to load polls', error);
-      setPolls([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [city, selectedPollId]);
+  useEffect(() => {
+    setCityInput(persistedCity);
+  }, [persistedCity]);
+
+  const routeCity = route.params?.city;
+  const routePollId = route.params?.pollId;
 
   useEffect(() => {
-    loadPolls();
+    if (typeof routeCity !== 'string') {
+      return;
+    }
+    const normalized = routeCity.trim();
+    if (!normalized) {
+      return;
+    }
+    setCityInput(normalized);
+    setPersistedCity(normalized);
+    navigation.setParams({ city: undefined });
+  }, [navigation, routeCity, setPersistedCity]);
+
+  useEffect(() => {
+    if (!routePollId) {
+      return;
+    }
+    pendingPollIdRef.current = routePollId;
+    const exists = polls.some((poll) => poll.pollId === routePollId);
+    if (exists) {
+      setSelectedPollId(routePollId);
+      pendingPollIdRef.current = null;
+      navigation.setParams({ pollId: undefined });
+      return;
+    }
+    void loadPolls({ focusPollId: routePollId });
+  }, [loadPolls, navigation, polls, routePollId]);
+
+  const loadPolls = useCallback(
+    async (options?: { focusPollId?: string | null }) => {
+      setLoading(true);
+      const targetCity = cityInput.trim();
+      setPersistedCity(targetCity);
+      const focusPollId = options?.focusPollId ?? null;
+      try {
+        const normalized = await fetchPolls(targetCity || undefined);
+        setPolls(normalized);
+
+        if (!normalized.length) {
+          setSelectedPollId(null);
+          return;
+        }
+
+        const hasCurrentSelection =
+          selectedPollId && normalized.some((poll) => poll.pollId === selectedPollId);
+        let nextSelection: string | null = null;
+
+        if (focusPollId && normalized.some((poll) => poll.pollId === focusPollId)) {
+          nextSelection = focusPollId;
+        } else if (
+          pendingPollIdRef.current &&
+          normalized.some((poll) => poll.pollId === pendingPollIdRef.current)
+        ) {
+          nextSelection = pendingPollIdRef.current;
+        } else if (hasCurrentSelection) {
+          nextSelection = selectedPollId;
+        } else {
+          nextSelection = normalized[0].pollId;
+        }
+
+        if (nextSelection) {
+          setSelectedPollId(nextSelection);
+          if (pendingPollIdRef.current === nextSelection) {
+            pendingPollIdRef.current = null;
+          }
+        } else {
+          setSelectedPollId(null);
+        }
+      } catch (error) {
+        logger.error('Failed to load polls', error);
+        setPolls([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [cityInput, selectedPollId, setPersistedCity],
+  );
+
+  useEffect(() => {
+    void loadPolls();
   }, [loadPolls]);
 
   useEffect(() => {
@@ -80,7 +149,7 @@ const PollsScreen: React.FC = () => {
       transports: ['websocket'],
     });
     socketRef.current.on('poll:update', () => {
-      loadPolls();
+      void loadPolls();
     });
     return () => {
       socketRef.current?.disconnect();
@@ -193,7 +262,7 @@ const PollsScreen: React.FC = () => {
 
   const handleVote = async (pollId: string, optionId: string) => {
     try {
-      await voteOnPoll(pollId, { optionId, userId: DEFAULT_USER_ID });
+      await voteOnPoll(pollId, { optionId });
       await loadPolls();
     } catch (error) {
       logger.error('Vote failed', error);
@@ -237,12 +306,10 @@ const PollsScreen: React.FC = () => {
 
     const payload: {
       label: string;
-      userId: string;
       restaurantId?: string;
       dishEntityId?: string;
     } = {
       label: label.trim(),
-      userId: DEFAULT_USER_ID,
     };
 
     if (pollType === 'best_dish' && restaurantSelection?.entityId) {
@@ -262,7 +329,7 @@ const PollsScreen: React.FC = () => {
       setDishSelection(null);
       setShowRestaurantSuggestions(false);
       setShowDishSuggestions(false);
-      await loadPolls();
+      await loadPolls({ focusPollId: selectedPollId });
     } catch (error) {
       logger.error('Failed to add poll option', error);
     }
@@ -325,116 +392,135 @@ const PollsScreen: React.FC = () => {
     </TouchableOpacity>
   );
 
-  const pollData = Array.isArray(polls) ? polls : [];
+  const pollData = polls;
 
   return (
-    <View style={styles.container}>
-      <View style={styles.cityRow}>
-        <Text style={styles.cityLabel}>City / Region</Text>
-        <TextInput
-          value={city}
-          onChangeText={setCity}
-          placeholder="City"
-          style={styles.cityInput}
-          returnKeyType="done"
-        />
-        <TouchableOpacity onPress={loadPolls} style={styles.refreshButton}>
-          <Text style={styles.refreshText}>Refresh</Text>
-        </TouchableOpacity>
-      </View>
-
-      {loading ? (
-        <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />
-      ) : (
-        <ScrollView
-          horizontal
-          contentContainerStyle={styles.pollList}
-          showsHorizontalScrollIndicator={false}
-        >
-          {pollData.map((item) => (
-            <React.Fragment key={item.pollId}>{renderPoll({ item })}</React.Fragment>
-          ))}
-        </ScrollView>
-      )}
-
-      {activePoll ? (
-        <View style={styles.detailCard}>
-          <Text style={styles.detailQuestion}>{activePoll.question}</Text>
-          {activePoll.options.map((option) => (
-            <TouchableOpacity
-              key={option.optionId}
-              style={styles.optionRow}
-              onPress={() => handleVote(activePoll.pollId, option.optionId)}
-            >
-              <Text style={styles.optionLabel}>{option.label}</Text>
-              <Text style={styles.optionVotes}>{option.voteCount} votes</Text>
-            </TouchableOpacity>
-          ))}
-          {activePollType === 'what_to_order' && (
-            <Text style={styles.topicNote}>Votes apply to dishes at this restaurant.</Text>
-          )}
-          <View style={styles.addOptionBlock}>
-            {activePollType === 'best_dish' && (
-              <>
-                <Text style={styles.fieldLabel}>Restaurant</Text>
-                <TextInput
-                  value={restaurantQuery}
-                  onChangeText={(text) => {
-                    setRestaurantQuery(text);
-                    setRestaurantSelection(null);
-                  }}
-                  placeholder="Search for a restaurant"
-                  style={styles.optionInput}
-                  autoCapitalize="none"
-                />
-                {(showRestaurantSuggestions || restaurantLoading) &&
-                  renderSuggestionList(
-                    restaurantLoading,
-                    restaurantSuggestions,
-                    'Keep typing to add a restaurant',
-                    handleRestaurantSuggestionPress
-                  )}
-              </>
-            )}
-            <Text style={styles.fieldLabel}>
-              {activePollType === 'best_dish' ? 'Dish (optional)' : 'Dish'}
-            </Text>
-            <TextInput
-              value={dishQuery}
-              onChangeText={(text) => {
-                setDishQuery(text);
-                setDishSelection(null);
-              }}
-              placeholder={
-                activePollType === 'best_dish' ? 'Add a dish (optional)' : 'Search for a dish'
-              }
-              style={styles.optionInput}
-              autoCapitalize="none"
-            />
-            {(showDishSuggestions || dishLoading) &&
-              renderSuggestionList(
-                dishLoading,
-                dishSuggestions,
-                'Keep typing to add a dish',
-                handleDishSuggestionPress
-              )}
-            <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
-              <Text style={styles.submitButtonText}>Submit option</Text>
-            </TouchableOpacity>
-          </View>
+    <SafeAreaView
+      style={[
+        styles.safeArea,
+        {
+          paddingTop: Math.max(insets.top, 16),
+        },
+      ]}
+      edges={['left', 'right', 'top']}
+    >
+      <ScrollView
+        style={styles.scrollContainer}
+        contentContainerStyle={styles.scrollContent}
+        nestedScrollEnabled
+      >
+        <View style={styles.cityRow}>
+          <Text style={styles.cityLabel}>City / Region</Text>
+          <TextInput
+            value={cityInput}
+            onChangeText={setCityInput}
+            placeholder="City"
+            style={styles.cityInput}
+            returnKeyType="done"
+          />
+          <TouchableOpacity onPress={() => void loadPolls()} style={styles.refreshButton}>
+            <Text style={styles.refreshText}>Refresh</Text>
+          </TouchableOpacity>
         </View>
-      ) : (
-        <Text style={styles.emptyState}>No polls available yet.</Text>
-      )}
-    </View>
+
+        {loading ? (
+          <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />
+        ) : (
+          <ScrollView
+            horizontal
+            contentContainerStyle={styles.pollList}
+            showsHorizontalScrollIndicator={false}
+          >
+            {pollData.map((item) => (
+              <React.Fragment key={item.pollId}>{renderPoll({ item })}</React.Fragment>
+            ))}
+          </ScrollView>
+        )}
+
+        {activePoll ? (
+          <View style={styles.detailCard}>
+          <Text style={styles.detailQuestion}>{activePoll.question}</Text>
+            {activePoll.options.map((option) => (
+              <TouchableOpacity
+                key={option.optionId}
+                style={styles.optionRow}
+                onPress={() => handleVote(activePoll.pollId, option.optionId)}
+              >
+                <Text style={styles.optionLabel}>{option.label}</Text>
+                <Text style={styles.optionVotes}>{option.voteCount} votes</Text>
+              </TouchableOpacity>
+            ))}
+            {activePollType === 'what_to_order' && (
+              <Text style={styles.topicNote}>Votes apply to dishes at this restaurant.</Text>
+            )}
+            <View style={styles.addOptionBlock}>
+              {activePollType === 'best_dish' && (
+                <>
+                  <Text style={styles.fieldLabel}>Restaurant</Text>
+                  <TextInput
+                    value={restaurantQuery}
+                    onChangeText={(text) => {
+                      setRestaurantQuery(text);
+                      setRestaurantSelection(null);
+                    }}
+                    placeholder="Search for a restaurant"
+                    style={styles.optionInput}
+                    autoCapitalize="none"
+                  />
+                  {(showRestaurantSuggestions || restaurantLoading) &&
+                    renderSuggestionList(
+                      restaurantLoading,
+                      restaurantSuggestions,
+                      'Keep typing to add a restaurant',
+                      handleRestaurantSuggestionPress
+                    )}
+                </>
+              )}
+              <Text style={styles.fieldLabel}>
+                {activePollType === 'best_dish' ? 'Dish (optional)' : 'Dish'}
+              </Text>
+              <TextInput
+                value={dishQuery}
+                onChangeText={(text) => {
+                  setDishQuery(text);
+                  setDishSelection(null);
+                }}
+                placeholder={
+                  activePollType === 'best_dish' ? 'Add a dish (optional)' : 'Search for a dish'
+                }
+                style={styles.optionInput}
+                autoCapitalize="none"
+              />
+              {(showDishSuggestions || dishLoading) &&
+                renderSuggestionList(
+                  dishLoading,
+                  dishSuggestions,
+                  'Keep typing to add a dish',
+                  handleDishSuggestionPress
+                )}
+              <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
+                <Text style={styles.submitButtonText}>Submit option</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.emptyState}>No polls available yet.</Text>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: '#fff',
-    paddingTop: 24,
+  },
+  scrollContainer: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
   },
   cityRow: {
     flexDirection: 'row',

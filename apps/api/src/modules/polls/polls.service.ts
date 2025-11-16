@@ -97,7 +97,7 @@ export class PollsService {
     return poll;
   }
 
-  async addOption(pollId: string, dto: CreatePollOptionDto) {
+  async addOption(pollId: string, dto: CreatePollOptionDto, userId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
       include: {
@@ -207,10 +207,15 @@ export class PollsService {
             entityType: EntityType.food,
             reason: OnDemandReason.unresolved,
             entityId: null,
-            metadata: { source: 'poll_option', pollId, restaurantId },
+            metadata: {
+              source: 'poll_option',
+              pollId,
+              restaurantId,
+              userId,
+            },
           },
         ],
-        { source: 'poll_option', pollId },
+        { source: 'poll_option', pollId, userId },
       );
     }
 
@@ -247,12 +252,12 @@ export class PollsService {
         connectionId,
         categoryId,
         source: dto.entityId ? PollOptionSource.curator : PollOptionSource.user,
-        addedByUserId: dto.userId,
+        addedByUserId: userId,
         resolutionStatus: storedEntityId
           ? PollOptionResolutionStatus.matched
           : PollOptionResolutionStatus.pending,
         metadata: {
-          createdBy: dto.userId,
+          createdBy: userId,
         },
       },
     });
@@ -261,7 +266,7 @@ export class PollsService {
     return option;
   }
 
-  async castVote(pollId: string, dto: CastPollVoteDto) {
+  async castVote(pollId: string, dto: CastPollVoteDto, userId: string) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
       select: { pollId: true, state: true },
@@ -285,7 +290,7 @@ export class PollsService {
         where: {
           pollId_userId: {
             pollId,
-            userId: dto.userId,
+            userId,
           },
         },
       });
@@ -300,7 +305,7 @@ export class PollsService {
           where: {
             pollId_userId: {
               pollId,
-              userId: dto.userId,
+              userId,
             },
           },
           data: {
@@ -319,7 +324,7 @@ export class PollsService {
           data: {
             pollId,
             optionId: dto.optionId,
-            userId: dto.userId,
+            userId,
           },
         });
         await tx.pollMetric.upsert({

@@ -370,7 +370,7 @@ export class LLMChunkingService implements OnModuleInit {
           );
         const orphanTokens = this.estimateTokensFromChars(orphanCharLength);
 
-        this.logger.warn('Found orphaned comments, adding as separate chunk', {
+        this.logger.debug('Found orphaned comments, adding as separate chunk', {
           correlationId: CorrelationUtils.getCorrelationId(),
           postId: post.id,
           orphanedCount: orphanedComments.length,

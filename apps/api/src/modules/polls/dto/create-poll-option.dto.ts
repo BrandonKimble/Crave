@@ -29,8 +29,4 @@ export class CreatePollOptionDto {
   @IsOptional()
   @IsEnum(EntityType)
   entityType?: EntityType;
-
-  @IsString()
-  @IsNotEmpty()
-  userId!: string;
 }
