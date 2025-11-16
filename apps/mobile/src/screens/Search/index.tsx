@@ -224,10 +224,7 @@ const SearchScreen: React.FC = () => {
       setFavoriteMap(new Map(data.map((favorite) => [favorite.entityId, favorite])));
     } catch (favoriteError) {
       logger.warn('Failed to load favorites', {
-        error:
-          favoriteError instanceof Error
-            ? favoriteError.message
-            : 'unknown',
+        error: favoriteError instanceof Error ? favoriteError.message : 'unknown',
       });
     }
   }, []);
@@ -235,7 +232,7 @@ const SearchScreen: React.FC = () => {
   useFocusEffect(
     React.useCallback(() => {
       void loadFavorites();
-    }, [loadFavorites]),
+    }, [loadFavorites])
   );
 
   const restaurantsById = React.useMemo(() => {
@@ -874,7 +871,7 @@ const SearchScreen: React.FC = () => {
         });
       }
     },
-    [favoriteMap],
+    [favoriteMap]
   );
 
   const openPaywall = React.useCallback(() => {
@@ -1337,21 +1334,28 @@ const SearchScreen: React.FC = () => {
                       Keep typing to add a dish or spot
                     </Text>
                   ) : (
-                    suggestions.map((match, index) => (
-                      <TouchableOpacity
-                        key={`${match.entityId}-${index}`}
-                        onPress={() => handleSuggestionPress(match)}
-                        style={[
-                          styles.autocompleteItem,
-                          index === suggestions.length - 1 && styles.autocompleteItemLast,
-                        ]}
-                      >
-                        <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                        <Text style={styles.autocompleteSecondaryText}>
-                          {match.entityType.replace(/_/g, ' ')}
-                        </Text>
-                      </TouchableOpacity>
-                    ))
+                    suggestions.map((match, index) => {
+                      const secondaryLabel =
+                        match.matchType === 'query'
+                          ? 'Recent search'
+                          : match.entityType.replace(/_/g, ' ');
+                      const itemKey = match.entityId
+                        ? `${match.entityId}-${index}`
+                        : `${match.name}-${index}`;
+                      return (
+                        <TouchableOpacity
+                          key={itemKey}
+                          onPress={() => handleSuggestionPress(match)}
+                          style={[
+                            styles.autocompleteItem,
+                            index === suggestions.length - 1 && styles.autocompleteItemLast,
+                          ]}
+                        >
+                          <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                          <Text style={styles.autocompleteSecondaryText}>{secondaryLabel}</Text>
+                        </TouchableOpacity>
+                      );
+                    })
                   )}
                 </View>
               )}
@@ -1375,12 +1379,7 @@ const SearchScreen: React.FC = () => {
                         onPress={() => handleRecentSearchPress(term)}
                         style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
                       >
-                        <Feather
-                          name="clock"
-                          size={16}
-                          color="#6b7280"
-                          style={styles.recentIcon}
-                        />
+                        <Feather name="clock" size={16} color="#6b7280" style={styles.recentIcon} />
                         <Text style={styles.recentText}>{term}</Text>
                       </TouchableOpacity>
                     ))

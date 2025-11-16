@@ -15,12 +15,9 @@ export interface NativeAppleSignInResponse {
 
 export const authService = {
   async signInWithAppleNative(
-    payload: NativeAppleSignInPayload,
+    payload: NativeAppleSignInPayload
   ): Promise<NativeAppleSignInResponse> {
-    const response = await api.post<NativeAppleSignInResponse>(
-      '/auth/apple/native',
-      payload,
-    );
+    const response = await api.post<NativeAppleSignInResponse>('/auth/apple/native', payload);
     return response.data;
   },
 };

@@ -6,6 +6,7 @@ export type AutocompleteMatch = {
   name: string;
   aliases: string[];
   confidence: number;
+  matchType?: 'entity' | 'query';
 };
 
 export type AutocompleteResponse = {
@@ -13,6 +14,7 @@ export type AutocompleteResponse = {
   query: string;
   normalizedQuery: string;
   onDemandQueued?: boolean;
+  querySuggestions?: string[];
 };
 
 export const autocompleteService = {

@@ -70,6 +70,7 @@ export interface EntityResolutionConfig {
   maxEditDistance: number; // Maximum edit distance for fuzzy matching
   batchSize: number; // Number of entities to process in each batch
   enableFuzzyMatching: boolean;
+  allowEntityCreation: boolean; // Toggle creation of new entities for unmatched inputs
   confidenceThresholds: {
     high: number; // > 0.85 - merge with existing
     medium: number; // 0.7-0.85 - apply heuristics

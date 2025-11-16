@@ -1,6 +1,8 @@
 import { EntityType } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsNotEmpty,
@@ -22,6 +24,13 @@ export class AutocompleteRequestDto {
   entityType?: EntityType;
 
   @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsEnum(EntityType, { each: true })
+  @Type(() => String)
+  entityTypes?: EntityType[];
+
+  @IsOptional()
   @Type(() => Number)
   @IsPositive()
   @Min(1)
@@ -34,10 +43,11 @@ export class AutocompleteRequestDto {
 
 export class AutocompleteMatchDto {
   entityId!: string;
-  entityType!: EntityType;
+  entityType!: EntityType | 'query';
   name!: string;
   confidence!: number;
   aliases!: string[];
+  matchType?: 'entity' | 'query';
 }
 
 export class AutocompleteResponseDto {
@@ -46,4 +56,5 @@ export class AutocompleteResponseDto {
   normalizedQuery!: string;
   onDemandQueued?: boolean;
   onDemandReason?: string;
+  querySuggestions?: string[];
 }

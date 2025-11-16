@@ -28,21 +28,18 @@ const BookmarksScreen: React.FC = () => {
   useFocusEffect(
     React.useCallback(() => {
       void loadFavorites();
-    }, [loadFavorites]),
+    }, [loadFavorites])
   );
 
-  const handleRemoveFavorite = React.useCallback(
-    async (favorite: Favorite) => {
-      setFavorites((prev) => prev.filter((item) => item.favoriteId !== favorite.favoriteId));
-      try {
-        await favoritesService.remove(favorite.favoriteId);
-      } catch (removeError) {
-        logger.error('Failed to remove favorite from bookmarks', removeError);
-        setFavorites((prev) => [favorite, ...prev]);
-      }
-    },
-    [],
-  );
+  const handleRemoveFavorite = React.useCallback(async (favorite: Favorite) => {
+    setFavorites((prev) => prev.filter((item) => item.favoriteId !== favorite.favoriteId));
+    try {
+      await favoritesService.remove(favorite.favoriteId);
+    } catch (removeError) {
+      logger.error('Failed to remove favorite from bookmarks', removeError);
+      setFavorites((prev) => [favorite, ...prev]);
+    }
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

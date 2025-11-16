@@ -573,8 +573,7 @@ async function testPipeline() {
       const pollDelayMs =
         Number(process.env.TEST_QUEUE_POLL_MS || '300') || 300;
       const progressIntervalMs =
-        Number(process.env.TEST_QUEUE_PROGRESS_INTERVAL_MS || '30000') ||
-        30000;
+        Number(process.env.TEST_QUEUE_PROGRESS_INTERVAL_MS || '30000') || 30000;
       let attempts = 0;
       const startWait = Date.now();
       let lastProgressLog = 0;

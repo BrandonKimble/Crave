@@ -131,6 +131,7 @@ export class EntityResolutionService implements OnModuleInit {
       enableFuzzyMatching: true,
       fuzzyMatchThreshold: 0.75,
       maxEditDistance: 3,
+      allowEntityCreation: true,
       confidenceThresholds: {
         high: 0.85,
         medium: 0.7,
@@ -363,16 +364,18 @@ export class EntityResolutionService implements OnModuleInit {
 
     // Mark unmatched entities for transaction-based creation (PRD approach)
     const primaryNewEntityMap = globalNewEntityMap;
-    const newEntityResults = this.markEntitiesForCreation(
-      unmatchedAfterFuzzy,
-      entityType,
-      {
-        exactMatches: exactMatchResults,
-        aliasMatches: aliasMatchResults,
-        fuzzyMatches: fuzzyMatchResults,
-      },
-      primaryNewEntityMap,
-    );
+    const newEntityResults = config.allowEntityCreation
+      ? this.markEntitiesForCreation(
+          unmatchedAfterFuzzy,
+          entityType,
+          {
+            exactMatches: exactMatchResults,
+            aliasMatches: aliasMatchResults,
+            fuzzyMatches: fuzzyMatchResults,
+          },
+          primaryNewEntityMap,
+        )
+      : [];
 
     // Combine results from all tiers
     // Each entity should appear exactly once in the final results

@@ -69,6 +69,7 @@ export class SearchQueryInterpretationService {
           fuzzyMatchThreshold: 0.75,
           maxEditDistance: 3,
           batchSize: 100,
+          allowEntityCreation: false,
           confidenceThresholds: {
             high: 0.85,
             medium: 0.7,
@@ -294,6 +295,7 @@ export class SearchQueryInterpretationService {
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
       priceLevels: request.priceLevels,
+      sourceQuery: request.query,
     };
   }
 

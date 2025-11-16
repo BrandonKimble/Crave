@@ -66,6 +66,6 @@ export const useCityStore = create<CityState>()(
           },
         };
       }),
-    },
-  ),
+    }
+  )
 );

@@ -36,7 +36,7 @@ const ProfileScreen: React.FC = () => {
       logger.error('Sign out failed', error);
       Alert.alert(
         'Unable to sign out',
-        error instanceof Error ? error.message : 'Please try again.',
+        error instanceof Error ? error.message : 'Please try again.'
       );
     }
   }, [signOut, unregisterPushToken]);

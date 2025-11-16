@@ -1,0 +1,7 @@
+title = "crave-search gitleaks config"
+
+[allowlist]
+description = "Project-specific false positives"
+regexes = [
+  '''ExpoAppleAuthentication:\s+[0-9a-f]{40}''',
+]

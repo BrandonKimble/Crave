@@ -127,7 +127,7 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
         setLoading(false);
       }
     },
-    [cityInput, selectedPollId, setPersistedCity],
+    [cityInput, selectedPollId, setPersistedCity]
   );
 
   useEffect(() => {
@@ -439,7 +439,7 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
 
         {activePoll ? (
           <View style={styles.detailCard}>
-          <Text style={styles.detailQuestion}>{activePoll.question}</Text>
+            <Text style={styles.detailQuestion}>{activePoll.question}</Text>
             {activePoll.options.map((option) => (
               <TouchableOpacity
                 key={option.optionId}

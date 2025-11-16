@@ -242,9 +242,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     typeof auth.setActive === 'function'
       ? (auth.setActive as (params: { session: string }) => Promise<void>)
       : undefined;
-  const hasCompletedOnboarding = useOnboardingStore(
-    (state) => state.hasCompletedOnboarding,
-  );
+  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
   const appleOAuth = useOAuth({ strategy: 'oauth_apple' });
   const googleOAuth = useOAuth({ strategy: 'oauth_google' });
   const [oauthStatus, setOauthStatus] = React.useState<'idle' | 'apple' | 'google'>('idle');
@@ -256,7 +254,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       makeRedirectUri({
         path: 'oauth-native-callback',
       }),
-    [],
+    []
   );
 
   React.useEffect(() => {
@@ -434,10 +432,9 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         try {
           setAuthError(null);
           setOauthStatus(provider);
-          const { createdSessionId, sessionId, setActive } =
-            await client.startOAuthFlow({
-              redirectUrl,
-            });
+          const { createdSessionId, sessionId, setActive } = await client.startOAuthFlow({
+            redirectUrl,
+          });
           const resolvedSessionId = createdSessionId ?? sessionId;
           if (resolvedSessionId && setActive) {
             await setActive({ session: resolvedSessionId });
@@ -455,7 +452,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       };
       void run();
     },
-    [appleOAuth, googleOAuth, oauthStatus, redirectUrl, setAuthError],
+    [appleOAuth, googleOAuth, oauthStatus, redirectUrl, setAuthError]
   );
 
   const handleNativeAppleSignIn = React.useCallback(() => {
@@ -2009,7 +2006,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const requiresAuthToAdvance = React.useMemo(
     () => activeStep.type === 'account' && !isSignedIn,
-    [activeStep.type, isSignedIn],
+    [activeStep.type, isSignedIn]
   );
 
   const handleContinue = React.useCallback(() => {
@@ -2191,10 +2188,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           </View>
         </View>
       </KeyboardAvoidingView>
-      <EmailAuthModal
-        visible={emailModalVisible}
-        onClose={() => setEmailModalVisible(false)}
-      />
+      <EmailAuthModal visible={emailModalVisible} onClose={() => setEmailModalVisible(false)} />
     </SafeAreaView>
   );
 };

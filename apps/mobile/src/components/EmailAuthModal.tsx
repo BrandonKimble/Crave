@@ -19,28 +19,15 @@ type EmailAuthModalProps = {
 
 type AuthMode = 'signIn' | 'signUp';
 
-export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
-  visible,
-  onClose,
-}) => {
-  const {
-    isLoaded: signInLoaded,
-    signIn,
-    setActive: setSignInActive,
-  } = useSignIn();
-  const {
-    isLoaded: signUpLoaded,
-    signUp,
-    setActive: setSignUpActive,
-  } = useSignUp();
+export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({ visible, onClose }) => {
+  const { isLoaded: signInLoaded, signIn, setActive: setSignInActive } = useSignIn();
+  const { isLoaded: signUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
 
   const [mode, setMode] = React.useState<AuthMode>('signIn');
   const [stage, setStage] = React.useState<'collect' | 'verify'>('collect');
   const [email, setEmail] = React.useState('');
   const [code, setCode] = React.useState('');
-  const [status, setStatus] = React.useState<'idle' | 'sending' | 'verifying'>(
-    'idle',
-  );
+  const [status, setStatus] = React.useState<'idle' | 'sending' | 'verifying'>('idle');
   const [error, setError] = React.useState<string | null>(null);
   const emailAddressIdRef = React.useRef<string | null>(null);
 
@@ -79,12 +66,10 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
           identifier: email.trim(),
         });
         const emailFactor = createAttempt.supportedFirstFactors?.find(
-          (factor) => factor.strategy === 'email_code',
+          (factor) => factor.strategy === 'email_code'
         );
         if (!emailFactor || !emailFactor.emailAddressId) {
-          throw new Error(
-            'Email verification is not available for this account.',
-          );
+          throw new Error('Email verification is not available for this account.');
         }
         emailAddressIdRef.current = emailFactor.emailAddressId;
         await signIn.prepareFirstFactor({
@@ -106,9 +91,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
     } catch (err) {
       logger.error('Email auth send failed', err);
       const message =
-        err instanceof Error
-          ? err.message
-          : 'We could not send a code. Please try again.';
+        err instanceof Error ? err.message : 'We could not send a code. Please try again.';
       setError(message);
     } finally {
       setStatus('idle');
@@ -152,8 +135,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
       }
     } catch (err) {
       logger.error('Email auth verification failed', err);
-      const message =
-        err instanceof Error ? err.message : 'That code did not work.';
+      const message = err instanceof Error ? err.message : 'That code did not work.';
       setError(message);
     } finally {
       setStatus('idle');
@@ -172,12 +154,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
   };
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent
-      onRequestClose={onClose}
-    >
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.backdrop}
@@ -207,18 +184,11 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
                 editable={!isBusy}
               />
               <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  !canSubmitEmail && styles.primaryButtonDisabled,
-                ]}
+                style={[styles.primaryButton, !canSubmitEmail && styles.primaryButtonDisabled]}
                 disabled={!canSubmitEmail}
                 onPress={sendEmailCode}
               >
-                <Text
-                  variant="body"
-                  weight="semibold"
-                  style={styles.primaryButtonText}
-                >
+                <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
                   {status === 'sending' ? 'Sending…' : 'Send code'}
                 </Text>
               </TouchableOpacity>
@@ -239,18 +209,11 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
                 maxLength={8}
               />
               <TouchableOpacity
-                style={[
-                  styles.primaryButton,
-                  !canVerifyCode && styles.primaryButtonDisabled,
-                ]}
+                style={[styles.primaryButton, !canVerifyCode && styles.primaryButtonDisabled]}
                 disabled={!canVerifyCode}
                 onPress={verifyEmailCode}
               >
-                <Text
-                  variant="body"
-                  weight="semibold"
-                  style={styles.primaryButtonText}
-                >
+                <Text variant="body" weight="semibold" style={styles.primaryButtonText}>
                   {status === 'verifying' ? 'Confirming…' : 'Verify & continue'}
                 </Text>
               </TouchableOpacity>
@@ -266,7 +229,7 @@ export const EmailAuthModal: React.FC<EmailAuthModalProps> = ({
           <TouchableOpacity style={styles.secondaryButton} onPress={toggleMode}>
             <Text variant="caption" style={styles.secondaryButtonText}>
               {mode === 'signIn'
-                ? "New to Crave? Create an account instead"
+                ? 'New to Crave? Create an account instead'
                 : 'Already have an account? Sign in instead'}
             </Text>
           </TouchableOpacity>

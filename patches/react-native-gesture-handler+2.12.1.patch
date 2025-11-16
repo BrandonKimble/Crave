@@ -1,0 +1,40 @@
+diff --git a/node_modules/react-native-gesture-handler/ios/Handlers/RNForceTouchHandler.m b/node_modules/react-native-gesture-handler/ios/Handlers/RNForceTouchHandler.m
+index a48b0af..7862804 100644
+--- a/node_modules/react-native-gesture-handler/ios/Handlers/RNForceTouchHandler.m
++++ b/node_modules/react-native-gesture-handler/ios/Handlers/RNForceTouchHandler.m
+@@ -4,6 +4,13 @@
+ 
+ #import <React/RCTConvert.h>
+ 
++#if __has_include(<CoreHaptics/CoreHaptics.h>)
++#import <CoreHaptics/CoreHaptics.h>
++#define RNGH_HAS_CORE_HAPTICS 1
++#else
++#define RNGH_HAS_CORE_HAPTICS 0
++#endif
++
+ @interface RNForceTouchGestureRecognizer : UIGestureRecognizer
+ 
+ @property (nonatomic) CGFloat maxForce;
+@@ -87,9 +94,21 @@ static const BOOL defaultFeedbackOnActivation = NO;
+ {
+ #if !TARGET_OS_TV
+   if (_feedbackOnActivation) {
++#if TARGET_OS_SIMULATOR
++    return;
++#else
+     if (@available(iOS 10.0, *)) {
++#if RNGH_HAS_CORE_HAPTICS
++      if (@available(iOS 13.0, *)) {
++        CHHapticEngineCapabilities *capabilities = [CHHapticEngine capabilitiesForHardware];
++        if (capabilities && !capabilities.supportsHaptics) {
++          return;
++        }
++      }
++#endif
+       [[[UIImpactFeedbackGenerator alloc] initWithStyle:(UIImpactFeedbackStyleMedium)] impactOccurred];
+     }
++#endif
+   }
+ #endif
+ }

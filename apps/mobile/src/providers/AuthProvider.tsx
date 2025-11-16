@@ -85,7 +85,7 @@ const resolveExpoProjectId = (): string | null => {
 
   const expoExtra = getExtraRecord(Constants.expoConfig?.extra);
   const manifestExtra = getExtraRecord(
-    (Constants.manifest2 as { extra?: unknown } | undefined)?.extra,
+    (Constants.manifest2 as { extra?: unknown } | undefined)?.extra
   );
   const easConfigProjectId = readProjectId(Constants.easConfig);
 

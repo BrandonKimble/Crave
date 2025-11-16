@@ -43,15 +43,13 @@ const PollNotificationListener: React.FC = () => {
 
       navigateToPolls(normalizedCity, pollIds[0]);
     },
-    [navigateToPolls, setCityPreference],
+    [navigateToPolls, setCityPreference]
   );
 
   React.useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        handleResponse(response);
-      },
-    );
+    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+      handleResponse(response);
+    });
 
     Notifications.getLastNotificationResponseAsync()
       .then((response) => {
