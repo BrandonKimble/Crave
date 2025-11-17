@@ -48,24 +48,52 @@ export class UserService {
     const trialEndsAt =
       this.trialDays > 0 ? this.addDays(now, this.trialDays) : null;
 
-    const user = await this.prisma.user.upsert({
-      where: { authProviderUserId: authId },
-      update: {
-        email,
-        lastSignInAt: now,
-        deletedAt: null,
-      },
-      create: {
-        email,
-        authProvider: AuthProvider.clerk,
-        authProviderUserId: authId,
-        revenueCatAppUserId: authId,
-        lastSignInAt: now,
-        trialStartedAt: this.trialDays > 0 ? now : null,
-        trialEndsAt,
-        subscriptionStatus: SubscriptionStatus.trialing,
-      },
-    });
+    let user: User;
+    try {
+      user = await this.prisma.user.upsert({
+        where: { authProviderUserId: authId },
+        update: {
+          email,
+          lastSignInAt: now,
+          deletedAt: null,
+        },
+        create: {
+          email,
+          authProvider: AuthProvider.clerk,
+          authProviderUserId: authId,
+          revenueCatAppUserId: authId,
+          lastSignInAt: now,
+          trialStartedAt: this.trialDays > 0 ? now : null,
+          trialEndsAt,
+          subscriptionStatus: SubscriptionStatus.trialing,
+        },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        const existing = await this.prisma.user.findUnique({
+          where: { email },
+        });
+        if (!existing) {
+          throw error;
+        }
+        user = await this.prisma.user.update({
+          where: { userId: existing.userId },
+          data: {
+            authProvider: AuthProvider.clerk,
+            authProviderUserId: authId,
+            revenueCatAppUserId: existing.revenueCatAppUserId ?? authId,
+            email,
+            lastSignInAt: now,
+            deletedAt: null,
+          },
+        });
+      } else {
+        throw error;
+      }
+    }
 
     this.logger.debug('Synced Clerk identity', {
       userId: user.userId,

@@ -1,8 +1,9 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { useAuth } from '@clerk/clerk-expo';
 import BottomTabNavigator from './BottomTabNavigator';
-import { OnboardingScreen } from '../screens';
+import { OnboardingScreen, SignInScreen } from '../screens';
 import type { RootStackParamList } from '../types/navigation';
 import { useOnboardingStore } from '../store/onboardingStore';
 
@@ -10,6 +11,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
+  const { isSignedIn } = useAuth();
   const [isHydrated, setIsHydrated] = React.useState(() =>
     useOnboardingStore.persist.hasHydrated()
   );
@@ -35,11 +37,13 @@ const RootNavigator: React.FC = () => {
     );
   }
 
+  const showOnboarding = !hasCompletedOnboarding;
+  const showSignIn = hasCompletedOnboarding && !isSignedIn;
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {!hasCompletedOnboarding ? (
-        <Stack.Screen name="Onboarding" component={OnboardingScreen} />
-      ) : null}
+      {showOnboarding ? <Stack.Screen name="Onboarding" component={OnboardingScreen} /> : null}
+      {showSignIn ? <Stack.Screen name="SignIn" component={SignInScreen} /> : null}
       <Stack.Screen name="Tabs" component={BottomTabNavigator} />
     </Stack.Navigator>
   );

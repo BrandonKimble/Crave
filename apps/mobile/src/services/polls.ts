@@ -26,6 +26,17 @@ export interface Poll {
   topic?: PollTopic | null;
 }
 
+export interface ManualPollPayload {
+  question: string;
+  topicType: PollTopicType;
+  city?: string;
+  description?: string;
+  allowUserAdditions?: boolean;
+  notifySubscribers?: boolean;
+  targetDishId?: string;
+  targetRestaurantId?: string;
+}
+
 const normalizePollList = (payload: unknown): Poll[] => {
   if (Array.isArray(payload)) {
     return payload;
@@ -92,4 +103,10 @@ export const addPollOption = async (
 export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
   const response = await api.post(`/polls/${pollId}/votes`, body);
   return response.data;
+};
+
+export const createManualPoll = async (body: ManualPollPayload) => {
+  const response = await api.post('/polls/admin/manual', body);
+  const normalized = normalizePoll(response.data);
+  return normalized ?? response.data;
 };

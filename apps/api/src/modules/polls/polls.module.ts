@@ -8,10 +8,12 @@ import { AnalyticsModule } from '../analytics/analytics.module';
 import { IdentityModule } from '../identity/identity.module';
 import { PollsService } from './polls.service';
 import { PollsController } from './polls.controller';
+import { PollsAdminController } from './polls-admin.controller';
 import { PollsGateway } from './polls.gateway';
 import { PollSchedulerService } from './poll-scheduler.service';
 import { PollAggregationService } from './poll-aggregation.service';
 import { PollCategoryReplayService } from './poll-category-replay.service';
+import { PollLifecycleService } from './poll-lifecycle.service';
 
 @Module({
   imports: [
@@ -23,13 +25,14 @@ import { PollCategoryReplayService } from './poll-category-replay.service';
     AnalyticsModule,
     IdentityModule,
   ],
-  controllers: [PollsController],
+  controllers: [PollsController, PollsAdminController],
   providers: [
     PollsService,
     PollsGateway,
     PollSchedulerService,
     PollAggregationService,
     PollCategoryReplayService,
+    PollLifecycleService,
   ],
   exports: [PollsService],
 })

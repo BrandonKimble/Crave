@@ -41,6 +41,7 @@ const DEFAULT_STYLE_URL = 'mapbox://styles/brandonkimble/cmhjzgs6i00cl01s69ff1fs
 const AUSTIN_COORDINATE: [number, number] = [-97.7431, 30.2672];
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = 15;
+const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
 const CARD_GAP = 4;
 const ACTIVE_TAB_COLOR = '#f97384';
 const TAB_BUTTON_COLOR = themeColors.accentDark;
@@ -194,6 +195,7 @@ const SearchScreen: React.FC = () => {
   const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
   const panOffset = React.useRef(0);
   const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
+  const searchContainerAnim = React.useRef(new Animated.Value(0)).current;
   const isAnimating = React.useRef(false);
   const inputRef = React.useRef<TextInput | null>(null);
   const openNow = useSearchStore((state) => state.openNow);
@@ -210,13 +212,20 @@ const SearchScreen: React.FC = () => {
   const trimmedQuery = query.trim();
   const shouldRenderAutocompleteSection = trimmedQuery.length >= 2;
   const shouldRenderSuggestionPanel =
-    isSearchFocused ||
-    (shouldRenderAutocompleteSection && (isAutocompleteLoading || showSuggestions));
+    shouldRenderAutocompleteSection || shouldShowRecentSection;
   const shouldShowRecentSection = isSearchFocused;
   const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
+  React.useEffect(() => {
+    Animated.spring(searchContainerAnim, {
+      toValue: shouldRenderSuggestionPanel ? 1 : 0,
+      useNativeDriver: true,
+      damping: 18,
+      stiffness: 220,
+    }).start();
+  }, [searchContainerAnim, shouldRenderSuggestionPanel]);
 
   const loadFavorites = React.useCallback(async () => {
     try {
@@ -765,6 +774,17 @@ const SearchScreen: React.FC = () => {
     },
     [submitSearch, updateLocalRecentSearches]
   );
+
+  const handleMapPress = React.useCallback(() => {
+    Keyboard.dismiss();
+    if (isSearchFocused) {
+      setIsSearchFocused(false);
+    }
+    if (showSuggestions) {
+      setShowSuggestions(false);
+    }
+  }, [isSearchFocused, showSuggestions]);
+
   const toggleOpenNow = React.useCallback(() => {
     if (isLoading) {
       return;
@@ -1208,6 +1228,7 @@ const SearchScreen: React.FC = () => {
         logoEnabled={false}
         attributionEnabled={false}
         scaleBarEnabled={false}
+        onPress={handleMapPress}
       >
         <MapboxGL.Camera
           ref={cameraRef}
@@ -1256,138 +1277,156 @@ const SearchScreen: React.FC = () => {
             });
           }}
         >
-          <View style={styles.promptCard}>
-            <BlurView
-              pointerEvents="none"
-              intensity={45}
-              tint="light"
-              style={StyleSheet.absoluteFillObject}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFillObject,
-                {
-                  backgroundColor: 'rgba(255, 255, 255, 1)',
-                  borderRadius: 16,
-                  opacity: searchBarSolidBackground,
-                },
-              ]}
-            />
-            <View pointerEvents="none" style={styles.glassHighlightSmall} />
-            <Animated.View
-              style={{
-                opacity: searchBarOpacity,
-                flexDirection: 'row',
-                alignItems: 'center',
-                flex: 1,
-              }}
-            >
-              <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-              <TextInput
-                ref={inputRef}
-                value={query}
-                onChangeText={setQuery}
-                placeholder="What are you craving?"
-                placeholderTextColor="#6b7280"
-                style={styles.promptInput}
-                returnKeyType="search"
-                onSubmitEditing={handleSubmit}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-                editable={!isLoading}
-                autoCapitalize="none"
-                autoCorrect={false}
-                clearButtonMode="never"
+            <View style={styles.promptCard}>
+              <BlurView
+                pointerEvents="none"
+                intensity={45}
+                tint="light"
+                style={StyleSheet.absoluteFillObject}
               />
-            </Animated.View>
-            <Animated.View style={{ opacity: searchBarOpacity }}>
-              {isLoading ? (
-                <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
-              ) : query.length > 0 ? (
-                <Pressable
-                  onPress={handleClear}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear search"
-                  style={styles.trailingAction}
-                  hitSlop={8}
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  {
+                    backgroundColor: 'rgba(255, 255, 255, 1)',
+                    borderRadius: 16,
+                    opacity: searchBarSolidBackground,
+                  },
+                ]}
+              />
+              <View pointerEvents="none" style={styles.glassHighlightSmall} />
+            <View style={styles.promptRow}>
+                <Animated.View
+                  style={{
+                    opacity: searchBarOpacity,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    flex: 1,
+                  }}
                 >
-                  <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
-                </Pressable>
-              ) : (
-                <View style={styles.trailingPlaceholder} />
-              )}
-            </Animated.View>
-          </View>
-          {shouldRenderSuggestionPanel && (
-            <View style={styles.autocompleteContainer}>
-              {shouldRenderAutocompleteSection && (
-                <View style={styles.autocompleteSection}>
-                  {isAutocompleteLoading && (
-                    <View style={styles.autocompleteLoadingRow}>
-                      <ActivityIndicator size="small" color="#6366f1" />
-                      <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
-                    </View>
-                  )}
-                  {!isAutocompleteLoading && suggestions.length === 0 ? (
-                    <Text style={styles.autocompleteEmptyText}>
-                      Keep typing to add a dish or spot
-                    </Text>
-                  ) : (
-                    suggestions.map((match, index) => {
-                      const secondaryLabel =
-                        match.matchType === 'query'
-                          ? 'Recent search'
-                          : match.entityType.replace(/_/g, ' ');
-                      const itemKey = match.entityId
-                        ? `${match.entityId}-${index}`
-                        : `${match.name}-${index}`;
-                      return (
-                        <TouchableOpacity
-                          key={itemKey}
-                          onPress={() => handleSuggestionPress(match)}
-                          style={[
-                            styles.autocompleteItem,
-                            index === suggestions.length - 1 && styles.autocompleteItemLast,
-                          ]}
-                        >
-                          <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                          <Text style={styles.autocompleteSecondaryText}>{secondaryLabel}</Text>
-                        </TouchableOpacity>
-                      );
-                    })
-                  )}
-                </View>
-              )}
-              {shouldRenderAutocompleteSection && shouldShowRecentSection && (
-                <View style={styles.autocompleteDivider} />
-              )}
-              {shouldShowRecentSection && (
-                <View style={styles.recentSection}>
-                  <View style={styles.recentHeaderRow}>
-                    <Text style={styles.recentHeaderText}>Recent searches</Text>
-                    {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
-                  </View>
-                  {!isRecentLoading && !hasRecentSearches ? (
-                    <Text style={styles.autocompleteEmptyText}>
-                      Start exploring to build your history
-                    </Text>
-                  ) : (
-                    recentSearches.map((term, index) => (
-                      <TouchableOpacity
-                        key={`${term}-${index}`}
-                        onPress={() => handleRecentSearchPress(term)}
-                        style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-                      >
-                        <Feather name="clock" size={16} color="#6b7280" style={styles.recentIcon} />
-                        <Text style={styles.recentText}>{term}</Text>
-                      </TouchableOpacity>
-                    ))
-                  )}
-                </View>
-              )}
+                <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+                <TextInput
+                  ref={inputRef}
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder="What are you craving?"
+                  placeholderTextColor="#6b7280"
+                  style={styles.promptInput}
+                  returnKeyType="search"
+                  onSubmitEditing={handleSubmit}
+                  onFocus={handleSearchFocus}
+                  onBlur={handleSearchBlur}
+                  editable={!isLoading}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  clearButtonMode="never"
+                />
+              </Animated.View>
+              <Animated.View style={{ opacity: searchBarOpacity }}>
+                {isLoading ? (
+                  <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
+                ) : query.length > 0 ? (
+                  <Pressable
+                    onPress={handleClear}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear search"
+                    style={styles.trailingAction}
+                    hitSlop={8}
+                  >
+                    <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
+                  </Pressable>
+                ) : (
+                  <View style={styles.trailingPlaceholder} />
+                )}
+              </Animated.View>
             </View>
-          )}
+            
+
+        {shouldRenderSuggestionPanel && (
+              <Animated.View
+                style={[
+                  styles.autocompletePanel,
+                  {
+                    opacity: searchContainerAnim,
+                    transform: [
+                      {
+                        translateY: searchContainerAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-6, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                {shouldRenderAutocompleteSection && (
+                  <View style={styles.autocompleteSection}>
+                    {isAutocompleteLoading && (
+                      <View style={styles.autocompleteLoadingRow}>
+                        <ActivityIndicator size="small" color="#6366f1" />
+                        <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                      </View>
+                    )}
+                    {!isAutocompleteLoading && suggestions.length === 0 ? (
+                      <Text style={styles.autocompleteEmptyText}>
+                        Keep typing to add a dish or spot
+                      </Text>
+                    ) : (
+                      suggestions.map((match, index) => {
+                        const secondaryLabel =
+                          match.matchType === 'query'
+                            ? 'Recent search'
+                            : match.entityType.replace(/_/g, ' ');
+                        const itemKey = match.entityId
+                          ? `${match.entityId}-${index}`
+                          : `${match.name}-${index}`;
+                        return (
+                          <TouchableOpacity
+                            key={itemKey}
+                            onPress={() => handleSuggestionPress(match)}
+                            style={[
+                              styles.autocompleteItem,
+                              index === suggestions.length - 1 && !shouldShowRecentSection
+                                ? styles.autocompleteItemLast
+                                : null,
+                            ]}
+                          >
+                            <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                            <Text style={styles.autocompleteSecondaryText}>{secondaryLabel}</Text>
+                          </TouchableOpacity>
+                        );
+                      })
+                    )}
+                  </View>
+                )}
+                {shouldShowRecentSection && (
+                  <View style={[styles.recentSection, !shouldRenderAutocompleteSection && styles.recentSectionFirst]}>
+                    <View style={styles.recentHeaderRow}>
+                      <Text style={styles.recentHeaderText}>Recent searches</Text>
+                      {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+                    </View>
+                    {!isRecentLoading && !hasRecentSearches ? (
+                      <Text style={styles.autocompleteEmptyText}>
+                        Start exploring to build your history
+                      </Text>
+                    ) : (
+                      recentSearches.map((term, index) => (
+                        <TouchableOpacity
+                          key={`${term}-${index}`}
+                          onPress={() => handleRecentSearchPress(term)}
+                          style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
+                        >
+                          <Feather name="clock" size={16} color="#6b7280" style={styles.recentIcon} />
+                          <Text style={styles.recentText}>{term}</Text>
+                        </TouchableOpacity>
+                      ))
+                    )}
+                  </View>
+                )}
+              </Animated.View>
+            )}
+          </View>
         </View>
         <LinearGradient
           pointerEvents="none"
@@ -1828,41 +1867,39 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
   },
   searchContainer: {
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     paddingTop: 6,
   },
   promptCard: {
     position: 'relative',
     borderRadius: 16,
-    height: 52,
     paddingVertical: 0,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 0,
     backgroundColor: 'rgba(255, 255, 255, 0.94)',
     borderWidth: 0,
     borderColor: 'transparent',
     shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 6,
     overflow: 'hidden',
   },
-  autocompleteContainer: {
-    marginTop: 8,
-    borderRadius: 12,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 6,
+  promptRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    minHeight: 52,
+  },
+  autocompletePanel: {
+    marginTop: 6,
+    backgroundColor: 'transparent',
   },
   autocompleteSection: {
     paddingVertical: 4,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
   },
   autocompleteLoadingRow: {
     flexDirection: 'row',
@@ -1882,10 +1919,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 13,
     color: '#94a3b8',
-  },
-  autocompleteDivider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
   },
   autocompleteItem: {
     paddingHorizontal: 14,
@@ -1909,6 +1942,11 @@ const styles = StyleSheet.create({
   recentSection: {
     paddingHorizontal: 14,
     paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+  },
+  recentSectionFirst: {
+    borderTopWidth: 0,
   },
   recentHeaderRow: {
     flexDirection: 'row',

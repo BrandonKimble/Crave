@@ -97,6 +97,10 @@ export default () => ({
     publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
     jwtAudience: process.env.CLERK_JWT_AUDIENCE,
     apiUrl: process.env.CLERK_API_URL || 'https://api.clerk.com/v1',
+    adminUserIds: (process.env.CLERK_ADMIN_USER_IDS || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0),
   },
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY,

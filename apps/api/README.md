@@ -102,6 +102,10 @@ GOOGLE_MODERATION_API_KEY=your_key
 # Optional override for the moderation endpoint
 # GOOGLE_MODERATION_ENDPOINT=https://contentmoderation.googleapis.com/v1beta/moderations:moderateText
 
+# Admin-only poll controls
+# Provide Clerk user IDs (not database IDs)
+CLERK_ADMIN_USER_IDS=clerk_user_id_1,clerk_user_id_2
+
 # Future features (optional for M01)
 REDIS_HOST=localhost
 REDIS_PORT=6379
@@ -123,6 +127,8 @@ To tune poll scheduling, search logging, and keyword demand targeting, set:
 - `POLL_TOPIC_LIMIT` / `POLL_MAX_PER_CITY` — cap how many topics/polls are created per refresh and per Thursday drop.
 - `POLL_DEFAULT_COOLDOWN_DAYS` / `POLL_TREND_COOLDOWN_DAYS` — control how long an entity must wait before being polled again, with a shorter override for trending demand.
 - `POLL_CITY_DEMAND_WINDOW_DAYS` / `POLL_CITY_MIN_IMPRESSIONS` / `POLL_TREND_MIN_IMPRESSIONS` — define the lookback window and minimum search impressions required to create a poll topic.
+- `POLL_RELEASE_DAY_OF_WEEK` / `POLL_RELEASE_HOUR` — choose which weekday (0–6, default Monday) and local-hour (0–23, default 9) the weekly release job should run.
+- `POLL_AUTO_CLOSE_DAYS` — auto-close polls after this many days (defaults to 4 so Monday drops close on Friday).
 - `POLL_PSEUDO_MENTION_CAP` / `POLL_PSEUDO_UPVOTE_CAP` — bound how much a single poll can influence the connection quality scores.
 - `KEYWORD_CITY_DEMAND_WINDOW_DAYS` / `KEYWORD_CITY_MIN_IMPRESSIONS` — limit keyword collection to entities that are trending in the subreddit’s city.
 

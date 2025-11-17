@@ -77,9 +77,11 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_DEFAULT_PRICE_ID=price_...
 REVENUECAT_API_KEY=rc_...
 REVENUECAT_WEBHOOK_SECRET=rc_webhook_secret
+CLERK_ADMIN_USER_IDS=clerk_user_id_1,clerk_user_id_2
 
 # apps/mobile/.env
 EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+EXPO_PUBLIC_ADMIN_USER_IDS=clerk_user_id_1,clerk_user_id_2
 ```
 
 Ask your platform admin (or create the accounts yourself) for the Clerk publishable/secret keys, a Stripe test secret + webhook signing secret, and the RevenueCat API/webhook tokens. Without them, the new identity and billing endpoints will return 401/503 errors.
@@ -101,6 +103,8 @@ The mobile onboarding and poll actions depend on these Clerk settings. Whenever 
    - Enable Google + Apple in Clerk and point them at the same redirect URLs above.
 
 Without these entries, the social sign-in buttons or email modal will fail to complete, and the API will reject requests due to a missing audience claim.
+
+Set `CLERK_ADMIN_USER_IDS` (API) and `EXPO_PUBLIC_ADMIN_USER_IDS` (mobile) to the comma-separated **Clerk user IDs** (the ones shown in the Clerk dashboard / `useAuth().userId`). Everyone else will be blocked by the server-side guard.
 
 #### Native Apple sign-in flow
 

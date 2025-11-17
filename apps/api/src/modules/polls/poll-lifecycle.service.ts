@@ -16,7 +16,7 @@ export class PollLifecycleService {
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollLifecycleService');
-    this.autoCloseDays = this.resolveNumberEnv('POLL_AUTO_CLOSE_DAYS', 7);
+    this.autoCloseDays = this.resolveNumberEnv('POLL_AUTO_CLOSE_DAYS', 4);
   }
 
   private resolveNumberEnv(key: string, fallback: number): number {

@@ -180,19 +180,28 @@ const PushNotificationRegistrar: React.FC = () => {
 const AuthStateMonitor: React.FC = () => {
   const { isSignedIn } = useAuth();
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const resetOnboarding = useOnboardingStore((state) => state.resetOnboarding);
 
   React.useEffect(() => {
-    if (!isSignedIn && hasCompletedOnboarding) {
-      resetOnboarding();
-      if (navigationRef.isReady()) {
-        navigationRef.reset({
-          index: 0,
-          routes: [{ name: 'Onboarding' }],
-        });
-      }
+    if (!navigationRef.isReady()) {
+      return;
     }
-  }, [hasCompletedOnboarding, isSignedIn, resetOnboarding]);
+    if (isSignedIn) {
+      navigationRef.reset({
+        index: 0,
+        routes: [{ name: 'Tabs' }],
+      });
+      return;
+    }
+
+    navigationRef.reset({
+      index: 0,
+      routes: [
+        {
+          name: hasCompletedOnboarding ? 'SignIn' : 'Onboarding',
+        },
+      ],
+    });
+  }, [hasCompletedOnboarding, isSignedIn]);
 
   return null;
 };

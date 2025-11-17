@@ -9,7 +9,9 @@ import {
   OnDemandReason,
   PollOptionSource,
   PollOptionResolutionStatus,
+  PollTopicStatus,
   PollTopicType,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -19,6 +21,8 @@ import { PollsGateway } from './polls.gateway';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
+import { CreateManualPollDto } from './dto/create-manual-poll.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -33,6 +37,7 @@ export class PollsService {
     private readonly moderation: ModerationService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly gateway: PollsGateway,
+    private readonly notifications: NotificationsService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -67,6 +72,164 @@ export class PollsService {
       },
       take: 25,
     });
+  }
+
+  async createManualPoll(dto: CreateManualPollDto, userId: string) {
+    const question = this.sanitizer.sanitizeOrThrow(dto.question, {
+      maxLength: 500,
+    });
+    const rawDescription = dto.description
+      ? this.sanitizer.sanitizeOrThrow(dto.description, {
+          maxLength: 500,
+          allowEmpty: true,
+        })
+      : '';
+    const description = rawDescription.trim().length
+      ? rawDescription.trim()
+      : null;
+    const rawCity = dto.city
+      ? this.sanitizer.sanitizeOrThrow(dto.city, {
+          maxLength: 255,
+          allowEmpty: true,
+        })
+      : '';
+
+    let resolvedCity = rawCity.trim().length ? rawCity.trim() : null;
+    let resolvedRegion: string | null = null;
+    let resolvedCountry: string | null = null;
+    let targetDishId: string | null = null;
+    let targetRestaurantId: string | null = null;
+
+    if (dto.topicType === PollTopicType.best_dish) {
+      if (!dto.targetDishId) {
+        throw new BadRequestException('Select a dish for this poll');
+      }
+      const dish = await this.prisma.entity.findUnique({
+        where: { entityId: dto.targetDishId },
+        select: {
+          entityId: true,
+          type: true,
+          city: true,
+          region: true,
+          country: true,
+        },
+      });
+      if (!dish || dish.type !== EntityType.food) {
+        throw new BadRequestException('Invalid dish reference');
+      }
+      targetDishId = dish.entityId;
+      resolvedCity = resolvedCity ?? dish.city ?? null;
+      resolvedRegion = dish.region ?? null;
+      resolvedCountry = dish.country ?? null;
+    } else {
+      if (!dto.targetRestaurantId) {
+        throw new BadRequestException('Select a restaurant for this poll');
+      }
+      const restaurant = await this.prisma.entity.findUnique({
+        where: { entityId: dto.targetRestaurantId },
+        select: {
+          entityId: true,
+          type: true,
+          city: true,
+          region: true,
+          country: true,
+        },
+      });
+      if (!restaurant || restaurant.type !== EntityType.restaurant) {
+        throw new BadRequestException('Invalid restaurant reference');
+      }
+      targetRestaurantId = restaurant.entityId;
+      resolvedCity = resolvedCity ?? restaurant.city ?? null;
+      resolvedRegion = restaurant.region ?? null;
+      resolvedCountry = restaurant.country ?? null;
+    }
+
+    const now = new Date();
+    const allowUserAdditions =
+      dto.allowUserAdditions === undefined ? true : dto.allowUserAdditions;
+
+    const poll = await this.prisma.$transaction(async (tx) => {
+      const topic = await tx.pollTopic.create({
+        data: {
+          title: question,
+          description,
+          city: resolvedCity,
+          region: resolvedRegion,
+          country: resolvedCountry,
+          topicType: dto.topicType,
+          targetDishId,
+          targetRestaurantId,
+          status: PollTopicStatus.archived,
+          categoryEntityIds: targetDishId ? [targetDishId] : [],
+          seedEntityIds: [targetDishId, targetRestaurantId].filter(
+            (value): value is string => Boolean(value),
+          ),
+          metadata: {
+            source: 'manual_admin',
+            createdBy: userId,
+          },
+        },
+      });
+
+      const createdPoll = await tx.poll.create({
+        data: {
+          topicId: topic.topicId,
+          question,
+          city: resolvedCity,
+          region: resolvedRegion,
+          state: PollState.active,
+          scheduledFor: now,
+          launchedAt: now,
+          allowUserAdditions,
+          metadata: topic.metadata ?? Prisma.JsonNull,
+        },
+        include: {
+          options: {
+            orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
+          },
+          metrics: true,
+          topic: {
+            select: {
+              topicType: true,
+              targetDishId: true,
+              targetRestaurantId: true,
+              city: true,
+              title: true,
+              metadata: true,
+            },
+          },
+        },
+      });
+
+      const entitiesToUpdate = [targetDishId, targetRestaurantId].filter(
+        (value): value is string => Boolean(value),
+      );
+      if (entitiesToUpdate.length) {
+        await tx.entity.updateMany({
+          where: { entityId: { in: entitiesToUpdate } },
+          data: { lastPolledAt: now },
+        });
+      }
+
+      return createdPoll;
+    });
+
+    if (dto.notifySubscribers) {
+      await this.notifications.queuePollReleaseNotification({
+        city: resolvedCity ?? undefined,
+        pollIds: [poll.pollId],
+        scheduledFor: now,
+      });
+    }
+
+    this.gateway.emitPollUpdate(poll.pollId);
+    this.logger.info('Created manual poll', {
+      pollId: poll.pollId,
+      userId,
+      city: resolvedCity,
+    });
+
+    return poll;
   }
 
   async getPoll(pollId: string) {

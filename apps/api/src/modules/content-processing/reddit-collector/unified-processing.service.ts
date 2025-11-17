@@ -1016,7 +1016,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       return sanitized;
     }
 
-    if (type === 'food' || type === 'food_attribute') {
+    if (type !== 'restaurant') {
       return sanitized.toLowerCase();
     }
 

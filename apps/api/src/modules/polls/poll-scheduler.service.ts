@@ -22,6 +22,8 @@ interface SchedulerConfig {
   demandWindowDays: number;
   minImpressions: number;
   trendMinImpressions: number;
+  releaseDayOfWeek: number;
+  releaseHour: number;
 }
 
 @Injectable()
@@ -50,6 +52,8 @@ export class PollSchedulerService {
         'POLL_TREND_MIN_IMPRESSIONS',
         50,
       ),
+      releaseDayOfWeek: this.resolveWeekdayEnv('POLL_RELEASE_DAY_OF_WEEK', 1),
+      releaseHour: this.resolveHourEnv('POLL_RELEASE_HOUR', 9),
     };
   }
 
@@ -60,6 +64,24 @@ export class PollSchedulerService {
     }
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private resolveWeekdayEnv(key: string, fallback: number): number {
+    const raw = process.env[key];
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 6) {
+      return parsed;
+    }
+    return fallback;
+  }
+
+  private resolveHourEnv(key: string, fallback: number): number {
+    const raw = process.env[key];
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 23) {
+      return parsed;
+    }
+    return fallback;
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_1AM)
@@ -307,15 +329,33 @@ export class PollSchedulerService {
     return count > 0;
   }
 
-  @Cron('0 9 * * 4')
+  @Cron(CronExpression.EVERY_HOUR)
   async publishWeeklyPolls(): Promise<void> {
+    const now = new Date();
+    if (!this.shouldPublishPolls(now)) {
+      return;
+    }
+
+    const { start, end } = this.currentHourWindow(now);
+    const alreadyScheduled = await this.prisma.poll.count({
+      where: {
+        scheduledFor: {
+          gte: start,
+          lt: end,
+        },
+      },
+    });
+
+    if (alreadyScheduled > 0) {
+      return;
+    }
+
     const topics = await this.prisma.pollTopic.findMany({
       where: { status: PollTopicStatus.ready },
       orderBy: { createdAt: 'asc' },
       take: Math.max(this.config.topicLimit, 50),
     });
 
-    const now = new Date();
     const pollsByCity = new Map<string, string[]>();
     const cityCounts = new Map<string, number>();
     let published = 0;
@@ -376,6 +416,21 @@ export class PollSchedulerService {
     if (published > 0) {
       this.logger.info('Published weekly polls', { published });
     }
+  }
+
+  private shouldPublishPolls(now: Date): boolean {
+    return (
+      now.getDay() === this.config.releaseDayOfWeek &&
+      now.getHours() === this.config.releaseHour
+    );
+  }
+
+  private currentHourWindow(now: Date): { start: Date; end: Date } {
+    const start = new Date(now);
+    start.setMinutes(0, 0, 0);
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+    return { start, end };
   }
 
   private buildDishQuestion(dishName: string, locationKey: string): string {
