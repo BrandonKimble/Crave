@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  View,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Platform,
-  Linking,
-} from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth, useOAuth } from '@clerk/clerk-expo';
 import * as AppleAuthentication from 'expo-apple-authentication';

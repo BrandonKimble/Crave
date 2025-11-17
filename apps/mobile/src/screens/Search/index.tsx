@@ -211,8 +211,7 @@ const SearchScreen: React.FC = () => {
   }, [priceLevels]);
   const trimmedQuery = query.trim();
   const shouldRenderAutocompleteSection = trimmedQuery.length >= 2;
-  const shouldRenderSuggestionPanel =
-    shouldRenderAutocompleteSection || shouldShowRecentSection;
+  const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
   const shouldShowRecentSection = isSearchFocused;
   const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
@@ -1277,34 +1276,34 @@ const SearchScreen: React.FC = () => {
             });
           }}
         >
-            <View style={styles.promptCard}>
-              <BlurView
-                pointerEvents="none"
-                intensity={45}
-                tint="light"
-                style={StyleSheet.absoluteFillObject}
-              />
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  {
-                    backgroundColor: 'rgba(255, 255, 255, 1)',
-                    borderRadius: 16,
-                    opacity: searchBarSolidBackground,
-                  },
-                ]}
-              />
-              <View pointerEvents="none" style={styles.glassHighlightSmall} />
+          <View style={styles.promptCard}>
+            <BlurView
+              pointerEvents="none"
+              intensity={45}
+              tint="light"
+              style={StyleSheet.absoluteFillObject}
+            />
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  backgroundColor: 'rgba(255, 255, 255, 1)',
+                  borderRadius: 16,
+                  opacity: searchBarSolidBackground,
+                },
+              ]}
+            />
+            <View pointerEvents="none" style={styles.glassHighlightSmall} />
             <View style={styles.promptRow}>
-                <Animated.View
-                  style={{
-                    opacity: searchBarOpacity,
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    flex: 1,
-                  }}
-                >
+              <Animated.View
+                style={{
+                  opacity: searchBarOpacity,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  flex: 1,
+                }}
+              >
                 <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
                 <TextInput
                   ref={inputRef}
@@ -1341,9 +1340,8 @@ const SearchScreen: React.FC = () => {
                 )}
               </Animated.View>
             </View>
-            
 
-        {shouldRenderSuggestionPanel && (
+            {shouldRenderSuggestionPanel && (
               <Animated.View
                 style={[
                   styles.autocompletePanel,
@@ -1401,7 +1399,12 @@ const SearchScreen: React.FC = () => {
                   </View>
                 )}
                 {shouldShowRecentSection && (
-                  <View style={[styles.recentSection, !shouldRenderAutocompleteSection && styles.recentSectionFirst]}>
+                  <View
+                    style={[
+                      styles.recentSection,
+                      !shouldRenderAutocompleteSection && styles.recentSectionFirst,
+                    ]}
+                  >
                     <View style={styles.recentHeaderRow}>
                       <Text style={styles.recentHeaderText}>Recent searches</Text>
                       {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
@@ -1417,7 +1420,12 @@ const SearchScreen: React.FC = () => {
                           onPress={() => handleRecentSearchPress(term)}
                           style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
                         >
-                          <Feather name="clock" size={16} color="#6b7280" style={styles.recentIcon} />
+                          <Feather
+                            name="clock"
+                            size={16}
+                            color="#6b7280"
+                            style={styles.recentIcon}
+                          />
                           <Text style={styles.recentText}>{term}</Text>
                         </TouchableOpacity>
                       ))

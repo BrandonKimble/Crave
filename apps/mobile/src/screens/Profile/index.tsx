@@ -16,11 +16,7 @@ import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { logger } from '../../utils';
 import { notificationsService } from '../../services/notifications';
-import {
-  createManualPoll,
-  type ManualPollPayload,
-  type PollTopicType,
-} from '../../services/polls';
+import { createManualPoll, type ManualPollPayload, type PollTopicType } from '../../services/polls';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
 
 const ADMIN_USER_IDS = (process.env.EXPO_PUBLIC_ADMIN_USER_IDS || '')
@@ -33,10 +29,7 @@ const ProfileScreen: React.FC = () => {
   const { signOut, isSignedIn, userId } = useAuth();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
-  const isAdmin = React.useMemo(
-    () => Boolean(userId && ADMIN_USER_IDS.includes(userId)),
-    [userId]
-  );
+  const isAdmin = React.useMemo(() => Boolean(userId && ADMIN_USER_IDS.includes(userId)), [userId]);
 
   const [manualTopicType, setManualTopicType] = React.useState<PollTopicType>('best_dish');
   const [manualCity, setManualCity] = React.useState('');
@@ -52,7 +45,9 @@ const ProfileScreen: React.FC = () => {
   const [restaurantQuery, setRestaurantQuery] = React.useState('');
   const [restaurantSuggestions, setRestaurantSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [restaurantLoading, setRestaurantLoading] = React.useState(false);
-  const [restaurantSelection, setRestaurantSelection] = React.useState<AutocompleteMatch | null>(null);
+  const [restaurantSelection, setRestaurantSelection] = React.useState<AutocompleteMatch | null>(
+    null
+  );
 
   React.useEffect(() => {
     if (!isAdmin || manualTopicType !== 'best_dish') {
@@ -236,12 +231,9 @@ const ProfileScreen: React.FC = () => {
       description: manualDescription.trim() || undefined,
       allowUserAdditions: manualAllowAdditions,
       notifySubscribers: manualNotify,
-      targetDishId:
-        manualTopicType === 'best_dish' ? dishSelection?.entityId : undefined,
+      targetDishId: manualTopicType === 'best_dish' ? dishSelection?.entityId : undefined,
       targetRestaurantId:
-        manualTopicType === 'what_to_order'
-          ? restaurantSelection?.entityId
-          : undefined,
+        manualTopicType === 'what_to_order' ? restaurantSelection?.entityId : undefined,
     };
 
     setManualSubmitting(true);
@@ -372,7 +364,9 @@ const ProfileScreen: React.FC = () => {
                         onPress={() => handleDishSelect(match)}
                       >
                         <Text style={styles.suggestionPrimary}>{match.name}</Text>
-                        <Text style={styles.suggestionSecondary}>{match.entityType.replace(/_/g, ' ')}</Text>
+                        <Text style={styles.suggestionSecondary}>
+                          {match.entityType.replace(/_/g, ' ')}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -406,7 +400,9 @@ const ProfileScreen: React.FC = () => {
                         onPress={() => handleRestaurantSelect(match)}
                       >
                         <Text style={styles.suggestionPrimary}>{match.name}</Text>
-                        <Text style={styles.suggestionSecondary}>{match.entityType.replace(/_/g, ' ')}</Text>
+                        <Text style={styles.suggestionSecondary}>
+                          {match.entityType.replace(/_/g, ' ')}
+                        </Text>
                       </TouchableOpacity>
                     ))}
                   </View>
