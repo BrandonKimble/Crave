@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-export const OVERLAY_HORIZONTAL_PADDING = 15;
+export const OVERLAY_HORIZONTAL_PADDING = 10;
 export const OVERLAY_CORNER_RADIUS = 22;
 
 export const overlaySheetStyles = StyleSheet.create({
@@ -40,8 +40,8 @@ export const overlaySheetStyles = StyleSheet.create({
   },
   grabHandleWrapper: {
     alignItems: 'center',
-    paddingTop: 6,
-    paddingBottom: 2,
+    paddingTop: 4,
+    paddingBottom: 0,
     backgroundColor: '#ffffff',
   },
   grabHandle: {
@@ -54,10 +54,10 @@ export const overlaySheetStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 0,
+    marginTop: 2,
   },
   headerRowSpaced: {
-    marginBottom: 4,
+    marginBottom: 2,
   },
   headerDivider: {
     height: StyleSheet.hairlineWidth,

@@ -146,6 +146,10 @@ export class SearchQueryBuilder {
     if (minimumVotes !== null) {
       connectionConditions.push(Prisma.sql`c.total_upvotes >= ${minimumVotes}`);
       connectionConditionPreview.push(`c.total_upvotes >= ${minimumVotes}`);
+      connectionConditions.push(
+        Prisma.sql`rvt.total_upvotes >= ${minimumVotes}`,
+      );
+      connectionConditionPreview.push(`rvt.total_upvotes >= ${minimumVotes}`);
       minimumVotesApplied = true;
     }
 
@@ -184,6 +188,24 @@ filtered_restaurants AS (
   WHERE ${restaurantWherePreview}
 )`.trim();
 
+    const restaurantVoteTotalsCte = Prisma.sql`
+restaurant_vote_totals AS (
+  SELECT
+    c.restaurant_id,
+    SUM(c.total_upvotes) AS total_upvotes
+  FROM connections c
+  JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  GROUP BY c.restaurant_id
+)`;
+
+    const restaurantVoteTotalsPreview = `
+restaurant_vote_totals AS (
+  SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes
+  FROM connections c
+  JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  GROUP BY c.restaurant_id
+)`.trim();
+
     const filteredConnectionsCte = Prisma.sql`
 filtered_connections AS (
   SELECT
@@ -198,6 +220,7 @@ filtered_connections AS (
     c.last_mentioned_at,
     c.activity_level,
     c.food_quality_score,
+    rvt.total_upvotes AS restaurant_total_upvotes,
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     fr.restaurant_quality_score,
@@ -212,6 +235,7 @@ filtered_connections AS (
     f.aliases AS food_aliases
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   JOIN entities f ON f.entity_id = c.food_id
   WHERE ${connectionWhereSql}
 )`;
@@ -219,10 +243,12 @@ filtered_connections AS (
     const filteredConnectionsPreview = `
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
+         rvt.total_upvotes AS restaurant_total_upvotes,
          fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.latitude, fr.longitude, fr.address, fr.price_level, fr.price_level_updated_at, fr.restaurant_attributes, fr.restaurant_metadata,
          f.name AS food_name, f.aliases AS food_aliases
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   JOIN entities f ON f.entity_id = c.food_id
   WHERE ${connectionWherePreview}
 )`.trim();
@@ -232,11 +258,13 @@ filtered_connections AS (
     const withClause = Prisma.sql`
 WITH
   ${restaurantCte},
+  ${restaurantVoteTotalsCte},
   ${filteredConnectionsCte}
 `;
 
     const withPreview = `WITH
   ${restaurantCtePreview},
+  ${restaurantVoteTotalsPreview},
   ${filteredConnectionsPreview}`;
 
     const dataSql = Prisma.sql`
@@ -316,8 +344,9 @@ LIMIT ${pagination.take};`.trim();
 
   private extractMinimumVotes(filters: FilterClause[]): number | null {
     for (const filter of filters) {
-      if (filter.payload && this.isMinimumVotesPayload(filter.payload)) {
-        const value = Math.floor(filter.payload.minimumVotes ?? 0);
+      const payload = filter.payload;
+      if (this.isMinimumVotesPayload(payload)) {
+        const value = Math.floor(payload.minimumVotes ?? 0);
         if (Number.isFinite(value) && value > 0) {
           return value;
         }
@@ -327,9 +356,13 @@ LIMIT ${pagination.take};`.trim();
   }
 
   private isMinimumVotesPayload(
-    payload: Record<string, unknown>,
+    payload: unknown,
   ): payload is MinimumVotesPayload {
-    return typeof payload.minimumVotes === 'number';
+    if (!payload || typeof payload !== 'object') {
+      return false;
+    }
+    const candidate = payload as { minimumVotes?: unknown };
+    return typeof candidate.minimumVotes === 'number';
   }
 
   private isBoundsPayload(value: unknown): value is BoundsPayload {

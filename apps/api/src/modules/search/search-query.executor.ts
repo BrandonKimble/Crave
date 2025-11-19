@@ -68,6 +68,7 @@ interface QueryResultRow {
   last_mentioned_at: Date | null;
   activity_level: ActivityLevel;
   food_quality_score: Prisma.Decimal | number | string;
+  restaurant_total_upvotes: Prisma.Decimal | number | string;
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
@@ -173,12 +174,16 @@ export class SearchQueryExecutor {
         ? this.applyPerRestaurantLimit(paginatedConnections, perRestaurantLimit)
         : paginatedConnections;
 
+    const minimumVotes =
+      typeof request.minimumVotes === 'number' ? request.minimumVotes : null;
+
     const foodResults = this.mapFoodResults(limitedConnections);
     const restaurantResults =
       plan.format === 'dual_list'
         ? this.mapRestaurantResults(
             limitedConnections,
             plan.ranking.restaurantOrder,
+            minimumVotes,
           )
         : [];
 
@@ -336,6 +341,7 @@ export class SearchQueryExecutor {
   private mapRestaurantResults(
     connections: QueryResultRow[],
     restaurantOrder: string,
+    minimumVotes: number | null,
   ): RestaurantResultDto[] {
     const grouped = new Map<
       string,
@@ -354,6 +360,7 @@ export class SearchQueryExecutor {
         snippets: RestaurantFoodSnippetDto[];
         scoreSum: number;
         count: number;
+        totalUpvotes: number;
       }
     >();
 
@@ -366,11 +373,17 @@ export class SearchQueryExecutor {
         activityLevel: connection.activity_level,
       };
 
+      const restaurantTotalUpvotes = this.toNumber(
+        connection.restaurant_total_upvotes,
+      );
       const existing = grouped.get(connection.restaurant_id);
       if (existing) {
         existing.snippets.push(snippet);
         existing.scoreSum += snippet.qualityScore;
         existing.count += 1;
+        if (restaurantTotalUpvotes > existing.totalUpvotes) {
+          existing.totalUpvotes = restaurantTotalUpvotes;
+        }
         if (
           (existing.priceLevel === null || existing.priceLevel === undefined) &&
           connection.price_level != null
@@ -405,56 +418,62 @@ export class SearchQueryExecutor {
           snippets: [snippet],
           scoreSum: snippet.qualityScore,
           count: 1,
+          totalUpvotes: restaurantTotalUpvotes,
         });
       }
     }
 
-    const results = Array.from(grouped.values()).map(
-      ({
-        restaurantId,
-        name,
-        aliases,
-        restaurantQualityScore,
-        latitude,
-        longitude,
-        address,
-        priceLevel,
-        priceSymbol,
-        priceText,
-        priceLevelUpdatedAt,
-        snippets,
-        scoreSum,
-        count,
-      }) => ({
-        restaurantId,
-        restaurantName: name,
-        restaurantAliases: aliases || [],
-        contextualScore: count ? scoreSum / count : 0,
-        restaurantQualityScore:
-          restaurantQualityScore === null ||
-          restaurantQualityScore === undefined
-            ? null
-            : this.toNumber(restaurantQualityScore),
-        latitude:
-          latitude === null || latitude === undefined
-            ? null
-            : this.toNumber(latitude),
-        longitude:
-          longitude === null || longitude === undefined
-            ? null
-            : this.toNumber(longitude),
-        address: address ?? null,
-        priceLevel: priceLevel ?? null,
-        priceSymbol: priceSymbol ?? null,
-        priceText: priceText ?? null,
-        priceLevelUpdatedAt: priceLevelUpdatedAt
-          ? priceLevelUpdatedAt.toISOString()
-          : null,
-        topFood: snippets
-          .sort((a, b) => b.qualityScore - a.qualityScore)
-          .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
-      }),
-    );
+    const results = Array.from(grouped.values())
+      .filter(
+        (restaurant) =>
+          minimumVotes === null || restaurant.totalUpvotes >= minimumVotes,
+      )
+      .map(
+        ({
+          restaurantId,
+          name,
+          aliases,
+          restaurantQualityScore,
+          latitude,
+          longitude,
+          address,
+          priceLevel,
+          priceSymbol,
+          priceText,
+          priceLevelUpdatedAt,
+          snippets,
+          scoreSum,
+          count,
+        }) => ({
+          restaurantId,
+          restaurantName: name,
+          restaurantAliases: aliases || [],
+          contextualScore: count ? scoreSum / count : 0,
+          restaurantQualityScore:
+            restaurantQualityScore === null ||
+            restaurantQualityScore === undefined
+              ? null
+              : this.toNumber(restaurantQualityScore),
+          latitude:
+            latitude === null || latitude === undefined
+              ? null
+              : this.toNumber(latitude),
+          longitude:
+            longitude === null || longitude === undefined
+              ? null
+              : this.toNumber(longitude),
+          address: address ?? null,
+          priceLevel: priceLevel ?? null,
+          priceSymbol: priceSymbol ?? null,
+          priceText: priceText ?? null,
+          priceLevelUpdatedAt: priceLevelUpdatedAt
+            ? priceLevelUpdatedAt.toISOString()
+            : null,
+          topFood: snippets
+            .sort((a, b) => b.qualityScore - a.qualityScore)
+            .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
+        }),
+      );
 
     return this.sortRestaurants(results, restaurantOrder);
   }

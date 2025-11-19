@@ -35,7 +35,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import { colors as themeColors, shadows as shadowStyles } from '../../constants/theme';
-import { getPriceRangeLabel } from '../../constants/pricing';
+import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
 import {
   overlaySheetStyles,
   OVERLAY_HORIZONTAL_PADDING,
@@ -127,13 +127,6 @@ const PRICE_LEVEL_OPTIONS = [
   { label: '$70+', value: 4 },
 ] as const;
 
-const PRICE_RANGE_LABELS: Record<number, string> = {
-  1: '$5-20',
-  2: '$20-40',
-  3: '$40-70',
-  4: '$70+',
-};
-
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
   { label: 'Dishes', value: 'dishes' as const },
@@ -159,14 +152,6 @@ const normalizePriceFilter = (levels?: number[] | null): number[] => {
         .filter((level) => Number.isInteger(level) && level >= 0 && level <= 4)
     )
   ).sort((a, b) => a - b);
-};
-
-const getPriceRangeLabel = (priceLevel?: number | null): string | null => {
-  if (priceLevel === null || priceLevel === undefined) {
-    return null;
-  }
-  const rounded = Math.round(priceLevel);
-  return PRICE_RANGE_LABELS[rounded] ?? null;
 };
 
 MapboxGL.setTelemetryEnabled(false);
@@ -271,7 +256,7 @@ const SearchScreen: React.FC = () => {
       return 'Any price';
     }
     return priceLevels
-      .map((level) => PRICE_RANGE_LABELS[level] ?? null)
+      .map((level) => PRICE_LEVEL_RANGE_LABELS[level] ?? null)
       .filter((label): label is string => Boolean(label))
       .join(' · ');
   }, [priceLevels]);
@@ -2151,12 +2136,12 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   priceSelector: {
-    marginTop: 10,
+    marginTop: 0,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: TOGGLE_STACK_GAP,
     backgroundColor: '#ffffff',
   },
   priceSelectorHeader: {
@@ -2317,6 +2302,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 16,
     marginBottom: 0,
+    paddingLeft: 5,
   },
   openNowButton: {
     ...toggleBaseStyle,
@@ -2396,8 +2382,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   resultFiltersWrapper: {
+    marginTop: -3,
     marginBottom: 16,
-    gap: 12,
+    gap: TOGGLE_STACK_GAP,
   },
   resultItem: {
     paddingVertical: 12,

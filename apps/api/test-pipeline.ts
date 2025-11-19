@@ -327,7 +327,7 @@ async function testPipeline() {
               'connections',
               'entities',
               'on_demand',
-              'serach_log',
+              'search_log',
               'entity_priority',
               'subscriptions',
               'user_events',
