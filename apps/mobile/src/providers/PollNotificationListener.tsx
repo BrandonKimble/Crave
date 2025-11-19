@@ -12,15 +12,18 @@ const PollNotificationListener: React.FC = () => {
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pendingNavigation = React.useRef<{ city?: string; pollId?: string } | null>(null);
 
-  const navigateToPolls = React.useCallback((city?: string, pollId?: string) => {
-    if (!navigationRef.isReady()) {
-      pendingNavigation.current = { city, pollId };
-      return;
-    }
-    navigationRef.navigate('Main');
-    setOverlay('polls', { city, pollId });
-    pendingNavigation.current = null;
-  }, [setOverlay]);
+  const navigateToPolls = React.useCallback(
+    (city?: string, pollId?: string) => {
+      if (!navigationRef.isReady()) {
+        pendingNavigation.current = { city, pollId };
+        return;
+      }
+      navigationRef.navigate('Main');
+      setOverlay('polls', { city, pollId });
+      pendingNavigation.current = null;
+    },
+    [setOverlay]
+  );
 
   const handleResponse = React.useCallback(
     (response: Notifications.NotificationResponse) => {

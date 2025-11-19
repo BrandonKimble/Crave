@@ -11,7 +11,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  type PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
 import Reanimated, {
   runOnJS,
   useAnimatedGestureHandler,
@@ -151,10 +154,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
           context.startStateIndex < SHEET_STATES.length - 1
         ) {
           targetIndex = context.startStateIndex + 1;
-        } else if (
-          event.translationY < -SMALL_MOVEMENT_THRESHOLD &&
-          context.startStateIndex > 0
-        ) {
+        } else if (event.translationY < -SMALL_MOVEMENT_THRESHOLD && context.startStateIndex > 0) {
           targetIndex = context.startStateIndex - 1;
         } else {
           const distances = SHEET_STATES.map((state) => {

@@ -3,7 +3,10 @@ import { Dimensions, Linking, Pressable, ScrollView, Share, StyleSheet, View } f
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Feather } from '@expo/vector-icons';
-import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  type PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
 import Reanimated, {
   runOnJS,
   useAnimatedGestureHandler,
@@ -93,10 +96,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
     }
   }, [animateTo, data, visible]);
 
-  const panGesture = useAnimatedGestureHandler<
-    PanGestureHandlerGestureEvent,
-    SheetGestureContext
-  >(
+  const panGesture = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, SheetGestureContext>(
     {
       onStart: (_, context) => {
         context.startY = translateY.value;
@@ -229,7 +229,9 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
             </Text>
           </View>
           <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>{queryLabel ? `${queryLabel} score` : 'Query score'}</Text>
+            <Text style={styles.metricLabel}>
+              {queryLabel ? `${queryLabel} score` : 'Query score'}
+            </Text>
             <Text style={styles.metricValue}>{restaurant.contextualScore.toFixed(1)}</Text>
           </View>
         </View>

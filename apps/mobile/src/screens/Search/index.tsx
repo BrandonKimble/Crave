@@ -12,7 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  type PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
   interpolate,
@@ -38,9 +41,7 @@ import {
   OVERLAY_HORIZONTAL_PADDING,
   OVERLAY_CORNER_RADIUS,
 } from '../../overlays/overlaySheetStyles';
-import RestaurantOverlay, {
-  type RestaurantOverlayData,
-} from '../../overlays/RestaurantOverlay';
+import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import {
   SHEET_STATES,
   clampValue,
@@ -95,7 +96,6 @@ type OpenNowNotice = {
 type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
 };
-
 
 const isLngLatTuple = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&
@@ -570,11 +570,15 @@ const SearchScreen: React.FC = () => {
     [snapPoints, setPanelVisible, sheetStateShared, sheetTranslateY]
   );
 
-  const sheetPanGesture = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, SheetGestureContext>(
+  const sheetPanGesture = useAnimatedGestureHandler<
+    PanGestureHandlerGestureEvent,
+    SheetGestureContext
+  >(
     {
       onStart: (_, context) => {
         context.startY = sheetTranslateY.value;
-        const currentState = sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
+        const currentState =
+          sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
         const startIndex = SHEET_STATES.indexOf(currentState);
         context.startStateIndex = startIndex >= 0 ? startIndex : SHEET_STATES.length - 1;
       },
@@ -594,10 +598,7 @@ const SearchScreen: React.FC = () => {
           context.startStateIndex < SHEET_STATES.length - 1
         ) {
           targetIndex = context.startStateIndex + 1;
-        } else if (
-          event.translationY < -SMALL_MOVEMENT_THRESHOLD &&
-          context.startStateIndex > 0
-        ) {
+        } else if (event.translationY < -SMALL_MOVEMENT_THRESHOLD && context.startStateIndex > 0) {
           targetIndex = context.startStateIndex - 1;
         } else {
           const distances = SHEET_STATES.map((state) => {
@@ -757,8 +758,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       setIsSearchSessionActive(true);
       showPanel();
@@ -1308,225 +1309,235 @@ const SearchScreen: React.FC = () => {
     </View>
   );
 
-const renderDishCard = (item: FoodResult, index: number, options?: ResultCardOptions) => {
-  const isLiked = favoriteMap.has(item.foodId);
-  const qualityColor = getQualityColor(index, dishes.length);
-  const restaurantForDish = restaurantsById.get(item.restaurantId);
-  const handleShare = () => {
-    void Share.share({
-      message: `${item.foodName} at ${item.restaurantName} · View on Crave Search`,
-    }).catch(() => undefined);
-  };
-  const handleDishPress = () => {
-    if (restaurantForDish) {
-      openRestaurantProfile(restaurantForDish);
-    }
-  };
-  return (
-    <View key={item.connectionId} style={styles.resultItem}>
-      {options?.showFilters ? renderFiltersSection() : null}
-      <Pressable
-        style={styles.resultPressable}
-        onPress={handleDishPress}
-        accessibilityRole={restaurantForDish ? 'button' : undefined}
-        accessibilityLabel={restaurantForDish ? `View ${item.restaurantName}` : undefined}
-        disabled={!restaurantForDish}
-      >
-        <View style={styles.resultHeader}>
-          <View style={[styles.rankBadge, styles.rankBadgeLifted]}>
-            <Text variant="body" weight="bold" style={styles.rankBadgeText}>
-              {index + 1}
-            </Text>
-          </View>
-        <View style={styles.resultTitleContainer}>
-          <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
-            {item.foodName}
-          </Text>
-          <Text variant="body" weight="medium" style={[styles.textSlate600, styles.dishCardTitle]}>
-            {' '}
-            • {item.restaurantName}
-          </Text>
-        </View>
-        <View style={styles.resultActions}>
-          <Pressable
-            onPress={() => toggleFavorite(item.foodId)}
-            accessibilityRole="button"
-            accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
-            style={styles.likeButton}
-            hitSlop={8}
-          >
-            {isLiked ? (
-              <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
-            ) : (
-              <Feather name="heart" size={20} color="#cbd5e1" />
-            )}
-          </Pressable>
-          <Pressable
-            onPress={handleShare}
-            accessibilityRole="button"
-            accessibilityLabel="Share"
-            style={styles.shareButton}
-            hitSlop={8}
-          >
-            <Feather name="share-2" size={18} color="#cbd5e1" />
-          </Pressable>
-        </View>
-      </View>
-        <View style={styles.resultContent}>
-        <View style={styles.metricsContainer}>
-          <View style={styles.primaryMetric}>
-            <Text variant="caption" style={styles.primaryMetricLabel}>
-              Score
-            </Text>
-            <Text
-              variant="title"
-              weight="bold"
-              style={[styles.primaryMetricValue, { color: qualityColor }]}
-            >
-              {item.qualityScore.toFixed(1)}
-            </Text>
-          </View>
-          <View style={styles.secondaryMetrics}>
-            <View style={styles.secondaryMetric}>
-              <Text variant="caption" style={styles.secondaryMetricLabel}>
-                Poll Count
-              </Text>
-              <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                {item.mentionCount}
+  const renderDishCard = (item: FoodResult, index: number, options?: ResultCardOptions) => {
+    const isLiked = favoriteMap.has(item.foodId);
+    const qualityColor = getQualityColor(index, dishes.length);
+    const restaurantForDish = restaurantsById.get(item.restaurantId);
+    const handleShare = () => {
+      void Share.share({
+        message: `${item.foodName} at ${item.restaurantName} · View on Crave Search`,
+      }).catch(() => undefined);
+    };
+    const handleDishPress = () => {
+      if (restaurantForDish) {
+        openRestaurantProfile(restaurantForDish);
+      }
+    };
+    return (
+      <View key={item.connectionId} style={styles.resultItem}>
+        {options?.showFilters ? renderFiltersSection() : null}
+        <Pressable
+          style={styles.resultPressable}
+          onPress={handleDishPress}
+          accessibilityRole={restaurantForDish ? 'button' : undefined}
+          accessibilityLabel={restaurantForDish ? `View ${item.restaurantName}` : undefined}
+          disabled={!restaurantForDish}
+        >
+          <View style={styles.resultHeader}>
+            <View style={[styles.rankBadge, styles.rankBadgeLifted]}>
+              <Text variant="body" weight="bold" style={styles.rankBadgeText}>
+                {index + 1}
               </Text>
             </View>
-            <View style={styles.secondaryMetric}>
-              <Text variant="caption" style={styles.secondaryMetricLabel}>
-                Total Votes
-              </Text>
-              <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                {item.totalUpvotes}
-              </Text>
-            </View>
-          </View>
-        </View>
-        </View>
-      </Pressable>
-    </View>
-  );
-};
-
-const renderRestaurantCard = (
-  restaurant: RestaurantResult,
-  index: number,
-  options?: ResultCardOptions
-) => {
-  const isLiked = favoriteMap.has(restaurant.restaurantId);
-  const qualityColor = getQualityColor(index, restaurants.length);
-  const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
-  const handleShare = () => {
-    void Share.share({
-      message: `${restaurant.restaurantName} · View on Crave Search`,
-    }).catch(() => undefined);
-  };
-  return (
-    <View key={restaurant.restaurantId} style={styles.resultItem}>
-      {options?.showFilters ? renderFiltersSection() : null}
-      <Pressable
-        style={styles.resultPressable}
-        onPress={() => openRestaurantProfile(restaurant)}
-        accessibilityRole="button"
-        accessibilityLabel={`View ${restaurant.restaurantName}`}
-      >
-        <View style={styles.resultHeader}>
-          <View style={styles.rankBadge}>
-            <Text variant="body" weight="bold" style={styles.rankBadgeText}>
-              {index + 1}
-            </Text>
-          </View>
-        <View style={styles.resultTitleContainer}>
-          <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
-            {restaurant.restaurantName}
-          </Text>
-          {priceRangeLabel ? (
-            <Text style={styles.priceInlineLabel}> · {priceRangeLabel}</Text>
-          ) : null}
-        </View>
-          <View style={styles.resultActions}>
-            <Pressable
-              onPress={() => toggleFavorite(restaurant.restaurantId)}
-              accessibilityRole="button"
-              accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
-              style={styles.likeButton}
-              hitSlop={8}
-            >
-              {isLiked ? (
-                <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
-              ) : (
-                <Feather name="heart" size={20} color="#cbd5e1" />
-              )}
-            </Pressable>
-            <Pressable
-              onPress={handleShare}
-              accessibilityRole="button"
-              accessibilityLabel="Share"
-              style={styles.shareButton}
-              hitSlop={8}
-            >
-              <Feather name="share-2" size={18} color="#cbd5e1" />
-            </Pressable>
-          </View>
-        </View>
-        <View style={styles.resultContent}>
-          <View style={styles.metricsContainer}>
-            <View style={styles.primaryMetric}>
-              <Text variant="caption" style={styles.primaryMetricLabel}>
-                Context
+            <View style={styles.resultTitleContainer}>
+              <Text
+                variant="body"
+                weight="bold"
+                style={[styles.textSlate900, styles.dishCardTitle]}
+              >
+                {item.foodName}
               </Text>
               <Text
-                variant="title"
-                weight="bold"
-                style={[styles.primaryMetricValue, { color: qualityColor }]}
+                variant="body"
+                weight="medium"
+                style={[styles.textSlate600, styles.dishCardTitle]}
               >
-                {restaurant.contextualScore.toFixed(1)}
+                {' '}
+                • {item.restaurantName}
               </Text>
             </View>
-            {restaurant.restaurantQualityScore !== null &&
-            restaurant.restaurantQualityScore !== undefined ? (
+            <View style={styles.resultActions}>
+              <Pressable
+                onPress={() => toggleFavorite(item.foodId)}
+                accessibilityRole="button"
+                accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+                style={styles.likeButton}
+                hitSlop={8}
+              >
+                {isLiked ? (
+                  <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
+                ) : (
+                  <Feather name="heart" size={20} color="#cbd5e1" />
+                )}
+              </Pressable>
+              <Pressable
+                onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel="Share"
+                style={styles.shareButton}
+                hitSlop={8}
+              >
+                <Feather name="share-2" size={18} color="#cbd5e1" />
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.resultContent}>
+            <View style={styles.metricsContainer}>
+              <View style={styles.primaryMetric}>
+                <Text variant="caption" style={styles.primaryMetricLabel}>
+                  Score
+                </Text>
+                <Text
+                  variant="title"
+                  weight="bold"
+                  style={[styles.primaryMetricValue, { color: qualityColor }]}
+                >
+                  {item.qualityScore.toFixed(1)}
+                </Text>
+              </View>
               <View style={styles.secondaryMetrics}>
                 <View style={styles.secondaryMetric}>
                   <Text variant="caption" style={styles.secondaryMetricLabel}>
-                    Quality
+                    Poll Count
                   </Text>
                   <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {restaurant.restaurantQualityScore.toFixed(1)}
+                    {item.mentionCount}
+                  </Text>
+                </View>
+                <View style={styles.secondaryMetric}>
+                  <Text variant="caption" style={styles.secondaryMetricLabel}>
+                    Total Votes
+                  </Text>
+                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                    {item.totalUpvotes}
                   </Text>
                 </View>
               </View>
+            </View>
+          </View>
+        </Pressable>
+      </View>
+    );
+  };
+
+  const renderRestaurantCard = (
+    restaurant: RestaurantResult,
+    index: number,
+    options?: ResultCardOptions
+  ) => {
+    const isLiked = favoriteMap.has(restaurant.restaurantId);
+    const qualityColor = getQualityColor(index, restaurants.length);
+    const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+    const handleShare = () => {
+      void Share.share({
+        message: `${restaurant.restaurantName} · View on Crave Search`,
+      }).catch(() => undefined);
+    };
+    return (
+      <View key={restaurant.restaurantId} style={styles.resultItem}>
+        {options?.showFilters ? renderFiltersSection() : null}
+        <Pressable
+          style={styles.resultPressable}
+          onPress={() => openRestaurantProfile(restaurant)}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${restaurant.restaurantName}`}
+        >
+          <View style={styles.resultHeader}>
+            <View style={styles.rankBadge}>
+              <Text variant="body" weight="bold" style={styles.rankBadgeText}>
+                {index + 1}
+              </Text>
+            </View>
+            <View style={styles.resultTitleContainer}>
+              <Text
+                variant="subtitle"
+                weight="bold"
+                style={[styles.textSlate900, styles.dishTitle]}
+              >
+                {restaurant.restaurantName}
+              </Text>
+              {priceRangeLabel ? (
+                <Text style={styles.priceInlineLabel}> · {priceRangeLabel}</Text>
+              ) : null}
+            </View>
+            <View style={styles.resultActions}>
+              <Pressable
+                onPress={() => toggleFavorite(restaurant.restaurantId)}
+                accessibilityRole="button"
+                accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+                style={styles.likeButton}
+                hitSlop={8}
+              >
+                {isLiked ? (
+                  <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
+                ) : (
+                  <Feather name="heart" size={20} color="#cbd5e1" />
+                )}
+              </Pressable>
+              <Pressable
+                onPress={handleShare}
+                accessibilityRole="button"
+                accessibilityLabel="Share"
+                style={styles.shareButton}
+                hitSlop={8}
+              >
+                <Feather name="share-2" size={18} color="#cbd5e1" />
+              </Pressable>
+            </View>
+          </View>
+          <View style={styles.resultContent}>
+            <View style={styles.metricsContainer}>
+              <View style={styles.primaryMetric}>
+                <Text variant="caption" style={styles.primaryMetricLabel}>
+                  Context
+                </Text>
+                <Text
+                  variant="title"
+                  weight="bold"
+                  style={[styles.primaryMetricValue, { color: qualityColor }]}
+                >
+                  {restaurant.contextualScore.toFixed(1)}
+                </Text>
+              </View>
+              {restaurant.restaurantQualityScore !== null &&
+              restaurant.restaurantQualityScore !== undefined ? (
+                <View style={styles.secondaryMetrics}>
+                  <View style={styles.secondaryMetric}>
+                    <Text variant="caption" style={styles.secondaryMetricLabel}>
+                      Quality
+                    </Text>
+                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                      {restaurant.restaurantQualityScore.toFixed(1)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+            </View>
+            {restaurant.topFood?.length ? (
+              <View style={styles.topFoodSection}>
+                {restaurant.topFood.map((food) => (
+                  <Text
+                    key={food.connectionId}
+                    variant="caption"
+                    style={[styles.textSlate700, styles.topFoodText]}
+                  >
+                    • {food.foodName} ({food.qualityScore.toFixed(1)})
+                  </Text>
+                ))}
+              </View>
             ) : null}
           </View>
-        {restaurant.topFood?.length ? (
-          <View style={styles.topFoodSection}>
-            {restaurant.topFood.map((food) => (
-              <Text
-                key={food.connectionId}
-                variant="caption"
-                style={[styles.textSlate700, styles.topFoodText]}
-              >
-                • {food.foodName} ({food.qualityScore.toFixed(1)})
-              </Text>
-            ))}
-          </View>
-        ) : null}
+        </Pressable>
       </View>
-      </Pressable>
-    </View>
-  );
-};
+    );
+  };
 
   const renderDishResults = () => {
     if (!dishes.length) {
       return <EmptyState message="No dishes found. Try adjusting your search." />;
     }
 
-    return dishes.map((dish, index) =>
-      renderDishCard(dish, index, { showFilters: index === 0 })
-    );
+    return dishes.map((dish, index) => renderDishCard(dish, index, { showFilters: index === 0 }));
   };
 
   const renderRestaurantResults = () => {
@@ -1580,294 +1591,306 @@ const renderRestaurantCard = (
       </MapboxGL.MapView>
 
       {isSearchOverlay && (
-        <SafeAreaView style={styles.overlay} pointerEvents="box-none" edges={['top', 'left', 'right']}>
-        <View
-          pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
-          style={styles.searchContainer}
-          onLayout={({ nativeEvent: { layout } }) => {
-            setSearchLayout((prev) => {
-              if (prev.top === layout.y && prev.height === layout.height) {
-                return prev;
-              }
-
-              return { top: layout.y, height: layout.height };
-            });
-          }}
+        <SafeAreaView
+          style={styles.overlay}
+          pointerEvents="box-none"
+          edges={['top', 'left', 'right']}
         >
-          <View style={styles.promptCardTopShadow}>
-            <View style={styles.promptCardWrapper}>
-              <View style={styles.promptCard}>
+          <View
+            pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
+            style={styles.searchContainer}
+            onLayout={({ nativeEvent: { layout } }) => {
+              setSearchLayout((prev) => {
+                if (prev.top === layout.y && prev.height === layout.height) {
+                  return prev;
+                }
+
+                return { top: layout.y, height: layout.height };
+              });
+            }}
+          >
+            <View style={styles.promptCardTopShadow}>
+              <View style={styles.promptCardWrapper}>
+                <View style={styles.promptCard}>
+                  <BlurView
+                    pointerEvents="none"
+                    intensity={45}
+                    tint="light"
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[
+                      StyleSheet.absoluteFillObject,
+                      {
+                        backgroundColor: 'rgba(255, 255, 255, 1)',
+                        borderRadius: 16,
+                      },
+                      searchBarSolidAnimatedStyle,
+                    ]}
+                  />
+                  <View pointerEvents="none" style={styles.glassHighlightSmall} />
+                  <Pressable style={styles.promptRow} onPress={focusSearchInput}>
+                    <Reanimated.View
+                      style={[
+                        {
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          flex: 1,
+                        },
+                        searchBarInputAnimatedStyle,
+                      ]}
+                    >
+                      <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+                      <TextInput
+                        ref={inputRef}
+                        value={query}
+                        onChangeText={handleQueryChange}
+                        placeholder="What are you craving?"
+                        placeholderTextColor="#6b7280"
+                        style={styles.promptInput}
+                        returnKeyType="search"
+                        onSubmitEditing={handleSubmit}
+                        onFocus={handleSearchFocus}
+                        onBlur={handleSearchBlur}
+                        editable={!isLoading}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        clearButtonMode="never"
+                      />
+                    </Reanimated.View>
+                    <Reanimated.View
+                      style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
+                    >
+                      {isLoading ? (
+                        <ActivityIndicator size="small" color="#FB923C" />
+                      ) : query.length > 0 ? (
+                        <Pressable
+                          onPress={handleClear}
+                          accessibilityRole="button"
+                          accessibilityLabel="Clear search"
+                          style={styles.trailingButton}
+                          hitSlop={8}
+                        >
+                          <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
+                        </Pressable>
+                      ) : (
+                        <View style={styles.trailingPlaceholder} />
+                      )}
+                    </Reanimated.View>
+                  </Pressable>
+
+                  {shouldRenderSuggestionPanel && (
+                    <Animated.View
+                      style={[
+                        styles.autocompletePanel,
+                        {
+                          opacity: searchContainerAnim,
+                          transform: [
+                            {
+                              translateY: searchContainerAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [-6, 0],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    >
+                      {shouldRenderAutocompleteSection && (
+                        <View style={styles.autocompleteSection}>
+                          {isAutocompleteLoading && (
+                            <View style={styles.autocompleteLoadingRow}>
+                              <ActivityIndicator size="small" color="#6366f1" />
+                              <Text style={styles.autocompleteLoadingText}>
+                                Looking for matches…
+                              </Text>
+                            </View>
+                          )}
+                          {!isAutocompleteLoading && suggestions.length === 0 ? (
+                            <Text style={styles.autocompleteEmptyText}>
+                              Keep typing to add a dish or spot
+                            </Text>
+                          ) : (
+                            suggestions.map((match, index) => {
+                              const secondaryLabel =
+                                match.matchType === 'query'
+                                  ? 'Recent search'
+                                  : match.entityType.replace(/_/g, ' ');
+                              const itemKey = match.entityId
+                                ? `${match.entityId}-${index}`
+                                : `${match.name}-${index}`;
+                              return (
+                                <TouchableOpacity
+                                  key={itemKey}
+                                  onPress={() => handleSuggestionPress(match)}
+                                  style={[
+                                    styles.autocompleteItem,
+                                    index === suggestions.length - 1 && !shouldShowRecentSection
+                                      ? styles.autocompleteItemLast
+                                      : null,
+                                  ]}
+                                >
+                                  <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                                  <Text style={styles.autocompleteSecondaryText}>
+                                    {secondaryLabel}
+                                  </Text>
+                                </TouchableOpacity>
+                              );
+                            })
+                          )}
+                        </View>
+                      )}
+                      {shouldShowRecentSection && (
+                        <View
+                          style={[
+                            styles.recentSection,
+                            !shouldRenderAutocompleteSection && styles.recentSectionFirst,
+                          ]}
+                        >
+                          <View style={styles.recentHeaderRow}>
+                            <Text style={styles.recentHeaderText}>Recent searches</Text>
+                            {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+                          </View>
+                          {!isRecentLoading && !hasRecentSearches ? (
+                            <Text style={styles.autocompleteEmptyText}>
+                              Start exploring to build your history
+                            </Text>
+                          ) : (
+                            recentSearches.map((term, index) => (
+                              <TouchableOpacity
+                                key={`${term}-${index}`}
+                                onPress={() => handleRecentSearchPress(term)}
+                                style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
+                              >
+                                <Feather
+                                  name="clock"
+                                  size={16}
+                                  color="#6b7280"
+                                  style={styles.recentIcon}
+                                />
+                                <Text style={styles.recentText}>{term}</Text>
+                              </TouchableOpacity>
+                            ))
+                          )}
+                        </View>
+                      )}
+                    </Animated.View>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+          {shouldRenderSheet ? (
+            <>
+              <Reanimated.View
+                pointerEvents="none"
+                style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
+              />
+              <Reanimated.View
+                style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
+                pointerEvents={panelVisible ? 'auto' : 'none'}
+              >
+                {/* BlurView must remain the first child inside this absolute container.
+                  Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
                 <BlurView
                   pointerEvents="none"
                   intensity={45}
                   tint="light"
                   style={StyleSheet.absoluteFillObject}
                 />
-                <Reanimated.View
-                  pointerEvents="none"
-                  style={[
-                    StyleSheet.absoluteFillObject,
-                    {
-                      backgroundColor: 'rgba(255, 255, 255, 1)',
-                      borderRadius: 16,
-                    },
-                    searchBarSolidAnimatedStyle,
-                  ]}
-                />
-                <View pointerEvents="none" style={styles.glassHighlightSmall} />
-                <Pressable style={styles.promptRow} onPress={focusSearchInput}>
-                  <Reanimated.View
-                    style={[
-                      {
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        flex: 1,
-                      },
-                      searchBarInputAnimatedStyle,
-                    ]}
-                  >
-                    <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-                    <TextInput
-                      ref={inputRef}
-                      value={query}
-                      onChangeText={handleQueryChange}
-                      placeholder="What are you craving?"
-                      placeholderTextColor="#6b7280"
-                      style={styles.promptInput}
-                      returnKeyType="search"
-                      onSubmitEditing={handleSubmit}
-                      onFocus={handleSearchFocus}
-                      onBlur={handleSearchBlur}
-                      editable={!isLoading}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      clearButtonMode="never"
-                    />
-                  </Reanimated.View>
-                  <Reanimated.View style={[styles.trailingContainer, searchBarInputAnimatedStyle]}>
-                    {isLoading ? (
-                      <ActivityIndicator size="small" color="#FB923C" />
-                    ) : query.length > 0 ? (
+                <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
+                <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+                <PanGestureHandler onGestureEvent={sheetPanGesture}>
+                  <Reanimated.View style={overlaySheetStyles.header}>
+                    <View style={overlaySheetStyles.grabHandleWrapper}>
                       <Pressable
-                        onPress={handleClear}
+                        onPress={hidePanel}
                         accessibilityRole="button"
-                        accessibilityLabel="Clear search"
-                        style={styles.trailingButton}
+                        accessibilityLabel="Hide results"
+                      >
+                        <View style={overlaySheetStyles.grabHandle} />
+                      </Pressable>
+                    </View>
+                    <View
+                      style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+                    >
+                      <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
+                        {submittedQuery || 'Results'}
+                      </Text>
+                      <Pressable
+                        onPress={handleCloseResults}
+                        accessibilityRole="button"
+                        accessibilityLabel="Close results"
+                        style={overlaySheetStyles.closeButton}
                         hitSlop={8}
                       >
                         <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
                       </Pressable>
-                    ) : (
-                      <View style={styles.trailingPlaceholder} />
-                    )}
-                  </Reanimated.View>
-                </Pressable>
-
-                {shouldRenderSuggestionPanel && (
-                  <Animated.View
-                    style={[
-                      styles.autocompletePanel,
-                      {
-                        opacity: searchContainerAnim,
-                        transform: [
-                          {
-                            translateY: searchContainerAnim.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [-6, 0],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  >
-                    {shouldRenderAutocompleteSection && (
-                      <View style={styles.autocompleteSection}>
-                        {isAutocompleteLoading && (
-                          <View style={styles.autocompleteLoadingRow}>
-                            <ActivityIndicator size="small" color="#6366f1" />
-                            <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
-                          </View>
-                        )}
-                        {!isAutocompleteLoading && suggestions.length === 0 ? (
-                          <Text style={styles.autocompleteEmptyText}>
-                            Keep typing to add a dish or spot
-                          </Text>
-                        ) : (
-                          suggestions.map((match, index) => {
-                            const secondaryLabel =
-                              match.matchType === 'query'
-                                ? 'Recent search'
-                                : match.entityType.replace(/_/g, ' ');
-                            const itemKey = match.entityId
-                              ? `${match.entityId}-${index}`
-                              : `${match.name}-${index}`;
-                            return (
-                              <TouchableOpacity
-                                key={itemKey}
-                                onPress={() => handleSuggestionPress(match)}
-                                style={[
-                                  styles.autocompleteItem,
-                                  index === suggestions.length - 1 && !shouldShowRecentSection
-                                    ? styles.autocompleteItemLast
-                                    : null,
-                                ]}
-                              >
-                                <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                                <Text style={styles.autocompleteSecondaryText}>
-                                  {secondaryLabel}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          })
-                        )}
-                      </View>
-                    )}
-                    {shouldShowRecentSection && (
+                    </View>
+                    <Animated.View
+                      style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
+                    />
+                    {openNowNotice ? (
                       <View
                         style={[
-                          styles.recentSection,
-                          !shouldRenderAutocompleteSection && styles.recentSectionFirst,
+                          styles.openNowNotice,
+                          openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
+                          openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
+                          openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
                         ]}
                       >
-                        <View style={styles.recentHeaderRow}>
-                          <Text style={styles.recentHeaderText}>Recent searches</Text>
-                          {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
-                        </View>
-                        {!isRecentLoading && !hasRecentSearches ? (
-                          <Text style={styles.autocompleteEmptyText}>
-                            Start exploring to build your history
-                          </Text>
-                        ) : (
-                          recentSearches.map((term, index) => (
-                            <TouchableOpacity
-                              key={`${term}-${index}`}
-                              onPress={() => handleRecentSearchPress(term)}
-                              style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-                            >
-                              <Feather
-                                name="clock"
-                                size={16}
-                                color="#6b7280"
-                                style={styles.recentIcon}
-                              />
-                              <Text style={styles.recentText}>{term}</Text>
-                            </TouchableOpacity>
-                          ))
-                        )}
+                        <Text variant="caption" style={styles.openNowNoticeText}>
+                          {openNowNotice.message}
+                        </Text>
                       </View>
-                    )}
-                  </Animated.View>
-                )}
-              </View>
-            </View>
-          </View>
-        </View>
-        {shouldRenderSheet ? (
-          <>
-            <Reanimated.View
-              pointerEvents="none"
-              style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
-            />
-            <Reanimated.View
-              style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
-              pointerEvents={panelVisible ? 'auto' : 'none'}
-            >
-              {/* BlurView must remain the first child inside this absolute container.
-                  Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
-              <BlurView
-                pointerEvents="none"
-                intensity={45}
-                tint="light"
-                style={StyleSheet.absoluteFillObject}
-              />
-              <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-              <View pointerEvents="none" style={overlaySheetStyles.highlight} />
-              <PanGestureHandler onGestureEvent={sheetPanGesture}>
-                <Reanimated.View style={overlaySheetStyles.header}>
-                  <View style={overlaySheetStyles.grabHandleWrapper}>
-                    <Pressable
-                      onPress={hidePanel}
-                      accessibilityRole="button"
-                      accessibilityLabel="Hide results"
-                    >
-                      <View style={overlaySheetStyles.grabHandle} />
-                    </Pressable>
-                  </View>
-                  <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
-                    <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
-                      {submittedQuery || 'Results'}
-                    </Text>
-                    <Pressable
-                      onPress={handleCloseResults}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close results"
-                      style={overlaySheetStyles.closeButton}
-                      hitSlop={8}
-                    >
-                      <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
-                    </Pressable>
-                  </View>
-                  <Animated.View
-                    style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
-                  />
-                  {openNowNotice ? (
-                    <View
-                      style={[
-                        styles.openNowNotice,
-                        openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
-                        openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
-                        openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
-                      ]}
-                    >
-                      <Text variant="caption" style={styles.openNowNoticeText}>
-                        {openNowNotice.message}
-                      </Text>
-                    </View>
-                  ) : null}
-                </Reanimated.View>
-              </PanGestureHandler>
+                    ) : null}
+                  </Reanimated.View>
+                </PanGestureHandler>
 
-              {error ? (
-                <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-                  <Text variant="caption" style={styles.textRed600}>
-                    {error}
-                  </Text>
-                </View>
-              ) : isLoading && !results ? (
-                <View
-                  style={[styles.resultsCard, styles.resultsCardSurface, styles.resultsCardCentered]}
-                >
-                  <ActivityIndicator size="large" color="#FB923C" />
-                  <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
-                    Looking for the best matches...
-                  </Text>
-                </View>
-              ) : (
-                <View style={styles.resultsCard}>
-                  <Animated.ScrollView
-                    style={styles.resultsScroll}
-                    contentContainerStyle={styles.resultsScrollContent}
-                    showsVerticalScrollIndicator={false}
-                    keyboardShouldPersistTaps="handled"
-                    onScroll={handleResultsScroll}
-                    scrollEventThrottle={16}
+                {error ? (
+                  <View style={[styles.resultsCard, styles.resultsCardSurface]}>
+                    <Text variant="caption" style={styles.textRed600}>
+                      {error}
+                    </Text>
+                  </View>
+                ) : isLoading && !results ? (
+                  <View
+                    style={[
+                      styles.resultsCard,
+                      styles.resultsCardSurface,
+                      styles.resultsCardCentered,
+                    ]}
                   >
-                    <View style={styles.resultsInner}>
-                      {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
-                    </View>
-                  </Animated.ScrollView>
-                </View>
-              )}
-            </Reanimated.View>
-          </>
-        ) : null}
-      </SafeAreaView>
+                    <ActivityIndicator size="large" color="#FB923C" />
+                    <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
+                      Looking for the best matches...
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.resultsCard}>
+                    <Animated.ScrollView
+                      style={styles.resultsScroll}
+                      contentContainerStyle={styles.resultsScrollContent}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      onScroll={handleResultsScroll}
+                      scrollEventThrottle={16}
+                    >
+                      <View style={styles.resultsInner}>
+                        {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
+                      </View>
+                    </Animated.ScrollView>
+                  </View>
+                )}
+              </Reanimated.View>
+            </>
+          ) : null}
+        </SafeAreaView>
       )}
       {!shouldHideBottomNav && (
         <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-          <View
-            style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_VERTICAL_PADDING }]}
-          >
+          <View style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_VERTICAL_PADDING }]}>
             {navItems.map((item) => {
               const active = activeOverlay === item.key;
               return (

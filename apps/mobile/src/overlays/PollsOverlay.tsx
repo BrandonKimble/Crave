@@ -14,7 +14,10 @@ import {
 import { BlurView } from 'expo-blur';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  type PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
 import Reanimated, {
   runOnJS,
   useAnimatedGestureHandler,
@@ -505,10 +508,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
           context.startStateIndex < stateOrder.length - 1
         ) {
           targetIndex = context.startStateIndex + 1;
-        } else if (
-          event.translationY < -SMALL_MOVEMENT_THRESHOLD &&
-          context.startStateIndex > 0
-        ) {
+        } else if (event.translationY < -SMALL_MOVEMENT_THRESHOLD && context.startStateIndex > 0) {
           targetIndex = context.startStateIndex - 1;
         } else {
           const distances = stateOrder.map((state) => {
@@ -591,10 +591,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
       </PanGestureHandler>
       <ScrollView
         style={styles.scrollContainer}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: contentBottomPadding },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
         nestedScrollEnabled
         keyboardShouldPersistTaps="handled"
       >

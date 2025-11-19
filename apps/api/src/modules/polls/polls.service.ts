@@ -520,17 +520,13 @@ export class PollsService {
             lastVoteAt: now,
           },
         });
-        await this.updatePollMetrics(
-          tx,
-          pollId,
-          {
-            totalVotes: { decrement: 1 },
-            ...(remainingVotes === 0
-              ? { totalParticipants: { decrement: 1 } }
-              : {}),
-            lastAggregatedAt: now,
-          },
-        );
+        await this.updatePollMetrics(tx, pollId, {
+          totalVotes: { decrement: 1 },
+          ...(remainingVotes === 0
+            ? { totalParticipants: { decrement: 1 } }
+            : {}),
+          lastAggregatedAt: now,
+        });
         this.gateway.emitPollUpdate(pollId);
         return updatedOption;
       }

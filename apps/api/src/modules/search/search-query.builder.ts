@@ -144,9 +144,7 @@ export class SearchQueryBuilder {
     }
 
     if (minimumVotes !== null) {
-      connectionConditions.push(
-        Prisma.sql`c.total_upvotes >= ${minimumVotes}`,
-      );
+      connectionConditions.push(Prisma.sql`c.total_upvotes >= ${minimumVotes}`);
       connectionConditionPreview.push(`c.total_upvotes >= ${minimumVotes}`);
       minimumVotesApplied = true;
     }
