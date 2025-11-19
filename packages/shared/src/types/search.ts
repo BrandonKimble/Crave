@@ -80,6 +80,7 @@ export interface SearchResponseMetadata {
   openNowUnsupportedRestaurants: number;
   openNowFilteredOut: number;
   priceFilterApplied?: boolean;
+  minimumVotesApplied?: boolean;
   page: number;
   pageSize: number;
   perRestaurantLimit: number;
@@ -121,6 +122,7 @@ export interface NaturalSearchRequest {
   bounds?: MapBounds;
   openNow?: boolean;
   priceLevels?: number[];
+  minimumVotes?: number;
   pagination?: Pagination;
   includeSqlPreview?: boolean;
   userLocation?: Coordinate;

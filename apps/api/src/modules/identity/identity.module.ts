@@ -6,6 +6,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { ClerkAuthService } from './auth/clerk-auth.service';
 import { ClerkAuthGuard } from './auth/clerk-auth.guard';
 import { AdminGuard } from './auth/admin.guard';
+import { OptionalClerkAuthGuard } from './auth/optional-clerk-auth.guard';
 import { NativeAppleAuthService } from './auth/native-apple-auth.service';
 import { AuthController } from './auth.controller';
 import { UserController } from './user.controller';
@@ -18,6 +19,7 @@ import { UserService } from './user.service';
     ClerkAuthService,
     ClerkAuthGuard,
     AdminGuard,
+    OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
   ],
@@ -25,6 +27,7 @@ import { UserService } from './user.service';
     ClerkAuthService,
     ClerkAuthGuard,
     AdminGuard,
+    OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
   ],

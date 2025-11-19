@@ -82,6 +82,8 @@ export class SearchService {
     this.sanitizeEntityGroups(request);
     const presence = this.getEntityPresenceSummary(request);
     const priceLevels = this.normalizePriceLevels(request.priceLevels);
+    const minimumVotes = this.normalizeMinimumVotes(request.minimumVotes);
+    request.minimumVotes = minimumVotes ?? undefined;
 
     const format: QueryPlan['format'] =
       presence.restaurants > 0 &&
@@ -92,7 +94,10 @@ export class SearchService {
         : 'dual_list';
 
     const restaurantFilters = this.buildRestaurantFilters(request, priceLevels);
-    const connectionFilters = this.buildConnectionFilters(request);
+    const connectionFilters = this.buildConnectionFilters(
+      request,
+      minimumVotes,
+    );
 
     const plan: QueryPlan = {
       format,
@@ -188,6 +193,7 @@ export class SearchService {
           execution.metadata.openNowUnsupportedRestaurants,
         openNowFilteredOut: execution.metadata.openNowFilteredOut,
         priceFilterApplied: execution.metadata.priceFilterApplied,
+        minimumVotesApplied: execution.metadata.minimumVotesApplied,
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
@@ -377,6 +383,7 @@ export class SearchService {
 
   private buildConnectionFilters(
     request: SearchQueryRequestDto,
+    minimumVotes: number | null,
   ): FilterClause[] {
     const filters: FilterClause[] = [];
     const foodEntityIds = this.collectEntityIds(request.entities.food);
@@ -407,7 +414,25 @@ export class SearchService {
       }
     }
 
+    if (minimumVotes !== null) {
+      filters.push({
+        scope: 'connection',
+        description: `Require at least ${minimumVotes} total votes`,
+        entityType: EntityScope.FOOD,
+        entityIds: [],
+        payload: { minimumVotes },
+      });
+    }
+
     return filters;
+  }
+
+  private normalizeMinimumVotes(value?: number | null): number | null {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return null;
+    }
+    const normalized = Math.max(0, Math.floor(value));
+    return normalized > 0 ? normalized : null;
   }
 
   private collectEntityIds(entities: QueryEntityDto[] = []): string[] {

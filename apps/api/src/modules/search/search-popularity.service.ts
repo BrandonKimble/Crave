@@ -20,6 +20,9 @@ export class SearchPopularityService {
     if (!entityIds.length) {
       return new Map();
     }
+    const entityIdArray = Prisma.sql`ARRAY[${Prisma.join(
+      entityIds.map((id) => Prisma.sql`${id}::uuid`),
+    )}]`;
 
     try {
       const rows = await this.prisma.$queryRaw<
@@ -31,7 +34,7 @@ export class SearchPopularityService {
         SELECT entity_id AS "entityId",
                COUNT(*)::float AS score
         FROM search_log
-        WHERE entity_id = ANY(${entityIds})
+        WHERE entity_id = ANY(${entityIdArray})
         GROUP BY entity_id
       `);
       return new Map(rows.map((row) => [row.entityId, Number(row.score || 0)]));
@@ -54,6 +57,10 @@ export class SearchPopularityService {
     if (!userId || !entityIds.length) {
       return new Map();
     }
+    const entityIdArray = Prisma.sql`ARRAY[${Prisma.join(
+      entityIds.map((id) => Prisma.sql`${id}::uuid`),
+    )}]`;
+    const userUuid = Prisma.sql`${userId}::uuid`;
 
     try {
       const rows = await this.prisma.$queryRaw<
@@ -65,8 +72,8 @@ export class SearchPopularityService {
         SELECT entity_id AS "entityId",
                COUNT(*)::float AS score
         FROM search_log
-        WHERE user_id = ${userId}
-          AND entity_id = ANY(${entityIds})
+        WHERE user_id = ${userUuid}
+          AND entity_id = ANY(${entityIdArray})
         GROUP BY entity_id
       `);
       return new Map(rows.map((row) => [row.entityId, Number(row.score || 0)]));

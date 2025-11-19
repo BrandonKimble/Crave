@@ -391,7 +391,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const goToTabs = React.useCallback(() => {
     completeOnboarding();
-    navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
   }, [completeOnboarding, navigation]);
 
   React.useEffect(() => {

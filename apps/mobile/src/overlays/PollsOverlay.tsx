@@ -8,20 +8,53 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
+  Dimensions,
+  Pressable,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { io, Socket } from 'socket.io-client';
-import type { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { fetchPolls, voteOnPoll, addPollOption, Poll } from '../../services/polls';
-import { API_BASE_URL } from '../../services/api';
-import { logger } from '../../utils';
-import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
-import type { MainTabParamList } from '../../types/navigation';
-import { useCityStore } from '../../store/cityStore';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import Reanimated, {
+  runOnJS,
+  useAnimatedGestureHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { fetchPolls, voteOnPoll, addPollOption, Poll } from '../services/polls';
+import { API_BASE_URL } from '../services/api';
+import { logger } from '../utils';
+import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
+import { useCityStore } from '../store/cityStore';
+import { colors as themeColors } from '../constants/theme';
+import { useOverlayStore } from '../store/overlayStore';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+import {
+  SHEET_SPRING_CONFIG,
+  SMALL_MOVEMENT_THRESHOLD,
+  clampValue,
+  snapPointForState,
+  type SheetGestureContext,
+  type SheetPosition,
+} from './sheetUtils';
 
-type PollsScreenProps = BottomTabScreenProps<MainTabParamList, 'Polls'>;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
+const CARD_GAP = 4;
 
-const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
+type PollsOverlayProps = {
+  visible: boolean;
+  params?: { city?: string | null; pollId?: string | null };
+};
+
+const ACCENT = themeColors.primary;
+const ACCENT_DARK = themeColors.primaryDark;
+const BORDER = themeColors.border;
+const SURFACE = themeColors.surface;
+
+const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   const insets = useSafeAreaInsets();
   const persistedCity = useCityStore((state) => state.selectedCity);
   const setPersistedCity = useCityStore((state) => state.setSelectedCity);
@@ -41,16 +74,53 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
   const [loading, setLoading] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const pendingPollIdRef = useRef<string | null>(null);
+  const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const headerPaddingTop = 0;
+  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const snapPoints = React.useMemo<Record<SheetPosition, number>>(() => {
+    const expanded = Math.max(insets.top, 0);
+    const hidden = SCREEN_HEIGHT + 80;
+    return {
+      expanded,
+      middle: expanded,
+      collapsed: expanded,
+      hidden,
+    };
+  }, [insets.top]);
+  const sheetTranslateY = useSharedValue(snapPoints.hidden);
+  const sheetStateShared = useSharedValue<SheetPosition>('hidden');
+  const stateOrder = React.useMemo<SheetPosition[]>(() => ['expanded', 'hidden'], []);
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = activePoll?.topic?.topicType ?? 'best_dish';
+  const totalVotes = activePoll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0;
 
   useEffect(() => {
     setCityInput(persistedCity);
   }, [persistedCity]);
 
-  const routeCity = route.params?.city;
-  const routePollId = route.params?.pollId;
+  const routeCity = params?.city;
+  const routePollId = params?.pollId;
+
+  const animateSheetTo = useCallback(
+    (position: SheetPosition, velocity = 0) => {
+      const target = snapPoints[position];
+      sheetStateShared.value = position;
+      sheetTranslateY.value = withSpring(target, {
+        ...SHEET_SPRING_CONFIG,
+        velocity,
+      });
+    },
+    [snapPoints, sheetStateShared, sheetTranslateY]
+  );
+
+  useEffect(() => {
+    if (visible) {
+      animateSheetTo('expanded');
+    } else {
+      animateSheetTo('hidden');
+    }
+  }, [animateSheetTo, visible]);
 
   useEffect(() => {
     if (typeof routeCity !== 'string') {
@@ -62,27 +132,31 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
     }
     setCityInput(normalized);
     setPersistedCity(normalized);
-    navigation.setParams({ city: undefined });
-  }, [navigation, routeCity, setPersistedCity]);
+  }, [routeCity, setPersistedCity]);
 
   useEffect(() => {
     if (!routePollId) {
       return;
     }
     pendingPollIdRef.current = routePollId;
+    if (!visible) {
+      return;
+    }
     const exists = polls.some((poll) => poll.pollId === routePollId);
     if (exists) {
       setSelectedPollId(routePollId);
       pendingPollIdRef.current = null;
-      navigation.setParams({ pollId: undefined });
       return;
     }
     void loadPolls({ focusPollId: routePollId });
-  }, [loadPolls, navigation, polls, routePollId]);
+  }, [loadPolls, polls, routePollId, visible]);
 
   const loadPolls = useCallback(
-    async (options?: { focusPollId?: string | null }) => {
-      setLoading(true);
+    async (options?: { focusPollId?: string | null; skipSpinner?: boolean }) => {
+      const skipSpinner = options?.skipSpinner ?? false;
+      if (!skipSpinner) {
+        setLoading(true);
+      }
       const targetCity = cityInput.trim();
       setPersistedCity(targetCity);
       const focusPollId = options?.focusPollId ?? null;
@@ -124,15 +198,20 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
         logger.error('Failed to load polls', error);
         setPolls([]);
       } finally {
-        setLoading(false);
+        if (!skipSpinner) {
+          setLoading(false);
+        }
       }
     },
     [cityInput, selectedPollId, setPersistedCity]
   );
 
   useEffect(() => {
+    if (!visible) {
+      return;
+    }
     void loadPolls();
-  }, [loadPolls]);
+  }, [loadPolls, visible]);
 
   useEffect(() => {
     setRestaurantQuery('');
@@ -149,7 +228,7 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
       transports: ['websocket'],
     });
     socketRef.current.on('poll:update', () => {
-      void loadPolls();
+      void loadPolls({ skipSpinner: true });
     });
     return () => {
       socketRef.current?.disconnect();
@@ -356,7 +435,7 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
     <View style={styles.autocompleteBox}>
       {loading ? (
         <View style={styles.autocompleteLoadingRow}>
-          <ActivityIndicator size="small" color="#7c3aed" />
+          <ActivityIndicator size="small" color={ACCENT} />
           <Text style={styles.autocompleteLoadingText}>Searching…</Text>
         </View>
       ) : matches.length === 0 ? (
@@ -393,21 +472,131 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
   );
 
   const pollData = polls;
+  const handleClose = useCallback(() => {
+    setOverlay('search');
+  }, [setOverlay]);
+
+  const sheetPanGesture = useAnimatedGestureHandler<
+    PanGestureHandlerGestureEvent,
+    SheetGestureContext
+  >(
+    {
+      onStart: (_, context) => {
+        context.startY = sheetTranslateY.value;
+        const currentState =
+          sheetStateShared.value === 'hidden'
+            ? stateOrder[Math.max(stateOrder.length - 2, 0)]
+            : sheetStateShared.value;
+        const startIndex = stateOrder.indexOf(currentState);
+        context.startStateIndex = startIndex >= 0 ? startIndex : stateOrder.length - 1;
+      },
+      onActive: (event, context) => {
+        const minY = snapPoints.expanded;
+        const maxY = snapPoints.hidden;
+        sheetTranslateY.value = clampValue(context.startY + event.translationY, minY, maxY);
+      },
+      onEnd: (event, context) => {
+        const minY = snapPoints.expanded;
+        const maxY = snapPoints.hidden;
+        const projected = clampValue(sheetTranslateY.value + event.velocityY * 0.05, minY, maxY);
+        let targetIndex = context.startStateIndex;
+        if (
+          event.translationY > SMALL_MOVEMENT_THRESHOLD &&
+          context.startStateIndex < stateOrder.length - 1
+        ) {
+          targetIndex = context.startStateIndex + 1;
+        } else if (
+          event.translationY < -SMALL_MOVEMENT_THRESHOLD &&
+          context.startStateIndex > 0
+        ) {
+          targetIndex = context.startStateIndex - 1;
+        } else {
+          const distances = stateOrder.map((state) => {
+            return Math.abs(
+              projected -
+                snapPointForState(
+                  state,
+                  snapPoints.expanded,
+                  snapPoints.middle,
+                  snapPoints.collapsed,
+                  snapPoints.hidden
+                )
+            );
+          });
+          const smallest = Math.min(...distances);
+          targetIndex = Math.max(distances.indexOf(smallest), 0);
+        }
+
+        let targetState: SheetPosition = stateOrder[targetIndex];
+        const beforeHiddenState = stateOrder[Math.max(stateOrder.length - 2, 0)];
+        if (event.velocityY > 1200 || sheetTranslateY.value > snapPoints[beforeHiddenState] + 40) {
+          targetState = 'hidden';
+        } else if (event.velocityY < -1200) {
+          targetState = stateOrder[0];
+        }
+
+        const clampedVelocity = Math.max(Math.min(event.velocityY, 2500), -2500);
+        runOnJS(animateSheetTo)(targetState, clampedVelocity);
+        if (targetState === 'hidden') {
+          runOnJS(handleClose)();
+        }
+      },
+    },
+    [animateSheetTo, handleClose, snapPoints, stateOrder]
+  );
+
+  const containerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTranslateY.value }],
+  }));
 
   return (
-    <SafeAreaView
-      style={[
-        styles.safeArea,
-        {
-          paddingTop: Math.max(insets.top, 16),
-        },
-      ]}
-      edges={['left', 'right', 'top']}
+    <Reanimated.View
+      pointerEvents={visible ? 'auto' : 'none'}
+      style={[overlaySheetStyles.container, containerAnimatedStyle]}
     >
+      <BlurView
+        pointerEvents="none"
+        intensity={45}
+        tint="light"
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
+      <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+      <PanGestureHandler onGestureEvent={sheetPanGesture} enabled={visible}>
+        <Reanimated.View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
+          <View style={overlaySheetStyles.grabHandleWrapper}>
+            <Pressable
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close polls"
+              hitSlop={10}
+            >
+              <View style={overlaySheetStyles.grabHandle} />
+            </Pressable>
+          </View>
+          <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+            <Text style={styles.sheetTitle}>Polls</Text>
+            <Pressable
+              onPress={handleClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close polls"
+              style={overlaySheetStyles.closeButton}
+              hitSlop={8}
+            >
+              <Feather name="x" size={24} color={ACCENT} />
+            </Pressable>
+          </View>
+          <View style={overlaySheetStyles.headerDivider} />
+        </Reanimated.View>
+      </PanGestureHandler>
       <ScrollView
         style={styles.scrollContainer}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: contentBottomPadding },
+        ]}
         nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.cityRow}>
           <Text style={styles.cityLabel}>City / Region</Text>
@@ -426,78 +615,114 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
         {loading ? (
           <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />
         ) : (
-          <ScrollView
-            horizontal
-            contentContainerStyle={styles.pollList}
-            showsHorizontalScrollIndicator={false}
-          >
+          <View style={styles.pollList}>
             {pollData.map((item) => (
               <React.Fragment key={item.pollId}>{renderPoll({ item })}</React.Fragment>
             ))}
-          </ScrollView>
+          </View>
         )}
 
         {activePoll ? (
           <View style={styles.detailCard}>
             <Text style={styles.detailQuestion}>{activePoll.question}</Text>
-            {activePoll.options.map((option) => (
-              <TouchableOpacity
-                key={option.optionId}
-                style={styles.optionRow}
-                onPress={() => handleVote(activePoll.pollId, option.optionId)}
-              >
-                <Text style={styles.optionLabel}>{option.label}</Text>
-                <Text style={styles.optionVotes}>{option.voteCount} votes</Text>
-              </TouchableOpacity>
-            ))}
+            {activePoll.options.map((option, index) => {
+              const color = OPTION_COLORS[index % OPTION_COLORS.length];
+              const rawFill = totalVotes > 0 ? (option.voteCount / totalVotes) * 100 : 0;
+              const minFill = option.voteCount > 0 ? 10 : 2;
+              const fillWidth = Math.min(Math.max(rawFill, minFill), 100);
+              return (
+                <TouchableOpacity
+                  key={option.optionId}
+                  style={styles.optionBarWrapper}
+                  onPress={() => handleVote(activePoll.pollId, option.optionId)}
+                >
+                  <View style={styles.optionBarTrack}>
+                    <View
+                      style={[
+                        styles.optionBarFill,
+                        {
+                          width: `${fillWidth}%`,
+                          backgroundColor: color,
+                        },
+                      ]}
+                    />
+                    <View style={styles.optionLabelBubble}>
+                      <Text style={styles.optionLabelText}>{option.label}</Text>
+                      <Text style={styles.optionVoteCount}>{option.voteCount} votes</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
             {activePollType === 'what_to_order' && (
               <Text style={styles.topicNote}>Votes apply to dishes at this restaurant.</Text>
             )}
             <View style={styles.addOptionBlock}>
-              {activePollType === 'best_dish' && (
-                <>
-                  <Text style={styles.fieldLabel}>Restaurant</Text>
+              {activePollType === 'best_dish' ? (
+                <View style={styles.inputRow}>
+                  <View style={[styles.inputColumn, styles.inputColumnSpacing]}>
+                    <Text style={styles.fieldLabel}>Restaurant</Text>
+                    <TextInput
+                      value={restaurantQuery}
+                      onChangeText={(text) => {
+                        setRestaurantQuery(text);
+                        setRestaurantSelection(null);
+                      }}
+                      placeholder="Search for a restaurant"
+                      style={styles.optionInput}
+                      autoCapitalize="none"
+                    />
+                    {(showRestaurantSuggestions || restaurantLoading) &&
+                      renderSuggestionList(
+                        restaurantLoading,
+                        restaurantSuggestions,
+                        'Keep typing to add a restaurant',
+                        handleRestaurantSuggestionPress
+                      )}
+                  </View>
+                  <View style={styles.inputColumn}>
+                    <Text style={styles.fieldLabel}>Dish (optional)</Text>
+                    <TextInput
+                      value={dishQuery}
+                      onChangeText={(text) => {
+                        setDishQuery(text);
+                        setDishSelection(null);
+                      }}
+                      placeholder="Add a dish (optional)"
+                      style={styles.optionInput}
+                      autoCapitalize="none"
+                    />
+                    {(showDishSuggestions || dishLoading) &&
+                      renderSuggestionList(
+                        dishLoading,
+                        dishSuggestions,
+                        'Keep typing to add a dish',
+                        handleDishSuggestionPress
+                      )}
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.singleInputColumn}>
+                  <Text style={styles.fieldLabel}>Dish</Text>
                   <TextInput
-                    value={restaurantQuery}
+                    value={dishQuery}
                     onChangeText={(text) => {
-                      setRestaurantQuery(text);
-                      setRestaurantSelection(null);
+                      setDishQuery(text);
+                      setDishSelection(null);
                     }}
-                    placeholder="Search for a restaurant"
+                    placeholder="Search for a dish"
                     style={styles.optionInput}
                     autoCapitalize="none"
                   />
-                  {(showRestaurantSuggestions || restaurantLoading) &&
+                  {(showDishSuggestions || dishLoading) &&
                     renderSuggestionList(
-                      restaurantLoading,
-                      restaurantSuggestions,
-                      'Keep typing to add a restaurant',
-                      handleRestaurantSuggestionPress
+                      dishLoading,
+                      dishSuggestions,
+                      'Keep typing to add a dish',
+                      handleDishSuggestionPress
                     )}
-                </>
+                </View>
               )}
-              <Text style={styles.fieldLabel}>
-                {activePollType === 'best_dish' ? 'Dish (optional)' : 'Dish'}
-              </Text>
-              <TextInput
-                value={dishQuery}
-                onChangeText={(text) => {
-                  setDishQuery(text);
-                  setDishSelection(null);
-                }}
-                placeholder={
-                  activePollType === 'best_dish' ? 'Add a dish (optional)' : 'Search for a dish'
-                }
-                style={styles.optionInput}
-                autoCapitalize="none"
-              />
-              {(showDishSuggestions || dishLoading) &&
-                renderSuggestionList(
-                  dishLoading,
-                  dishSuggestions,
-                  'Keep typing to add a dish',
-                  handleDishSuggestionPress
-                )}
               <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
                 <Text style={styles.submitButtonText}>Submit option</Text>
               </TouchableOpacity>
@@ -507,129 +732,174 @@ const PollsScreen: React.FC<PollsScreenProps> = ({ route, navigation }) => {
           <Text style={styles.emptyState}>No polls available yet.</Text>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </Reanimated.View>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
+  sheetTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: ACCENT_DARK,
     flex: 1,
-    backgroundColor: '#fff',
   },
   scrollContainer: {
     flex: 1,
   },
   scrollContent: {
     paddingBottom: 32,
+    paddingTop: 16,
   },
   cityRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
     gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   cityLabel: {
     fontSize: 14,
-    color: '#475569',
+    fontWeight: '600',
+    color: ACCENT,
   },
   cityInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
+    borderColor: BORDER,
+    borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    backgroundColor: SURFACE,
   },
   refreshButton: {
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#EEF2FF',
-    borderRadius: 8,
+    backgroundColor: 'rgba(249, 115, 131, 0.12)',
+    borderRadius: 12,
   },
   refreshText: {
     fontSize: 13,
-    color: '#4C1D95',
     fontWeight: '600',
+    color: ACCENT_DARK,
   },
   loader: {
     marginTop: 24,
   },
   pollList: {
     paddingVertical: 16,
-    paddingHorizontal: 12,
-    gap: 12,
+    gap: CARD_GAP,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   pollCard: {
-    padding: 16,
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-    width: 220,
+    paddingVertical: 16,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    borderRadius: 0,
+    backgroundColor: '#ffffff',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   pollCardActive: {
     borderWidth: 2,
-    borderColor: '#A78BFA',
-    backgroundColor: '#EEF2FF',
+    borderColor: ACCENT,
   },
   pollQuestion: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1e1b4b',
+    color: ACCENT_DARK,
   },
   pollMeta: {
     marginTop: 6,
     fontSize: 12,
-    color: '#475569',
+    color: ACCENT,
   },
   detailCard: {
     flex: 1,
-    margin: 16,
-    padding: 16,
-    borderRadius: 16,
-    backgroundColor: '#faf5ff',
+    marginTop: CARD_GAP,
+    paddingVertical: 16,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    borderRadius: 0,
+    backgroundColor: '#ffffff',
+    alignSelf: 'stretch',
+    width: '100%',
   },
   detailQuestion: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#312e81',
+    color: ACCENT_DARK,
     marginBottom: 12,
   },
-  optionRow: {
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderColor: '#e9d5ff',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  optionBarWrapper: {
+    marginTop: 12,
   },
-  optionLabel: {
-    fontSize: 15,
+  optionBarTrack: {
+    position: 'relative',
+    height: 32,
+    borderRadius: 16,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(249, 115, 131, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 131, 0.2)',
+    justifyContent: 'center',
+  },
+  optionBarFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 16,
+  },
+  optionLabelBubble: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+  },
+  optionLabelText: {
+    fontSize: 14,
+    fontWeight: '600',
     color: '#1f2937',
   },
-  optionVotes: {
-    fontSize: 13,
-    color: '#6b21a8',
+  optionVoteCount: {
+    fontSize: 12,
+    color: ACCENT_DARK,
+    fontWeight: '600',
   },
   addOptionBlock: {
     marginTop: 16,
   },
+  inputRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 4,
+  },
+  inputColumn: {
+    flex: 1,
+  },
+  inputColumnSpacing: {
+    marginRight: 4,
+  },
+  singleInputColumn: {
+    marginTop: 8,
+  },
   optionInput: {
     width: '100%',
     borderWidth: 1,
-    borderColor: '#ddd6fe',
-    borderRadius: 10,
+    borderColor: BORDER,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: '#fff',
+    backgroundColor: SURFACE,
   },
   fieldLabel: {
     marginTop: 12,
     marginBottom: 6,
     fontSize: 13,
     fontWeight: '600',
-    color: '#4c1d95',
+    color: ACCENT,
   },
   submitButton: {
     marginTop: 16,
-    backgroundColor: '#7c3aed',
+    backgroundColor: ACCENT,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
@@ -643,8 +913,8 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#fff',
+    borderColor: BORDER,
+    backgroundColor: SURFACE,
     maxHeight: 200,
     overflow: 'hidden',
   },
@@ -654,7 +924,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: BORDER,
     gap: 8,
   },
   autocompleteLoadingText: {
@@ -671,7 +941,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: BORDER,
   },
   autocompletePrimary: {
     fontSize: 15,
@@ -687,13 +957,13 @@ const styles = StyleSheet.create({
   topicNote: {
     marginTop: 12,
     fontSize: 12,
-    color: '#6b21a8',
+    color: ACCENT,
   },
   emptyState: {
     textAlign: 'center',
     marginTop: 32,
-    color: '#94a3b8',
+    color: ACCENT,
   },
 });
 
-export default PollsScreen;
+export default PollsOverlay;

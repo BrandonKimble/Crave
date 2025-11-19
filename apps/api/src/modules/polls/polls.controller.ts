@@ -13,6 +13,7 @@ import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
+import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 
 @Controller('polls')
@@ -20,13 +21,18 @@ export class PollsController {
   constructor(private readonly pollsService: PollsService) {}
 
   @Get()
-  listPolls(@Query() query: ListPollsQueryDto) {
-    return this.pollsService.listPolls(query);
+  @UseGuards(OptionalClerkAuthGuard)
+  listPolls(
+    @Query() query: ListPollsQueryDto,
+    @CurrentUser() user?: User | null,
+  ) {
+    return this.pollsService.listPolls(query, user ?? null);
   }
 
   @Get(':pollId')
-  getPoll(@Param('pollId') pollId: string) {
-    return this.pollsService.getPoll(pollId);
+  @UseGuards(OptionalClerkAuthGuard)
+  getPoll(@Param('pollId') pollId: string, @CurrentUser() user?: User | null) {
+    return this.pollsService.getPoll(pollId, user ?? null);
   }
 
   @Post(':pollId/options')

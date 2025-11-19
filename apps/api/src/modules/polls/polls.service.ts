@@ -12,6 +12,7 @@ import {
   PollTopicStatus,
   PollTopicType,
   Prisma,
+  type User,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
@@ -42,11 +43,11 @@ export class PollsService {
     this.logger = loggerService.setContext('PollsService');
   }
 
-  async listPolls(query: ListPollsQueryDto) {
+  async listPolls(query: ListPollsQueryDto, user?: User | null) {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
 
-    return this.prisma.poll.findMany({
+    const polls = await this.prisma.poll.findMany({
       where: {
         city: query.city
           ? { equals: query.city, mode: 'insensitive' }
@@ -72,6 +73,8 @@ export class PollsService {
       },
       take: 25,
     });
+
+    return this.attachCurrentUserVotes(polls, user?.userId);
   }
 
   async createManualPoll(dto: CreateManualPollDto, userId: string) {
@@ -232,7 +235,7 @@ export class PollsService {
     return poll;
   }
 
-  async getPoll(pollId: string) {
+  async getPoll(pollId: string, user?: User | null) {
     const poll = await this.prisma.poll.findUnique({
       where: { pollId },
       include: {
@@ -257,7 +260,47 @@ export class PollsService {
       throw new NotFoundException('Poll not found');
     }
 
-    return poll;
+    const [hydrated] = await this.attachCurrentUserVotes([poll], user?.userId);
+    return hydrated;
+  }
+
+  private async attachCurrentUserVotes<
+    T extends { pollId: string; options: Array<{ optionId: string }> },
+  >(polls: T[], userId?: string | null) {
+    if (!userId || !polls.length) {
+      return polls;
+    }
+
+    const pollIds = polls.map((poll) => poll.pollId);
+    const votes = await this.prisma.pollVote.findMany({
+      where: {
+        pollId: { in: pollIds },
+        userId,
+      },
+      select: {
+        pollId: true,
+        optionId: true,
+      },
+    });
+
+    const voteMap = votes.reduce<Map<string, Set<string>>>((acc, vote) => {
+      if (!acc.has(vote.pollId)) {
+        acc.set(vote.pollId, new Set());
+      }
+      acc.get(vote.pollId)?.add(vote.optionId);
+      return acc;
+    }, new Map());
+
+    return polls.map((poll) => {
+      const optionVotes = voteMap.get(poll.pollId) ?? new Set<string>();
+      return {
+        ...poll,
+        options: poll.options.map((option) => ({
+          ...option,
+          currentUserVoted: optionVotes.has(option.optionId),
+        })),
+      };
+    });
   }
 
   async addOption(pollId: string, dto: CreatePollOptionDto, userId: string) {
@@ -449,62 +492,64 @@ export class PollsService {
         throw new NotFoundException('Option not found for poll');
       }
 
-      const existingVote = await tx.pollVote.findUnique({
+      const now = new Date();
+      const optionVote = await tx.pollVote.findFirst({
         where: {
-          pollId_userId: {
-            pollId,
-            userId,
-          },
+          optionId: dto.optionId,
+          userId,
         },
       });
 
-      const now = new Date();
-      if (existingVote?.optionId === dto.optionId) {
-        return option;
-      }
-
-      if (existingVote) {
-        await tx.pollVote.update({
+      if (optionVote) {
+        await tx.pollVote.deleteMany({
           where: {
-            pollId_userId: {
-              pollId,
-              userId,
-            },
-          },
-          data: {
-            optionId: dto.optionId,
-            updatedAt: now,
-          },
-        });
-        await tx.pollOption.update({
-          where: { optionId: existingVote.optionId },
-          data: {
-            voteCount: { decrement: 1 },
-          },
-        });
-      } else {
-        await tx.pollVote.create({
-          data: {
-            pollId,
             optionId: dto.optionId,
             userId,
           },
         });
-        await tx.pollMetric.upsert({
-          where: { pollId },
-          create: {
+        const remainingVotes = await tx.pollVote.count({
+          where: {
             pollId,
-            totalVotes: 1,
-            totalParticipants: 1,
-            lastAggregatedAt: now,
-          },
-          update: {
-            totalVotes: { increment: 1 },
-            totalParticipants: { increment: 1 },
-            lastAggregatedAt: now,
+            userId,
           },
         });
+        const updatedOption = await tx.pollOption.update({
+          where: { optionId: dto.optionId },
+          data: {
+            voteCount: { decrement: 1 },
+            lastVoteAt: now,
+          },
+        });
+        await this.updatePollMetrics(
+          tx,
+          pollId,
+          {
+            totalVotes: { decrement: 1 },
+            ...(remainingVotes === 0
+              ? { totalParticipants: { decrement: 1 } }
+              : {}),
+            lastAggregatedAt: now,
+          },
+        );
+        this.gateway.emitPollUpdate(pollId);
+        return updatedOption;
       }
+
+      const hadAnyVote = await tx.pollVote.findFirst({
+        where: {
+          pollId,
+          userId,
+        },
+        select: { pollId: true },
+      });
+
+      await tx.pollVote.create({
+        data: {
+          pollId,
+          optionId: dto.optionId,
+          userId,
+        },
+      });
 
       const updatedOption = await tx.pollOption.update({
         where: { optionId: dto.optionId },
@@ -514,8 +559,47 @@ export class PollsService {
         },
       });
 
+      await this.updatePollMetrics(
+        tx,
+        pollId,
+        {
+          totalVotes: { increment: 1 },
+          ...(hadAnyVote ? {} : { totalParticipants: { increment: 1 } }),
+          lastAggregatedAt: now,
+        },
+        hadAnyVote
+          ? undefined
+          : {
+              pollId,
+              totalVotes: 1,
+              totalParticipants: 1,
+              lastAggregatedAt: now,
+            },
+      );
+
       this.gateway.emitPollUpdate(pollId);
       return updatedOption;
+    });
+  }
+
+  private async updatePollMetrics(
+    tx: Prisma.TransactionClient,
+    pollId: string,
+    data: Prisma.PollMetricUpdateInput,
+    createData?: Prisma.PollMetricUncheckedCreateInput,
+  ) {
+    await tx.pollMetric.upsert({
+      where: { pollId },
+      update: data,
+      create:
+        createData ??
+        ({
+          pollId,
+          totalVotes: 0,
+          totalParticipants: 0,
+          lastAggregatedAt:
+            (data.lastAggregatedAt as Date | null | undefined) ?? null,
+        } satisfies Prisma.PollMetricUncheckedCreateInput),
     });
   }
 

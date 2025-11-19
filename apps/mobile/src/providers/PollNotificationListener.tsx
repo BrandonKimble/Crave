@@ -2,12 +2,14 @@ import React from 'react';
 import * as Notifications from 'expo-notifications';
 import { navigationRef } from '../navigation/navigationRef';
 import { useCityStore } from '../store/cityStore';
+import { useOverlayStore } from '../store/overlayStore';
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
 
 const PollNotificationListener: React.FC = () => {
   const setCityPreference = useCityStore((state) => state.setSelectedCity);
+  const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pendingNavigation = React.useRef<{ city?: string; pollId?: string } | null>(null);
 
   const navigateToPolls = React.useCallback((city?: string, pollId?: string) => {
@@ -15,15 +17,10 @@ const PollNotificationListener: React.FC = () => {
       pendingNavigation.current = { city, pollId };
       return;
     }
-    navigationRef.navigate('Tabs', {
-      screen: 'Polls',
-      params: {
-        city,
-        pollId,
-      },
-    });
+    navigationRef.navigate('Main');
+    setOverlay('polls', { city, pollId });
     pendingNavigation.current = null;
-  }, []);
+  }, [setOverlay]);
 
   const handleResponse = React.useCallback(
     (response: Notifications.NotificationResponse) => {
@@ -71,20 +68,15 @@ const PollNotificationListener: React.FC = () => {
       if (pendingNavigation.current && navigationRef.isReady()) {
         const payload = pendingNavigation.current;
         pendingNavigation.current = null;
-        navigationRef.navigate('Tabs', {
-          screen: 'Polls',
-          params: {
-            city: payload?.city,
-            pollId: payload?.pollId,
-          },
-        });
+        navigationRef.navigate('Main');
+        setOverlay('polls', { city: payload?.city, pollId: payload?.pollId });
       }
     }, 300);
 
     return () => {
       clearInterval(interval);
     };
-  }, []);
+  }, [setOverlay]);
 
   return null;
 };

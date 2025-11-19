@@ -40,3 +40,9 @@
 
 - Copy `.env.example` to `.env` per app; never commit secrets. Secrets scanning is enforced via `gitleaks`.
 - Commit Prisma migrations in `apps/api/prisma/migrations/`. Use `docker-compose` in `apps/api/` for local DB.
+
+## Agent Notes
+
+- You can connect directly to the local Postgres instance for debugging Prisma history or schema issues. Use the credentials in `apps/api/.env` (default `postgres:postgres@localhost:5432/crave_search`) and run commands like:
+  - `psql -h localhost -U postgres -d crave_search -c "SELECT migration_name FROM _prisma_migrations;"`.
+- These `psql` commands usually require escalated permissions in the Codex CLI. Always request them when issuing direct database queries.

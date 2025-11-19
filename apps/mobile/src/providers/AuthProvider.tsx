@@ -188,7 +188,7 @@ const AuthStateMonitor: React.FC = () => {
     if (isSignedIn) {
       navigationRef.reset({
         index: 0,
-        routes: [{ name: 'Tabs' }],
+        routes: [{ name: 'Main' }],
       });
       return;
     }

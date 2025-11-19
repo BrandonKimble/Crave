@@ -4,25 +4,52 @@ import {
   Animated,
   Dimensions,
   Keyboard,
-  Modal,
-  PanResponder,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import Reanimated, {
+  Extrapolation,
+  interpolate,
+  runOnJS,
+  useAnimatedGestureHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import MapboxGL from '@rnmapbox/maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@clerk/clerk-expo';
-import { LinearGradient } from 'expo-linear-gradient';
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import { Text, Button } from '../../components';
-import { colors as themeColors } from '../../constants/theme';
+import { Text } from '../../components';
+import { colors as themeColors, shadows as shadowStyles } from '../../constants/theme';
+import { getPriceRangeLabel } from '../../constants/pricing';
+import {
+  overlaySheetStyles,
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_CORNER_RADIUS,
+} from '../../overlays/overlaySheetStyles';
+import RestaurantOverlay, {
+  type RestaurantOverlayData,
+} from '../../overlays/RestaurantOverlay';
+import {
+  SHEET_STATES,
+  clampValue,
+  snapPointForState,
+  SHEET_SPRING_CONFIG,
+  SMALL_MOVEMENT_THRESHOLD,
+  type SheetPosition,
+  type SheetGestureContext,
+} from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import { searchService } from '../../services/search';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
@@ -36,17 +63,19 @@ import type {
   NaturalSearchRequest,
 } from '../../types';
 import restaurantPinImage from '../../assets/pins/restaurant-pin.png';
-
-const DEFAULT_STYLE_URL = 'mapbox://styles/brandonkimble/cmhjzgs6i00cl01s69ff1fsmf';
-const AUSTIN_COORDINATE: [number, number] = [-97.7431, 30.2672];
+import BookmarksOverlay from '../../overlays/BookmarksOverlay';
+import PollsOverlay from '../../overlays/PollsOverlay';
+import { DEFAULT_MAP_CENTER, buildMapStyleURL } from '../../constants/map';
+import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
+import type { RootStackParamList } from '../../types/navigation';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const CONTENT_HORIZONTAL_PADDING = 15;
+const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
 const CARD_GAP = 4;
-const ACTIVE_TAB_COLOR = '#f97384';
+const ACTIVE_TAB_COLOR = themeColors.primary;
 const TAB_BUTTON_COLOR = themeColors.accentDark;
 const QUALITY_COLOR = '#fbbf24';
-type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
+const MINIMUM_VOTES_FILTER = 100;
 type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
@@ -56,6 +85,7 @@ type RestaurantFeatureProperties = {
 type SubmitSearchOptions = {
   openNow?: boolean;
   priceLevels?: number[] | null;
+  minimumVotes?: number | null;
 };
 
 type OpenNowNotice = {
@@ -65,6 +95,7 @@ type OpenNowNotice = {
 type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
 };
+
 
 const isLngLatTuple = (value: unknown): value is [number, number] =>
   Array.isArray(value) &&
@@ -90,12 +121,29 @@ const boundsFromPairs = (first: [number, number], second: [number, number]): Map
 };
 
 const PRICE_LEVEL_OPTIONS = [
-  { label: 'Free', value: 0 },
-  { label: '$', value: 1 },
-  { label: '$$', value: 2 },
-  { label: '$$$', value: 3 },
-  { label: '$$$$', value: 4 },
+  { label: '$5-20', value: 1 },
+  { label: '$20-40', value: 2 },
+  { label: '$40-70', value: 3 },
+  { label: '$70+', value: 4 },
 ] as const;
+
+const PRICE_RANGE_LABELS: Record<number, string> = {
+  1: '$5-20',
+  2: '$20-40',
+  3: '$40-70',
+  4: '$70+',
+};
+
+const SEGMENT_OPTIONS = [
+  { label: 'Restaurants', value: 'restaurants' as const },
+  { label: 'Dishes', value: 'dishes' as const },
+] as const;
+type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
+const TOGGLE_BORDER_RADIUS = 8;
+const TOGGLE_HORIZONTAL_PADDING = 7;
+const TOGGLE_VERTICAL_PADDING = 5;
+const TOGGLE_STACK_GAP = 8;
+const NAV_VERTICAL_PADDING = 8;
 
 const RECENT_HISTORY_LIMIT = 8;
 
@@ -113,35 +161,18 @@ const normalizePriceFilter = (levels?: number[] | null): number[] => {
   ).sort((a, b) => a - b);
 };
 
-const priceLevelToSymbol = (level: number): string => {
-  if (level <= 0) {
-    return 'Free';
-  }
-  const clamped = Math.max(1, Math.min(4, level));
-  return '$'.repeat(clamped);
-};
-
-const derivePriceMeta = (
-  priceLevel?: number | null
-): { symbol: string; description?: string } | null => {
+const getPriceRangeLabel = (priceLevel?: number | null): string | null => {
   if (priceLevel === null || priceLevel === undefined) {
     return null;
   }
   const rounded = Math.round(priceLevel);
-  if (rounded <= 0) {
-    return { symbol: 'Free', description: 'No cost' };
-  }
-  const clamped = Math.max(1, Math.min(4, rounded));
-  const descriptions = ['Budget friendly', 'Casual', 'Special night', 'Premium'];
-  return {
-    symbol: '$'.repeat(clamped),
-    description: descriptions[clamped - 1],
-  };
+  return PRICE_RANGE_LABELS[rounded] ?? null;
 };
 
 MapboxGL.setTelemetryEnabled(false);
 
 const SearchScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
@@ -155,66 +186,120 @@ const SearchScreen: React.FC = () => {
     }
   }, [accessToken]);
 
-  const mapStyleURL = React.useMemo(() => {
-    const styleEnv = process.env.EXPO_PUBLIC_MAPBOX_STYLE_URL ?? DEFAULT_STYLE_URL;
-    if (!styleEnv.startsWith('mapbox://styles/')) {
-      return styleEnv;
-    }
-
-    const stylePath = styleEnv.replace('mapbox://styles/', '');
-    const params = [`cachebuster=${Date.now()}`];
-    if (accessToken) {
-      params.push(`access_token=${encodeURIComponent(accessToken)}`);
-    }
-    return `https://api.mapbox.com/styles/v1/${stylePath}?${params.join('&')}`;
-  }, [accessToken]);
+  const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);
   const [submittedQuery, setSubmittedQuery] = React.useState('');
+  const [isSearchSessionActive, setIsSearchSessionActive] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [showSuggestions, setShowSuggestions] = React.useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<'dishes' | 'restaurants'>('dishes');
+  const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [favoriteMap, setFavoriteMap] = React.useState<Map<string, Favorite>>(new Map());
-  const [hasUnlockedFullResults, setHasUnlockedFullResults] = React.useState(false);
-  const [hasPreviewedResults, setHasPreviewedResults] = React.useState(false);
-  const [previewQuery, setPreviewQuery] = React.useState('');
-  const [isPaywallVisible, setIsPaywallVisible] = React.useState(false);
-  const [selectedPlan, setSelectedPlan] = React.useState<'monthly' | 'annual'>('monthly');
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [isRecentLoading, setIsRecentLoading] = React.useState(false);
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
-  const segmentAnim = React.useRef(new Animated.Value(activeTab === 'restaurants' ? 0 : 1)).current;
-  const sheetTranslateY = React.useRef(new Animated.Value(SCREEN_HEIGHT)).current;
-  const panOffset = React.useRef(0);
+  const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
+    null
+  );
+  const [isRestaurantOverlayVisible, setRestaurantOverlayVisible] = React.useState(false);
+  const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
+  const resultsScrollY = React.useRef(new Animated.Value(0)).current;
+  const headerDividerAnimatedStyle = React.useMemo(
+    () => ({
+      opacity: resultsScrollY.interpolate({
+        inputRange: [0, 12],
+        outputRange: [0, 1],
+        extrapolate: 'clamp',
+      }),
+    }),
+    [resultsScrollY]
+  );
+  const snapPointExpanded = useSharedValue(0);
+  const snapPointMiddle = useSharedValue(SCREEN_HEIGHT * 0.4);
+  const snapPointCollapsed = useSharedValue(SCREEN_HEIGHT - 160);
+  const snapPointHidden = useSharedValue(SCREEN_HEIGHT + 80);
+  const sheetStateShared = useSharedValue<SheetPosition>('hidden');
   const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
   const searchContainerAnim = React.useRef(new Animated.Value(0)).current;
-  const isAnimating = React.useRef(false);
   const inputRef = React.useRef<TextInput | null>(null);
+  const { activeOverlay, overlayParams, setOverlay } = useOverlayStore();
+  const isSearchOverlay = activeOverlay === 'search';
+  const showBookmarksOverlay = activeOverlay === 'bookmarks';
+  const showPollsOverlay = activeOverlay === 'polls';
+  const pollOverlayParams = overlayParams.polls;
+  const handleOverlaySelect = React.useCallback(
+    (target: OverlayKey) => {
+      setOverlay(target);
+      if (target === 'search') {
+        inputRef.current?.focus();
+      } else {
+        inputRef.current?.blur();
+      }
+    },
+    [setOverlay]
+  );
+  const handleProfilePress = React.useCallback(() => {
+    navigation.navigate('Profile');
+  }, [navigation]);
+  const navItems = React.useMemo(
+    () =>
+      [
+        { key: 'search' as OverlayKey, label: 'Search', icon: 'search' },
+        { key: 'bookmarks' as OverlayKey, label: 'Bookmarks', icon: 'bookmark' },
+        { key: 'polls' as OverlayKey, label: 'Polls', icon: 'bar-chart-2' },
+      ] as const,
+    []
+  );
   const openNow = useSearchStore((state) => state.openNow);
   const setOpenNow = useSearchStore((state) => state.setOpenNow);
   const priceLevels = useSearchStore((state) => state.priceLevels);
   const setPriceLevels = useSearchStore((state) => state.setPriceLevels);
+  const votes100Plus = useSearchStore((state) => state.votes100Plus);
+  const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
   const priceFiltersActive = priceLevels.length > 0;
   const priceButtonSummary = React.useMemo(() => {
     if (!priceLevels.length) {
       return 'Any price';
     }
-    return priceLevels.map(priceLevelToSymbol).join(' · ');
+    return priceLevels
+      .map((level) => PRICE_RANGE_LABELS[level] ?? null)
+      .filter((label): label is string => Boolean(label))
+      .join(' · ');
   }, [priceLevels]);
   const trimmedQuery = query.trim();
-  const shouldRenderAutocompleteSection = trimmedQuery.length >= 2;
+  const hasTypedQuery = trimmedQuery.length > 0;
+  const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
+  const shouldRenderAutocompleteSection =
+    isSearchOverlay && !isAutocompleteSuppressed && trimmedQuery.length >= 2;
   const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
-  const shouldShowRecentSection = isSearchFocused;
   const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
+  const votesFilterActive = votes100Plus;
+  const bottomInset = Math.max(insets.bottom, 12);
+  const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isLoading);
+  const focusSearchInput = React.useCallback(() => {
+    inputRef.current?.focus();
+  }, []);
+  const handleResultsScroll = React.useMemo(
+    () =>
+      Animated.event([{ nativeEvent: { contentOffset: { y: resultsScrollY } } }], {
+        useNativeDriver: true,
+      }),
+    [resultsScrollY]
+  );
+  const handleQueryChange = React.useCallback((value: string) => {
+    setIsAutocompleteSuppressed(false);
+    setQuery(value);
+  }, []);
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
   React.useEffect(() => {
@@ -237,11 +322,9 @@ const SearchScreen: React.FC = () => {
     }
   }, []);
 
-  useFocusEffect(
-    React.useCallback(() => {
-      void loadFavorites();
-    }, [loadFavorites])
-  );
+  React.useEffect(() => {
+    void loadFavorites();
+  }, [loadFavorites]);
 
   const restaurantsById = React.useMemo(() => {
     const map = new Map<string, RestaurantResult>();
@@ -271,6 +354,12 @@ const SearchScreen: React.FC = () => {
   }, [restaurants, dishes]);
 
   React.useEffect(() => {
+    if (!isSearchOverlay) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      setIsAutocompleteLoading(false);
+      return;
+    }
     const trimmed = query.trim();
     if (trimmed.length < 2) {
       setSuggestions([]);
@@ -313,7 +402,7 @@ const SearchScreen: React.FC = () => {
       isActive = false;
       clearTimeout(debounceHandle);
     };
-  }, [query]);
+  }, [isSearchOverlay, query]);
 
   const restaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
@@ -351,17 +440,6 @@ const SearchScreen: React.FC = () => {
   }, [restaurantsById]);
 
   const activeList = activeTab === 'dishes' ? dishes : restaurants;
-  const shouldGateResults = Boolean(
-    results && hasPreviewedResults && !hasUnlockedFullResults && activeList.length > 3
-  );
-  const lockedCount = shouldGateResults ? Math.min(3, activeList.length) : 0;
-  const previewItems = React.useMemo<(FoodResult | RestaurantResult)[]>(
-    () => activeList.slice(0, lockedCount || 0),
-    [activeList, lockedCount]
-  );
-  // Unused - was for old preview copy
-  // const remainingResults = Math.max(activeList.length - lockedCount, 0);
-  const shouldShowPreview = shouldGateResults && previewItems.length > 0;
 
   const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
     if (!openNow || !results?.metadata) {
@@ -435,115 +513,144 @@ const SearchScreen: React.FC = () => {
       hidden,
     };
   }, [insets.top, searchLayout]);
-  const isDragging = React.useRef(false);
-  const shouldRenderSheet = panelVisible || sheetState !== 'hidden';
+  const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
+
+  React.useEffect(() => {
+    if (!isSearchOverlay) {
+      setPanelVisible(false);
+      setSheetState('hidden');
+      sheetStateShared.value = 'hidden';
+      sheetTranslateY.value = snapPoints.hidden;
+    }
+  }, [isSearchOverlay, snapPoints.hidden, sheetStateShared, sheetTranslateY]);
+
+  React.useEffect(() => {
+    snapPointExpanded.value = snapPoints.expanded;
+    snapPointMiddle.value = snapPoints.middle;
+    snapPointCollapsed.value = snapPoints.collapsed;
+    snapPointHidden.value = snapPoints.hidden;
+  }, [snapPoints, snapPointCollapsed, snapPointExpanded, snapPointHidden, snapPointMiddle]);
+
+  React.useEffect(() => {
+    if (!isSearchOverlay && isRestaurantOverlayVisible) {
+      setRestaurantOverlayVisible(false);
+    }
+  }, [isSearchOverlay, isRestaurantOverlayVisible]);
+
+  React.useEffect(() => {
+    sheetStateShared.value = sheetState;
+  }, [sheetState, sheetStateShared]);
 
   React.useEffect(() => {
     if (!panelVisible) {
-      sheetTranslateY.setValue(snapPoints.hidden);
+      sheetTranslateY.value = snapPoints.hidden;
     }
   }, [panelVisible, sheetTranslateY, snapPoints.hidden]);
-
-  React.useEffect(() => {
-    if (!panelVisible || isDragging.current || isAnimating.current) {
-      return;
-    }
-    sheetTranslateY.setValue(snapPoints[sheetState]);
-  }, [panelVisible, searchLayout, sheetState, snapPoints, sheetTranslateY]);
-
   const animateSheetTo = React.useCallback(
     (position: SheetPosition, velocity = 0) => {
       const target = snapPoints[position];
       setSheetState(position);
-      isAnimating.current = true;
-      Animated.spring(sheetTranslateY, {
-        toValue: target,
-        velocity,
-        useNativeDriver: true,
-        damping: 18,
-        stiffness: 180,
-      }).start(({ finished }) => {
-        isAnimating.current = false;
-        if (finished && position === 'hidden') {
-          setPanelVisible(false);
+      sheetStateShared.value = position;
+      if (position !== 'hidden') {
+        setPanelVisible(true);
+      }
+      sheetTranslateY.value = withSpring(
+        target,
+        {
+          ...SHEET_SPRING_CONFIG,
+          velocity,
+        },
+        (finished) => {
+          if (finished && position === 'hidden') {
+            runOnJS(setPanelVisible)(false);
+          }
         }
-      });
+      );
     },
-    [sheetTranslateY, snapPoints]
+    [snapPoints, setPanelVisible, sheetStateShared, sheetTranslateY]
   );
 
-  const panResponder = React.useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dy) > 6,
-        onPanResponderGrant: () => {
-          sheetTranslateY.stopAnimation((value) => {
-            panOffset.current = value;
-            isDragging.current = true;
+  const sheetPanGesture = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, SheetGestureContext>(
+    {
+      onStart: (_, context) => {
+        context.startY = sheetTranslateY.value;
+        const currentState = sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
+        const startIndex = SHEET_STATES.indexOf(currentState);
+        context.startStateIndex = startIndex >= 0 ? startIndex : SHEET_STATES.length - 1;
+      },
+      onActive: (event, context) => {
+        const minY = snapPointExpanded.value;
+        const maxY = snapPointHidden.value;
+        sheetTranslateY.value = clampValue(context.startY + event.translationY, minY, maxY);
+      },
+      onEnd: (event, context) => {
+        const minY = snapPointExpanded.value;
+        const maxY = snapPointHidden.value;
+        const collapsed = snapPointCollapsed.value;
+        const projected = clampValue(sheetTranslateY.value + event.velocityY * 0.05, minY, maxY);
+        let targetIndex = context.startStateIndex;
+        if (
+          event.translationY > SMALL_MOVEMENT_THRESHOLD &&
+          context.startStateIndex < SHEET_STATES.length - 1
+        ) {
+          targetIndex = context.startStateIndex + 1;
+        } else if (
+          event.translationY < -SMALL_MOVEMENT_THRESHOLD &&
+          context.startStateIndex > 0
+        ) {
+          targetIndex = context.startStateIndex - 1;
+        } else {
+          const distances = SHEET_STATES.map((state) => {
+            return Math.abs(
+              projected -
+                snapPointForState(
+                  state,
+                  snapPointExpanded.value,
+                  snapPointMiddle.value,
+                  snapPointCollapsed.value,
+                  snapPointHidden.value
+                )
+            );
           });
-        },
-        onPanResponderMove: (_, gestureState) => {
-          const minY = snapPoints.expanded;
-          const maxY = snapPoints.hidden;
-          const next = Math.min(Math.max(panOffset.current + gestureState.dy, minY), maxY);
-          sheetTranslateY.setValue(next);
-        },
-        onPanResponderRelease: (_, gestureState) => {
-          isDragging.current = false;
-          const minY = snapPoints.expanded;
-          const maxY = snapPoints.hidden;
-          const current = Math.min(Math.max(panOffset.current + gestureState.dy, minY), maxY);
-          const velocity = gestureState.vy;
-          const snapSequence: SheetPosition[] = ['expanded', 'middle', 'collapsed'];
+          const smallest = Math.min(...distances);
+          targetIndex = Math.max(distances.indexOf(smallest), 0);
+        }
 
-          let target: SheetPosition = snapSequence.reduce((closest, position) => {
-            const diff = Math.abs(current - snapPoints[position]);
-            const closestDiff = Math.abs(current - snapPoints[closest]);
-            return diff < closestDiff ? position : closest;
-          }, 'middle' as SheetPosition);
+        let targetState: SheetPosition = SHEET_STATES[targetIndex];
+        if (event.velocityY > 1200 || sheetTranslateY.value > collapsed + 40) {
+          targetState = 'hidden';
+        } else if (event.velocityY < -1200) {
+          targetState = 'expanded';
+        }
 
-          if (velocity < -1.1) {
-            target = current < snapPoints.middle ? 'expanded' : 'middle';
-          } else if (velocity > 1.1) {
-            if (current > snapPoints.collapsed + 60) {
-              target = 'hidden';
-            } else {
-              target = current > snapPoints.middle ? 'collapsed' : 'middle';
-            }
-          } else if (current > snapPoints.collapsed + 80) {
-            target = 'hidden';
-          }
-
-          if (target !== 'hidden') {
-            setPanelVisible(true);
-          }
-
-          animateSheetTo(target, velocity);
-          panOffset.current = 0;
-        },
-      }),
-    [animateSheetTo, snapPoints, sheetTranslateY]
+        const clampedVelocity = Math.max(Math.min(event.velocityY, 2500), -2500);
+        runOnJS(animateSheetTo)(targetState, clampedVelocity);
+      },
+    },
+    [animateSheetTo]
   );
 
-  const searchBarOpacity = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, snapPoints.middle],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
+  const searchBarInputAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      sheetTranslateY.value,
+      [snapPointExpanded.value, snapPointMiddle.value],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
   });
-  const searchBarSolidBackground = sheetTranslateY.interpolate({
-    inputRange: [snapPoints.expanded, snapPoints.middle],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
+  const searchBarSolidAnimatedStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      sheetTranslateY.value,
+      [snapPointExpanded.value, snapPointMiddle.value],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    return { opacity };
   });
-  React.useEffect(() => {
-    Animated.spring(segmentAnim, {
-      toValue: activeTab === 'restaurants' ? 0 : 1,
-      useNativeDriver: true,
-      bounciness: 10,
-      speed: 14,
-    }).start();
-  }, [activeTab, segmentAnim]);
-
+  const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: sheetTranslateY.value }],
+  }));
   React.useEffect(() => {
     if (!panelVisible && isPriceSelectorVisible) {
       setIsPriceSelectorVisible(false);
@@ -573,6 +680,17 @@ const SearchScreen: React.FC = () => {
     }
     setIsPriceSelectorVisible((visible) => !visible);
   }, [isLoading]);
+
+  const toggleVotesFilter = React.useCallback(() => {
+    if (isLoading) {
+      return;
+    }
+    const nextValue = !votes100Plus;
+    setVotes100Plus(nextValue);
+    if (query.trim()) {
+      void submitSearch({ minimumVotes: nextValue ? MINIMUM_VOTES_FILTER : null });
+    }
+  }, [isLoading, votes100Plus, setVotes100Plus, query, submitSearch]);
 
   const loadRecentHistory = React.useCallback(async () => {
     if (!isSignedIn) {
@@ -635,8 +753,16 @@ const SearchScreen: React.FC = () => {
       const effectivePriceLevels =
         options?.priceLevels !== undefined ? options.priceLevels : priceLevels;
       const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
+      const effectiveMinimumVotes =
+        options?.minimumVotes !== undefined
+          ? options.minimumVotes
+          : votes100Plus
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
+      setIsSearchSessionActive(true);
       showPanel();
+      setIsAutocompleteSuppressed(true);
       setShowSuggestions(false);
 
       try {
@@ -654,6 +780,10 @@ const SearchScreen: React.FC = () => {
 
         if (normalizedPriceLevels.length > 0) {
           payload.priceLevels = normalizedPriceLevels;
+        }
+
+        if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
+          payload.minimumVotes = effectiveMinimumVotes;
         }
 
         if (mapRef.current?.getVisibleBounds) {
@@ -692,13 +822,6 @@ const SearchScreen: React.FC = () => {
         updateLocalRecentSearches(trimmed);
         void loadRecentHistory();
 
-        const hasAnyResults =
-          (response?.food?.length ?? 0) > 0 || (response?.restaurants?.length ?? 0) > 0;
-        if (hasAnyResults && !hasUnlockedFullResults) {
-          setHasPreviewedResults(true);
-          setPreviewQuery(trimmed);
-        }
-
         Keyboard.dismiss();
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
@@ -713,9 +836,10 @@ const SearchScreen: React.FC = () => {
       showPanel,
       openNow,
       priceLevels,
-      hasUnlockedFullResults,
+      votes100Plus,
       loadRecentHistory,
       updateLocalRecentSearches,
+      setIsSearchSessionActive,
     ]
   );
 
@@ -734,23 +858,36 @@ const SearchScreen: React.FC = () => {
     [submitSearch]
   );
 
+  const clearSearchState = React.useCallback(
+    ({ shouldRefocusInput = false }: { shouldRefocusInput?: boolean } = {}) => {
+      setQuery('');
+      setResults(null);
+      setSubmittedQuery('');
+      setError(null);
+      setSuggestions([]);
+      setShowSuggestions(false);
+      hidePanel();
+      setIsSearchSessionActive(false);
+      if (shouldRefocusInput) {
+        requestAnimationFrame(() => {
+          inputRef.current?.focus();
+        });
+      }
+    },
+    [hidePanel, setIsSearchSessionActive]
+  );
+
   const handleClear = React.useCallback(() => {
-    setQuery('');
-    setResults(null);
-    setSubmittedQuery('');
-    setError(null);
-    setHasPreviewedResults(false);
-    setPreviewQuery('');
-    setSuggestions([]);
-    setShowSuggestions(false);
-    hidePanel();
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, [hidePanel]);
+    clearSearchState({ shouldRefocusInput: true });
+  }, [clearSearchState]);
+
+  const handleCloseResults = React.useCallback(() => {
+    clearSearchState();
+  }, [clearSearchState]);
 
   const handleSearchFocus = React.useCallback(() => {
     setIsSearchFocused(true);
+    setIsAutocompleteSuppressed(false);
     void loadRecentHistory();
   }, [loadRecentHistory]);
 
@@ -893,90 +1030,48 @@ const SearchScreen: React.FC = () => {
     [favoriteMap]
   );
 
-  const openPaywall = React.useCallback(() => {
-    setIsPaywallVisible(true);
+  const openRestaurantProfile = React.useCallback(
+    (restaurant: RestaurantResult) => {
+      const restaurantDishes = dishes
+        .filter((dish) => dish.restaurantId === restaurant.restaurantId)
+        .sort((a, b) => b.qualityScore - a.qualityScore);
+      const label = (submittedQuery || trimmedQuery || 'Search').trim();
+      setRestaurantProfile({
+        restaurant,
+        dishes: restaurantDishes,
+        queryLabel: label,
+        isFavorite: favoriteMap.has(restaurant.restaurantId),
+      });
+      setRestaurantOverlayVisible(true);
+    },
+    [dishes, favoriteMap, submittedQuery, trimmedQuery]
+  );
+
+  React.useEffect(() => {
+    if (!restaurantProfile) {
+      return;
+    }
+    const isFavorite = favoriteMap.has(restaurantProfile.restaurant.restaurantId);
+    if (isFavorite !== restaurantProfile.isFavorite) {
+      setRestaurantProfile((prev) => (prev ? { ...prev, isFavorite } : prev));
+    }
+  }, [favoriteMap, restaurantProfile]);
+
+  const handleRestaurantFavoriteToggle = React.useCallback(
+    (restaurantId: string) => {
+      void toggleFavorite(restaurantId);
+    },
+    [toggleFavorite]
+  );
+
+  const closeRestaurantProfile = React.useCallback(() => {
+    setRestaurantOverlayVisible(false);
   }, []);
 
-  const closePaywall = React.useCallback(() => {
-    setIsPaywallVisible(false);
+  const handleRestaurantOverlayDismissed = React.useCallback(() => {
+    setRestaurantProfile(null);
+    setRestaurantOverlayVisible(false);
   }, []);
-
-  const handleUnlockResults = React.useCallback(() => {
-    setHasUnlockedFullResults(true);
-    setIsPaywallVisible(false);
-  }, []);
-
-  const renderPaywallPreview = () => {
-    const totalResults = activeTab === 'dishes' ? dishes.length : restaurants.length;
-    return (
-      <View style={styles.previewContainer}>
-        <Text variant="body" weight="bold" style={styles.previewTitle}>
-          {previewQuery ? `Preview: "${previewQuery}"` : 'Search results preview'}
-        </Text>
-        <Text variant="caption" style={styles.previewSubtitle}>
-          You're seeing {lockedCount} of {totalResults} results. Unlock to see full quality scores,
-          filters, and map view.
-        </Text>
-        <View style={styles.previewList}>
-          {previewItems.map((item, index) => {
-            const isDishTab = activeTab === 'dishes';
-            const key = isDishTab
-              ? (item as FoodResult).connectionId
-              : (item as RestaurantResult).restaurantId;
-            const primaryText = isDishTab
-              ? (item as FoodResult).foodName
-              : (item as RestaurantResult).restaurantName;
-            const secondaryText = isDishTab
-              ? (item as FoodResult).restaurantName
-              : (item as RestaurantResult).address ?? 'Neighborhood intel ready';
-            return (
-              <View key={key} style={styles.previewItem}>
-                <View style={[styles.rankBadge, styles.rankBadgeMuted]}>
-                  <Text
-                    variant="body"
-                    weight="bold"
-                    style={[styles.rankBadgeText, styles.rankBadgeTextMuted]}
-                  >
-                    {index + 1}
-                  </Text>
-                </View>
-                <View style={styles.previewItemBody}>
-                  <Text variant="body" weight="semibold" style={styles.previewItemTitle}>
-                    {primaryText}
-                  </Text>
-                  <Text variant="caption" style={styles.previewItemMeta}>
-                    {secondaryText}
-                  </Text>
-                  <Text variant="caption" style={styles.previewBlurText}>
-                    🔒 Quality score hidden · Unlock to reveal
-                  </Text>
-                </View>
-              </View>
-            );
-          })}
-        </View>
-        <View style={styles.previewOverlayCard}>
-          <Text variant="subtitle" weight="bold" style={styles.previewOverlayTitle}>
-            Unlock all {totalResults} dishes + community scores
-          </Text>
-          <Text variant="body" style={styles.previewOverlayDescription}>
-            See exactly what to order, not just where to go. Rankings from weekly community polls.
-          </Text>
-          <Button
-            label="Start 7-day free trial"
-            onPress={openPaywall}
-            style={styles.previewPrimaryButton}
-          />
-          <Button
-            label="See pricing"
-            variant="ghost"
-            onPress={openPaywall}
-            style={styles.previewGhostButton}
-          />
-        </View>
-      </View>
-    );
-  };
 
   const getQualityColor = (index: number, total: number): string => {
     const ratio = index / Math.max(total - 1, 1);
@@ -999,30 +1094,260 @@ const SearchScreen: React.FC = () => {
     return `rgb(${r}, ${g}, ${b})`;
   };
 
-  const renderDishCard = (item: FoodResult, index: number) => {
-    const isLiked = favoriteMap.has(item.foodId);
-    const qualityColor = getQualityColor(index, dishes.length);
-    return (
-      <View key={item.connectionId} style={styles.resultItem}>
+  type ResultCardOptions = {
+    showFilters?: boolean;
+  };
+
+  const renderFiltersSection = (): React.ReactElement => (
+    <View style={styles.resultFiltersWrapper}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterButtonsContent}
+        style={styles.filterButtonsScroll}
+      >
+        <View style={styles.inlineSegmentWrapper}>
+          <View style={styles.segmentedControl}>
+            {SEGMENT_OPTIONS.map((option) => {
+              const selected = activeTab === option.value;
+              return (
+                <Pressable
+                  key={option.value}
+                  style={[styles.segmentedOption, selected && styles.segmentedOptionActive]}
+                  onPress={() => setActiveTab(option.value)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`View ${option.label.toLowerCase()}`}
+                  accessibilityState={{ selected }}
+                >
+                  <Text
+                    numberOfLines={1}
+                    variant="caption"
+                    weight="semibold"
+                    style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+        <Pressable
+          onPress={toggleOpenNow}
+          disabled={isLoading}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle open now results"
+          accessibilityState={{ disabled: isLoading, selected: openNow }}
+          style={[
+            styles.openNowButton,
+            openNow && styles.openNowButtonActive,
+            isLoading && styles.openNowButtonDisabled,
+          ]}
+        >
+          <Feather
+            name="clock"
+            size={14}
+            color={openNow ? '#ffffff' : '#475569'}
+            style={styles.openNowIcon}
+          />
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.openNowText, openNow && styles.openNowTextActive]}
+          >
+            Open now
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={togglePriceSelector}
+          disabled={isLoading}
+          accessibilityRole="button"
+          accessibilityLabel="Select price filters"
+          accessibilityState={{
+            disabled: isLoading,
+            expanded: isPriceSelectorVisible,
+            selected: priceFiltersActive,
+          }}
+          style={[
+            styles.priceButton,
+            priceButtonIsActive && styles.priceButtonActive,
+            isLoading && styles.priceButtonDisabled,
+          ]}
+        >
+          <Feather
+            name="dollar-sign"
+            size={14}
+            color={priceButtonIsActive ? '#ffffff' : '#475569'}
+            style={styles.priceButtonIcon}
+          />
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.priceButtonLabel, priceButtonIsActive && styles.priceButtonLabelActive]}
+          >
+            Price
+          </Text>
+          <Feather
+            name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color={priceButtonIsActive ? '#ffffff' : '#475569'}
+            style={styles.priceButtonChevron}
+          />
+        </Pressable>
+        <Pressable
+          onPress={toggleVotesFilter}
+          disabled={isLoading}
+          accessibilityRole="button"
+          accessibilityLabel="Toggle 100 plus votes filter"
+          accessibilityState={{ disabled: isLoading, selected: votesFilterActive }}
+          style={[
+            styles.votesButton,
+            votesFilterActive && styles.votesButtonActive,
+            isLoading && styles.votesButtonDisabled,
+          ]}
+        >
+          <Feather
+            name="thumbs-up"
+            size={14}
+            color={votesFilterActive ? '#ffffff' : '#475569'}
+            style={styles.votesIcon}
+          />
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+          >
+            100+ votes
+          </Text>
+        </Pressable>
+      </ScrollView>
+      {isPriceSelectorVisible ? (
+        <View style={styles.priceSelector}>
+          <View style={styles.priceSelectorHeader}>
+            <Text variant="caption" style={styles.priceFilterLabel}>
+              Select price range
+            </Text>
+            <Pressable
+              onPress={clearPriceLevels}
+              disabled={isLoading || priceLevels.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Clear selected price filters"
+              accessibilityState={{
+                disabled: isLoading || priceLevels.length === 0,
+              }}
+              style={[
+                styles.clearPriceButton,
+                (isLoading || priceLevels.length === 0) && styles.clearPriceButtonDisabled,
+              ]}
+            >
+              <Text
+                variant="caption"
+                style={[
+                  styles.clearPriceButtonText,
+                  (isLoading || priceLevels.length === 0) && styles.clearPriceButtonTextDisabled,
+                ]}
+              >
+                Clear
+              </Text>
+            </Pressable>
+          </View>
+          <View style={styles.priceFilterChips}>
+            {PRICE_LEVEL_OPTIONS.map((option) => {
+              const selected = priceLevels.includes(option.value);
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => togglePriceLevel(option.value)}
+                  disabled={isLoading}
+                  style={[
+                    styles.priceChip,
+                    selected && styles.priceChipSelected,
+                    isLoading && styles.priceChipDisabled,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Toggle ${option.label} price level`}
+                  accessibilityState={{ selected, disabled: isLoading }}
+                >
+                  <Text
+                    variant="caption"
+                    style={[styles.priceChipText, selected && styles.priceChipTextSelected]}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            <Pressable
+              onPress={clearPriceLevels}
+              disabled={isLoading || priceLevels.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Clear selected price filters"
+              accessibilityState={{
+                disabled: isLoading,
+                selected: priceLevels.length === 0,
+              }}
+              style={[
+                styles.priceChip,
+                priceLevels.length === 0 && styles.priceChipSelected,
+                isLoading && styles.priceChipDisabled,
+              ]}
+            >
+              <Text
+                variant="caption"
+                style={[
+                  styles.priceChipText,
+                  priceLevels.length === 0 && styles.priceChipTextSelected,
+                ]}
+              >
+                All
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+
+const renderDishCard = (item: FoodResult, index: number, options?: ResultCardOptions) => {
+  const isLiked = favoriteMap.has(item.foodId);
+  const qualityColor = getQualityColor(index, dishes.length);
+  const restaurantForDish = restaurantsById.get(item.restaurantId);
+  const handleShare = () => {
+    void Share.share({
+      message: `${item.foodName} at ${item.restaurantName} · View on Crave Search`,
+    }).catch(() => undefined);
+  };
+  const handleDishPress = () => {
+    if (restaurantForDish) {
+      openRestaurantProfile(restaurantForDish);
+    }
+  };
+  return (
+    <View key={item.connectionId} style={styles.resultItem}>
+      {options?.showFilters ? renderFiltersSection() : null}
+      <Pressable
+        style={styles.resultPressable}
+        onPress={handleDishPress}
+        accessibilityRole={restaurantForDish ? 'button' : undefined}
+        accessibilityLabel={restaurantForDish ? `View ${item.restaurantName}` : undefined}
+        disabled={!restaurantForDish}
+      >
         <View style={styles.resultHeader}>
-          <View style={styles.rankBadge}>
+          <View style={[styles.rankBadge, styles.rankBadgeLifted]}>
             <Text variant="body" weight="bold" style={styles.rankBadgeText}>
               {index + 1}
             </Text>
           </View>
-          <View style={styles.resultTitleContainer}>
-            <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
-              {item.foodName}
-            </Text>
-            <Text
-              variant="body"
-              weight="medium"
-              style={[styles.textSlate600, styles.dishCardTitle]}
-            >
-              {' '}
-              • {item.restaurantName}
-            </Text>
-          </View>
+        <View style={styles.resultTitleContainer}>
+          <Text variant="body" weight="bold" style={[styles.textSlate900, styles.dishCardTitle]}>
+            {item.foodName}
+          </Text>
+          <Text variant="body" weight="medium" style={[styles.textSlate600, styles.dishCardTitle]}>
+            {' '}
+            • {item.restaurantName}
+          </Text>
+        </View>
+        <View style={styles.resultActions}>
           <Pressable
             onPress={() => toggleFavorite(item.foodId)}
             accessibilityRole="button"
@@ -1036,99 +1361,118 @@ const SearchScreen: React.FC = () => {
               <Feather name="heart" size={20} color="#cbd5e1" />
             )}
           </Pressable>
+          <Pressable
+            onPress={handleShare}
+            accessibilityRole="button"
+            accessibilityLabel="Share"
+            style={styles.shareButton}
+            hitSlop={8}
+          >
+            <Feather name="share-2" size={18} color="#cbd5e1" />
+          </Pressable>
         </View>
+      </View>
         <View style={styles.resultContent}>
-          <View style={styles.metricsContainer}>
-            <View style={styles.primaryMetric}>
-              <Text variant="caption" style={styles.primaryMetricLabel}>
-                Score
+        <View style={styles.metricsContainer}>
+          <View style={styles.primaryMetric}>
+            <Text variant="caption" style={styles.primaryMetricLabel}>
+              Score
+            </Text>
+            <Text
+              variant="title"
+              weight="bold"
+              style={[styles.primaryMetricValue, { color: qualityColor }]}
+            >
+              {item.qualityScore.toFixed(1)}
+            </Text>
+          </View>
+          <View style={styles.secondaryMetrics}>
+            <View style={styles.secondaryMetric}>
+              <Text variant="caption" style={styles.secondaryMetricLabel}>
+                Poll Count
               </Text>
-              <Text
-                variant="title"
-                weight="bold"
-                style={[styles.primaryMetricValue, { color: qualityColor }]}
-              >
-                {item.qualityScore.toFixed(1)}
+              <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                {item.mentionCount}
               </Text>
             </View>
-            <View style={styles.secondaryMetrics}>
-              <View style={styles.secondaryMetric}>
-                <Text variant="caption" style={styles.secondaryMetricLabel}>
-                  Poll Count
-                </Text>
-                <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                  {item.mentionCount}
-                </Text>
-              </View>
-              <View style={styles.secondaryMetric}>
-                <Text variant="caption" style={styles.secondaryMetricLabel}>
-                  Total Votes
-                </Text>
-                <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                  {item.totalUpvotes}
-                </Text>
-              </View>
+            <View style={styles.secondaryMetric}>
+              <Text variant="caption" style={styles.secondaryMetricLabel}>
+                Total Votes
+              </Text>
+              <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                {item.totalUpvotes}
+              </Text>
             </View>
           </View>
         </View>
-      </View>
-    );
-  };
+        </View>
+      </Pressable>
+    </View>
+  );
+};
 
-  const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
-    const isLiked = favoriteMap.has(restaurant.restaurantId);
-    const qualityColor = getQualityColor(index, restaurants.length);
-    return (
-      <View key={restaurant.restaurantId} style={styles.resultItem}>
+const renderRestaurantCard = (
+  restaurant: RestaurantResult,
+  index: number,
+  options?: ResultCardOptions
+) => {
+  const isLiked = favoriteMap.has(restaurant.restaurantId);
+  const qualityColor = getQualityColor(index, restaurants.length);
+  const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+  const handleShare = () => {
+    void Share.share({
+      message: `${restaurant.restaurantName} · View on Crave Search`,
+    }).catch(() => undefined);
+  };
+  return (
+    <View key={restaurant.restaurantId} style={styles.resultItem}>
+      {options?.showFilters ? renderFiltersSection() : null}
+      <Pressable
+        style={styles.resultPressable}
+        onPress={() => openRestaurantProfile(restaurant)}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${restaurant.restaurantName}`}
+      >
         <View style={styles.resultHeader}>
           <View style={styles.rankBadge}>
             <Text variant="body" weight="bold" style={styles.rankBadgeText}>
               {index + 1}
             </Text>
           </View>
-          <View style={styles.resultTitleContainer}>
-            <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
-              {restaurant.restaurantName}
-            </Text>
+        <View style={styles.resultTitleContainer}>
+          <Text variant="subtitle" weight="bold" style={[styles.textSlate900, styles.dishTitle]}>
+            {restaurant.restaurantName}
+          </Text>
+          {priceRangeLabel ? (
+            <Text style={styles.priceInlineLabel}> · {priceRangeLabel}</Text>
+          ) : null}
+        </View>
+          <View style={styles.resultActions}>
+            <Pressable
+              onPress={() => toggleFavorite(restaurant.restaurantId)}
+              accessibilityRole="button"
+              accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
+              style={styles.likeButton}
+              hitSlop={8}
+            >
+              {isLiked ? (
+                <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
+              ) : (
+                <Feather name="heart" size={20} color="#cbd5e1" />
+              )}
+            </Pressable>
+            <Pressable
+              onPress={handleShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share"
+              style={styles.shareButton}
+              hitSlop={8}
+            >
+              <Feather name="share-2" size={18} color="#cbd5e1" />
+            </Pressable>
           </View>
-          <Pressable
-            onPress={() => toggleFavorite(restaurant.restaurantId)}
-            accessibilityRole="button"
-            accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
-            style={styles.likeButton}
-            hitSlop={8}
-          >
-            {isLiked ? (
-              <Feather name="heart" size={20} color="#ef4444" fill="#ef4444" />
-            ) : (
-              <Feather name="heart" size={20} color="#cbd5e1" />
-            )}
-          </Pressable>
         </View>
         <View style={styles.resultContent}>
-          {restaurant.address ? (
-            <Text variant="caption" style={[styles.textSlate600, styles.dishSubtitle]}>
-              {restaurant.address}
-            </Text>
-          ) : null}
-          {(() => {
-            const priceMeta = derivePriceMeta(restaurant.priceLevel);
-            if (!priceMeta) {
-              return null;
-            }
-            return (
-              <View style={styles.priceBadge}>
-                <Text variant="caption" style={styles.priceBadgeText}>
-                  {priceMeta.symbol}
-                </Text>
-                {priceMeta.description ? (
-                  <Text variant="caption" style={styles.priceBadgeSubtext}>
-                    {priceMeta.description}
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })()}
           <View style={styles.metricsContainer}>
             <View style={styles.primaryMetric}>
               <Text variant="caption" style={styles.primaryMetricLabel}>
@@ -1156,43 +1500,33 @@ const SearchScreen: React.FC = () => {
               </View>
             ) : null}
           </View>
-          {restaurant.topFood?.length ? (
-            <View style={styles.topFoodSection}>
-              {restaurant.topFood.map((food) => (
-                <Text
-                  key={food.connectionId}
-                  variant="caption"
-                  style={[styles.textSlate700, styles.topFoodText]}
-                >
-                  • {food.foodName} ({food.qualityScore.toFixed(1)})
-                </Text>
-              ))}
-            </View>
-          ) : null}
-        </View>
+        {restaurant.topFood?.length ? (
+          <View style={styles.topFoodSection}>
+            {restaurant.topFood.map((food) => (
+              <Text
+                key={food.connectionId}
+                variant="caption"
+                style={[styles.textSlate700, styles.topFoodText]}
+              >
+                • {food.foodName} ({food.qualityScore.toFixed(1)})
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </View>
-    );
-  };
+      </Pressable>
+    </View>
+  );
+};
 
   const renderDishResults = () => {
     if (!dishes.length) {
       return <EmptyState message="No dishes found. Try adjusting your search." />;
     }
 
-    const offset = shouldGateResults ? lockedCount : 0;
-    const visibleDishes = shouldGateResults ? dishes.slice(lockedCount) : dishes;
-
-    if (!visibleDishes.length && shouldShowPreview) {
-      return (
-        <View style={styles.lockedEmptyState}>
-          <Text variant="caption" style={styles.lockedEmptyText}>
-            Unlock to reveal the top {lockedCount} dishes.
-          </Text>
-        </View>
-      );
-    }
-
-    return visibleDishes.map((dish, index) => renderDishCard(dish, index + offset));
+    return dishes.map((dish, index) =>
+      renderDishCard(dish, index, { showFilters: index === 0 })
+    );
   };
 
   const renderRestaurantResults = () => {
@@ -1200,21 +1534,8 @@ const SearchScreen: React.FC = () => {
       return <EmptyState message="No restaurants found. Try adjusting your search." />;
     }
 
-    const offset = shouldGateResults ? lockedCount : 0;
-    const visibleRestaurants = shouldGateResults ? restaurants.slice(lockedCount) : restaurants;
-
-    if (!visibleRestaurants.length && shouldShowPreview) {
-      return (
-        <View style={styles.lockedEmptyState}>
-          <Text variant="caption" style={styles.lockedEmptyText}>
-            Unlock to reveal the top {lockedCount} restaurants.
-          </Text>
-        </View>
-      );
-    }
-
-    return visibleRestaurants.map((restaurant, index) =>
-      renderRestaurantCard(restaurant, index + offset)
+    return restaurants.map((restaurant, index) =>
+      renderRestaurantCard(restaurant, index, { showFilters: index === 0 })
     );
   };
 
@@ -1231,7 +1552,7 @@ const SearchScreen: React.FC = () => {
       >
         <MapboxGL.Camera
           ref={cameraRef}
-          centerCoordinate={AUSTIN_COORDINATE}
+          centerCoordinate={DEFAULT_MAP_CENTER}
           zoomLevel={12}
           pitch={32}
         />
@@ -1258,11 +1579,8 @@ const SearchScreen: React.FC = () => {
         ) : null}
       </MapboxGL.MapView>
 
-      <SafeAreaView
-        style={styles.overlay}
-        pointerEvents="box-none"
-        edges={['top', 'left', 'right']}
-      >
+      {isSearchOverlay && (
+        <SafeAreaView style={styles.overlay} pointerEvents="box-none" edges={['top', 'left', 'right']}>
         <View
           pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
           style={styles.searchContainer}
@@ -1276,591 +1594,332 @@ const SearchScreen: React.FC = () => {
             });
           }}
         >
-          <View style={styles.promptCard}>
-            <BlurView
-              pointerEvents="none"
-              intensity={45}
-              tint="light"
-              style={StyleSheet.absoluteFillObject}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                StyleSheet.absoluteFillObject,
-                {
-                  backgroundColor: 'rgba(255, 255, 255, 1)',
-                  borderRadius: 16,
-                  opacity: searchBarSolidBackground,
-                },
-              ]}
-            />
-            <View pointerEvents="none" style={styles.glassHighlightSmall} />
-            <View style={styles.promptRow}>
-              <Animated.View
-                style={{
-                  opacity: searchBarOpacity,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  flex: 1,
-                }}
-              >
-                <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
-                <TextInput
-                  ref={inputRef}
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="What are you craving?"
-                  placeholderTextColor="#6b7280"
-                  style={styles.promptInput}
-                  returnKeyType="search"
-                  onSubmitEditing={handleSubmit}
-                  onFocus={handleSearchFocus}
-                  onBlur={handleSearchBlur}
-                  editable={!isLoading}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  clearButtonMode="never"
+          <View style={styles.promptCardTopShadow}>
+            <View style={styles.promptCardWrapper}>
+              <View style={styles.promptCard}>
+                <BlurView
+                  pointerEvents="none"
+                  intensity={45}
+                  tint="light"
+                  style={StyleSheet.absoluteFillObject}
                 />
-              </Animated.View>
-              <Animated.View style={{ opacity: searchBarOpacity }}>
-                {isLoading ? (
-                  <ActivityIndicator style={styles.trailingSpinner} size="small" color="#FB923C" />
-                ) : query.length > 0 ? (
-                  <Pressable
-                    onPress={handleClear}
-                    accessibilityRole="button"
-                    accessibilityLabel="Clear search"
-                    style={styles.trailingAction}
-                    hitSlop={8}
-                  >
-                    <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
-                  </Pressable>
-                ) : (
-                  <View style={styles.trailingPlaceholder} />
-                )}
-              </Animated.View>
-            </View>
-
-            {shouldRenderSuggestionPanel && (
-              <Animated.View
-                style={[
-                  styles.autocompletePanel,
-                  {
-                    opacity: searchContainerAnim,
-                    transform: [
+                <Reanimated.View
+                  pointerEvents="none"
+                  style={[
+                    StyleSheet.absoluteFillObject,
+                    {
+                      backgroundColor: 'rgba(255, 255, 255, 1)',
+                      borderRadius: 16,
+                    },
+                    searchBarSolidAnimatedStyle,
+                  ]}
+                />
+                <View pointerEvents="none" style={styles.glassHighlightSmall} />
+                <Pressable style={styles.promptRow} onPress={focusSearchInput}>
+                  <Reanimated.View
+                    style={[
                       {
-                        translateY: searchContainerAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-6, 0],
-                        }),
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        flex: 1,
                       },
-                    ],
-                  },
-                ]}
-              >
-                {shouldRenderAutocompleteSection && (
-                  <View style={styles.autocompleteSection}>
-                    {isAutocompleteLoading && (
-                      <View style={styles.autocompleteLoadingRow}>
-                        <ActivityIndicator size="small" color="#6366f1" />
-                        <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                      searchBarInputAnimatedStyle,
+                    ]}
+                  >
+                    <Feather name="search" size={20} color="#6b7280" style={styles.searchIcon} />
+                    <TextInput
+                      ref={inputRef}
+                      value={query}
+                      onChangeText={handleQueryChange}
+                      placeholder="What are you craving?"
+                      placeholderTextColor="#6b7280"
+                      style={styles.promptInput}
+                      returnKeyType="search"
+                      onSubmitEditing={handleSubmit}
+                      onFocus={handleSearchFocus}
+                      onBlur={handleSearchBlur}
+                      editable={!isLoading}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      clearButtonMode="never"
+                    />
+                  </Reanimated.View>
+                  <Reanimated.View style={[styles.trailingContainer, searchBarInputAnimatedStyle]}>
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color="#FB923C" />
+                    ) : query.length > 0 ? (
+                      <Pressable
+                        onPress={handleClear}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear search"
+                        style={styles.trailingButton}
+                        hitSlop={8}
+                      >
+                        <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
+                      </Pressable>
+                    ) : (
+                      <View style={styles.trailingPlaceholder} />
+                    )}
+                  </Reanimated.View>
+                </Pressable>
+
+                {shouldRenderSuggestionPanel && (
+                  <Animated.View
+                    style={[
+                      styles.autocompletePanel,
+                      {
+                        opacity: searchContainerAnim,
+                        transform: [
+                          {
+                            translateY: searchContainerAnim.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [-6, 0],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  >
+                    {shouldRenderAutocompleteSection && (
+                      <View style={styles.autocompleteSection}>
+                        {isAutocompleteLoading && (
+                          <View style={styles.autocompleteLoadingRow}>
+                            <ActivityIndicator size="small" color="#6366f1" />
+                            <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                          </View>
+                        )}
+                        {!isAutocompleteLoading && suggestions.length === 0 ? (
+                          <Text style={styles.autocompleteEmptyText}>
+                            Keep typing to add a dish or spot
+                          </Text>
+                        ) : (
+                          suggestions.map((match, index) => {
+                            const secondaryLabel =
+                              match.matchType === 'query'
+                                ? 'Recent search'
+                                : match.entityType.replace(/_/g, ' ');
+                            const itemKey = match.entityId
+                              ? `${match.entityId}-${index}`
+                              : `${match.name}-${index}`;
+                            return (
+                              <TouchableOpacity
+                                key={itemKey}
+                                onPress={() => handleSuggestionPress(match)}
+                                style={[
+                                  styles.autocompleteItem,
+                                  index === suggestions.length - 1 && !shouldShowRecentSection
+                                    ? styles.autocompleteItemLast
+                                    : null,
+                                ]}
+                              >
+                                <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                                <Text style={styles.autocompleteSecondaryText}>
+                                  {secondaryLabel}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })
+                        )}
                       </View>
                     )}
-                    {!isAutocompleteLoading && suggestions.length === 0 ? (
-                      <Text style={styles.autocompleteEmptyText}>
-                        Keep typing to add a dish or spot
-                      </Text>
-                    ) : (
-                      suggestions.map((match, index) => {
-                        const secondaryLabel =
-                          match.matchType === 'query'
-                            ? 'Recent search'
-                            : match.entityType.replace(/_/g, ' ');
-                        const itemKey = match.entityId
-                          ? `${match.entityId}-${index}`
-                          : `${match.name}-${index}`;
-                        return (
-                          <TouchableOpacity
-                            key={itemKey}
-                            onPress={() => handleSuggestionPress(match)}
-                            style={[
-                              styles.autocompleteItem,
-                              index === suggestions.length - 1 && !shouldShowRecentSection
-                                ? styles.autocompleteItemLast
-                                : null,
-                            ]}
-                          >
-                            <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                            <Text style={styles.autocompleteSecondaryText}>{secondaryLabel}</Text>
-                          </TouchableOpacity>
-                        );
-                      })
+                    {shouldShowRecentSection && (
+                      <View
+                        style={[
+                          styles.recentSection,
+                          !shouldRenderAutocompleteSection && styles.recentSectionFirst,
+                        ]}
+                      >
+                        <View style={styles.recentHeaderRow}>
+                          <Text style={styles.recentHeaderText}>Recent searches</Text>
+                          {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+                        </View>
+                        {!isRecentLoading && !hasRecentSearches ? (
+                          <Text style={styles.autocompleteEmptyText}>
+                            Start exploring to build your history
+                          </Text>
+                        ) : (
+                          recentSearches.map((term, index) => (
+                            <TouchableOpacity
+                              key={`${term}-${index}`}
+                              onPress={() => handleRecentSearchPress(term)}
+                              style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
+                            >
+                              <Feather
+                                name="clock"
+                                size={16}
+                                color="#6b7280"
+                                style={styles.recentIcon}
+                              />
+                              <Text style={styles.recentText}>{term}</Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </View>
                     )}
-                  </View>
+                  </Animated.View>
                 )}
-                {shouldShowRecentSection && (
-                  <View
-                    style={[
-                      styles.recentSection,
-                      !shouldRenderAutocompleteSection && styles.recentSectionFirst,
-                    ]}
-                  >
-                    <View style={styles.recentHeaderRow}>
-                      <Text style={styles.recentHeaderText}>Recent searches</Text>
-                      {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
-                    </View>
-                    {!isRecentLoading && !hasRecentSearches ? (
-                      <Text style={styles.autocompleteEmptyText}>
-                        Start exploring to build your history
-                      </Text>
-                    ) : (
-                      recentSearches.map((term, index) => (
-                        <TouchableOpacity
-                          key={`${term}-${index}`}
-                          onPress={() => handleRecentSearchPress(term)}
-                          style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-                        >
-                          <Feather
-                            name="clock"
-                            size={16}
-                            color="#6b7280"
-                            style={styles.recentIcon}
-                          />
-                          <Text style={styles.recentText}>{term}</Text>
-                        </TouchableOpacity>
-                      ))
-                    )}
-                  </View>
-                )}
-              </Animated.View>
-            )}
+              </View>
+            </View>
           </View>
         </View>
-        <LinearGradient
-          pointerEvents="none"
-          colors={['rgba(255, 255, 255, 0.95)', 'rgba(255, 255, 255, 0)']}
-          locations={[0, 0.8]}
-          start={{ x: 0.5, y: 1 }}
-          end={{ x: 0.5, y: 0 }}
-          style={styles.navigationGradient}
-        />
-
         {shouldRenderSheet ? (
-          <Animated.View
-            style={[
-              styles.resultsContainer,
-              {
-                transform: [{ translateY: sheetTranslateY }],
-              },
-            ]}
-            pointerEvents={panelVisible ? 'auto' : 'none'}
-          >
-            <BlurView
+          <>
+            <Reanimated.View
               pointerEvents="none"
-              intensity={45}
-              tint="light"
-              style={StyleSheet.absoluteFillObject}
+              style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
             />
-            <View pointerEvents="none" style={styles.glassHighlightLarge} />
-            <View style={styles.resultsHeader} {...panResponder.panHandlers}>
-              <View style={styles.grabHandleWrapper}>
-                <Pressable
-                  onPress={hidePanel}
-                  accessibilityRole="button"
-                  accessibilityLabel="Hide results"
-                >
-                  <View style={styles.grabHandle} />
-                </Pressable>
-              </View>
-              <View style={styles.headerRow}>
-                <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
-                  {submittedQuery || 'Results'}
-                </Text>
-                <Pressable
-                  onPress={hidePanel}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close results"
-                  style={styles.closeButton}
-                  hitSlop={8}
-                >
-                  <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
-                </Pressable>
-              </View>
-              <View style={styles.headerSecondRow}>
-                <View style={styles.filterButtonsRow}>
-                  <Pressable
-                    onPress={toggleOpenNow}
-                    disabled={isLoading}
-                    accessibilityRole="button"
-                    accessibilityLabel="Toggle open now results"
-                    accessibilityState={{ disabled: isLoading, selected: openNow }}
-                    style={[
-                      styles.openNowButton,
-                      openNow && styles.openNowButtonActive,
-                      isLoading && styles.openNowButtonDisabled,
-                    ]}
-                  >
-                    <Feather
-                      name="clock"
-                      size={14}
-                      color={openNow ? '#ffffff' : '#475569'}
-                      style={styles.openNowIcon}
-                    />
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={[styles.openNowText, openNow && styles.openNowTextActive]}
+            <Reanimated.View
+              style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
+              pointerEvents={panelVisible ? 'auto' : 'none'}
+            >
+              {/* BlurView must remain the first child inside this absolute container.
+                  Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
+              <BlurView
+                pointerEvents="none"
+                intensity={45}
+                tint="light"
+                style={StyleSheet.absoluteFillObject}
+              />
+              <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
+              <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+              <PanGestureHandler onGestureEvent={sheetPanGesture}>
+                <Reanimated.View style={overlaySheetStyles.header}>
+                  <View style={overlaySheetStyles.grabHandleWrapper}>
+                    <Pressable
+                      onPress={hidePanel}
+                      accessibilityRole="button"
+                      accessibilityLabel="Hide results"
                     >
-                      Open now
+                      <View style={overlaySheetStyles.grabHandle} />
+                    </Pressable>
+                  </View>
+                  <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+                    <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
+                      {submittedQuery || 'Results'}
                     </Text>
-                  </Pressable>
-                  <Pressable
-                    onPress={togglePriceSelector}
-                    disabled={isLoading}
-                    accessibilityRole="button"
-                    accessibilityLabel="Select price filters"
-                    accessibilityState={{
-                      disabled: isLoading,
-                      expanded: isPriceSelectorVisible,
-                      selected: priceFiltersActive,
-                    }}
-                    style={[
-                      styles.priceButton,
-                      priceButtonIsActive && styles.priceButtonActive,
-                      isLoading && styles.priceButtonDisabled,
-                    ]}
-                  >
-                    <Feather
-                      name="dollar-sign"
-                      size={14}
-                      color={priceButtonIsActive ? '#ffffff' : '#475569'}
-                      style={styles.priceButtonIcon}
-                    />
-                    <View style={styles.priceButtonTextWrapper}>
-                      <Text
-                        variant="caption"
-                        weight="semibold"
-                        style={[
-                          styles.priceButtonLabel,
-                          priceButtonIsActive && styles.priceButtonLabelActive,
-                        ]}
-                      >
-                        Price
-                      </Text>
-                      <Text
-                        variant="caption"
-                        style={[
-                          styles.priceButtonSummary,
-                          priceButtonIsActive && styles.priceButtonSummaryActive,
-                        ]}
-                      >
-                        {priceButtonSummary}
+                    <Pressable
+                      onPress={handleCloseResults}
+                      accessibilityRole="button"
+                      accessibilityLabel="Close results"
+                      style={overlaySheetStyles.closeButton}
+                      hitSlop={8}
+                    >
+                      <Feather name="x" size={24} color={ACTIVE_TAB_COLOR} />
+                    </Pressable>
+                  </View>
+                  <Animated.View
+                    style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
+                  />
+                  {openNowNotice ? (
+                    <View
+                      style={[
+                        styles.openNowNotice,
+                        openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
+                        openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
+                        openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
+                      ]}
+                    >
+                      <Text variant="caption" style={styles.openNowNoticeText}>
+                        {openNowNotice.message}
                       </Text>
                     </View>
-                    <Feather
-                      name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
-                      size={14}
-                      color={priceButtonIsActive ? '#ffffff' : '#475569'}
-                      style={styles.priceButtonChevron}
-                    />
-                  </Pressable>
-                </View>
-                <View style={styles.integratedSegmentedControl}>
-                  <Pressable
-                    style={[
-                      styles.integratedTab,
-                      activeTab === 'restaurants' && styles.integratedTabActive,
-                    ]}
-                    onPress={() => setActiveTab('restaurants')}
-                    accessibilityRole="button"
-                    accessibilityLabel="View restaurants"
-                  >
-                    <Text
-                      variant="caption"
-                      weight={activeTab === 'restaurants' ? 'bold' : 'medium'}
-                      style={[
-                        styles.integratedTabText,
-                        activeTab === 'restaurants' && styles.integratedTabTextActive,
-                      ]}
-                    >
-                      Restaurants
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={[
-                      styles.integratedTab,
-                      activeTab === 'dishes' && styles.integratedTabActive,
-                    ]}
-                    onPress={() => setActiveTab('dishes')}
-                    accessibilityRole="button"
-                    accessibilityLabel="View dishes"
-                  >
-                    <Text
-                      variant="caption"
-                      weight={activeTab === 'dishes' ? 'bold' : 'medium'}
-                      style={[
-                        styles.integratedTabText,
-                        activeTab === 'dishes' && styles.integratedTabTextActive,
-                      ]}
-                    >
-                      Dishes
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
-              {isPriceSelectorVisible ? (
-                <View style={styles.priceSelector}>
-                  <View style={styles.priceSelectorHeader}>
-                    <Text variant="caption" style={styles.priceFilterLabel}>
-                      Select price range
-                    </Text>
-                    <Pressable
-                      onPress={clearPriceLevels}
-                      disabled={isLoading || priceLevels.length === 0}
-                      accessibilityRole="button"
-                      accessibilityLabel="Clear selected price filters"
-                      accessibilityState={{
-                        disabled: isLoading || priceLevels.length === 0,
-                      }}
-                      style={[
-                        styles.clearPriceButton,
-                        (isLoading || priceLevels.length === 0) && styles.clearPriceButtonDisabled,
-                      ]}
-                    >
-                      <Text
-                        variant="caption"
-                        style={[
-                          styles.clearPriceButtonText,
-                          (isLoading || priceLevels.length === 0) &&
-                            styles.clearPriceButtonTextDisabled,
-                        ]}
-                      >
-                        Clear
-                      </Text>
-                    </Pressable>
-                  </View>
-                  <View style={styles.priceFilterChips}>
-                    {PRICE_LEVEL_OPTIONS.map((option) => {
-                      const selected = priceLevels.includes(option.value);
-                      return (
-                        <Pressable
-                          key={option.value}
-                          onPress={() => togglePriceLevel(option.value)}
-                          disabled={isLoading}
-                          accessibilityRole="button"
-                          accessibilityState={{ disabled: isLoading, selected }}
-                          style={[
-                            styles.priceChip,
-                            selected && styles.priceChipSelected,
-                            isLoading && styles.priceChipDisabled,
-                          ]}
-                        >
-                          <Text
-                            variant="caption"
-                            weight="semibold"
-                            style={[styles.priceChipText, selected && styles.priceChipTextSelected]}
-                          >
-                            {option.label}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                    <Pressable
-                      onPress={clearPriceLevels}
-                      disabled={isLoading || priceLevels.length === 0}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        disabled: isLoading,
-                        selected: priceLevels.length === 0,
-                      }}
-                      style={[
-                        styles.priceChip,
-                        priceLevels.length === 0 && styles.priceChipSelected,
-                        isLoading && styles.priceChipDisabled,
-                      ]}
-                    >
-                      <Text
-                        variant="caption"
-                        weight="semibold"
-                        style={[
-                          styles.priceChipText,
-                          priceLevels.length === 0 && styles.priceChipTextSelected,
-                        ]}
-                      >
-                        All
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : null}
-              {openNowNotice ? (
-                <View
-                  style={[
-                    styles.openNowNotice,
-                    openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
-                    openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
-                    openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
-                  ]}
-                >
-                  <Text variant="caption" style={styles.openNowNoticeText}>
-                    {openNowNotice.message}
+                  ) : null}
+                </Reanimated.View>
+              </PanGestureHandler>
+
+              {error ? (
+                <View style={[styles.resultsCard, styles.resultsCardSurface]}>
+                  <Text variant="caption" style={styles.textRed600}>
+                    {error}
                   </Text>
                 </View>
-              ) : null}
-            </View>
-
-            {error ? (
-              <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-                <Text variant="caption" style={styles.textRed600}>
-                  {error}
-                </Text>
-              </View>
-            ) : isLoading && !results ? (
-              <View
-                style={[styles.resultsCard, styles.resultsCardSurface, styles.resultsCardCentered]}
-              >
-                <ActivityIndicator size="large" color="#FB923C" />
-                <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
-                  Looking for the best matches...
-                </Text>
-              </View>
-            ) : (
-              <View style={styles.resultsCard}>
-                <ScrollView
-                  style={styles.resultsScroll}
-                  contentContainerStyle={styles.resultsScrollContent}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
+              ) : isLoading && !results ? (
+                <View
+                  style={[styles.resultsCard, styles.resultsCardSurface, styles.resultsCardCentered]}
                 >
-                  <View style={styles.resultsInner}>
-                    {shouldShowPreview ? renderPaywallPreview() : null}
-                    {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
-                  </View>
-                </ScrollView>
-              </View>
-            )}
-          </Animated.View>
+                  <ActivityIndicator size="large" color="#FB923C" />
+                  <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
+                    Looking for the best matches...
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.resultsCard}>
+                  <Animated.ScrollView
+                    style={styles.resultsScroll}
+                    contentContainerStyle={styles.resultsScrollContent}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    onScroll={handleResultsScroll}
+                    scrollEventThrottle={16}
+                  >
+                    <View style={styles.resultsInner}>
+                      {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
+                    </View>
+                  </Animated.ScrollView>
+                </View>
+              )}
+            </Reanimated.View>
+          </>
         ) : null}
       </SafeAreaView>
-      <Modal
-        transparent
-        animationType="slide"
-        visible={isPaywallVisible}
-        onRequestClose={closePaywall}
-      >
-        <View style={styles.paywallBackdrop}>
-          <View style={styles.paywallCard}>
-            <View style={styles.paywallHeader}>
-              <Text variant="subtitle" weight="bold" style={styles.paywallTitle}>
-                Get unlimited access to Crave
-              </Text>
-              <Pressable
-                onPress={closePaywall}
-                accessibilityRole="button"
-                accessibilityLabel="Close paywall"
-                style={styles.paywallCloseButton}
-              >
-                <Feather name="x" size={22} color="#475569" />
-              </Pressable>
-            </View>
-            <Text variant="body" style={styles.paywallSubtitle}>
-              Dish-level rankings, live community scores, and instant "what to order" answers for
-              every restaurant in Austin.
-            </Text>
-            <View style={styles.planToggle}>
-              <Pressable
-                onPress={() => setSelectedPlan('annual')}
-                style={[
-                  styles.planOption,
-                  selectedPlan === 'annual' && styles.planOptionActive,
-                  selectedPlan === 'annual' && styles.planOptionBestValue,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel="Select annual plan"
-              >
-                {selectedPlan === 'annual' ? (
-                  <View style={styles.mostPopularBadge}>
-                    <Text variant="caption" weight="bold" style={styles.mostPopularBadgeText}>
-                      BEST VALUE
-                    </Text>
-                  </View>
-                ) : null}
-                <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
-                  Annual
-                </Text>
-                <View style={styles.planPriceRow}>
-                  <Text variant="title" weight="bold" style={styles.planOptionPrice}>
-                    $59.99
+      )}
+      {!shouldHideBottomNav && (
+        <View style={styles.bottomNavWrapper} pointerEvents="box-none">
+          <View
+            style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_VERTICAL_PADDING }]}
+          >
+            {navItems.map((item) => {
+              const active = activeOverlay === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  style={styles.navButton}
+                  onPress={() => handleOverlaySelect(item.key)}
+                >
+                  <Feather
+                    name={item.icon}
+                    size={20}
+                    color={active ? ACTIVE_TAB_COLOR : '#94a3b8'}
+                  />
+                  <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                    {item.label}
                   </Text>
-                  <Text variant="caption" style={styles.planOptionPriceDetail}>
-                    /year
-                  </Text>
-                </View>
-                <Text variant="caption" style={styles.planOptionSubtext}>
-                  $5/month • Save 40%
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setSelectedPlan('monthly')}
-                style={[styles.planOption, selectedPlan === 'monthly' && styles.planOptionActive]}
-                accessibilityRole="button"
-                accessibilityLabel="Select monthly plan"
-              >
-                <Text variant="body" weight="semibold" style={styles.planOptionLabel}>
-                  Monthly
-                </Text>
-                <View style={styles.planPriceRow}>
-                  <Text variant="title" weight="bold" style={styles.planOptionPrice}>
-                    $9.99
-                  </Text>
-                  <Text variant="caption" style={styles.planOptionPriceDetail}>
-                    /month
-                  </Text>
-                </View>
-                <Text variant="caption" style={styles.planOptionSubtext}>
-                  Cancel anytime
-                </Text>
-              </Pressable>
-            </View>
-            <View style={styles.paywallFeatureList}>
-              {[
-                'See what to order at any restaurant, instantly',
-                'Dish-level rankings from weekly community polls',
-                'Live scores updated as votes come in',
-                'Interactive map + neighborhood filters',
-                'Unlimited saved spots & poll votes',
-                'Get notified before spots blow up',
-              ].map((feature) => (
-                <View key={feature} style={styles.paywallFeatureItem}>
-                  <Text style={styles.paywallFeatureBullet}>✓</Text>
-                  <Text variant="body" style={styles.paywallFeatureText}>
-                    {feature}
-                  </Text>
-                </View>
-              ))}
-            </View>
-            <Button
-              label="Start 7-day free trial"
-              onPress={handleUnlockResults}
-              style={styles.paywallPrimaryButton}
-            />
-            <Text variant="caption" style={styles.paywallFineprint}>
-              Then {selectedPlan === 'monthly' ? '$9.99/month' : '$59.99/year'}. Cancel anytime.
-            </Text>
-            <Button
-              label="Maybe later"
-              variant="ghost"
-              onPress={closePaywall}
-              style={styles.paywallSecondaryButton}
-            />
-            <Text variant="caption" style={styles.paywallDisclaimer}>
-              By continuing, you agree to Crave's Terms & Privacy Policy.
-            </Text>
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={styles.navButton} onPress={handleProfilePress}>
+              <Feather name="user" size={20} color="#94a3b8" />
+              <Text style={styles.navLabel}>Profile</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      )}
+      <BookmarksOverlay visible={showBookmarksOverlay} />
+      <PollsOverlay visible={showPollsOverlay} params={pollOverlayParams} />
+      <RestaurantOverlay
+        visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}
+        data={restaurantProfile}
+        onRequestClose={closeRestaurantProfile}
+        onDismiss={handleRestaurantOverlayDismissed}
+        onToggleFavorite={handleRestaurantFavoriteToggle}
+      />
     </View>
   );
+};
+
+const toggleContentPaddingStyle = {
+  paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
+  paddingVertical: TOGGLE_VERTICAL_PADDING,
+};
+
+const toggleBaseStyle = {
+  flexDirection: 'row',
+  alignItems: 'center',
+  borderRadius: TOGGLE_BORDER_RADIUS,
+  borderWidth: 1,
+  borderColor: '#cbd5e1',
+  backgroundColor: '#ffffff',
+  ...toggleContentPaddingStyle,
 };
 
 const styles = StyleSheet.create({
@@ -1878,6 +1937,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     paddingTop: 6,
   },
+  promptCardTopShadow: {
+    borderRadius: 16,
+    ...shadowStyles.surfaceTopLight,
+  },
+  promptCardWrapper: {
+    borderRadius: 16,
+    ...shadowStyles.surfaceBottomHeavy,
+  },
   promptCard: {
     position: 'relative',
     borderRadius: 16,
@@ -1886,11 +1953,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.94)',
     borderWidth: 0,
     borderColor: 'transparent',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    elevation: 6,
     overflow: 'hidden',
   },
   promptRow: {
@@ -1905,6 +1967,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   autocompleteSection: {
+    paddingHorizontal: 14,
     paddingVertical: 4,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
@@ -1912,7 +1975,6 @@ const styles = StyleSheet.create({
   autocompleteLoadingRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
@@ -1923,13 +1985,13 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   autocompleteEmptyText: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 0,
     paddingVertical: 10,
     fontSize: 13,
     color: '#94a3b8',
   },
   autocompleteItem: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 0,
     paddingVertical: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
@@ -1996,85 +2058,42 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlign: 'left',
     paddingVertical: 0,
+    height: '100%',
   },
-  trailingSpinner: {
-    marginLeft: 12,
+  trailingContainer: {
+    marginLeft: 'auto',
+    minWidth: 24,
+    alignItems: 'flex-end',
+    justifyContent: 'center',
   },
-  trailingAction: {
-    marginLeft: 12,
-    padding: 8,
+  trailingButton: {
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   trailingPlaceholder: {
-    width: 28,
-    marginLeft: 12,
+    width: 24,
+    height: 24,
   },
-  resultsContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    top: 0,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: 'hidden',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 18,
-    elevation: 10,
-  },
-  resultsHeader: {
-    backgroundColor: '#ffffff',
-    paddingTop: 0,
+  filterButtonsScroll: {
+    flexGrow: 0,
+    marginHorizontal: -CONTENT_HORIZONTAL_PADDING,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingBottom: CARD_GAP * 2,
-    marginBottom: CARD_GAP,
   },
-  grabHandleWrapper: {
-    alignItems: 'center',
-    paddingTop: 6,
-    paddingBottom: 2,
-    backgroundColor: '#ffffff',
-  },
-  grabHandle: {
-    width: 68,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#cbd5e1',
-  },
-  headerRow: {
+  filterButtonsContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 0,
-  },
-  headerSecondRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  filterButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    columnGap: TOGGLE_STACK_GAP,
+    paddingRight: 4,
   },
   priceButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    backgroundColor: '#ffffff',
+    ...toggleBaseStyle,
   },
   priceButtonActive: {
-    backgroundColor: '#0f172a',
-    borderColor: '#0f172a',
+    borderRadius: TOGGLE_BORDER_RADIUS,
+    backgroundColor: ACTIVE_TAB_COLOR,
+    borderColor: ACTIVE_TAB_COLOR,
   },
   priceButtonDisabled: {
     opacity: 0.6,
@@ -2083,17 +2102,22 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   priceButtonTextWrapper: {
-    flexDirection: 'column',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flex: 1,
+    gap: 8,
   },
   priceButtonLabel: {
     color: '#475569',
-    fontSize: 11,
+    fontSize: 13,
+    fontWeight: '600',
   },
   priceButtonLabelActive: {
     color: '#ffffff',
   },
   priceButtonSummary: {
-    color: '#0f172a',
+    color: ACTIVE_TAB_COLOR,
     fontSize: 12,
     fontWeight: '600',
   },
@@ -2161,74 +2185,82 @@ const styles = StyleSheet.create({
   priceChipTextSelected: {
     color: '#ffffff',
   },
-  closeButton: {
-    padding: 0,
-  },
-  floatingSegmentWrapper: {
-    position: 'absolute',
-    left: CONTENT_HORIZONTAL_PADDING,
-    right: CONTENT_HORIZONTAL_PADDING,
-    alignItems: 'center',
-    zIndex: 100,
-    elevation: 30,
-  },
-  navigationGradient: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 160,
-    zIndex: 60,
-  },
-  floatingSegment: {
-    width: '100%',
-    borderRadius: 28,
-    backgroundColor: '#ffffff',
-    padding: 4,
-    overflow: 'hidden',
-    shadowColor: '#0f172a',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  floatingSegmentBlur: {
+  bottomNavWrapper: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 24,
+    justifyContent: 'flex-end',
+    alignItems: 'stretch',
+    zIndex: 120,
   },
-  segmentedControl: {
-    position: 'relative',
+  bottomNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 24,
-    overflow: 'hidden',
+    justifyContent: 'space-evenly',
+    paddingHorizontal: 24,
+    paddingTop: NAV_VERTICAL_PADDING,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(15, 23, 42, 0.08)',
   },
-  segmentedOption: {
-    flex: 1,
+  navButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: 20,
+    minWidth: 68,
+    paddingHorizontal: 4,
+  },
+  navLabel: {
+    fontSize: 12,
+    marginTop: 4,
+    color: '#94a3b8',
+    fontWeight: '600',
+  },
+  navLabelActive: {
+    color: ACTIVE_TAB_COLOR,
+  },
+  inlineSegmentWrapper: {
+    flexBasis: 'auto',
+    flexGrow: 0,
+    flexShrink: 0,
+    alignItems: 'flex-start',
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: TOGGLE_STACK_GAP,
+    padding: 0,
+    borderRadius: TOGGLE_BORDER_RADIUS + 3,
+    backgroundColor: 'transparent',
+    alignSelf: 'flex-start',
+    flexShrink: 0,
+  },
+  segmentedOption: {
+    ...toggleBaseStyle,
+    justifyContent: 'center',
+    minWidth: 0,
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  segmentedOptionActive: {
+    backgroundColor: ACTIVE_TAB_COLOR,
+    borderColor: ACTIVE_TAB_COLOR,
   },
   segmentedLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     color: '#475569',
   },
   segmentedLabelActive: {
-    color: '#c24157',
+    color: '#ffffff',
   },
-  segmentedIndicator: {
+  resultsShadow: {
     position: 'absolute',
-    top: 4,
-    bottom: 4,
+    top: 0,
     left: 0,
-    borderRadius: 20,
-    backgroundColor: '#fecdd3',
-    shadowColor: '#f97384',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
+    backgroundColor: 'transparent',
+    ...shadowStyles.resultsPanelEdge,
   },
   resultsCard: {
     flex: 1,
@@ -2261,18 +2293,13 @@ const styles = StyleSheet.create({
     marginRight: 12,
     color: '#0f172a',
     fontSize: 16,
+    marginBottom: 0,
   },
   openNowButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    paddingHorizontal: 14,
-    paddingVertical: 4,
-    backgroundColor: '#ffffff',
+    ...toggleBaseStyle,
   },
   openNowButtonActive: {
+    borderRadius: TOGGLE_BORDER_RADIUS,
     borderColor: ACTIVE_TAB_COLOR,
     backgroundColor: ACTIVE_TAB_COLOR,
     shadowColor: ACTIVE_TAB_COLOR,
@@ -2291,6 +2318,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   openNowTextActive: {
+    color: '#ffffff',
+  },
+  votesButton: {
+    ...toggleBaseStyle,
+    flexDirection: 'row',
+  },
+  votesButtonActive: {
+    borderColor: ACTIVE_TAB_COLOR,
+    backgroundColor: ACTIVE_TAB_COLOR,
+    shadowColor: ACTIVE_TAB_COLOR,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+  },
+  votesButtonDisabled: {
+    opacity: 0.6,
+  },
+  votesIcon: {
+    marginRight: 6,
+  },
+  votesText: {
+    color: '#475569',
+  },
+  votesTextActive: {
     color: '#ffffff',
   },
   openNowNotice: {
@@ -2318,108 +2369,40 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     fontSize: 12,
   },
-  integratedSegmentedControl: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  integratedTab: {
-    paddingVertical: 4,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  integratedTabActive: {
-    backgroundColor: TAB_BUTTON_COLOR,
-    borderColor: TAB_BUTTON_COLOR,
-    shadowColor: TAB_BUTTON_COLOR,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-  },
-  integratedTabText: {
-    fontSize: 13,
-    color: '#64748b',
-  },
-  integratedTabTextActive: {
-    color: '#ffffff',
-  },
   resultsInner: {
     width: '100%',
   },
-  previewContainer: {
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingVertical: 16,
-    borderRadius: 18,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+  resultFiltersWrapper: {
     marginBottom: 16,
-  },
-  previewTitle: {
-    color: '#0f172a',
-  },
-  previewSubtitle: {
-    color: '#475569',
-    marginTop: 4,
-  },
-  previewList: {
-    marginTop: 12,
-  },
-  previewItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  previewItemBody: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  previewItemTitle: {
-    color: '#111827',
-  },
-  previewItemMeta: {
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  previewBlurText: {
-    color: '#c026d3',
-    marginTop: 4,
-  },
-  previewOverlayCard: {
-    marginTop: 16,
-    borderRadius: 16,
-    padding: 16,
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  previewOverlayTitle: {
-    color: '#0f172a',
-  },
-  previewOverlayDescription: {
-    color: '#475569',
-    marginTop: 6,
-  },
-  previewPrimaryButton: {
-    marginTop: 16,
-  },
-  previewGhostButton: {
-    marginTop: 10,
+    gap: 12,
   },
   resultItem: {
-    paddingVertical: 18,
+    paddingVertical: 12,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
     marginBottom: CARD_GAP,
     alignSelf: 'stretch',
+    borderRadius: 14,
+  },
+  resultPressable: {
+    width: '100%',
   },
   resultHeader: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 2,
+    gap: 8,
+    minHeight: 32,
+    marginBottom: 4,
+  },
+  resultActions: {
+    position: 'absolute',
+    top: 0,
+    right: -(CONTENT_HORIZONTAL_PADDING / 2),
+    width: 32,
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 4,
   },
   rankBadge: {
     width: 32,
@@ -2428,11 +2411,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fee2e2',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#f97384',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
+  },
+  rankBadgeLifted: {
+    marginTop: -4,
   },
   rankBadgeText: {
     color: ACTIVE_TAB_COLOR,
@@ -2451,18 +2432,33 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    alignItems: 'baseline',
+    alignItems: 'center',
+    minHeight: 32,
+    paddingTop: 2,
+  },
+  priceInlineLabel: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+  shareButton: {
+    padding: 4,
+    borderRadius: 999,
   },
   likeButton: {
     padding: 4,
+    borderRadius: 999,
   },
   resultContent: {
     marginLeft: 40,
+    marginTop: 0,
+    paddingBottom: 2,
   },
   metricsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 24,
+    gap: 20,
+    paddingBottom: 2,
   },
   primaryMetric: {
     gap: 4,
@@ -2500,16 +2496,6 @@ const styles = StyleSheet.create({
     paddingVertical: 32,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  lockedEmptyState: {
-    paddingVertical: 32,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lockedEmptyText: {
-    color: '#94a3b8',
-    textAlign: 'center',
   },
   metricRow: {
     flexDirection: 'row',
@@ -2549,23 +2535,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  priceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 9999,
-    paddingHorizontal: 10,
-    paddingVertical: 2,
-    marginTop: 4,
-  },
-  priceBadgeText: {
-    color: '#0f172a',
-    marginRight: 6,
-  },
-  priceBadgeSubtext: {
-    color: '#475569',
-  },
   dishSubtitleSmall: {
     fontSize: 12,
   },
@@ -2581,127 +2550,6 @@ const styles = StyleSheet.create({
   metricValue: {
     color: '#fb923c',
   },
-  paywallBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    padding: 20,
-  },
-  paywallCard: {
-    width: '100%',
-    borderRadius: 24,
-    padding: 24,
-    backgroundColor: '#ffffff',
-  },
-  paywallHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  paywallTitle: {
-    color: '#0f172a',
-  },
-  paywallSubtitle: {
-    color: '#475569',
-    marginTop: 12,
-  },
-  paywallCloseButton: {
-    padding: 4,
-  },
-  planToggle: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 20,
-  },
-  planOption: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-  },
-  planOptionActive: {
-    borderColor: ACTIVE_TAB_COLOR,
-    backgroundColor: '#fff1f2',
-    shadowColor: ACTIVE_TAB_COLOR,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  planOptionLabel: {
-    color: '#0f172a',
-    marginBottom: 6,
-  },
-  planOptionPrice: {
-    color: '#0f172a',
-  },
-  planOptionSubtext: {
-    color: '#475569',
-    marginTop: 2,
-  },
-  paywallFeatureList: {
-    marginTop: 20,
-    gap: 10,
-  },
-  paywallFeatureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  paywallFeatureBullet: {
-    fontSize: 18,
-    color: '#10b981',
-    marginRight: 8,
-    fontWeight: 'bold',
-  },
-  paywallFeatureText: {
-    color: '#0f172a',
-    flex: 1,
-  },
-  planPriceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-  },
-  planOptionPriceDetail: {
-    color: '#64748b',
-  },
-  mostPopularBadge: {
-    position: 'absolute',
-    top: -8,
-    right: 8,
-    backgroundColor: '#10b981',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  mostPopularBadgeText: {
-    color: '#ffffff',
-    fontSize: 9,
-    letterSpacing: 0.5,
-  },
-  planOptionBestValue: {
-    borderWidth: 2,
-  },
-  paywallFineprint: {
-    color: '#64748b',
-    textAlign: 'center',
-    marginTop: 12,
-  },
-  paywallDisclaimer: {
-    color: '#94a3b8',
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  paywallPrimaryButton: {
-    marginTop: 24,
-  },
-  paywallSecondaryButton: {
-    marginTop: 12,
-  },
   glassHighlightSmall: {
     position: 'absolute',
     width: 160,
@@ -2712,17 +2560,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.5)',
     opacity: 0.35,
     transform: [{ rotate: '25deg' }],
-  },
-  glassHighlightLarge: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    top: 120,
-    left: -40,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
-    opacity: 0.25,
-    transform: [{ rotate: '35deg' }],
   },
 });
 

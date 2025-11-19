@@ -14,6 +14,7 @@ interface BuildQueryResult {
   metadata: {
     boundsApplied: boolean;
     priceFilterApplied: boolean;
+    minimumVotesApplied: boolean;
   };
 }
 
@@ -24,6 +25,10 @@ interface BoundsPayload {
 
 interface PriceFilterPayload {
   priceLevels: number[];
+}
+
+interface MinimumVotesPayload {
+  minimumVotes?: number;
 }
 
 @Injectable()
@@ -50,6 +55,7 @@ export class SearchQueryBuilder {
       plan.connectionFilters,
       EntityScope.FOOD_ATTRIBUTE,
     );
+    const minimumVotes = this.extractMinimumVotes(plan.connectionFilters);
 
     const restaurantConditions: Prisma.Sql[] = [
       Prisma.sql`r.type = 'restaurant'`,
@@ -109,6 +115,7 @@ export class SearchQueryBuilder {
 
     const connectionConditions: Prisma.Sql[] = [];
     const connectionConditionPreview: string[] = [];
+    let minimumVotesApplied = false;
 
     if (foodIds.length) {
       const foodIdClause = this.buildInClause('c.food_id', foodIds);
@@ -134,6 +141,14 @@ export class SearchQueryBuilder {
       connectionConditionPreview.push(
         `c.food_attributes && ${this.formatUuidArray(foodAttributeIds)}`,
       );
+    }
+
+    if (minimumVotes !== null) {
+      connectionConditions.push(
+        Prisma.sql`c.total_upvotes >= ${minimumVotes}`,
+      );
+      connectionConditionPreview.push(`c.total_upvotes >= ${minimumVotes}`);
+      minimumVotesApplied = true;
     }
 
     const restaurantWhereSql = this.combineSqlClauses(restaurantConditions);
@@ -251,7 +266,11 @@ LIMIT ${pagination.take};`.trim();
       dataSql,
       countSql,
       preview,
-      metadata: { boundsApplied, priceFilterApplied },
+      metadata: {
+        boundsApplied,
+        priceFilterApplied,
+        minimumVotesApplied,
+      },
     };
   }
 
@@ -295,6 +314,24 @@ LIMIT ${pagination.take};`.trim();
       }
     }
     return [];
+  }
+
+  private extractMinimumVotes(filters: FilterClause[]): number | null {
+    for (const filter of filters) {
+      if (filter.payload && this.isMinimumVotesPayload(filter.payload)) {
+        const value = Math.floor(filter.payload.minimumVotes ?? 0);
+        if (Number.isFinite(value) && value > 0) {
+          return value;
+        }
+      }
+    }
+    return null;
+  }
+
+  private isMinimumVotesPayload(
+    payload: Record<string, unknown>,
+  ): payload is MinimumVotesPayload {
+    return typeof payload.minimumVotes === 'number';
   }
 
   private isBoundsPayload(value: unknown): value is BoundsPayload {

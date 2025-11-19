@@ -102,6 +102,7 @@ interface ExecuteResult {
     openNowUnsupportedRestaurants: number;
     openNowFilteredOut: number;
     priceFilterApplied: boolean;
+    minimumVotesApplied: boolean;
   };
   sqlPreview?: string | null;
 }
@@ -204,6 +205,7 @@ export class SearchQueryExecutor {
         openNowUnsupportedRestaurants: openFilter.unsupportedCount,
         openNowFilteredOut,
         priceFilterApplied: query.metadata.priceFilterApplied,
+        minimumVotesApplied: query.metadata.minimumVotesApplied,
       },
       sqlPreview: includeSqlPreview ? query.preview : null,
     };

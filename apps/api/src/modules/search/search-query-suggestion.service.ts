@@ -37,13 +37,14 @@ export class SearchQuerySuggestionService {
 
     try {
       if (userId) {
+        const userUuid = Prisma.sql`${userId}::uuid`;
         const personalRows = await this.prisma.$queryRaw<QuerySuggestionRow[]>(
           Prisma.sql`
             SELECT query_text AS "query",
                    COUNT(*)::int AS "usage",
                    MAX(logged_at) AS "lastUsed"
             FROM search_log
-            WHERE user_id = ${userId}
+            WHERE user_id = ${userUuid}
               AND query_text IS NOT NULL
               AND LOWER(query_text) LIKE ${likePattern}
             GROUP BY query_text

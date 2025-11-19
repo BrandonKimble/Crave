@@ -1,3 +1,5 @@
+import type { ViewStyle } from 'react-native';
+
 export const colors = {
   primary: '#F97383',
   primaryDark: '#DC003B',
@@ -24,10 +26,62 @@ export const radius = {
   lg: 16,
 };
 
+type ShadowConfig = {
+  color?: string;
+  height?: number;
+  opacity?: number;
+  radius?: number;
+  elevation?: number;
+};
+
+const DEFAULT_SHADOW_COLOR = 'rgba(15, 23, 42, 1)';
+
+const buildShadowStyle = ({
+  color = DEFAULT_SHADOW_COLOR,
+  height = 4,
+  opacity = 0.12,
+  radius = 10,
+  elevation = 4,
+}: ShadowConfig = {}): ViewStyle => ({
+  shadowColor: color,
+  shadowOffset: { width: 0, height },
+  shadowOpacity: opacity,
+  shadowRadius: radius,
+  elevation,
+});
+
+const surfaceShadowBottom = buildShadowStyle({
+  height: 1.5,
+  radius: 3,
+  opacity: 0.17,
+  elevation: 4,
+});
+
+const surfaceShadowTop = buildShadowStyle({
+  height: -0.5,
+  radius: 2,
+  opacity: 0.06,
+  elevation: 2,
+});
+
+export const createShadow = (config?: ShadowConfig): ViewStyle => buildShadowStyle(config);
+
+export const shadows = {
+  surfaceBottomHeavy: surfaceShadowBottom,
+  surfaceTopLight: surfaceShadowTop,
+  searchSurface: surfaceShadowBottom,
+  resultsPanelEdge: surfaceShadowTop,
+  floatingCard: surfaceShadowBottom,
+  floatingUpSoft: surfaceShadowTop,
+  floatingUp: surfaceShadowTop,
+  floatingControl: buildShadowStyle({ height: 4, radius: 10, opacity: 0.14, elevation: 5 }),
+};
+
 export const theme = {
   colors,
   spacing,
   radius,
+  shadows,
 } as const;
 
 export type Theme = typeof theme;

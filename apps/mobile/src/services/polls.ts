@@ -5,6 +5,7 @@ export interface PollOption {
   label: string;
   voteCount: number;
   consensus: string | number | null;
+  currentUserVoted?: boolean;
 }
 
 export type PollTopicType = 'best_dish' | 'what_to_order';

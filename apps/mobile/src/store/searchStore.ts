@@ -17,6 +17,7 @@ export interface SearchFilters {
   boundsLabel?: string | null;
   boundsPresetId?: string | null;
   priceLevels: number[];
+  votes100Plus: boolean;
 }
 
 interface SearchState extends SearchFilters {
@@ -36,6 +37,7 @@ interface SearchState extends SearchFilters {
   recordSearch: (query: string) => void;
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
+  setVotes100Plus: (enabled: boolean) => void;
 }
 
 const defaultState = {
@@ -46,6 +48,7 @@ const defaultState = {
   boundsLabel: null,
   boundsPresetId: null,
   priceLevels: [],
+  votes100Plus: false,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
@@ -56,6 +59,7 @@ const defaultState = {
   | 'boundsLabel'
   | 'boundsPresetId'
   | 'priceLevels'
+  | 'votes100Plus'
   | 'history'
 >;
 
@@ -100,6 +104,10 @@ export const useSearchStore = create<SearchState>()(
                 )
               ).sort((a, b) => a - b)
             : [],
+        })),
+      setVotes100Plus: (enabled) =>
+        set(() => ({
+          votes100Plus: Boolean(enabled),
         })),
       recordSearch: (query) => {
         const trimmed = query.trim();
@@ -188,6 +196,7 @@ export const useSearchStore = create<SearchState>()(
         boundsLabel: state.boundsLabel,
         boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
+        votes100Plus: state.votes100Plus,
         history: state.history,
       }),
     }

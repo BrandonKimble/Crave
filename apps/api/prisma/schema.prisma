@@ -284,8 +284,10 @@ model PollVote {
   option    PollOption @relation(fields: [optionId], references: [optionId], onDelete: Cascade)
   poll      Poll       @relation(fields: [pollId], references: [pollId], onDelete: Cascade)
 
-  @@id([pollId, userId])
+  @@id([optionId, userId])
   @@index([optionId], map: "idx_poll_votes_option_id")
+  @@index([pollId, userId], map: "idx_poll_votes_poll_user")
+  @@index([pollId], map: "idx_poll_votes_poll_id")
   @@map("poll_votes")
 }
 

@@ -295,6 +295,7 @@ export class SearchQueryInterpretationService {
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
       priceLevels: request.priceLevels,
+      minimumVotes: request.minimumVotes,
       sourceQuery: request.query,
     };
   }

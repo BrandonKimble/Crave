@@ -135,6 +135,12 @@ export class SearchQueryRequestDto {
   priceLevels?: number[];
 
   @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minimumVotes?: number;
+
+  @IsOptional()
   @IsUUID()
   userId?: string;
 
@@ -201,6 +207,12 @@ export class NaturalSearchRequestDto {
   @Min(0, { each: true })
   @Max(4, { each: true })
   priceLevels?: number[];
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  minimumVotes?: number;
 
   @IsOptional()
   @IsUUID()

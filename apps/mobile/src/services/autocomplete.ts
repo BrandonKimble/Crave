@@ -22,7 +22,7 @@ export const autocompleteService = {
     const { data } = await api.post<AutocompleteResponse>('/autocomplete/entities', {
       query,
       limit: 6,
-      enableOnDemand: true,
+      enableOnDemand: false,
     });
     return data;
   },
