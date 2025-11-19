@@ -18,9 +18,8 @@ export class OptionalClerkAuthGuard implements CanActivate {
       return true;
     }
 
-    const claims: ClerkJwtClaims = await this.clerkAuthService.verifyToken(
-      token,
-    );
+    const claims: ClerkJwtClaims =
+      await this.clerkAuthService.verifyToken(token);
     const user = await this.userService.syncFromClerkClaims(claims);
     request.user = user;
     return true;
