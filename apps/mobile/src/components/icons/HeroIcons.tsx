@@ -102,11 +102,7 @@ export const UserIcon: React.FC<OutlineIconProps> = ({
   </Svg>
 );
 
-export const MapPinIcon: React.FC<SolidIconProps> = ({
-  size = 32,
-  color = '#000000',
-  style,
-}) => (
+export const MapPinIcon: React.FC<SolidIconProps> = ({ size = 32, color = '#000000', style }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
     <Path
       fillRule="evenodd"

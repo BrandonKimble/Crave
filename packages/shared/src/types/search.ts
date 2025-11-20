@@ -51,7 +51,6 @@ export interface FoodResult {
   foodAttributes: string[];
   restaurantPriceLevel?: number | null;
   restaurantPriceSymbol?: string | null;
-  restaurantPriceText?: string | null;
   restaurantOperatingStatus?: OperatingStatus | null;
 }
 

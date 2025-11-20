@@ -369,7 +369,6 @@ export class SearchQueryExecutor {
         foodAttributes: connection.food_attributes || [],
         restaurantPriceLevel: parsedPrice ?? null,
         restaurantPriceSymbol: priceDetails.symbol ?? null,
-        restaurantPriceText: priceDetails.text ?? null,
         restaurantOperatingStatus: operatingStatus ?? null,
       });
     }

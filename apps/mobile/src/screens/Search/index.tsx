@@ -94,8 +94,7 @@ const PRICE_LEVEL_VALUES = [0, 1, 2, 3, 4] as const;
 type PriceLevelValue = (typeof PRICE_LEVEL_VALUES)[number];
 type PriceRangeTuple = [PriceLevelValue, PriceLevelValue];
 const PRICE_SLIDER_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
-const PRICE_SLIDER_MAX: PriceLevelValue =
-  PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
+const PRICE_SLIDER_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
 const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
   0: 'Free',
   1: '$',
@@ -110,7 +109,7 @@ const clampPriceLevelValue = (value: number): PriceLevelValue => {
   }
   return Math.min(
     PRICE_SLIDER_MAX,
-    Math.max(PRICE_SLIDER_MIN, Math.round(value)),
+    Math.max(PRICE_SLIDER_MIN, Math.round(value))
   ) as PriceLevelValue;
 };
 
@@ -135,10 +134,7 @@ const getRangeFromLevels = (levels: number[]): PriceRangeTuple => {
     return [PRICE_SLIDER_MIN, PRICE_SLIDER_MAX];
   }
   const sorted = [...levels].sort((a, b) => a - b);
-  return [
-    clampPriceLevelValue(sorted[0]),
-    clampPriceLevelValue(sorted[sorted.length - 1]),
-  ];
+  return [clampPriceLevelValue(sorted[0]), clampPriceLevelValue(sorted[sorted.length - 1])];
 };
 
 const isFullPriceRange = (range: PriceRangeTuple): boolean => {
@@ -160,7 +156,7 @@ const formatPriceRangeText = (range: PriceRangeTuple): string => {
 const mergeById = <T extends Record<string, unknown>>(
   existing: T[],
   incoming: T[],
-  getKey: (item: T) => string,
+  getKey: (item: T) => string
 ): T[] => {
   if (!existing.length) {
     return incoming.slice();
@@ -181,7 +177,7 @@ const mergeById = <T extends Record<string, unknown>>(
 const mergeSearchResponses = (
   previous: SearchResponse | null,
   incoming: SearchResponse,
-  append: boolean,
+  append: boolean
 ): SearchResponse => {
   if (!append || !previous) {
     return incoming;
@@ -190,12 +186,12 @@ const mergeSearchResponses = (
   const mergedFood = mergeById(
     previous.food ?? [],
     incoming.food ?? [],
-    (item) => item.connectionId,
+    (item) => item.connectionId
   );
   const mergedRestaurants = mergeById(
     previous.restaurants ?? [],
     incoming.restaurants ?? [],
-    (item) => item.restaurantId,
+    (item) => item.restaurantId
   );
 
   return {
@@ -391,9 +387,7 @@ const SearchScreen: React.FC = () => {
       ] as const,
     []
   );
-  const navIconRenderers = React.useMemo<
-    Record<OverlayKey, (color: string) => React.ReactNode>
-  >(
+  const navIconRenderers = React.useMemo<Record<OverlayKey, (color: string) => React.ReactNode>>(
     () => ({
       search: (color: string) => <MagnifyingGlassIcon size={20} color={color} />,
       bookmarks: (color: string) => <BookmarkIcon size={20} color={color} />,
@@ -410,7 +404,7 @@ const SearchScreen: React.FC = () => {
   const votes100Plus = useSearchStore((state) => state.votes100Plus);
   const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
-    getRangeFromLevels(priceLevels),
+    getRangeFromLevels(priceLevels)
   );
   const [priceSliderWidth, setPriceSliderWidth] = React.useState(0);
   const priceFiltersActive = priceLevels.length > 0;
@@ -423,7 +417,7 @@ const SearchScreen: React.FC = () => {
   const priceButtonLabelText = priceFiltersActive ? priceButtonSummary : 'Price';
   const pendingPriceSummary = React.useMemo(
     () => formatPriceRangeText(pendingPriceRange),
-    [pendingPriceRange],
+    [pendingPriceRange]
   );
   const trimmedQuery = query.trim();
   const hasTypedQuery = trimmedQuery.length > 0;
@@ -435,9 +429,7 @@ const SearchScreen: React.FC = () => {
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const votesFilterActive = votes100Plus;
   const canLoadMore =
-    Boolean(results) &&
-    !isPaginationExhausted &&
-    (hasMoreFood || hasMoreRestaurants);
+    Boolean(results) && !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants);
   const primaryFoodTerm = React.useMemo(() => {
     const term = results?.metadata?.primaryFoodTerm;
     if (typeof term === 'string') {
@@ -464,7 +456,7 @@ const SearchScreen: React.FC = () => {
   const renderMetaDetailLine = (
     status: OperatingStatus | null | undefined,
     priceLabel: string | null,
-    align: 'left' | 'right' = 'left',
+    align: 'left' | 'right' = 'left'
   ): React.ReactNode => {
     const segments: React.ReactNode[] = [];
     if (status) {
@@ -473,9 +465,7 @@ const SearchScreen: React.FC = () => {
           <Text key="status-open">
             <Text style={styles.resultMetaOpen}>Open</Text>
             {status.closesAtDisplay ? (
-              <Text style={styles.resultMetaSuffix}>
-                {` until ${status.closesAtDisplay}`}
-              </Text>
+              <Text style={styles.resultMetaSuffix}>{` until ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
@@ -611,7 +601,7 @@ const SearchScreen: React.FC = () => {
       const offsetY = event.nativeEvent.contentOffset?.y ?? 0;
       draggingFromTopRef.current = offsetY <= 0.5;
     },
-    [],
+    []
   );
 
   const handleResultsScrollEndDrag = React.useCallback(
@@ -629,7 +619,7 @@ const SearchScreen: React.FC = () => {
         draggingFromTopRef.current = false;
       }
     },
-    [collapseSheetFromTop],
+    [collapseSheetFromTop]
   );
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
@@ -1128,8 +1118,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       try {
         if (append) {
@@ -1198,8 +1188,7 @@ const SearchScreen: React.FC = () => {
           return merged;
         });
 
-        const totalFoodAvailable =
-          response.metadata.totalFoodResults ?? mergedFoodCount;
+        const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
         const totalRestaurantAvailable =
           response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 
@@ -1249,7 +1238,7 @@ const SearchScreen: React.FC = () => {
         setError(
           append
             ? 'Unable to load more results. Please try again.'
-            : 'Unable to fetch results. Please try again.',
+            : 'Unable to fetch results. Please try again.'
         );
       } finally {
         if (append) {
@@ -1368,13 +1357,7 @@ const SearchScreen: React.FC = () => {
   }, [isSearchFocused, showSuggestions]);
 
   const loadMoreResults = React.useCallback(() => {
-    if (
-      isLoading ||
-      isLoadingMore ||
-      !results ||
-      !canLoadMore ||
-      isPaginationExhausted
-    ) {
+    if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
       return;
     }
     const nextPage = currentPage + 1;
@@ -1584,8 +1567,8 @@ const SearchScreen: React.FC = () => {
     showFilters?: boolean;
   };
 
-const renderFiltersSection = (): React.ReactElement => (
-  <View style={styles.resultFiltersWrapper}>
+  const renderFiltersSection = (): React.ReactElement => (
+    <View style={styles.resultFiltersWrapper}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -1989,11 +1972,11 @@ const renderFiltersSection = (): React.ReactElement => (
     );
   };
 
-const renderFilterWrapper = (key: string) => (
-  <View key={key} style={styles.resultItem}>
-    {renderFiltersSection()}
-  </View>
-);
+  const renderFilterWrapper = (key: string) => (
+    <View key={key} style={styles.resultItem}>
+      {renderFiltersSection()}
+    </View>
+  );
 
   const renderDishResults = () => {
     if (!dishes.length) {
@@ -2005,8 +1988,8 @@ const renderFilterWrapper = (key: string) => (
       );
     }
 
-  return dishes.map((dish, index) => renderDishCard(dish, index, { showFilters: index === 0 }));
-};
+    return dishes.map((dish, index) => renderDishCard(dish, index, { showFilters: index === 0 }));
+  };
 
   const renderRestaurantResults = () => {
     if (!restaurants.length) {
@@ -2022,7 +2005,6 @@ const renderFilterWrapper = (key: string) => (
       renderRestaurantCard(restaurant, index, { showFilters: index === 0 })
     );
   };
-
 
   return (
     <View style={styles.container}>
@@ -2043,8 +2025,7 @@ const renderFilterWrapper = (key: string) => (
         />
         {restaurantFeatures.features.map((feature) => {
           const coordinates = feature.geometry.coordinates as [number, number];
-          const name =
-            feature.properties?.restaurantName ?? feature.id?.toString() ?? 'Pin';
+          const name = feature.properties?.restaurantName ?? feature.id?.toString() ?? 'Pin';
           const markerId = feature.properties?.restaurantId ?? String(feature.id);
           return (
             <MapboxGL.MarkerView
