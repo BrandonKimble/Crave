@@ -28,6 +28,11 @@ export interface QueryPlan {
   };
 }
 
+export interface OperatingStatus {
+  isOpen: boolean | null;
+  closesAtDisplay?: string | null;
+}
+
 export interface FoodResult {
   connectionId: string;
   foodId: string;
@@ -44,6 +49,10 @@ export interface FoodResult {
   lastMentionedAt?: string | null;
   categories: string[];
   foodAttributes: string[];
+  restaurantPriceLevel?: number | null;
+  restaurantPriceSymbol?: string | null;
+  restaurantPriceText?: string | null;
+  restaurantOperatingStatus?: OperatingStatus | null;
 }
 
 export interface RestaurantFoodSnippet {
@@ -68,6 +77,7 @@ export interface RestaurantResult {
   priceText?: string | null;
   priceLevelUpdatedAt?: string | null;
   topFood: RestaurantFoodSnippet[];
+  operatingStatus?: OperatingStatus | null;
 }
 
 export interface SearchResponseMetadata {
@@ -91,6 +101,7 @@ export interface SearchResponseMetadata {
   }>;
   sourceQuery?: string;
   analysisMetadata?: Record<string, unknown>;
+  primaryFoodTerm?: string;
 }
 
 export interface SearchResponse {

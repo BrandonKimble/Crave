@@ -27,6 +27,14 @@ config.resolver.alias = {
     workspaceRoot,
     'node_modules/@rnmapbox/maps/lib/module/index.native.js'
   ),
+  'react-native-svg': path.resolve(
+    workspaceRoot,
+    'node_modules/react-native-svg'
+  ),
+  'react-native-svg$': path.resolve(
+    workspaceRoot,
+    'node_modules/react-native-svg'
+  ),
 };
 
 module.exports = config;

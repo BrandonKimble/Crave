@@ -209,7 +209,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
                 style={styles.headerIconButton}
                 accessibilityLabel="Close"
               >
-                <Feather name="x" size={24} color="#1f2937" />
+                <Feather name="x" size={20} color="#1f2937" />
               </Pressable>
             </View>
           </View>

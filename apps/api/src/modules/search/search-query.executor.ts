@@ -96,6 +96,7 @@ interface ExecuteResult {
   foodResults: FoodResultDto[];
   restaurantResults: RestaurantResultDto[];
   totalFoodCount: number;
+  totalRestaurantCount: number;
   metadata: {
     boundsApplied: boolean;
     openNowApplied: boolean;
@@ -139,16 +140,22 @@ export class SearchQueryExecutor {
       pagination: effectivePagination,
     });
 
+    const referenceDate = new Date();
     const [connections, totalResult] = await Promise.all([
       this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
-      this.prisma.$queryRaw<Array<{ total: bigint }>>(query.countSql),
+      this.prisma.$queryRaw<
+        Array<{ total_connections: bigint; total_restaurants: bigint }>
+      >(query.countSql),
     ]);
 
-    const totalBeforeFiltering = Number(totalResult[0]?.total ?? 0);
+    const totalBeforeFiltering = Number(totalResult[0]?.total_connections ?? 0);
+    const totalRestaurantCountDb = Number(
+      totalResult[0]?.total_restaurants ?? 0,
+    );
     const needsOpenFilter = Boolean(request.openNow);
 
     const openFilter = needsOpenFilter
-      ? this.filterByOpenNow(connections)
+      ? this.filterByOpenNow(connections, referenceDate)
       : {
           connections,
           applied: false,
@@ -177,13 +184,17 @@ export class SearchQueryExecutor {
     const minimumVotes =
       typeof request.minimumVotes === 'number' ? request.minimumVotes : null;
 
-    const foodResults = this.mapFoodResults(limitedConnections);
+    const foodResults = this.mapFoodResults(limitedConnections, referenceDate);
+    const totalRestaurantCount = needsOpenFilter
+      ? this.countDistinctRestaurants(filteredConnections)
+      : totalRestaurantCountDb;
     const restaurantResults =
       plan.format === 'dual_list'
         ? this.mapRestaurantResults(
             limitedConnections,
             plan.ranking.restaurantOrder,
             minimumVotes,
+            referenceDate,
           )
         : [];
 
@@ -203,6 +214,7 @@ export class SearchQueryExecutor {
       foodResults,
       restaurantResults,
       totalFoodCount,
+      totalRestaurantCount,
       metadata: {
         boundsApplied: query.metadata.boundsApplied,
         openNowApplied: openFilter.applied,
@@ -216,7 +228,20 @@ export class SearchQueryExecutor {
     };
   }
 
-  private filterByOpenNow(connections: QueryResultRow[]): {
+  private countDistinctRestaurants(connections: QueryResultRow[]): number {
+    const ids = new Set<string>();
+    for (const connection of connections) {
+      if (connection.restaurant_id) {
+        ids.add(connection.restaurant_id);
+      }
+    }
+    return ids.size;
+  }
+
+  private filterByOpenNow(
+    connections: QueryResultRow[],
+    referenceDate: Date,
+  ): {
     connections: QueryResultRow[];
     applied: boolean;
     supportedCount: number;
@@ -228,12 +253,12 @@ export class SearchQueryExecutor {
     let unsupported = 0;
 
     for (const connection of connections) {
-      const status = this.isRestaurantOpenNow(
+      const status = this.evaluateOperatingStatus(
         connection.restaurant_metadata,
-        new Date(),
+        referenceDate,
       );
 
-      if (status === null) {
+      if (!status) {
         unsupported += 1;
         continue;
       }
@@ -241,7 +266,7 @@ export class SearchQueryExecutor {
       applied = true;
       supported += 1;
 
-      if (status) {
+      if (status.isOpen) {
         filtered.push(connection);
       }
     }
@@ -310,10 +335,20 @@ export class SearchQueryExecutor {
     return limited;
   }
 
-  private mapFoodResults(connections: QueryResultRow[]): FoodResultDto[] {
+  private mapFoodResults(
+    connections: QueryResultRow[],
+    referenceDate: Date,
+  ): FoodResultDto[] {
     const results: FoodResultDto[] = [];
 
     for (const connection of connections) {
+      const parsedPrice = this.toOptionalNumber(connection.price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingStatus = this.evaluateOperatingStatus(
+        connection.restaurant_metadata,
+        referenceDate,
+      );
+
       results.push({
         connectionId: connection.connection_id,
         foodId: connection.food_id,
@@ -332,6 +367,10 @@ export class SearchQueryExecutor {
           : null,
         categories: connection.categories || [],
         foodAttributes: connection.food_attributes || [],
+        restaurantPriceLevel: parsedPrice ?? null,
+        restaurantPriceSymbol: priceDetails.symbol ?? null,
+        restaurantPriceText: priceDetails.text ?? null,
+        restaurantOperatingStatus: operatingStatus ?? null,
       });
     }
 
@@ -342,6 +381,7 @@ export class SearchQueryExecutor {
     connections: QueryResultRow[],
     restaurantOrder: string,
     minimumVotes: number | null,
+    referenceDate: Date,
   ): RestaurantResultDto[] {
     const grouped = new Map<
       string,
@@ -357,6 +397,7 @@ export class SearchQueryExecutor {
         priceLevelUpdatedAt?: Date | null;
         priceSymbol?: string | null;
         priceText?: string | null;
+        metadata?: Prisma.JsonValue | null;
         snippets: RestaurantFoodSnippetDto[];
         scoreSum: number;
         count: number;
@@ -400,6 +441,9 @@ export class SearchQueryExecutor {
         ) {
           existing.priceLevelUpdatedAt = connection.price_level_updated_at;
         }
+        if (!existing.metadata && connection.restaurant_metadata) {
+          existing.metadata = connection.restaurant_metadata;
+        }
       } else {
         const parsedPrice = this.toOptionalNumber(connection.price_level);
         const priceDetails = this.describePriceLevel(parsedPrice);
@@ -415,6 +459,7 @@ export class SearchQueryExecutor {
           priceSymbol: priceDetails.symbol,
           priceText: priceDetails.text,
           priceLevelUpdatedAt: connection.price_level_updated_at || null,
+          metadata: connection.restaurant_metadata ?? null,
           snippets: [snippet],
           scoreSum: snippet.qualityScore,
           count: 1,
@@ -441,6 +486,7 @@ export class SearchQueryExecutor {
           priceSymbol,
           priceText,
           priceLevelUpdatedAt,
+          metadata,
           snippets,
           scoreSum,
           count,
@@ -469,6 +515,9 @@ export class SearchQueryExecutor {
           priceLevelUpdatedAt: priceLevelUpdatedAt
             ? priceLevelUpdatedAt.toISOString()
             : null,
+          operatingStatus: metadata
+            ? this.evaluateOperatingStatus(metadata, referenceDate)
+            : null,
           topFood: snippets
             .sort((a, b) => b.qualityScore - a.qualityScore)
             .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
@@ -493,6 +542,17 @@ export class SearchQueryExecutor {
     metadataValue: Prisma.JsonValue | null | undefined,
     referenceDate: Date,
   ): boolean | null {
+    const status = this.evaluateOperatingStatus(metadataValue, referenceDate);
+    if (!status) {
+      return null;
+    }
+    return status.isOpen;
+  }
+
+  private evaluateOperatingStatus(
+    metadataValue: Prisma.JsonValue | null | undefined,
+    referenceDate: Date,
+  ): { isOpen: boolean; closesAtDisplay?: string | null } | null {
     const metadata = this.coerceRecord(
       metadataValue,
     ) as RestaurantMetadata | null;
@@ -516,23 +576,31 @@ export class SearchQueryExecutor {
       DAY_KEYS[(dayIndex + DAY_KEYS.length - 1) % DAY_KEYS.length];
     const previousDaySegments = schedule[previousDayKey] || [];
 
-    if (
-      daySegments.some((segment) =>
-        this.matchesSegment(segment, timeContext.minutes, false),
-      )
-    ) {
-      return true;
+    for (const segment of daySegments) {
+      if (this.matchesSegment(segment, timeContext.minutes, false)) {
+        return {
+          isOpen: true,
+          closesAtDisplay: this.formatMinutesToDisplay(segment.end),
+        };
+      }
     }
 
-    if (
-      previousDaySegments.some((segment) =>
-        this.matchesSegment(segment, timeContext.minutes, true),
-      )
-    ) {
-      return true;
+    for (const segment of previousDaySegments) {
+      if (
+        segment.crossesMidnight &&
+        this.matchesSegment(segment, timeContext.minutes, true)
+      ) {
+        return {
+          isOpen: true,
+          closesAtDisplay: this.formatMinutesToDisplay(segment.end),
+        };
+      }
     }
 
-    return false;
+    return {
+      isOpen: false,
+      closesAtDisplay: null,
+    };
   }
 
   private buildDailySchedule(
@@ -705,6 +773,19 @@ export class SearchQueryExecutor {
     }
 
     return minutes >= segment.start && minutes < segment.end;
+  }
+
+  private formatMinutesToDisplay(minutes: number): string {
+    const totalMinutes = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60);
+    let hour = Math.floor(totalMinutes / 60);
+    const minute = totalMinutes % 60;
+    const period = hour >= 12 ? 'PM' : 'AM';
+    hour = hour % 12;
+    if (hour === 0) {
+      hour = 12;
+    }
+    const minuteText = minute.toString().padStart(2, '0');
+    return `${hour}:${minuteText} ${period}`;
   }
 
   private getLocalTimeContext(

@@ -583,7 +583,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
               style={overlaySheetStyles.closeButton}
               hitSlop={8}
             >
-              <Feather name="x" size={24} color={ACCENT} />
+              <Feather name="x" size={20} color={ACCENT} />
             </Pressable>
           </View>
           <View style={overlaySheetStyles.headerDivider} />

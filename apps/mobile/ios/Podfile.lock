@@ -543,6 +543,8 @@ PODS:
   - RNScreens (3.22.1):
     - React-Core
     - React-RCTImage
+  - RNSVG (13.9.0):
+    - React-Core
   - SocketRocket (0.6.1)
   - Turf (4.0.0)
   - Yoga (1.14.0)
@@ -616,6 +618,7 @@ DEPENDENCIES:
   - "rnmapbox-maps (from `../../../node_modules/@rnmapbox/maps`)"
   - RNReanimated (from `../../../node_modules/react-native-reanimated`)
   - RNScreens (from `../../../node_modules/react-native-screens`)
+  - RNSVG (from `../../../node_modules/react-native-svg`)
   - Yoga (from `../../../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -763,6 +766,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native-reanimated"
   RNScreens:
     :path: "../../../node_modules/react-native-screens"
+  RNSVG:
+    :path: "../../../node_modules/react-native-svg"
   Yoga:
     :path: "../../../node_modules/react-native/ReactCommon/yoga"
 
@@ -840,6 +845,7 @@ SPEC CHECKSUMS:
   rnmapbox-maps: 2ed355c7948f8e310d54c9159f7fb7e8814ededc
   RNReanimated: 00ab0dc16a90be96f2482a1e41f69a9c37494d81
   RNScreens: 39db1910d2ea9ae885dcda43086818e9f8b714d0
+  RNSVG: 67c430ac7a54043cac37f6bd7bc94f8e22d8a64a
   SocketRocket: f32cd54efbe0f095c4d7594881e52619cfe80b17
   Turf: c9eb11a65d96af58cac523460fd40fec5061b081
   Yoga: d0003f849d2b5224c072cef6568b540d8bb15cd3

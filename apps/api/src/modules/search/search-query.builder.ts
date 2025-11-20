@@ -27,8 +27,8 @@ interface PriceFilterPayload {
   priceLevels: number[];
 }
 
-interface MinimumVotesPayload {
-  minimumVotes?: number;
+interface MinimumVotesPayload extends Record<string, unknown> {
+  minimumVotes?: number | null;
 }
 
 @Injectable()
@@ -277,7 +277,9 @@ LIMIT ${pagination.take}`;
 
     const countSql = Prisma.sql`
 ${withClause}
-SELECT COUNT(*)::bigint AS total
+SELECT
+  COUNT(*)::bigint AS total_connections,
+  COUNT(DISTINCT fc.restaurant_id)::bigint AS total_restaurants
 FROM filtered_connections fc`;
 
     const preview = `
@@ -346,8 +348,12 @@ LIMIT ${pagination.take};`.trim();
     for (const filter of filters) {
       const payload = filter.payload;
       if (this.isMinimumVotesPayload(payload)) {
-        const value = Math.floor(payload.minimumVotes ?? 0);
-        if (Number.isFinite(value) && value > 0) {
+        const rawValue = Number(payload.minimumVotes);
+        if (!Number.isFinite(rawValue)) {
+          continue;
+        }
+        const value = Math.floor(rawValue);
+        if (value > 0) {
           return value;
         }
       }

@@ -1,6 +1,6 @@
 import { StyleSheet } from 'react-native';
 
-export const OVERLAY_HORIZONTAL_PADDING = 10;
+export const OVERLAY_HORIZONTAL_PADDING = 15;
 export const OVERLAY_CORNER_RADIUS = 22;
 
 export const overlaySheetStyles = StyleSheet.create({
@@ -36,17 +36,19 @@ export const overlaySheetStyles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingTop: 0,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
   grabHandleWrapper: {
     alignItems: 'center',
-    paddingTop: 4,
+    paddingTop: 6,
     paddingBottom: 0,
+    marginTop: 0,
+    marginBottom: 0,
     backgroundColor: '#ffffff',
   },
   grabHandle: {
-    width: 68,
-    height: 3,
+    width: 50,
+    height: 3.25,
     borderRadius: 2,
     backgroundColor: '#cbd5e1',
   },
@@ -57,18 +59,23 @@ export const overlaySheetStyles = StyleSheet.create({
     marginTop: 2,
   },
   headerRowSpaced: {
-    marginBottom: 2,
+    marginBottom: 8,
   },
   headerDivider: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(15, 23, 42, 0.14)',
     marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
+    marginBottom: 0,
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    minWidth: 44,
+    minHeight: 44,
+    padding: 8,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 0,
+    marginRight: -8,
+    borderWidth: 0,
   },
 });
