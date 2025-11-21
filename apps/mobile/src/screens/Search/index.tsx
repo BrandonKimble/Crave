@@ -623,10 +623,7 @@ const SearchScreen: React.FC = () => {
       } else if (status.isOpen === false) {
         segments.push(
           <Text key="status-closed" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
-            <Text
-              variant="caption"
-              style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}
-            >
+            <Text variant="caption" style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}>
               Closed
             </Text>
             {status.nextOpenDisplay ? (
@@ -1094,8 +1091,7 @@ const SearchScreen: React.FC = () => {
           sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
         const startIndex = SHEET_STATES.indexOf(currentState);
         context.startStateIndex = startIndex >= 0 ? startIndex : SHEET_STATES.length - 1;
-        context.isHeaderDrag =
-          typeof event.absoluteY === 'number' ? event.absoluteY <= 200 : true;
+        context.isHeaderDrag = typeof event.absoluteY === 'number' ? event.absoluteY <= 200 : true;
         context.canDriveSheet = false;
         context.isExpandedAtStart = sheetStateShared.value === 'expanded';
       },
@@ -1178,8 +1174,7 @@ const SearchScreen: React.FC = () => {
           0
         );
 
-        const targetIndex =
-          candidateIndex !== startAllowedIndex ? candidateIndex : nearestIndex;
+        const targetIndex = candidateIndex !== startAllowedIndex ? candidateIndex : nearestIndex;
         const targetState: SheetPosition =
           allowedStates[targetIndex] ?? allowedStates[allowedStates.length - 1];
 
