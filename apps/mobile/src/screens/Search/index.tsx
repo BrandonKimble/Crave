@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import {
   PanGestureHandler,
+  NativeViewGestureHandler,
   type PanGestureHandlerGestureEvent,
 } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -263,13 +264,6 @@ const SEGMENT_OPTIONS = [
 ] as const;
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
 const SHEET_STATE_ORDER: SheetPosition[] = ['expanded', 'middle', 'collapsed', 'hidden'];
-const getNextSheetState = (state: SheetPosition): SheetPosition | null => {
-  const index = SHEET_STATE_ORDER.indexOf(state);
-  if (index < 0 || index >= SHEET_STATE_ORDER.length - 1) {
-    return null;
-  }
-  return SHEET_STATE_ORDER[index + 1];
-};
 
 const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
   if (!value || typeof value !== 'string') {
@@ -451,12 +445,10 @@ const SearchScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
-  const [resultsScrollEnabled, setResultsScrollEnabled] = React.useState(true);
+  const resultsScrollEnabled = sheetState === 'expanded';
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
-  const resultsScrollEnabledRef = React.useRef(true);
   const lastScrollYRef = React.useRef(0);
-  const scrollLockTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
@@ -477,6 +469,7 @@ const SearchScreen: React.FC = () => {
   const searchContainerAnim = React.useRef(new Animated.Value(0)).current;
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<ScrollView | null>(null);
+  const scrollGestureRef = React.useRef<NativeViewGestureHandler | null>(null);
   const draggingFromTopRef = React.useRef(false);
   const locationRequestInFlightRef = React.useRef(false);
   const userLocationRef = React.useRef<Coordinate | null>(null);
@@ -785,63 +778,12 @@ const SearchScreen: React.FC = () => {
     };
   }, []);
 
-  const enableResultsScroll = React.useCallback(() => {
-    resultsScrollEnabledRef.current = true;
-    setResultsScrollEnabled(true);
-    if (scrollLockTimeoutRef.current) {
-      clearTimeout(scrollLockTimeoutRef.current);
-      scrollLockTimeoutRef.current = null;
-    }
-  }, []);
-
-  const temporarilyDisableResultsScroll = React.useCallback(() => {
-    resultsScrollEnabledRef.current = false;
-    setResultsScrollEnabled(false);
-    if (scrollLockTimeoutRef.current) {
-      clearTimeout(scrollLockTimeoutRef.current);
-    }
-    scrollLockTimeoutRef.current = setTimeout(() => {
-      enableResultsScroll();
-    }, 300);
-  }, [enableResultsScroll]);
-
-  const collapseSheetFromTop = React.useCallback(() => {
-    if (!resultsScrollEnabledRef.current) {
-      return;
-    }
-    const nextState = getNextSheetState(sheetState);
-    if (!nextState) {
-      return;
-    }
-    temporarilyDisableResultsScroll();
-    animateSheetTo(nextState);
-  }, [sheetState, animateSheetTo, temporarilyDisableResultsScroll]);
-
   const onResultsScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
       const offsetY = contentOffset?.y ?? 0;
       resultsScrollY.setValue(offsetY);
-
-      const isPullingDown = offsetY < lastScrollYRef.current;
       lastScrollYRef.current = offsetY;
-
-      if (offsetY < 0) {
-        draggingFromTopRef.current = true;
-        resultsScrollRef.current?.scrollTo({ y: 0, animated: false });
-        collapseSheetFromTop();
-        return;
-      }
-
-      if (offsetY === 0 && isPullingDown) {
-        draggingFromTopRef.current = true;
-        collapseSheetFromTop();
-        return;
-      }
-
-      if (offsetY > 2 && draggingFromTopRef.current) {
-        draggingFromTopRef.current = false;
-      }
 
       if (!canLoadMore || isLoading || isLoadingMore || isPaginationExhausted) {
         return;
@@ -861,35 +803,16 @@ const SearchScreen: React.FC = () => {
       isLoadingMore,
       isPaginationExhausted,
       loadMoreResults,
-      collapseSheetFromTop,
     ]
   );
 
-  const handleResultsScrollBeginDrag = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offsetY = event.nativeEvent.contentOffset?.y ?? 0;
-      draggingFromTopRef.current = offsetY <= 0.5;
-    },
-    []
-  );
+  const handleResultsScrollBeginDrag = React.useCallback(() => {
+    draggingFromTopRef.current = false;
+  }, []);
 
-  const handleResultsScrollEndDrag = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offsetY = event.nativeEvent.contentOffset?.y ?? 0;
-      const velocityY = event.nativeEvent.velocity?.y ?? 0;
-      const isPullingDown = velocityY < -25;
-      if (offsetY <= 0.5 && isPullingDown) {
-        draggingFromTopRef.current = false;
-        resultsScrollRef.current?.scrollTo({ y: 0, animated: false });
-        collapseSheetFromTop();
-        return;
-      }
-      if (offsetY > 1 && draggingFromTopRef.current) {
-        draggingFromTopRef.current = false;
-      }
-    },
-    [collapseSheetFromTop]
-  );
+  const handleResultsScrollEndDrag = React.useCallback(() => {
+    draggingFromTopRef.current = false;
+  }, []);
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
     setQuery(value);
@@ -2557,21 +2480,26 @@ const SearchScreen: React.FC = () => {
                 pointerEvents="none"
                 style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
               />
-              <Reanimated.View
-                style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
-                pointerEvents={panelVisible ? 'auto' : 'none'}
+              <PanGestureHandler
+                ref={sheetPanRef}
+                onGestureEvent={sheetPanGesture}
+                simultaneousHandlers={[scrollGestureRef]}
               >
-                {/* BlurView must remain the first child inside this absolute container.
-                  Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
-                <BlurView
-                  pointerEvents="none"
-                  intensity={45}
-                  tint="light"
-                  style={StyleSheet.absoluteFillObject}
-                />
-                <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-                <View pointerEvents="none" style={overlaySheetStyles.highlight} />
-                <PanGestureHandler ref={sheetPanRef} onGestureEvent={sheetPanGesture}>
+                <Reanimated.View
+                  style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
+                  pointerEvents={panelVisible ? 'auto' : 'none'}
+                >
+                  {/* BlurView must remain the first child inside this absolute container.
+                    Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
+                  <BlurView
+                    pointerEvents="none"
+                    intensity={45}
+                    tint="light"
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
+                  <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+
                   <Reanimated.View style={overlaySheetStyles.header}>
                     <View style={overlaySheetStyles.grabHandleWrapper}>
                       <Pressable
@@ -2616,59 +2544,65 @@ const SearchScreen: React.FC = () => {
                       </View>
                     ) : null}
                   </Reanimated.View>
-                </PanGestureHandler>
 
-                {error ? (
-                  <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-                    <Text variant="caption" style={styles.textRed600}>
-                      {error}
-                    </Text>
-                  </View>
-                ) : isLoading && !results ? (
-                  <View
-                    style={[
-                      styles.resultsCard,
-                      styles.resultsCardSurface,
-                      styles.resultsCardCentered,
-                    ]}
-                  >
-                    <ActivityIndicator size="large" color="#FB923C" />
-                    <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
-                      Looking for the best matches...
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.resultsCard}>
-                    <Animated.ScrollView
-                      ref={(ref) => {
-                        resultsScrollRef.current = ref as unknown as ScrollView | null;
-                      }}
-                      simultaneousHandlers={sheetPanRef}
-                      style={styles.resultsScroll}
-                      contentContainerStyle={styles.resultsScrollContent}
-                      showsVerticalScrollIndicator={false}
-                      keyboardShouldPersistTaps="handled"
-                      onScroll={onResultsScroll}
-                      onScrollBeginDrag={handleResultsScrollBeginDrag}
-                      onScrollEndDrag={handleResultsScrollEndDrag}
-                      scrollEventThrottle={16}
-                      bounces={false}
-                      alwaysBounceVertical={false}
-                      overScrollMode="never"
-                      scrollEnabled={resultsScrollEnabled && sheetState === 'expanded'}
+                  {error ? (
+                    <View style={[styles.resultsCard, styles.resultsCardSurface]}>
+                      <Text variant="caption" style={styles.textRed600}>
+                        {error}
+                      </Text>
+                    </View>
+                  ) : isLoading && !results ? (
+                    <View
+                      style={[
+                        styles.resultsCard,
+                        styles.resultsCardSurface,
+                        styles.resultsCardCentered,
+                      ]}
                     >
-                      <View style={styles.resultsInner}>
-                        {activeTab === 'dishes' ? renderDishResults() : renderRestaurantResults()}
-                        <View style={styles.loadMoreSpacer}>
-                          {isLoadingMore && canLoadMore ? (
-                            <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
-                          ) : null}
-                        </View>
-                      </View>
-                    </Animated.ScrollView>
-                  </View>
-                )}
-              </Reanimated.View>
+                      <ActivityIndicator size="large" color="#FB923C" />
+                      <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
+                        Looking for the best matches...
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.resultsCard}>
+                      <NativeViewGestureHandler
+                        ref={scrollGestureRef}
+                        simultaneousHandlers={[sheetPanRef]}
+                      >
+                        <Animated.ScrollView
+                          ref={(ref) => {
+                            resultsScrollRef.current = ref as unknown as ScrollView | null;
+                          }}
+                          style={styles.resultsScroll}
+                          contentContainerStyle={styles.resultsScrollContent}
+                          showsVerticalScrollIndicator={false}
+                          keyboardShouldPersistTaps="handled"
+                          onScroll={onResultsScroll}
+                          onScrollBeginDrag={handleResultsScrollBeginDrag}
+                          onScrollEndDrag={handleResultsScrollEndDrag}
+                          scrollEventThrottle={16}
+                          bounces={false}
+                          alwaysBounceVertical={false}
+                          overScrollMode="never"
+                          scrollEnabled={resultsScrollEnabled && sheetState === 'expanded'}
+                        >
+                          <View style={styles.resultsInner}>
+                            {activeTab === 'dishes'
+                              ? renderDishResults()
+                              : renderRestaurantResults()}
+                            <View style={styles.loadMoreSpacer}>
+                              {isLoadingMore && canLoadMore ? (
+                                <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+                              ) : null}
+                            </View>
+                          </View>
+                        </Animated.ScrollView>
+                      </NativeViewGestureHandler>
+                    </View>
+                  )}
+                </Reanimated.View>
+              </PanGestureHandler>
             </>
           ) : null}
         </SafeAreaView>
