@@ -31,6 +31,7 @@ export interface QueryPlan {
 export interface OperatingStatus {
   isOpen: boolean | null;
   closesAtDisplay?: string | null;
+  closesInMinutes?: number | null;
 }
 
 export interface FoodResult {
@@ -51,6 +52,7 @@ export interface FoodResult {
   foodAttributes: string[];
   restaurantPriceLevel?: number | null;
   restaurantPriceSymbol?: string | null;
+  restaurantDistanceMiles?: number | null;
   restaurantOperatingStatus?: OperatingStatus | null;
 }
 
@@ -77,6 +79,7 @@ export interface RestaurantResult {
   priceLevelUpdatedAt?: string | null;
   topFood: RestaurantFoodSnippet[];
   operatingStatus?: OperatingStatus | null;
+  distanceMiles?: number | null;
 }
 
 export interface SearchResponseMetadata {

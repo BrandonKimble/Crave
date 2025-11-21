@@ -14,6 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Easing,
 } from 'react-native';
 import {
   PanGestureHandler,
@@ -46,6 +47,7 @@ import {
   UserIcon,
   XCircleIcon,
   XMarkIcon,
+  ChartBarIcon,
 } from '../../components/icons/HeroIcons';
 import { colors as themeColors, shadows as shadowStyles } from '../../constants/theme';
 import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
@@ -74,11 +76,13 @@ import type {
   FoodResult,
   RestaurantResult,
   MapBounds,
+  Coordinate,
   NaturalSearchRequest,
 } from '../../types';
+import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
-import { DEFAULT_MAP_CENTER, buildMapStyleURL } from '../../constants/map';
+import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -102,6 +106,11 @@ const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
   3: '$$$',
   4: '$$$$',
 };
+const META_FONT_SIZE = 15;
+const DISTANCE_MIN_DECIMALS = 1;
+const DISTANCE_MAX_DECIMALS = 0;
+const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
+const USA_FALLBACK_ZOOM = 3.2;
 
 const clampPriceLevelValue = (value: number): PriceLevelValue => {
   if (!Number.isFinite(value)) {
@@ -261,6 +270,57 @@ const getNextSheetState = (state: SheetPosition): SheetPosition | null => {
   }
   return SHEET_STATE_ORDER[index + 1];
 };
+
+const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const match = value.trim().toLowerCase().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  if (!match) {
+    return null;
+  }
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const period = match[3];
+
+  if (period === 'pm' && hour < 12) {
+    hour += 12;
+  } else if (period === 'am' && hour === 12) {
+    hour = 0;
+  }
+
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return null;
+  }
+
+  return hour * 60 + minute;
+};
+
+const minutesUntilCloseFromDisplay = (closesAtDisplay?: string | null): number | null => {
+  const closeMinutes = parseTimeDisplayToMinutes(closesAtDisplay);
+  if (closeMinutes === null) {
+    return null;
+  }
+
+  const now = new Date();
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  let diff = closeMinutes - currentMinutes;
+
+  // Handle cross-midnight times (e.g., 1:00 AM close when it's 11:30 PM).
+  if (diff < -60) {
+    diff += 24 * 60;
+  }
+
+  return diff >= 0 ? diff : null;
+};
+
+const formatDistanceMiles = (distance?: number | null): string | null => {
+  if (typeof distance !== 'number' || !Number.isFinite(distance) || distance < 0) {
+    return null;
+  }
+  const decimals = distance >= 10 ? DISTANCE_MAX_DECIMALS : DISTANCE_MIN_DECIMALS;
+  return `${distance.toFixed(decimals)} mi`;
+};
 const TOGGLE_BORDER_RADIUS = 8;
 const TOGGLE_HORIZONTAL_PADDING = 7;
 const TOGGLE_VERTICAL_PADDING = 5;
@@ -295,12 +355,67 @@ const SearchScreen: React.FC = () => {
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
   const latestBoundsRef = React.useRef<MapBounds | null>(null);
+  const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(null);
+  const [mapZoom, setMapZoom] = React.useState(12);
 
   React.useEffect(() => {
     if (accessToken) {
       void MapboxGL.setAccessToken(accessToken);
     }
   }, [accessToken]);
+
+  React.useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
+
+  React.useEffect(() => {
+    void ensureUserLocation();
+  }, [ensureUserLocation]);
+
+  React.useEffect(() => {
+    if (!userLocation) {
+      locationPulse.setValue(0);
+      return;
+    }
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(locationPulse, {
+          toValue: 1,
+          duration: 1500,
+          easing: Easing.out(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(locationPulse, {
+          toValue: 0,
+          duration: 1000,
+          easing: Easing.in(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    pulseAnimation.start();
+    return () => {
+      pulseAnimation.stop();
+      locationPulse.setValue(0);
+    };
+  }, [locationPulse, userLocation]);
+
+  React.useEffect(() => {
+    if (!userLocation || hasCenteredOnLocationRef.current) {
+      return;
+    }
+    const center: [number, number] = [userLocation.lng, userLocation.lat];
+    setMapCenter(center);
+    setMapZoom(13);
+    hasCenteredOnLocationRef.current = true;
+    if (cameraRef.current?.setCamera) {
+      cameraRef.current.setCamera({
+      centerCoordinate: center,
+      zoomLevel: 13,
+      animationDuration: 800,
+    });
+  }
+}, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
 
@@ -332,6 +447,7 @@ const SearchScreen: React.FC = () => {
   const [hasMoreRestaurants, setHasMoreRestaurants] = React.useState(false);
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
+  const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [resultsScrollEnabled, setResultsScrollEnabled] = React.useState(true);
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
@@ -359,6 +475,11 @@ const SearchScreen: React.FC = () => {
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<ScrollView | null>(null);
   const draggingFromTopRef = React.useRef(false);
+  const locationRequestInFlightRef = React.useRef(false);
+  const userLocationRef = React.useRef<Coordinate | null>(null);
+  const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
+  const locationPulse = React.useRef(new Animated.Value(0)).current;
+  const hasCenteredOnLocationRef = React.useRef(false);
   const { activeOverlay, overlayParams, setOverlay } = useOverlayStore();
   const isSearchOverlay = activeOverlay === 'search';
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
@@ -392,7 +513,7 @@ const SearchScreen: React.FC = () => {
       search: (color: string) => <MagnifyingGlassIcon size={20} color={color} />,
       bookmarks: (color: string) => <BookmarkIcon size={20} color={color} />,
       polls: (color: string) => (
-        <Feather name="bar-chart-2" size={20} color={color} style={styles.pollsIcon} />
+        <ChartBarIcon size={20} color={color} style={styles.pollsIcon} />
       ),
     }),
     []
@@ -455,39 +576,107 @@ const SearchScreen: React.FC = () => {
   }, [primaryFoodTerm]);
   const renderMetaDetailLine = (
     status: OperatingStatus | null | undefined,
-    priceLabel: string | null,
+    priceLabel?: string | null,
+    distanceMiles?: number | null,
     align: 'left' | 'right' = 'left'
   ): React.ReactNode => {
     const segments: React.ReactNode[] = [];
+    const normalizedPriceLabel = priceLabel ?? null;
+    const distanceLabel = formatDistanceMiles(distanceMiles);
+    const effectiveMinutesUntilClose =
+      status?.isOpen && typeof status.closesInMinutes === 'number'
+        ? status.closesInMinutes
+        : status?.isOpen
+          ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+          : null;
+    const isClosingSoon =
+      status?.isOpen &&
+      typeof effectiveMinutesUntilClose === 'number' &&
+      effectiveMinutesUntilClose <= 45;
+
     if (status) {
-      if (status.isOpen) {
+      if (isClosingSoon) {
         segments.push(
-          <Text key="status-open">
-            <Text style={styles.resultMetaOpen}>Open</Text>
+          <Text key="status-closing-soon" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
+            <Text variant="caption" style={[styles.resultMetaClosingSoon, { fontSize: META_FONT_SIZE }]}>
+              Closes
+            </Text>
             {status.closesAtDisplay ? (
-              <Text style={styles.resultMetaSuffix}>{` until ${status.closesAtDisplay}`}</Text>
+              <Text
+                variant="caption"
+                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
+              >{` at ${status.closesAtDisplay}`}</Text>
+            ) : null}
+          </Text>
+        );
+      } else if (status.isOpen) {
+        segments.push(
+          <Text key="status-open" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
+            <Text variant="caption" style={[styles.resultMetaOpen, { fontSize: META_FONT_SIZE }]}>
+              Open
+            </Text>
+            {status.closesAtDisplay ? (
+              <Text
+                variant="caption"
+                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
+              >{` until ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
       } else if (status.isOpen === false) {
         segments.push(
-          <Text key="status-closed" style={styles.resultMetaClosed}>
-            Closed now
+          <Text
+            key="status-closed"
+            variant="caption"
+            style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}
+          >
+            Closed
           </Text>
         );
       }
     }
-    if (priceLabel) {
+
+    if (normalizedPriceLabel) {
       if (segments.length) {
         segments.push(
-          <Text key={`separator-${segments.length}`} style={styles.resultMetaSeparator}>
+          <Text
+            key={`separator-${segments.length}`}
+            variant="caption"
+            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+          >
             {' · '}
           </Text>
         );
       }
       segments.push(
-        <Text key="price" style={styles.resultMetaPrice}>
-          {priceLabel}
+        <Text
+          key="price"
+          variant="caption"
+          style={[styles.resultMetaPrice, { fontSize: META_FONT_SIZE }]}
+        >
+          {normalizedPriceLabel}
+        </Text>
+      );
+    }
+    if (distanceLabel) {
+      if (segments.length) {
+        segments.push(
+          <Text
+            key={`separator-${segments.length}`}
+            variant="caption"
+            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+          >
+            {' · '}
+          </Text>
+        );
+      }
+      segments.push(
+        <Text
+          key="distance"
+          variant="caption"
+          style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
+        >
+          {distanceLabel}
         </Text>
       );
     }
@@ -496,7 +685,12 @@ const SearchScreen: React.FC = () => {
     }
     return (
       <Text
-        style={[styles.resultMetaText, align === 'right' && styles.resultMetaTextRight]}
+        variant="caption"
+        style={[
+          styles.resultMetaText,
+          { fontSize: META_FONT_SIZE },
+          align === 'right' && styles.resultMetaTextRight,
+        ]}
         numberOfLines={1}
       >
         {segments}
@@ -508,10 +702,81 @@ const SearchScreen: React.FC = () => {
   const focusSearchInput = React.useCallback(() => {
     inputRef.current?.focus();
   }, []);
+  const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
+    if (userLocationRef.current) {
+      return userLocationRef.current;
+    }
+    if (locationRequestInFlightRef.current) {
+      return userLocationRef.current;
+    }
+
+    locationRequestInFlightRef.current = true;
+    try {
+      const existingPermission = await Location.getForegroundPermissionsAsync();
+      let status = existingPermission.status;
+      if (status !== 'granted') {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        status = requested.status;
+      }
+
+      if (status !== 'granted') {
+        return null;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+        maximumAge: 60_000,
+      });
+
+      const coords: Coordinate = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      setUserLocation(coords);
+      userLocationRef.current = coords;
+
+      if (!locationWatchRef.current) {
+        try {
+          locationWatchRef.current = await Location.watchPositionAsync(
+            {
+              accuracy: Location.Accuracy.Balanced,
+              timeInterval: 20_000,
+              distanceInterval: 50,
+            },
+            (update) => {
+              const nextCoords: Coordinate = {
+                lat: update.coords.latitude,
+                lng: update.coords.longitude,
+              };
+              userLocationRef.current = nextCoords;
+              setUserLocation(nextCoords);
+            }
+          );
+        } catch (watchError) {
+          logger.warn('Failed to start location watcher', {
+            message: watchError instanceof Error ? watchError.message : 'unknown',
+          });
+        }
+      }
+
+      return coords;
+    } catch (locationError) {
+      logger.warn('Failed to capture user location', {
+        message: locationError instanceof Error ? locationError.message : 'unknown',
+      });
+      return null;
+    } finally {
+      locationRequestInFlightRef.current = false;
+    }
+  }, []);
   React.useEffect(() => {
     return () => {
       if (scrollLockTimeoutRef.current) {
         clearTimeout(scrollLockTimeoutRef.current);
+      }
+      if (locationWatchRef.current) {
+        locationWatchRef.current.remove();
+        locationWatchRef.current = null;
       }
     };
   }, []);
@@ -1170,6 +1435,12 @@ const SearchScreen: React.FC = () => {
           payload.bounds = latestBoundsRef.current;
         }
 
+        const resolvedLocation =
+          userLocationRef.current ?? (await ensureUserLocation());
+        if (resolvedLocation) {
+          payload.userLocation = resolvedLocation;
+        }
+
         const response = await searchService.naturalSearch(payload);
         logger.info('Search response payload', response);
 
@@ -1269,6 +1540,7 @@ const SearchScreen: React.FC = () => {
       searchService,
       canLoadMore,
       scrollResultsToTop,
+      ensureUserLocation,
     ]
   );
 
@@ -1751,7 +2023,8 @@ const SearchScreen: React.FC = () => {
     const dishMetaLine = renderMetaDetailLine(
       item.restaurantOperatingStatus,
       dishPriceLabel,
-      'right'
+      item.restaurantDistanceMiles,
+      'left'
     );
     const handleShare = () => {
       void Share.share({
@@ -1789,13 +2062,12 @@ const SearchScreen: React.FC = () => {
                 variant="body"
                 weight="medium"
                 style={[styles.textSlate600, styles.dishRestaurantName]}
+                numberOfLines={1}
               >
                 {item.restaurantName}
               </Text>
               {dishMetaLine ? (
-                <View style={[styles.resultMetaLine, styles.resultMetaLineRight]}>
-                  {dishMetaLine}
-                </View>
+                <View style={styles.resultMetaLine}>{dishMetaLine}</View>
               ) : null}
             </View>
             <View style={styles.resultActions}>
@@ -1870,6 +2142,11 @@ const SearchScreen: React.FC = () => {
     const isLiked = favoriteMap.has(restaurant.restaurantId);
     const qualityColor = getQualityColor(index, restaurants.length);
     const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+    const restaurantMetaLine = renderMetaDetailLine(
+      restaurant.operatingStatus,
+      priceRangeLabel ?? null,
+      restaurant.distanceMiles
+    );
     const handleShare = () => {
       void Share.share({
         message: `${restaurant.restaurantName} · View on Crave Search`,
@@ -1896,8 +2173,8 @@ const SearchScreen: React.FC = () => {
               >
                 {restaurant.restaurantName}
               </Text>
-              {priceRangeLabel ? (
-                <Text style={styles.priceInlineLabel}> · {priceRangeLabel}</Text>
+              {restaurantMetaLine ? (
+                <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
             </View>
             <View style={styles.resultActions}>
@@ -1926,6 +2203,19 @@ const SearchScreen: React.FC = () => {
             </View>
           </View>
           <View style={styles.resultContent}>
+            {restaurant.topFood?.length ? (
+              <View style={styles.topFoodSection}>
+                {restaurant.topFood.map((food) => (
+                  <Text
+                    key={food.connectionId}
+                    variant="caption"
+                    style={[styles.textSlate700, styles.topFoodText]}
+                  >
+                    • {food.foodName} ({food.qualityScore.toFixed(1)})
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.metricsContainer}>
               <View style={styles.primaryMetric}>
                 <Text variant="caption" style={styles.primaryMetricLabel}>
@@ -1953,19 +2243,6 @@ const SearchScreen: React.FC = () => {
                 </View>
               ) : null}
             </View>
-            {restaurant.topFood?.length ? (
-              <View style={styles.topFoodSection}>
-                {restaurant.topFood.map((food) => (
-                  <Text
-                    key={food.connectionId}
-                    variant="caption"
-                    style={[styles.textSlate700, styles.topFoodText]}
-                  >
-                    • {food.foodName} ({food.qualityScore.toFixed(1)})
-                  </Text>
-                ))}
-              </View>
-            ) : null}
           </View>
         </Pressable>
       </View>
@@ -2019,10 +2296,39 @@ const SearchScreen: React.FC = () => {
       >
         <MapboxGL.Camera
           ref={cameraRef}
-          centerCoordinate={DEFAULT_MAP_CENTER}
-          zoomLevel={12}
+          centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
+          zoomLevel={mapCenter ? mapZoom : USA_FALLBACK_ZOOM}
           pitch={32}
         />
+        {userLocation ? (
+          <MapboxGL.MarkerView
+            id="user-location"
+            coordinate={[userLocation.lng, userLocation.lat]}
+            anchor={{ x: 0.5, y: 0.5 }}
+          >
+            <View style={styles.userLocationWrapper}>
+              <View style={styles.userLocationShadow}>
+                <BlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.userLocationDot,
+                      {
+                        transform: [
+                          {
+                          scale: locationPulse.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [1.3, 1.6],
+                          }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                </BlurView>
+              </View>
+            </View>
+          </MapboxGL.MarkerView>
+        ) : null}
         {restaurantFeatures.features.map((feature) => {
           const coordinates = feature.geometry.coordinates as [number, number];
           const name = feature.properties?.restaurantName ?? feature.id?.toString() ?? 'Pin';
@@ -2752,7 +3058,7 @@ const styles = StyleSheet.create({
     color: ACTIVE_TAB_COLOR,
   },
   pollsIcon: {
-    transform: [{ rotate: '90deg' }],
+    transform: [{ rotate: '90deg' }, { scaleX: -1 }],
   },
   inlineSegmentWrapper: {
     flexBasis: 'auto',
@@ -2963,11 +3269,110 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     minHeight: 0,
     paddingTop: 0,
+    paddingRight: 48,
   },
-  priceInlineLabel: {
-    fontSize: 13,
-    color: '#94a3b8',
-    fontWeight: '500',
+  resultMetaLine: {
+    marginTop: 2,
+  },
+  resultMetaLineRight: {
+    marginTop: 0,
+    marginLeft: 'auto',
+    alignItems: 'flex-end',
+    maxWidth: '65%',
+    flexShrink: 1,
+  },
+  resultMetaLineInline: {
+    marginTop: 0,
+    flexShrink: 1,
+  },
+  resultMetaText: {
+    color: '#6b7280',
+    fontSize: META_FONT_SIZE,
+    fontWeight: '400',
+    flexShrink: 1,
+  },
+  resultMetaTextRight: {
+    textAlign: 'right',
+  },
+  resultMetaOpen: {
+    color: '#16a34a',
+    fontWeight: '600',
+  },
+  resultMetaClosingSoon: {
+    color: '#f59e0b',
+    fontSize: META_FONT_SIZE,
+    fontWeight: '600',
+  },
+  resultMetaSuffix: {
+    color: '#6b7280',
+    fontWeight: '400',
+  },
+  resultMetaClosed: {
+    color: '#dc2626',
+    fontSize: META_FONT_SIZE,
+    fontWeight: '600',
+  },
+  resultMetaSeparator: {
+    color: '#6b7280',
+    fontWeight: '400',
+  },
+  resultMetaPrice: {
+    color: '#6b7280',
+    fontSize: META_FONT_SIZE,
+    fontWeight: '400',
+  },
+  resultMetaDistance: {
+    color: '#6b7280',
+    fontSize: META_FONT_SIZE,
+    fontWeight: '400',
+  },
+  dishMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+    marginTop: 2,
+  },
+  userLocationWrapper: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userLocationHaloWrapper: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
+  },
+  userLocationShadow: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: 'rgba(0, 0, 0, 0.45)',
+    shadowOpacity: 0.65,
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 2.5,
+    elevation: 4,
+  },
+  userLocationDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#5c5bff',
+  },
+  userLocationHalo: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.65)',
   },
   shareButton: {
     padding: 4,
@@ -3060,9 +3465,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   dishRestaurantName: {
-    marginTop: 2,
-    fontSize: 15,
+    marginTop: 4,
+    fontSize: 16,
     color: '#475569',
+    flexShrink: 1,
+    minWidth: 0,
   },
   dishSubtitle: {
     fontSize: 14,

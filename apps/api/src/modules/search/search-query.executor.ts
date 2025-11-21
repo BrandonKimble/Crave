@@ -83,6 +83,22 @@ interface QueryResultRow {
   food_aliases: string[];
 }
 
+interface UserLocationInput {
+  lat: number;
+  lng: number;
+}
+
+interface RestaurantContext {
+  operatingStatus: {
+    isOpen: boolean;
+    closesAtDisplay?: string | null;
+    closesInMinutes?: number | null;
+  } | null;
+  priceLevel: number | null;
+  priceSymbol: string | null;
+  distanceMiles: number | null;
+}
+
 interface ExecuteParams {
   plan: QueryPlan;
   request: SearchQueryRequestDto;
@@ -141,6 +157,7 @@ export class SearchQueryExecutor {
     });
 
     const referenceDate = new Date();
+    const userLocation = this.normalizeUserLocation(request.userLocation);
     const [connections, totalResult] = await Promise.all([
       this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
       this.prisma.$queryRaw<
@@ -149,13 +166,18 @@ export class SearchQueryExecutor {
     ]);
 
     const totalBeforeFiltering = Number(totalResult[0]?.total_connections ?? 0);
+    const restaurantContexts = this.buildRestaurantContexts(
+      connections,
+      referenceDate,
+      userLocation,
+    );
     const totalRestaurantCountDb = Number(
       totalResult[0]?.total_restaurants ?? 0,
     );
     const needsOpenFilter = Boolean(request.openNow);
 
     const openFilter = needsOpenFilter
-      ? this.filterByOpenNow(connections, referenceDate)
+      ? this.filterByOpenNow(connections, restaurantContexts)
       : {
           connections,
           applied: false,
@@ -184,7 +206,11 @@ export class SearchQueryExecutor {
     const minimumVotes =
       typeof request.minimumVotes === 'number' ? request.minimumVotes : null;
 
-    const foodResults = this.mapFoodResults(limitedConnections, referenceDate);
+    const foodResults = this.mapFoodResults(
+      limitedConnections,
+      restaurantContexts,
+      referenceDate,
+    );
     const totalRestaurantCount = needsOpenFilter
       ? this.countDistinctRestaurants(filteredConnections)
       : totalRestaurantCountDb;
@@ -194,6 +220,7 @@ export class SearchQueryExecutor {
             limitedConnections,
             plan.ranking.restaurantOrder,
             minimumVotes,
+            restaurantContexts,
             referenceDate,
           )
         : [];
@@ -238,9 +265,84 @@ export class SearchQueryExecutor {
     return ids.size;
   }
 
-  private filterByOpenNow(
+  private normalizeUserLocation(
+    input?: { lat?: number; lng?: number } | null,
+  ): UserLocationInput | null {
+    if (!input) {
+      return null;
+    }
+    const lat = Number(input.lat);
+    const lng = Number(input.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return null;
+    }
+    return { lat, lng };
+  }
+
+  private buildRestaurantContexts(
     connections: QueryResultRow[],
     referenceDate: Date,
+    userLocation: UserLocationInput | null,
+  ): Map<string, RestaurantContext> {
+    const contexts = new Map<string, RestaurantContext>();
+
+    for (const connection of connections) {
+      const restaurantId = connection.restaurant_id;
+      if (!restaurantId) {
+        continue;
+      }
+
+      const existing = contexts.get(restaurantId);
+      const latitude = this.toOptionalNumber(connection.latitude);
+      const longitude = this.toOptionalNumber(connection.longitude);
+      const parsedPrice = this.toOptionalNumber(connection.price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingStatus =
+        existing?.operatingStatus ??
+        this.evaluateOperatingStatus(
+          connection.restaurant_metadata,
+          referenceDate,
+        ) ??
+        null;
+      const distanceMiles =
+        latitude !== null &&
+        latitude !== undefined &&
+        longitude !== null &&
+        longitude !== undefined &&
+        userLocation
+          ? this.computeDistanceMiles(userLocation, latitude, longitude)
+          : null;
+
+      if (existing) {
+        if (existing.priceLevel === null && parsedPrice !== null) {
+          existing.priceLevel = parsedPrice;
+        }
+        if (!existing.priceSymbol && priceDetails.symbol) {
+          existing.priceSymbol = priceDetails.symbol;
+        }
+        if (!existing.operatingStatus && operatingStatus) {
+          existing.operatingStatus = operatingStatus;
+        }
+        if (existing.distanceMiles === null && distanceMiles !== null) {
+          existing.distanceMiles = distanceMiles;
+        }
+        continue;
+      }
+
+      contexts.set(restaurantId, {
+        operatingStatus,
+        priceLevel: parsedPrice ?? null,
+        priceSymbol: priceDetails.symbol ?? null,
+        distanceMiles: distanceMiles ?? null,
+      });
+    }
+
+    return contexts;
+  }
+
+  private filterByOpenNow(
+    connections: QueryResultRow[],
+    restaurantContexts: Map<string, RestaurantContext>,
   ): {
     connections: QueryResultRow[];
     applied: boolean;
@@ -253,10 +355,9 @@ export class SearchQueryExecutor {
     let unsupported = 0;
 
     for (const connection of connections) {
-      const status = this.evaluateOperatingStatus(
-        connection.restaurant_metadata,
-        referenceDate,
-      );
+      const status = restaurantContexts.get(
+        connection.restaurant_id,
+      )?.operatingStatus;
 
       if (!status) {
         unsupported += 1;
@@ -337,17 +438,25 @@ export class SearchQueryExecutor {
 
   private mapFoodResults(
     connections: QueryResultRow[],
+    restaurantContexts: Map<string, RestaurantContext>,
     referenceDate: Date,
   ): FoodResultDto[] {
     const results: FoodResultDto[] = [];
 
     for (const connection of connections) {
-      const parsedPrice = this.toOptionalNumber(connection.price_level);
-      const priceDetails = this.describePriceLevel(parsedPrice);
-      const operatingStatus = this.evaluateOperatingStatus(
-        connection.restaurant_metadata,
-        referenceDate,
+      const restaurantContext = restaurantContexts.get(
+        connection.restaurant_id,
       );
+      const parsedPrice =
+        restaurantContext?.priceLevel ??
+        this.toOptionalNumber(connection.price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingStatus =
+        restaurantContext?.operatingStatus ??
+        this.evaluateOperatingStatus(
+          connection.restaurant_metadata,
+          referenceDate,
+        );
 
       results.push({
         connectionId: connection.connection_id,
@@ -368,7 +477,9 @@ export class SearchQueryExecutor {
         categories: connection.categories || [],
         foodAttributes: connection.food_attributes || [],
         restaurantPriceLevel: parsedPrice ?? null,
-        restaurantPriceSymbol: priceDetails.symbol ?? null,
+        restaurantPriceSymbol:
+          restaurantContext?.priceSymbol ?? priceDetails.symbol ?? null,
+        restaurantDistanceMiles: restaurantContext?.distanceMiles ?? null,
         restaurantOperatingStatus: operatingStatus ?? null,
       });
     }
@@ -380,6 +491,7 @@ export class SearchQueryExecutor {
     connections: QueryResultRow[],
     restaurantOrder: string,
     minimumVotes: number | null,
+    restaurantContexts: Map<string, RestaurantContext>,
     referenceDate: Date,
   ): RestaurantResultDto[] {
     const grouped = new Map<
@@ -481,7 +593,7 @@ export class SearchQueryExecutor {
           latitude,
           longitude,
           address,
-          priceLevel,
+          priceLevel: groupedPriceLevel,
           priceSymbol,
           priceText,
           priceLevelUpdatedAt,
@@ -489,38 +601,50 @@ export class SearchQueryExecutor {
           snippets,
           scoreSum,
           count,
-        }) => ({
-          restaurantId,
-          restaurantName: name,
-          restaurantAliases: aliases || [],
-          contextualScore: count ? scoreSum / count : 0,
-          restaurantQualityScore:
-            restaurantQualityScore === null ||
-            restaurantQualityScore === undefined
-              ? null
-              : this.toNumber(restaurantQualityScore),
-          latitude:
-            latitude === null || latitude === undefined
-              ? null
-              : this.toNumber(latitude),
-          longitude:
-            longitude === null || longitude === undefined
-              ? null
-              : this.toNumber(longitude),
-          address: address ?? null,
-          priceLevel: priceLevel ?? null,
-          priceSymbol: priceSymbol ?? null,
-          priceText: priceText ?? null,
-          priceLevelUpdatedAt: priceLevelUpdatedAt
-            ? priceLevelUpdatedAt.toISOString()
-            : null,
-          operatingStatus: metadata
-            ? this.evaluateOperatingStatus(metadata, referenceDate)
-            : null,
-          topFood: snippets
-            .sort((a, b) => b.qualityScore - a.qualityScore)
-            .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
-        }),
+        }) => {
+          const restaurantContext = restaurantContexts.get(restaurantId);
+          const resolvedPriceLevel =
+            restaurantContext?.priceLevel ?? groupedPriceLevel ?? null;
+          const resolvedPriceSymbol =
+            restaurantContext?.priceSymbol ?? priceSymbol ?? null;
+          const operatingStatus =
+            restaurantContext?.operatingStatus ??
+            (metadata
+              ? this.evaluateOperatingStatus(metadata, referenceDate)
+              : null);
+
+          return {
+            restaurantId,
+            restaurantName: name,
+            restaurantAliases: aliases || [],
+            contextualScore: count ? scoreSum / count : 0,
+            restaurantQualityScore:
+              restaurantQualityScore === null ||
+              restaurantQualityScore === undefined
+                ? null
+                : this.toNumber(restaurantQualityScore),
+            latitude:
+              latitude === null || latitude === undefined
+                ? null
+                : this.toNumber(latitude),
+            longitude:
+              longitude === null || longitude === undefined
+                ? null
+                : this.toNumber(longitude),
+            address: address ?? null,
+            priceLevel: resolvedPriceLevel,
+            priceSymbol: resolvedPriceSymbol,
+            priceText,
+            priceLevelUpdatedAt: priceLevelUpdatedAt
+              ? priceLevelUpdatedAt.toISOString()
+              : null,
+            operatingStatus,
+            distanceMiles: restaurantContext?.distanceMiles ?? null,
+            topFood: snippets
+              .sort((a, b) => b.qualityScore - a.qualityScore)
+              .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
+          };
+        },
       );
 
     return this.sortRestaurants(results, restaurantOrder);
@@ -551,7 +675,11 @@ export class SearchQueryExecutor {
   private evaluateOperatingStatus(
     metadataValue: Prisma.JsonValue | null | undefined,
     referenceDate: Date,
-  ): { isOpen: boolean; closesAtDisplay?: string | null } | null {
+  ): {
+    isOpen: boolean;
+    closesAtDisplay?: string | null;
+    closesInMinutes?: number | null;
+  } | null {
     const metadata = this.coerceRecord(
       metadataValue,
     ) as RestaurantMetadata | null;
@@ -577,9 +705,15 @@ export class SearchQueryExecutor {
 
     for (const segment of daySegments) {
       if (this.matchesSegment(segment, timeContext.minutes, false)) {
+        const minutesUntilClose = this.computeMinutesUntilClose(
+          segment,
+          timeContext.minutes,
+          false,
+        );
         return {
           isOpen: true,
           closesAtDisplay: this.formatMinutesToDisplay(segment.end),
+          closesInMinutes: minutesUntilClose,
         };
       }
     }
@@ -589,9 +723,15 @@ export class SearchQueryExecutor {
         segment.crossesMidnight &&
         this.matchesSegment(segment, timeContext.minutes, true)
       ) {
+        const minutesUntilClose = this.computeMinutesUntilClose(
+          segment,
+          timeContext.minutes,
+          true,
+        );
         return {
           isOpen: true,
           closesAtDisplay: this.formatMinutesToDisplay(segment.end),
+          closesInMinutes: minutesUntilClose,
         };
       }
     }
@@ -599,6 +739,7 @@ export class SearchQueryExecutor {
     return {
       isOpen: false,
       closesAtDisplay: null,
+      closesInMinutes: null,
     };
   }
 
@@ -772,6 +913,47 @@ export class SearchQueryExecutor {
     }
 
     return minutes >= segment.start && minutes < segment.end;
+  }
+
+  private computeMinutesUntilClose(
+    segment: DaySegment,
+    minutes: number,
+    previousDay: boolean,
+  ): number {
+    if (segment.crossesMidnight) {
+      if (previousDay) {
+        return Math.max(segment.end - minutes, 0);
+      }
+      return Math.max(24 * 60 - minutes + segment.end, 0);
+    }
+
+    return Math.max(segment.end - minutes, 0);
+  }
+
+  private computeDistanceMiles(
+    userLocation: UserLocationInput,
+    latitude: number,
+    longitude: number,
+  ): number | null {
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      return null;
+    }
+    const toRad = (deg: number) => (deg * Math.PI) / 180;
+    const earthRadiusMiles = 3958.8;
+
+    const lat1 = toRad(userLocation.lat);
+    const lon1 = toRad(userLocation.lng);
+    const lat2 = toRad(latitude);
+    const lon2 = toRad(longitude);
+
+    const dLat = lat2 - lat1;
+    const dLon = lon2 - lon1;
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const distance = earthRadiusMiles * c;
+    return Number.isFinite(distance) ? distance : null;
   }
 
   private formatMinutesToDisplay(minutes: number): string {

@@ -166,9 +166,13 @@ export interface SearchPlanResponseDto {
   sqlPreview?: string | null;
 }
 
-export type FoodResultDto = SharedFoodResult;
+export interface FoodResultDto extends SharedFoodResult {
+  restaurantDistanceMiles?: number | null;
+}
 export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
-export type RestaurantResultDto = SharedRestaurantResult;
+export interface RestaurantResultDto extends SharedRestaurantResult {
+  distanceMiles?: number | null;
+}
 export type SearchResponseMetadataDto = SharedSearchResponseMetadata;
 export type SearchResponseDto = SharedSearchResponse;
 
