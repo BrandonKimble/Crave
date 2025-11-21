@@ -32,6 +32,7 @@ export interface OperatingStatus {
   isOpen: boolean | null;
   closesAtDisplay?: string | null;
   closesInMinutes?: number | null;
+  nextOpenDisplay?: string | null;
 }
 
 export interface FoodResult {

@@ -679,6 +679,7 @@ export class SearchQueryExecutor {
     isOpen: boolean;
     closesAtDisplay?: string | null;
     closesInMinutes?: number | null;
+    nextOpenDisplay?: string | null;
   } | null {
     const metadata = this.coerceRecord(
       metadataValue,
@@ -714,6 +715,7 @@ export class SearchQueryExecutor {
           isOpen: true,
           closesAtDisplay: this.formatMinutesToDisplay(segment.end),
           closesInMinutes: minutesUntilClose,
+          nextOpenDisplay: null,
         };
       }
     }
@@ -732,15 +734,58 @@ export class SearchQueryExecutor {
           isOpen: true,
           closesAtDisplay: this.formatMinutesToDisplay(segment.end),
           closesInMinutes: minutesUntilClose,
+          nextOpenDisplay: null,
         };
       }
     }
+
+    const nextOpenDisplay = this.findNextOpenDisplay(schedule, timeContext);
 
     return {
       isOpen: false,
       closesAtDisplay: null,
       closesInMinutes: null,
+      nextOpenDisplay,
     };
+  }
+
+  private findNextOpenDisplay(
+    schedule: DailySchedule,
+    timeContext: { dayKey: DayKey; minutes: number },
+  ): string | null {
+    const startDayIndex = DAY_KEYS.indexOf(timeContext.dayKey);
+    if (startDayIndex < 0) {
+      return null;
+    }
+
+    for (let offset = 0; offset < DAY_KEYS.length; offset += 1) {
+      const dayIndex = (startDayIndex + offset) % DAY_KEYS.length;
+      const dayKey = DAY_KEYS[dayIndex];
+      const segments = schedule[dayKey] || [];
+
+      for (const segment of segments) {
+        if (offset === 0 && segment.start <= timeContext.minutes) {
+          continue;
+        }
+
+        const timeLabel = this.formatMinutesToDisplay(segment.start);
+        const dayLabel = this.describeDayOffset(dayKey, offset);
+        return dayLabel ? `${timeLabel} ${dayLabel}` : timeLabel;
+      }
+    }
+
+    return null;
+  }
+
+  private describeDayOffset(dayKey: DayKey, offset: number): string {
+    if (offset === 0) {
+      return '';
+    }
+    if (offset === 1) {
+      return 'tomorrow';
+    }
+    const label = dayKey.slice(0, 3);
+    return label.charAt(0).toUpperCase() + label.slice(1);
   }
 
   private buildDailySchedule(

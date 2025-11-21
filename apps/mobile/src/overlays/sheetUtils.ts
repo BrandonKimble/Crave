@@ -5,6 +5,9 @@ export type SheetPosition = 'hidden' | 'collapsed' | 'middle' | 'expanded';
 export type SheetGestureContext = {
   startY: number;
   startStateIndex: number;
+  isHeaderDrag?: boolean;
+  canDriveSheet?: boolean;
+  isExpandedAtStart?: boolean;
 };
 
 export const SHEET_STATES: SheetPosition[] = ['expanded', 'middle', 'collapsed', 'hidden'];

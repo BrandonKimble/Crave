@@ -263,7 +263,6 @@ const SEGMENT_OPTIONS = [
   { label: 'Dishes', value: 'dishes' as const },
 ] as const;
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
-const SHEET_STATE_ORDER: SheetPosition[] = ['expanded', 'middle', 'collapsed', 'hidden'];
 
 const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
   if (!value || typeof value !== 'string') {
@@ -448,6 +447,7 @@ const SearchScreen: React.FC = () => {
   const resultsScrollEnabled = sheetState === 'expanded';
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
+  const resultsScrollOffset = useSharedValue(0);
   const lastScrollYRef = React.useRef(0);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
   const headerDividerAnimatedStyle = React.useMemo(
@@ -622,12 +622,19 @@ const SearchScreen: React.FC = () => {
         );
       } else if (status.isOpen === false) {
         segments.push(
-          <Text
-            key="status-closed"
-            variant="caption"
-            style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}
-          >
-            Closed
+          <Text key="status-closed" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
+            <Text
+              variant="caption"
+              style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}
+            >
+              Closed
+            </Text>
+            {status.nextOpenDisplay ? (
+              <Text
+                variant="caption"
+                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
+              >{` until ${status.nextOpenDisplay}`}</Text>
+            ) : null}
           </Text>
         );
       }
@@ -768,9 +775,6 @@ const SearchScreen: React.FC = () => {
   }, []);
   React.useEffect(() => {
     return () => {
-      if (scrollLockTimeoutRef.current) {
-        clearTimeout(scrollLockTimeoutRef.current);
-      }
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();
         locationWatchRef.current = null;
@@ -782,6 +786,7 @@ const SearchScreen: React.FC = () => {
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
       const offsetY = contentOffset?.y ?? 0;
+      resultsScrollOffset.value = offsetY;
       resultsScrollY.setValue(offsetY);
       lastScrollYRef.current = offsetY;
 
@@ -796,14 +801,7 @@ const SearchScreen: React.FC = () => {
         loadMoreResults();
       }
     },
-    [
-      resultsScrollY,
-      canLoadMore,
-      isLoading,
-      isLoadingMore,
-      isPaginationExhausted,
-      loadMoreResults,
-    ]
+    [resultsScrollY, canLoadMore, isLoading, isLoadingMore, isPaginationExhausted, loadMoreResults]
   );
 
   const handleResultsScrollBeginDrag = React.useCallback(() => {
@@ -1019,7 +1017,7 @@ const SearchScreen: React.FC = () => {
     const expanded = Math.max(searchLayout.top, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
-    const collapsed = SCREEN_HEIGHT - 160;
+    const collapsed = SCREEN_HEIGHT - 130;
     const hidden = SCREEN_HEIGHT + 80;
     return {
       expanded,
@@ -1090,57 +1088,102 @@ const SearchScreen: React.FC = () => {
     SheetGestureContext
   >(
     {
-      onStart: (_, context) => {
+      onStart: (event, context) => {
         context.startY = sheetTranslateY.value;
         const currentState =
           sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
         const startIndex = SHEET_STATES.indexOf(currentState);
         context.startStateIndex = startIndex >= 0 ? startIndex : SHEET_STATES.length - 1;
+        context.isHeaderDrag =
+          typeof event.absoluteY === 'number' ? event.absoluteY <= 200 : true;
+        context.canDriveSheet = false;
+        context.isExpandedAtStart = sheetStateShared.value === 'expanded';
       },
       onActive: (event, context) => {
+        const isListAtTop = resultsScrollOffset.value <= 0.5;
+        const pullingDown = event.translationY > 0;
+        const isExpandedStart = context.isExpandedAtStart;
+
+        if (!context.isHeaderDrag && isExpandedStart) {
+          // When expanded, only allow sheet drag if list is at top and pulling down.
+          if (!isListAtTop || !pullingDown) {
+            return;
+          }
+        }
+
+        context.canDriveSheet = true;
         const minY = snapPointExpanded.value;
         const maxY = snapPointHidden.value;
         sheetTranslateY.value = clampValue(context.startY + event.translationY, minY, maxY);
       },
       onEnd: (event, context) => {
-        const minY = snapPointExpanded.value;
-        const maxY = snapPointHidden.value;
-        const collapsed = snapPointCollapsed.value;
-        const projected = clampValue(sheetTranslateY.value + event.velocityY * 0.05, minY, maxY);
-        let targetIndex = context.startStateIndex;
-        if (
-          event.translationY > SMALL_MOVEMENT_THRESHOLD &&
-          context.startStateIndex < SHEET_STATES.length - 1
-        ) {
-          targetIndex = context.startStateIndex + 1;
-        } else if (event.translationY < -SMALL_MOVEMENT_THRESHOLD && context.startStateIndex > 0) {
-          targetIndex = context.startStateIndex - 1;
-        } else {
-          const distances = SHEET_STATES.map((state) => {
-            return Math.abs(
-              projected -
-                snapPointForState(
-                  state,
-                  snapPointExpanded.value,
-                  snapPointMiddle.value,
-                  snapPointCollapsed.value,
-                  snapPointHidden.value
-                )
-            );
-          });
-          const smallest = Math.min(...distances);
-          targetIndex = Math.max(distances.indexOf(smallest), 0);
+        if (!context.canDriveSheet) {
+          return;
         }
 
-        let targetState: SheetPosition = SHEET_STATES[targetIndex];
-        if (event.velocityY > 1200 || sheetTranslateY.value > collapsed + 40) {
-          targetState = 'hidden';
-        } else if (event.velocityY < -1200) {
-          targetState = 'expanded';
+        const allowedStates: SheetPosition[] = ['expanded', 'middle', 'collapsed'];
+        const snapFor = (state: SheetPosition) =>
+          snapPointForState(
+            state,
+            snapPointExpanded.value,
+            snapPointMiddle.value,
+            snapPointCollapsed.value,
+            snapPointHidden.value
+          );
+
+        const projected = context.startY + event.translationY;
+
+        const startStateRaw = SHEET_STATES[context.startStateIndex] ?? 'collapsed';
+        let startAllowedIndex = allowedStates.indexOf(startStateRaw as SheetPosition);
+        if (startAllowedIndex < 0) {
+          const distancesToAllowed = allowedStates.map((state) =>
+            Math.abs(snapFor(state) - context.startY)
+          );
+          const minDist = Math.min(...distancesToAllowed);
+          startAllowedIndex = Math.max(distancesToAllowed.indexOf(minDist), 0);
         }
 
-        const clampedVelocity = Math.max(Math.min(event.velocityY, 2500), -2500);
-        runOnJS(animateSheetTo)(targetState, clampedVelocity);
+        let candidateIndex = startAllowedIndex;
+        const translationY = event.translationY;
+
+        if (translationY > 0) {
+          let remaining = translationY;
+          for (let i = startAllowedIndex; i < allowedStates.length - 1; i += 1) {
+            const segment = snapFor(allowedStates[i + 1]) - snapFor(allowedStates[i]);
+            if (remaining >= segment * 0.4) {
+              candidateIndex = i + 1;
+              remaining -= segment;
+            } else {
+              break;
+            }
+          }
+        } else if (translationY < 0) {
+          let remaining = Math.abs(translationY);
+          for (let i = startAllowedIndex; i > 0; i -= 1) {
+            const segment = snapFor(allowedStates[i]) - snapFor(allowedStates[i - 1]);
+            if (remaining >= segment * 0.4) {
+              candidateIndex = i - 1;
+              remaining -= segment;
+            } else {
+              break;
+            }
+          }
+        }
+
+        const distancesToProjected = allowedStates.map((state) =>
+          Math.abs(snapFor(state) - projected)
+        );
+        const nearestIndex = Math.max(
+          distancesToProjected.indexOf(Math.min(...distancesToProjected)),
+          0
+        );
+
+        const targetIndex =
+          candidateIndex !== startAllowedIndex ? candidateIndex : nearestIndex;
+        const targetState: SheetPosition =
+          allowedStates[targetIndex] ?? allowedStates[allowedStates.length - 1];
+
+        runOnJS(animateSheetTo)(targetState, Math.max(Math.min(event.velocityY, 2500), -2500));
       },
     },
     [animateSheetTo]
@@ -1992,7 +2035,11 @@ const SearchScreen: React.FC = () => {
               >
                 {item.restaurantName}
               </Text>
-              {dishMetaLine ? <View style={styles.resultMetaLine}>{dishMetaLine}</View> : null}
+              {dishMetaLine ? (
+                <View style={[styles.resultMetaLine, styles.dishMetaLineSpacing]}>
+                  {dishMetaLine}
+                </View>
+              ) : null}
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2020,7 +2067,7 @@ const SearchScreen: React.FC = () => {
             </View>
           </View>
           <View style={styles.resultContent}>
-            <View style={styles.metricsContainer}>
+            <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
               <View style={styles.primaryMetric}>
                 <Text variant="caption" style={styles.primaryMetricLabel}>
                   Dish score
@@ -2585,7 +2632,7 @@ const SearchScreen: React.FC = () => {
                           bounces={false}
                           alwaysBounceVertical={false}
                           overScrollMode="never"
-                          scrollEnabled={resultsScrollEnabled && sheetState === 'expanded'}
+                          scrollEnabled={resultsScrollEnabled}
                         >
                           <View style={styles.resultsInner}>
                             {activeTab === 'dishes'
@@ -3209,6 +3256,9 @@ const styles = StyleSheet.create({
   resultMetaLine: {
     marginTop: 2,
   },
+  dishMetaLineSpacing: {
+    marginTop: 3,
+  },
   resultMetaLineRight: {
     marginTop: 0,
     marginLeft: 'auto',
@@ -3327,6 +3377,13 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 20,
     paddingBottom: 2,
+    marginTop: 10,
+  },
+  dishMetricsSpacing: {
+    marginTop: 12,
+  },
+  dishMetricsSpacing: {
+    marginTop: 12,
   },
   primaryMetric: {
     gap: 4,
@@ -3376,7 +3433,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   topFoodSection: {
-    marginTop: 8,
+    marginTop: 2,
+    marginBottom: 12,
   },
   textSlate900: {
     color: '#0f172a',
@@ -3401,7 +3459,7 @@ const styles = StyleSheet.create({
   },
   dishRestaurantName: {
     marginTop: 4,
-    fontSize: 16,
+    fontSize: 15,
     color: '#475569',
     flexShrink: 1,
     minWidth: 0,
@@ -3415,7 +3473,7 @@ const styles = StyleSheet.create({
   },
   topFoodText: {
     fontSize: 13,
-    marginTop: 4,
+    marginTop: 2,
   },
   loadingText: {
     marginTop: 16,
