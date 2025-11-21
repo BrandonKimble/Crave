@@ -275,7 +275,10 @@ const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
   if (!value || typeof value !== 'string') {
     return null;
   }
-  const match = value.trim().toLowerCase().match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+  const match = value
+    .trim()
+    .toLowerCase()
+    .match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
   if (!match) {
     return null;
   }
@@ -410,12 +413,12 @@ const SearchScreen: React.FC = () => {
     hasCenteredOnLocationRef.current = true;
     if (cameraRef.current?.setCamera) {
       cameraRef.current.setCamera({
-      centerCoordinate: center,
-      zoomLevel: 13,
-      animationDuration: 800,
-    });
-  }
-}, [userLocation]);
+        centerCoordinate: center,
+        zoomLevel: 13,
+        animationDuration: 800,
+      });
+    }
+  }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
 
@@ -512,9 +515,7 @@ const SearchScreen: React.FC = () => {
     () => ({
       search: (color: string) => <MagnifyingGlassIcon size={20} color={color} />,
       bookmarks: (color: string) => <BookmarkIcon size={20} color={color} />,
-      polls: (color: string) => (
-        <ChartBarIcon size={20} color={color} style={styles.pollsIcon} />
-      ),
+      polls: (color: string) => <ChartBarIcon size={20} color={color} style={styles.pollsIcon} />,
     }),
     []
   );
@@ -598,7 +599,10 @@ const SearchScreen: React.FC = () => {
       if (isClosingSoon) {
         segments.push(
           <Text key="status-closing-soon" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
-            <Text variant="caption" style={[styles.resultMetaClosingSoon, { fontSize: META_FONT_SIZE }]}>
+            <Text
+              variant="caption"
+              style={[styles.resultMetaClosingSoon, { fontSize: META_FONT_SIZE }]}
+            >
               Closes
             </Text>
             {status.closesAtDisplay ? (
@@ -1435,8 +1439,7 @@ const SearchScreen: React.FC = () => {
           payload.bounds = latestBoundsRef.current;
         }
 
-        const resolvedLocation =
-          userLocationRef.current ?? (await ensureUserLocation());
+        const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
         if (resolvedLocation) {
           payload.userLocation = resolvedLocation;
         }
@@ -2066,9 +2069,7 @@ const SearchScreen: React.FC = () => {
               >
                 {item.restaurantName}
               </Text>
-              {dishMetaLine ? (
-                <View style={styles.resultMetaLine}>{dishMetaLine}</View>
-              ) : null}
+              {dishMetaLine ? <View style={styles.resultMetaLine}>{dishMetaLine}</View> : null}
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2315,10 +2316,10 @@ const SearchScreen: React.FC = () => {
                       {
                         transform: [
                           {
-                          scale: locationPulse.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1.3, 1.6],
-                          }),
+                            scale: locationPulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1.3, 1.6],
+                            }),
                           },
                         ],
                       },
