@@ -842,7 +842,16 @@ const SearchScreen: React.FC = () => {
     const map = new Map<string, RestaurantResult>();
 
     restaurants.forEach((restaurant) => {
-      if (typeof restaurant.latitude !== 'number' || typeof restaurant.longitude !== 'number') {
+      const displayLocation =
+        restaurant.displayLocation ??
+        restaurant.locations?.find((loc) =>
+          typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
+        );
+      if (
+        !displayLocation ||
+        typeof displayLocation.latitude !== 'number' ||
+        typeof displayLocation.longitude !== 'number'
+      ) {
         logger.error('Restaurant missing coordinates', {
           restaurantId: restaurant.restaurantId,
           restaurantName: restaurant.restaurantName,
@@ -921,27 +930,51 @@ const SearchScreen: React.FC = () => {
   >(() => {
     const features: Feature<Point, RestaurantFeatureProperties>[] = [];
 
-    restaurantsById.forEach((restaurant) => {
-      const { latitude, longitude } = restaurant;
-      if (typeof latitude !== 'number' || typeof longitude !== 'number') {
-        logger.error('Restaurant coordinates became invalid after indexing', {
-          restaurantId: restaurant.restaurantId,
-        });
-        return;
-      }
+    restaurants.forEach((restaurant) => {
+      const locationCandidates =
+        restaurant.locations && restaurant.locations.length > 0
+          ? restaurant.locations
+          : restaurant.displayLocation
+            ? [restaurant.displayLocation]
+            : typeof restaurant.latitude === 'number' &&
+                typeof restaurant.longitude === 'number'
+              ? [
+                  {
+                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                    latitude: restaurant.latitude,
+                    longitude: restaurant.longitude,
+                    isPrimary: true,
+                  },
+                ]
+              : [];
 
-      features.push({
-        type: 'Feature',
-        id: restaurant.restaurantId,
-        geometry: {
-          type: 'Point',
-          coordinates: [longitude, latitude],
-        },
-        properties: {
-          restaurantId: restaurant.restaurantId,
-          restaurantName: restaurant.restaurantName,
-          contextualScore: restaurant.contextualScore,
-        },
+      locationCandidates.forEach((location, index) => {
+        if (
+          typeof location?.latitude !== 'number' ||
+          !Number.isFinite(location.latitude) ||
+          typeof location?.longitude !== 'number' ||
+          !Number.isFinite(location.longitude)
+        ) {
+          return;
+        }
+
+        const locationId =
+          (location as { locationId?: string }).locationId ??
+          `${restaurant.restaurantId}-loc-${index}`;
+
+        features.push({
+          type: 'Feature',
+          id: `${restaurant.restaurantId}-${locationId}`,
+          geometry: {
+            type: 'Point',
+            coordinates: [location.longitude, location.latitude],
+          },
+          properties: {
+            restaurantId: restaurant.restaurantId,
+            restaurantName: restaurant.restaurantName,
+            contextualScore: restaurant.contextualScore,
+          },
+        });
       });
     });
 
@@ -949,7 +982,7 @@ const SearchScreen: React.FC = () => {
       type: 'FeatureCollection',
       features,
     };
-  }, [restaurantsById]);
+  }, [restaurants]);
 
   const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
     if (!openNow || !results?.metadata) {
@@ -3310,7 +3343,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 8,
-    marginTop: 2,
+    marginTop: 0,
   },
   userLocationWrapper: {
     width: 48,
@@ -3372,16 +3405,16 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 20,
     paddingBottom: 2,
-    marginTop: 10,
+    marginTop: 0,
   },
   dishMetricsSpacing: {
-    marginTop: 12,
+    marginTop: 8,
   },
   dishMetricsSpacing: {
-    marginTop: 12,
+    marginTop: 8,
   },
   primaryMetric: {
-    gap: 4,
+    gap: 2,
   },
   primaryMetricLabel: {
     fontSize: 11,
@@ -3454,8 +3487,9 @@ const styles = StyleSheet.create({
   },
   dishRestaurantName: {
     marginTop: 4,
-    fontSize: 15,
-    color: '#475569',
+    fontSize: META_FONT_SIZE,
+    color: '#6b7280',
+    fontWeight: '400',
     flexShrink: 1,
     minWidth: 0,
   },

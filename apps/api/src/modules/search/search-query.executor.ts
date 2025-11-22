@@ -72,13 +72,25 @@ interface QueryResultRow {
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
+  location_id: string;
+  google_place_id?: string | null;
   latitude?: Prisma.Decimal | number | string | null;
   longitude?: Prisma.Decimal | number | string | null;
   address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postal_code?: string | null;
   price_level?: Prisma.Decimal | number | string | null;
   price_level_updated_at?: Date | null;
+  location_metadata?: Prisma.JsonValue | null;
+  location_is_primary?: boolean;
+  location_last_polled_at?: Date | null;
+  location_created_at?: Date | null;
+  location_updated_at?: Date | null;
+  locations_json?: Prisma.JsonValue | null;
+  location_count?: Prisma.Decimal | number | string | null;
   restaurant_attributes: string[];
-  restaurant_metadata?: Prisma.JsonValue | null;
   food_name: string;
   food_aliases: string[];
 }
@@ -89,6 +101,7 @@ interface UserLocationInput {
 }
 
 interface RestaurantContext {
+  locationId: string;
   operatingStatus: {
     isOpen: boolean;
     closesAtDisplay?: string | null;
@@ -97,6 +110,7 @@ interface RestaurantContext {
   priceLevel: number | null;
   priceSymbol: string | null;
   distanceMiles: number | null;
+  metadata: Prisma.JsonValue | null;
 }
 
 interface ExecuteParams {
@@ -293,6 +307,7 @@ export class SearchQueryExecutor {
       }
 
       const existing = contexts.get(restaurantId);
+      const locationId = connection.location_id;
       const latitude = this.toOptionalNumber(connection.latitude);
       const longitude = this.toOptionalNumber(connection.longitude);
       const parsedPrice = this.toOptionalNumber(connection.price_level);
@@ -300,7 +315,7 @@ export class SearchQueryExecutor {
       const operatingStatus =
         existing?.operatingStatus ??
         this.evaluateOperatingStatus(
-          connection.restaurant_metadata,
+          connection.location_metadata,
           referenceDate,
         ) ??
         null;
@@ -326,14 +341,19 @@ export class SearchQueryExecutor {
         if (existing.distanceMiles === null && distanceMiles !== null) {
           existing.distanceMiles = distanceMiles;
         }
+        if (!existing.metadata && connection.location_metadata) {
+          existing.metadata = connection.location_metadata;
+        }
         continue;
       }
 
       contexts.set(restaurantId, {
+        locationId,
         operatingStatus,
         priceLevel: parsedPrice ?? null,
         priceSymbol: priceDetails.symbol ?? null,
         distanceMiles: distanceMiles ?? null,
+        metadata: connection.location_metadata ?? null,
       });
     }
 
@@ -454,7 +474,7 @@ export class SearchQueryExecutor {
       const operatingStatus =
         restaurantContext?.operatingStatus ??
         this.evaluateOperatingStatus(
-          connection.restaurant_metadata,
+          connection.location_metadata,
           referenceDate,
         );
 
@@ -476,6 +496,7 @@ export class SearchQueryExecutor {
           : null,
         categories: connection.categories || [],
         foodAttributes: connection.food_attributes || [],
+        restaurantLocationId: connection.location_id,
         restaurantPriceLevel: parsedPrice ?? null,
         restaurantPriceSymbol:
           restaurantContext?.priceSymbol ?? priceDetails.symbol ?? null,
@@ -504,11 +525,23 @@ export class SearchQueryExecutor {
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
         address?: string | null;
+        city?: string | null;
+        region?: string | null;
+        country?: string | null;
+        postalCode?: string | null;
+        googlePlaceId?: string | null;
         priceLevel?: number | null;
         priceLevelUpdatedAt?: Date | null;
         priceSymbol?: string | null;
         priceText?: string | null;
-        metadata?: Prisma.JsonValue | null;
+        locationId: string;
+        locationIsPrimary?: boolean | null;
+        locationMetadata?: Prisma.JsonValue | null;
+        locationLastPolledAt?: Date | null;
+        locationCreatedAt?: Date | null;
+        locationUpdatedAt?: Date | null;
+        locationsJson?: Prisma.JsonValue | null;
+        locationCount?: Prisma.Decimal | number | string | null;
         snippets: RestaurantFoodSnippetDto[];
         scoreSum: number;
         count: number;
@@ -552,8 +585,19 @@ export class SearchQueryExecutor {
         ) {
           existing.priceLevelUpdatedAt = connection.price_level_updated_at;
         }
-        if (!existing.metadata && connection.restaurant_metadata) {
-          existing.metadata = connection.restaurant_metadata;
+        if (!existing.googlePlaceId && connection.google_place_id) {
+          existing.googlePlaceId = connection.google_place_id;
+        }
+        if (!existing.locationsJson && connection.locations_json) {
+          existing.locationsJson = connection.locations_json;
+        }
+        if (
+          (existing.locationCount === null ||
+            existing.locationCount === undefined) &&
+          connection.location_count !== null &&
+          connection.location_count !== undefined
+        ) {
+          existing.locationCount = connection.location_count;
         }
       } else {
         const parsedPrice = this.toOptionalNumber(connection.price_level);
@@ -566,11 +610,23 @@ export class SearchQueryExecutor {
           latitude: connection.latitude,
           longitude: connection.longitude,
           address: connection.address,
+          city: connection.city ?? null,
+          region: connection.region ?? null,
+          country: connection.country ?? null,
+          postalCode: connection.postal_code ?? null,
+          googlePlaceId: connection.google_place_id ?? null,
           priceLevel: parsedPrice,
           priceSymbol: priceDetails.symbol,
           priceText: priceDetails.text,
           priceLevelUpdatedAt: connection.price_level_updated_at || null,
-          metadata: connection.restaurant_metadata ?? null,
+          locationId: connection.location_id,
+          locationIsPrimary: connection.location_is_primary ?? null,
+          locationMetadata: connection.location_metadata ?? null,
+          locationLastPolledAt: connection.location_last_polled_at || null,
+          locationCreatedAt: connection.location_created_at || null,
+          locationUpdatedAt: connection.location_updated_at || null,
+          locationsJson: connection.locations_json ?? null,
+          locationCount: connection.location_count ?? null,
           snippets: [snippet],
           scoreSum: snippet.qualityScore,
           count: 1,
@@ -593,11 +649,23 @@ export class SearchQueryExecutor {
           latitude,
           longitude,
           address,
+          city,
+          region,
+          country,
+          postalCode,
+          googlePlaceId,
           priceLevel: groupedPriceLevel,
           priceSymbol,
           priceText,
           priceLevelUpdatedAt,
-          metadata,
+          locationId,
+          locationIsPrimary,
+          locationMetadata,
+          locationLastPolledAt,
+          locationCreatedAt,
+          locationUpdatedAt,
+          locationsJson,
+          locationCount,
           snippets,
           scoreSum,
           count,
@@ -609,9 +677,49 @@ export class SearchQueryExecutor {
             restaurantContext?.priceSymbol ?? priceSymbol ?? null;
           const operatingStatus =
             restaurantContext?.operatingStatus ??
-            (metadata
-              ? this.evaluateOperatingStatus(metadata, referenceDate)
+            (locationMetadata
+              ? this.evaluateOperatingStatus(locationMetadata, referenceDate)
               : null);
+          const distanceMiles = restaurantContext?.distanceMiles ?? null;
+          const locationMetadataRecord = this.coerceRecord(locationMetadata);
+          const displayLocation = {
+            locationId,
+            googlePlaceId: googlePlaceId ?? null,
+            latitude:
+              latitude === null || latitude === undefined
+                ? null
+                : this.toNumber(latitude),
+            longitude:
+              longitude === null || longitude === undefined
+                ? null
+                : this.toNumber(longitude),
+            address: address ?? null,
+            city: city ?? null,
+            region: region ?? null,
+            country: country ?? null,
+            postalCode: postalCode ?? null,
+            priceLevel: resolvedPriceLevel,
+            priceLevelUpdatedAt: priceLevelUpdatedAt
+              ? priceLevelUpdatedAt.toISOString()
+              : null,
+            metadata: locationMetadataRecord,
+            isPrimary: Boolean(locationIsPrimary),
+            lastPolledAt: locationLastPolledAt
+              ? locationLastPolledAt.toISOString()
+              : null,
+            createdAt: locationCreatedAt
+              ? locationCreatedAt.toISOString()
+              : null,
+            updatedAt: locationUpdatedAt
+              ? locationUpdatedAt.toISOString()
+              : null,
+          };
+          const locations = this.parseLocationsJson(locationsJson);
+          if (!locations.length) {
+            locations.push(displayLocation);
+          }
+          const resolvedLocationCount =
+            this.toOptionalNumber(locationCount) ?? locations.length;
 
           return {
             restaurantId,
@@ -632,6 +740,7 @@ export class SearchQueryExecutor {
                 ? null
                 : this.toNumber(longitude),
             address: address ?? null,
+            restaurantLocationId: locationId,
             priceLevel: resolvedPriceLevel,
             priceSymbol: resolvedPriceSymbol,
             priceText,
@@ -639,7 +748,10 @@ export class SearchQueryExecutor {
               ? priceLevelUpdatedAt.toISOString()
               : null,
             operatingStatus,
-            distanceMiles: restaurantContext?.distanceMiles ?? null,
+            distanceMiles: distanceMiles,
+            displayLocation,
+            locations,
+            locationCount: resolvedLocationCount,
             topFood: snippets
               .sort((a, b) => b.qualityScore - a.qualityScore)
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
@@ -973,6 +1085,96 @@ export class SearchQueryExecutor {
     }
 
     return Math.max(segment.end - minutes, 0);
+  }
+
+  private parseLocationsJson(
+    value: Prisma.JsonValue | null | undefined,
+  ): Array<{
+    locationId: string;
+    googlePlaceId?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    address?: string | null;
+    city?: string | null;
+    region?: string | null;
+    country?: string | null;
+    postalCode?: string | null;
+    priceLevel?: number | null;
+    priceLevelUpdatedAt?: string | null;
+    metadata?: Record<string, unknown> | null;
+    isPrimary: boolean;
+    lastPolledAt?: string | null;
+    createdAt?: string | null;
+    updatedAt?: string | null;
+  }> {
+    if (!value || !Array.isArray(value)) {
+      return [];
+    }
+
+    const results: Array<{
+      locationId: string;
+      googlePlaceId?: string | null;
+      latitude?: number | null;
+      longitude?: number | null;
+      address?: string | null;
+      city?: string | null;
+      region?: string | null;
+      country?: string | null;
+      postalCode?: string | null;
+      priceLevel?: number | null;
+      priceLevelUpdatedAt?: string | null;
+      metadata?: Record<string, unknown> | null;
+      isPrimary: boolean;
+      lastPolledAt?: string | null;
+      createdAt?: string | null;
+      updatedAt?: string | null;
+    }> = [];
+
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') {
+        continue;
+      }
+      const record = entry as Record<string, unknown>;
+      const latitude = this.toOptionalNumber(
+        record.latitude as Prisma.Decimal | number | string | null | undefined,
+      );
+      const longitude = this.toOptionalNumber(
+        record.longitude as Prisma.Decimal | number | string | null | undefined,
+      );
+      const priceLevel = this.toOptionalNumber(
+        record.priceLevel as Prisma.Decimal | number | string | null | undefined,
+      );
+      const locationIdValue =
+        (record.locationId as string | null) ??
+        (record.location_id as string | null) ??
+        null;
+      if (!locationIdValue) {
+        continue;
+      }
+      results.push({
+        locationId: locationIdValue,
+        googlePlaceId: (record.googlePlaceId ??
+          record.google_place_id ??
+          null) as string | null,
+        latitude,
+        longitude,
+        address: (record.address as string | null) ?? null,
+        city: (record.city as string | null) ?? null,
+        region: (record.region as string | null) ?? null,
+        country: (record.country as string | null) ?? null,
+        postalCode: (record.postalCode as string | null) ?? null,
+        priceLevel,
+        priceLevelUpdatedAt:
+          (record.priceLevelUpdatedAt as string | null) ?? null,
+        metadata: this.coerceRecord(record.metadata),
+        isPrimary: Boolean(record.isPrimary ?? record.is_primary),
+        lastPolledAt: (record.lastPolledAt as string | null) ?? null,
+        createdAt: (record.createdAt as string | null) ?? null,
+        updatedAt: (record.updatedAt as string | null) ?? null,
+      });
+    }
+
+    return results;
   }
 
   private computeDistanceMiles(

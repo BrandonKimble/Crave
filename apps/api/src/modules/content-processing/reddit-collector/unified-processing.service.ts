@@ -1367,6 +1367,27 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityId = createdEntity.entityId;
             createdNew = true;
 
+            if (entityType === 'restaurant') {
+              const location = await tx.restaurantLocation.create({
+                data: {
+                  restaurantId: createdEntity.entityId,
+                  latitude: subredditLocation
+                    ? new Prisma.Decimal(subredditLocation.latitude.toFixed(8))
+                    : null,
+                  longitude: subredditLocation
+                    ? new Prisma.Decimal(subredditLocation.longitude.toFixed(8))
+                    : null,
+                  isPrimary: true,
+                  metadata: Prisma.DbNull,
+                },
+              });
+
+              await tx.entity.update({
+                where: { entityId: createdEntity.entityId },
+                data: { primaryLocationId: location.locationId },
+              });
+            }
+
             this.logger.debug('Created new entity during batch processing', {
               batchId,
               tempId: resolution.tempId,

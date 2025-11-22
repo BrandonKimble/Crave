@@ -121,16 +121,7 @@ export function validateRestaurantRequiredFields(
   }
 
   // Optional but recommended fields for restaurants
-  const hasLocation = data.latitude && data.longitude;
-  const hasAddress =
-    data.address &&
-    typeof data.address === 'string' &&
-    data.address.trim().length > 0;
-
-  // Log warning if no location data provided
-  if (!hasLocation && !hasAddress) {
-    // This is valid but not ideal - could be logged as warning
-  }
+  // Location fields now live on restaurant_locations; no validation required here.
 
   return {
     isValid: missingFields.length === 0,

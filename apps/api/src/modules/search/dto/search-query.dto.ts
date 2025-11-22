@@ -167,6 +167,7 @@ export interface SearchPlanResponseDto {
 }
 
 export interface FoodResultDto extends SharedFoodResult {
+  restaurantLocationId?: string;
   restaurantDistanceMiles?: number | null;
 }
 export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;

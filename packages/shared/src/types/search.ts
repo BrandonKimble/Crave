@@ -43,6 +43,7 @@ export interface FoodResult {
   restaurantId: string;
   restaurantName: string;
   restaurantAliases: string[];
+  restaurantLocationId?: string;
   qualityScore: number;
   activityLevel: ActivityLevel;
   mentionCount: number;
@@ -65,6 +66,25 @@ export interface RestaurantFoodSnippet {
   activityLevel: ActivityLevel;
 }
 
+export interface RestaurantLocationResult {
+  locationId: string;
+  googlePlaceId?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postalCode?: string | null;
+  priceLevel?: number | null;
+  priceLevelUpdatedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  isPrimary: boolean;
+  lastPolledAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface RestaurantResult {
   restaurantId: string;
   restaurantName: string;
@@ -74,6 +94,7 @@ export interface RestaurantResult {
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
+  restaurantLocationId?: string | null;
   priceLevel?: number | null;
   priceSymbol?: string | null;
   priceText?: string | null;
@@ -81,6 +102,9 @@ export interface RestaurantResult {
   topFood: RestaurantFoodSnippet[];
   operatingStatus?: OperatingStatus | null;
   distanceMiles?: number | null;
+  displayLocation?: RestaurantLocationResult | null;
+  locations?: RestaurantLocationResult[];
+  locationCount?: number;
 }
 
 export interface SearchResponseMetadata {

@@ -87,28 +87,31 @@ export class SearchQueryBuilder {
 
     let boundsApplied = false;
     let priceFilterApplied = false;
+    const locationConditions: Prisma.Sql[] = [];
+    const locationConditionPreview: string[] = [];
+
     if (boundsPayload) {
-      restaurantConditions.push(
-        Prisma.sql`r.latitude BETWEEN ${boundsPayload.southWest.lat} AND ${boundsPayload.northEast.lat}`,
+      locationConditions.push(
+        Prisma.sql`rl.latitude BETWEEN ${boundsPayload.southWest.lat} AND ${boundsPayload.northEast.lat}`,
       );
-      restaurantConditions.push(
-        Prisma.sql`r.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
+      locationConditions.push(
+        Prisma.sql`rl.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
       );
-      restaurantConditionPreview.push(
-        `r.latitude BETWEEN ${boundsPayload.southWest.lat} AND ${boundsPayload.northEast.lat}`,
+      locationConditionPreview.push(
+        `rl.latitude BETWEEN ${boundsPayload.southWest.lat} AND ${boundsPayload.northEast.lat}`,
       );
-      restaurantConditionPreview.push(
-        `r.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
+      locationConditionPreview.push(
+        `rl.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
       );
       boundsApplied = true;
     }
 
     if (priceLevels.length) {
-      restaurantConditions.push(
-        this.buildNumberInClause('r.price_level', priceLevels),
+      locationConditions.push(
+        this.buildNumberInClause('rl.price_level', priceLevels),
       );
-      restaurantConditionPreview.push(
-        `r.price_level = ANY(${this.formatNumberArray(priceLevels)})`,
+      locationConditionPreview.push(
+        `rl.price_level = ANY(${this.formatNumberArray(priceLevels)})`,
       );
       priceFilterApplied = true;
     }
@@ -158,6 +161,11 @@ export class SearchQueryBuilder {
       restaurantConditionPreview,
     );
 
+    const locationWhereSql = this.combineSqlClauses(locationConditions);
+    const locationWherePreview = this.combinePreviewClauses(
+      locationConditionPreview,
+    );
+
     const connectionWhereSql = this.combineSqlClauses(connectionConditions);
     const connectionWherePreview = this.combinePreviewClauses(
       connectionConditionPreview,
@@ -170,22 +178,126 @@ filtered_restaurants AS (
     r.name,
     r.aliases,
     r.restaurant_quality_score,
-    r.latitude,
-    r.longitude,
-    r.address,
-    r.price_level,
-    r.price_level_updated_at,
-    r.restaurant_attributes,
-    r.restaurant_metadata
+    r.restaurant_attributes
   FROM entities r
   WHERE ${restaurantWhereSql}
 )`;
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.latitude, r.longitude, r.address, r.price_level, r.price_level_updated_at, r.restaurant_attributes, r.restaurant_metadata
+  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.restaurant_attributes
   FROM entities r
   WHERE ${restaurantWherePreview}
+)`.trim();
+
+    const filteredLocationsCte = Prisma.sql`
+filtered_locations AS (
+  SELECT
+    rl.location_id,
+    rl.restaurant_id,
+    rl.google_place_id,
+    rl.latitude,
+    rl.longitude,
+    rl.address,
+    rl.city,
+    rl.region,
+    rl.country,
+    rl.postal_code,
+    rl.price_level,
+    rl.price_level_updated_at,
+    rl.metadata,
+    rl.is_primary,
+    rl.last_polled_at,
+    rl.created_at,
+    rl.updated_at
+  FROM restaurant_locations rl
+  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  WHERE ${locationWhereSql}
+)`;
+
+    const filteredLocationsPreview = `
+filtered_locations AS (
+  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.price_level, rl.price_level_updated_at, rl.metadata, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
+  FROM restaurant_locations rl
+  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  WHERE ${locationWherePreview}
+)`.trim();
+
+    const selectedLocationsCte = Prisma.sql`
+selected_locations AS (
+  SELECT DISTINCT ON (fl.restaurant_id)
+    fl.*
+  FROM filtered_locations fl
+  ORDER BY fl.restaurant_id, fl.is_primary DESC, fl.updated_at DESC
+)`;
+
+    const selectedLocationsPreview = `
+selected_locations AS (
+  SELECT DISTINCT ON (fl.restaurant_id) fl.*
+  FROM filtered_locations fl
+  ORDER BY fl.restaurant_id, fl.is_primary DESC, fl.updated_at DESC
+)`.trim();
+
+    const locationAggregatesCte = Prisma.sql`
+location_aggregates AS (
+  SELECT
+    rl.restaurant_id,
+    COUNT(*) AS location_count,
+    json_agg(
+      jsonb_build_object(
+        'locationId', rl.location_id,
+        'googlePlaceId', rl.google_place_id,
+        'latitude', rl.latitude,
+        'longitude', rl.longitude,
+        'address', rl.address,
+        'city', rl.city,
+        'region', rl.region,
+        'country', rl.country,
+        'postalCode', rl.postal_code,
+        'priceLevel', rl.price_level,
+        'priceLevelUpdatedAt', rl.price_level_updated_at,
+        'metadata', rl.metadata,
+        'isPrimary', rl.is_primary,
+        'lastPolledAt', rl.last_polled_at,
+        'createdAt', rl.created_at,
+        'updatedAt', rl.updated_at
+      )
+      ORDER BY rl.is_primary DESC, rl.updated_at DESC
+    ) AS locations_json
+  FROM restaurant_locations rl
+  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  GROUP BY rl.restaurant_id
+)`;
+
+    const locationAggregatesPreview = `
+location_aggregates AS (
+  SELECT
+    rl.restaurant_id,
+    COUNT(*) AS location_count,
+    json_agg(
+      jsonb_build_object(
+        'locationId', rl.location_id,
+        'googlePlaceId', rl.google_place_id,
+        'latitude', rl.latitude,
+        'longitude', rl.longitude,
+        'address', rl.address,
+        'city', rl.city,
+        'region', rl.region,
+        'country', rl.country,
+        'postalCode', rl.postal_code,
+        'priceLevel', rl.price_level,
+        'priceLevelUpdatedAt', rl.price_level_updated_at,
+        'metadata', rl.metadata,
+        'isPrimary', rl.is_primary,
+        'lastPolledAt', rl.last_polled_at,
+        'createdAt', rl.created_at,
+        'updatedAt', rl.updated_at
+      )
+      ORDER BY rl.is_primary DESC, rl.updated_at DESC
+    ) AS locations_json
+  FROM restaurant_locations rl
+  JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  GROUP BY rl.restaurant_id
 )`.trim();
 
     const restaurantVoteTotalsCte = Prisma.sql`
@@ -224,18 +336,31 @@ filtered_connections AS (
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     fr.restaurant_quality_score,
-    fr.latitude,
-    fr.longitude,
-    fr.address,
-    fr.price_level,
-    fr.price_level_updated_at,
-    fr.restaurant_attributes,
-    fr.restaurant_metadata,
+    sl.location_id,
+    sl.google_place_id,
+    sl.latitude,
+    sl.longitude,
+    sl.address,
+    sl.city,
+    sl.region,
+    sl.country,
+    sl.postal_code,
+    sl.price_level,
+    sl.price_level_updated_at,
+    sl.metadata AS location_metadata,
+    sl.is_primary AS location_is_primary,
+    sl.last_polled_at AS location_last_polled_at,
+    sl.created_at AS location_created_at,
+    sl.updated_at AS location_updated_at,
+    la.locations_json,
+    la.location_count,
     f.name AS food_name,
     f.aliases AS food_aliases
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
   JOIN entities f ON f.entity_id = c.food_id
   WHERE ${connectionWhereSql}
 )`;
@@ -244,11 +369,13 @@ filtered_connections AS (
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
          rvt.total_upvotes AS restaurant_total_upvotes,
-         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.latitude, fr.longitude, fr.address, fr.price_level, fr.price_level_updated_at, fr.restaurant_attributes, fr.restaurant_metadata,
+         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.price_level, sl.price_level_updated_at, sl.metadata AS location_metadata, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,
          f.name AS food_name, f.aliases AS food_aliases
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
+  JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
   JOIN entities f ON f.entity_id = c.food_id
   WHERE ${connectionWherePreview}
 )`.trim();
@@ -258,13 +385,19 @@ filtered_connections AS (
     const withClause = Prisma.sql`
 WITH
   ${restaurantCte},
+  ${filteredLocationsCte},
+  ${selectedLocationsCte},
   ${restaurantVoteTotalsCte},
+  ${locationAggregatesCte},
   ${filteredConnectionsCte}
 `;
 
     const withPreview = `WITH
   ${restaurantCtePreview},
+  ${filteredLocationsPreview},
+  ${selectedLocationsPreview},
   ${restaurantVoteTotalsPreview},
+  ${locationAggregatesPreview},
   ${filteredConnectionsPreview}`;
 
     const dataSql = Prisma.sql`

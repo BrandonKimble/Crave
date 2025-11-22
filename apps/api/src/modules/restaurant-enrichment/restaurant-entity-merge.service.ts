@@ -42,6 +42,7 @@ export class RestaurantEntityMergeService {
         canonical.entityId,
         duplicate.entityId,
       );
+      await this.mergeLocations(tx, canonical.entityId, duplicate.entityId);
 
       const updatedCanonical = await tx.entity.update({
         where: { entityId: canonical.entityId },
@@ -60,6 +61,74 @@ export class RestaurantEntityMergeService {
     });
 
     return result;
+  }
+
+  private async mergeLocations(
+    tx: Prisma.TransactionClient,
+    canonicalId: string,
+    duplicateId: string,
+  ): Promise<void> {
+    const duplicateLocations = await tx.restaurantLocation.findMany({
+      where: { restaurantId: duplicateId },
+    });
+
+    if (!duplicateLocations.length) {
+      return;
+    }
+
+    const canonicalLocations = await tx.restaurantLocation.findMany({
+      where: { restaurantId: canonicalId },
+    });
+    const canonicalByPlaceId = new Map(
+      canonicalLocations
+        .filter((loc) => loc.googlePlaceId)
+        .map((loc) => [loc.googlePlaceId as string, loc]),
+    );
+
+    for (const location of duplicateLocations) {
+      if (location.googlePlaceId && canonicalByPlaceId.has(location.googlePlaceId)) {
+        // Drop duplicate location row; prefer canonical's
+        await tx.restaurantLocation.delete({
+          where: { locationId: location.locationId },
+        });
+        continue;
+      }
+
+      await tx.restaurantLocation.update({
+        where: { locationId: location.locationId },
+        data: {
+          restaurantId: canonicalId,
+          isPrimary: location.isPrimary || canonicalLocations.length === 0,
+          updatedAt: new Date(),
+        },
+      });
+    }
+
+    // Ensure canonical has a primary location
+    let primary = await tx.restaurantLocation.findFirst({
+      where: { restaurantId: canonicalId, isPrimary: true },
+    });
+
+    if (!primary) {
+      const firstLocation = await tx.restaurantLocation.findFirst({
+        where: { restaurantId: canonicalId },
+        orderBy: { updatedAt: 'desc' },
+      });
+      if (firstLocation) {
+        await tx.restaurantLocation.update({
+          where: { locationId: firstLocation.locationId },
+        data: { isPrimary: true },
+      });
+        primary = firstLocation;
+      }
+    }
+
+    if (primary) {
+      await tx.entity.update({
+        where: { entityId: canonicalId },
+        data: { primaryLocation: { connect: { locationId: primary.locationId } } },
+      });
+    }
   }
 
   private async mergeConnections(

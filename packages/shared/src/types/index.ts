@@ -43,6 +43,14 @@ export interface Entity {
   address?: string;
   googlePlaceId?: string;
   restaurantMetadata: RestaurantMetadata;
+  city?: string;
+  region?: string;
+  country?: string;
+  postalCode?: string;
+  priceLevel?: number;
+  priceLevelUpdatedAt?: string;
+  lastPolledAt?: string;
+  primaryLocationId?: string | null;
   lastUpdated: Date;
   createdAt: Date;
 }
@@ -95,14 +103,18 @@ export interface DualPurposeEntity {
  * PRD 4.2: Location data for restaurants
  */
 export interface LocationData {
-  coordinates: {
+  locationId: string;
+  googlePlaceId?: string | null;
+  coordinates?: {
     lat: number;
     lng: number;
   };
-  address: string;
-  city: string;
-  state: string;
-  zipCode: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zipCode?: string | null;
+  priceLevel?: number | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 /**

@@ -22,6 +22,7 @@ model Entity {
   address                    String?               @db.VarChar(500)
   googlePlaceId              String?               @unique @map("google_place_id") @db.VarChar(255)
   restaurantMetadata         Json?                 @map("restaurant_metadata")
+  primaryLocationId          String?               @unique @map("primary_location_id") @db.Uuid
   lastUpdated                DateTime              @default(now()) @map("last_updated")
   createdAt                  DateTime              @default(now()) @map("created_at")
   generalPraiseUpvotes       Int?                  @default(0) @map("general_praise_upvotes")
@@ -44,6 +45,8 @@ model Entity {
   pollTopicRestaurantTargets PollTopic[]           @relation("PollTopicTargetRestaurant")
   searchLogs                 SearchLog[]
   userFavorites              UserFavorite[]
+  locations                  RestaurantLocation[]  @relation("RestaurantLocations")
+  primaryLocation            RestaurantLocation?   @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
 
   @@unique([name, type])
   @@index([type], map: "idx_entities_type")
@@ -59,9 +62,38 @@ model Entity {
   @@index([country], map: "idx_entities_country")
   @@index([priceLevel], map: "idx_entities_price_level")
   @@index([lastPolledAt], map: "idx_entities_last_polled_at")
+  @@index([primaryLocationId], map: "idx_entities_primary_location")
   @@index([lastUpdated(sort: Desc)], map: "idx_entities_last_updated")
   @@index([createdAt(sort: Desc)], map: "idx_entities_created_at")
   @@map("entities")
+}
+
+model RestaurantLocation {
+  locationId          String   @id @default(dbgenerated("gen_random_uuid()")) @map("location_id") @db.Uuid
+  restaurantId        String   @map("restaurant_id") @db.Uuid
+  googlePlaceId       String?  @unique @map("google_place_id") @db.VarChar(255)
+  latitude            Decimal? @db.Decimal(10, 8)
+  longitude           Decimal? @db.Decimal(11, 8)
+  address             String?  @db.VarChar(500)
+  city                String?  @db.VarChar(255)
+  region              String?  @db.VarChar(255)
+  country             String?  @db.VarChar(2)
+  postalCode          String?  @map("postal_code") @db.VarChar(32)
+  priceLevel          Int?     @map("price_level")
+  priceLevelUpdatedAt DateTime? @map("price_level_updated_at")
+  metadata            Json?    @map("metadata")
+  isPrimary           Boolean  @default(false) @map("is_primary")
+  lastPolledAt        DateTime? @map("last_polled_at")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @map("updated_at")
+  restaurant          Entity   @relation("RestaurantLocations", fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  primaryFor          Entity?  @relation("PrimaryLocation")
+
+  @@index([restaurantId], map: "idx_restaurant_locations_restaurant")
+  @@index([restaurantId, isPrimary], map: "idx_restaurant_locations_primary")
+  @@index([longitude, latitude], map: "idx_restaurant_locations_location")
+  @@index([googlePlaceId], map: "idx_restaurant_locations_google_place_id")
+  @@map("restaurant_locations")
 }
 
 model Connection {
