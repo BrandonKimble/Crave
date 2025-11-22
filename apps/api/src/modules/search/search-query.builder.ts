@@ -213,6 +213,8 @@ filtered_locations AS (
   FROM restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   WHERE ${locationWhereSql}
+    AND rl.latitude IS NOT NULL
+    AND rl.longitude IS NOT NULL
 )`;
 
     const filteredLocationsPreview = `
@@ -220,7 +222,7 @@ filtered_locations AS (
   SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.price_level, rl.price_level_updated_at, rl.metadata, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
   FROM restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-  WHERE ${locationWherePreview}
+  WHERE ${locationWherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
 )`.trim();
 
     const selectedLocationsCte = Prisma.sql`
