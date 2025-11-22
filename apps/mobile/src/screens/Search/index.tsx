@@ -844,8 +844,8 @@ const SearchScreen: React.FC = () => {
     restaurants.forEach((restaurant) => {
       const displayLocation =
         restaurant.displayLocation ??
-        restaurant.locations?.find((loc) =>
-          typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
+        restaurant.locations?.find(
+          (loc) => typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
         );
       if (
         !displayLocation ||
@@ -936,8 +936,7 @@ const SearchScreen: React.FC = () => {
           ? restaurant.locations
           : restaurant.displayLocation
             ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' &&
-                typeof restaurant.longitude === 'number'
+            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
               ? [
                   {
                     locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,

@@ -1142,7 +1142,12 @@ export class SearchQueryExecutor {
         record.longitude as Prisma.Decimal | number | string | null | undefined,
       );
       const priceLevel = this.toOptionalNumber(
-        record.priceLevel as Prisma.Decimal | number | string | null | undefined,
+        record.priceLevel as
+          | Prisma.Decimal
+          | number
+          | string
+          | null
+          | undefined,
       );
       const locationIdValue =
         (record.locationId as string | null) ??

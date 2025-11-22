@@ -1,11 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  Entity,
-  EntityType,
-  Prisma,
-  RestaurantLocation,
-} from '@prisma/client';
+import { Entity, EntityType, Prisma, RestaurantLocation } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -1129,7 +1124,9 @@ export class RestaurantLocationEnrichmentService {
     const region =
       entity.region ||
       primaryLocation?.region ||
-      this.extractRegionFromAddress(primaryLocation?.address ?? entity.address) ||
+      this.extractRegionFromAddress(
+        primaryLocation?.address ?? entity.address,
+      ) ||
       this.extractRegionFromMetadata(entity.restaurantMetadata);
 
     if (city) {

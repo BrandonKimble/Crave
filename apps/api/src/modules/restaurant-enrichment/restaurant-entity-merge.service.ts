@@ -86,7 +86,10 @@ export class RestaurantEntityMergeService {
     );
 
     for (const location of duplicateLocations) {
-      if (location.googlePlaceId && canonicalByPlaceId.has(location.googlePlaceId)) {
+      if (
+        location.googlePlaceId &&
+        canonicalByPlaceId.has(location.googlePlaceId)
+      ) {
         // Drop duplicate location row; prefer canonical's
         await tx.restaurantLocation.delete({
           where: { locationId: location.locationId },
@@ -117,8 +120,8 @@ export class RestaurantEntityMergeService {
       if (firstLocation) {
         await tx.restaurantLocation.update({
           where: { locationId: firstLocation.locationId },
-        data: { isPrimary: true },
-      });
+          data: { isPrimary: true },
+        });
         primary = firstLocation;
       }
     }
@@ -126,7 +129,9 @@ export class RestaurantEntityMergeService {
     if (primary) {
       await tx.entity.update({
         where: { entityId: canonicalId },
-        data: { primaryLocation: { connect: { locationId: primary.locationId } } },
+        data: {
+          primaryLocation: { connect: { locationId: primary.locationId } },
+        },
       });
     }
   }
