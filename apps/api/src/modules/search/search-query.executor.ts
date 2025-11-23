@@ -21,7 +21,7 @@ const DAY_KEYS = [
   'saturday',
 ] as const;
 
-const TOP_RESTAURANT_FOOD_SNIPPETS = 3;
+const TOP_RESTAURANT_FOOD_SNIPPETS = Infinity;
 const PRICE_SYMBOLS = ['Free', '$', '$$', '$$$', '$$$$'] as const;
 const PRICE_DESCRIPTORS = [
   'Free',
@@ -224,20 +224,18 @@ export class SearchQueryExecutor {
       limitedConnections,
       restaurantContexts,
       referenceDate,
+      minimumVotes,
     );
     const totalRestaurantCount = needsOpenFilter
       ? this.countDistinctRestaurants(filteredConnections)
       : totalRestaurantCountDb;
-    const restaurantResults =
-      plan.format === 'dual_list'
-        ? this.mapRestaurantResults(
-            limitedConnections,
-            plan.ranking.restaurantOrder,
-            minimumVotes,
-            restaurantContexts,
-            referenceDate,
-          )
-        : [];
+    const restaurantResults = this.mapRestaurantResults(
+      limitedConnections,
+      plan.ranking.restaurantOrder,
+      minimumVotes,
+      restaurantContexts,
+      referenceDate,
+    );
 
     if (this.diagnosticLogging) {
       this.logger.debug('Search executor diagnostics', {
@@ -460,10 +458,17 @@ export class SearchQueryExecutor {
     connections: QueryResultRow[],
     restaurantContexts: Map<string, RestaurantContext>,
     referenceDate: Date,
+    minimumVotes: number | null,
   ): FoodResultDto[] {
     const results: FoodResultDto[] = [];
 
     for (const connection of connections) {
+      if (
+        minimumVotes !== null &&
+        this.toNumber(connection.restaurant_total_upvotes) < minimumVotes
+      ) {
+        continue;
+      }
       const restaurantContext = restaurantContexts.get(
         connection.restaurant_id,
       );

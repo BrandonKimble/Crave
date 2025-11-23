@@ -27,8 +27,6 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
-const DEFAULT_PER_RESTAURANT_LIMIT = 0;
-
 interface PaginationState {
   page: number;
   pageSize: number;
@@ -283,8 +281,7 @@ export class SearchService {
         format: plan.format,
         plan,
         food: execution.foodResults,
-        restaurants:
-          plan.format === 'dual_list' ? execution.restaurantResults : undefined,
+        restaurants: execution.restaurantResults,
         sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
         metadata,
       };
@@ -835,15 +832,7 @@ export class SearchService {
   }
 
   private resolvePerRestaurantLimit(): number {
-    const raw = process.env.SEARCH_MAX_CONNECTIONS_PER_RESTAURANT;
-    if (raw) {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed) && parsed >= 0) {
-        return Math.min(parsed, 10);
-      }
-    }
-
-    return DEFAULT_PER_RESTAURANT_LIMIT;
+    return 0;
   }
 
   private resolveResultLimit(): number {

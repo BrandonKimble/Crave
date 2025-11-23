@@ -63,7 +63,6 @@ import {
   clampValue,
   snapPointForState,
   SHEET_SPRING_CONFIG,
-  SMALL_MOVEMENT_THRESHOLD,
   type SheetPosition,
   type SheetGestureContext,
 } from '../../overlays/sheetUtils';
@@ -86,6 +85,7 @@ import PollsOverlay from '../../overlays/PollsOverlay';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
+import type { QueryPlan } from '../../types';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
@@ -112,6 +112,49 @@ const DISTANCE_MIN_DECIMALS = 1;
 const DISTANCE_MAX_DECIMALS = 0;
 const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
 const USA_FALLBACK_ZOOM = 3.2;
+const TOP_FOOD_RENDER_LIMIT = 2;
+const SINGLE_LOCATION_ZOOM_LEVEL = 13;
+const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
+const RESTAURANT_FIT_BOUNDS_PADDING = 80;
+
+const extractTargetRestaurantId = (
+  restaurantFilters?: QueryPlan['restaurantFilters']
+): string | null => {
+  if (!restaurantFilters?.length) {
+    return null;
+  }
+  const ids = new Set<string>();
+  for (const filter of restaurantFilters) {
+    if (filter.entityType !== 'restaurant') {
+      continue;
+    }
+    for (const id of filter.entityIds || []) {
+      if (typeof id === 'string' && id.trim()) {
+        ids.add(id);
+      }
+    }
+  }
+  return ids.size === 1 ? Array.from(ids)[0] : null;
+};
+
+const resolveSingleRestaurantCandidate = (
+  response: SearchResponse | null
+): RestaurantResult | null => {
+  if (!response?.restaurants?.length) {
+    return null;
+  }
+  const targetedId = extractTargetRestaurantId(response.plan?.restaurantFilters);
+  if (targetedId) {
+    const match = response.restaurants.find((restaurant) => restaurant.restaurantId === targetedId);
+    if (match) {
+      return match;
+    }
+  }
+  if (response.format === 'single_list' && response.restaurants.length === 1) {
+    return response.restaurants[0];
+  }
+  return null;
+};
 
 const clampPriceLevelValue = (value: number): PriceLevelValue => {
   if (!Number.isFinite(value)) {
@@ -449,6 +492,7 @@ const SearchScreen: React.FC = () => {
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
   const resultsScrollOffset = useSharedValue(0);
   const lastScrollYRef = React.useRef(0);
+  const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
@@ -842,9 +886,11 @@ const SearchScreen: React.FC = () => {
     const map = new Map<string, RestaurantResult>();
 
     restaurants.forEach((restaurant) => {
+      const locationList: Array<{ latitude?: number | null; longitude?: number | null }> =
+        Array.isArray(restaurant.locations) ? restaurant.locations : [];
       const displayLocation =
         restaurant.displayLocation ??
-        restaurant.locations?.find(
+        locationList.find(
           (loc) => typeof loc.latitude === 'number' && typeof loc.longitude === 'number'
         );
       if (
@@ -931,21 +977,25 @@ const SearchScreen: React.FC = () => {
     const features: Feature<Point, RestaurantFeatureProperties>[] = [];
 
     restaurants.forEach((restaurant) => {
-      const locationCandidates =
-        restaurant.locations && restaurant.locations.length > 0
-          ? restaurant.locations
-          : restaurant.displayLocation
-            ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-              ? [
-                  {
-                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                    latitude: restaurant.latitude,
-                    longitude: restaurant.longitude,
-                    isPrimary: true,
-                  },
-                ]
-              : [];
+      const locationCandidates: Array<{
+        locationId?: string | null;
+        latitude?: number | null;
+        longitude?: number | null;
+        isPrimary?: boolean | null;
+      }> = Array.isArray(restaurant.locations) && restaurant.locations.length > 0
+        ? restaurant.locations
+        : restaurant.displayLocation
+          ? [restaurant.displayLocation]
+          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+            ? [
+                {
+                  locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                  latitude: restaurant.latitude,
+                  longitude: restaurant.longitude,
+                  isPrimary: true,
+                },
+              ]
+            : [];
 
       locationCandidates.forEach((location, index) => {
         if (
@@ -1024,6 +1074,16 @@ const SearchScreen: React.FC = () => {
       return;
     }
 
+    if (features.length === 1) {
+      const [lng, lat] = features[0].geometry.coordinates as [number, number];
+      cameraRef.current?.setCamera({
+        centerCoordinate: [lng, lat],
+        zoomLevel: SINGLE_LOCATION_ZOOM_LEVEL,
+        animationDuration: 600,
+      });
+      return;
+    }
+
     const longitudes = features.map((feature) => feature.geometry.coordinates[0]);
     const latitudes = features.map((feature) => feature.geometry.coordinates[1]);
 
@@ -1031,6 +1091,10 @@ const SearchScreen: React.FC = () => {
     const east = Math.max(...longitudes);
     const south = Math.min(...latitudes);
     const north = Math.max(...latitudes);
+    const spanLng = east - west;
+    const spanLat = north - south;
+    const isTightBounds =
+      spanLng < TIGHT_BOUNDS_THRESHOLD_DEGREES && spanLat < TIGHT_BOUNDS_THRESHOLD_DEGREES;
 
     if (
       Number.isFinite(west) &&
@@ -1038,7 +1102,20 @@ const SearchScreen: React.FC = () => {
       Number.isFinite(south) &&
       Number.isFinite(north)
     ) {
-      cameraRef.current?.fitBounds([east, north], [west, south], 40, 600);
+      if (isTightBounds) {
+        cameraRef.current?.setCamera({
+          centerCoordinate: [(west + east) / 2, (south + north) / 2],
+          zoomLevel: SINGLE_LOCATION_ZOOM_LEVEL,
+          animationDuration: 600,
+        });
+      } else {
+        cameraRef.current?.fitBounds(
+          [east, north],
+          [west, south],
+          RESTAURANT_FIT_BOUNDS_PADDING,
+          600
+        );
+      }
     }
   }, [restaurantFeatures]);
 
@@ -1363,13 +1440,17 @@ const SearchScreen: React.FC = () => {
       }
 
       if (!append) {
+        setPanelVisible(false);
+        setSheetState('hidden');
+        sheetStateShared.value = 'hidden';
+        sheetTranslateY.value = snapPoints.hidden;
         setIsSearchSessionActive(true);
-        showPanel();
         setIsAutocompleteSuppressed(true);
         setShowSuggestions(false);
         setHasMoreFood(false);
         setHasMoreRestaurants(false);
         setCurrentPage(targetPage);
+        lastAutoOpenKeyRef.current = null;
       }
 
       const effectiveOpenNow = options?.openNow ?? openNow;
@@ -1455,53 +1536,73 @@ const SearchScreen: React.FC = () => {
           return merged;
         });
 
-        const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
-        const totalRestaurantAvailable =
-          response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
+        const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
 
-        const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-        const nextHasMoreRestaurants =
-          response.format === 'dual_list'
-            ? mergedRestaurantCount < totalRestaurantAvailable
-            : false;
+        if (!singleRestaurantCandidate) {
+          const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
+          const totalRestaurantAvailable =
+            response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 
-        setHasMoreFood(nextHasMoreFood);
-        setHasMoreRestaurants(nextHasMoreRestaurants);
-        setCurrentPage(targetPage);
+          const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
+          const nextHasMoreRestaurants =
+            response.format === 'dual_list'
+              ? mergedRestaurantCount < totalRestaurantAvailable
+              : false;
 
-        if (
-          append &&
-          (!(
-            mergedFoodCount > previousFoodCountSnapshot ||
-            mergedRestaurantCount > previousRestaurantCountSnapshot
-          ) ||
-            (!nextHasMoreFood && !nextHasMoreRestaurants))
-        ) {
-          setIsPaginationExhausted(true);
+          setHasMoreFood(nextHasMoreFood);
+          setHasMoreRestaurants(nextHasMoreRestaurants);
+          setCurrentPage(targetPage);
+          if (
+            append &&
+            (!(
+              mergedFoodCount > previousFoodCountSnapshot ||
+              mergedRestaurantCount > previousRestaurantCountSnapshot
+            ) ||
+              (!nextHasMoreFood && !nextHasMoreRestaurants))
+          ) {
+            setIsPaginationExhausted(true);
+          }
         }
 
         if (!append) {
           setSubmittedQuery(trimmed);
-          const hasFoodResults = response?.food?.length > 0;
-          const hasRestaurantsResults =
-            (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
-          setActiveTab((prevTab) => {
-            if (prevTab === 'dishes' && hasFoodResults) {
-              return 'dishes';
-            }
-            if (prevTab === 'restaurants' && hasRestaurantsResults) {
-              return 'restaurants';
-            }
-            return hasFoodResults ? 'dishes' : 'restaurants';
-          });
+          const singleRestaurant = resolveSingleRestaurantCandidate(response);
+
+          if (!singleRestaurant) {
+            const hasFoodResults = response?.food?.length > 0;
+            const hasRestaurantsResults =
+              (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
+            setActiveTab((prevTab) => {
+              if (prevTab === 'dishes' && hasFoodResults) {
+                return 'dishes';
+              }
+              if (prevTab === 'restaurants' && hasRestaurantsResults) {
+                return 'restaurants';
+              }
+              return hasFoodResults ? 'dishes' : 'restaurants';
+            });
+          }
+
           updateLocalRecentSearches(trimmed);
           void loadRecentHistory();
           Keyboard.dismiss();
           setIsPaginationExhausted(false);
           scrollResultsToTop();
+
+          if (singleRestaurant) {
+            setPanelVisible(false);
+            setSheetState('hidden');
+            sheetStateShared.value = 'hidden';
+            sheetTranslateY.value = snapPoints.hidden;
+          } else {
+            showPanel();
+          }
         }
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
+        if (!append) {
+          showPanel();
+        }
         setError(
           append
             ? 'Unable to load more results. Please try again.'
@@ -1537,6 +1638,11 @@ const SearchScreen: React.FC = () => {
       canLoadMore,
       scrollResultsToTop,
       ensureUserLocation,
+      snapPoints.hidden,
+      sheetStateShared,
+      sheetTranslateY,
+      setPanelVisible,
+      setSheetState,
     ]
   );
 
@@ -1570,6 +1676,7 @@ const SearchScreen: React.FC = () => {
       setCurrentPage(1);
       setIsLoadingMore(false);
       setIsPaginationExhausted(false);
+      lastAutoOpenKeyRef.current = null;
       scrollResultsToTop();
       if (shouldRefocusInput) {
         requestAnimationFrame(() => {
@@ -1768,8 +1875,9 @@ const SearchScreen: React.FC = () => {
   );
 
   const openRestaurantProfile = React.useCallback(
-    (restaurant: RestaurantResult) => {
-      const restaurantDishes = dishes
+    (restaurant: RestaurantResult, foodResultsOverride?: FoodResult[]) => {
+      const sourceDishes = foodResultsOverride ?? dishes;
+      const restaurantDishes = sourceDishes
         .filter((dish) => dish.restaurantId === restaurant.restaurantId)
         .sort((a, b) => b.qualityScore - a.qualityScore);
       const label = (submittedQuery || trimmedQuery || 'Search').trim();
@@ -1783,6 +1891,26 @@ const SearchScreen: React.FC = () => {
     },
     [dishes, favoriteMap, submittedQuery, trimmedQuery]
   );
+
+  React.useEffect(() => {
+    if (!results) {
+      return;
+    }
+    const targetRestaurant = resolveSingleRestaurantCandidate(results);
+    if (!targetRestaurant) {
+      return;
+    }
+    const queryKey = (submittedQuery || trimmedQuery).trim();
+    if (!queryKey) {
+      return;
+    }
+    const autoOpenKey = `${queryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
+    if (lastAutoOpenKeyRef.current === autoOpenKey) {
+      return;
+    }
+    openRestaurantProfile(targetRestaurant, results.food ?? []);
+    lastAutoOpenKeyRef.current = autoOpenKey;
+  }, [openRestaurantProfile, results, submittedQuery, trimmedQuery]);
 
   React.useEffect(() => {
     if (!restaurantProfile) {
@@ -2203,15 +2331,31 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultContent}>
             {restaurant.topFood?.length ? (
               <View style={styles.topFoodSection}>
-                {restaurant.topFood.map((food) => (
-                  <Text
-                    key={food.connectionId}
-                    variant="caption"
-                    style={[styles.textSlate700, styles.topFoodText]}
-                  >
-                    • {food.foodName} ({food.qualityScore.toFixed(1)})
-                  </Text>
-                ))}
+                <Text variant="caption" style={styles.topFoodLabel}>
+                  Relevant dishes
+                </Text>
+                <View style={styles.topFoodMiniList}>
+                  {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
+                    <View key={food.connectionId} style={styles.topFoodMiniItem}>
+                      <View style={styles.topFoodMiniRank}>
+                        <Text variant="caption" style={styles.topFoodMiniRankText}>
+                          {idx + 1}
+                        </Text>
+                      </View>
+                      <Text variant="caption" style={styles.topFoodMiniName} numberOfLines={1}>
+                        {food.foodName}
+                      </Text>
+                      <Text variant="caption" style={styles.topFoodMiniScore}>
+                        {food.qualityScore.toFixed(1)}
+                      </Text>
+                    </View>
+                  ))}
+                  {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
+                    <Text variant="caption" style={styles.topFoodMiniMore}>
+                      +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ) : null}
             <View style={styles.metricsContainer}>
@@ -2298,35 +2442,6 @@ const SearchScreen: React.FC = () => {
           zoomLevel={mapCenter ? mapZoom : USA_FALLBACK_ZOOM}
           pitch={32}
         />
-        {userLocation ? (
-          <MapboxGL.MarkerView
-            id="user-location"
-            coordinate={[userLocation.lng, userLocation.lat]}
-            anchor={{ x: 0.5, y: 0.5 }}
-          >
-            <View style={styles.userLocationWrapper}>
-              <View style={styles.userLocationShadow}>
-                <BlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
-                  <Animated.View
-                    style={[
-                      styles.userLocationDot,
-                      {
-                        transform: [
-                          {
-                            scale: locationPulse.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1.3, 1.6],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </BlurView>
-              </View>
-            </View>
-          </MapboxGL.MarkerView>
-        ) : null}
         {restaurantFeatures.features.map((feature) => {
           const coordinates = feature.geometry.coordinates as [number, number];
           const name = feature.properties?.restaurantName ?? feature.id?.toString() ?? 'Pin';
@@ -2337,6 +2452,7 @@ const SearchScreen: React.FC = () => {
               id={`restaurant-${markerId}`}
               coordinate={coordinates}
               anchor={{ x: 0.5, y: 1 }}
+              allowOverlap
             >
               <View style={styles.mapMarker}>
                 <View style={styles.mapMarkerIconWrapper}>
@@ -2349,6 +2465,36 @@ const SearchScreen: React.FC = () => {
             </MapboxGL.MarkerView>
           );
         })}
+        {userLocation ? (
+          <MapboxGL.MarkerView
+            id="user-location"
+            coordinate={[userLocation.lng, userLocation.lat]}
+            anchor={{ x: 0.5, y: 0.5 }}
+            allowOverlap
+          >
+            <View style={styles.userLocationWrapper}>
+              <View style={styles.userLocationShadow}>
+                <BlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.userLocationDot,
+                      {
+                        transform: [
+                          {
+                            scale: locationPulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1.4, 1.8],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                </BlurView>
+              </View>
+            </View>
+          </MapboxGL.MarkerView>
+        ) : null}
       </MapboxGL.MapView>
 
       {isSearchOverlay && (
@@ -2746,6 +2892,7 @@ const styles = StyleSheet.create({
   map: StyleSheet.absoluteFillObject,
   mapMarker: {
     alignItems: 'center',
+    zIndex: 1,
   },
   mapMarkerIconWrapper: {
     ...shadowStyles.floatingControl,
@@ -3345,36 +3492,37 @@ const styles = StyleSheet.create({
     marginTop: 0,
   },
   userLocationWrapper: {
-    width: 48,
-    height: 48,
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 100,
   },
   userLocationHaloWrapper: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.65)',
   },
   userLocationShadow: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: 'rgba(0, 0, 0, 0.45)',
     shadowOpacity: 0.65,
     shadowOffset: { width: 0, height: 0 },
     shadowRadius: 2.5,
-    elevation: 4,
+    elevation: 8,
   },
   userLocationDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     backgroundColor: '#5c5bff',
   },
   userLocationHalo: {
@@ -3402,8 +3550,8 @@ const styles = StyleSheet.create({
   metricsContainer: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 20,
-    paddingBottom: 2,
+    gap: 14,
+    paddingBottom: 0,
     marginTop: 0,
   },
   dishMetricsSpacing: {
@@ -3461,7 +3609,8 @@ const styles = StyleSheet.create({
   },
   topFoodSection: {
     marginTop: 2,
-    marginBottom: 12,
+    marginBottom: 8,
+    gap: 6,
   },
   textSlate900: {
     color: '#0f172a',
@@ -3499,9 +3648,47 @@ const styles = StyleSheet.create({
   dishSubtitleSmall: {
     fontSize: 12,
   },
-  topFoodText: {
+  topFoodLabel: {
+    fontSize: 12,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  topFoodMiniList: {
+    gap: 4,
+  },
+  topFoodMiniItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  topFoodMiniRank: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  topFoodMiniRankText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
+  },
+  topFoodMiniName: {
     fontSize: 13,
-    marginTop: 2,
+    color: '#0f172a',
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  topFoodMiniScore: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '600',
+  },
+  topFoodMiniMore: {
+    fontSize: 12,
+    color: '#6b7280',
+    fontWeight: '500',
   },
   loadingText: {
     marginTop: 16,
