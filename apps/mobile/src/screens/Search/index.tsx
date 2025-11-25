@@ -757,8 +757,8 @@ const SearchScreen: React.FC = () => {
       status?.isOpen && typeof status.closesInMinutes === 'number'
         ? status.closesInMinutes
         : status?.isOpen
-          ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-          : null;
+        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+        : null;
     const isClosingSoon =
       status?.isOpen &&
       typeof effectiveMinutesUntilClose === 'number' &&
@@ -1157,17 +1157,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-            ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-              ? [
-                  {
-                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                    latitude: restaurant.latitude,
-                    longitude: restaurant.longitude,
-                    isPrimary: true,
-                  },
-                ]
-              : [];
+          ? [restaurant.displayLocation]
+          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+          ? [
+              {
+                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                latitude: restaurant.latitude,
+                longitude: restaurant.longitude,
+                isPrimary: true,
+              },
+            ]
+          : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
@@ -1216,17 +1216,15 @@ const SearchScreen: React.FC = () => {
   const sortedRestaurantMarkers = React.useMemo(() => {
     const getRank = (value: unknown) =>
       typeof value === 'number' && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
-    return restaurantFeatures.features
-      .slice()
-      .sort((a, b) => {
-        const rankDiff = getRank(b.properties.rank) - getRank(a.properties.rank);
-        if (rankDiff !== 0) {
-          return rankDiff; // render higher rank numbers first so rank 1 renders last (on top)
-        }
-        const aId = a.id?.toString() ?? '';
-        const bId = b.id?.toString() ?? '';
-        return aId.localeCompare(bId); // deterministic tie-breaker for equal ranks
-      });
+    return restaurantFeatures.features.slice().sort((a, b) => {
+      const rankDiff = getRank(b.properties.rank) - getRank(a.properties.rank);
+      if (rankDiff !== 0) {
+        return rankDiff; // render higher rank numbers first so rank 1 renders last (on top)
+      }
+      const aId = a.id?.toString() ?? '';
+      const bId = b.id?.toString() ?? '';
+      return aId.localeCompare(bId); // deterministic tie-breaker for equal ranks
+    });
   }, [restaurantFeatures.features]);
 
   // No sticky anchors; keep labels relative to pin geometry only.
@@ -1659,8 +1657,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       try {
         if (append) {
