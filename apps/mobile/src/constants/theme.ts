@@ -1,10 +1,10 @@
 import type { ViewStyle } from 'react-native';
 
 export const colors = {
-  primary: '#F97383',
-  primaryDark: '#DC003B',
+  primary: '#ff0050',
+  primaryDark: '#d60044',
   secondary: '#4ECDC4',
-  accentDark: '#F97383',
+  accentDark: '#ff0050',
   background: '#F7F7F7',
   surface: '#FFFFFF',
   text: '#1A1A1A',

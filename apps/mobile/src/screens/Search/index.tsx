@@ -15,6 +15,7 @@ import {
   TouchableOpacity,
   View,
   Easing,
+  Image,
 } from 'react-native';
 import {
   PanGestureHandler,
@@ -39,12 +40,14 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Feather } from '@expo/vector-icons';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
+import pinAsset from '../../assets/pin.png';
+import pinFillAsset from '../../assets/pin-fill.png';
+import pinCollisionAsset from '../../assets/pin-collision.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '../../types';
 import {
   BookmarkIcon,
   MagnifyingGlassIcon,
-  MapPinIcon,
   UserIcon,
   XCircleIcon,
   XMarkIcon,
@@ -116,6 +119,33 @@ const TOP_FOOD_RENDER_LIMIT = 2;
 const SINGLE_LOCATION_ZOOM_LEVEL = 13;
 const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
 const RESTAURANT_FIT_BOUNDS_PADDING = 80;
+const LABEL_TEXT_SIZE = 12;
+const PIN_MARKER_SIZE = 28;
+const PIN_MARKER_SCALE = 1;
+const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
+const LABEL_RADIAL_OFFSET_EM = 1.3; // keep labels close to pins
+const LABEL_TRANSLATE_Y = -PIN_MARKER_RENDER_SIZE * 0.45; // raise labels relative to pin center
+const PIN_BASE_WIDTH = 96;
+const PIN_BASE_HEIGHT = 96;
+const PIN_FILL_WIDTH = 80;
+const PIN_FILL_HEIGHT = 72;
+const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT; // single scale applied to base and fill to preserve proportions
+const PIN_FILL_VERTICAL_BIAS = -4.4; // nudge up to account for pin tip area
+const PIN_FILL_LEFT_OFFSET = ((PIN_BASE_WIDTH - PIN_FILL_WIDTH) / 2) * PIN_BASE_SCALE;
+const PIN_FILL_TOP_OFFSET =
+  ((PIN_BASE_HEIGHT - PIN_FILL_HEIGHT) / 2 + PIN_FILL_VERTICAL_BIAS) * PIN_BASE_SCALE;
+const PIN_RANK_TEXT_OFFSET_Y = -1; // lift rank text slightly toward the top of the fill
+const PIN_COLLISION_ICON_BASE_SIZE = 96;
+const PIN_COLLISION_ICON_SCALE = (PIN_MARKER_RENDER_SIZE / PIN_COLLISION_ICON_BASE_SIZE) * 1.05;
+const AUTOCOMPLETE_MIN_CHARS = 1;
+const MARKER_SHADOW_STYLE = {
+  shadowColor: 'rgba(0, 0, 0, 0.35)',
+  shadowOpacity: 0.45,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 4,
+  elevation: 8,
+};
+const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -206,6 +236,27 @@ const formatPriceRangeText = (range: PriceRangeTuple): string => {
   return min === max ? minLabel : `${minLabel} – ${maxLabel}`;
 };
 
+const getQualityColor = (index: number, total: number): string => {
+  const ratio = index / Math.max(total - 1, 1);
+  // Warmer light green: #a3e635 to lighter warm orange: #fb923c
+  const green = {
+    r: 163,
+    g: 230,
+    b: 53,
+  };
+  const orange = {
+    r: 251,
+    g: 146,
+    b: 60,
+  };
+
+  const r = Math.round(green.r + (orange.r - green.r) * ratio);
+  const g = Math.round(green.g + (orange.g - green.g) * ratio);
+  const b = Math.round(green.b + (orange.b - green.b) * ratio);
+
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
 const mergeById = <T extends Record<string, unknown>>(
   existing: T[],
   incoming: T[],
@@ -261,6 +312,9 @@ type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
   contextualScore: number;
+  rank: number;
+  pinColor: string;
+  anchor?: 'top' | 'bottom' | 'left' | 'right';
 };
 type SubmitSearchOptions = {
   openNow?: boolean;
@@ -457,6 +511,50 @@ const SearchScreen: React.FC = () => {
   }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
+  const mapImages = React.useMemo(
+    () => ({
+      'pin-collision': {
+        uri: Image.resolveAssetSource(pinCollisionAsset).uri,
+      },
+    }),
+    []
+  );
+  const restaurantPinCollisionStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(
+    () => ({
+      iconImage: 'pin-collision',
+      iconAllowOverlap: false,
+      iconAnchor: 'center',
+      iconSize: PIN_COLLISION_ICON_SCALE,
+      iconOpacity: 0,
+      iconTranslateAnchor: 'viewport',
+      iconPitchAlignment: 'viewport',
+      iconIgnorePlacement: false,
+      symbolZOrder: 'viewport-y',
+    }),
+    []
+  );
+  const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
+    const radialEm = LABEL_RADIAL_OFFSET_EM;
+    return {
+      textField: ['coalesce', ['get', 'restaurantName'], ''],
+      textVariableAnchor: ['literal', ['top', 'right', 'left', 'bottom']],
+      textAnchor: 'center',
+      textRadialOffset: radialEm,
+      textTranslate: [0, LABEL_TRANSLATE_Y],
+      textTranslateAnchor: 'viewport',
+      textJustify: 'auto',
+      textAllowOverlap: false,
+      textOptional: false,
+      textIgnorePlacement: false,
+      textSize: LABEL_TEXT_SIZE,
+      textColor: '#374151', // dark gray
+      textHaloColor: 'rgba(255, 255, 255, 0.9)',
+      textHaloWidth: 1.2,
+      textHaloBlur: 0.9,
+      textOffset: [0, 0],
+      symbolZOrder: 'viewport-y',
+    };
+  }, []);
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);
@@ -465,9 +563,12 @@ const SearchScreen: React.FC = () => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
-  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
+  const lastAutocompleteQueryRef = React.useRef<string>('');
+  const lastAutocompleteResultsRef = React.useRef<AutocompleteMatch[]>([]);
+  const lastAutocompleteTimestampRef = React.useRef<number>(0);
   const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
@@ -487,6 +588,7 @@ const SearchScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
+  const [searchBarHeight, setSearchBarHeight] = React.useState(0);
   const resultsScrollEnabled = sheetState === 'expanded';
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
@@ -510,7 +612,7 @@ const SearchScreen: React.FC = () => {
   const snapPointHidden = useSharedValue(SCREEN_HEIGHT + 80);
   const sheetStateShared = useSharedValue<SheetPosition>('hidden');
   const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
-  const searchContainerAnim = React.useRef(new Animated.Value(0)).current;
+  const searchSurfaceAnim = React.useRef(new Animated.Value(0)).current;
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<ScrollView | null>(null);
   const scrollGestureRef = React.useRef<NativeViewGestureHandler | null>(null);
@@ -582,8 +684,38 @@ const SearchScreen: React.FC = () => {
   const hasTypedQuery = trimmedQuery.length > 0;
   const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
   const shouldRenderAutocompleteSection =
-    isSearchOverlay && !isAutocompleteSuppressed && trimmedQuery.length >= 2;
+    isSearchOverlay &&
+    isSearchFocused &&
+    !isAutocompleteSuppressed &&
+    trimmedQuery.length >= AUTOCOMPLETE_MIN_CHARS;
   const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
+  const searchSurfaceAnimatedStyle = React.useMemo(
+    () => ({
+      opacity: searchSurfaceAnim,
+      transform: [
+        {
+          scale: searchSurfaceAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.98, 1],
+          }),
+        },
+      ],
+    }),
+    [searchSurfaceAnim]
+  );
+  const searchBarAnimatedStyle = React.useMemo(
+    () => ({
+      transform: [
+        {
+          scale: searchSurfaceAnim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [0.95, 1],
+          }),
+        },
+      ],
+    }),
+    [searchSurfaceAnim]
+  );
   const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const votesFilterActive = votes100Plus;
@@ -744,9 +876,41 @@ const SearchScreen: React.FC = () => {
   };
   const bottomInset = Math.max(insets.bottom, 12);
   const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isLoading);
-  const focusSearchInput = React.useCallback(() => {
-    inputRef.current?.focus();
+  const showCachedSuggestionsIfFresh = React.useCallback((trimmed: string) => {
+    const now = Date.now();
+    const cachedQuery = lastAutocompleteQueryRef.current;
+    const cachedResults = lastAutocompleteResultsRef.current;
+    const cachedAt = lastAutocompleteTimestampRef.current;
+    const cacheIsFresh = cachedQuery === trimmed && now - cachedAt <= AUTOCOMPLETE_CACHE_TTL_MS;
+
+    if (cacheIsFresh) {
+      setSuggestions(cachedResults);
+      setShowSuggestions(cachedResults.length > 0);
+      setIsAutocompleteLoading(false);
+      return true;
+    }
+    return false;
   }, []);
+  const focusSearchInput = React.useCallback(() => {
+    setIsAutocompleteSuppressed(false);
+    setIsSearchFocused(true);
+    const trimmed = query.trim();
+    if (trimmed.length >= AUTOCOMPLETE_MIN_CHARS) {
+      const usedCache = showCachedSuggestionsIfFresh(trimmed);
+      if (!usedCache) {
+        setIsAutocompleteLoading(true);
+      }
+    }
+    inputRef.current?.focus();
+  }, [query, showCachedSuggestionsIfFresh]);
+  React.useEffect(() => {
+    Animated.timing(searchSurfaceAnim, {
+      toValue: isSearchFocused ? 1 : 0,
+      duration: isSearchFocused ? 200 : 160,
+      easing: isSearchFocused ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [isSearchFocused, searchSurfaceAnim]);
   const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
     if (userLocationRef.current) {
       return userLocationRef.current;
@@ -858,15 +1022,6 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
-  React.useEffect(() => {
-    Animated.spring(searchContainerAnim, {
-      toValue: shouldRenderSuggestionPanel ? 1 : 0,
-      useNativeDriver: true,
-      damping: 18,
-      stiffness: 220,
-    }).start();
-  }, [searchContainerAnim, shouldRenderSuggestionPanel]);
-
   const loadFavorites = React.useCallback(async () => {
     try {
       const data = await favoritesService.list();
@@ -921,17 +1076,22 @@ const SearchScreen: React.FC = () => {
   }, [restaurants, dishes]);
 
   React.useEffect(() => {
-    if (!isSearchOverlay) {
+    if (!isSearchOverlay || !isSearchFocused || isAutocompleteSuppressed) {
       setSuggestions([]);
       setShowSuggestions(false);
       setIsAutocompleteLoading(false);
       return;
     }
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
+    if (trimmed.length < AUTOCOMPLETE_MIN_CHARS) {
       setSuggestions([]);
       setShowSuggestions(false);
       setIsAutocompleteLoading(false);
+      return;
+    }
+
+    const usedCache = showCachedSuggestionsIfFresh(trimmed);
+    if (usedCache) {
       return;
     }
 
@@ -946,6 +1106,9 @@ const SearchScreen: React.FC = () => {
           }
           setSuggestions(response.matches);
           setShowSuggestions(response.matches.length > 0);
+          lastAutocompleteQueryRef.current = trimmed;
+          lastAutocompleteResultsRef.current = response.matches;
+          lastAutocompleteTimestampRef.current = Date.now();
         })
         .catch((err) => {
           if (!isActive) {
@@ -969,35 +1132,44 @@ const SearchScreen: React.FC = () => {
       isActive = false;
       clearTimeout(debounceHandle);
     };
-  }, [isSearchOverlay, query]);
+  }, [
+    isSearchOverlay,
+    isSearchFocused,
+    isAutocompleteSuppressed,
+    query,
+    showCachedSuggestionsIfFresh,
+  ]);
 
   const restaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
     const features: Feature<Point, RestaurantFeatureProperties>[] = [];
 
-    restaurants.forEach((restaurant) => {
+    restaurants.forEach((restaurant, restaurantIndex) => {
+      const rank = restaurantIndex + 1;
+      const pinColor = getQualityColor(restaurantIndex, restaurants.length);
       const locationCandidates: Array<{
         locationId?: string | null;
         latitude?: number | null;
         longitude?: number | null;
         isPrimary?: boolean | null;
-      }> = Array.isArray(restaurant.locations) && restaurant.locations.length > 0
-        ? restaurant.locations
-        : restaurant.displayLocation
-          ? [restaurant.displayLocation]
-          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-            ? [
-                {
-                  locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                  latitude: restaurant.latitude,
-                  longitude: restaurant.longitude,
-                  isPrimary: true,
-                },
-              ]
-            : [];
+      }> =
+        Array.isArray(restaurant.locations) && restaurant.locations.length > 0
+          ? restaurant.locations
+          : restaurant.displayLocation
+            ? [restaurant.displayLocation]
+            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+              ? [
+                  {
+                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                    latitude: restaurant.latitude,
+                    longitude: restaurant.longitude,
+                    isPrimary: true,
+                  },
+                ]
+              : [];
 
-      locationCandidates.forEach((location, index) => {
+      locationCandidates.forEach((location, locationIndex) => {
         if (
           typeof location?.latitude !== 'number' ||
           !Number.isFinite(location.latitude) ||
@@ -1009,11 +1181,12 @@ const SearchScreen: React.FC = () => {
 
         const locationId =
           (location as { locationId?: string }).locationId ??
-          `${restaurant.restaurantId}-loc-${index}`;
+          `${restaurant.restaurantId}-loc-${locationIndex}`;
 
+        const featureId = `${restaurant.restaurantId}-${locationId}`;
         features.push({
           type: 'Feature',
-          id: `${restaurant.restaurantId}-${locationId}`,
+          id: featureId,
           geometry: {
             type: 'Point',
             coordinates: [location.longitude, location.latitude],
@@ -1022,6 +1195,8 @@ const SearchScreen: React.FC = () => {
             restaurantId: restaurant.restaurantId,
             restaurantName: restaurant.restaurantName,
             contextualScore: restaurant.contextualScore,
+            rank,
+            pinColor,
           },
         });
       });
@@ -1032,6 +1207,29 @@ const SearchScreen: React.FC = () => {
       features,
     };
   }, [restaurants]);
+
+  const buildMarkerKey = React.useCallback(
+    (feature: Feature<Point, RestaurantFeatureProperties>) =>
+      feature.id?.toString() ?? `${feature.properties.restaurantId}-${feature.properties.rank}`,
+    []
+  );
+  const sortedRestaurantMarkers = React.useMemo(() => {
+    const getRank = (value: unknown) =>
+      typeof value === 'number' && Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+    return restaurantFeatures.features
+      .slice()
+      .sort((a, b) => {
+        const rankDiff = getRank(b.properties.rank) - getRank(a.properties.rank);
+        if (rankDiff !== 0) {
+          return rankDiff; // render higher rank numbers first so rank 1 renders last (on top)
+        }
+        const aId = a.id?.toString() ?? '';
+        const bId = b.id?.toString() ?? '';
+        return aId.localeCompare(bId); // deterministic tie-breaker for equal ranks
+      });
+  }, [restaurantFeatures.features]);
+
+  // No sticky anchors; keep labels relative to pin geometry only.
 
   const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
     if (!openNow || !results?.metadata) {
@@ -1117,7 +1315,7 @@ const SearchScreen: React.FC = () => {
         );
       }
     }
-  }, [restaurantFeatures]);
+  }, [restaurants]);
 
   const snapPoints = React.useMemo<Record<SheetPosition, number>>(() => {
     const expanded = Math.max(searchLayout.top, 0);
@@ -1647,8 +1845,11 @@ const SearchScreen: React.FC = () => {
   );
 
   const handleSubmit = React.useCallback(() => {
+    setIsSearchFocused(false);
+    setIsAutocompleteSuppressed(true);
+    Keyboard.dismiss();
     void submitSearch();
-  }, [submitSearch]);
+  }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
@@ -1656,9 +1857,11 @@ const SearchScreen: React.FC = () => {
       setQuery(nextQuery);
       setShowSuggestions(false);
       setSuggestions([]);
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
       void submitSearch(undefined, nextQuery);
     },
-    [submitSearch]
+    [submitSearch, setIsAutocompleteSuppressed, setIsSearchFocused]
   );
 
   const clearSearchState = React.useCallback(
@@ -1716,20 +1919,23 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions(false);
       setSuggestions([]);
       updateLocalRecentSearches(trimmedValue);
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
       void submitSearch(undefined, trimmedValue);
     },
-    [submitSearch, updateLocalRecentSearches]
+    [submitSearch, updateLocalRecentSearches, setIsAutocompleteSuppressed, setIsSearchFocused]
   );
 
   const handleMapPress = React.useCallback(() => {
+    // Fully exit autocomplete: blur input, suppress suggestions, and clear loading state.
     Keyboard.dismiss();
-    if (isSearchFocused) {
-      setIsSearchFocused(false);
-    }
-    if (showSuggestions) {
-      setShowSuggestions(false);
-    }
-  }, [isSearchFocused, showSuggestions]);
+    inputRef.current?.blur?.();
+    setIsAutocompleteSuppressed(true);
+    setIsSearchFocused(false);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    setIsAutocompleteLoading(false);
+  }, []);
 
   const loadMoreResults = React.useCallback(() => {
     if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
@@ -1937,27 +2143,6 @@ const SearchScreen: React.FC = () => {
     setRestaurantProfile(null);
     setRestaurantOverlayVisible(false);
   }, []);
-
-  const getQualityColor = (index: number, total: number): string => {
-    const ratio = index / Math.max(total - 1, 1);
-    // Warmer light green: #a3e635 to lighter warm orange: #fb923c
-    const green = {
-      r: 163,
-      g: 230,
-      b: 53,
-    };
-    const orange = {
-      r: 251,
-      g: 146,
-      b: 60,
-    };
-
-    const r = Math.round(green.r + (orange.r - green.r) * ratio);
-    const g = Math.round(green.g + (orange.g - green.g) * ratio);
-    const b = Math.round(green.b + (orange.b - green.b) * ratio);
-
-    return `rgb(${r}, ${g}, ${b})`;
-  };
 
   type ResultCardOptions = {
     showFilters?: boolean;
@@ -2175,13 +2360,19 @@ const SearchScreen: React.FC = () => {
         >
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
-              <Text
-                variant="body"
-                weight="bold"
-                style={[styles.textSlate900, styles.dishCardTitle]}
-              >
-                {item.foodName}
-              </Text>
+              <View style={styles.titleRow}>
+                <View style={styles.rankBadge}>
+                  <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                </View>
+                <Text
+                  variant="body"
+                  weight="bold"
+                  style={[styles.textSlate900, styles.dishCardTitle]}
+                  numberOfLines={1}
+                >
+                  {item.foodName}
+                </Text>
+              </View>
               <Text
                 variant="body"
                 weight="medium"
@@ -2292,13 +2483,19 @@ const SearchScreen: React.FC = () => {
         >
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
-              <Text
-                variant="subtitle"
-                weight="bold"
-                style={[styles.textSlate900, styles.dishTitle]}
-              >
-                {restaurant.restaurantName}
-              </Text>
+              <View style={styles.titleRow}>
+                <View style={styles.rankBadge}>
+                  <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                </View>
+                <Text
+                  variant="subtitle"
+                  weight="bold"
+                  style={[styles.textSlate900, styles.dishTitle]}
+                  numberOfLines={1}
+                >
+                  {restaurant.restaurantName}
+                </Text>
+              </View>
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
@@ -2436,35 +2633,52 @@ const SearchScreen: React.FC = () => {
         scaleBarEnabled={false}
         onPress={handleMapPress}
       >
+        <MapboxGL.Images images={mapImages} />
         <MapboxGL.Camera
           ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
           zoomLevel={mapCenter ? mapZoom : USA_FALLBACK_ZOOM}
           pitch={32}
         />
-        {restaurantFeatures.features.map((feature) => {
-          const coordinates = feature.geometry.coordinates as [number, number];
-          const name = feature.properties?.restaurantName ?? feature.id?.toString() ?? 'Pin';
-          const markerId = feature.properties?.restaurantId ?? String(feature.id);
-          return (
-            <MapboxGL.MarkerView
-              key={markerId}
-              id={`restaurant-${markerId}`}
-              coordinate={coordinates}
-              anchor={{ x: 0.5, y: 1 }}
-              allowOverlap
-            >
-              <View style={styles.mapMarker}>
-                <View style={styles.mapMarkerIconWrapper}>
-                  <MapPinIcon size={44} color={themeColors.primary} />
-                </View>
-                <Text style={styles.mapMarkerLabel} numberOfLines={1}>
-                  {name}
-                </Text>
-              </View>
-            </MapboxGL.MarkerView>
-          );
-        })}
+        {sortedRestaurantMarkers.length
+          ? sortedRestaurantMarkers.map((feature) => {
+              const coordinates = feature.geometry.coordinates as [number, number];
+              const markerKey = buildMarkerKey(feature);
+              return (
+                <MapboxGL.MarkerView
+                  key={markerKey}
+                  id={`restaurant-marker-${markerKey}`}
+                  coordinate={coordinates}
+                  anchor={{ x: 0.5, y: 1 }}
+                  allowOverlap
+                  style={styles.markerView}
+                >
+                  <View style={[styles.pinWrapper, styles.pinShadow]}>
+                    <Image source={pinAsset} style={styles.pinBase} />
+                    <Image
+                      source={pinFillAsset}
+                      style={[
+                        styles.pinFill,
+                        {
+                          tintColor: feature.properties.pinColor,
+                        },
+                      ]}
+                    />
+                    <Text style={styles.pinRank}>{feature.properties.rank}</Text>
+                  </View>
+                </MapboxGL.MarkerView>
+              );
+            })
+          : null}
+        {restaurantFeatures.features.length ? (
+          <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
+            <MapboxGL.SymbolLayer
+              id="restaurant-pin-collisions"
+              style={restaurantPinCollisionStyle}
+            />
+            <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
+          </MapboxGL.ShapeSource>
+        ) : null}
         {userLocation ? (
           <MapboxGL.MarkerView
             id="user-location"
@@ -2503,6 +2717,105 @@ const SearchScreen: React.FC = () => {
           pointerEvents="box-none"
           edges={['top', 'left', 'right']}
         >
+          <Animated.View
+            pointerEvents={isSearchFocused ? 'auto' : 'none'}
+            style={[styles.searchSurface, searchSurfaceAnimatedStyle]}
+          >
+            <BlurView
+              pointerEvents="none"
+              intensity={45}
+              tint="light"
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View pointerEvents="none" style={styles.searchSurfaceTint} />
+            <View pointerEvents="none" style={styles.searchSurfaceHighlight} />
+            <Animated.ScrollView
+              style={styles.searchSurfaceScroll}
+              contentContainerStyle={[
+                styles.searchSurfaceContent,
+                {
+                  paddingTop: searchBarHeight ? searchBarHeight + 18 : 120,
+                  paddingBottom: bottomInset + 32,
+                },
+              ]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {shouldRenderSuggestionPanel ? (
+                <>
+                  {shouldRenderAutocompleteSection && (
+                    <View style={styles.autocompleteSectionSurface}>
+                      {isAutocompleteLoading && (
+                        <View style={styles.autocompleteLoadingRow}>
+                          <ActivityIndicator size="small" color="#6366f1" />
+                          <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
+                        </View>
+                      )}
+                      {!isAutocompleteLoading && suggestions.length === 0 ? (
+                        <Text style={styles.autocompleteEmptyText}>
+                          Keep typing to add a dish or spot
+                        </Text>
+                      ) : (
+                        suggestions.map((match, index) => {
+                          const secondaryLabel =
+                            match.matchType === 'query'
+                              ? 'Recent search'
+                              : match.entityType.replace(/_/g, ' ');
+                          const itemKey = match.entityId
+                            ? `${match.entityId}-${index}`
+                            : `${match.name}-${index}`;
+                          return (
+                            <TouchableOpacity
+                              key={itemKey}
+                              onPress={() => handleSuggestionPress(match)}
+                              style={[
+                                styles.autocompleteItem,
+                                index === suggestions.length - 1 && !shouldShowRecentSection
+                                  ? styles.autocompleteItemLast
+                                  : null,
+                              ]}
+                            >
+                              <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
+                              <Text style={styles.autocompleteSecondaryText}>{secondaryLabel}</Text>
+                            </TouchableOpacity>
+                          );
+                        })
+                      )}
+                    </View>
+                  )}
+                  {shouldShowRecentSection && (
+                    <View style={styles.recentSectionSurface}>
+                      <View style={styles.recentHeaderRow}>
+                        <Text style={styles.recentHeaderText}>Recent searches</Text>
+                        {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+                      </View>
+                      {!isRecentLoading && !hasRecentSearches ? (
+                        <Text style={styles.autocompleteEmptyText}>
+                          Start exploring to build your history
+                        </Text>
+                      ) : (
+                        recentSearches.map((term, index) => (
+                          <TouchableOpacity
+                            key={`${term}-${index}`}
+                            onPress={() => handleRecentSearchPress(term)}
+                            style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
+                          >
+                            <Feather
+                              name="clock"
+                              size={16}
+                              color="#6b7280"
+                              style={styles.recentIcon}
+                            />
+                            <Text style={styles.recentText}>{term}</Text>
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </View>
+                  )}
+                </>
+              ) : null}
+            </Animated.ScrollView>
+          </Animated.View>
           <View
             pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
             style={styles.searchContainer}
@@ -2518,7 +2831,14 @@ const SearchScreen: React.FC = () => {
           >
             <View style={styles.promptCardTopShadow}>
               <View style={styles.promptCardWrapper}>
-                <View style={styles.promptCard}>
+                <Animated.View
+                  style={[styles.promptCard, searchBarAnimatedStyle]}
+                  onLayout={({ nativeEvent: { layout } }) => {
+                    if (layout.height !== searchBarHeight) {
+                      setSearchBarHeight(layout.height);
+                    }
+                  }}
+                >
                   <BlurView
                     pointerEvents="none"
                     intensity={45}
@@ -2529,168 +2849,65 @@ const SearchScreen: React.FC = () => {
                     pointerEvents="none"
                     style={[
                       StyleSheet.absoluteFillObject,
-                      {
-                        backgroundColor: 'rgba(255, 255, 255, 1)',
-                        borderRadius: 16,
-                      },
+                      styles.searchBarTint,
                       searchBarSolidAnimatedStyle,
                     ]}
                   />
                   <View pointerEvents="none" style={styles.glassHighlightSmall} />
                   <Pressable style={styles.promptRow} onPress={focusSearchInput}>
-                    <Reanimated.View
-                      style={[
-                        {
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          flex: 1,
-                        },
-                        searchBarInputAnimatedStyle,
-                      ]}
-                      scrollEnabled={resultsScrollEnabled}
-                      bounces={false}
-                      alwaysBounceVertical={false}
-                      scrollEnabled={resultsScrollEnabled}
-                    >
-                      <View style={styles.searchIcon}>
-                        <MagnifyingGlassIcon size={20} color="#6b7280" />
-                      </View>
-                      <TextInput
-                        ref={inputRef}
-                        value={query}
-                        onChangeText={handleQueryChange}
-                        placeholder="What are you craving?"
-                        placeholderTextColor="#6b7280"
-                        style={styles.promptInput}
-                        returnKeyType="search"
-                        onSubmitEditing={handleSubmit}
-                        onFocus={handleSearchFocus}
-                        onBlur={handleSearchBlur}
-                        editable={!isLoading}
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                        clearButtonMode="never"
-                      />
-                    </Reanimated.View>
-                    <Reanimated.View
-                      style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
-                    >
-                      {isLoading ? (
-                        <ActivityIndicator size="small" color="#FB923C" />
-                      ) : query.length > 0 ? (
-                        <Pressable
-                          onPress={handleClear}
-                          accessibilityRole="button"
-                          accessibilityLabel="Clear search"
-                          style={styles.trailingButton}
-                          hitSlop={8}
-                        >
-                          <XMarkIcon size={24} color={ACTIVE_TAB_COLOR} />
-                        </Pressable>
-                      ) : (
-                        <View style={styles.trailingPlaceholder} />
-                      )}
-                    </Reanimated.View>
+                    <View style={styles.promptInner}>
+                      <Reanimated.View
+                        style={[
+                          {
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            flex: 1,
+                          },
+                          searchBarInputAnimatedStyle,
+                        ]}
+                      >
+                        <View style={styles.searchIcon}>
+                          <MagnifyingGlassIcon size={20} color="#6b7280" />
+                        </View>
+                        <TextInput
+                          ref={inputRef}
+                          value={query}
+                          onChangeText={handleQueryChange}
+                          placeholder="What are you craving?"
+                          placeholderTextColor="#6b7280"
+                          style={styles.promptInput}
+                          returnKeyType="search"
+                          onSubmitEditing={handleSubmit}
+                          onFocus={handleSearchFocus}
+                          onBlur={handleSearchBlur}
+                          editable={!isLoading}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          clearButtonMode="never"
+                        />
+                      </Reanimated.View>
+                      <Reanimated.View
+                        style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
+                      >
+                        {isLoading ? (
+                          <ActivityIndicator size="small" color="#FB923C" />
+                        ) : query.length > 0 ? (
+                          <Pressable
+                            onPress={handleClear}
+                            accessibilityRole="button"
+                            accessibilityLabel="Clear search"
+                            style={styles.trailingButton}
+                            hitSlop={8}
+                          >
+                            <XMarkIcon size={24} color={ACTIVE_TAB_COLOR} />
+                          </Pressable>
+                        ) : (
+                          <View style={styles.trailingPlaceholder} />
+                        )}
+                      </Reanimated.View>
+                    </View>
                   </Pressable>
-
-                  {shouldRenderSuggestionPanel && (
-                    <Animated.View
-                      style={[
-                        styles.autocompletePanel,
-                        {
-                          opacity: searchContainerAnim,
-                          transform: [
-                            {
-                              translateY: searchContainerAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [-6, 0],
-                              }),
-                            },
-                          ],
-                        },
-                      ]}
-                    >
-                      {shouldRenderAutocompleteSection && (
-                        <View style={styles.autocompleteSection}>
-                          {isAutocompleteLoading && (
-                            <View style={styles.autocompleteLoadingRow}>
-                              <ActivityIndicator size="small" color="#6366f1" />
-                              <Text style={styles.autocompleteLoadingText}>
-                                Looking for matches…
-                              </Text>
-                            </View>
-                          )}
-                          {!isAutocompleteLoading && suggestions.length === 0 ? (
-                            <Text style={styles.autocompleteEmptyText}>
-                              Keep typing to add a dish or spot
-                            </Text>
-                          ) : (
-                            suggestions.map((match, index) => {
-                              const secondaryLabel =
-                                match.matchType === 'query'
-                                  ? 'Recent search'
-                                  : match.entityType.replace(/_/g, ' ');
-                              const itemKey = match.entityId
-                                ? `${match.entityId}-${index}`
-                                : `${match.name}-${index}`;
-                              return (
-                                <TouchableOpacity
-                                  key={itemKey}
-                                  onPress={() => handleSuggestionPress(match)}
-                                  style={[
-                                    styles.autocompleteItem,
-                                    index === suggestions.length - 1 && !shouldShowRecentSection
-                                      ? styles.autocompleteItemLast
-                                      : null,
-                                  ]}
-                                >
-                                  <Text style={styles.autocompletePrimaryText}>{match.name}</Text>
-                                  <Text style={styles.autocompleteSecondaryText}>
-                                    {secondaryLabel}
-                                  </Text>
-                                </TouchableOpacity>
-                              );
-                            })
-                          )}
-                        </View>
-                      )}
-                      {shouldShowRecentSection && (
-                        <View
-                          style={[
-                            styles.recentSection,
-                            !shouldRenderAutocompleteSection && styles.recentSectionFirst,
-                          ]}
-                        >
-                          <View style={styles.recentHeaderRow}>
-                            <Text style={styles.recentHeaderText}>Recent searches</Text>
-                            {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
-                          </View>
-                          {!isRecentLoading && !hasRecentSearches ? (
-                            <Text style={styles.autocompleteEmptyText}>
-                              Start exploring to build your history
-                            </Text>
-                          ) : (
-                            recentSearches.map((term, index) => (
-                              <TouchableOpacity
-                                key={`${term}-${index}`}
-                                onPress={() => handleRecentSearchPress(term)}
-                                style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-                              >
-                                <Feather
-                                  name="clock"
-                                  size={16}
-                                  color="#6b7280"
-                                  style={styles.recentIcon}
-                                />
-                                <Text style={styles.recentText}>{term}</Text>
-                              </TouchableOpacity>
-                            ))
-                          )}
-                        </View>
-                      )}
-                    </Animated.View>
-                  )}
-                </View>
+                </Animated.View>
               </View>
             </View>
           </View>
@@ -2890,27 +3107,40 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   map: StyleSheet.absoluteFillObject,
-  mapMarker: {
-    alignItems: 'center',
-    zIndex: 1,
+  markerView: {
+    flex: 0,
+    alignSelf: 'flex-start',
   },
-  mapMarkerIconWrapper: {
-    ...shadowStyles.floatingControl,
-    borderRadius: 999,
-    padding: 2,
+  pinWrapper: {
+    width: PIN_MARKER_RENDER_SIZE,
+    height: PIN_MARKER_RENDER_SIZE,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'transparent',
   },
-  mapMarkerLabel: {
-    marginTop: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    color: '#0f172a',
+  pinShadow: {
+    ...MARKER_SHADOW_STYLE,
+  },
+  pinBase: {
+    position: 'absolute',
+    width: PIN_BASE_WIDTH * PIN_BASE_SCALE,
+    height: PIN_BASE_HEIGHT * PIN_BASE_SCALE,
+    resizeMode: 'contain',
+  },
+  pinFill: {
+    position: 'absolute',
+    width: PIN_FILL_WIDTH * PIN_BASE_SCALE,
+    height: PIN_FILL_HEIGHT * PIN_BASE_SCALE,
+    resizeMode: 'contain',
+    left: PIN_FILL_LEFT_OFFSET,
+    top: PIN_FILL_TOP_OFFSET,
+  },
+  pinRank: {
     fontSize: 12,
-    fontWeight: '600',
-    maxWidth: 140,
+    fontWeight: '700',
+    color: '#fff',
     textAlign: 'center',
+    transform: [{ translateY: PIN_RANK_TEXT_OFFSET_Y }],
   },
   overlay: {
     flex: 1,
@@ -2920,6 +3150,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     paddingTop: 6,
+    zIndex: 20,
   },
   promptCardTopShadow: {
     borderRadius: 16,
@@ -2934,27 +3165,79 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingVertical: 0,
     paddingHorizontal: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
-    borderWidth: 0,
-    borderColor: 'transparent',
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.7)',
     overflow: 'hidden',
+    minHeight: 56,
   },
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    minHeight: 52,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    minHeight: 36,
   },
-  autocompletePanel: {
-    marginTop: 6,
+  promptInner: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginHorizontal: 4,
+    gap: 6,
+  },
+  searchBarTint: {
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderRadius: 16,
+  },
+  searchSurface: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.7)',
+    overflow: 'hidden',
+    zIndex: 10,
   },
-  autocompleteSection: {
+  searchSurfaceTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+  },
+  searchSurfaceHighlight: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    top: 120,
+    left: -40,
+    backgroundColor: 'rgba(255, 255, 255, 0.45)',
+    opacity: 0.25,
+    transform: [{ rotate: '35deg' }],
+  },
+  searchSurfaceScroll: {
+    flex: 1,
+  },
+  searchSurfaceContent: {
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingVertical: 12,
+  },
+  autocompleteSectionSurface: {
     paddingHorizontal: 14,
-    paddingVertical: 4,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(241, 245, 249, 0.8)',
+  },
+  recentSectionSurface: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(241, 245, 249, 0.8)',
   },
   autocompleteLoadingRow: {
     flexDirection: 'row',
@@ -2992,15 +3275,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748b',
     textTransform: 'capitalize',
-  },
-  recentSection: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  recentSectionFirst: {
-    borderTopWidth: 0,
   },
   recentHeaderRow: {
     flexDirection: 'row',
@@ -3427,6 +3701,26 @@ const styles = StyleSheet.create({
     paddingTop: 0,
     paddingRight: 48,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: '100%',
+  },
+  rankBadge: {
+    minWidth: 26,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: themeColors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  rankBadgeText: {
+    color: '#ffffff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   resultMetaLine: {
     marginTop: 2,
   },
@@ -3513,11 +3807,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: 'rgba(0, 0, 0, 0.45)',
-    shadowOpacity: 0.65,
-    shadowOffset: { width: 0, height: 0 },
-    shadowRadius: 2.5,
-    elevation: 8,
+    ...MARKER_SHADOW_STYLE,
   },
   userLocationDot: {
     width: 8,
@@ -3629,9 +3919,13 @@ const styles = StyleSheet.create({
   },
   dishTitle: {
     fontSize: 17,
+    flexShrink: 1,
+    minWidth: 0,
   },
   dishCardTitle: {
     fontSize: 18,
+    flexShrink: 1,
+    minWidth: 0,
   },
   dishRestaurantName: {
     marginTop: 4,
