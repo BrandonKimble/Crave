@@ -10,10 +10,12 @@ Everything here is written to be **dish‑first**, **evidence‑backed**, and **
 ### 1.1 Global / Brand
 
 **Brand tagline (short)**
+
 - Option A: “Dish‑first food discovery.”
 - Option B: “Know what to order, not just where to go.”
 
 **One‑line elevator pitch**
+
 - Option A: “Crave ranks the best dishes in your city using community polls and high‑signal food conversations, so you always know what to order next.”
 - Option B: “A dish‑first food discovery app that turns thousands of food opinions into one clear score for every plate and restaurant.”
 
@@ -22,30 +24,37 @@ Everything here is written to be **dish‑first**, **evidence‑backed**, and **
 ### 1.2 Search Screen
 
 **Search placeholder**
+
 - Option A: “What are you craving?”
 - Option B: “Search dishes, spots, or neighborhoods…”
 
 **Secondary helper text under search (if needed)**
+
 - Option A: “See the best dishes nearby, ranked by real diners.”
 - Option B: “Type a craving or restaurant, then filter by map, price, and ‘Open now’.”
 
 **Results header subtitle (above lists)**
+
 - Option A: “Ranked by dish score and community votes.”
 - Option B: “Sorted by how often people rave about them.”
 
 **No‑results empty state (dishes)**
+
 - Option A: “No dishes found. Try a broader search or different area.”
 - Option B: “We don’t have enough data for that yet. Try another dish or zoom the map.”
 
 **No‑results empty state (restaurants)**
+
 - Option A: “No restaurants match those filters. Adjust price, map, or ‘Open now’ to see more.”
 - Option B: “Nothing here yet. Widen your map or relax the filters to discover more spots.”
 
 **“Open now” helper / tooltip**
+
 - Option A: “Only show places that should be open right now based on their hours.”
 - Option B: “Filters out restaurants that appear to be closed at this moment.”
 
 **Minimum votes filter helper**
+
 - Option A: “Hide dishes without enough community signal yet.”
 - Option B: “Only include dishes with a minimum number of total votes and mentions.”
 
@@ -81,24 +90,30 @@ Displayed near contextual restaurant score.
 ### 1.5 Polls Overlay
 
 **Sheet title**
+
 - “Polls”
 
 **Polls header subtitle**
+
 - Option A: “Help the city decide what’s actually best.”
 - Option B: “Your votes directly shape Crave’s rankings.”
 
 **City input helper (optional inline hint)**
+
 - “Set the city or region for the polls you want to see.”
 
 **Add‑option helper text**
+
 - Option A: “Can’t see your pick? Add it and cast your vote.”
 - Option B: “Add a dish or restaurant and let the crowd weigh in.”
 
 **No polls for city**
+
 - Option A: “No active polls here yet. Try another city or start one soon.”
 - Option B: “We’re still warming up in this area. Check back later or switch cities.”
 
 **Per‑poll participation hint (small caption)**
+
 - Option A: “Every vote nudges this dish or restaurant up or down in Crave’s rankings.”
 - Option B: “Your votes act like extra signal in our scores for these dishes and spots.”
 
@@ -107,17 +122,21 @@ Displayed near contextual restaurant score.
 ### 1.6 Restaurant Overlay
 
 **Menu highlights section title**
+
 - “Menu highlights”
 
 **Menu highlights subtitle**
+
 - Option A: “Ranked by dish score”
 - Option B: “The most talked‑about dishes here”
 
 **Evidence row labels**
+
 - “Poll count”
 - “Total votes”
 
 **Operating status text**
+
 - Option A: “Open now”
 - Option B: “Closed • opens at {time}”
 
@@ -126,9 +145,11 @@ Displayed near contextual restaurant score.
 ### 1.7 Bookmarks / Favorites
 
 **Bookmarks screen title**
+
 - “Saved dishes & spots”
 
 **Bookmarks empty state**
+
 - Option A: “Save dishes and restaurants you don’t want to forget.”
 - Option B: “Bookmark your must‑try list so you always know what to eat next.”
 
@@ -137,10 +158,12 @@ Displayed near contextual restaurant score.
 ### 1.8 Notifications & Alerts (stubs)
 
 **Trending dish alert**
+
 - Option A: “Heads up: a dish you saved is trending again in your city.”
 - Option B: “Your bookmarked {dish_name} is getting a fresh wave of praise.”
 
 **New spot for a favorite category**
+
 - Option A: “New contender: a highly‑rated {category} just popped up near you.”
 - Option B: “People are talking about a new {category} spot in your area.”
 
@@ -170,18 +193,22 @@ Displayed near contextual restaurant score.
 ### 2.4 Key Benefit Blocks
 
 **Benefit 1 – Dish‑first rankings**
+
 - Heading: “Dish‑first, not star‑first”
 - Body: “Search for ‘ramen’ or ‘tacos’ and get a ranked list of specific dishes, not just a wall of 4.3‑star restaurants.”
 
 **Benefit 2 – Evidence‑backed scores**
+
 - Heading: “Scores backed by real signal”
 - Body: “Each score blends community polls with how often people rave about a dish or restaurant across food conversations, with fresher praise weighted more.”
 
 **Benefit 3 – Built for quick decisions**
+
 - Heading: “Decide in seconds, not hours”
 - Body: “Filter by map, price, and ‘Open now’ to go from craving to confident choice in under a minute.”
 
 **Benefit 4 – Community you can feel**
+
 - Heading: “Your votes shape the map”
 - Body: “Join live polls to vote on the best dishes and what to order where—your input directly nudges Crave’s rankings.”
 
@@ -249,9 +276,9 @@ Use as bullet list or sprinkled in the long description.
 - App name: **Crave – Dish‑First Food Discovery** `[confirm final app name]`
 - Subtitle: **“Know what to order everywhere you go.”**
 - Primary region focus: **Austin, TX** `[expand to additional cities when live]`
-- External links:  
-  - Privacy Policy: `[LINK_TO_PRIVACY_POLICY]`  
-  - Terms of Use: `[LINK_TO_TERMS_OF_USE]`  
+- External links:
+  - Privacy Policy: `[LINK_TO_PRIVACY_POLICY]`
+  - Terms of Use: `[LINK_TO_TERMS_OF_USE]`
   - Support: `[SUPPORT_EMAIL_OR_URL]`
 
 ### 5.2 Long Description – Full Draft
@@ -266,21 +293,21 @@ Open Crave, pick a craving—**“ramen,” “tacos,” “burger,” “pizza,
 
 **Paragraph 3 – Feature bullets (scan‑friendly, keyword‑rich)**
 
-- **Dish‑first rankings** – Search by dish or category and see **the best things to order** at every restaurant, ranked by Dish score.  
-- **Evidence‑backed scores** – Dish and restaurant scores use community polls and high‑signal food conversations instead of random 5‑star ratings.  
-- **Map‑based “near me” search** – Explore an interactive map to find **restaurants nearby**, filter by neighborhood, and zoom into specific areas.  
-- **“Open now” and price filters** – Quickly filter by **open now, price level, and distance**, so you always find the right meal at the right time.  
-- **Live polls** – Vote in polls like “Best [dish] in [city]” or “What should I order at [restaurant]?” and see your votes influence rankings.  
-- **Saved lists & bookmarks** – Save dishes and restaurants to your own must‑try lists for each city you visit.  
+- **Dish‑first rankings** – Search by dish or category and see **the best things to order** at every restaurant, ranked by Dish score.
+- **Evidence‑backed scores** – Dish and restaurant scores use community polls and high‑signal food conversations instead of random 5‑star ratings.
+- **Map‑based “near me” search** – Explore an interactive map to find **restaurants nearby**, filter by neighborhood, and zoom into specific areas.
+- **“Open now” and price filters** – Quickly filter by **open now, price level, and distance**, so you always find the right meal at the right time.
+- **Live polls** – Vote in polls like “Best [dish] in [city]” or “What should I order at [restaurant]?” and see your votes influence rankings.
+- **Saved lists & bookmarks** – Save dishes and restaurants to your own must‑try lists for each city you visit.
 - **Local first** – Launching in **[PRIMARY_CITY]** with a focus on serious local food, then expanding to more cities. `[update list of supported cities here]`
 
 **Paragraph 4 – Use cases (intent coverage)**
 
 Whether you’re planning **date night**, a quick **lunch near me**, a **late‑night snack**, or building a **foodie hit list** before a trip, Crave helps you decide where to eat and what to order in seconds. It’s perfect if you’ve ever thought:
 
-- “I don’t want just any burger; I want the **best burger** nearby.”  
-- “Where’s the **best ramen / taco / pizza / sushi** in this neighborhood?”  
-- “What do locals actually order at this place?”  
+- “I don’t want just any burger; I want the **best burger** nearby.”
+- “Where’s the **best ramen / taco / pizza / sushi** in this neighborhood?”
+- “What do locals actually order at this place?”
 - “I’m tired of scrolling endless reviews—just show me the **top dishes**.”
 
 **Paragraph 5 – Social proof / positioning vs. other apps**
@@ -332,11 +359,11 @@ We’re starting in **[PRIMARY_CITY]** with a focus on serious local food and ex
 
 > These are **not** visible to users; they’re here as guidance for Apple Search Ads keyword sets, subtitle tweaks, and localization decisions.
 
-- Core: `food discovery`, `food finder`, `restaurant finder`, `restaurant recommendations`, `food app`, `local food`, `where to eat`, `places to eat`, `restaurants near me`, `food near me`.  
-- Dish‑specific: `best dishes`, `best tacos`, `best ramen`, `best burger`, `best pizza`, `best sushi`, `brunch near me`.  
-- Intent / occasion: `date night`, `lunch spots`, `dinner ideas`, `late night food`, `good restaurants`, `hidden gems`, `foodie`.  
+- Core: `food discovery`, `food finder`, `restaurant finder`, `restaurant recommendations`, `food app`, `local food`, `where to eat`, `places to eat`, `restaurants near me`, `food near me`.
+- Dish‑specific: `best dishes`, `best tacos`, `best ramen`, `best burger`, `best pizza`, `best sushi`, `brunch near me`.
+- Intent / occasion: `date night`, `lunch spots`, `dinner ideas`, `late night food`, `good restaurants`, `hidden gems`, `foodie`.
 - Differentiators: `dish scores`, `polls`, `community votes`, `evidence based`, `data driven`, `local recommendations`.
 
 [Later: review Apple’s most recent App Store Review Guidelines and ensure description, screenshots, and external links comply—especially around user‑generated content, data collection, and subscription terms.]  
 [Later: add localized versions of the subtitle and first 2–3 description paragraphs for priority markets once cities beyond the US are supported.]  
-[Later: ensure subscription pricing, auto‑renew terms, and links to Terms of Use / Privacy Policy are clearly presented in the app where required by Apple.] 
+[Later: ensure subscription pricing, auto‑renew terms, and links to Terms of Use / Privacy Policy are clearly presented in the app where required by Apple.]

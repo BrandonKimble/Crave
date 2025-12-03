@@ -252,8 +252,7 @@ const getQualityColor = (index: number, total: number): string => {
     QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= t) ??
     QUALITY_GRADIENT_STOPS[QUALITY_GRADIENT_STOPS.length - 1];
   const prev =
-    [...QUALITY_GRADIENT_STOPS].reverse().find((stop) => stop.t <= t) ??
-    QUALITY_GRADIENT_STOPS[0];
+    [...QUALITY_GRADIENT_STOPS].reverse().find((stop) => stop.t <= t) ?? QUALITY_GRADIENT_STOPS[0];
   const span = Math.max(next.t - prev.t, 0.0001);
   const localT = (t - prev.t) / span;
   const mix = prev.color.map((channel, channelIndex) =>
@@ -1172,7 +1171,15 @@ const SearchScreen: React.FC = () => {
 
       return payload;
     },
-    [openNow, priceLevels, votes100Plus, ensureUserLocation, mapRef, latestBoundsRef, userLocationRef]
+    [
+      openNow,
+      priceLevels,
+      votes100Plus,
+      ensureUserLocation,
+      mapRef,
+      latestBoundsRef,
+      userLocationRef,
+    ]
   );
 
   const onResultsScroll = React.useCallback(
@@ -1417,7 +1424,9 @@ const SearchScreen: React.FC = () => {
   const markersRenderKey = React.useMemo(
     () =>
       restaurantFeatures.features
-        .map((feature) => `${feature.id ?? feature.properties.restaurantId}-${feature.properties.rank}`)
+        .map(
+          (feature) => `${feature.id ?? feature.properties.restaurantId}-${feature.properties.rank}`
+        )
         .join('|'),
     [restaurantFeatures.features]
   );
@@ -2882,7 +2891,10 @@ const SearchScreen: React.FC = () => {
             {sortedRestaurantMarkers.map((feature) => {
               const coordinates = feature.geometry.coordinates as [number, number];
               const markerKey = buildMarkerKey(feature);
-              const zIndex = getMarkerZIndex(feature.properties.rank, sortedRestaurantMarkers.length);
+              const zIndex = getMarkerZIndex(
+                feature.properties.rank,
+                sortedRestaurantMarkers.length
+              );
               return (
                 <MapboxGL.MarkerView
                   key={markerKey}
@@ -3114,9 +3126,7 @@ const SearchScreen: React.FC = () => {
                       clearButtonMode="never"
                     />
                   </Reanimated.View>
-                  <Reanimated.View
-                    style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
-                  >
+                  <Reanimated.View style={[styles.trailingContainer, searchBarInputAnimatedStyle]}>
                     {isLoading ? (
                       <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
                     ) : query.length > 0 ? (
