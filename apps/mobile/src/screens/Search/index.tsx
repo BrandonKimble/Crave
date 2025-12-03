@@ -44,7 +44,7 @@ import pinAsset from '../../assets/pin.png';
 import pinFillAsset from '../../assets/pin-fill.png';
 import pinCollisionAsset from '../../assets/pin-collision.png';
 import { Text } from '../../components';
-import type { OperatingStatus } from '../../types';
+import type { OperatingStatus } from '@crave-search/shared';
 import {
   BookmarkIcon,
   MagnifyingGlassIcon,
@@ -70,7 +70,7 @@ import {
   type SheetGestureContext,
 } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
-import { searchService } from '../../services/search';
+import { searchService, type StructuredSearchRequest } from '../../services/search';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
 import { favoritesService, type Favorite } from '../../services/favorites';
 import { useSearchStore } from '../../store/searchStore';
@@ -225,6 +225,16 @@ const isFullPriceRange = (range: PriceRangeTuple): boolean => {
   return min === PRICE_SLIDER_MIN && max === PRICE_SLIDER_MAX;
 };
 
+type RgbTuple = [number, number, number];
+
+const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
+  { t: 0, color: [40, 186, 130] }, // crisp jade green (top rank)
+  { t: 0.18, color: [68, 200, 120] }, // steady green, avoids minty drift
+  { t: 0.45, color: [255, 201, 94] }, // golden yellow midpoint
+  { t: 0.7, color: [255, 157, 75] }, // bright orange transition
+  { t: 1, color: [255, 110, 82] }, // warm red-orange (lowest rank)
+];
+
 const formatPriceRangeText = (range: PriceRangeTuple): string => {
   const normalized = normalizePriceRangeValues(range);
   if (isFullPriceRange(normalized)) {
@@ -237,24 +247,26 @@ const formatPriceRangeText = (range: PriceRangeTuple): string => {
 };
 
 const getQualityColor = (index: number, total: number): string => {
-  const ratio = index / Math.max(total - 1, 1);
-  // Warmer light green: #a3e635 to lighter warm orange: #fb923c
-  const green = {
-    r: 163,
-    g: 230,
-    b: 53,
-  };
-  const orange = {
-    r: 251,
-    g: 146,
-    b: 60,
-  };
+  const t = Math.max(0, Math.min(1, total <= 1 ? 0 : index / Math.max(total - 1, 1)));
+  const next =
+    QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= t) ??
+    QUALITY_GRADIENT_STOPS[QUALITY_GRADIENT_STOPS.length - 1];
+  const prev =
+    [...QUALITY_GRADIENT_STOPS].reverse().find((stop) => stop.t <= t) ??
+    QUALITY_GRADIENT_STOPS[0];
+  const span = Math.max(next.t - prev.t, 0.0001);
+  const localT = (t - prev.t) / span;
+  const mix = prev.color.map((channel, channelIndex) =>
+    Math.round(channel + (next.color[channelIndex] - channel) * localT)
+  ) as RgbTuple;
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+};
 
-  const r = Math.round(green.r + (orange.r - green.r) * ratio);
-  const g = Math.round(green.g + (orange.g - green.g) * ratio);
-  const b = Math.round(green.b + (orange.b - green.b) * ratio);
-
-  return `rgb(${r}, ${g}, ${b})`;
+const getMarkerZIndex = (rank: unknown, total: number): number => {
+  if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0) {
+    return 0;
+  }
+  return Math.max(0, total - rank + 1);
 };
 
 const mergeById = <T extends Record<string, unknown>>(
@@ -418,7 +430,8 @@ const TOGGLE_BORDER_RADIUS = 8;
 const TOGGLE_HORIZONTAL_PADDING = 7;
 const TOGGLE_VERTICAL_PADDING = 5;
 const TOGGLE_STACK_GAP = 8;
-const NAV_VERTICAL_PADDING = 8;
+const NAV_TOP_PADDING = 8;
+const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
 const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
 
@@ -560,6 +573,7 @@ const SearchScreen: React.FC = () => {
   const [results, setResults] = React.useState<SearchResponse | null>(null);
   const [submittedQuery, setSubmittedQuery] = React.useState('');
   const [isSearchSessionActive, setIsSearchSessionActive] = React.useState(false);
+  const [searchMode, setSearchMode] = React.useState<'natural' | 'shortcut' | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
@@ -987,6 +1001,180 @@ const SearchScreen: React.FC = () => {
     };
   }, []);
 
+  const handleSearchResponse = React.useCallback(
+    (
+      response: SearchResponse,
+      options: {
+        append: boolean;
+        targetPage: number;
+        submittedLabel?: string;
+        pushToHistory?: boolean;
+      }
+    ) => {
+      const { append, targetPage, submittedLabel, pushToHistory } = options;
+
+      let previousFoodCountSnapshot = 0;
+      let previousRestaurantCountSnapshot = 0;
+      let mergedFoodCount = response.food?.length ?? 0;
+      let mergedRestaurantCount = response.restaurants?.length ?? 0;
+
+      setResults((prev) => {
+        const base = append ? prev : null;
+        previousFoodCountSnapshot = base?.food?.length ?? 0;
+        previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
+        const merged = mergeSearchResponses(base, response, append);
+        mergedFoodCount = merged.food?.length ?? 0;
+        mergedRestaurantCount = merged.restaurants?.length ?? 0;
+        return merged;
+      });
+
+      const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
+
+      if (!singleRestaurantCandidate) {
+        const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
+        const totalRestaurantAvailable =
+          response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
+
+        const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
+        const nextHasMoreRestaurants =
+          response.format === 'dual_list'
+            ? mergedRestaurantCount < totalRestaurantAvailable
+            : false;
+
+        setHasMoreFood(nextHasMoreFood);
+        setHasMoreRestaurants(nextHasMoreRestaurants);
+        setCurrentPage(targetPage);
+
+        if (
+          append &&
+          (!(
+            mergedFoodCount > previousFoodCountSnapshot ||
+            mergedRestaurantCount > previousRestaurantCountSnapshot
+          ) ||
+            (!nextHasMoreFood && !nextHasMoreRestaurants))
+        ) {
+          setIsPaginationExhausted(true);
+        }
+      }
+
+      if (!append) {
+        if (submittedLabel) {
+          setSubmittedQuery(submittedLabel);
+        } else {
+          setSubmittedQuery('');
+        }
+
+        const singleRestaurant = resolveSingleRestaurantCandidate(response);
+
+        if (!singleRestaurant) {
+          const hasFoodResults = response?.food?.length > 0;
+          const hasRestaurantsResults =
+            (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
+
+          setActiveTab((prevTab) => {
+            if (prevTab === 'dishes' && hasFoodResults) {
+              return 'dishes';
+            }
+            if (prevTab === 'restaurants' && hasRestaurantsResults) {
+              return 'restaurants';
+            }
+            return hasFoodResults ? 'dishes' : 'restaurants';
+          });
+        }
+
+        if (submittedLabel && pushToHistory) {
+          updateLocalRecentSearches(submittedLabel);
+          void loadRecentHistory();
+        }
+
+        Keyboard.dismiss();
+        setIsPaginationExhausted(false);
+        scrollResultsToTop();
+
+        if (singleRestaurant) {
+          setPanelVisible(false);
+          setSheetState('hidden');
+          sheetStateShared.value = 'hidden';
+        } else {
+          showPanel();
+        }
+      }
+    },
+    [
+      setResults,
+      setHasMoreFood,
+      setHasMoreRestaurants,
+      setCurrentPage,
+      setSubmittedQuery,
+      setActiveTab,
+      updateLocalRecentSearches,
+      loadRecentHistory,
+      scrollResultsToTop,
+      setPanelVisible,
+      setSheetState,
+      sheetStateShared,
+      showPanel,
+    ]
+  );
+
+  const buildStructuredSearchPayload = React.useCallback(
+    async (page: number): Promise<StructuredSearchRequest> => {
+      const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
+      const payload: StructuredSearchRequest = {
+        entities: {},
+        pagination,
+      };
+
+      const effectiveOpenNow = openNow;
+      const normalizedPriceLevels = normalizePriceFilter(priceLevels);
+      const effectiveMinimumVotes = votes100Plus ? MINIMUM_VOTES_FILTER : null;
+
+      if (effectiveOpenNow) {
+        payload.openNow = true;
+      }
+
+      if (normalizedPriceLevels.length > 0) {
+        payload.priceLevels = normalizedPriceLevels;
+      }
+
+      if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
+        payload.minimumVotes = effectiveMinimumVotes;
+      }
+
+      const shouldCaptureBounds = page === 1 && mapRef.current?.getVisibleBounds;
+      if (shouldCaptureBounds) {
+        try {
+          const visibleBounds = await mapRef.current!.getVisibleBounds();
+          if (
+            Array.isArray(visibleBounds) &&
+            visibleBounds.length >= 2 &&
+            isLngLatTuple(visibleBounds[0]) &&
+            isLngLatTuple(visibleBounds[1])
+          ) {
+            payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
+            latestBoundsRef.current = payload.bounds;
+          }
+        } catch (boundsError) {
+          logger.warn('Unable to determine map bounds before submitting structured search', {
+            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
+          });
+        }
+      }
+
+      if (!payload.bounds && latestBoundsRef.current) {
+        payload.bounds = latestBoundsRef.current;
+      }
+
+      const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
+      if (resolvedLocation) {
+        payload.userLocation = resolvedLocation;
+      }
+
+      return payload;
+    },
+    [openNow, priceLevels, votes100Plus, ensureUserLocation, mapRef, latestBoundsRef, userLocationRef]
+  );
+
   const onResultsScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
@@ -1226,6 +1414,13 @@ const SearchScreen: React.FC = () => {
       return aId.localeCompare(bId); // deterministic tie-breaker for equal ranks
     });
   }, [restaurantFeatures.features]);
+  const markersRenderKey = React.useMemo(
+    () =>
+      restaurantFeatures.features
+        .map((feature) => `${feature.id ?? feature.properties.restaurantId}-${feature.properties.rank}`)
+        .join('|'),
+    [restaurantFeatures.features]
+  );
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
@@ -1328,7 +1523,8 @@ const SearchScreen: React.FC = () => {
       hidden,
     };
   }, [insets.top, searchLayout]);
-  const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
+  const shouldRenderSheet =
+    isSearchOverlay && !isSearchFocused && (panelVisible || sheetState !== 'hidden');
 
   React.useEffect(() => {
     if (!isSearchOverlay) {
@@ -1498,15 +1694,6 @@ const SearchScreen: React.FC = () => {
     );
     return { opacity };
   });
-  const searchBarSolidAnimatedStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      sheetTranslateY.value,
-      [snapPointExpanded.value, snapPointMiddle.value],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    return { opacity };
-  });
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
@@ -1640,6 +1827,7 @@ const SearchScreen: React.FC = () => {
         setSheetState('hidden');
         sheetStateShared.value = 'hidden';
         sheetTranslateY.value = snapPoints.hidden;
+        setSearchMode('natural');
         setIsSearchSessionActive(true);
         setIsAutocompleteSuppressed(true);
         setShowSuggestions(false);
@@ -1717,83 +1905,12 @@ const SearchScreen: React.FC = () => {
         const response = await searchService.naturalSearch(payload);
         logger.info('Search response payload', response);
 
-        let previousFoodCountSnapshot = 0;
-        let previousRestaurantCountSnapshot = 0;
-        let mergedFoodCount = response.food?.length ?? 0;
-        let mergedRestaurantCount = response.restaurants?.length ?? 0;
-
-        setResults((prev) => {
-          const base = append ? prev : null;
-          previousFoodCountSnapshot = base?.food?.length ?? 0;
-          previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
-          const merged = mergeSearchResponses(base, response, append);
-          mergedFoodCount = merged.food?.length ?? 0;
-          mergedRestaurantCount = merged.restaurants?.length ?? 0;
-          return merged;
+        handleSearchResponse(response, {
+          append,
+          targetPage,
+          submittedLabel: trimmed,
+          pushToHistory: !append,
         });
-
-        const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
-
-        if (!singleRestaurantCandidate) {
-          const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
-          const totalRestaurantAvailable =
-            response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
-
-          const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-          const nextHasMoreRestaurants =
-            response.format === 'dual_list'
-              ? mergedRestaurantCount < totalRestaurantAvailable
-              : false;
-
-          setHasMoreFood(nextHasMoreFood);
-          setHasMoreRestaurants(nextHasMoreRestaurants);
-          setCurrentPage(targetPage);
-          if (
-            append &&
-            (!(
-              mergedFoodCount > previousFoodCountSnapshot ||
-              mergedRestaurantCount > previousRestaurantCountSnapshot
-            ) ||
-              (!nextHasMoreFood && !nextHasMoreRestaurants))
-          ) {
-            setIsPaginationExhausted(true);
-          }
-        }
-
-        if (!append) {
-          setSubmittedQuery(trimmed);
-          const singleRestaurant = resolveSingleRestaurantCandidate(response);
-
-          if (!singleRestaurant) {
-            const hasFoodResults = response?.food?.length > 0;
-            const hasRestaurantsResults =
-              (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
-            setActiveTab((prevTab) => {
-              if (prevTab === 'dishes' && hasFoodResults) {
-                return 'dishes';
-              }
-              if (prevTab === 'restaurants' && hasRestaurantsResults) {
-                return 'restaurants';
-              }
-              return hasFoodResults ? 'dishes' : 'restaurants';
-            });
-          }
-
-          updateLocalRecentSearches(trimmed);
-          void loadRecentHistory();
-          Keyboard.dismiss();
-          setIsPaginationExhausted(false);
-          scrollResultsToTop();
-
-          if (singleRestaurant) {
-            setPanelVisible(false);
-            setSheetState('hidden');
-            sheetStateShared.value = 'hidden';
-            sheetTranslateY.value = snapPoints.hidden;
-          } else {
-            showPanel();
-          }
-        }
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
         if (!append) {
@@ -1833,12 +1950,14 @@ const SearchScreen: React.FC = () => {
       searchService,
       canLoadMore,
       scrollResultsToTop,
+      handleSearchResponse,
       ensureUserLocation,
       snapPoints.hidden,
       sheetStateShared,
       sheetTranslateY,
       setPanelVisible,
       setSheetState,
+      setSearchMode,
     ]
   );
 
@@ -1848,6 +1967,76 @@ const SearchScreen: React.FC = () => {
     Keyboard.dismiss();
     void submitSearch();
   }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
+
+  const handleBestDishesHere = React.useCallback(() => {
+    if (isLoading || isLoadingMore) {
+      return;
+    }
+
+    setSearchMode('shortcut');
+    setIsSearchSessionActive(true);
+    setActiveTab('dishes');
+    setError(null);
+    setPanelVisible(false);
+    setSheetState('hidden');
+    sheetStateShared.value = 'hidden';
+    sheetTranslateY.value = snapPoints.hidden;
+    setHasMoreFood(false);
+    setHasMoreRestaurants(false);
+    setIsPaginationExhausted(false);
+    setCurrentPage(1);
+    lastAutoOpenKeyRef.current = null;
+    setIsAutocompleteSuppressed(true);
+    setShowSuggestions(false);
+    Keyboard.dismiss();
+
+    const run = async () => {
+      try {
+        setIsLoading(true);
+        const payload = await buildStructuredSearchPayload(1);
+        const response = await searchService.structuredSearch(payload);
+        logger.info('Structured search response payload', response);
+        handleSearchResponse(response, {
+          append: false,
+          targetPage: 1,
+          submittedLabel: 'Best dishes here',
+          pushToHistory: false,
+        });
+      } catch (err) {
+        logger.error('Best dishes here request failed', {
+          message: err instanceof Error ? err.message : 'unknown error',
+        });
+        setError('Unable to fetch results. Please try again.');
+        showPanel();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    void run();
+  }, [
+    isLoading,
+    isLoadingMore,
+    setIsSearchSessionActive,
+    setActiveTab,
+    setError,
+    setPanelVisible,
+    setSheetState,
+    sheetStateShared,
+    sheetTranslateY,
+    setHasMoreFood,
+    setHasMoreRestaurants,
+    setIsPaginationExhausted,
+    setCurrentPage,
+    setIsAutocompleteSuppressed,
+    setShowSuggestions,
+    buildStructuredSearchPayload,
+    handleSearchResponse,
+    showPanel,
+    snapPoints.hidden,
+    lastAutoOpenKeyRef,
+    setSearchMode,
+  ]);
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
@@ -1872,6 +2061,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions(false);
       hidePanel();
       setIsSearchSessionActive(false);
+      setSearchMode(null);
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
       setCurrentPage(1);
@@ -1885,7 +2075,7 @@ const SearchScreen: React.FC = () => {
         });
       }
     },
-    [hidePanel, setIsSearchSessionActive, scrollResultsToTop]
+    [hidePanel, setIsSearchSessionActive, setSearchMode, scrollResultsToTop]
   );
 
   const handleClear = React.useCallback(() => {
@@ -1934,9 +2124,56 @@ const SearchScreen: React.FC = () => {
     setSuggestions([]);
     setIsAutocompleteLoading(false);
   }, []);
+  const loadMoreShortcutResults = React.useCallback(() => {
+    if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
+      return;
+    }
+
+    const nextPage = currentPage + 1;
+
+    const run = async () => {
+      try {
+        setIsLoadingMore(true);
+        const payload = await buildStructuredSearchPayload(nextPage);
+        const response = await searchService.structuredSearch(payload);
+        logger.info('Structured search pagination payload', response);
+        handleSearchResponse(response, {
+          append: true,
+          targetPage: nextPage,
+          submittedLabel: submittedQuery || 'Best dishes here',
+          pushToHistory: false,
+        });
+      } catch (err) {
+        logger.error('Best dishes here pagination failed', {
+          message: err instanceof Error ? err.message : 'unknown error',
+        });
+        setError('Unable to load more results. Please try again.');
+      } finally {
+        setIsLoadingMore(false);
+      }
+    };
+
+    void run();
+  }, [
+    isLoading,
+    isLoadingMore,
+    results,
+    canLoadMore,
+    isPaginationExhausted,
+    currentPage,
+    buildStructuredSearchPayload,
+    handleSearchResponse,
+    submittedQuery,
+    setIsLoadingMore,
+    setError,
+  ]);
 
   const loadMoreResults = React.useCallback(() => {
     if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
+      return;
+    }
+    if (searchMode === 'shortcut') {
+      loadMoreShortcutResults();
       return;
     }
     const nextPage = currentPage + 1;
@@ -1950,11 +2187,13 @@ const SearchScreen: React.FC = () => {
     isLoadingMore,
     results,
     canLoadMore,
+    isPaginationExhausted,
+    searchMode,
+    loadMoreShortcutResults,
     currentPage,
     submittedQuery,
     query,
     submitSearch,
-    isPaginationExhausted,
   ]);
 
   const toggleOpenNow = React.useCallback(() => {
@@ -2638,10 +2877,12 @@ const SearchScreen: React.FC = () => {
           zoomLevel={mapCenter ? mapZoom : USA_FALLBACK_ZOOM}
           pitch={32}
         />
-        {sortedRestaurantMarkers.length
-          ? sortedRestaurantMarkers.map((feature) => {
+        {sortedRestaurantMarkers.length ? (
+          <React.Fragment key={`markers-${markersRenderKey}`}>
+            {sortedRestaurantMarkers.map((feature) => {
               const coordinates = feature.geometry.coordinates as [number, number];
               const markerKey = buildMarkerKey(feature);
+              const zIndex = getMarkerZIndex(feature.properties.rank, sortedRestaurantMarkers.length);
               return (
                 <MapboxGL.MarkerView
                   key={markerKey}
@@ -2649,7 +2890,7 @@ const SearchScreen: React.FC = () => {
                   coordinate={coordinates}
                   anchor={{ x: 0.5, y: 1 }}
                   allowOverlap
-                  style={styles.markerView}
+                  style={[styles.markerView, { zIndex }]}
                 >
                   <View style={[styles.pinWrapper, styles.pinShadow]}>
                     <Image source={pinAsset} style={styles.pinBase} />
@@ -2666,8 +2907,9 @@ const SearchScreen: React.FC = () => {
                   </View>
                 </MapboxGL.MarkerView>
               );
-            })
-          : null}
+            })}
+          </React.Fragment>
+        ) : null}
         {restaurantFeatures.features.length ? (
           <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
             <MapboxGL.SymbolLayer
@@ -2717,7 +2959,13 @@ const SearchScreen: React.FC = () => {
         >
           <Animated.View
             pointerEvents={isSearchFocused ? 'auto' : 'none'}
-            style={[styles.searchSurface, searchSurfaceAnimatedStyle]}
+            style={[
+              styles.searchSurface,
+              searchSurfaceAnimatedStyle,
+              {
+                top: searchLayout.top + searchLayout.height + 8,
+              },
+            ]}
           >
             <BlurView
               pointerEvents="none"
@@ -2732,7 +2980,6 @@ const SearchScreen: React.FC = () => {
               contentContainerStyle={[
                 styles.searchSurfaceContent,
                 {
-                  paddingTop: searchBarHeight ? searchBarHeight + 18 : 120,
                   paddingBottom: bottomInset + 32,
                 },
               ]}
@@ -2827,88 +3074,82 @@ const SearchScreen: React.FC = () => {
               });
             }}
           >
-            <View style={styles.promptCardTopShadow}>
-              <View style={styles.promptCardWrapper}>
-                <Animated.View
-                  style={[styles.promptCard, searchBarAnimatedStyle]}
-                  onLayout={({ nativeEvent: { layout } }) => {
-                    if (layout.height !== searchBarHeight) {
-                      setSearchBarHeight(layout.height);
-                    }
-                  }}
-                >
-                  <BlurView
-                    pointerEvents="none"
-                    intensity={45}
-                    tint="light"
-                    style={StyleSheet.absoluteFillObject}
-                  />
+            <Animated.View
+              style={[styles.promptCard, searchBarAnimatedStyle]}
+              onLayout={({ nativeEvent: { layout } }) => {
+                if (layout.height !== searchBarHeight) {
+                  setSearchBarHeight(layout.height);
+                }
+              }}
+            >
+              <Pressable style={styles.promptRow} onPress={focusSearchInput}>
+                <View style={styles.promptInner}>
                   <Reanimated.View
-                    pointerEvents="none"
                     style={[
-                      StyleSheet.absoluteFillObject,
-                      styles.searchBarTint,
-                      searchBarSolidAnimatedStyle,
+                      {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        flex: 1,
+                      },
+                      searchBarInputAnimatedStyle,
                     ]}
-                  />
-                  <View pointerEvents="none" style={styles.glassHighlightSmall} />
-                  <Pressable style={styles.promptRow} onPress={focusSearchInput}>
-                    <View style={styles.promptInner}>
-                      <Reanimated.View
-                        style={[
-                          {
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            flex: 1,
-                          },
-                          searchBarInputAnimatedStyle,
-                        ]}
-                      >
-                        <View style={styles.searchIcon}>
-                          <MagnifyingGlassIcon size={20} color="#6b7280" />
-                        </View>
-                        <TextInput
-                          ref={inputRef}
-                          value={query}
-                          onChangeText={handleQueryChange}
-                          placeholder="What are you craving?"
-                          placeholderTextColor="#6b7280"
-                          style={styles.promptInput}
-                          returnKeyType="search"
-                          onSubmitEditing={handleSubmit}
-                          onFocus={handleSearchFocus}
-                          onBlur={handleSearchBlur}
-                          editable={!isLoading}
-                          autoCapitalize="none"
-                          autoCorrect={false}
-                          clearButtonMode="never"
-                        />
-                      </Reanimated.View>
-                      <Reanimated.View
-                        style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
-                      >
-                        {isLoading ? (
-                          <ActivityIndicator size="small" color="#FB923C" />
-                        ) : query.length > 0 ? (
-                          <Pressable
-                            onPress={handleClear}
-                            accessibilityRole="button"
-                            accessibilityLabel="Clear search"
-                            style={styles.trailingButton}
-                            hitSlop={8}
-                          >
-                            <XMarkIcon size={24} color={ACTIVE_TAB_COLOR} />
-                          </Pressable>
-                        ) : (
-                          <View style={styles.trailingPlaceholder} />
-                        )}
-                      </Reanimated.View>
+                  >
+                    <View style={styles.searchIcon}>
+                      <MagnifyingGlassIcon size={20} color="#6b7280" />
                     </View>
-                  </Pressable>
-                </Animated.View>
-              </View>
-            </View>
+                    <TextInput
+                      ref={inputRef}
+                      value={query}
+                      onChangeText={handleQueryChange}
+                      placeholder="What are you craving?"
+                      placeholderTextColor="#9ca3af"
+                      style={styles.promptInput}
+                      returnKeyType="search"
+                      onSubmitEditing={handleSubmit}
+                      onFocus={handleSearchFocus}
+                      onBlur={handleSearchBlur}
+                      editable={!isLoading}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      clearButtonMode="never"
+                    />
+                  </Reanimated.View>
+                  <Reanimated.View
+                    style={[styles.trailingContainer, searchBarInputAnimatedStyle]}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+                    ) : query.length > 0 ? (
+                      <Pressable
+                        onPress={handleClear}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear search"
+                        style={styles.trailingButton}
+                        hitSlop={8}
+                      >
+                        <XMarkIcon size={24} color={ACTIVE_TAB_COLOR} />
+                      </Pressable>
+                    ) : (
+                      <View style={styles.trailingPlaceholder} />
+                    )}
+                  </Reanimated.View>
+                </View>
+              </Pressable>
+            </Animated.View>
           </View>
+          {!isSearchFocused && (
+            <View style={styles.searchShortcutsRow}>
+              <Pressable
+                onPress={handleBestDishesHere}
+                style={styles.searchShortcutChip}
+                accessibilityRole="button"
+                accessibilityLabel="Show best dishes here"
+                hitSlop={8}
+              >
+                <Text style={styles.searchShortcutChipText}>Best dishes here</Text>
+              </Pressable>
+            </View>
+          )}
           {shouldRenderSheet ? (
             <>
               <Reanimated.View
@@ -3044,7 +3285,7 @@ const SearchScreen: React.FC = () => {
       )}
       {!shouldHideBottomNav && (
         <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-          <View style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_VERTICAL_PADDING }]}>
+          <View style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}>
             {navItems.map((item) => {
               const active = activeOverlay === item.key;
               const iconColor = active ? ACTIVE_TAB_COLOR : '#94a3b8';
@@ -3147,49 +3388,60 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
-    paddingTop: 6,
+    paddingTop: 10,
     zIndex: 20,
   },
+  searchShortcutsRow: {
+    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
+    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 8,
+  },
+  searchShortcutChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  searchShortcutChipText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#0f172a',
+  },
   promptCardTopShadow: {
-    borderRadius: 16,
-    ...shadowStyles.surfaceTopLight,
+    borderRadius: 0,
   },
   promptCardWrapper: {
-    borderRadius: 16,
-    ...shadowStyles.surfaceBottomHeavy,
+    borderRadius: 0,
   },
   promptCard: {
-    position: 'relative',
     borderRadius: 16,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: '#ffffff',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
-    overflow: 'hidden',
-    minHeight: 56,
+    borderColor: '#e5e7eb',
+    minHeight: 52,
+    ...shadowStyles.surfaceTopLight,
   },
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    minHeight: 36,
+    minHeight: 40,
   },
   promptInner: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginHorizontal: 4,
-    gap: 6,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    gap: 8,
   },
   searchBarTint: {
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderRadius: 16,
+    backgroundColor: 'transparent',
   },
   searchSurface: {
     ...StyleSheet.absoluteFillObject,
@@ -3460,9 +3712,9 @@ const styles = StyleSheet.create({
   bottomNav: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-evenly',
-    paddingHorizontal: 24,
-    paddingTop: NAV_VERTICAL_PADDING,
+    justifyContent: 'space-between',
+    paddingHorizontal: 22,
+    paddingTop: NAV_TOP_PADDING,
     backgroundColor: '#ffffff',
     borderTopWidth: 1,
     borderTopColor: 'rgba(15, 23, 42, 0.08)',
@@ -3474,7 +3726,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   navIcon: {
-    marginBottom: 4,
+    marginBottom: 2,
   },
   navLabel: {
     fontSize: 12,
@@ -3992,14 +4244,8 @@ const styles = StyleSheet.create({
   },
   glassHighlightSmall: {
     position: 'absolute',
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    top: -60,
-    right: -30,
-    backgroundColor: 'rgba(255, 255, 255, 0.5)',
-    opacity: 0.35,
-    transform: [{ rotate: '25deg' }],
+    width: 0,
+    height: 0,
   },
 });
 
