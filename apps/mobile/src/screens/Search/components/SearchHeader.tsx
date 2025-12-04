@@ -1,5 +1,12 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, TextInput, View, type ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { Search, ChevronLeft, X } from 'lucide-react-native';
 

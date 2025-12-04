@@ -118,7 +118,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           accessibilityState={{ disabled: isLoading, selected: openNow }}
           style={[
             styles.openNowButton,
-            openNow && { ...styles.openNowButtonActive, borderColor: accentColor, backgroundColor: accentColor },
+            openNow && {
+              ...styles.openNowButtonActive,
+              borderColor: accentColor,
+              backgroundColor: accentColor,
+            },
             isLoading && styles.openNowButtonDisabled,
           ]}
         >
@@ -128,7 +132,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             color={openNow ? '#ffffff' : '#475569'}
             style={styles.openNowIcon}
           />
-          <Text variant="caption" weight="semibold" style={[styles.openNowText, openNow && styles.openNowTextActive]}>
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.openNowText, openNow && styles.openNowTextActive]}
+          >
             Open now
           </Text>
         </Pressable>
@@ -144,11 +152,18 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           }}
           style={[
             styles.priceButton,
-            priceButtonActive && [styles.priceButtonActive, { borderColor: accentColor, backgroundColor: accentColor }],
+            priceButtonActive && [
+              styles.priceButtonActive,
+              { borderColor: accentColor, backgroundColor: accentColor },
+            ],
             isLoading && styles.priceButtonDisabled,
           ]}
         >
-          <Text style={[styles.priceButtonBullet, priceButtonActive && styles.priceButtonBulletActive]}>·</Text>
+          <Text
+            style={[styles.priceButtonBullet, priceButtonActive && styles.priceButtonBulletActive]}
+          >
+            ·
+          </Text>
           <Text
             variant="caption"
             weight="semibold"
@@ -171,7 +186,10 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           accessibilityState={{ disabled: isLoading, selected: votesFilterActive }}
           style={[
             styles.votesButton,
-            votesFilterActive && [styles.votesButtonActive, { borderColor: accentColor, backgroundColor: accentColor }],
+            votesFilterActive && [
+              styles.votesButtonActive,
+              { borderColor: accentColor, backgroundColor: accentColor },
+            ],
             isLoading && styles.votesButtonDisabled,
           ]}
         >
@@ -181,7 +199,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             color={votesFilterActive ? '#ffffff' : '#475569'}
             style={styles.votesIcon}
           />
-          <Text variant="caption" weight="semibold" style={[styles.votesText, votesFilterActive && styles.votesTextActive]}>
+          <Text
+            variant="caption"
+            weight="semibold"
+            style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+          >
             100+ votes
           </Text>
         </Pressable>

@@ -59,14 +59,18 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             suggestions.map((match, index) => {
               const secondaryLabel =
                 match.matchType === 'query' ? 'Recent search' : match.entityType.replace(/_/g, ' ');
-              const itemKey = match.entityId ? `${match.entityId}-${index}` : `${match.name}-${index}`;
+              const itemKey = match.entityId
+                ? `${match.entityId}-${index}`
+                : `${match.name}-${index}`;
               return (
                 <TouchableOpacity
                   key={itemKey}
                   onPress={() => onSelectSuggestion(match)}
                   style={[
                     styles.autocompleteItem,
-                    index === suggestions.length - 1 && !showRecent ? styles.autocompleteItemLast : null,
+                    index === suggestions.length - 1 && !showRecent
+                      ? styles.autocompleteItemLast
+                      : null,
                   ]}
                 >
                   <Text style={styles.autocompletePrimaryText}>{match.name}</Text>

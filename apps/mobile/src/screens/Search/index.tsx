@@ -16,7 +16,10 @@ import {
   Easing as RNEasing,
 } from 'react-native';
 import type { TextInput } from 'react-native';
-import { PanGestureHandler, type PanGestureHandlerGestureEvent } from 'react-native-gesture-handler';
+import {
+  PanGestureHandler,
+  type PanGestureHandlerGestureEvent,
+} from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, {
   Extrapolation,
@@ -131,7 +134,7 @@ const PIN_BASE_WIDTH = 96;
 const PIN_BASE_HEIGHT = 96;
 const PIN_FILL_WIDTH = 80;
 const PIN_FILL_HEIGHT = 72;
-const PIN_FILL_SCALE = .97;
+const PIN_FILL_SCALE = 0.97;
 const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT; // single scale applied to base and fill to preserve proportions
 const PIN_FILL_VERTICAL_BIAS = -4.8; // nudge up to account for pin tip area
 const PIN_FILL_HORIZONTAL_BIAS = -0.1; // tweak left/right centering if asset padding looks uneven
@@ -744,8 +747,8 @@ const SearchScreen: React.FC = () => {
       status?.isOpen && typeof status.closesInMinutes === 'number'
         ? status.closesInMinutes
         : status?.isOpen
-        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-        : null;
+          ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+          : null;
     const isClosingSoon =
       status?.isOpen &&
       typeof effectiveMinutesUntilClose === 'number' &&
@@ -863,21 +866,24 @@ const SearchScreen: React.FC = () => {
   };
   const bottomInset = Math.max(insets.bottom, 12);
   const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isLoading);
-  const showCachedSuggestionsIfFresh = React.useCallback((trimmed: string) => {
-    const now = Date.now();
-    const cachedQuery = lastAutocompleteQueryRef.current;
-    const cachedResults = lastAutocompleteResultsRef.current;
-    const cachedAt = lastAutocompleteTimestampRef.current;
-    const cacheIsFresh = cachedQuery === trimmed && now - cachedAt <= AUTOCOMPLETE_CACHE_TTL_MS;
+  const showCachedSuggestionsIfFresh = React.useCallback(
+    (trimmed: string) => {
+      const now = Date.now();
+      const cachedQuery = lastAutocompleteQueryRef.current;
+      const cachedResults = lastAutocompleteResultsRef.current;
+      const cachedAt = lastAutocompleteTimestampRef.current;
+      const cacheIsFresh = cachedQuery === trimmed && now - cachedAt <= AUTOCOMPLETE_CACHE_TTL_MS;
 
-    if (cacheIsFresh) {
-      setSuggestions(cachedResults);
-      setShowSuggestions(cachedResults.length > 0);
-      cancelAutocomplete();
-      return true;
-    }
-    return false;
-  }, [cancelAutocomplete]);
+      if (cacheIsFresh) {
+        setSuggestions(cachedResults);
+        setShowSuggestions(cachedResults.length > 0);
+        cancelAutocomplete();
+        return true;
+      }
+      return false;
+    },
+    [cancelAutocomplete]
+  );
   const focusSearchInput = React.useCallback(() => {
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
@@ -1304,17 +1310,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-          ? [restaurant.displayLocation]
-          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-          ? [
-              {
-                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                latitude: restaurant.latitude,
-                longitude: restaurant.longitude,
-                isPrimary: true,
-              },
-            ]
-          : [];
+            ? [restaurant.displayLocation]
+            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+              ? [
+                  {
+                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                    latitude: restaurant.latitude,
+                    longitude: restaurant.longitude,
+                    isPrimary: true,
+                  },
+                ]
+              : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
@@ -1841,8 +1847,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       try {
         if (append) {
@@ -2082,7 +2088,14 @@ const SearchScreen: React.FC = () => {
         });
       }
     },
-    [cancelAutocomplete, cancelSearch, hidePanel, setIsSearchSessionActive, setSearchMode, scrollResultsToTop]
+    [
+      cancelAutocomplete,
+      cancelSearch,
+      hidePanel,
+      setIsSearchSessionActive,
+      setSearchMode,
+      scrollResultsToTop,
+    ]
   );
 
   const handleClear = React.useCallback(() => {
@@ -2464,7 +2477,12 @@ const SearchScreen: React.FC = () => {
                 style={styles.likeButton}
                 hitSlop={8}
               >
-                <LucideHeart size={20} color={isLiked ? '#ef4444' : '#cbd5e1'} fill={isLiked ? '#ef4444' : 'none'} strokeWidth={2} />
+                <LucideHeart
+                  size={20}
+                  color={isLiked ? '#ef4444' : '#cbd5e1'}
+                  fill={isLiked ? '#ef4444' : 'none'}
+                  strokeWidth={2}
+                />
               </Pressable>
               <Pressable
                 onPress={handleShare}
@@ -2565,7 +2583,12 @@ const SearchScreen: React.FC = () => {
                 style={styles.likeButton}
                 hitSlop={8}
               >
-                <LucideHeart size={20} color={isLiked ? '#ef4444' : '#cbd5e1'} fill={isLiked ? '#ef4444' : 'none'} strokeWidth={2} />
+                <LucideHeart
+                  size={20}
+                  color={isLiked ? '#ef4444' : '#cbd5e1'}
+                  fill={isLiked ? '#ef4444' : 'none'}
+                  strokeWidth={2}
+                />
               </Pressable>
               <Pressable
                 onPress={handleShare}
@@ -2717,11 +2740,7 @@ const SearchScreen: React.FC = () => {
     [activeTab, isDishesTab, renderDishCard, renderRestaurantCard]
   );
   const listHeader = React.useMemo(
-    () => (
-      <View style={styles.resultsListHeader}>
-        {filtersHeader}
-      </View>
-    ),
+    () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
     [filtersHeader]
   );
   const flatListProps: FlashListProps<FoodResult | RestaurantResult> = React.useMemo(
@@ -2732,7 +2751,9 @@ const SearchScreen: React.FC = () => {
       ListHeaderComponent: listHeader,
       ListFooterComponent: (
         <View style={styles.loadMoreSpacer}>
-          {isLoadingMore && canLoadMore ? <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} /> : null}
+          {isLoadingMore && canLoadMore ? (
+            <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+          ) : null}
         </View>
       ),
       ListEmptyComponent: (
@@ -2912,20 +2933,20 @@ const SearchScreen: React.FC = () => {
                 showAutocomplete={shouldRenderAutocompleteSection}
                 showRecent={shouldShowRecentSection}
                 suggestions={suggestions}
-            recentSearches={recentSearches}
-            hasRecentSearches={hasRecentSearches}
-            isAutocompleteLoading={isAutocompleteLoading}
-            isRecentLoading={isRecentLoading}
-            onSelectSuggestion={handleSuggestionPress}
-            onSelectRecent={handleRecentSearchPress}
-          />
-        </Animated.ScrollView>
-      </Reanimated.View>
-      <View
-        pointerEvents="auto"
-        style={styles.searchContainer}
-        onLayout={({ nativeEvent: { layout } }) => {
-          setSearchLayout((prev) => {
+                recentSearches={recentSearches}
+                hasRecentSearches={hasRecentSearches}
+                isAutocompleteLoading={isAutocompleteLoading}
+                isRecentLoading={isRecentLoading}
+                onSelectSuggestion={handleSuggestionPress}
+                onSelectRecent={handleRecentSearchPress}
+              />
+            </Animated.ScrollView>
+          </Reanimated.View>
+          <View
+            pointerEvents="auto"
+            style={styles.searchContainer}
+            onLayout={({ nativeEvent: { layout } }) => {
+              setSearchLayout((prev) => {
                 if (prev.top === layout.y && prev.height === layout.height) {
                   return prev;
                 }
@@ -2972,10 +2993,7 @@ const SearchScreen: React.FC = () => {
                 pointerEvents="none"
                 style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
               />
-              <PanGestureHandler
-                ref={sheetPanRef}
-                onGestureEvent={sheetPanGesture}
-              >
+              <PanGestureHandler ref={sheetPanRef} onGestureEvent={sheetPanGesture}>
                 <Reanimated.View
                   style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
                   pointerEvents={panelVisible ? 'auto' : 'none'}
