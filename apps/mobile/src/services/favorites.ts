@@ -21,8 +21,8 @@ export const favoritesService = {
     const response = await api.get<Favorite[]>('/favorites');
     return response.data;
   },
-  async add(entityId: string): Promise<Favorite> {
-    const response = await api.post<Favorite>('/favorites', { entityId });
+  async add(entityId: string, entityType?: FavoriteEntityType): Promise<Favorite> {
+    const response = await api.post<Favorite>('/favorites', { entityId, entityType });
     return response.data;
   },
   async remove(favoriteId: string): Promise<void> {

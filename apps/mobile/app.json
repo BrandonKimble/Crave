@@ -2,6 +2,7 @@
   "expo": {
     "name": "crave-search",
     "slug": "crave-search-mobile",
+    "scheme": "crave",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/icon.png",
@@ -12,7 +13,9 @@
       "backgroundColor": "#ffffff"
     },
     "entryPoint": "./AppEntry.js",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "plugins": [],
     "ios": {
       "supportsTablet": true,
@@ -25,6 +28,12 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.crave"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "afbb04ee-213b-4227-a9d2-c87a8f413034"
+      }
+    },
+    "owner": "brandonk"
   }
 }

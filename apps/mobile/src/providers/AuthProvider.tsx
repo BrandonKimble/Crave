@@ -92,9 +92,11 @@ const resolveExpoProjectId = (): string | null => {
   return (
     readProjectId(expoExtra.eas) ??
     readProjectId(expoExtra.expoClient) ??
+    readProjectId(expoExtra) ??
     easConfigProjectId ??
     readProjectId(manifestExtra.eas) ??
     readProjectId(manifestExtra.expoClient) ??
+    readProjectId(manifestExtra) ??
     null
   );
 };
@@ -108,10 +110,28 @@ const PushNotificationRegistrar: React.FC = () => {
     city: string | null;
     userId: string | null;
   } | null>(null);
+  const missingProjectIdWarnedRef = React.useRef(false);
 
   React.useEffect(() => {
     const register = async () => {
       try {
+        if (!Constants.isDevice) {
+          setPushToken(null);
+          return;
+        }
+
+        const projectId = resolveExpoProjectId();
+        if (!projectId) {
+          if (!missingProjectIdWarnedRef.current) {
+            console.warn(
+              '[Notifications] Missing Expo projectId. Set EXPO_PUBLIC_PROJECT_ID in apps/mobile/.env (or add extra.eas.projectId) to enable push tokens.'
+            );
+            missingProjectIdWarnedRef.current = true;
+          }
+          setPushToken(null);
+          return;
+        }
+
         const permission = await Notifications.getPermissionsAsync();
         let status = permission.status;
         if (status !== 'granted') {
@@ -119,13 +139,6 @@ const PushNotificationRegistrar: React.FC = () => {
           status = request.status;
         }
         if (status !== 'granted') {
-          setPushToken(null);
-          return;
-        }
-
-        const projectId = resolveExpoProjectId();
-        if (!projectId) {
-          console.warn('[Notifications] Missing Expo projectId');
           setPushToken(null);
           return;
         }

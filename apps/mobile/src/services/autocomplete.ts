@@ -17,13 +17,21 @@ export type AutocompleteResponse = {
   querySuggestions?: string[];
 };
 
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 export const autocompleteService = {
-  async fetchEntities(query: string): Promise<AutocompleteResponse> {
-    const { data } = await api.post<AutocompleteResponse>('/autocomplete/entities', {
-      query,
-      limit: 6,
-      enableOnDemand: false,
-    });
+  async fetchEntities(query: string, options: RequestOptions = {}): Promise<AutocompleteResponse> {
+    const { data } = await api.post<AutocompleteResponse>(
+      '/autocomplete/entities',
+      {
+        query,
+        limit: 6,
+        enableOnDemand: false,
+      },
+      { signal: options.signal }
+    );
     return data;
   },
 };

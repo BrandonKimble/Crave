@@ -85,6 +85,23 @@ export const XCircleIcon: React.FC<OutlineIconProps> = ({
   </Svg>
 );
 
+export const ChevronLeftIcon: React.FC<OutlineIconProps> = ({
+  size = 20,
+  color = '#0f172a',
+  strokeWidth = DEFAULT_STROKE_WIDTH,
+  style,
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={style}>
+    <Path
+      stroke={color}
+      strokeWidth={strokeWidth}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15.75 19.5 8.25 12l7.5-7.5"
+    />
+  </Svg>
+);
+
 export const BookmarkIcon: React.FC<OutlineIconProps> = ({
   size = 20,
   color = '#0f172a',

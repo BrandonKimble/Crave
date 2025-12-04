@@ -23,13 +23,27 @@ export interface StructuredSearchRequest {
   minimumVotes?: number;
 }
 
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
 export const searchService = {
-  naturalSearch: async (payload: NaturalSearchRequest): Promise<SearchResponse> => {
-    const { data } = await api.post<SearchResponse>('/search/natural', payload);
+  naturalSearch: async (
+    payload: NaturalSearchRequest,
+    options: RequestOptions = {}
+  ): Promise<SearchResponse> => {
+    const { data } = await api.post<SearchResponse>('/search/natural', payload, {
+      signal: options.signal,
+    });
     return data;
   },
-  structuredSearch: async (payload: StructuredSearchRequest): Promise<SearchResponse> => {
-    const { data } = await api.post<SearchResponse>('/search/run', payload);
+  structuredSearch: async (
+    payload: StructuredSearchRequest,
+    options: RequestOptions = {}
+  ): Promise<SearchResponse> => {
+    const { data } = await api.post<SearchResponse>('/search/run', payload, {
+      signal: options.signal,
+    });
     return data;
   },
   recentHistory: async (limit = 8): Promise<string[]> => {
