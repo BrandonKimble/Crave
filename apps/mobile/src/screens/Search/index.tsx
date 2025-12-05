@@ -789,7 +789,10 @@ const SearchScreen: React.FC = () => {
               Closes
             </Text>
             {status.closesAtDisplay ? (
-              <Text variant="caption" style={styles.resultMetaSuffix}>{` at ${status.closesAtDisplay}`}</Text>
+              <Text
+                variant="caption"
+                style={styles.resultMetaSuffix}
+              >{` at ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
@@ -800,7 +803,10 @@ const SearchScreen: React.FC = () => {
               Open
             </Text>
             {status.closesAtDisplay ? (
-              <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.closesAtDisplay}`}</Text>
+              <Text
+                variant="caption"
+                style={styles.resultMetaSuffix}
+              >{` until ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
@@ -811,7 +817,10 @@ const SearchScreen: React.FC = () => {
               Closed
             </Text>
             {status.nextOpenDisplay ? (
-              <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.nextOpenDisplay}`}</Text>
+              <Text
+                variant="caption"
+                style={styles.resultMetaSuffix}
+              >{` until ${status.nextOpenDisplay}`}</Text>
             ) : null}
           </Text>
         );
@@ -2468,11 +2477,21 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
-                <Text variant="subtitle" weight="semibold" style={styles.textSlate900} numberOfLines={1}>
+                <Text
+                  variant="subtitle"
+                  weight="semibold"
+                  style={styles.textSlate900}
+                  numberOfLines={1}
+                >
                   {item.foodName}
                 </Text>
               </View>
-              <Text variant="body" weight="regular" style={[styles.textSlate600, styles.dishRestaurantName]} numberOfLines={1}>
+              <Text
+                variant="body"
+                weight="regular"
+                style={[styles.textSlate600, styles.dishRestaurantName]}
+                numberOfLines={1}
+              >
                 {item.restaurantName}
               </Text>
               {dishMetaLine ? (
@@ -2574,7 +2593,12 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
-                <Text variant="subtitle" weight="semibold" style={styles.textSlate900} numberOfLines={1}>
+                <Text
+                  variant="subtitle"
+                  weight="semibold"
+                  style={styles.textSlate900}
+                  numberOfLines={1}
+                >
                   {restaurant.restaurantName}
                 </Text>
               </View>
@@ -2618,11 +2642,20 @@ const SearchScreen: React.FC = () => {
                   {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
                     <View key={food.connectionId} style={styles.topFoodMiniItem}>
                       <View style={styles.topFoodMiniRank}>
-                        <Text variant="caption" weight="semibold" style={styles.topFoodMiniRankText}>
+                        <Text
+                          variant="caption"
+                          weight="semibold"
+                          style={styles.topFoodMiniRankText}
+                        >
                           {idx + 1}
                         </Text>
                       </View>
-                      <Text variant="caption" weight="regular" style={styles.topFoodMiniName} numberOfLines={1}>
+                      <Text
+                        variant="caption"
+                        weight="regular"
+                        style={styles.topFoodMiniName}
+                        numberOfLines={1}
+                      >
                         {food.foodName}
                       </Text>
                       <Text variant="caption" weight="semibold" style={styles.topFoodMiniScore}>
@@ -2655,12 +2688,12 @@ const SearchScreen: React.FC = () => {
               restaurant.restaurantQualityScore !== undefined ? (
                 <View style={styles.secondaryMetrics}>
                   <View style={styles.secondaryMetric}>
-                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
-                    Overall
-                  </Text>
-                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {restaurant.restaurantQualityScore.toFixed(1)}
-                  </Text>
+                    <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
+                      Overall
+                    </Text>
+                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                      {restaurant.restaurantQualityScore.toFixed(1)}
+                    </Text>
                   </View>
                 </View>
               ) : null}
@@ -3016,9 +3049,9 @@ const SearchScreen: React.FC = () => {
               >
                 <View style={styles.searchShortcutContent}>
                   <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
-                  Best dishes
-                </Text>
+                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                    Best dishes
+                  </Text>
                 </View>
               </Pressable>
               <Pressable
