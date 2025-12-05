@@ -7,9 +7,13 @@ export const colors = {
   accentDark: '#ff0050',
   background: '#F7F7F7',
   surface: '#FFFFFF',
+  textPrimary: '#0f172a',
+  textBody: '#475569',
+  textMuted: '#94a3b8',
   text: '#1A1A1A',
   muted: '#6B7280',
   border: '#E5E7EB',
+  secondaryAccent: '#5c5bff',
 };
 
 export const spacing = {

@@ -90,6 +90,7 @@ import PollsOverlay from '../../overlays/PollsOverlay';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import type { QueryPlan } from '../../types';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
 import SearchHeader from './components/SearchHeader';
@@ -729,6 +730,8 @@ const SearchScreen: React.FC = () => {
   const searchSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchSurfaceAnim.value,
     transform: [{ scale: 1 }],
+    shadowOpacity: 0,
+    elevation: 0,
   }));
   const searchBarAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: 1 }],
@@ -746,15 +749,8 @@ const SearchScreen: React.FC = () => {
         return normalized;
       }
     }
-    const fallbackDish = results?.food?.[0]?.foodName;
-    if (typeof fallbackDish === 'string') {
-      const normalizedDish = fallbackDish.trim();
-      if (normalizedDish.length) {
-        return normalizedDish;
-      }
-    }
     return null;
-  }, [results?.metadata?.primaryFoodTerm, results?.food?.[0]?.foodName]);
+  }, [results?.metadata?.primaryFoodTerm]);
   const restaurantScoreLabel = React.useMemo(() => {
     if (primaryFoodTerm) {
       return `${primaryFoodTerm.toLowerCase()} score`;
@@ -765,9 +761,24 @@ const SearchScreen: React.FC = () => {
     status: OperatingStatus | null | undefined,
     priceLabel?: string | null,
     distanceMiles?: number | null,
-    align: 'left' | 'right' = 'left'
+    align: 'left' | 'right' = 'left',
+    prefix?: React.ReactNode,
+    showLocationDetails = true
   ): React.ReactNode => {
     const segments: React.ReactNode[] = [];
+    if (prefix) {
+      segments.push(
+        <Text
+          key="meta-prefix"
+          variant="caption"
+          weight="regular"
+          style={[styles.resultMetaText, styles.resultMetaPrefix]}
+          numberOfLines={1}
+        >
+          {prefix}
+        </Text>
+      );
+    }
     const normalizedPriceLabel = priceLabel ?? null;
     const distanceLabel = formatDistanceMiles(distanceMiles);
     const effectiveMinutesUntilClose =
@@ -782,6 +793,17 @@ const SearchScreen: React.FC = () => {
       effectiveMinutesUntilClose <= 45;
 
     if (status) {
+      if (segments.length) {
+        segments.push(
+          <Text
+            key={`separator-${segments.length}`}
+            variant="caption"
+            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+          >
+            {' · '}
+          </Text>
+        );
+      }
       if (isClosingSoon) {
         segments.push(
           <Text key="status-closing-soon" variant="caption" weight="semibold">
@@ -827,49 +849,51 @@ const SearchScreen: React.FC = () => {
       }
     }
 
-    if (normalizedPriceLabel) {
-      if (segments.length) {
+    if (showLocationDetails) {
+      if (normalizedPriceLabel) {
+        if (segments.length) {
+          segments.push(
+            <Text
+              key={`separator-${segments.length}`}
+              variant="caption"
+              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            >
+              {' · '}
+            </Text>
+          );
+        }
         segments.push(
           <Text
-            key={`separator-${segments.length}`}
+            key="price"
             variant="caption"
-            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            style={[styles.resultMetaPrice, { fontSize: META_FONT_SIZE }]}
           >
-            {' · '}
+            {normalizedPriceLabel}
           </Text>
         );
       }
-      segments.push(
-        <Text
-          key="price"
-          variant="caption"
-          style={[styles.resultMetaPrice, { fontSize: META_FONT_SIZE }]}
-        >
-          {normalizedPriceLabel}
-        </Text>
-      );
-    }
-    if (distanceLabel) {
-      if (segments.length) {
+      if (distanceLabel) {
+        if (segments.length) {
+          segments.push(
+            <Text
+              key={`separator-${segments.length}`}
+              variant="caption"
+              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            >
+              {' · '}
+            </Text>
+          );
+        }
         segments.push(
           <Text
-            key={`separator-${segments.length}`}
+            key="distance"
             variant="caption"
-            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
           >
-            {' · '}
+            {distanceLabel}
           </Text>
         );
       }
-      segments.push(
-        <Text
-          key="distance"
-          variant="caption"
-          style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
-        >
-          {distanceLabel}
-        </Text>
-      );
     }
     if (!segments.length) {
       return null;
@@ -883,6 +907,7 @@ const SearchScreen: React.FC = () => {
           align === 'right' && styles.resultMetaTextRight,
         ]}
         numberOfLines={1}
+        ellipsizeMode="tail"
       >
         {segments}
       </Text>
@@ -2446,9 +2471,16 @@ const SearchScreen: React.FC = () => {
     const qualityColor = getQualityColor(index, dishes.length);
     const restaurantForDish = restaurantsById.get(item.restaurantId);
     const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
-    const dishMetaLine = renderMetaDetailLine(
-      item.restaurantOperatingStatus,
+    const dishNameLine = renderMetaDetailLine(
+      null,
       dishPriceLabel,
+      null,
+      'left',
+      item.restaurantName
+    );
+    const dishDetailsLine = renderMetaDetailLine(
+      item.restaurantOperatingStatus,
+      null,
       item.restaurantDistanceMiles,
       'left'
     );
@@ -2486,17 +2518,46 @@ const SearchScreen: React.FC = () => {
                   {item.foodName}
                 </Text>
               </View>
-              <Text
-                variant="body"
-                weight="regular"
-                style={[styles.textSlate600, styles.dishRestaurantName]}
-                numberOfLines={1}
-              >
-                {item.restaurantName}
-              </Text>
-              {dishMetaLine ? (
+              <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
+                <View style={styles.primaryMetric}>
+                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
+                    Dish score
+                  </Text>
+                  <Text
+                    variant="title"
+                    weight="semibold"
+                    style={[styles.primaryMetricValue, { color: qualityColor }]}
+                  >
+                    {item.qualityScore.toFixed(1)}
+                  </Text>
+                </View>
+                <View style={styles.secondaryMetrics}>
+                  <View style={styles.secondaryMetric}>
+                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                      Polls
+                    </Text>
+                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                      {item.mentionCount}
+                    </Text>
+                  </View>
+                  <View style={styles.secondaryMetric}>
+                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                      Votes
+                    </Text>
+                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                      {item.totalUpvotes}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+              {dishNameLine ? (
+                <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
+                  {dishNameLine}
+                </View>
+              ) : null}
+              {dishDetailsLine ? (
                 <View style={[styles.resultMetaLine, styles.dishMetaLineSpacing]}>
-                  {dishMetaLine}
+                  {dishDetailsLine}
                 </View>
               ) : null}
             </View>
@@ -2524,40 +2585,6 @@ const SearchScreen: React.FC = () => {
               >
                 <LucideShare size={20} color="#cbd5e1" strokeWidth={2} />
               </Pressable>
-            </View>
-          </View>
-          <View style={styles.resultContent}>
-            <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
-              <View style={styles.primaryMetric}>
-                <Text variant="caption" weight="semibold" style={styles.primaryMetricLabel}>
-                  Dish score
-                </Text>
-                <Text
-                  variant="title"
-                  weight="semibold"
-                  style={[styles.primaryMetricValue, { color: qualityColor }]}
-                >
-                  {item.qualityScore.toFixed(1)}
-                </Text>
-              </View>
-              <View style={styles.secondaryMetrics}>
-                <View style={styles.secondaryMetric}>
-                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
-                    Poll Count
-                  </Text>
-                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {item.mentionCount}
-                  </Text>
-                </View>
-                <View style={styles.secondaryMetric}>
-                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
-                    Total Votes
-                  </Text>
-                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {item.totalUpvotes}
-                  </Text>
-                </View>
-              </View>
             </View>
           </View>
         </Pressable>
@@ -2605,6 +2632,33 @@ const SearchScreen: React.FC = () => {
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
+              <View style={styles.metricsContainer}>
+                <View style={styles.primaryMetric}>
+                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
+                    {restaurantScoreLabel}
+                  </Text>
+                  <Text
+                    variant="title"
+                    weight="semibold"
+                    style={[styles.primaryMetricValue, { color: qualityColor }]}
+                  >
+                    {restaurant.contextualScore.toFixed(1)}
+                  </Text>
+                </View>
+                {restaurant.restaurantQualityScore !== null &&
+                restaurant.restaurantQualityScore !== undefined ? (
+                  <View style={styles.secondaryMetrics}>
+                    <View style={styles.secondaryMetric}>
+                      <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                        Overall
+                      </Text>
+                      <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                        {restaurant.restaurantQualityScore.toFixed(1)}
+                      </Text>
+                    </View>
+                  </View>
+                ) : null}
+              </View>
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2671,33 +2725,6 @@ const SearchScreen: React.FC = () => {
                 </View>
               </View>
             ) : null}
-            <View style={styles.metricsContainer}>
-              <View style={styles.primaryMetric}>
-                <Text variant="caption" weight="semibold" style={styles.primaryMetricLabel}>
-                  {restaurantScoreLabel}
-                </Text>
-                <Text
-                  variant="title"
-                  weight="semibold"
-                  style={[styles.primaryMetricValue, { color: qualityColor }]}
-                >
-                  {restaurant.contextualScore.toFixed(1)}
-                </Text>
-              </View>
-              {restaurant.restaurantQualityScore !== null &&
-              restaurant.restaurantQualityScore !== undefined ? (
-                <View style={styles.secondaryMetrics}>
-                  <View style={styles.secondaryMetric}>
-                    <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
-                      Overall
-                    </Text>
-                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                      {restaurant.restaurantQualityScore.toFixed(1)}
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
-            </View>
           </View>
         </Pressable>
       </View>
@@ -2972,14 +2999,7 @@ const SearchScreen: React.FC = () => {
               },
             ]}
           >
-            <BlurView
-              pointerEvents="none"
-              intensity={45}
-              tint="light"
-              style={StyleSheet.absoluteFillObject}
-            />
-            <View pointerEvents="none" style={styles.searchSurfaceTint} />
-            <View pointerEvents="none" style={styles.searchSurfaceHighlight} />
+            <FrostedGlassBackground />
             <Animated.ScrollView
               style={styles.searchSurfaceScroll}
               contentContainerStyle={[
@@ -3003,6 +3023,7 @@ const SearchScreen: React.FC = () => {
                 isRecentLoading={isRecentLoading}
                 onSelectSuggestion={handleSuggestionPress}
                 onSelectRecent={handleRecentSearchPress}
+                contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
               />
             </Animated.ScrollView>
           </Reanimated.View>
@@ -3038,7 +3059,7 @@ const SearchScreen: React.FC = () => {
               editable
             />
           </View>
-          {!isSearchFocused && (
+          {!isSearchFocused && !isSearchSessionActive && (
             <View style={styles.searchShortcutsRow} pointerEvents="box-none">
               <Pressable
                 onPress={handleBestDishesHere}
@@ -3085,16 +3106,7 @@ const SearchScreen: React.FC = () => {
                   style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
                   pointerEvents={panelVisible ? 'auto' : 'none'}
                 >
-                  {/* BlurView must remain the first child inside this absolute container.
-                    Wrappers placed above it (even for shadows) cause the frost effect to vanish. */}
-                  <BlurView
-                    pointerEvents="none"
-                    intensity={45}
-                    tint="light"
-                    style={StyleSheet.absoluteFillObject}
-                  />
-                  <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-                  <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+                  <FrostedGlassBackground />
 
                   <Reanimated.View style={overlaySheetStyles.header}>
                     <View style={overlaySheetStyles.grabHandleWrapper}>
@@ -3350,25 +3362,10 @@ const styles = StyleSheet.create({
   searchSurface: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderWidth: 0,
+    borderColor: 'transparent',
     overflow: 'hidden',
     zIndex: 10,
-  },
-  searchSurfaceTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-  },
-  searchSurfaceHighlight: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    top: 120,
-    left: -40,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
-    opacity: 0.25,
-    transform: [{ rotate: '35deg' }],
   },
   searchSurfaceScroll: {
     flex: 1,
@@ -3427,7 +3424,7 @@ const styles = StyleSheet.create({
   },
   autocompleteSecondaryText: {
     fontSize: 12,
-    color: '#64748b',
+    color: themeColors.textBody,
     textTransform: 'capitalize',
   },
   recentHeaderRow: {
@@ -3458,7 +3455,7 @@ const styles = StyleSheet.create({
   },
   recentText: {
     fontSize: 14,
-    color: '#1f2937',
+    color: themeColors.textPrimary,
     flex: 1,
   },
   searchIcon: {
@@ -3467,7 +3464,7 @@ const styles = StyleSheet.create({
   promptInput: {
     flex: 1,
     fontSize: 16,
-    color: '#111827',
+    color: themeColors.textPrimary,
     textAlign: 'left',
     paddingVertical: 0,
     height: '100%',
@@ -3718,7 +3715,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingTop: 8,
-    paddingBottom: 2,
+    paddingBottom: 8,
   },
   submittedQueryLabel: {
     flexShrink: 1,
@@ -3746,7 +3743,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   openNowText: {
-    color: '#475569',
+    color: themeColors.textBody,
     fontSize: 13,
   },
   openNowTextActive: {
@@ -3771,7 +3768,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   votesText: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   votesTextActive: {
     color: '#ffffff',
@@ -3815,7 +3812,7 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   resultItem: {
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 4,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
@@ -3873,7 +3870,10 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   resultMetaLine: {
-    marginTop: 2,
+    marginTop: 8,
+  },
+  dishMetaLineFirst: {
+    marginTop: 8,
   },
   dishMetaLineSpacing: {
     marginTop: 3,
@@ -3890,8 +3890,11 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   resultMetaText: {
-    color: '#6b7280',
+    color: themeColors.textBody,
     flexShrink: 1,
+  },
+  resultMetaPrefix: {
+    color: themeColors.textBody,
   },
   resultMetaTextRight: {
     textAlign: 'right',
@@ -3903,19 +3906,19 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
   },
   resultMetaSuffix: {
-    color: '#6b7280',
+    color: themeColors.textBody,
   },
   resultMetaClosed: {
     color: '#dc2626',
   },
   resultMetaSeparator: {
-    color: '#6b7280',
+    color: themeColors.textBody,
   },
   resultMetaPrice: {
-    color: '#6b7280',
+    color: themeColors.textBody,
   },
   resultMetaDistance: {
-    color: '#6b7280',
+    color: themeColors.textBody,
   },
   dishMetaRow: {
     flexDirection: 'row',
@@ -3951,7 +3954,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#5c5bff',
+    backgroundColor: themeColors.secondaryAccent,
   },
   userLocationHalo: {
     width: 30,
@@ -3980,18 +3983,19 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 14,
     paddingBottom: 0,
-    marginTop: 0,
+    marginTop: 8,
   },
   dishMetricsSpacing: {
     marginTop: 8,
   },
   primaryMetric: {
     gap: 2,
+    alignItems: 'flex-start',
   },
   primaryMetricLabel: {
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    color: themeColors.textBody,
+    letterSpacing: 0.15,
+    marginTop: -1,
   },
   primaryMetricValue: {
     color: QUALITY_COLOR,
@@ -4000,18 +4004,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
     alignItems: 'flex-start',
-    paddingTop: 4,
+    paddingTop: 0,
   },
   secondaryMetric: {
     gap: 2,
+    alignItems: 'flex-start',
   },
   secondaryMetricLabel: {
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+    color: themeColors.textMuted,
+    letterSpacing: 0.15,
+    marginTop: -1,
   },
   secondaryMetricValue: {
-    color: '#64748b',
+    color: themeColors.textBody,
   },
   emptyState: {
     paddingVertical: 32,
@@ -4034,16 +4039,16 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   textSlate900: {
-    color: '#0f172a',
+    color: themeColors.textPrimary,
   },
   textSlate700: {
-    color: '#334155',
+    color: themeColors.textBody,
   },
   textSlate600: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   textSlate500: {
-    color: '#64748b',
+    color: themeColors.textMuted,
   },
   textRed600: {
     color: '#dc2626',
@@ -4058,8 +4063,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   dishRestaurantName: {
-    marginTop: 4,
-    color: '#6b7280',
+    color: themeColors.textMuted,
     flexShrink: 1,
     minWidth: 0,
   },
@@ -4071,7 +4075,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   topFoodLabel: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   topFoodMiniList: {
     gap: 4,
@@ -4090,18 +4094,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topFoodMiniRankText: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   topFoodMiniName: {
-    color: '#0f172a',
+    color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
   },
   topFoodMiniScore: {
-    color: '#6b7280',
+    color: themeColors.textBody,
   },
   topFoodMiniMore: {
-    color: '#6b7280',
+    color: themeColors.secondaryAccent,
+    marginLeft: 24,
   },
   loadingText: {
     marginTop: 16,

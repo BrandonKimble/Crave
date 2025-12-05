@@ -17,21 +17,6 @@ export const overlaySheetStyles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     overflow: 'hidden',
   },
-  surfaceTint: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-  },
-  highlight: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    top: 120,
-    left: -40,
-    backgroundColor: 'rgba(255, 255, 255, 0.45)',
-    opacity: 0.25,
-    transform: [{ rotate: '35deg' }],
-  },
   header: {
     backgroundColor: '#ffffff',
     paddingTop: 0,

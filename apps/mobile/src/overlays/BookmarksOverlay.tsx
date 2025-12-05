@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import {
   PanGestureHandler,
   type PanGestureHandlerGestureEvent,
@@ -23,6 +22,7 @@ import Reanimated, {
   withSpring,
 } from 'react-native-reanimated';
 import { Text } from '../components';
+import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { favoritesService, type Favorite } from '../services/favorites';
 import { logger } from '../utils';
 import { colors as themeColors } from '../constants/theme';
@@ -200,14 +200,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
       pointerEvents={visible ? 'auto' : 'none'}
       style={[overlaySheetStyles.container, containerAnimatedStyle]}
     >
-      <BlurView
-        pointerEvents="none"
-        intensity={45}
-        tint="light"
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-      <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+      <FrostedGlassBackground />
       <PanGestureHandler onGestureEvent={sheetPanGesture} enabled={visible}>
         <Reanimated.View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
           <View style={overlaySheetStyles.grabHandleWrapper}>

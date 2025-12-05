@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import Reanimated from 'react-native-reanimated';
 import { Search, ChevronLeft, X } from 'lucide-react-native';
+import { colors as themeColors } from '../../../constants/theme';
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
@@ -89,7 +90,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={placeholder}
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor={themeColors.textBody}
                 style={styles.promptInput}
                 returnKeyType="search"
                 onSubmitEditing={onSubmit}

@@ -11,7 +11,6 @@ import {
   Dimensions,
   Pressable,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -34,6 +33,7 @@ import { useCityStore } from '../store/cityStore';
 import { colors as themeColors } from '../constants/theme';
 import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import {
   SHEET_SPRING_CONFIG,
   SMALL_MOVEMENT_THRESHOLD,
@@ -554,14 +554,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
       pointerEvents={visible ? 'auto' : 'none'}
       style={[overlaySheetStyles.container, containerAnimatedStyle]}
     >
-      <BlurView
-        pointerEvents="none"
-        intensity={45}
-        tint="light"
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-      <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+      <FrostedGlassBackground />
       <PanGestureHandler onGestureEvent={sheetPanGesture} enabled={visible}>
         <Reanimated.View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
           <View style={overlaySheetStyles.grabHandleWrapper}>

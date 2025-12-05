@@ -23,6 +23,7 @@ type SearchSuggestionsProps = {
   isRecentLoading: boolean;
   onSelectSuggestion: (match: AutocompleteMatch) => void;
   onSelectRecent: (term: string) => void;
+  contentHorizontalPadding: number;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -37,6 +38,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   isRecentLoading,
   onSelectSuggestion,
   onSelectRecent,
+  contentHorizontalPadding,
   style,
 }) => {
   if (!visible) {
@@ -83,9 +85,17 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       )}
 
       {showRecent && (
-        <View style={styles.recentSectionSurface}>
+        <View
+          style={[
+            styles.recentSectionSurface,
+            {
+              marginHorizontal: -contentHorizontalPadding,
+              paddingHorizontal: contentHorizontalPadding,
+            },
+          ]}
+        >
           <View style={styles.recentHeaderRow}>
-            <Text style={styles.recentHeaderText}>Recent searches</Text>
+            <Text style={styles.recentHeaderText}>RECENT</Text>
             {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
           </View>
           {!isRecentLoading && !hasRecentSearches ? (
@@ -108,14 +118,12 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+  const styles = StyleSheet.create({
   autocompleteSectionSurface: {
     paddingHorizontal: 14,
     paddingVertical: 10,
     borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
+    backgroundColor: '#ffffff',
   },
   autocompleteLoadingRow: {
     flexDirection: 'row',
@@ -158,10 +166,8 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
+    borderRadius: 0,
+    backgroundColor: '#ffffff',
   },
   recentHeaderRow: {
     flexDirection: 'row',
@@ -174,7 +180,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#0f172a',
     letterSpacing: 0.4,
-    textTransform: 'uppercase',
+    textTransform: 'none',
   },
   recentRow: {
     flexDirection: 'row',

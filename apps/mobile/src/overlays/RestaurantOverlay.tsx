@@ -1,7 +1,6 @@
 import React from 'react';
 import { Dimensions, Linking, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Feather } from '@expo/vector-icons';
 import {
   PanGestureHandler,
@@ -24,6 +23,7 @@ import {
   type SheetGestureContext,
   type SheetPosition,
 } from './sheetUtils';
+import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 
 type RestaurantOverlayData = {
   restaurant: RestaurantResult;
@@ -164,14 +164,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
       pointerEvents={visible ? 'auto' : 'none'}
       style={[overlaySheetStyles.container, containerAnimatedStyle]}
     >
-      <BlurView
-        pointerEvents="none"
-        intensity={45}
-        tint="light"
-        style={StyleSheet.absoluteFillObject}
-      />
-      <View pointerEvents="none" style={overlaySheetStyles.surfaceTint} />
-      <View pointerEvents="none" style={overlaySheetStyles.highlight} />
+      <FrostedGlassBackground />
       <PanGestureHandler onGestureEvent={panGesture} enabled={visible}>
         <Reanimated.View style={overlaySheetStyles.header}>
           <View style={overlaySheetStyles.grabHandleWrapper}>

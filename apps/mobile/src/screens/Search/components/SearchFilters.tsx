@@ -278,7 +278,7 @@ const toggleBaseStyle = {
 const styles = StyleSheet.create({
   resultFiltersWrapper: {
     marginTop: 0,
-    marginBottom: 6,
+    marginBottom: 0,
     gap: 0,
   },
   filterButtonsScroll: {
