@@ -79,7 +79,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 accessibilityLabel={showBack ? 'Exit search' : 'Focus search'}
               >
                 {showBack ? (
-                  <ChevronLeft size={24} color="#6b7280" strokeWidth={2} />
+                  <ChevronLeft size={22} color="#6b7280" strokeWidth={2} />
                 ) : (
                   <Search size={22} color="#6b7280" strokeWidth={2} />
                 )}
@@ -102,24 +102,24 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
               />
             </Reanimated.View>
             <Reanimated.View style={[styles.trailingContainer, inputAnimatedStyle]}>
-              {loading ? (
-                <ActivityIndicator size="small" color={accentColor} />
-              ) : value.length > 0 ? (
-                <Pressable
-                  onPress={(event) => {
-                    event.stopPropagation?.();
-                    onClear();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear search"
-                  style={styles.trailingButton}
-                  hitSlop={10}
-                >
-                  <X size={24} color={accentColor} strokeWidth={2} />
-                </Pressable>
-              ) : (
-                <View style={styles.trailingPlaceholder} />
-              )}
+            {loading ? (
+              <ActivityIndicator size="small" color={accentColor} />
+            ) : value.length > 0 ? (
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  onClear();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search"
+                style={styles.trailingButton}
+                hitSlop={10}
+              >
+                <X size={22} color={accentColor} strokeWidth={2} />
+              </Pressable>
+            ) : (
+              <View style={styles.trailingPlaceholder} />
+            )}
             </Reanimated.View>
           </View>
         </Pressable>
@@ -138,6 +138,11 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     backgroundColor: '#ffffff',
     minHeight: 44,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 1,
   },
   promptRow: {
     flexDirection: 'row',
@@ -156,7 +161,7 @@ const styles = StyleSheet.create({
   },
   searchIcon: {
     marginRight: 4,
-    paddingHorizontal: 0,
+    paddingHorizontal: 4,
     paddingVertical: 6,
   },
   promptInput: {
@@ -169,19 +174,20 @@ const styles = StyleSheet.create({
   },
   trailingContainer: {
     marginLeft: 'auto',
-    minWidth: 24,
+    minWidth: 32,
     alignItems: 'flex-end',
     justifyContent: 'center',
   },
   trailingButton: {
-    width: 24,
-    height: 24,
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+    marginLeft: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
   trailingPlaceholder: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
   },
 });
 

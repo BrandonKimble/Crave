@@ -37,7 +37,6 @@ import MapboxGL from '@rnmapbox/maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Feather } from '@expo/vector-icons';
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -45,15 +44,17 @@ import pinAsset from '../../assets/pin.png';
 import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
+import { XCircleIcon, ChartBarIcon } from '../../components/icons/HeroIcons';
 import {
-  BookmarkIcon,
-  MagnifyingGlassIcon,
-  UserIcon,
-  XCircleIcon,
-  XMarkIcon,
-  ChartBarIcon,
-} from '../../components/icons/HeroIcons';
-import { colors as themeColors, shadows as shadowStyles } from '../../constants/theme';
+  HandPlatter,
+  Store,
+  Heart,
+  ChartNoAxesColumnDecreasing,
+  CircleUserRound,
+  MapPin,
+} from 'lucide-react-native';
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
+import { colors as themeColors } from '../../constants/theme';
 import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
 import {
   overlaySheetStyles,
@@ -93,7 +94,6 @@ import { useSearchRequests } from '../../hooks/useSearchRequests';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
 import SearchFilters from './components/SearchFilters';
-import DropShadow from '../../components/DropShadow';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
@@ -645,16 +645,46 @@ const SearchScreen: React.FC = () => {
     () =>
       [
         { key: 'search' as OverlayKey, label: 'Search' },
-        { key: 'bookmarks' as OverlayKey, label: 'Bookmarks' },
+        { key: 'bookmarks' as OverlayKey, label: 'Saves' },
         { key: 'polls' as OverlayKey, label: 'Polls' },
       ] as const,
     []
   );
-  const navIconRenderers = React.useMemo<Record<OverlayKey, (color: string) => React.ReactNode>>(
+  const navIconRenderers = React.useMemo<
+    Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
+  >(
     () => ({
-      search: (color: string) => <MagnifyingGlassIcon size={20} color={color} />,
-      bookmarks: (color: string) => <BookmarkIcon size={20} color={color} />,
-      polls: (color: string) => <ChartBarIcon size={20} color={color} style={styles.pollsIcon} />,
+      search: (color: string, active: boolean) => (
+        <Svg width={20} height={20} viewBox="0 0 24 24">
+          <Path
+            d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
+            fill={active ? color : 'none'}
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <SvgCircle
+            cx="12"
+            cy="10"
+            r="4"
+            fill={active ? '#ffffff' : 'none'}
+            stroke={color}
+            strokeWidth={2}
+          />
+        </Svg>
+      ),
+      bookmarks: (color: string, active: boolean) => (
+        <Heart size={20} color={color} strokeWidth={active ? 0 : 2} fill={active ? color : 'none'} />
+      ),
+      polls: (color: string, active: boolean) => (
+        <ChartNoAxesColumnDecreasing
+          size={20}
+          color={color}
+          strokeWidth={2}
+          style={{ transform: [{ rotate: '90deg' }] }}
+        />
+      ),
     }),
     []
   );
@@ -691,20 +721,10 @@ const SearchScreen: React.FC = () => {
   const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
   const searchSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchSurfaceAnim.value,
-    transform: [
-      {
-        // Keep base scale at 1; give a slight lift only while focused.
-        scale: interpolate(searchSurfaceAnim.value, [0, 1], [1, 1.02]),
-      },
-    ],
+    transform: [{ scale: 1 }],
   }));
   const searchBarAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      {
-        // Keep base scale at 1; give a slight lift only while focused.
-        scale: interpolate(searchSurfaceAnim.value, [0, 1], [1, 1.04]),
-      },
-    ],
+    transform: [{ scale: 1 }],
   }));
   const hasRecentSearches = recentSearches.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
@@ -1675,12 +1695,6 @@ const SearchScreen: React.FC = () => {
       [0, 0.25, 0.6, 0.95, 1],
       Extrapolation.CLAMP
     );
-    const backgroundAlpha = interpolate(
-      progress,
-      [0, 0.2, 0.5, 0.8, 1],
-      [0.15, 0.35, 0.55, 0.8, 1],
-      Extrapolation.CLAMP
-    );
     const borderAlpha = interpolate(
       progress,
       [0, 0.3, 0.6, 0.85, 1],
@@ -1691,7 +1705,7 @@ const SearchScreen: React.FC = () => {
 
     return {
       opacity,
-      backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
+      backgroundColor: '#ffffff',
       borderColor: `rgba(229, 231, 235, ${borderAlpha})`,
       transform: [{ scale }],
     };
@@ -1972,29 +1986,29 @@ const SearchScreen: React.FC = () => {
     void submitSearch();
   }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
 
-  const handleBestDishesHere = React.useCallback(() => {
-    if (isLoading || isLoadingMore) {
-      return;
-    }
+  const runBestHere = React.useCallback(
+    async (targetTab: SegmentValue, submittedLabel: string) => {
+      if (isLoading || isLoadingMore) {
+        return;
+      }
 
-    setSearchMode('shortcut');
-    setIsSearchSessionActive(true);
-    setActiveTab('dishes');
-    setError(null);
-    setPanelVisible(false);
-    setSheetState('hidden');
-    sheetStateShared.value = 'hidden';
-    sheetTranslateY.value = snapPoints.hidden;
-    setHasMoreFood(false);
-    setHasMoreRestaurants(false);
-    setIsPaginationExhausted(false);
-    setCurrentPage(1);
-    lastAutoOpenKeyRef.current = null;
-    setIsAutocompleteSuppressed(true);
-    setShowSuggestions(false);
-    Keyboard.dismiss();
+      setSearchMode('shortcut');
+      setIsSearchSessionActive(true);
+      setActiveTab(targetTab);
+      setError(null);
+      setPanelVisible(false);
+      setSheetState('hidden');
+      sheetStateShared.value = 'hidden';
+      sheetTranslateY.value = snapPoints.hidden;
+      setHasMoreFood(false);
+      setHasMoreRestaurants(false);
+      setIsPaginationExhausted(false);
+      setCurrentPage(1);
+      lastAutoOpenKeyRef.current = null;
+      setIsAutocompleteSuppressed(true);
+      setShowSuggestions(false);
+      Keyboard.dismiss();
 
-    const run = async () => {
       try {
         setIsLoading(true);
         const payload = await buildStructuredSearchPayload(1);
@@ -2004,12 +2018,12 @@ const SearchScreen: React.FC = () => {
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
-            submittedLabel: 'Best dishes here',
+            submittedLabel,
             pushToHistory: false,
           });
         }
       } catch (err) {
-        logger.error('Best dishes here request failed', {
+        logger.error('Best here request failed', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
         setError('Unable to fetch results. Please try again.');
@@ -2017,33 +2031,40 @@ const SearchScreen: React.FC = () => {
       } finally {
         setIsLoading(false);
       }
-    };
+    },
+    [
+      isLoading,
+      isLoadingMore,
+      setIsSearchSessionActive,
+      setActiveTab,
+      setError,
+      setPanelVisible,
+      setSheetState,
+      sheetStateShared,
+      sheetTranslateY,
+      setHasMoreFood,
+      setHasMoreRestaurants,
+      setIsPaginationExhausted,
+      setCurrentPage,
+      setIsAutocompleteSuppressed,
+      setShowSuggestions,
+      buildStructuredSearchPayload,
+      handleSearchResponse,
+      showPanel,
+      snapPoints.hidden,
+      lastAutoOpenKeyRef,
+      setSearchMode,
+      runSearch,
+    ]
+  );
 
-    void run();
-  }, [
-    isLoading,
-    isLoadingMore,
-    setIsSearchSessionActive,
-    setActiveTab,
-    setError,
-    setPanelVisible,
-    setSheetState,
-    sheetStateShared,
-    sheetTranslateY,
-    setHasMoreFood,
-    setHasMoreRestaurants,
-    setIsPaginationExhausted,
-    setCurrentPage,
-    setIsAutocompleteSuppressed,
-    setShowSuggestions,
-    buildStructuredSearchPayload,
-    handleSearchResponse,
-    showPanel,
-    snapPoints.hidden,
-    lastAutoOpenKeyRef,
-    setSearchMode,
-    runSearch,
-  ]);
+  const handleBestDishesHere = React.useCallback(() => {
+    void runBestHere('dishes', 'Best dishes');
+  }, [runBestHere]);
+
+  const handleBestRestaurantsHere = React.useCallback(() => {
+    void runBestHere('restaurants', 'Best restaurants');
+  }, [runBestHere]);
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
@@ -2983,7 +3004,22 @@ const SearchScreen: React.FC = () => {
                 accessibilityLabel="Show best dishes here"
                 hitSlop={8}
               >
-                <Text style={styles.searchShortcutChipText}>Best dishes here</Text>
+                <View style={styles.searchShortcutContent}>
+                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
+                  <Text style={styles.searchShortcutChipText}>Best dishes</Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={handleBestRestaurantsHere}
+                style={styles.searchShortcutChip}
+                accessibilityRole="button"
+                accessibilityLabel="Show best restaurants here"
+                hitSlop={8}
+              >
+                <View style={styles.searchShortcutContent}>
+                  <Store size={16} color="#0f172a" strokeWidth={2} />
+                  <Text style={styles.searchShortcutChipText}>Best restaurants</Text>
+                </View>
               </Pressable>
             </View>
           )}
@@ -3097,7 +3133,7 @@ const SearchScreen: React.FC = () => {
                   style={styles.navButton}
                   onPress={() => handleOverlaySelect(item.key)}
                 >
-                  <View style={styles.navIcon}>{renderIcon(iconColor)}</View>
+                  <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
                   <Text style={[styles.navLabel, active && styles.navLabelActive]}>
                     {item.label}
                   </Text>
@@ -3106,9 +3142,9 @@ const SearchScreen: React.FC = () => {
             })}
             <TouchableOpacity style={styles.navButton} onPress={handleProfilePress}>
               <View style={styles.navIcon}>
-                <UserIcon size={20} color="#94a3b8" />
+                <CircleUserRound size={20} color="#94a3b8" strokeWidth={2} />
               </View>
-              <Text style={styles.navLabel}>Profile</Text>
+              <Text style={[styles.navLabel]}>Profile</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3195,20 +3231,30 @@ const styles = StyleSheet.create({
   searchShortcutsRow: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     marginBottom: 8,
-    marginTop: 6,
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 8,
-    zIndex: 15,
+    zIndex: 25,
   },
   searchShortcutChip: {
     borderRadius: 999,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     alignSelf: 'flex-start',
-    marginRight: 'auto',
+    marginRight: 0,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  searchShortcutContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
   },
   searchShortcutChipText: {
     fontSize: 13,
@@ -3944,7 +3990,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 16,
-    marginTop: 14,
+    marginTop: 8,
   },
   metric: {
     minWidth: 70,

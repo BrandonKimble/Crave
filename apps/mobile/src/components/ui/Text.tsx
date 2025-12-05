@@ -7,25 +7,31 @@ import {
   StyleSheet,
 } from 'react-native';
 
-export interface TextProps extends RNTextProps {
-  variant?: 'title' | 'subtitle' | 'body' | 'caption';
-  weight?: 'regular' | 'medium' | 'semibold' | 'bold';
-  style?: StyleProp<TextStyle>;
-}
-
-const variantStyles: Record<NonNullable<TextProps['variant']>, TextStyle> = {
+const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = {
   title: { fontSize: 28, lineHeight: 34 },
   subtitle: { fontSize: 20, lineHeight: 26 },
   body: { fontSize: 16, lineHeight: 22 },
   caption: { fontSize: 14, lineHeight: 18 },
 };
 
-const weightStyles: Record<NonNullable<TextProps['weight']>, TextStyle> = {
-  regular: { fontWeight: '400' },
-  medium: { fontWeight: '500' },
-  semibold: { fontWeight: '600' },
-  bold: { fontWeight: '700' },
+// Standardize to two weights; legacy values map to the closest allowed option.
+const WEIGHT_MAP: Record<'regular' | 'medium' | 'semibold' | 'bold', 'regular' | 'semibold'> = {
+  regular: 'regular',
+  medium: 'semibold',
+  semibold: 'semibold',
+  bold: 'semibold',
 };
+
+const weightStyles: Record<'regular' | 'semibold', TextStyle> = {
+  regular: { fontWeight: '400' },
+  semibold: { fontWeight: '600' },
+};
+
+export interface TextProps extends RNTextProps {
+  variant?: 'title' | 'subtitle' | 'body' | 'caption';
+  weight?: 'regular' | 'medium' | 'semibold' | 'bold';
+  style?: StyleProp<TextStyle>;
+}
 
 export const Text: React.FC<TextProps> = ({
   variant = 'body',
@@ -34,8 +40,12 @@ export const Text: React.FC<TextProps> = ({
   children,
   ...rest
 }) => {
+  const resolvedWeight = WEIGHT_MAP[weight] ?? 'regular';
   return (
-    <RNText style={[styles.base, variantStyles[variant], weightStyles[weight], style]} {...rest}>
+    <RNText
+      style={[styles.base, typeScale[variant], weightStyles[resolvedWeight], style]}
+      {...rest}
+    >
       {children}
     </RNText>
   );
