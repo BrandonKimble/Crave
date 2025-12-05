@@ -101,7 +101,6 @@ const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
 const CARD_GAP = 4;
 const ACTIVE_TAB_COLOR = themeColors.primary;
-const QUALITY_COLOR = '#fbbf24';
 const MINIMUM_VOTES_FILTER = 100;
 const DEFAULT_PAGE_SIZE = 20;
 const RESULTS_BOTTOM_PADDING = 375;
@@ -2507,7 +2506,7 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
-                <View style={styles.rankBadge}>
+                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
                 <Text
@@ -2520,35 +2519,33 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
-                <View style={styles.primaryMetric}>
-                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
-                    Dish score
-                  </Text>
+                <View style={styles.metricColumn}>
                   <Text
                     variant="title"
                     weight="semibold"
-                    style={[styles.primaryMetricValue, { color: qualityColor }]}
+                    style={styles.primaryMetricValue}
                   >
                     {item.qualityScore.toFixed(1)}
                   </Text>
+                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
+                    Dish score
+                  </Text>
                 </View>
-                <View style={styles.secondaryMetrics}>
-                  <View style={styles.secondaryMetric}>
-                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                      Polls
-                    </Text>
-                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                      {item.mentionCount}
-                    </Text>
-                  </View>
-                  <View style={styles.secondaryMetric}>
-                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                      Votes
-                    </Text>
-                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                      {item.totalUpvotes}
-                    </Text>
-                  </View>
+                <View style={styles.metricColumn}>
+                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                    {item.mentionCount}
+                  </Text>
+                  <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                    Polls
+                  </Text>
+                </View>
+                <View style={styles.metricColumn}>
+                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                    {item.totalUpvotes}
+                  </Text>
+                  <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                    Votes
+                  </Text>
                 </View>
               </View>
               {dishNameLine ? (
@@ -2618,7 +2615,7 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
-                <View style={styles.rankBadge}>
+                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
                 <Text
@@ -2634,29 +2631,27 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
               <View style={styles.metricsContainer}>
-                <View style={styles.primaryMetric}>
-                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
-                    {restaurantScoreLabel}
-                  </Text>
+                <View style={styles.metricColumn}>
                   <Text
                     variant="title"
                     weight="semibold"
-                    style={[styles.primaryMetricValue, { color: qualityColor }]}
+                    style={styles.primaryMetricValue}
                   >
                     {restaurant.contextualScore.toFixed(1)}
+                  </Text>
+                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
+                    {restaurantScoreLabel}
                   </Text>
                 </View>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={styles.secondaryMetrics}>
-                    <View style={styles.secondaryMetric}>
-                      <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                        Overall
-                      </Text>
-                      <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                        {restaurant.restaurantQualityScore.toFixed(1)}
-                      </Text>
-                    </View>
+                  <View style={styles.metricColumn}>
+                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                      {restaurant.restaurantQualityScore.toFixed(1)}
+                    </Text>
+                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
+                      Overall
+                    </Text>
                   </View>
                 ) : null}
               </View>
@@ -2690,40 +2685,34 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultContent}>
             {restaurant.topFood?.length ? (
               <View style={styles.topFoodSection}>
-                <Text variant="caption" weight="semibold" style={styles.topFoodLabel}>
-                  Relevant dishes
-                </Text>
-                <View style={styles.topFoodMiniList}>
-                  {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
-                    <View key={food.connectionId} style={styles.topFoodMiniItem}>
-                      <View style={styles.topFoodMiniRank}>
-                        <Text
-                          variant="caption"
-                          weight="semibold"
-                          style={styles.topFoodMiniRankText}
-                        >
+                <View style={styles.topFoodHeader}>
+                  <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                    Relevant dishes
+                  </Text>
+                  <View style={styles.topFoodDivider} />
+                </View>
+                {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
+                  <View key={food.connectionId} style={styles.topFoodRow}>
+                    <View style={styles.topFoodLeft}>
+                      <View style={styles.topFoodRankPill}>
+                        <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
                           {idx + 1}
                         </Text>
                       </View>
-                      <Text
-                        variant="caption"
-                        weight="semibold"
-                        style={styles.topFoodMiniName}
-                        numberOfLines={1}
-                      >
+                      <Text variant="body" weight="semibold" style={styles.topFoodName} numberOfLines={1}>
                         {food.foodName}
                       </Text>
-                      <Text variant="caption" weight="semibold" style={styles.topFoodMiniScore}>
-                        {food.qualityScore.toFixed(1)}
-                      </Text>
                     </View>
-                  ))}
-                  {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
-                    <Text variant="caption" weight="semibold" style={styles.topFoodMiniMore}>
-                      +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
+                    <Text variant="caption" weight="semibold" style={styles.topFoodScore}>
+                      {food.qualityScore.toFixed(1)}
                     </Text>
-                  ) : null}
-                </View>
+                  </View>
+                ))}
+                {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
+                  <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
+                    +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
+                  </Text>
+                ) : null}
               </View>
             ) : null}
           </View>
@@ -3991,9 +3980,14 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingBottom: 0,
     marginTop: 8,
+    justifyContent: 'flex-end',
   },
   dishMetricsSpacing: {
     marginTop: 8,
+  },
+  metricColumn: {
+    alignItems: 'flex-end',
+    gap: 2,
   },
   primaryMetric: {
     gap: 2,
@@ -4006,7 +4000,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   primaryMetricValue: {
-    color: QUALITY_COLOR,
+    color: themeColors.textPrimary,
   },
   secondaryMetrics: {
     flexDirection: 'row',
@@ -4083,43 +4077,70 @@ const styles = StyleSheet.create({
   dishSubtitleSmall: {
     fontSize: 12,
   },
+  topFoodSection: {
+    marginTop: 2,
+    marginBottom: 8,
+    gap: 8,
+  },
   topFoodLabel: {
     color: themeColors.textBody,
+    fontWeight: '500',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    fontSize: 11,
   },
-  topFoodMiniList: {
-    gap: 4,
-  },
-  topFoodMiniItem: {
+  topFoodHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
   },
-  topFoodMiniRank: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#e2e8f0',
+  topFoodDivider: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(15, 23, 42, 0.1)',
+  },
+  topFoodRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 6,
+  },
+  topFoodLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  topFoodRankPill: {
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 6,
+    borderRadius: 10,
+    backgroundColor: themeColors.secondaryAccent,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topFoodMiniRankText: {
-    color: themeColors.textBody,
-    fontWeight: '500',
+  topFoodRankText: {
+    color: '#ffffff',
+    fontWeight: '600',
   },
-  topFoodMiniName: {
+  topFoodName: {
     color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  topFoodMiniScore: {
+  topFoodScore: {
     color: themeColors.textBody,
-    fontWeight: '500',
+    fontWeight: '600',
   },
-  topFoodMiniMore: {
+  topFoodMore: {
     color: themeColors.secondaryAccent,
-    marginLeft: 24,
-    fontWeight: '500',
+    marginTop: 8,
+    fontWeight: '600',
+    alignSelf: 'flex-start',
   },
   loadingText: {
     marginTop: 16,
