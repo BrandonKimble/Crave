@@ -901,6 +901,7 @@ const SearchScreen: React.FC = () => {
     return (
       <Text
         variant="caption"
+        weight="regular"
         style={[
           styles.resultMetaText,
           { fontSize: META_FONT_SIZE },
@@ -2706,7 +2707,7 @@ const SearchScreen: React.FC = () => {
                       </View>
                       <Text
                         variant="caption"
-                        weight="regular"
+                        weight="semibold"
                         style={styles.topFoodMiniName}
                         numberOfLines={1}
                       >
@@ -2718,7 +2719,7 @@ const SearchScreen: React.FC = () => {
                     </View>
                   ))}
                   {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
-                    <Text variant="caption" weight="regular" style={styles.topFoodMiniMore}>
+                    <Text variant="caption" weight="semibold" style={styles.topFoodMiniMore}>
                       +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
                     </Text>
                   ) : null}
@@ -3892,9 +3893,11 @@ const styles = StyleSheet.create({
   resultMetaText: {
     color: themeColors.textBody,
     flexShrink: 1,
+    fontWeight: '500',
   },
   resultMetaPrefix: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   resultMetaTextRight: {
     textAlign: 'right',
@@ -3907,18 +3910,22 @@ const styles = StyleSheet.create({
   },
   resultMetaSuffix: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   resultMetaClosed: {
     color: '#dc2626',
   },
   resultMetaSeparator: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   resultMetaPrice: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   resultMetaDistance: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   dishMetaRow: {
     flexDirection: 'row',
@@ -3996,6 +4003,7 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
     letterSpacing: 0.15,
     marginTop: -1,
+    fontWeight: '500',
   },
   primaryMetricValue: {
     color: QUALITY_COLOR,
@@ -4014,6 +4022,7 @@ const styles = StyleSheet.create({
     color: themeColors.textMuted,
     letterSpacing: 0.15,
     marginTop: -1,
+    fontWeight: '500',
   },
   secondaryMetricValue: {
     color: themeColors.textBody,
@@ -4095,18 +4104,22 @@ const styles = StyleSheet.create({
   },
   topFoodMiniRankText: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   topFoodMiniName: {
     color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
+    fontWeight: '500',
   },
   topFoodMiniScore: {
     color: themeColors.textBody,
+    fontWeight: '500',
   },
   topFoodMiniMore: {
     color: themeColors.secondaryAccent,
     marginLeft: 24,
+    fontWeight: '500',
   },
   loadingText: {
     marginTop: 16,
