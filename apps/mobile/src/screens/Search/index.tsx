@@ -18,6 +18,7 @@ import {
 import type { TextInput } from 'react-native';
 import {
   PanGestureHandler,
+  NativeViewGestureHandler,
   type PanGestureHandlerGestureEvent,
 } from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
@@ -115,7 +116,7 @@ const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
   3: '$$$',
   4: '$$$$',
 };
-const META_FONT_SIZE = 15;
+const META_FONT_SIZE = 14;
 const DISTANCE_MIN_DECIMALS = 1;
 const DISTANCE_MAX_DECIMALS = 0;
 const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
@@ -592,6 +593,7 @@ const SearchScreen: React.FC = () => {
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
   const resultsScrollOffset = useSharedValue(0);
+  const draggingFromTop = useSharedValue(false);
   const lastScrollYRef = React.useRef(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
@@ -614,7 +616,7 @@ const SearchScreen: React.FC = () => {
   const searchSurfaceAnim = useSharedValue(0);
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
-  const draggingFromTopRef = React.useRef(false);
+  const scrollGestureRef = React.useRef<NativeViewGestureHandler | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
@@ -782,46 +784,34 @@ const SearchScreen: React.FC = () => {
     if (status) {
       if (isClosingSoon) {
         segments.push(
-          <Text key="status-closing-soon" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
-            <Text
-              variant="caption"
-              style={[styles.resultMetaClosingSoon, { fontSize: META_FONT_SIZE }]}
-            >
+          <Text key="status-closing-soon" variant="caption" weight="semibold">
+            <Text variant="caption" weight="semibold" style={styles.resultMetaClosingSoon}>
               Closes
             </Text>
             {status.closesAtDisplay ? (
-              <Text
-                variant="caption"
-                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
-              >{` at ${status.closesAtDisplay}`}</Text>
+              <Text variant="caption" style={styles.resultMetaSuffix}>{` at ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
       } else if (status.isOpen) {
         segments.push(
-          <Text key="status-open" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
-            <Text variant="caption" style={[styles.resultMetaOpen, { fontSize: META_FONT_SIZE }]}>
+          <Text key="status-open" variant="caption" weight="semibold">
+            <Text variant="caption" weight="semibold" style={styles.resultMetaOpen}>
               Open
             </Text>
             {status.closesAtDisplay ? (
-              <Text
-                variant="caption"
-                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
-              >{` until ${status.closesAtDisplay}`}</Text>
+              <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.closesAtDisplay}`}</Text>
             ) : null}
           </Text>
         );
       } else if (status.isOpen === false) {
         segments.push(
-          <Text key="status-closed" variant="caption" style={{ fontSize: META_FONT_SIZE }}>
-            <Text variant="caption" style={[styles.resultMetaClosed, { fontSize: META_FONT_SIZE }]}>
+          <Text key="status-closed" variant="caption" weight="semibold">
+            <Text variant="caption" weight="semibold" style={styles.resultMetaClosed}>
               Closed
             </Text>
             {status.nextOpenDisplay ? (
-              <Text
-                variant="caption"
-                style={[styles.resultMetaSuffix, { fontSize: META_FONT_SIZE }]}
-              >{` until ${status.nextOpenDisplay}`}</Text>
+              <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.nextOpenDisplay}`}</Text>
             ) : null}
           </Text>
         );
@@ -1190,19 +1180,23 @@ const SearchScreen: React.FC = () => {
       const { contentOffset } = event.nativeEvent;
       const offsetY = contentOffset?.y ?? 0;
       resultsScrollOffset.value = offsetY;
+      if (draggingFromTop.value && offsetY > 0.5) {
+        draggingFromTop.value = false;
+      }
       resultsScrollY.setValue(offsetY);
       lastScrollYRef.current = offsetY;
     },
-    [resultsScrollY]
+    [draggingFromTop, resultsScrollY]
   );
 
   const handleResultsScrollBeginDrag = React.useCallback(() => {
-    draggingFromTopRef.current = false;
-  }, []);
+    // Track whether the list drag began at the very top so we can hand off to the sheet pan.
+    draggingFromTop.value = resultsScrollOffset.value <= 0.5;
+  }, [draggingFromTop, resultsScrollOffset]);
 
   const handleResultsScrollEndDrag = React.useCallback(() => {
-    draggingFromTopRef.current = false;
-  }, []);
+    draggingFromTop.value = false;
+  }, [draggingFromTop]);
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
     setQuery(value);
@@ -1592,10 +1586,11 @@ const SearchScreen: React.FC = () => {
         const isListAtTop = resultsScrollOffset.value <= 0.5;
         const pullingDown = event.translationY > 0;
         const isExpandedStart = context.isExpandedAtStart;
+        const startedAtTop = draggingFromTop.value;
 
         if (!context.isHeaderDrag && isExpandedStart) {
-          // When expanded, only allow sheet drag if list is at top and pulling down.
-          if (!isListAtTop || !pullingDown) {
+          // When expanded, allow pull-down from anywhere in the list as long as we're at the top.
+          if (!pullingDown || (!startedAtTop && !isListAtTop)) {
             return;
           }
         }
@@ -1693,11 +1688,11 @@ const SearchScreen: React.FC = () => {
       [0, 1],
       Extrapolation.CLAMP
     );
-    // Keep the bar solid for most of the slide; fade quickly near the top.
+    // Keep the bar solid briefly, then fade quickly so it's gone before overlap.
     const opacity = interpolate(
       progress,
-      [0, 0.15, 0.35, 0.7, 1],
-      [0, 0.25, 0.6, 0.95, 1],
+      [0, 0.3, 0.5, 0.7, 1],
+      [0, 0, 0.15, 0.9, 1],
       Extrapolation.CLAMP
     );
     const borderAlpha = interpolate(
@@ -1713,6 +1708,7 @@ const SearchScreen: React.FC = () => {
       backgroundColor: '#ffffff',
       borderColor: `rgba(229, 231, 235, ${borderAlpha})`,
       transform: [{ scale }],
+      display: opacity < 0.02 ? 'none' : 'flex',
     };
   });
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
@@ -2472,21 +2468,11 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
-                <Text
-                  variant="body"
-                  weight="bold"
-                  style={[styles.textSlate900, styles.dishCardTitle]}
-                  numberOfLines={1}
-                >
+                <Text variant="subtitle" weight="semibold" style={styles.textSlate900} numberOfLines={1}>
                   {item.foodName}
                 </Text>
               </View>
-              <Text
-                variant="body"
-                weight="medium"
-                style={[styles.textSlate600, styles.dishRestaurantName]}
-                numberOfLines={1}
-              >
+              <Text variant="body" weight="regular" style={[styles.textSlate600, styles.dishRestaurantName]} numberOfLines={1}>
                 {item.restaurantName}
               </Text>
               {dishMetaLine ? (
@@ -2524,12 +2510,12 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultContent}>
             <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
               <View style={styles.primaryMetric}>
-                <Text variant="caption" style={styles.primaryMetricLabel}>
+                <Text variant="caption" weight="semibold" style={styles.primaryMetricLabel}>
                   Dish score
                 </Text>
                 <Text
                   variant="title"
-                  weight="bold"
+                  weight="semibold"
                   style={[styles.primaryMetricValue, { color: qualityColor }]}
                 >
                   {item.qualityScore.toFixed(1)}
@@ -2537,7 +2523,7 @@ const SearchScreen: React.FC = () => {
               </View>
               <View style={styles.secondaryMetrics}>
                 <View style={styles.secondaryMetric}>
-                  <Text variant="caption" style={styles.secondaryMetricLabel}>
+                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
                     Poll Count
                   </Text>
                   <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
@@ -2545,7 +2531,7 @@ const SearchScreen: React.FC = () => {
                   </Text>
                 </View>
                 <View style={styles.secondaryMetric}>
-                  <Text variant="caption" style={styles.secondaryMetricLabel}>
+                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
                     Total Votes
                   </Text>
                   <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
@@ -2588,12 +2574,7 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.rankBadge}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
-                <Text
-                  variant="subtitle"
-                  weight="bold"
-                  style={[styles.textSlate900, styles.dishTitle]}
-                  numberOfLines={1}
-                >
+                <Text variant="subtitle" weight="semibold" style={styles.textSlate900} numberOfLines={1}>
                   {restaurant.restaurantName}
                 </Text>
               </View>
@@ -2630,27 +2611,27 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultContent}>
             {restaurant.topFood?.length ? (
               <View style={styles.topFoodSection}>
-                <Text variant="caption" style={styles.topFoodLabel}>
+                <Text variant="caption" weight="semibold" style={styles.topFoodLabel}>
                   Relevant dishes
                 </Text>
                 <View style={styles.topFoodMiniList}>
                   {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
                     <View key={food.connectionId} style={styles.topFoodMiniItem}>
                       <View style={styles.topFoodMiniRank}>
-                        <Text variant="caption" style={styles.topFoodMiniRankText}>
+                        <Text variant="caption" weight="semibold" style={styles.topFoodMiniRankText}>
                           {idx + 1}
                         </Text>
                       </View>
-                      <Text variant="caption" style={styles.topFoodMiniName} numberOfLines={1}>
+                      <Text variant="caption" weight="regular" style={styles.topFoodMiniName} numberOfLines={1}>
                         {food.foodName}
                       </Text>
-                      <Text variant="caption" style={styles.topFoodMiniScore}>
+                      <Text variant="caption" weight="semibold" style={styles.topFoodMiniScore}>
                         {food.qualityScore.toFixed(1)}
                       </Text>
                     </View>
                   ))}
                   {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
-                    <Text variant="caption" style={styles.topFoodMiniMore}>
+                    <Text variant="caption" weight="regular" style={styles.topFoodMiniMore}>
                       +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
                     </Text>
                   ) : null}
@@ -2659,12 +2640,12 @@ const SearchScreen: React.FC = () => {
             ) : null}
             <View style={styles.metricsContainer}>
               <View style={styles.primaryMetric}>
-                <Text variant="caption" style={styles.primaryMetricLabel}>
+                <Text variant="caption" weight="semibold" style={styles.primaryMetricLabel}>
                   {restaurantScoreLabel}
                 </Text>
                 <Text
                   variant="title"
-                  weight="bold"
+                  weight="semibold"
                   style={[styles.primaryMetricValue, { color: qualityColor }]}
                 >
                   {restaurant.contextualScore.toFixed(1)}
@@ -2674,12 +2655,12 @@ const SearchScreen: React.FC = () => {
               restaurant.restaurantQualityScore !== undefined ? (
                 <View style={styles.secondaryMetrics}>
                   <View style={styles.secondaryMetric}>
-                    <Text variant="caption" style={styles.secondaryMetricLabel}>
-                      Overall
-                    </Text>
-                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                      {restaurant.restaurantQualityScore.toFixed(1)}
-                    </Text>
+                  <Text variant="caption" weight="semibold" style={styles.secondaryMetricLabel}>
+                    Overall
+                  </Text>
+                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
+                    {restaurant.restaurantQualityScore.toFixed(1)}
+                  </Text>
                   </View>
                 </View>
               ) : null}
@@ -2769,6 +2750,28 @@ const SearchScreen: React.FC = () => {
     () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
     [filtersHeader]
   );
+  const renderFlashListScrollComponent = React.useMemo(
+    () =>
+      React.forwardRef<any, any>((scrollProps, scrollRef) => {
+        const { contentContainerStyle, style, ...restProps } = scrollProps ?? {};
+        return (
+          <NativeViewGestureHandler ref={scrollGestureRef} simultaneousHandlers={[sheetPanRef]}>
+            <Animated.ScrollView
+              {...restProps}
+              ref={scrollRef}
+              style={[styles.resultsScroll, style]}
+              contentContainerStyle={[styles.resultsScrollContent, contentContainerStyle]}
+              bounces={false}
+              alwaysBounceVertical={false}
+              overScrollMode="never"
+              scrollEnabled={resultsScrollEnabled}
+            />
+          </NativeViewGestureHandler>
+        );
+      }),
+    [resultsScrollEnabled, scrollGestureRef, sheetPanRef]
+  );
+
   const flatListProps: FlashListProps<FoodResult | RestaurantResult> = React.useMemo(
     () => ({
       data: safeResultsData,
@@ -2808,6 +2811,7 @@ const SearchScreen: React.FC = () => {
       scrollEnabled: resultsScrollEnabled,
       onEndReached: canLoadMore ? loadMoreResults : undefined,
       onEndReachedThreshold: 0.2,
+      renderScrollComponent: renderFlashListScrollComponent,
     }),
     [
       activeTab,
@@ -2824,6 +2828,7 @@ const SearchScreen: React.FC = () => {
       onResultsScroll,
       renderSafeItem,
       restaurantKeyExtractor,
+      renderFlashListScrollComponent,
       resultsScrollEnabled,
       safeResultsData,
     ]
@@ -2969,7 +2974,7 @@ const SearchScreen: React.FC = () => {
             </Animated.ScrollView>
           </Reanimated.View>
           <View
-            pointerEvents="auto"
+            pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
             style={styles.searchContainer}
             onLayout={({ nativeEvent: { layout } }) => {
               setSearchLayout((prev) => {
@@ -3011,7 +3016,9 @@ const SearchScreen: React.FC = () => {
               >
                 <View style={styles.searchShortcutContent}>
                   <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                  <Text style={styles.searchShortcutChipText}>Best dishes</Text>
+                <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                  Best dishes
+                </Text>
                 </View>
               </Pressable>
               <Pressable
@@ -3023,7 +3030,9 @@ const SearchScreen: React.FC = () => {
               >
                 <View style={styles.searchShortcutContent}>
                   <Store size={16} color="#0f172a" strokeWidth={2} />
-                  <Text style={styles.searchShortcutChipText}>Best restaurants</Text>
+                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                    Best restaurants
+                  </Text>
                 </View>
               </Pressable>
             </View>
@@ -3034,7 +3043,11 @@ const SearchScreen: React.FC = () => {
                 pointerEvents="none"
                 style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
               />
-              <PanGestureHandler ref={sheetPanRef} onGestureEvent={sheetPanGesture}>
+              <PanGestureHandler
+                ref={sheetPanRef}
+                onGestureEvent={sheetPanGesture}
+                simultaneousHandlers={[scrollGestureRef]}
+              >
                 <Reanimated.View
                   style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
                   pointerEvents={panelVisible ? 'auto' : 'none'}
@@ -3063,7 +3076,7 @@ const SearchScreen: React.FC = () => {
                     <View
                       style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
                     >
-                      <Text variant="body" weight="semibold" style={styles.submittedQueryLabel}>
+                      <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
                         {submittedQuery || 'Results'}
                       </Text>
                       <Pressable
@@ -3139,7 +3152,11 @@ const SearchScreen: React.FC = () => {
                   onPress={() => handleOverlaySelect(item.key)}
                 >
                   <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
-                  <Text style={[styles.navLabel, active && styles.navLabelActive]}>
+                  <Text
+                    variant="caption"
+                    weight={active ? 'semibold' : 'regular'}
+                    style={[styles.navLabel, active && styles.navLabelActive]}
+                  >
                     {item.label}
                   </Text>
                 </TouchableOpacity>
@@ -3149,7 +3166,9 @@ const SearchScreen: React.FC = () => {
               <View style={styles.navIcon}>
                 <CircleUserRound size={20} color="#94a3b8" strokeWidth={2} />
               </View>
-              <Text style={[styles.navLabel]}>Profile</Text>
+              <Text variant="caption" weight="regular" style={[styles.navLabel]}>
+                Profile
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -3262,8 +3281,6 @@ const styles = StyleSheet.create({
     columnGap: 6,
   },
   searchShortcutChipText: {
-    fontSize: 13,
-    fontWeight: '500',
     color: '#0f172a',
   },
   promptCardTopShadow: {
@@ -3581,10 +3598,8 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   navLabel: {
-    fontSize: 12,
     marginTop: 0,
     color: '#94a3b8',
-    fontWeight: '600',
   },
   navLabelActive: {
     color: ACTIVE_TAB_COLOR,
@@ -3676,8 +3691,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     marginRight: 12,
     color: '#0f172a',
-    fontSize: 21,
-    lineHeight: RESULT_HEADER_ICON_SIZE,
     marginBottom: 0,
     paddingLeft: 0,
   },
@@ -3825,8 +3838,6 @@ const styles = StyleSheet.create({
   },
   rankBadgeText: {
     color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
   },
   resultMetaLine: {
     marginTop: 2,
@@ -3847,8 +3858,6 @@ const styles = StyleSheet.create({
   },
   resultMetaText: {
     color: '#6b7280',
-    fontSize: META_FONT_SIZE,
-    fontWeight: '400',
     flexShrink: 1,
   },
   resultMetaTextRight: {
@@ -3856,35 +3865,24 @@ const styles = StyleSheet.create({
   },
   resultMetaOpen: {
     color: '#16a34a',
-    fontWeight: '600',
   },
   resultMetaClosingSoon: {
     color: '#f59e0b',
-    fontSize: META_FONT_SIZE,
-    fontWeight: '600',
   },
   resultMetaSuffix: {
     color: '#6b7280',
-    fontWeight: '400',
   },
   resultMetaClosed: {
     color: '#dc2626',
-    fontSize: META_FONT_SIZE,
-    fontWeight: '600',
   },
   resultMetaSeparator: {
     color: '#6b7280',
-    fontWeight: '400',
   },
   resultMetaPrice: {
     color: '#6b7280',
-    fontSize: META_FONT_SIZE,
-    fontWeight: '400',
   },
   resultMetaDistance: {
     color: '#6b7280',
-    fontSize: META_FONT_SIZE,
-    fontWeight: '400',
   },
   dishMetaRow: {
     flexDirection: 'row',
@@ -3958,13 +3956,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   primaryMetricLabel: {
-    fontSize: 11,
     color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   primaryMetricValue: {
-    fontSize: 32,
     color: QUALITY_COLOR,
   },
   secondaryMetrics: {
@@ -3977,13 +3973,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   secondaryMetricLabel: {
-    fontSize: 10,
     color: '#94a3b8',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   secondaryMetricValue: {
-    fontSize: 14,
     color: '#64748b',
   },
   emptyState: {
@@ -4027,15 +4021,12 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   dishCardTitle: {
-    fontSize: 18,
     flexShrink: 1,
     minWidth: 0,
   },
   dishRestaurantName: {
     marginTop: 4,
-    fontSize: META_FONT_SIZE,
     color: '#6b7280',
-    fontWeight: '400',
     flexShrink: 1,
     minWidth: 0,
   },
@@ -4047,9 +4038,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   topFoodLabel: {
-    fontSize: 12,
     color: '#475569',
-    fontWeight: '600',
   },
   topFoodMiniList: {
     gap: 4,
@@ -4068,25 +4057,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   topFoodMiniRankText: {
-    fontSize: 11,
     color: '#475569',
-    fontWeight: '600',
   },
   topFoodMiniName: {
-    fontSize: 13,
     color: '#0f172a',
     flexShrink: 1,
     minWidth: 0,
   },
   topFoodMiniScore: {
-    fontSize: 12,
     color: '#6b7280',
-    fontWeight: '600',
   },
   topFoodMiniMore: {
-    fontSize: 12,
     color: '#6b7280',
-    fontWeight: '500',
   },
   loadingText: {
     marginTop: 16,
