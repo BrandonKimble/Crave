@@ -33,7 +33,12 @@ const FrostedGlassBackground: React.FC<FrostedGlassBackgroundProps> = ({
   blurStyle,
 }) => (
   <>
-    <BlurView pointerEvents="none" intensity={intensity} tint={tint} style={[frostedStyles.blur, blurStyle]} />
+    <BlurView
+      pointerEvents="none"
+      intensity={intensity}
+      tint={tint}
+      style={[frostedStyles.blur, blurStyle]}
+    />
     <View pointerEvents="none" style={frostedStyles.tint} />
     <View pointerEvents="none" style={frostedStyles.highlight} />
   </>

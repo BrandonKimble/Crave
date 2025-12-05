@@ -118,7 +118,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   );
 };
 
-  const styles = StyleSheet.create({
+const styles = StyleSheet.create({
   autocompleteSectionSurface: {
     paddingHorizontal: 14,
     paddingVertical: 10,
