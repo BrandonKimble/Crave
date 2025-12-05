@@ -102,24 +102,24 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
               />
             </Reanimated.View>
             <Reanimated.View style={[styles.trailingContainer, inputAnimatedStyle]}>
-            {loading ? (
-              <ActivityIndicator size="small" color={accentColor} />
-            ) : value.length > 0 ? (
-              <Pressable
-                onPress={(event) => {
-                  event.stopPropagation?.();
-                  onClear();
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-                style={styles.trailingButton}
-                hitSlop={10}
-              >
-                <X size={22} color={accentColor} strokeWidth={2} />
-              </Pressable>
-            ) : (
-              <View style={styles.trailingPlaceholder} />
-            )}
+              {loading ? (
+                <ActivityIndicator size="small" color={accentColor} />
+              ) : value.length > 0 ? (
+                <Pressable
+                  onPress={(event) => {
+                    event.stopPropagation?.();
+                    onClear();
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                  style={styles.trailingButton}
+                  hitSlop={10}
+                >
+                  <X size={22} color={accentColor} strokeWidth={2} />
+                </Pressable>
+              ) : (
+                <View style={styles.trailingPlaceholder} />
+              )}
             </Reanimated.View>
           </View>
         </Pressable>

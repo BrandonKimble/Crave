@@ -675,7 +675,12 @@ const SearchScreen: React.FC = () => {
         </Svg>
       ),
       bookmarks: (color: string, active: boolean) => (
-        <Heart size={20} color={color} strokeWidth={active ? 0 : 2} fill={active ? color : 'none'} />
+        <Heart
+          size={20}
+          color={color}
+          strokeWidth={active ? 0 : 2}
+          fill={active ? color : 'none'}
+        />
       ),
       polls: (color: string, active: boolean) => (
         <ChartNoAxesColumnDecreasing
