@@ -30,6 +30,7 @@ type SearchHeaderProps = {
   inputAnimatedStyle?: AnimatedStyle;
   containerAnimatedStyle?: AnimatedStyle;
   editable?: boolean;
+  showInactiveSearchIcon?: boolean;
 };
 
 const SearchHeader: React.FC<SearchHeaderProps> = ({
@@ -49,6 +50,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   inputAnimatedStyle,
   containerAnimatedStyle,
   editable = true,
+  showInactiveSearchIcon = false,
 }) => {
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
@@ -65,33 +67,35 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 inputAnimatedStyle,
               ]}
             >
-              <Pressable
-                style={styles.searchIcon}
-                onPress={(event) => {
-                  event.stopPropagation?.();
-                  if (showBack && onBackPress) {
-                    onBackPress();
-                    return;
-                  }
-                  (onPress ?? onFocus)?.();
-                }}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel={showBack ? 'Exit search' : 'Focus search'}
-              >
-                {showBack ? (
-                  <ChevronLeft size={22} color="#6b7280" strokeWidth={2} />
-                ) : (
-                  <Search size={22} color="#6b7280" strokeWidth={2} />
-                )}
-              </Pressable>
+              {showBack ? (
+                <Pressable
+                  style={styles.searchIconBack}
+                  onPress={(event) => {
+                    event.stopPropagation?.();
+                    if (onBackPress) {
+                      onBackPress();
+                      return;
+                    }
+                    (onPress ?? onFocus)?.();
+                  }}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Exit search"
+                >
+                  <ChevronLeft size={20} color="#6b7280" strokeWidth={2} />
+                </Pressable>
+              ) : showInactiveSearchIcon ? (
+                <View style={styles.searchIconInactive}>
+                  <Search size={20} color="#9ca3af" strokeWidth={2} />
+                </View>
+              ) : null}
               <TextInput
                 ref={inputRef}
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={placeholder}
                 placeholderTextColor={themeColors.textBody}
-                style={styles.promptInput}
+                style={[styles.promptInput, !showBack && styles.promptInputPadded]}
                 returnKeyType="search"
                 onSubmitEditing={onSubmit}
                 onFocus={onFocus}
@@ -160,9 +164,15 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     gap: 8,
   },
-  searchIcon: {
+  searchIconBack: {
     marginRight: 4,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 6,
+  },
+  searchIconInactive: {
+    marginRight: 0,
+    paddingLeft: 6,
+    paddingRight: 2,
     paddingVertical: 6,
   },
   promptInput: {
@@ -172,6 +182,9 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     paddingVertical: 0,
     height: '100%',
+  },
+  promptInputPadded: {
+    paddingLeft: 8,
   },
   trailingContainer: {
     marginLeft: 'auto',

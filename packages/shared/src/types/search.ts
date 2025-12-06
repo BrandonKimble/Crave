@@ -91,6 +91,8 @@ export interface RestaurantResult {
   restaurantAliases: string[];
   contextualScore: number;
   restaurantQualityScore?: number | null;
+  mentionCount?: number;
+  totalUpvotes?: number;
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
@@ -115,6 +117,7 @@ export interface SearchResponseMetadata {
   openNowApplied: boolean;
   openNowSupportedRestaurants: number;
   openNowUnsupportedRestaurants: number;
+  openNowUnsupportedRestaurantIds?: string[];
   openNowFilteredOut: number;
   priceFilterApplied?: boolean;
   minimumVotesApplied?: boolean;

@@ -69,6 +69,7 @@ interface QueryResultRow {
   activity_level: ActivityLevel;
   food_quality_score: Prisma.Decimal | number | string;
   restaurant_total_upvotes: Prisma.Decimal | number | string;
+  restaurant_total_mentions: Prisma.Decimal | number | string;
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
@@ -132,6 +133,7 @@ interface ExecuteResult {
     openNowApplied: boolean;
     openNowSupportedRestaurants: number;
     openNowUnsupportedRestaurants: number;
+    openNowUnsupportedRestaurantIds?: string[];
     openNowFilteredOut: number;
     priceFilterApplied: boolean;
     minimumVotesApplied: boolean;
@@ -197,6 +199,7 @@ export class SearchQueryExecutor {
           applied: false,
           supportedCount: 0,
           unsupportedCount: 0,
+          unsupportedIds: [],
         };
 
     const filteredConnections = openFilter.connections;
@@ -259,6 +262,7 @@ export class SearchQueryExecutor {
         openNowApplied: openFilter.applied,
         openNowSupportedRestaurants: openFilter.supportedCount,
         openNowUnsupportedRestaurants: openFilter.unsupportedCount,
+        openNowUnsupportedRestaurantIds: openFilter.unsupportedIds,
         openNowFilteredOut,
         priceFilterApplied: query.metadata.priceFilterApplied,
         minimumVotesApplied: query.metadata.minimumVotesApplied,
@@ -366,11 +370,13 @@ export class SearchQueryExecutor {
     applied: boolean;
     supportedCount: number;
     unsupportedCount: number;
+    unsupportedIds: string[];
   } {
     const filtered: QueryResultRow[] = [];
     let applied = false;
     let supported = 0;
     let unsupported = 0;
+    const unsupportedIds: string[] = [];
 
     for (const connection of connections) {
       const status = restaurantContexts.get(
@@ -379,6 +385,7 @@ export class SearchQueryExecutor {
 
       if (!status) {
         unsupported += 1;
+        unsupportedIds.push(connection.restaurant_id);
         continue;
       }
 
@@ -396,6 +403,7 @@ export class SearchQueryExecutor {
         applied: false,
         supportedCount: 0,
         unsupportedCount: unsupported,
+        unsupportedIds,
       };
     }
 
@@ -404,6 +412,7 @@ export class SearchQueryExecutor {
       applied: true,
       supportedCount: supported,
       unsupportedCount: unsupported,
+      unsupportedIds,
     };
   }
 
@@ -551,6 +560,7 @@ export class SearchQueryExecutor {
         scoreSum: number;
         count: number;
         totalUpvotes: number;
+        totalMentions: number;
       }
     >();
 
@@ -566,14 +576,16 @@ export class SearchQueryExecutor {
       const restaurantTotalUpvotes = this.toNumber(
         connection.restaurant_total_upvotes,
       );
+      const restaurantTotalMentions = this.toNumber(
+        connection.restaurant_total_mentions,
+      );
       const existing = grouped.get(connection.restaurant_id);
       if (existing) {
         existing.snippets.push(snippet);
         existing.scoreSum += snippet.qualityScore;
         existing.count += 1;
-        if (restaurantTotalUpvotes > existing.totalUpvotes) {
-          existing.totalUpvotes = restaurantTotalUpvotes;
-        }
+        existing.totalUpvotes = restaurantTotalUpvotes;
+        existing.totalMentions = restaurantTotalMentions;
         if (
           (existing.priceLevel === null || existing.priceLevel === undefined) &&
           connection.price_level != null
@@ -636,6 +648,7 @@ export class SearchQueryExecutor {
           scoreSum: snippet.qualityScore,
           count: 1,
           totalUpvotes: restaurantTotalUpvotes,
+          totalMentions: restaurantTotalMentions,
         });
       }
     }
@@ -674,6 +687,8 @@ export class SearchQueryExecutor {
           snippets,
           scoreSum,
           count,
+          totalUpvotes,
+          totalMentions,
         }) => {
           const restaurantContext = restaurantContexts.get(restaurantId);
           const resolvedPriceLevel =
@@ -736,6 +751,11 @@ export class SearchQueryExecutor {
               restaurantQualityScore === undefined
                 ? null
                 : this.toNumber(restaurantQualityScore),
+            mentionCount:
+              totalMentions === undefined || totalMentions === null
+                ? null
+                : this.toNumber(totalMentions),
+            totalUpvotes: totalUpvotes,
             latitude:
               latitude === null || latitude === undefined
                 ? null

@@ -34,7 +34,8 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
-import MapboxGL from '@rnmapbox/maps';
+import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -50,9 +51,6 @@ import {
   HandPlatter,
   Store,
   Heart,
-  ChartNoAxesColumnDecreasing,
-  CircleUserRound,
-  MapPin,
 } from 'lucide-react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
@@ -157,6 +155,9 @@ const MARKER_SHADOW_STYLE = {
   elevation: 8,
 };
 const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
+const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
+const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
+const MAP_MOVE_DISTANCE_RATIO = 0.08;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -344,6 +345,7 @@ type SubmitSearchOptions = {
   minimumVotes?: number | null;
   page?: number;
   append?: boolean;
+  preserveSheetState?: boolean;
 };
 
 type OpenNowNotice = {
@@ -375,6 +377,53 @@ const boundsFromPairs = (first: [number, number], second: [number, number]): Map
       lng: Math.min(lngs[0], lngs[1]),
     },
   };
+};
+
+const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
+
+const haversineDistanceMiles = (a: Coordinate, b: Coordinate): number => {
+  const dLat = toRadians(b.lat - a.lat);
+  const dLng = toRadians(b.lng - a.lng);
+  const lat1 = toRadians(a.lat);
+  const lat2 = toRadians(b.lat);
+  const earthRadiusMiles = 3958.8;
+  const sinLat = Math.sin(dLat / 2);
+  const sinLng = Math.sin(dLng / 2);
+  const haversine =
+    sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(1 - haversine, 0)));
+  return earthRadiusMiles * c;
+};
+
+const getBoundsCenter = (bounds: MapBounds): Coordinate => ({
+  lat: (bounds.northEast.lat + bounds.southWest.lat) / 2,
+  lng: (bounds.northEast.lng + bounds.southWest.lng) / 2,
+});
+
+const getBoundsDiagonalMiles = (bounds: MapBounds): number =>
+  haversineDistanceMiles(bounds.northEast, bounds.southWest);
+
+const mapStateBoundsToMapBounds = (state?: MapboxMapState | null): MapBounds | null => {
+  const bounds = state?.properties?.bounds;
+  if (!bounds || !isLngLatTuple(bounds.ne as unknown) || !isLngLatTuple(bounds.sw as unknown)) {
+    return null;
+  }
+  return boundsFromPairs(bounds.ne as [number, number], bounds.sw as [number, number]);
+};
+
+const capitalizeFirst = (value: string): string =>
+  value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+
+const hasBoundsMovedSignificantly = (previous: MapBounds, next: MapBounds): boolean => {
+  const centerShift = haversineDistanceMiles(getBoundsCenter(previous), getBoundsCenter(next));
+  const previousDiagonal = Math.max(getBoundsDiagonalMiles(previous), 0.01);
+  const nextDiagonal = Math.max(getBoundsDiagonalMiles(next), 0.01);
+  const normalizedShift = centerShift / previousDiagonal;
+  const sizeDeltaRatio = Math.abs(nextDiagonal - previousDiagonal) / previousDiagonal;
+  return (
+    centerShift >= MAP_MOVE_MIN_DISTANCE_MILES &&
+    (normalizedShift >= MAP_MOVE_DISTANCE_RATIO || sizeDeltaRatio >= MAP_MOVE_DISTANCE_RATIO)
+  );
 };
 
 const SEGMENT_OPTIONS = [
@@ -444,6 +493,47 @@ const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
 const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
+const SECONDARY_METRIC_ICON_SIZE = 14;
+const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
+const CAMERA_STORAGE_KEY = 'search:lastCamera';
+const PollIcon = ({ color, size = SECONDARY_METRIC_ICON_SIZE }: { color: string; size?: number }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ transform: [{ rotate: '90deg' }] }}
+  >
+    <Path d="M5 21v-6" />
+    <Path d="M12 21V3" />
+    <Path d="M19 21V9" />
+  </Svg>
+);
+const VoteIcon = ({
+  color,
+  size = VOTE_ICON_SIZE,
+}: {
+  color: string;
+  size?: number;
+}) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344" />
+    <Path d="m9 11 3 3L22 4" />
+  </Svg>
+);
 
 const RECENT_HISTORY_LIMIT = 8;
 
@@ -471,8 +561,10 @@ const SearchScreen: React.FC = () => {
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
   const latestBoundsRef = React.useRef<MapBounds | null>(null);
-  const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(null);
-  const [mapZoom, setMapZoom] = React.useState(12);
+  const [mapCenter, setMapCenter] = React.useState<[number, number]>(USA_FALLBACK_CENTER);
+  const [mapZoom, setMapZoom] = React.useState<number>(USA_FALLBACK_ZOOM);
+  const [isFollowingUser, setIsFollowingUser] = React.useState(true);
+  const [cameraHydrated, setCameraHydrated] = React.useState(false);
 
   React.useEffect(() => {
     if (accessToken) {
@@ -483,6 +575,33 @@ const SearchScreen: React.FC = () => {
   React.useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
+
+  // Hydrate last camera position to avoid globe spin before we get user location
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(CAMERA_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (
+            parsed &&
+            Array.isArray(parsed.center) &&
+            parsed.center.length === 2 &&
+            typeof parsed.center[0] === 'number' &&
+            typeof parsed.center[1] === 'number' &&
+            typeof parsed.zoom === 'number'
+          ) {
+            setMapCenter([parsed.center[0], parsed.center[1]]);
+            setMapZoom(parsed.zoom);
+          }
+        }
+      } catch {
+        // ignore
+      } finally {
+        setCameraHydrated(true);
+      }
+    })();
+  }, []);
 
   React.useEffect(() => {
     void ensureUserLocation();
@@ -524,13 +643,22 @@ const SearchScreen: React.FC = () => {
     setMapCenter(center);
     setMapZoom(13);
     hasCenteredOnLocationRef.current = true;
+    setIsFollowingUser(false);
     if (cameraRef.current?.setCamera) {
       cameraRef.current.setCamera({
         centerCoordinate: center,
         zoomLevel: 13,
-        animationDuration: 800,
+        animationDuration: 0,
+        animationMode: 'none',
+        pitch: 0,
+        heading: 0,
       });
     }
+    // persist last camera
+    void AsyncStorage.setItem(
+      CAMERA_STORAGE_KEY,
+      JSON.stringify({ center, zoom: 13 })
+    ).catch(() => undefined);
   }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
@@ -589,13 +717,18 @@ const SearchScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
+  const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const resultsScrollEnabled = sheetState === 'expanded';
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
+  const searchThisAreaVisibility = useSharedValue(0);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
   const resultsScrollOffset = useSharedValue(0);
   const draggingFromTop = useSharedValue(false);
   const lastScrollYRef = React.useRef(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
+  const mapMovedSinceSearchRef = React.useRef(false);
+  const mapGestureActiveRef = React.useRef(false);
+  const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
@@ -607,6 +740,28 @@ const SearchScreen: React.FC = () => {
     }),
     [resultsScrollY]
   );
+  const resetMapMoveFlag = React.useCallback(() => {
+    if (mapIdleTimeoutRef.current) {
+      clearTimeout(mapIdleTimeoutRef.current);
+      mapIdleTimeoutRef.current = null;
+    }
+    mapMovedSinceSearchRef.current = false;
+    setMapMovedSinceSearch(false);
+  }, []);
+  const markMapMoved = React.useCallback(() => {
+    mapMovedSinceSearchRef.current = true;
+  }, []);
+  const scheduleMapIdleReveal = React.useCallback(() => {
+    if (mapIdleTimeoutRef.current) {
+      clearTimeout(mapIdleTimeoutRef.current);
+    }
+    mapIdleTimeoutRef.current = setTimeout(() => {
+      mapIdleTimeoutRef.current = null;
+      if (mapMovedSinceSearchRef.current) {
+        setMapMovedSinceSearch(true);
+      }
+    }, 450);
+  }, []);
   const snapPointExpanded = useSharedValue(0);
   const snapPointMiddle = useSharedValue(SCREEN_HEIGHT * 0.4);
   const snapPointCollapsed = useSharedValue(SCREEN_HEIGHT - 160);
@@ -622,6 +777,9 @@ const SearchScreen: React.FC = () => {
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const hasCenteredOnLocationRef = React.useRef(false);
+  const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchRequestSeqRef = React.useRef(0);
+  const activeSearchRequestRef = React.useRef(0);
   const { activeOverlay, overlayParams, setOverlay } = useOverlayStore();
   const isSearchOverlay = activeOverlay === 'search';
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
@@ -649,6 +807,7 @@ const SearchScreen: React.FC = () => {
         { key: 'search' as OverlayKey, label: 'Search' },
         { key: 'bookmarks' as OverlayKey, label: 'Saves' },
         { key: 'polls' as OverlayKey, label: 'Polls' },
+        { key: 'profile' as OverlayKey, label: 'Profile' },
       ] as const,
     []
   );
@@ -685,13 +844,30 @@ const SearchScreen: React.FC = () => {
         />
       ),
       polls: (color: string, active: boolean) => (
-        <ChartNoAxesColumnDecreasing
-          size={20}
-          color={color}
-          strokeWidth={2}
-          style={{ transform: [{ rotate: '90deg' }] }}
-        />
+        <PollIcon color={color} size={20} />
       ),
+      profile: (color: string, active: boolean) => {
+        if (active) {
+          return (
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill={color} stroke="none">
+              <Path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M18.685 19.097A9.723 9.723 0 0 0 21.75 12c0-5.385-4.365-9.75-9.75-9.75S2.25 6.615 2.25 12a9.723 9.723 0 0 0 3.065 7.097A9.716 9.716 0 0 0 12 21.75a9.716 9.716 0 0 0 6.685-2.653Zm-12.54-1.285A7.486 7.486 0 0 1 12 15a7.486 7.486 0 0 1 5.855 2.812A8.224 8.224 0 0 1 12 20.25a8.224 8.224 0 0 1-5.855-2.438ZM15.75 9a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+              />
+            </Svg>
+          );
+        }
+        return (
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+            <Path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+            />
+          </Svg>
+        );
+      },
     }),
     []
   );
@@ -740,6 +916,26 @@ const SearchScreen: React.FC = () => {
   const votesFilterActive = votes100Plus;
   const canLoadMore =
     Boolean(results) && !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants);
+  const shouldShowSearchThisArea =
+    isSearchOverlay &&
+    !isSearchFocused &&
+    sheetState === 'collapsed' &&
+    mapMovedSinceSearch &&
+    !isLoading &&
+    !isLoadingMore &&
+    Boolean(results);
+  React.useEffect(() => {
+    const target = shouldShowSearchThisArea ? 1 : 0;
+    searchThisAreaVisibility.value = withTiming(target, { duration: 200 });
+  }, [searchThisAreaVisibility, shouldShowSearchThisArea]);
+  const searchThisAreaAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: searchThisAreaVisibility.value,
+    transform: [
+      {
+        translateY: interpolate(searchThisAreaVisibility.value, [0, 1], [-8, 0], Extrapolation.CLAMP),
+      },
+    ],
+  }));
   const primaryFoodTerm = React.useMemo(() => {
     const term = results?.metadata?.primaryFoodTerm;
     if (typeof term === 'string') {
@@ -861,15 +1057,11 @@ const SearchScreen: React.FC = () => {
             </Text>
           );
         }
-        segments.push(
-          <Text
-            key="price"
-            variant="caption"
-            style={[styles.resultMetaPrice, { fontSize: META_FONT_SIZE }]}
-          >
-            {normalizedPriceLabel}
-          </Text>
-        );
+            segments.push(
+              <Text key="price" variant="caption" style={styles.resultMetaPrice}>
+                {normalizedPriceLabel}
+              </Text>
+            );
       }
       if (distanceLabel) {
         if (segments.length) {
@@ -951,6 +1143,14 @@ const SearchScreen: React.FC = () => {
       easing: isSearchFocused ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
     });
   }, [isSearchFocused, searchSurfaceAnim]);
+  React.useEffect(
+    () => () => {
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+      }
+    },
+    []
+  );
   const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
     if (userLocationRef.current) {
       return userLocationRef.current;
@@ -1444,91 +1644,9 @@ const SearchScreen: React.FC = () => {
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
-  const openNowNotice = React.useMemo<OpenNowNotice | null>(() => {
-    if (!openNow || !results?.metadata) {
-      return null;
-    }
+  const openNowNotice = null;
 
-    const {
-      openNowApplied,
-      openNowUnsupportedRestaurants = 0,
-      openNowFilteredOut = 0,
-    } = results.metadata;
-
-    if (!openNowApplied) {
-      return {
-        variant: 'warning',
-        message: 'Open-now filtering could not run because these spots are missing hours.',
-      };
-    }
-
-    if (openNowUnsupportedRestaurants > 0) {
-      return {
-        variant: 'info',
-        message: `${openNowUnsupportedRestaurants} places without hours were skipped.`,
-      };
-    }
-
-    if (openNowFilteredOut > 0) {
-      return {
-        variant: 'success',
-        message: `${openNowFilteredOut} closed places were filtered out.`,
-      };
-    }
-
-    return null;
-  }, [openNow, results]);
-
-  React.useEffect(() => {
-    const features = restaurantFeatures.features;
-    if (!features.length) {
-      return;
-    }
-
-    if (features.length === 1) {
-      const [lng, lat] = features[0].geometry.coordinates as [number, number];
-      cameraRef.current?.setCamera({
-        centerCoordinate: [lng, lat],
-        zoomLevel: SINGLE_LOCATION_ZOOM_LEVEL,
-        animationDuration: 600,
-      });
-      return;
-    }
-
-    const longitudes = features.map((feature) => feature.geometry.coordinates[0]);
-    const latitudes = features.map((feature) => feature.geometry.coordinates[1]);
-
-    const west = Math.min(...longitudes);
-    const east = Math.max(...longitudes);
-    const south = Math.min(...latitudes);
-    const north = Math.max(...latitudes);
-    const spanLng = east - west;
-    const spanLat = north - south;
-    const isTightBounds =
-      spanLng < TIGHT_BOUNDS_THRESHOLD_DEGREES && spanLat < TIGHT_BOUNDS_THRESHOLD_DEGREES;
-
-    if (
-      Number.isFinite(west) &&
-      Number.isFinite(east) &&
-      Number.isFinite(south) &&
-      Number.isFinite(north)
-    ) {
-      if (isTightBounds) {
-        cameraRef.current?.setCamera({
-          centerCoordinate: [(west + east) / 2, (south + north) / 2],
-          zoomLevel: SINGLE_LOCATION_ZOOM_LEVEL,
-          animationDuration: 600,
-        });
-      } else {
-        cameraRef.current?.fitBounds(
-          [east, north],
-          [west, south],
-          RESTAURANT_FIT_BOUNDS_PADDING,
-          600
-        );
-      }
-    }
-  }, [restaurants]);
+  // Intentionally avoid auto-fitting the map when results change; keep user camera position.
 
   const snapPoints = React.useMemo<Record<SheetPosition, number>>(() => {
     const expanded = Math.max(searchLayout.top, 0);
@@ -1571,6 +1689,12 @@ const SearchScreen: React.FC = () => {
   React.useEffect(() => {
     sheetStateShared.value = sheetState;
   }, [sheetState, sheetStateShared]);
+
+  React.useEffect(() => {
+    if (!results) {
+      resetMapMoveFlag();
+    }
+  }, [resetMapMoveFlag, results]);
 
   React.useEffect(() => {
     if (!panelVisible) {
@@ -1778,9 +1902,6 @@ const SearchScreen: React.FC = () => {
   }, [panelVisible, animateSheetTo]);
 
   const togglePriceSelector = React.useCallback(() => {
-    if (isLoading) {
-      return;
-    }
     if (isPriceSelectorVisible) {
       commitPriceSelection();
       return;
@@ -1790,15 +1911,21 @@ const SearchScreen: React.FC = () => {
   }, [isLoading, isPriceSelectorVisible, commitPriceSelection, priceLevels]);
 
   const toggleVotesFilter = React.useCallback(() => {
-    if (isLoading) {
-      return;
-    }
     const nextValue = !votes100Plus;
     setVotes100Plus(nextValue);
     if (query.trim()) {
-      void submitSearch({ minimumVotes: nextValue ? MINIMUM_VOTES_FILTER : null });
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+      }
+      filterDebounceRef.current = setTimeout(() => {
+        filterDebounceRef.current = null;
+        void submitSearch({
+          minimumVotes: nextValue ? MINIMUM_VOTES_FILTER : null,
+          preserveSheetState: true,
+        });
+      }, 150);
     }
-  }, [isLoading, votes100Plus, setVotes100Plus, query, submitSearch]);
+  }, [votes100Plus, setVotes100Plus, query, submitSearch]);
 
   const loadRecentHistory = React.useCallback(async () => {
     if (!isSignedIn) {
@@ -1857,6 +1984,9 @@ const SearchScreen: React.FC = () => {
       if (append && (isLoading || isLoadingMore)) {
         return;
       }
+      if (!append) {
+        resetMapMoveFlag();
+      }
 
       const targetPage = options?.page && options.page > 0 ? options.page : 1;
       const baseQuery = overrideQuery ?? query;
@@ -1872,12 +2002,17 @@ const SearchScreen: React.FC = () => {
         }
         return;
       }
+      const requestId = ++searchRequestSeqRef.current;
+      activeSearchRequestRef.current = requestId;
 
       if (!append) {
-        setPanelVisible(false);
-        setSheetState('hidden');
-        sheetStateShared.value = 'hidden';
-        sheetTranslateY.value = snapPoints.hidden;
+        const preserveSheetState = Boolean(options?.preserveSheetState);
+        if (!preserveSheetState) {
+          setPanelVisible(false);
+          setSheetState('hidden');
+          sheetStateShared.value = 'hidden';
+          sheetTranslateY.value = snapPoints.hidden;
+        }
         setSearchMode('natural');
         setIsSearchSessionActive(true);
         setIsAutocompleteSuppressed(true);
@@ -1954,7 +2089,7 @@ const SearchScreen: React.FC = () => {
         }
 
         const response = await runSearch({ kind: 'natural', payload });
-        if (response) {
+        if (response && requestId === activeSearchRequestRef.current) {
           logger.info('Search response payload', response);
 
           handleSearchResponse(response, {
@@ -1966,19 +2101,23 @@ const SearchScreen: React.FC = () => {
         }
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
-        if (!append) {
-          showPanel();
+        if (requestId === activeSearchRequestRef.current) {
+          if (!append) {
+            showPanel();
+          }
+          setError(
+            append
+              ? 'Unable to load more results. Please try again.'
+              : 'Unable to fetch results. Please try again.'
+          );
         }
-        setError(
-          append
-            ? 'Unable to load more results. Please try again.'
-            : 'Unable to fetch results. Please try again.'
-        );
       } finally {
-        if (append) {
-          setIsLoadingMore(false);
-        } else {
-          setIsLoading(false);
+        if (requestId === activeSearchRequestRef.current) {
+          if (append) {
+            setIsLoadingMore(false);
+          } else {
+            setIsLoading(false);
+          }
         }
       }
     },
@@ -2011,6 +2150,7 @@ const SearchScreen: React.FC = () => {
       setPanelVisible,
       setSheetState,
       setSearchMode,
+      resetMapMoveFlag,
     ]
   );
 
@@ -2022,19 +2162,27 @@ const SearchScreen: React.FC = () => {
   }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
 
   const runBestHere = React.useCallback(
-    async (targetTab: SegmentValue, submittedLabel: string) => {
+    async (
+      targetTab: SegmentValue,
+      submittedLabel: string,
+      options?: { preserveSheetState?: boolean }
+    ) => {
       if (isLoading || isLoadingMore) {
         return;
       }
 
+      resetMapMoveFlag();
+      const preserveSheetState = Boolean(options?.preserveSheetState);
       setSearchMode('shortcut');
       setIsSearchSessionActive(true);
       setActiveTab(targetTab);
       setError(null);
-      setPanelVisible(false);
-      setSheetState('hidden');
-      sheetStateShared.value = 'hidden';
-      sheetTranslateY.value = snapPoints.hidden;
+      if (!preserveSheetState) {
+        setPanelVisible(false);
+        setSheetState('hidden');
+        sheetStateShared.value = 'hidden';
+        sheetTranslateY.value = snapPoints.hidden;
+      }
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
       setIsPaginationExhausted(false);
@@ -2090,16 +2238,43 @@ const SearchScreen: React.FC = () => {
       lastAutoOpenKeyRef,
       setSearchMode,
       runSearch,
+      resetMapMoveFlag,
     ]
   );
 
   const handleBestDishesHere = React.useCallback(() => {
+    setQuery('Best dishes');
     void runBestHere('dishes', 'Best dishes');
-  }, [runBestHere]);
+  }, [runBestHere, setQuery]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
+    setQuery('Best restaurants');
     void runBestHere('restaurants', 'Best restaurants');
-  }, [runBestHere]);
+  }, [runBestHere, setQuery]);
+
+  const handleSearchThisArea = React.useCallback(() => {
+    if (isLoading || isLoadingMore || !results) {
+      return;
+    }
+
+    if (searchMode === 'shortcut') {
+      const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+      const label = submittedQuery || fallbackLabel;
+      void runBestHere(activeTab, label, { preserveSheetState: true });
+      return;
+    }
+
+    void submitSearch({ preserveSheetState: true });
+  }, [
+    activeTab,
+    isLoading,
+    isLoadingMore,
+    results,
+    runBestHere,
+    searchMode,
+    submitSearch,
+    submittedQuery,
+  ]);
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
@@ -2123,6 +2298,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions(false);
       setQuery('');
       setResults(null);
+      resetMapMoveFlag();
       setSubmittedQuery('');
       setError(null);
       setSuggestions([]);
@@ -2151,6 +2327,7 @@ const SearchScreen: React.FC = () => {
       setIsSearchSessionActive,
       setSearchMode,
       scrollResultsToTop,
+      resetMapMoveFlag,
     ]
   );
 
@@ -2200,6 +2377,55 @@ const SearchScreen: React.FC = () => {
     setSuggestions([]);
     cancelAutocomplete();
   }, [cancelAutocomplete]);
+  const handleCameraChanged = React.useCallback(
+    (state: MapboxMapState) => {
+      if (!isSearchOverlay || !results || !isSearchSessionActive) {
+        return;
+      }
+
+      const bounds = mapStateBoundsToMapBounds(state);
+      if (!bounds) {
+        return;
+      }
+
+      if (!latestBoundsRef.current) {
+        latestBoundsRef.current = bounds;
+      }
+
+      const isGestureActive = Boolean(state?.gestures?.isGestureActive);
+      mapGestureActiveRef.current = isGestureActive;
+
+      if (isGestureActive) {
+        if (
+          sheetState !== 'hidden' &&
+          sheetState !== 'collapsed' &&
+          !isLoading &&
+          !isLoadingMore
+        ) {
+          animateSheetTo('collapsed');
+        }
+        markMapMoved();
+        scheduleMapIdleReveal();
+        return;
+      }
+
+      if (hasBoundsMovedSignificantly(latestBoundsRef.current, bounds)) {
+        markMapMoved();
+      }
+      scheduleMapIdleReveal();
+    },
+    [
+      animateSheetTo,
+      isLoading,
+      isLoadingMore,
+      isSearchOverlay,
+      isSearchSessionActive,
+      markMapMoved,
+      results,
+      scheduleMapIdleReveal,
+      sheetState,
+    ]
+  );
   const loadMoreShortcutResults = React.useCallback(() => {
     if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
       return;
@@ -2276,18 +2502,20 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const toggleOpenNow = React.useCallback(() => {
-    if (isLoading) {
-      return;
-    }
-
     setIsPriceSelectorVisible(false);
     const nextValue = !openNow;
     setOpenNow(nextValue);
 
     if (query.trim()) {
-      void submitSearch({ openNow: nextValue });
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+      }
+      filterDebounceRef.current = setTimeout(() => {
+        filterDebounceRef.current = null;
+        void submitSearch({ openNow: nextValue, preserveSheetState: true });
+      }, 150);
     }
-  }, [isLoading, openNow, query, setOpenNow, submitSearch]);
+  }, [openNow, query, setOpenNow, submitSearch]);
 
   const handlePriceSliderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -2324,16 +2552,19 @@ const SearchScreen: React.FC = () => {
     }
     setPriceLevels(nextLevels);
     if (query.trim()) {
-      void submitSearch({ priceLevels: nextLevels, page: 1 });
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+      }
+      filterDebounceRef.current = setTimeout(() => {
+        filterDebounceRef.current = null;
+        void submitSearch({ priceLevels: nextLevels, page: 1, preserveSheetState: true });
+      }, 150);
     }
   }, [pendingPriceRange, priceLevels, query, setPriceLevels, submitSearch]);
 
   const handlePriceDone = React.useCallback(() => {
-    if (isLoading) {
-      return;
-    }
     commitPriceSelection();
-  }, [commitPriceSelection, isLoading]);
+  }, [commitPriceSelection]);
 
   const toggleFavorite = React.useCallback(
     async (entityId: string, entityType: FavoriteEntityType) => {
@@ -2482,7 +2713,9 @@ const SearchScreen: React.FC = () => {
       item.restaurantOperatingStatus,
       null,
       item.restaurantDistanceMiles,
-      'left'
+      'left',
+      undefined,
+      true
     );
     const handleShare = () => {
       void Share.share({
@@ -2518,36 +2751,6 @@ const SearchScreen: React.FC = () => {
                   {item.foodName}
                 </Text>
               </View>
-              <View style={[styles.metricsContainer, styles.dishMetricsSpacing]}>
-                <View style={styles.metricColumn}>
-                  <Text
-                    variant="title"
-                    weight="semibold"
-                    style={styles.primaryMetricValue}
-                  >
-                    {item.qualityScore.toFixed(1)}
-                  </Text>
-                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
-                    Dish score
-                  </Text>
-                </View>
-                <View style={styles.metricColumn}>
-                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {item.mentionCount}
-                  </Text>
-                  <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                    Polls
-                  </Text>
-                </View>
-                <View style={styles.metricColumn}>
-                  <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                    {item.totalUpvotes}
-                  </Text>
-                  <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                    Votes
-                  </Text>
-                </View>
-              </View>
               {dishNameLine ? (
                 <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
                   {dishNameLine}
@@ -2558,6 +2761,31 @@ const SearchScreen: React.FC = () => {
                   {dishDetailsLine}
                 </View>
               ) : null}
+              <View style={styles.metricBlock}>
+                <View style={[styles.metricStripe, { backgroundColor: qualityColor }]} />
+                <View style={styles.metricValueRow}>
+                  <Text variant="body" weight="semibold" style={styles.metricValue}>
+                    {item.qualityScore.toFixed(1)}
+                  </Text>
+                  <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                    Dish score
+                  </Text>
+                </View>
+                <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
+                  <View style={styles.metricCounterItem}>
+                    <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
+                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                      {item.mentionCount}
+                    </Text>
+                  </View>
+                  <View style={styles.metricCounterItem}>
+                    <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
+                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                      {item.totalUpvotes}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2569,8 +2797,8 @@ const SearchScreen: React.FC = () => {
               >
                 <LucideHeart
                   size={20}
-                  color={isLiked ? '#ef4444' : '#cbd5e1'}
-                  fill={isLiked ? '#ef4444' : 'none'}
+                  color={isLiked ? themeColors.primary : '#cbd5e1'}
+                  fill={isLiked ? themeColors.primary : 'none'}
                   strokeWidth={2}
                 />
               </Pressable>
@@ -2597,7 +2825,10 @@ const SearchScreen: React.FC = () => {
     const restaurantMetaLine = renderMetaDetailLine(
       restaurant.operatingStatus,
       priceRangeLabel ?? null,
-      restaurant.distanceMiles
+      restaurant.distanceMiles,
+      'left',
+      undefined,
+      true
     );
     const handleShare = () => {
       void Share.share({
@@ -2630,28 +2861,49 @@ const SearchScreen: React.FC = () => {
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
-              <View style={styles.metricsContainer}>
-                <View style={styles.metricColumn}>
-                  <Text
-                    variant="title"
-                    weight="semibold"
-                    style={styles.primaryMetricValue}
-                  >
+              <View style={styles.metricBlock}>
+                <View style={[styles.metricStripe, { backgroundColor: qualityColor }]} />
+                <View style={styles.metricValueRow}>
+                  <Text variant="body" weight="semibold" style={styles.metricValue}>
                     {restaurant.contextualScore.toFixed(1)}
                   </Text>
-                  <Text variant="caption" weight="regular" style={styles.primaryMetricLabel}>
-                    {restaurantScoreLabel}
+                  <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                    {capitalizeFirst(restaurantScoreLabel.toLowerCase())}
                   </Text>
                 </View>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={styles.metricColumn}>
-                    <Text variant="body" weight="semibold" style={styles.secondaryMetricValue}>
-                      {restaurant.restaurantQualityScore.toFixed(1)}
-                    </Text>
-                    <Text variant="caption" weight="regular" style={styles.secondaryMetricLabel}>
-                      Overall
-                    </Text>
+                  <View style={styles.metricSupportBlock}>
+                    <View style={styles.metricSupportStripe} />
+                    <View style={styles.metricSupportRow}>
+                      <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
+                        {restaurant.restaurantQualityScore.toFixed(1)}
+                      </Text>
+                      <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
+                        Overall
+                      </Text>
+                    </View>
+                    <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
+                      {restaurant.mentionCount != null ? (
+                        <View style={styles.metricCounterItem}>
+                          <PollIcon
+                            color={themeColors.textBody}
+                            size={SECONDARY_METRIC_ICON_SIZE}
+                          />
+                          <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                            {restaurant.mentionCount}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {restaurant.totalUpvotes != null ? (
+                        <View style={styles.metricCounterItem}>
+                          <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
+                          <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                            {restaurant.totalUpvotes}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </View>
                 ) : null}
               </View>
@@ -2666,8 +2918,8 @@ const SearchScreen: React.FC = () => {
               >
                 <LucideHeart
                   size={20}
-                  color={isLiked ? '#ef4444' : '#cbd5e1'}
-                  fill={isLiked ? '#ef4444' : 'none'}
+                  color={isLiked ? themeColors.primary : '#cbd5e1'}
+                  fill={isLiked ? themeColors.primary : 'none'}
                   strokeWidth={2}
                 />
               </Pressable>
@@ -2686,7 +2938,7 @@ const SearchScreen: React.FC = () => {
             {restaurant.topFood?.length ? (
               <View style={styles.topFoodSection}>
                 <View style={styles.topFoodHeader}>
-                  <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                  <Text variant="caption" weight="semibold" style={styles.topFoodLabel}>
                     Relevant dishes
                   </Text>
                   <View style={styles.topFoodDivider} />
@@ -2699,11 +2951,11 @@ const SearchScreen: React.FC = () => {
                           {idx + 1}
                         </Text>
                       </View>
-                      <Text variant="body" weight="semibold" style={styles.topFoodName} numberOfLines={1}>
+                      <Text variant="caption" weight="regular" style={styles.topFoodName} numberOfLines={1}>
                         {food.foodName}
                       </Text>
                     </View>
-                    <Text variant="caption" weight="semibold" style={styles.topFoodScore}>
+                    <Text variant="caption" weight="regular" style={styles.topFoodScore}>
                       {food.qualityScore.toFixed(1)}
                     </Text>
                   </View>
@@ -2741,7 +2993,6 @@ const SearchScreen: React.FC = () => {
       priceLevelValues={Array.from(PRICE_LEVEL_VALUES)}
       priceTickLabels={PRICE_LEVEL_TICK_LABELS}
       pendingPriceSummary={pendingPriceSummary}
-      isLoading={isLoading}
       contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
       accentColor={ACTIVE_TAB_COLOR}
     />
@@ -2883,6 +3134,7 @@ const SearchScreen: React.FC = () => {
       safeResultsData,
     ]
   );
+  const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   return (
     <View style={styles.container}>
       <MapboxGL.MapView
@@ -2893,11 +3145,18 @@ const SearchScreen: React.FC = () => {
         attributionEnabled={false}
         scaleBarEnabled={false}
         onPress={handleMapPress}
+        onCameraChanged={handleCameraChanged}
       >
         <MapboxGL.Camera
           ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
-          zoomLevel={mapCenter ? mapZoom : USA_FALLBACK_ZOOM}
+          zoomLevel={mapZoom}
+          followUserLocation={isFollowingUser}
+          followZoomLevel={13}
+          followPitch={0}
+          followHeading={0}
+          animationMode="none"
+          animationDuration={0}
           pitch={32}
         />
         {sortedRestaurantMarkers.length ? (
@@ -3041,12 +3300,13 @@ const SearchScreen: React.FC = () => {
               onClear={handleClear}
               onPress={focusSearchInput}
               accentColor={ACTIVE_TAB_COLOR}
-              showBack={Boolean(isSearchSessionActive || isSearchFocused || shouldRenderSheet)}
+              showBack={Boolean(isSearchOverlay && isSearchFocused)}
               onBackPress={handleCloseResults}
               inputRef={inputRef}
               inputAnimatedStyle={searchBarInputAnimatedStyle}
               containerAnimatedStyle={[searchBarSheetAnimatedStyle, searchBarAnimatedStyle]}
               editable
+              showInactiveSearchIcon={!isSearchFocused && !isSearchSessionActive}
             />
           </View>
           {!isSearchFocused && !isSearchSessionActive && (
@@ -3081,6 +3341,26 @@ const SearchScreen: React.FC = () => {
               </Pressable>
             </View>
           )}
+          <Reanimated.View
+            pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
+            style={[
+              styles.searchThisAreaContainer,
+              { top: searchThisAreaTop },
+              searchThisAreaAnimatedStyle,
+            ]}
+          >
+            <Pressable
+              onPress={handleSearchThisArea}
+              style={styles.searchThisAreaButton}
+              accessibilityRole="button"
+              accessibilityLabel="Search this area"
+              hitSlop={8}
+            >
+              <Text variant="caption" weight="semibold" style={styles.searchThisAreaText}>
+                Search this area
+              </Text>
+            </Pressable>
+          </Reanimated.View>
           {shouldRenderSheet ? (
             <>
               <Reanimated.View
@@ -3127,20 +3407,6 @@ const SearchScreen: React.FC = () => {
                     <Animated.View
                       style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
                     />
-                    {openNowNotice ? (
-                      <View
-                        style={[
-                          styles.openNowNotice,
-                          openNowNotice.variant === 'warning' && styles.openNowNoticeWarning,
-                          openNowNotice.variant === 'info' && styles.openNowNoticeInfo,
-                          openNowNotice.variant === 'success' && styles.openNowNoticeSuccess,
-                        ]}
-                      >
-                        <Text variant="caption" style={styles.openNowNoticeText}>
-                          {openNowNotice.message}
-                        </Text>
-                      </View>
-                    ) : null}
                   </Reanimated.View>
 
                   {error ? (
@@ -3180,6 +3446,24 @@ const SearchScreen: React.FC = () => {
               const active = activeOverlay === item.key;
               const iconColor = active ? ACTIVE_TAB_COLOR : '#94a3b8';
               const renderIcon = navIconRenderers[item.key];
+              if (item.key === 'profile') {
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={styles.navButton}
+                    onPress={handleProfilePress}
+                  >
+                    <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
+                    <Text
+                      variant="caption"
+                      weight={active ? 'semibold' : 'regular'}
+                      style={[styles.navLabel, active && styles.navLabelActive]}
+                    >
+                      {item.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              }
               return (
                 <TouchableOpacity
                   key={item.key}
@@ -3197,14 +3481,6 @@ const SearchScreen: React.FC = () => {
                 </TouchableOpacity>
               );
             })}
-            <TouchableOpacity style={styles.navButton} onPress={handleProfilePress}>
-              <View style={styles.navIcon}>
-                <CircleUserRound size={20} color="#94a3b8" strokeWidth={2} />
-              </View>
-              <Text variant="caption" weight="regular" style={[styles.navLabel]}>
-                Profile
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -3314,6 +3590,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 6,
+  },
+  searchThisAreaContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 30,
+  },
+  searchThisAreaButton: {
+    borderRadius: 999,
+    borderWidth: 0,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  searchThisAreaText: {
+    color: SEARCH_THIS_AREA_COLOR,
   },
   searchShortcutChipText: {
     color: '#0f172a',
@@ -3763,31 +4061,6 @@ const styles = StyleSheet.create({
   votesTextActive: {
     color: '#ffffff',
   },
-  openNowNotice: {
-    marginTop: 8,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    backgroundColor: '#ffffff',
-  },
-  openNowNoticeWarning: {
-    backgroundColor: '#fef2f2',
-    borderColor: '#fecaca',
-  },
-  openNowNoticeInfo: {
-    backgroundColor: '#f8fafc',
-    borderColor: '#c7d2fe',
-  },
-  openNowNoticeSuccess: {
-    backgroundColor: '#ecfdf5',
-    borderColor: '#a7f3d0',
-  },
-  openNowNoticeText: {
-    color: '#0f172a',
-    fontSize: 12,
-  },
   resultsInner: {
     width: '100%',
   },
@@ -3860,13 +4133,85 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   resultMetaLine: {
-    marginTop: 8,
+    marginTop: 6,
   },
   dishMetaLineFirst: {
-    marginTop: 8,
+    marginTop: 6,
   },
   dishMetaLineSpacing: {
-    marginTop: 3,
+    marginTop: 2,
+  },
+  metricBlock: {
+    marginTop: 8,
+    gap: 4,
+    paddingLeft: 11,
+    position: 'relative',
+    marginLeft: 11,
+  },
+  metricStripe: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.12)',
+  },
+  metricLabel: {
+    color: themeColors.textBody,
+    letterSpacing: 0.2,
+    textTransform: 'none',
+  },
+  metricValueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricValue: {
+    color: '#0f172a',
+  },
+  metricCountersInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  metricCounterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  metricCounterText: {
+    color: themeColors.textBody,
+  },
+  metricCountersStacked: {
+    marginTop: 2,
+  },
+  metricSupportBlock: {
+    marginTop: 8,
+    gap: 4,
+    paddingLeft: 12,
+    position: 'relative',
+  },
+  metricSupportStripe: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 1.5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(15, 23, 42, 0.08)',
+  },
+  metricSupportLabel: {
+    color: themeColors.textBody,
+    letterSpacing: 0.1,
+  },
+  metricSupportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  metricSupportValue: {
+    color: themeColors.textBody,
   },
   resultMetaLineRight: {
     marginTop: 0,
@@ -3882,11 +4227,9 @@ const styles = StyleSheet.create({
   resultMetaText: {
     color: themeColors.textBody,
     flexShrink: 1,
-    fontWeight: '500',
   },
   resultMetaPrefix: {
     color: themeColors.textBody,
-    fontWeight: '500',
   },
   resultMetaTextRight: {
     textAlign: 'right',
@@ -3899,22 +4242,18 @@ const styles = StyleSheet.create({
   },
   resultMetaSuffix: {
     color: themeColors.textBody,
-    fontWeight: '500',
   },
   resultMetaClosed: {
     color: '#dc2626',
   },
   resultMetaSeparator: {
     color: themeColors.textBody,
-    fontWeight: '500',
   },
   resultMetaPrice: {
     color: themeColors.textBody,
-    fontWeight: '500',
   },
   resultMetaDistance: {
     color: themeColors.textBody,
-    fontWeight: '500',
   },
   dishMetaRow: {
     flexDirection: 'row',
@@ -3974,72 +4313,24 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingBottom: 2,
   },
-  metricsContainer: {
+  secondaryMetricsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 14,
-    paddingBottom: 0,
-    marginTop: 8,
-    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 6,
   },
-  dishMetricsSpacing: {
-    marginTop: 8,
-  },
-  metricColumn: {
-    alignItems: 'flex-end',
-    gap: 2,
-  },
-  primaryMetric: {
-    gap: 2,
-    alignItems: 'flex-start',
-  },
-  primaryMetricLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.15,
-    marginTop: -1,
-    fontWeight: '500',
-  },
-  primaryMetricValue: {
-    color: themeColors.textPrimary,
-  },
-  secondaryMetrics: {
+  secondaryMetricItem: {
     flexDirection: 'row',
-    gap: 16,
-    alignItems: 'flex-start',
-    paddingTop: 0,
+    alignItems: 'center',
+    gap: 6,
   },
-  secondaryMetric: {
-    gap: 2,
-    alignItems: 'flex-start',
-  },
-  secondaryMetricLabel: {
-    color: themeColors.textMuted,
-    letterSpacing: 0.15,
-    marginTop: -1,
-    fontWeight: '500',
-  },
-  secondaryMetricValue: {
+  secondaryMetricInline: {
     color: themeColors.textBody,
   },
   emptyState: {
     paddingVertical: 32,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  metricRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 16,
-    marginTop: 8,
-  },
-  metric: {
-    minWidth: 70,
-    gap: 4,
-  },
-  topFoodSection: {
-    marginTop: 2,
-    marginBottom: 8,
-    gap: 6,
   },
   textSlate900: {
     color: themeColors.textPrimary,
@@ -4079,20 +4370,18 @@ const styles = StyleSheet.create({
   },
   topFoodSection: {
     marginTop: 2,
-    marginBottom: 8,
-    gap: 8,
+    marginBottom: 6,
+    gap: 4,
   },
   topFoodLabel: {
     color: themeColors.textBody,
-    fontWeight: '500',
     letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    fontSize: 11,
+    textTransform: 'none',
   },
   topFoodHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   topFoodDivider: {
     flex: 1,
@@ -4103,52 +4392,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
-    marginTop: 6,
+    gap: 6,
+    marginTop: 2,
   },
   topFoodLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     flex: 1,
     minWidth: 0,
   },
   topFoodRankPill: {
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
-    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
     backgroundColor: themeColors.secondaryAccent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   topFoodRankText: {
     color: '#ffffff',
-    fontWeight: '600',
   },
   topFoodName: {
     color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
-    fontWeight: '600',
   },
   topFoodScore: {
     color: themeColors.textBody,
-    fontWeight: '600',
   },
   topFoodMore: {
     color: themeColors.secondaryAccent,
-    marginTop: 8,
-    fontWeight: '600',
+    marginTop: 4,
     alignSelf: 'flex-start',
   },
   loadingText: {
     marginTop: 16,
     fontSize: 15,
     textAlign: 'center',
-  },
-  metricValue: {
-    color: '#fb923c',
   },
   glassHighlightSmall: {
     position: 'absolute',

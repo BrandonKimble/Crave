@@ -36,7 +36,6 @@ type SearchFiltersProps = {
   priceLevelValues: number[];
   priceTickLabels: Record<number, string>;
   pendingPriceSummary: string;
-  isLoading: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
 };
@@ -60,7 +59,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   priceLevelValues,
   priceTickLabels,
   pendingPriceSummary,
-  isLoading,
   contentHorizontalPadding,
   accentColor,
 }) => {
@@ -112,10 +110,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         </View>
         <Pressable
           onPress={onToggleOpenNow}
-          disabled={isLoading}
           accessibilityRole="button"
           accessibilityLabel="Toggle open now results"
-          accessibilityState={{ disabled: isLoading, selected: openNow }}
+          accessibilityState={{ selected: openNow }}
           style={[
             styles.openNowButton,
             openNow && {
@@ -123,7 +120,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               borderColor: accentColor,
               backgroundColor: accentColor,
             },
-            isLoading && styles.openNowButtonDisabled,
           ]}
         >
           <Feather
@@ -142,28 +138,20 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         </Pressable>
         <Pressable
           onPress={onTogglePriceSelector}
-          disabled={isLoading}
           accessibilityRole="button"
           accessibilityLabel="Select price filters"
           accessibilityState={{
-            disabled: isLoading,
             expanded: isPriceSelectorVisible,
             selected: priceButtonActive,
           }}
           style={[
             styles.priceButton,
             priceButtonActive && [
-              styles.priceButtonActive,
-              { borderColor: accentColor, backgroundColor: accentColor },
+            styles.priceButtonActive,
+            { borderColor: accentColor, backgroundColor: accentColor },
             ],
-            isLoading && styles.priceButtonDisabled,
           ]}
         >
-          <Text
-            style={[styles.priceButtonBullet, priceButtonActive && styles.priceButtonBulletActive]}
-          >
-            ·
-          </Text>
           <Text
             variant="caption"
             weight="semibold"
@@ -180,17 +168,15 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         </Pressable>
         <Pressable
           onPress={onToggleVotesFilter}
-          disabled={isLoading}
           accessibilityRole="button"
           accessibilityLabel="Toggle 100 plus votes filter"
-          accessibilityState={{ disabled: isLoading, selected: votesFilterActive }}
+          accessibilityState={{ selected: votesFilterActive }}
           style={[
             styles.votesButton,
             votesFilterActive && [
               styles.votesButtonActive,
               { borderColor: accentColor, backgroundColor: accentColor },
             ],
-            isLoading && styles.votesButtonDisabled,
           ]}
         >
           <Feather
@@ -222,7 +208,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               accessibilityRole="button"
               accessibilityLabel="Apply price filters"
               style={[styles.priceDoneButton, { backgroundColor: accentColor }]}
-              disabled={isLoading}
             >
               <Text style={styles.priceDoneButtonText}>Done</Text>
             </Pressable>
@@ -318,8 +303,6 @@ const styles = StyleSheet.create({
     borderColor: '#FB923C',
   },
   segmentedLabel: {
-    fontSize: 13,
-    fontWeight: '600',
     color: '#475569',
   },
   segmentedLabelActive: {
@@ -345,13 +328,13 @@ const styles = StyleSheet.create({
   },
   openNowText: {
     color: '#475569',
-    fontSize: 13,
   },
   openNowTextActive: {
     color: '#ffffff',
   },
   priceButton: {
     ...toggleBaseStyle,
+    paddingVertical: TOGGLE_VERTICAL_PADDING,
   },
   priceButtonActive: {
     borderRadius: TOGGLE_BORDER_RADIUS,
@@ -361,25 +344,15 @@ const styles = StyleSheet.create({
   priceButtonDisabled: {
     opacity: 0.6,
   },
-  priceButtonBullet: {
-    marginRight: 6,
-    fontSize: 18,
-    color: '#94a3b8',
-    marginTop: -2,
-  },
-  priceButtonBulletActive: {
-    color: '#ffffff',
-  },
   priceButtonLabel: {
     color: '#475569',
-    fontSize: 13,
-    fontWeight: '600',
   },
   priceButtonLabelActive: {
     color: '#ffffff',
   },
   priceButtonChevron: {
-    marginLeft: 8,
+    marginLeft: 6,
+    marginTop: 0,
   },
   priceSelector: {
     marginTop: TOGGLE_STACK_GAP,

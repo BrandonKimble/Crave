@@ -17,7 +17,7 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 
 const DEFAULT_COUNTRY = 'US';
-const DEFAULT_MIN_SCORE_THRESHOLD = 0.2;
+const DEFAULT_MIN_SCORE_THRESHOLD = 0.1;
 const PREFERRED_PLACE_TYPES = new Set(['food', 'restaurant', 'cafe', 'bar']);
 const GOOGLE_DAY_NAMES = [
   'sunday',
@@ -1232,11 +1232,14 @@ export class RestaurantLocationEnrichmentService {
       }
     }
 
-    if (
-      typeof prediction.distance_meters === 'number' &&
-      prediction.distance_meters < 2000
-    ) {
-      score += 0.05;
+    if (typeof prediction.distance_meters === 'number') {
+      const dist = Math.max(0, prediction.distance_meters);
+      const maxBoostDistance = 10000; // 10km
+      const proximityBoost =
+        dist <= maxBoostDistance
+          ? 0.05 * (1 - dist / maxBoostDistance)
+          : 0;
+      score += proximityBoost;
     }
 
     return Math.min(score, 1);

@@ -306,7 +306,8 @@ location_aggregates AS (
 restaurant_vote_totals AS (
   SELECT
     c.restaurant_id,
-    SUM(c.total_upvotes) AS total_upvotes
+    SUM(c.total_upvotes) AS total_upvotes,
+    SUM(c.mention_count) AS total_mentions
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   GROUP BY c.restaurant_id
@@ -314,7 +315,7 @@ restaurant_vote_totals AS (
 
     const restaurantVoteTotalsPreview = `
 restaurant_vote_totals AS (
-  SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes
+  SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
   FROM connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   GROUP BY c.restaurant_id
@@ -335,6 +336,7 @@ filtered_connections AS (
     c.activity_level,
     c.food_quality_score,
     rvt.total_upvotes AS restaurant_total_upvotes,
+    rvt.total_mentions AS restaurant_total_mentions,
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     fr.restaurant_quality_score,
@@ -370,7 +372,7 @@ filtered_connections AS (
     const filteredConnectionsPreview = `
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
-         rvt.total_upvotes AS restaurant_total_upvotes,
+         rvt.total_upvotes AS restaurant_total_upvotes, rvt.total_mentions AS restaurant_total_mentions,
          fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.price_level, sl.price_level_updated_at, sl.metadata AS location_metadata, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,
          f.name AS food_name, f.aliases AS food_aliases
   FROM connections c

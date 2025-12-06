@@ -198,6 +198,8 @@ export class SearchService {
           execution.metadata.openNowSupportedRestaurants,
         openNowUnsupportedRestaurants:
           execution.metadata.openNowUnsupportedRestaurants,
+        openNowUnsupportedRestaurantIds:
+          execution.metadata.openNowUnsupportedRestaurantIds,
         openNowFilteredOut: execution.metadata.openNowFilteredOut,
         priceFilterApplied: execution.metadata.priceFilterApplied,
         minimumVotesApplied: execution.metadata.minimumVotesApplied,

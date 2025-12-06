@@ -9,8 +9,11 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+import Svg, { Path } from 'react-native-svg';
 import { Text, Button } from '../../components';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -18,18 +21,43 @@ import { logger } from '../../utils';
 import { notificationsService } from '../../services/notifications';
 import { createManualPoll, type ManualPollPayload, type PollTopicType } from '../../services/polls';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import { useOverlayStore } from '../../store/overlayStore';
+import { colors as themeColors } from '../../constants/theme';
+import { Heart } from 'lucide-react-native';
+import type { RootStackParamList } from '../../types/navigation';
 
 const ADMIN_USER_IDS = (process.env.EXPO_PUBLIC_ADMIN_USER_IDS || '')
   .split(',')
   .map((value) => value.trim())
   .filter((value) => value.length > 0);
+const ACTIVE_TAB_COLOR = themeColors.primary;
+
+const PollIcon = ({ color, size = 20 }: { color: string; size?: number }) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    style={{ transform: [{ rotate: '90deg' }] }}
+  >
+    <Path d="M5 21v-6" />
+    <Path d="M12 21V3" />
+    <Path d="M19 21V9" />
+  </Svg>
+);
 
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn, userId } = useAuth();
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
   const isAdmin = React.useMemo(() => Boolean(userId && ADMIN_USER_IDS.includes(userId)), [userId]);
+  const { setOverlay } = useOverlayStore();
 
   const [manualTopicType, setManualTopicType] = React.useState<PollTopicType>('best_dish');
   const [manualCity, setManualCity] = React.useState('');
@@ -47,6 +75,88 @@ const ProfileScreen: React.FC = () => {
   const [restaurantLoading, setRestaurantLoading] = React.useState(false);
   const [restaurantSelection, setRestaurantSelection] = React.useState<AutocompleteMatch | null>(
     null
+  );
+  const insets = useSafeAreaInsets();
+  const navItems = React.useMemo(
+    () =>
+      [
+        { key: 'search' as const, label: 'Search' },
+        { key: 'bookmarks' as const, label: 'Saves' },
+        { key: 'polls' as const, label: 'Polls' },
+        { key: 'profile' as const, label: 'Profile' },
+      ],
+    []
+  );
+
+  const handleNavPress = React.useCallback(
+    (key: 'search' | 'bookmarks' | 'polls' | 'profile') => {
+      if (key === 'profile') {
+        return;
+      }
+      setOverlay(key as any);
+      navigation.navigate('Search');
+    },
+    [navigation, setOverlay]
+  );
+
+  const navIconRenderers = React.useMemo<
+    Record<
+      'search' | 'bookmarks' | 'polls' | 'profile',
+      (color: string, active: boolean) => React.ReactNode
+    >
+  >(
+    () => ({
+      search: (color) => (
+        <Svg width={20} height={20} viewBox="0 0 24 24">
+          <Path
+            d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
+            fill={color}
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <Svg
+            width={0}
+            height={0}
+            viewBox="0 0 1 1"
+            accessible={false}
+          />
+        </Svg>
+      ),
+      bookmarks: (color, active) => (
+        <Heart
+          size={20}
+          color={color}
+          strokeWidth={active ? 0 : 2}
+          fill={active ? color : 'none'}
+        />
+      ),
+      polls: (color) => <PollIcon color={color} size={20} />,
+      profile: (color, active) => {
+        if (active) {
+          return (
+            <Svg width={20} height={20} viewBox="0 0 24 24" fill={color} stroke="none">
+              <Path
+                fillRule="evenodd"
+                clipRule="evenodd"
+                d="M18.685 19.097A9.723 9.723 0 0 0 21.75 12c0-5.385-4.365-9.75-9.75-9.75S2.25 6.615 2.25 12a9.723 9.723 0 0 0 3.065 7.097A9.716 9.716 0 0 0 12 21.75a9.716 9.716 0 0 0 6.685-2.653Zm-12.54-1.285A7.486 7.486 0 0 1 12 15a7.486 7.486 0 0 1 5.855 2.812A8.224 8.224 0 0 1 12 20.25a8.224 8.224 0 0 1-5.855-2.438ZM15.75 9a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+              />
+            </Svg>
+          );
+        }
+        return (
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+            <Path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M17.982 18.725A7.488 7.488 0 0 0 12 15.75a7.488 7.488 0 0 0-5.982 2.975m11.963 0a9 9 0 1 0-11.963 0m11.963 0A8.966 8.966 0 0 1 12 21a8.966 8.966 0 0 1-5.982-2.275M15 9.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+            />
+          </Svg>
+        );
+      },
+    }),
+    []
   );
 
   React.useEffect(() => {
