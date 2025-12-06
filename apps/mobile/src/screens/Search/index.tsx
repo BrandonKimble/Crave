@@ -39,14 +39,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
+import { Share as LucideShare, Heart as LucideHeart, X as LucideX } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import pinAsset from '../../assets/pin.png';
 import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
-import { XCircleIcon, ChartBarIcon } from '../../components/icons/HeroIcons';
 import { HandPlatter, Store, Heart } from 'lucide-react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
@@ -480,6 +479,27 @@ const formatDistanceMiles = (distance?: number | null): string | null => {
   const decimals = distance >= 10 ? DISTANCE_MAX_DECIMALS : DISTANCE_MIN_DECIMALS;
   return `${distance.toFixed(decimals)} mi`;
 };
+const formatCompactCount = (value?: number | null): string => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return '0';
+  }
+  if (value < 1000) {
+    return Math.round(value).toString();
+  }
+  const formatWithSuffix = (num: number, divisor: number, suffix: string) => {
+    const scaled = num / divisor;
+    if (scaled >= 100) {
+      return `${Math.round(scaled)}${suffix}`;
+    }
+    const fixed = Number(scaled.toFixed(1));
+    const text = fixed % 1 === 0 ? fixed.toFixed(0) : fixed.toString();
+    return `${text}${suffix}`;
+  };
+  if (value < 1_000_000) {
+    return formatWithSuffix(value, 1000, 'K');
+  }
+  return formatWithSuffix(value, 1_000_000, 'M');
+};
 const TOGGLE_BORDER_RADIUS = 8;
 const TOGGLE_HORIZONTAL_PADDING = 7;
 const TOGGLE_VERTICAL_PADDING = 5;
@@ -494,9 +514,11 @@ const CAMERA_STORAGE_KEY = 'search:lastCamera';
 const PollIcon = ({
   color,
   size = SECONDARY_METRIC_ICON_SIZE,
+  strokeWidth = 2,
 }: {
   color: string;
   size?: number;
+  strokeWidth?: number;
 }) => (
   <Svg
     width={size}
@@ -504,7 +526,7 @@ const PollIcon = ({
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
-    strokeWidth={2}
+    strokeWidth={strokeWidth}
     strokeLinecap="round"
     strokeLinejoin="round"
     style={{ transform: [{ rotate: '90deg' }] }}
@@ -808,27 +830,27 @@ const SearchScreen: React.FC = () => {
   const navIconRenderers = React.useMemo<
     Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
   >(
-    () => ({
-      search: (color: string, active: boolean) => (
-        <Svg width={20} height={20} viewBox="0 0 24 24">
-          <Path
-            d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
-            fill={active ? color : 'none'}
-            stroke={color}
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <SvgCircle
-            cx="12"
-            cy="10"
-            r="4"
-            fill={active ? '#ffffff' : 'none'}
-            stroke={color}
-            strokeWidth={2}
-          />
-        </Svg>
-      ),
+      () => ({
+        search: (color: string, active: boolean) => (
+          <Svg width={20} height={20} viewBox="0 0 24 24">
+            <Path
+              d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
+              fill={active ? color : 'none'}
+              stroke={color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <SvgCircle
+              cx="12"
+              cy="10"
+              r={active ? 4.2 : 3.2}
+              fill={active ? '#ffffff' : 'none'}
+              stroke={color}
+              strokeWidth={2}
+            />
+          </Svg>
+        ),
       bookmarks: (color: string, active: boolean) => (
         <Heart
           size={20}
@@ -837,7 +859,9 @@ const SearchScreen: React.FC = () => {
           fill={active ? color : 'none'}
         />
       ),
-      polls: (color: string, active: boolean) => <PollIcon color={color} size={20} />,
+      polls: (color: string, active: boolean) => (
+        <PollIcon color={color} size={20} strokeWidth={active ? 2.5 : 2} />
+      ),
       profile: (color: string, active: boolean) => {
         if (active) {
           return (
@@ -950,11 +974,11 @@ const SearchScreen: React.FC = () => {
     }
     return null;
   }, [results?.metadata?.primaryFoodTerm]);
-  const restaurantScoreLabel = React.useMemo(() => {
+const restaurantScoreLabel = React.useMemo(() => {
     if (primaryFoodTerm) {
-      return `${primaryFoodTerm.toLowerCase()} score`;
+      return `${capitalizeFirst(primaryFoodTerm.trim())} average`;
     }
-    return 'Dish score';
+    return 'Dish average';
   }, [primaryFoodTerm]);
   const renderMetaDetailLine = (
     status: OperatingStatus | null | undefined,
@@ -2738,7 +2762,7 @@ const SearchScreen: React.FC = () => {
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
-                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
+              <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
                 <Text
@@ -2755,36 +2779,36 @@ const SearchScreen: React.FC = () => {
                   {dishNameLine}
                 </View>
               ) : null}
-              {dishDetailsLine ? (
-                <View style={[styles.resultMetaLine, styles.dishMetaLineSpacing]}>
-                  {dishDetailsLine}
-                </View>
-              ) : null}
               <View style={styles.metricBlock}>
-                <View style={[styles.metricStripe, { backgroundColor: qualityColor }]} />
                 <View style={styles.metricValueRow}>
+                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
                   <Text variant="body" weight="semibold" style={styles.metricValue}>
                     {item.qualityScore.toFixed(1)}
                   </Text>
                   <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                    Dish score
+                    Dish rating
                   </Text>
                 </View>
                 <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
                   <View style={styles.metricCounterItem}>
                     <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
                     <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                      {item.mentionCount}
+                      {formatCompactCount(item.mentionCount)}
                     </Text>
                   </View>
                   <View style={styles.metricCounterItem}>
                     <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
                     <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                      {item.totalUpvotes}
+                      {formatCompactCount(item.totalUpvotes)}
                     </Text>
                   </View>
                 </View>
               </View>
+              {dishDetailsLine ? (
+                <View style={[styles.resultMetaLine, styles.dishMetaLineSpacing]}>
+                  {dishDetailsLine}
+                </View>
+              ) : null}
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2822,12 +2846,20 @@ const SearchScreen: React.FC = () => {
     const qualityColor = getQualityColor(index, restaurants.length);
     const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
     const restaurantMetaLine = renderMetaDetailLine(
-      restaurant.operatingStatus,
+      null,
       priceRangeLabel ?? null,
       restaurant.distanceMiles,
       'left',
       undefined,
       true
+    );
+    const restaurantStatusLine = renderMetaDetailLine(
+      restaurant.operatingStatus,
+      null,
+      null,
+      'left',
+      undefined,
+      false
     );
     const handleShare = () => {
       void Share.share({
@@ -2853,33 +2885,32 @@ const SearchScreen: React.FC = () => {
                   weight="semibold"
                   style={styles.textSlate900}
                   numberOfLines={1}
-                >
-                  {restaurant.restaurantName}
+              >
+                {restaurant.restaurantName}
+              </Text>
+            </View>
+            {restaurantMetaLine ? (
+              <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
+            ) : null}
+            <View style={styles.metricBlock}>
+              <View style={styles.metricValueRow}>
+                <Text variant="body" weight="semibold" style={styles.metricValue}>
+                  {restaurant.contextualScore.toFixed(1)}
                 </Text>
-              </View>
-              {restaurantMetaLine ? (
-                <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
-              ) : null}
-              <View style={styles.metricBlock}>
-                <View style={[styles.metricStripe, { backgroundColor: qualityColor }]} />
-                <View style={styles.metricValueRow}>
-                  <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {restaurant.contextualScore.toFixed(1)}
-                  </Text>
                   <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                    {capitalizeFirst(restaurantScoreLabel.toLowerCase())}
+                    {restaurantScoreLabel}
                   </Text>
                 </View>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
                   <View style={styles.metricSupportBlock}>
-                    <View style={styles.metricSupportStripe} />
                     <View style={styles.metricSupportRow}>
+                      <Store size={16} color={themeColors.textBody} strokeWidth={2} />
                       <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
                         {restaurant.restaurantQualityScore.toFixed(1)}
                       </Text>
                       <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
-                        Overall
+                        Overall rating
                       </Text>
                     </View>
                     <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
@@ -2890,7 +2921,7 @@ const SearchScreen: React.FC = () => {
                             size={SECONDARY_METRIC_ICON_SIZE}
                           />
                           <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                            {restaurant.mentionCount}
+                            {formatCompactCount(restaurant.mentionCount)}
                           </Text>
                         </View>
                       ) : null}
@@ -2898,15 +2929,18 @@ const SearchScreen: React.FC = () => {
                         <View style={styles.metricCounterItem}>
                           <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
                           <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                            {restaurant.totalUpvotes}
+                            {formatCompactCount(restaurant.totalUpvotes)}
                           </Text>
                         </View>
                       ) : null}
                     </View>
                   </View>
                 ) : null}
-              </View>
             </View>
+            {restaurantStatusLine ? (
+              <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
+            ) : null}
+          </View>
             <View style={styles.resultActions}>
               <Pressable
                 onPress={() => toggleFavorite(restaurant.restaurantId, 'restaurant')}
@@ -2945,11 +2979,9 @@ const SearchScreen: React.FC = () => {
                 {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
                   <View key={food.connectionId} style={styles.topFoodRow}>
                     <View style={styles.topFoodLeft}>
-                      <View style={styles.topFoodRankPill}>
-                        <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
-                          {idx + 1}
-                        </Text>
-                      </View>
+                      <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
+                        {idx + 1}
+                      </Text>
                       <Text
                         variant="caption"
                         weight="regular"
@@ -2959,9 +2991,12 @@ const SearchScreen: React.FC = () => {
                         {food.foodName}
                       </Text>
                     </View>
-                    <Text variant="caption" weight="regular" style={styles.topFoodScore}>
-                      {food.qualityScore.toFixed(1)}
-                    </Text>
+                    <View style={styles.topFoodScoreRow}>
+                      <HandPlatter size={14} color={themeColors.primary} strokeWidth={2} />
+                      <Text variant="caption" weight="semibold" style={styles.topFoodScore}>
+                        {food.qualityScore.toFixed(1)}
+                      </Text>
+                    </View>
                   </View>
                 ))}
                 {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
@@ -3311,6 +3346,7 @@ const SearchScreen: React.FC = () => {
               containerAnimatedStyle={[searchBarSheetAnimatedStyle, searchBarAnimatedStyle]}
               editable
               showInactiveSearchIcon={!isSearchFocused && !isSearchSessionActive}
+              isSearchSessionActive={isSearchSessionActive}
             />
           </View>
           {!isSearchFocused && !isSearchSessionActive && (
@@ -3405,7 +3441,9 @@ const SearchScreen: React.FC = () => {
                         style={styles.resultsCloseButton}
                         hitSlop={8}
                       >
-                        <XCircleIcon size={RESULT_CLOSE_ICON_SIZE} color={ACTIVE_TAB_COLOR} />
+                        <View style={styles.resultsCloseIcon}>
+                          <LucideX size={18} color="#0f172a" strokeWidth={2} />
+                        </View>
                       </Pressable>
                     </View>
                     <Animated.View
@@ -3967,6 +4005,14 @@ const styles = StyleSheet.create({
   resultsCloseButton: {
     marginRight: -4,
   },
+  resultsCloseIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   resultsShadow: {
     position: 'absolute',
     top: 0,
@@ -4135,6 +4181,7 @@ const styles = StyleSheet.create({
   },
   rankBadgeText: {
     color: '#ffffff',
+    fontWeight: '600',
   },
   resultMetaLine: {
     marginTop: 6,
@@ -4147,19 +4194,7 @@ const styles = StyleSheet.create({
   },
   metricBlock: {
     marginTop: 8,
-    gap: 4,
-    paddingLeft: 11,
-    position: 'relative',
-    marginLeft: 11,
-  },
-  metricStripe: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 2,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 42, 0.12)',
+    gap: 6,
   },
   metricLabel: {
     color: themeColors.textBody,
@@ -4177,7 +4212,7 @@ const styles = StyleSheet.create({
   metricCountersInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   metricCounterItem: {
     flexDirection: 'row',
@@ -4191,19 +4226,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   metricSupportBlock: {
-    marginTop: 8,
+    marginTop: 2,
     gap: 4,
-    paddingLeft: 12,
-    position: 'relative',
-  },
-  metricSupportStripe: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 1.5,
-    borderRadius: 999,
-    backgroundColor: 'rgba(15, 23, 42, 0.08)',
   },
   metricSupportLabel: {
     color: themeColors.textBody,
@@ -4402,21 +4426,14 @@ const styles = StyleSheet.create({
   topFoodLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     flex: 1,
     minWidth: 0,
   },
-  topFoodRankPill: {
-    minWidth: 18,
-    height: 18,
-    paddingHorizontal: 5,
-    borderRadius: 9,
-    backgroundColor: themeColors.secondaryAccent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   topFoodRankText: {
-    color: '#ffffff',
+    color: themeColors.primary,
+    width: 16,
+    textAlign: 'center',
   },
   topFoodName: {
     color: themeColors.textBody,
@@ -4426,10 +4443,16 @@ const styles = StyleSheet.create({
   topFoodScore: {
     color: themeColors.textBody,
   },
+  topFoodScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   topFoodMore: {
     color: themeColors.secondaryAccent,
     marginTop: 4,
     alignSelf: 'flex-start',
+    paddingLeft: 0,
   },
   loadingText: {
     marginTop: 16,

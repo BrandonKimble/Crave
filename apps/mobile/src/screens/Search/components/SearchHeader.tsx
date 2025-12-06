@@ -8,8 +8,9 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Reanimated from 'react-native-reanimated';
-import { Search, ChevronLeft, X } from 'lucide-react-native';
+import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
 import { colors as themeColors } from '../../../constants/theme';
+import { XCircleIcon } from '../../../components/icons/HeroIcons';
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
@@ -31,6 +32,7 @@ type SearchHeaderProps = {
   containerAnimatedStyle?: AnimatedStyle;
   editable?: boolean;
   showInactiveSearchIcon?: boolean;
+  isSearchSessionActive?: boolean;
 };
 
 const SearchHeader: React.FC<SearchHeaderProps> = ({
@@ -51,6 +53,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   containerAnimatedStyle,
   editable = true,
   showInactiveSearchIcon = false,
+  isSearchSessionActive = false,
 }) => {
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
@@ -120,7 +123,11 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   style={styles.trailingButton}
                   hitSlop={10}
                 >
-                  <X size={22} color={accentColor} strokeWidth={2} />
+                  {isSearchSessionActive ? (
+                    <LucideX size={20} color={accentColor} strokeWidth={2} />
+                  ) : (
+                    <XCircleIcon size={20} color={accentColor} />
+                  )}
                 </Pressable>
               ) : (
                 <View style={styles.trailingPlaceholder} />
