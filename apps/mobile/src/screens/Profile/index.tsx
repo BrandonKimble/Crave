@@ -78,13 +78,12 @@ const ProfileScreen: React.FC = () => {
   );
   const insets = useSafeAreaInsets();
   const navItems = React.useMemo(
-    () =>
-      [
-        { key: 'search' as const, label: 'Search' },
-        { key: 'bookmarks' as const, label: 'Saves' },
-        { key: 'polls' as const, label: 'Polls' },
-        { key: 'profile' as const, label: 'Profile' },
-      ],
+    () => [
+      { key: 'search' as const, label: 'Search' },
+      { key: 'bookmarks' as const, label: 'Saves' },
+      { key: 'polls' as const, label: 'Polls' },
+      { key: 'profile' as const, label: 'Profile' },
+    ],
     []
   );
 
@@ -116,12 +115,7 @@ const ProfileScreen: React.FC = () => {
             strokeLinecap="round"
             strokeLinejoin="round"
           />
-          <Svg
-            width={0}
-            height={0}
-            viewBox="0 0 1 1"
-            accessible={false}
-          />
+          <Svg width={0} height={0} viewBox="0 0 1 1" accessible={false} />
         </Svg>
       ),
       bookmarks: (color, active) => (
@@ -146,7 +140,14 @@ const ProfileScreen: React.FC = () => {
           );
         }
         return (
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+          <Svg
+            width={20}
+            height={20}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={color}
+            strokeWidth={2}
+          >
             <Path
               strokeLinecap="round"
               strokeLinejoin="round"

@@ -47,11 +47,7 @@ import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
 import { XCircleIcon, ChartBarIcon } from '../../components/icons/HeroIcons';
-import {
-  HandPlatter,
-  Store,
-  Heart,
-} from 'lucide-react-native';
+import { HandPlatter, Store, Heart } from 'lucide-react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
@@ -389,8 +385,7 @@ const haversineDistanceMiles = (a: Coordinate, b: Coordinate): number => {
   const earthRadiusMiles = 3958.8;
   const sinLat = Math.sin(dLat / 2);
   const sinLng = Math.sin(dLng / 2);
-  const haversine =
-    sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  const haversine = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
   const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(1 - haversine, 0)));
   return earthRadiusMiles * c;
 };
@@ -496,7 +491,13 @@ const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
 const SECONDARY_METRIC_ICON_SIZE = 14;
 const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
-const PollIcon = ({ color, size = SECONDARY_METRIC_ICON_SIZE }: { color: string; size?: number }) => (
+const PollIcon = ({
+  color,
+  size = SECONDARY_METRIC_ICON_SIZE,
+}: {
+  color: string;
+  size?: number;
+}) => (
   <Svg
     width={size}
     height={size}
@@ -513,13 +514,7 @@ const PollIcon = ({ color, size = SECONDARY_METRIC_ICON_SIZE }: { color: string;
     <Path d="M19 21V9" />
   </Svg>
 );
-const VoteIcon = ({
-  color,
-  size = VOTE_ICON_SIZE,
-}: {
-  color: string;
-  size?: number;
-}) => (
+const VoteIcon = ({ color, size = VOTE_ICON_SIZE }: { color: string; size?: number }) => (
   <Svg
     width={size}
     height={size}
@@ -655,10 +650,9 @@ const SearchScreen: React.FC = () => {
       });
     }
     // persist last camera
-    void AsyncStorage.setItem(
-      CAMERA_STORAGE_KEY,
-      JSON.stringify({ center, zoom: 13 })
-    ).catch(() => undefined);
+    void AsyncStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify({ center, zoom: 13 })).catch(
+      () => undefined
+    );
   }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
@@ -843,9 +837,7 @@ const SearchScreen: React.FC = () => {
           fill={active ? color : 'none'}
         />
       ),
-      polls: (color: string, active: boolean) => (
-        <PollIcon color={color} size={20} />
-      ),
+      polls: (color: string, active: boolean) => <PollIcon color={color} size={20} />,
       profile: (color: string, active: boolean) => {
         if (active) {
           return (
@@ -859,7 +851,14 @@ const SearchScreen: React.FC = () => {
           );
         }
         return (
-          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+          <Svg
+            width={20}
+            height={20}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={color}
+            strokeWidth={2}
+          >
             <Path
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -932,7 +931,12 @@ const SearchScreen: React.FC = () => {
     opacity: searchThisAreaVisibility.value,
     transform: [
       {
-        translateY: interpolate(searchThisAreaVisibility.value, [0, 1], [-8, 0], Extrapolation.CLAMP),
+        translateY: interpolate(
+          searchThisAreaVisibility.value,
+          [0, 1],
+          [-8, 0],
+          Extrapolation.CLAMP
+        ),
       },
     ],
   }));
@@ -1057,11 +1061,11 @@ const SearchScreen: React.FC = () => {
             </Text>
           );
         }
-            segments.push(
-              <Text key="price" variant="caption" style={styles.resultMetaPrice}>
-                {normalizedPriceLabel}
-              </Text>
-            );
+        segments.push(
+          <Text key="price" variant="caption" style={styles.resultMetaPrice}>
+            {normalizedPriceLabel}
+          </Text>
+        );
       }
       if (distanceLabel) {
         if (segments.length) {
@@ -2396,12 +2400,7 @@ const SearchScreen: React.FC = () => {
       mapGestureActiveRef.current = isGestureActive;
 
       if (isGestureActive) {
-        if (
-          sheetState !== 'hidden' &&
-          sheetState !== 'collapsed' &&
-          !isLoading &&
-          !isLoadingMore
-        ) {
+        if (sheetState !== 'hidden' && sheetState !== 'collapsed' && !isLoading && !isLoadingMore) {
           animateSheetTo('collapsed');
         }
         markMapMoved();
@@ -2951,7 +2950,12 @@ const SearchScreen: React.FC = () => {
                           {idx + 1}
                         </Text>
                       </View>
-                      <Text variant="caption" weight="regular" style={styles.topFoodName} numberOfLines={1}>
+                      <Text
+                        variant="caption"
+                        weight="regular"
+                        style={styles.topFoodName}
+                        numberOfLines={1}
+                      >
                         {food.foodName}
                       </Text>
                     </View>

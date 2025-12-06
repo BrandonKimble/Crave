@@ -1236,9 +1236,7 @@ export class RestaurantLocationEnrichmentService {
       const dist = Math.max(0, prediction.distance_meters);
       const maxBoostDistance = 10000; // 10km
       const proximityBoost =
-        dist <= maxBoostDistance
-          ? 0.05 * (1 - dist / maxBoostDistance)
-          : 0;
+        dist <= maxBoostDistance ? 0.05 * (1 - dist / maxBoostDistance) : 0;
       score += proximityBoost;
     }
 

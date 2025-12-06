@@ -147,8 +147,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           style={[
             styles.priceButton,
             priceButtonActive && [
-            styles.priceButtonActive,
-            { borderColor: accentColor, backgroundColor: accentColor },
+              styles.priceButtonActive,
+              { borderColor: accentColor, backgroundColor: accentColor },
             ],
           ]}
         >
