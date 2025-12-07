@@ -109,7 +109,8 @@ const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
   3: '$$$',
   4: '$$$$',
 };
-const META_FONT_SIZE = 14;
+const META_FONT_SIZE = 12;
+const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
 const DISTANCE_MIN_DECIMALS = 1;
 const DISTANCE_MAX_DECIMALS = 0;
 const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
@@ -508,8 +509,12 @@ const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
 const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
-const SECONDARY_METRIC_ICON_SIZE = 14;
+const SECONDARY_METRIC_ICON_SIZE = 12;
 const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
+const SPACING_XS = 2;
+const SPACING_SM = 3;
+const SPACING_MD = 5;
+const CARD_LINE_GAP = 4;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
 const PollIcon = ({
   color,
@@ -830,27 +835,27 @@ const SearchScreen: React.FC = () => {
   const navIconRenderers = React.useMemo<
     Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
   >(
-      () => ({
-        search: (color: string, active: boolean) => (
-          <Svg width={20} height={20} viewBox="0 0 24 24">
-            <Path
-              d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
-              fill={active ? color : 'none'}
-              stroke={color}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <SvgCircle
-              cx="12"
-              cy="10"
-              r={active ? 4.2 : 3.2}
-              fill={active ? '#ffffff' : 'none'}
-              stroke={color}
-              strokeWidth={2}
-            />
-          </Svg>
-        ),
+    () => ({
+      search: (color: string, active: boolean) => (
+        <Svg width={20} height={20} viewBox="0 0 24 24">
+          <Path
+            d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
+            fill={active ? color : 'none'}
+            stroke={color}
+            strokeWidth={2}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <SvgCircle
+            cx="12"
+            cy="10"
+            r={active ? 4.2 : 3.2}
+            fill={active ? '#ffffff' : 'none'}
+            stroke={color}
+            strokeWidth={2}
+          />
+        </Svg>
+      ),
       bookmarks: (color: string, active: boolean) => (
         <Heart
           size={20}
@@ -974,12 +979,7 @@ const SearchScreen: React.FC = () => {
     }
     return null;
   }, [results?.metadata?.primaryFoodTerm]);
-const restaurantScoreLabel = React.useMemo(() => {
-    if (primaryFoodTerm) {
-      return `${capitalizeFirst(primaryFoodTerm.trim())} average`;
-    }
-    return 'Dish average';
-  }, [primaryFoodTerm]);
+  const restaurantScoreLabel = 'Context score';
   const renderMetaDetailLine = (
     status: OperatingStatus | null | undefined,
     priceLabel?: string | null,
@@ -1014,6 +1014,49 @@ const restaurantScoreLabel = React.useMemo(() => {
       status?.isOpen &&
       typeof effectiveMinutesUntilClose === 'number' &&
       effectiveMinutesUntilClose <= 45;
+
+    if (showLocationDetails) {
+      if (normalizedPriceLabel) {
+        if (segments.length) {
+          segments.push(
+            <Text
+              key={`separator-${segments.length}`}
+              variant="caption"
+              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            >
+              {' · '}
+            </Text>
+          );
+        }
+        segments.push(
+          <Text key="price" variant="caption" style={styles.resultMetaPrice}>
+            {normalizedPriceLabel}
+          </Text>
+        );
+      }
+      if (distanceLabel) {
+        if (segments.length) {
+          segments.push(
+            <Text
+              key={`separator-${segments.length}`}
+              variant="caption"
+              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            >
+              {' · '}
+            </Text>
+          );
+        }
+        segments.push(
+          <Text
+            key="distance"
+            variant="caption"
+            style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
+          >
+            {distanceLabel}
+          </Text>
+        );
+      }
+    }
 
     if (status) {
       if (segments.length) {
@@ -1067,49 +1110,6 @@ const restaurantScoreLabel = React.useMemo(() => {
                 style={styles.resultMetaSuffix}
               >{` until ${status.nextOpenDisplay}`}</Text>
             ) : null}
-          </Text>
-        );
-      }
-    }
-
-    if (showLocationDetails) {
-      if (normalizedPriceLabel) {
-        if (segments.length) {
-          segments.push(
-            <Text
-              key={`separator-${segments.length}`}
-              variant="caption"
-              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
-            >
-              {' · '}
-            </Text>
-          );
-        }
-        segments.push(
-          <Text key="price" variant="caption" style={styles.resultMetaPrice}>
-            {normalizedPriceLabel}
-          </Text>
-        );
-      }
-      if (distanceLabel) {
-        if (segments.length) {
-          segments.push(
-            <Text
-              key={`separator-${segments.length}`}
-              variant="caption"
-              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
-            >
-              {' · '}
-            </Text>
-          );
-        }
-        segments.push(
-          <Text
-            key="distance"
-            variant="caption"
-            style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
-          >
-            {distanceLabel}
           </Text>
         );
       }
@@ -2725,19 +2725,12 @@ const restaurantScoreLabel = React.useMemo(() => {
     const qualityColor = getQualityColor(index, dishes.length);
     const restaurantForDish = restaurantsById.get(item.restaurantId);
     const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
-    const dishNameLine = renderMetaDetailLine(
-      null,
-      dishPriceLabel,
-      null,
-      'left',
-      item.restaurantName
-    );
-    const dishDetailsLine = renderMetaDetailLine(
+    const dishMetaCombinedLine = renderMetaDetailLine(
       item.restaurantOperatingStatus,
-      null,
+      dishPriceLabel,
       item.restaurantDistanceMiles,
       'left',
-      undefined,
+      item.restaurantName,
       true
     );
     const handleShare = () => {
@@ -2762,7 +2755,7 @@ const restaurantScoreLabel = React.useMemo(() => {
           <View style={styles.resultHeader}>
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
-              <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
+                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                   <Text style={styles.rankBadgeText}>{index + 1}</Text>
                 </View>
                 <Text
@@ -2774,41 +2767,48 @@ const restaurantScoreLabel = React.useMemo(() => {
                   {item.foodName}
                 </Text>
               </View>
-              {dishNameLine ? (
-                <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                  {dishNameLine}
-                </View>
-              ) : null}
-              <View style={styles.metricBlock}>
-                <View style={styles.metricValueRow}>
-                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {item.qualityScore.toFixed(1)}
-                  </Text>
-                  <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                    Dish rating
-                  </Text>
-                </View>
-                <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
-                  <View style={styles.metricCounterItem}>
-                    <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
-                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                      {formatCompactCount(item.mentionCount)}
-                    </Text>
+              <View style={styles.cardBodyStack}>
+                {dishMetaCombinedLine ? (
+                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
+                    {dishMetaCombinedLine}
                   </View>
-                  <View style={styles.metricCounterItem}>
+                ) : null}
+                <View style={styles.metricBlock}>
+                  <View style={styles.metricLine}>
+                    <HandPlatter
+                      size={SECONDARY_METRIC_ICON_SIZE}
+                      color={themeColors.textPrimary}
+                      strokeWidth={2}
+                    />
+                    <Text variant="caption" weight="medium" style={styles.metricValue}>
+                      {item.qualityScore.toFixed(1)}
+                    </Text>
+                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                      Dish
+                    </Text>
+                    <Text variant="caption" style={styles.metricDot}>
+                      ·
+                    </Text>
                     <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
                     <Text variant="caption" weight="regular" style={styles.metricCounterText}>
                       {formatCompactCount(item.totalUpvotes)}
                     </Text>
+                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                      Votes
+                    </Text>
+                    <Text variant="caption" style={styles.metricDot}>
+                      ·
+                    </Text>
+                    <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
+                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                      {formatCompactCount(item.mentionCount)}
+                    </Text>
+                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                      Polls
+                    </Text>
                   </View>
                 </View>
               </View>
-              {dishDetailsLine ? (
-                <View style={[styles.resultMetaLine, styles.dishMetaLineSpacing]}>
-                  {dishDetailsLine}
-                </View>
-              ) : null}
             </View>
             <View style={styles.resultActions}>
               <Pressable
@@ -2845,9 +2845,18 @@ const restaurantScoreLabel = React.useMemo(() => {
     const isLiked = favoriteMap.has(restaurant.restaurantId);
     const qualityColor = getQualityColor(index, restaurants.length);
     const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+    const topFoodItems = restaurant.topFood ?? [];
+    const topFoodAverage =
+      topFoodItems.length > 0
+        ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) /
+          topFoodItems.length
+        : null;
+    const topFoodAvgLabel = primaryFoodTerm
+      ? `${capitalizeFirst(primaryFoodTerm.trim())} avg`
+      : 'Dish avg';
     const restaurantMetaLine = renderMetaDetailLine(
       null,
-      priceRangeLabel ?? null,
+      null,
       restaurant.distanceMiles,
       'left',
       undefined,
@@ -2855,11 +2864,11 @@ const restaurantScoreLabel = React.useMemo(() => {
     );
     const restaurantStatusLine = renderMetaDetailLine(
       restaurant.operatingStatus,
-      null,
+      priceRangeLabel ?? null,
       null,
       'left',
       undefined,
-      false
+      true
     );
     const handleShare = () => {
       void Share.share({
@@ -2885,62 +2894,63 @@ const restaurantScoreLabel = React.useMemo(() => {
                   weight="semibold"
                   style={styles.textSlate900}
                   numberOfLines={1}
-              >
-                {restaurant.restaurantName}
-              </Text>
-            </View>
-            {restaurantMetaLine ? (
-              <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
-            ) : null}
-            <View style={styles.metricBlock}>
-              <View style={styles.metricValueRow}>
-                <Text variant="body" weight="semibold" style={styles.metricValue}>
-                  {restaurant.contextualScore.toFixed(1)}
+                >
+                  {restaurant.restaurantName}
                 </Text>
-                  <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                    {restaurantScoreLabel}
-                  </Text>
-                </View>
+              </View>
+              {restaurantMetaLine ? (
+                <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
+              ) : null}
+              {restaurantStatusLine ? (
+                <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
+              ) : null}
+              <View style={styles.metricBlock}>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={styles.metricSupportBlock}>
-                    <View style={styles.metricSupportRow}>
-                      <Store size={16} color={themeColors.textBody} strokeWidth={2} />
-                      <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
-                        {restaurant.restaurantQualityScore.toFixed(1)}
-                      </Text>
-                      <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
-                        Overall rating
-                      </Text>
-                    </View>
-                    <View style={[styles.metricCountersInline, styles.metricCountersStacked]}>
-                      {restaurant.mentionCount != null ? (
-                        <View style={styles.metricCounterItem}>
-                          <PollIcon
-                            color={themeColors.textBody}
-                            size={SECONDARY_METRIC_ICON_SIZE}
-                          />
-                          <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                            {formatCompactCount(restaurant.mentionCount)}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {restaurant.totalUpvotes != null ? (
-                        <View style={styles.metricCounterItem}>
-                          <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
-                          <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                            {formatCompactCount(restaurant.totalUpvotes)}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
+                  <View style={[styles.metricLine, styles.metricSupportRow]}>
+                    <Store size={SECONDARY_METRIC_ICON_SIZE} color="#0f172a" strokeWidth={2} />
+                    <Text
+                      variant="caption"
+                      weight="medium"
+                      style={[styles.metricSupportValue, { color: qualityColor }]}
+                    >
+                      {restaurant.restaurantQualityScore.toFixed(1)}
+                    </Text>
+                    <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
+                      Restaurant
+                    </Text>
+                    {restaurant.totalUpvotes != null ? (
+                      <>
+                        <Text variant="caption" style={styles.metricDot}>
+                          ·
+                        </Text>
+                        <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
+                        <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                          {formatCompactCount(restaurant.totalUpvotes)}
+                        </Text>
+                        <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                          Votes
+                        </Text>
+                      </>
+                    ) : null}
+                    {restaurant.mentionCount != null ? (
+                      <>
+                        <Text variant="caption" style={styles.metricDot}>
+                          ·
+                        </Text>
+                        <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
+                        <Text variant="caption" weight="regular" style={styles.metricCounterText}>
+                          {formatCompactCount(restaurant.mentionCount)}
+                        </Text>
+                        <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                          Polls
+                        </Text>
+                      </>
+                    ) : null}
                   </View>
                 ) : null}
+              </View>
             </View>
-            {restaurantStatusLine ? (
-              <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
-            ) : null}
-          </View>
             <View style={styles.resultActions}>
               <Pressable
                 onPress={() => toggleFavorite(restaurant.restaurantId, 'restaurant')}
@@ -2968,40 +2978,57 @@ const restaurantScoreLabel = React.useMemo(() => {
             </View>
           </View>
           <View style={styles.resultContent}>
-            {restaurant.topFood?.length ? (
+            {topFoodItems.length ? (
               <View style={styles.topFoodSection}>
                 <View style={styles.topFoodHeader}>
-                  <Text variant="caption" weight="semibold" style={styles.topFoodLabel}>
-                    Relevant dishes
-                  </Text>
+                  <View style={styles.topFoodAvgRow}>
+                    <HandPlatter
+                      size={SECONDARY_METRIC_ICON_SIZE}
+                      color={themeColors.textPrimary}
+                      strokeWidth={2}
+                    />
+                    {topFoodAverage !== null ? (
+                      <Text variant="caption" weight="medium" style={styles.topFoodScorePrimary}>
+                        {topFoodAverage.toFixed(1)}
+                      </Text>
+                    ) : null}
+                    <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                      {topFoodAvgLabel}
+                    </Text>
+                  </View>
                   <View style={styles.topFoodDivider} />
                 </View>
-                {restaurant.topFood.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
+                {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
                   <View key={food.connectionId} style={styles.topFoodRow}>
-                    <View style={styles.topFoodLeft}>
-                      <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
-                        {idx + 1}
-                      </Text>
-                      <Text
-                        variant="caption"
-                        weight="regular"
-                        style={styles.topFoodName}
-                        numberOfLines={1}
-                      >
-                        {food.foodName}
-                      </Text>
-                    </View>
-                    <View style={styles.topFoodScoreRow}>
-                      <HandPlatter size={14} color={themeColors.primary} strokeWidth={2} />
-                      <Text variant="caption" weight="semibold" style={styles.topFoodScore}>
+                    <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
+                      {idx + 1}
+                    </Text>
+                    <Text
+                      variant="caption"
+                      weight="regular"
+                      style={styles.topFoodName}
+                      numberOfLines={1}
+                    >
+                      {food.foodName}
+                    </Text>
+                    <Text variant="caption" style={styles.metricDot}>
+                      ·
+                    </Text>
+                    <View style={styles.topFoodScoreInline}>
+                      <HandPlatter
+                        size={SECONDARY_METRIC_ICON_SIZE}
+                        color={themeColors.textPrimary}
+                        strokeWidth={2}
+                      />
+                      <Text variant="caption" weight="regular" style={styles.topFoodScore}>
                         {food.qualityScore.toFixed(1)}
                       </Text>
                     </View>
                   </View>
                 ))}
-                {restaurant.topFood.length > TOP_FOOD_RENDER_LIMIT ? (
+                {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
                   <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
-                    +{restaurant.topFood.length - TOP_FOOD_RENDER_LIMIT} more
+                    +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
                   </Text>
                 ) : null}
               </View>
@@ -4125,8 +4152,8 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   resultItem: {
-    paddingTop: 8,
-    paddingBottom: 4,
+    paddingTop: 12,
+    paddingBottom: 10,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
     marginBottom: CARD_GAP,
@@ -4134,7 +4161,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   resultItemWithFilters: {
-    paddingTop: 8,
+    paddingTop: 12,
   },
   resultPressable: {
     width: '100%',
@@ -4145,7 +4172,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     minHeight: 32,
-    marginBottom: 4,
+    marginBottom: 0,
   },
   resultActions: {
     position: 'absolute',
@@ -4163,6 +4190,7 @@ const styles = StyleSheet.create({
     minHeight: 0,
     paddingTop: 0,
     paddingRight: 48,
+    gap: CARD_LINE_GAP,
   },
   titleRow: {
     flexDirection: 'row',
@@ -4183,18 +4211,32 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
+  cardBodyStack: {
+    width: '100%',
+    gap: CARD_LINE_GAP,
+  },
   resultMetaLine: {
-    marginTop: 6,
+    marginTop: 0,
   },
   dishMetaLineFirst: {
-    marginTop: 6,
-  },
-  dishMetaLineSpacing: {
-    marginTop: 2,
+    marginTop: 0,
   },
   metricBlock: {
-    marginTop: 8,
-    gap: 6,
+    marginTop: 0,
+    gap: CARD_LINE_GAP,
+  },
+  metricLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    columnGap: 4,
+    rowGap: 2,
+  },
+  metricDot: {
+    color: themeColors.textBody,
+    fontSize: META_FONT_SIZE,
+    lineHeight: CAPTION_LINE_HEIGHT,
+    marginHorizontal: SPACING_XS,
   },
   metricLabel: {
     color: themeColors.textBody,
@@ -4207,7 +4249,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   metricValue: {
-    color: '#0f172a',
+    color: themeColors.textPrimary,
   },
   metricCountersInline: {
     flexDirection: 'row',
@@ -4222,24 +4264,15 @@ const styles = StyleSheet.create({
   metricCounterText: {
     color: themeColors.textBody,
   },
-  metricCountersStacked: {
-    marginTop: 2,
-  },
-  metricSupportBlock: {
-    marginTop: 2,
-    gap: 4,
+  metricSupportRow: {
+    marginTop: 0,
   },
   metricSupportLabel: {
     color: themeColors.textBody,
     letterSpacing: 0.1,
   },
-  metricSupportRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
   metricSupportValue: {
-    color: themeColors.textBody,
+    color: '#0f172a',
   },
   resultMetaLineRight: {
     marginTop: 0,
@@ -4339,7 +4372,7 @@ const styles = StyleSheet.create({
   resultContent: {
     marginLeft: 0,
     marginTop: 0,
-    paddingBottom: 2,
+    paddingBottom: 0,
   },
   secondaryMetricsRow: {
     flexDirection: 'row',
@@ -4397,9 +4430,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   topFoodSection: {
-    marginTop: 2,
-    marginBottom: 6,
-    gap: 4,
+    marginTop: CARD_LINE_GAP,
+    marginBottom: 0,
+    gap: CARD_LINE_GAP,
   },
   topFoodLabel: {
     color: themeColors.textBody,
@@ -4409,26 +4442,23 @@ const styles = StyleSheet.create({
   topFoodHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: SPACING_SM,
+  },
+  topFoodAvgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING_SM,
   },
   topFoodDivider: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(15, 23, 42, 0.1)',
+    height: 0,
+    backgroundColor: 'transparent',
   },
   topFoodRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-    marginTop: 2,
-  },
-  topFoodLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    flex: 1,
-    minWidth: 0,
+    gap: SPACING_SM,
+    marginTop: 0,
   },
   topFoodRankText: {
     color: themeColors.primary,
@@ -4441,16 +4471,24 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   topFoodScore: {
-    color: themeColors.textBody,
+    color: themeColors.textPrimary,
+  },
+  topFoodScorePrimary: {
+    color: themeColors.textPrimary,
   },
   topFoodScoreRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
+  topFoodScoreInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   topFoodMore: {
     color: themeColors.secondaryAccent,
-    marginTop: 4,
+    marginTop: 0,
     alignSelf: 'flex-start',
     paddingLeft: 0,
   },

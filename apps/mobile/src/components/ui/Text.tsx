@@ -11,7 +11,7 @@ const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = 
   title: { fontSize: 28, lineHeight: 34 },
   subtitle: { fontSize: 20, lineHeight: 26 },
   body: { fontSize: 16, lineHeight: 22 },
-  caption: { fontSize: 12, lineHeight: 16 },
+  caption: { fontSize: 12, lineHeight: 15 },
 };
 
 // Standardize to two weights; legacy values map to the closest allowed option.
