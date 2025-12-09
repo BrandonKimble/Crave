@@ -503,6 +503,9 @@ PODS:
     - React-perflogger (= 0.72.10)
   - RNCAsyncStorage (2.2.0):
     - React-Core
+  - RNCMaskedView (0.3.2):
+    - RCT-Folly (= 2021.07.22.00)
+    - React-Core
   - RNFlashList (1.8.3):
     - RCT-Folly (= 2021.07.22.00)
     - React-Core
@@ -623,6 +626,7 @@ DEPENDENCIES:
   - React-utils (from `../../../node_modules/react-native/ReactCommon/react/utils`)
   - ReactCommon/turbomodule/core (from `../../../node_modules/react-native/ReactCommon`)
   - "RNCAsyncStorage (from `../../../node_modules/@react-native-async-storage/async-storage`)"
+  - "RNCMaskedView (from `../../../node_modules/@react-native-masked-view/masked-view`)"
   - "RNFlashList (from `../../../node_modules/@shopify/flash-list`)"
   - RNGestureHandler (from `../../../node_modules/react-native-gesture-handler`)
   - "rnmapbox-maps (from `../../../node_modules/@rnmapbox/maps`)"
@@ -770,6 +774,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native/ReactCommon"
   RNCAsyncStorage:
     :path: "../../../node_modules/@react-native-async-storage/async-storage"
+  RNCMaskedView:
+    :path: "../../../node_modules/@react-native-masked-view/masked-view"
   RNFlashList:
     :path: "../../../node_modules/@shopify/flash-list"
   RNGestureHandler:
@@ -856,6 +862,7 @@ SPEC CHECKSUMS:
   React-utils: a4a93189d0daacb5e8215250dc87907ff303744a
   ReactCommon: 5307bd88aa11a192d8a75717e66d7b630d9bc8bd
   RNCAsyncStorage: b44e8a4e798c3e1f56bffccd0f591f674fb9198f
+  RNCMaskedView: d261a7d0cc486eed758aad47afc406eff06a5b3c
   RNFlashList: 3e34440d6aac0effeed715224bcf0ba055a826e0
   RNGestureHandler: 627182485becfd74f122c83f93cce2be20c2e8c8
   rnmapbox-maps: 2ed355c7948f8e310d54c9159f7fb7e8814ededc

@@ -39,7 +39,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Share as LucideShare, Heart as LucideHeart, X as LucideX } from 'lucide-react-native';
+import {
+  Share as LucideShare,
+  Heart as LucideHeart,
+  X as LucideX,
+} from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import pinAsset from '../../assets/pin.png';
@@ -516,6 +520,7 @@ const SPACING_SM = 3;
 const SPACING_MD = 5;
 const CARD_LINE_GAP = 4;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
+const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 const PollIcon = ({
   color,
   size = SECONDARY_METRIC_ICON_SIZE,
@@ -539,6 +544,30 @@ const PollIcon = ({
     <Path d="M5 21v-6" />
     <Path d="M12 21V3" />
     <Path d="M19 21V9" />
+  </Svg>
+);
+const InfoCircleIcon = ({
+  color,
+  size = SECONDARY_METRIC_ICON_SIZE,
+  strokeWidth = 2,
+}: {
+  color: string;
+  size?: number;
+  strokeWidth?: number;
+}) => (
+  <Svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke={color}
+    strokeWidth={strokeWidth}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <Path d="M12 16v-4" />
+    <Path d="M12 8h.01" />
+    <Path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z" />
   </Svg>
 );
 const VoteIcon = ({ color, size = VOTE_ICON_SIZE }: { color: string; size?: number }) => (
@@ -806,6 +835,48 @@ const SearchScreen: React.FC = () => {
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
   const showPollsOverlay = activeOverlay === 'polls';
   const pollOverlayParams = overlayParams.polls;
+  const [scoreInfo, setScoreInfo] = React.useState<{
+    type: 'dish' | 'restaurant';
+    title: string;
+    score: number | null | undefined;
+    votes: number | null | undefined;
+    polls: number | null | undefined;
+  } | null>(null);
+  const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
+  const scoreInfoTranslateY = React.useRef(new Animated.Value(SCORE_INFO_MAX_HEIGHT + 48)).current;
+  const openScoreInfo = React.useCallback(
+    (payload: {
+      type: 'dish' | 'restaurant';
+      title: string;
+      score: number | null | undefined;
+      votes: number | null | undefined;
+      polls: number | null | undefined;
+    }) => {
+      setScoreInfo(payload);
+      setScoreInfoVisible(true);
+      scoreInfoTranslateY.setValue(SCORE_INFO_MAX_HEIGHT + 48);
+      Animated.timing(scoreInfoTranslateY, {
+        toValue: 0,
+        duration: 220,
+        easing: RNEasing.out(RNEasing.cubic),
+        useNativeDriver: true,
+      }).start();
+    },
+    [scoreInfoTranslateY]
+  );
+  const closeScoreInfo = React.useCallback(() => {
+    Animated.timing(scoreInfoTranslateY, {
+      toValue: SCORE_INFO_MAX_HEIGHT + 48,
+      duration: 200,
+      easing: RNEasing.in(RNEasing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setScoreInfoVisible(false);
+        setScoreInfo(null);
+      }
+    });
+  }, [scoreInfoTranslateY]);
   const handleOverlaySelect = React.useCallback(
     (target: OverlayKey) => {
       setOverlay(target);
@@ -2743,6 +2814,15 @@ const SearchScreen: React.FC = () => {
         openRestaurantProfile(restaurantForDish);
       }
     };
+    const handleDishInfoPress = () => {
+      openScoreInfo({
+        type: 'dish',
+        title: item.foodName,
+        score: item.qualityScore,
+        votes: item.totalUpvotes,
+        polls: item.mentionCount,
+      });
+    };
     return (
       <View key={item.connectionId} style={styles.resultItem}>
         <Pressable
@@ -2761,7 +2841,7 @@ const SearchScreen: React.FC = () => {
                 <Text
                   variant="subtitle"
                   weight="semibold"
-                  style={styles.textSlate900}
+                  style={[styles.textSlate900, styles.resultTitle]}
                   numberOfLines={1}
                 >
                   {item.foodName}
@@ -2786,26 +2866,19 @@ const SearchScreen: React.FC = () => {
                     <Text variant="caption" weight="regular" style={styles.metricLabel}>
                       Dish
                     </Text>
-                    <Text variant="caption" style={styles.metricDot}>
-                      ·
-                    </Text>
-                    <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
-                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                      {formatCompactCount(item.totalUpvotes)}
-                    </Text>
-                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                      Votes
-                    </Text>
-                    <Text variant="caption" style={styles.metricDot}>
-                      ·
-                    </Text>
-                    <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
-                    <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                      {formatCompactCount(item.mentionCount)}
-                    </Text>
-                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                      Polls
-                    </Text>
+                    <TouchableOpacity
+                      onPress={handleDishInfoPress}
+                      style={styles.scoreInfoIconButton}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="How dish scores are calculated"
+                    >
+                      <InfoCircleIcon
+                        size={SECONDARY_METRIC_ICON_SIZE + 2}
+                        color={themeColors.textBody}
+                        strokeWidth={2}
+                      />
+                    </TouchableOpacity>
                   </View>
                 </View>
               </View>
@@ -2875,6 +2948,15 @@ const SearchScreen: React.FC = () => {
         message: `${restaurant.restaurantName} · View on Crave Search`,
       }).catch(() => undefined);
     };
+    const handleRestaurantInfoPress = () => {
+      openScoreInfo({
+        type: 'restaurant',
+        title: restaurant.restaurantName,
+        score: restaurant.restaurantQualityScore,
+        votes: restaurant.totalUpvotes,
+        polls: restaurant.mentionCount,
+      });
+    };
     return (
       <View key={restaurant.restaurantId} style={styles.resultItem}>
         <Pressable
@@ -2892,7 +2974,7 @@ const SearchScreen: React.FC = () => {
                 <Text
                   variant="subtitle"
                   weight="semibold"
-                  style={styles.textSlate900}
+                  style={[styles.textSlate900, styles.resultTitle]}
                   numberOfLines={1}
                 >
                   {restaurant.restaurantName}
@@ -2919,34 +3001,19 @@ const SearchScreen: React.FC = () => {
                     <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
                       Restaurant
                     </Text>
-                    {restaurant.totalUpvotes != null ? (
-                      <>
-                        <Text variant="caption" style={styles.metricDot}>
-                          ·
-                        </Text>
-                        <VoteIcon color={themeColors.textBody} size={VOTE_ICON_SIZE} />
-                        <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                          {formatCompactCount(restaurant.totalUpvotes)}
-                        </Text>
-                        <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                          Votes
-                        </Text>
-                      </>
-                    ) : null}
-                    {restaurant.mentionCount != null ? (
-                      <>
-                        <Text variant="caption" style={styles.metricDot}>
-                          ·
-                        </Text>
-                        <PollIcon color={themeColors.textBody} size={SECONDARY_METRIC_ICON_SIZE} />
-                        <Text variant="caption" weight="regular" style={styles.metricCounterText}>
-                          {formatCompactCount(restaurant.mentionCount)}
-                        </Text>
-                        <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                          Polls
-                        </Text>
-                      </>
-                    ) : null}
+                    <TouchableOpacity
+                      onPress={handleRestaurantInfoPress}
+                      style={styles.scoreInfoIconButton}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel="How restaurant scores are calculated"
+                    >
+                      <InfoCircleIcon
+                        size={SECONDARY_METRIC_ICON_SIZE + 2}
+                        color={themeColors.textBody}
+                        strokeWidth={2}
+                      />
+                    </TouchableOpacity>
                   </View>
                 ) : null}
               </View>
@@ -3114,7 +3181,11 @@ const SearchScreen: React.FC = () => {
     [activeTab, isDishesTab, renderDishCard, renderRestaurantCard]
   );
   const listHeader = React.useMemo(
-    () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
+    () => (
+      <View style={styles.resultsListHeader}>
+        {filtersHeader}
+      </View>
+    ),
     [filtersHeader]
   );
   const renderFlashListScrollComponent = React.useMemo(
@@ -3201,6 +3272,7 @@ const SearchScreen: React.FC = () => {
     ]
   );
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
+
   return (
     <View style={styles.container}>
       <MapboxGL.MapView
@@ -3455,9 +3527,7 @@ const SearchScreen: React.FC = () => {
                         <View style={overlaySheetStyles.grabHandle} />
                       </Pressable>
                     </View>
-                    <View
-                      style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-                    >
+                    <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
                       <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
                         {submittedQuery || 'Results'}
                       </Text>
@@ -3562,6 +3632,88 @@ const SearchScreen: React.FC = () => {
         onDismiss={handleRestaurantOverlayDismissed}
         onToggleFavorite={handleRestaurantFavoriteToggle}
       />
+      {isScoreInfoVisible && scoreInfo ? (
+        <View style={styles.scoreInfoOverlay} pointerEvents="box-none">
+          <Pressable style={styles.scoreInfoBackdrop} onPress={closeScoreInfo} />
+          <Animated.View
+            style={[
+              styles.scoreInfoSheet,
+              {
+                height: SCORE_INFO_MAX_HEIGHT,
+                paddingBottom: Math.max(insets.bottom, 12),
+                transform: [{ translateY: scoreInfoTranslateY }],
+              },
+            ]}
+          >
+            <View style={styles.scoreInfoGrabHandleWrapper}>
+              <View style={styles.scoreInfoGrabHandle} />
+            </View>
+            <View style={styles.scoreInfoContent}>
+              <View style={styles.scoreInfoHeaderRow}>
+                <View style={styles.scoreInfoTitleRow}>
+                  {scoreInfo.type === 'dish' ? (
+                    <HandPlatter
+                      size={SECONDARY_METRIC_ICON_SIZE + 2}
+                      color={themeColors.textPrimary}
+                      strokeWidth={2}
+                    />
+                  ) : (
+                    <Store
+                      size={SECONDARY_METRIC_ICON_SIZE + 2}
+                      color={themeColors.textPrimary}
+                      strokeWidth={2}
+                    />
+                  )}
+                  <Text variant="caption" weight="semibold" style={styles.scoreInfoTitle}>
+                    {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
+                  </Text>
+                  <Text variant="caption" weight="semibold" style={styles.scoreInfoValue}>
+                    {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={closeScoreInfo}
+                  style={styles.scoreInfoClose}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close score details"
+                >
+                  <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+              <Text variant="caption" style={styles.scoreInfoSubtitle} numberOfLines={1}>
+                {scoreInfo.title}
+              </Text>
+              <View style={styles.scoreInfoMetricsRow}>
+                <View style={styles.scoreInfoMetricItem}>
+                  <VoteIcon color={themeColors.textPrimary} size={14} />
+                  <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                    {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
+                  </Text>
+                  <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                    Votes
+                  </Text>
+                </View>
+                <View style={styles.scoreInfoMetricItem}>
+                  <PollIcon color={themeColors.textPrimary} size={14} />
+                  <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                    {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
+                  </Text>
+                  <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                    Polls
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.scoreInfoDivider} />
+              <Text variant="caption" style={styles.scoreInfoDescription}>
+                {scoreInfo.type === 'dish'
+                  ? 'Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant\'s overall quality, scaled 0–100.'
+                  : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}
+              </Text>
+            </View>
+          </Animated.View>
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -3991,6 +4143,90 @@ const styles = StyleSheet.create({
   navLabelActive: {
     color: ACTIVE_TAB_COLOR,
   },
+  scoreInfoIconButton: {
+    padding: 0,
+  },
+  scoreInfoOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 130,
+    justifyContent: 'flex-end',
+  },
+  scoreInfoBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+  },
+  scoreInfoSheet: {
+    backgroundColor: '#ffffff',
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    paddingTop: 8,
+  },
+  scoreInfoGrabHandleWrapper: {
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  scoreInfoGrabHandle: {
+    width: 42,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#e2e8f0',
+  },
+  scoreInfoContent: {
+    gap: 12,
+  },
+  scoreInfoHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  scoreInfoTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  scoreInfoTitle: {
+    color: '#0f172a',
+  },
+  scoreInfoValue: {
+    color: themeColors.textPrimary,
+  },
+  scoreInfoClose: {
+    padding: 6,
+    borderRadius: 999,
+  },
+  scoreInfoSubtitle: {
+    color: themeColors.textBody,
+  },
+  scoreInfoMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  scoreInfoMetricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+  },
+  scoreInfoMetricText: {
+    color: '#0f172a',
+  },
+  scoreInfoMetricLabel: {
+    color: themeColors.textBody,
+  },
+  scoreInfoDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 4,
+  },
+  scoreInfoDescription: {
+    color: themeColors.textBody,
+    lineHeight: 18,
+  },
   pollsIcon: {
     transform: [{ rotate: '90deg' }, { scaleX: -1 }],
   },
@@ -4077,10 +4313,9 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   resultsListHeader: {
-    backgroundColor: '#ffffff',
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 8,
-    paddingBottom: 8,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
   },
   submittedQueryLabel: {
     flexShrink: 1,
@@ -4206,10 +4441,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 8,
+    marginTop: -1,
   },
   rankBadgeText: {
     color: '#ffffff',
-    fontWeight: '600',
+    fontWeight: '700',
+    fontSize: 14,
+    lineHeight: 18,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
+  },
+  resultTitle: {
+    fontSize: 18,
+    lineHeight: 24,
   },
   cardBodyStack: {
     width: '100%',
