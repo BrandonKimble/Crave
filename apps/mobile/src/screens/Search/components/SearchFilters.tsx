@@ -4,7 +4,11 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
 import MultiSlider from '@ptomasroos/react-native-multi-slider';
 import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
-import Reanimated, { useAnimatedProps, useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
+import Reanimated, {
+  useAnimatedProps,
+  useAnimatedScrollHandler,
+  useSharedValue,
+} from 'react-native-reanimated';
 
 import { Text } from '../../../components';
 import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
@@ -183,11 +187,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           if (prevHole && areHolesEqual(prevHole, next)) {
             return prev;
           }
-      return { ...prev, [key]: next };
-    });
-  },
-  []
-);
+          return { ...prev, [key]: next };
+        });
+      },
+    []
+  );
 
   const holes = React.useMemo(() => Object.values(holeMap), [holeMap]);
   const maxHoleExtent = React.useMemo(() => {
@@ -220,10 +224,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             onScroll={onScroll}
             bounces
             alwaysBounceHorizontal
-            contentContainerStyle={[
-              styles.filterButtonsContent,
-              { paddingHorizontal: inset },
-            ]}
+            contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
             style={styles.filterButtonsScroll}
           >
             <View
@@ -354,58 +355,62 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           </Reanimated.ScrollView>
 
           {viewportWidth > 0 && rowHeight > 0 ? (
-          <MaskedView
-            pointerEvents="none"
-            style={[styles.maskOverlay, { width: maskWidth, height: maskHeight, top: maskTopOffset }]}
-            maskElement={
-              <Svg width={maskWidth} height={maskHeight}>
-                <Defs>
-                  <Mask
-                    id={maskId}
-                    x="0"
-                    y="0"
+            <MaskedView
+              pointerEvents="none"
+              style={[
+                styles.maskOverlay,
+                { width: maskWidth, height: maskHeight, top: maskTopOffset },
+              ]}
+              maskElement={
+                <Svg width={maskWidth} height={maskHeight}>
+                  <Defs>
+                    <Mask
+                      id={maskId}
+                      x="0"
+                      y="0"
+                      width={maskWidth}
+                      height={maskHeight}
+                      maskUnits="userSpaceOnUse"
+                      maskContentUnits="userSpaceOnUse"
+                    >
+                      <Rect x={0} y={0} width={maskWidth} height={maskHeight} fill="white" />
+                      <AnimatedG animatedProps={holesTranslateProps}>
+                        {holes.map((hole, index) => {
+                          const radiiBase =
+                            hole.cornerRadii ?? normalizeCornerRadii(hole.borderRadius);
+                          const radii = {
+                            topLeft: radiiBase.topLeft + HOLE_RADIUS_BOOST,
+                            topRight: radiiBase.topRight + HOLE_RADIUS_BOOST,
+                            bottomRight: radiiBase.bottomRight + HOLE_RADIUS_BOOST,
+                            bottomLeft: radiiBase.bottomLeft + HOLE_RADIUS_BOOST,
+                          };
+                          const y = hole.y + 1;
+                          const height = hole.height;
+                          return (
+                            <Path
+                              key={index}
+                              d={buildRoundedRectPath(hole.x + inset, y, hole.width, height, radii)}
+                              fill="black"
+                            />
+                          );
+                        })}
+                      </AnimatedG>
+                    </Mask>
+                  </Defs>
+                  <Rect
+                    x={0}
+                    y={0}
                     width={maskWidth}
                     height={maskHeight}
-                    maskUnits="userSpaceOnUse"
-                    maskContentUnits="userSpaceOnUse"
-                  >
-                    <Rect x={0} y={0} width={maskWidth} height={maskHeight} fill="white" />
-                    <AnimatedG animatedProps={holesTranslateProps}>
-                      {holes.map((hole, index) => {
-                        const radiiBase = hole.cornerRadii ?? normalizeCornerRadii(hole.borderRadius);
-                        const radii = {
-                          topLeft: radiiBase.topLeft + HOLE_RADIUS_BOOST,
-                          topRight: radiiBase.topRight + HOLE_RADIUS_BOOST,
-                          bottomRight: radiiBase.bottomRight + HOLE_RADIUS_BOOST,
-                          bottomLeft: radiiBase.bottomLeft + HOLE_RADIUS_BOOST,
-                        };
-                        const y = hole.y + 1;
-                        const height = hole.height;
-                        return (
-                          <Path
-                            key={index}
-                            d={buildRoundedRectPath(hole.x + inset, y, hole.width, height, radii)}
-                            fill="black"
-                          />
-                        );
-                      })}
-                    </AnimatedG>
-                  </Mask>
-                </Defs>
-                <Rect
-                  x={0}
-                  y={0}
-                  width={maskWidth}
-                  height={maskHeight}
-                  fill="white"
-                  mask={`url(#${maskId})`}
-                />
-              </Svg>
-            }
-          >
-            <View style={styles.whiteFill} pointerEvents="none" />
-          </MaskedView>
-        ) : null}
+                    fill="white"
+                    mask={`url(#${maskId})`}
+                  />
+                </Svg>
+              }
+            >
+              <View style={styles.whiteFill} pointerEvents="none" />
+            </MaskedView>
+          ) : null}
         </View>
 
         {isPriceSelectorVisible ? (

@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  StyleSheet,
-  View,
-  type StyleProp,
-  type ViewProps,
-  type ViewStyle,
-} from 'react-native';
+import { StyleSheet, View, type StyleProp, type ViewProps, type ViewStyle } from 'react-native';
 import Svg, { Defs, G, Mask, Rect } from 'react-native-svg';
 
 type MaskedHole = {
@@ -23,66 +17,65 @@ type MaskedHoleOverlayProps = {
   style?: StyleProp<ViewStyle>;
 } & Pick<ViewProps, 'pointerEvents'>;
 
-const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>((
-  { holes, backgroundColor = '#ffffff', opacity = 1, style, pointerEvents },
-  ref
-) => {
-  const maskIdRef = React.useRef<string>(
-    `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`
-  );
-  const maskId = maskIdRef.current;
+const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
+  ({ holes, backgroundColor = '#ffffff', opacity = 1, style, pointerEvents }, ref) => {
+    const maskIdRef = React.useRef<string>(
+      `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`
+    );
+    const maskId = maskIdRef.current;
 
-  if (!holes.length) {
-    return null;
-  }
+    if (!holes.length) {
+      return null;
+    }
 
-  const containerStyle = style
-    ? [overlayStyles.absoluteTopLeft, style]
-    : StyleSheet.absoluteFillObject;
+    const containerStyle = style
+      ? [overlayStyles.absoluteTopLeft, style]
+      : StyleSheet.absoluteFillObject;
 
-  return (
-    <View ref={ref} pointerEvents={pointerEvents ?? 'none'} style={containerStyle}>
-      <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
-        <Defs>
-          <Mask
-            id={maskId}
-            x="0"
-            y="0"
+    return (
+      <View ref={ref} pointerEvents={pointerEvents ?? 'none'} style={containerStyle}>
+        <Svg style={StyleSheet.absoluteFillObject} width="100%" height="100%">
+          <Defs>
+            <Mask
+              id={maskId}
+              x="0"
+              y="0"
+              width="100%"
+              height="100%"
+              maskUnits="userSpaceOnUse"
+              maskContentUnits="userSpaceOnUse"
+            >
+              <Rect x={0} y={0} width="100%" height="100%" fill="white" />
+              <G>
+                {holes.map((hole, index) => (
+                  <Rect
+                    key={index}
+                    x={hole.x}
+                    y={hole.y}
+                    width={hole.width}
+                    height={hole.height}
+                    rx={hole.borderRadius ?? 0}
+                    ry={hole.borderRadius ?? 0}
+                    fill="black"
+                  />
+                ))}
+              </G>
+            </Mask>
+          </Defs>
+          <Rect
+            x={0}
+            y={0}
             width="100%"
             height="100%"
-            maskUnits="userSpaceOnUse"
-            maskContentUnits="userSpaceOnUse"
-          >
-            <Rect x={0} y={0} width="100%" height="100%" fill="white" />
-            <G>
-              {holes.map((hole, index) => (
-                <Rect
-                  key={index}
-                  x={hole.x}
-                  y={hole.y}
-                  width={hole.width}
-                  height={hole.height}
-                  rx={hole.borderRadius ?? 0}
-                  ry={hole.borderRadius ?? 0}
-                  fill="black"
-                />
-              ))}
-            </G>
-          </Mask>
-        </Defs>
-        <Rect
-          x={0}
-          y={0}
-          width="100%"
-          height="100%"
-          fill={backgroundColor}
-          opacity={opacity}
-          mask={`url(#${maskId})`}
-        />
-      </Svg>
-    </View>
-  );
-});
+            fill={backgroundColor}
+            opacity={opacity}
+            mask={`url(#${maskId})`}
+          />
+        </Svg>
+      </View>
+    );
+  }
+);
 
 export type { MaskedHole };
 export default MaskedHoleOverlay;

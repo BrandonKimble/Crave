@@ -39,11 +39,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import {
-  Share as LucideShare,
-  Heart as LucideHeart,
-  X as LucideX,
-} from 'lucide-react-native';
+import { Share as LucideShare, Heart as LucideHeart, X as LucideX } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import pinAsset from '../../assets/pin.png';
@@ -3181,11 +3177,7 @@ const SearchScreen: React.FC = () => {
     [activeTab, isDishesTab, renderDishCard, renderRestaurantCard]
   );
   const listHeader = React.useMemo(
-    () => (
-      <View style={styles.resultsListHeader}>
-        {filtersHeader}
-      </View>
-    ),
+    () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
     [filtersHeader]
   );
   const renderFlashListScrollComponent = React.useMemo(
@@ -3527,7 +3519,9 @@ const SearchScreen: React.FC = () => {
                         <View style={overlaySheetStyles.grabHandle} />
                       </Pressable>
                     </View>
-                    <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+                    <View
+                      style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+                    >
                       <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
                         {submittedQuery || 'Results'}
                       </Text>
@@ -3707,7 +3701,7 @@ const SearchScreen: React.FC = () => {
               <View style={styles.scoreInfoDivider} />
               <Text variant="caption" style={styles.scoreInfoDescription}>
                 {scoreInfo.type === 'dish'
-                  ? 'Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant\'s overall quality, scaled 0–100.'
+                  ? "Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant's overall quality, scaled 0–100."
                   : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}
               </Text>
             </View>
