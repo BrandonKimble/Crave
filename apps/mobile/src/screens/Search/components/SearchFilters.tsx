@@ -24,7 +24,7 @@ const SEGMENT_OPTIONS = [
 ] as const;
 
 const HOLE_VERTICAL_PADDING = 0;
-const HOLE_RADIUS_BOOST = 1.5;
+const HOLE_RADIUS_BOOST = 1;
 
 type CornerRadii = {
   topLeft: number;
@@ -233,34 +233,34 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             >
               <View style={styles.toggleRow}>
                 <View style={styles.segmentedControl}>
-                  {SEGMENT_OPTIONS.map((option) => {
-                    const selected = activeTab === option.value;
-                    return (
-                      <Pressable
-                        key={option.value}
-                        onLayout={registerHole(`segment-${option.value}`, TOGGLE_BORDER_RADIUS)}
-                        style={[
-                          styles.segmentedOption,
-                          selected && [
-                            styles.segmentedOptionActive,
-                            { borderColor: accentColor, shadowColor: accentColor },
-                          ],
-                        ]}
-                        onPress={() => onTabChange(option.value)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`View ${option.label.toLowerCase()}`}
-                        accessibilityState={{ selected }}
+                {SEGMENT_OPTIONS.map((option) => {
+                  const selected = activeTab === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onLayout={registerHole(`segment-${option.value}`, TOGGLE_BORDER_RADIUS)}
+                      style={[
+                        styles.segmentedOption,
+                        selected && [
+                          styles.segmentedOptionActive,
+                          { backgroundColor: accentColor, shadowColor: accentColor },
+                        ],
+                      ]}
+                      onPress={() => onTabChange(option.value)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`View ${option.label.toLowerCase()}`}
+                      accessibilityState={{ selected }}
                       >
                         <Text
-                          numberOfLines={1}
-                          variant="caption"
-                          weight="semibold"
-                          style={[styles.segmentedLabel, selected && { color: accentColor }]}
-                        >
-                          {option.label}
-                        </Text>
-                      </Pressable>
-                    );
+                        numberOfLines={1}
+                        variant="caption"
+                        weight="semibold"
+                        style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
                   })}
                 </View>
                 <Pressable
@@ -273,20 +273,20 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     styles.openNowButton,
                     openNow && [
                       styles.openNowButtonActive,
-                      { borderColor: accentColor, shadowColor: accentColor },
+                      { backgroundColor: accentColor, shadowColor: accentColor },
                     ],
                   ]}
                 >
                   <Feather
                     name="clock"
                     size={14}
-                    color={openNow ? accentColor : '#475569'}
+                    color={openNow ? '#ffffff' : '#111827'}
                     style={styles.openNowIcon}
                   />
                   <Text
                     variant="caption"
                     weight="semibold"
-                    style={[styles.openNowText, openNow && { color: accentColor }]}
+                    style={[styles.openNowText, openNow && styles.openNowTextActive]}
                   >
                     Open now
                   </Text>
@@ -296,61 +296,61 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   onPress={onTogglePriceSelector}
                   accessibilityRole="button"
                   accessibilityLabel="Select price filters"
-                  accessibilityState={{
-                    expanded: isPriceSelectorVisible,
-                    selected: priceButtonActive,
-                  }}
-                  style={[
-                    styles.priceButton,
-                    priceButtonActive && [
-                      styles.priceButtonActive,
-                      { borderColor: accentColor, shadowColor: accentColor },
-                    ],
-                  ]}
-                >
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.priceButtonLabel, priceButtonActive && { color: accentColor }]}
+                    accessibilityState={{
+                      expanded: isPriceSelectorVisible,
+                      selected: priceButtonActive,
+                    }}
+                    style={[
+                      styles.priceButton,
+                      priceButtonActive && [
+                        styles.priceButtonActive,
+                        { backgroundColor: accentColor, shadowColor: accentColor },
+                      ],
+                    ]}
                   >
-                    {priceButtonLabel}
-                  </Text>
-                  <Feather
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.priceButtonLabel, priceButtonActive && styles.priceButtonLabelActive]}
+                    >
+                      {priceButtonLabel}
+                    </Text>
+                    <Feather
                     name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
                     size={14}
-                    color={priceButtonActive ? accentColor : '#475569'}
-                    style={styles.priceButtonChevron}
-                  />
-                </Pressable>
-                <Pressable
-                  onLayout={registerHole('toggle-votes')}
+                    color={priceButtonActive ? '#ffffff' : '#111827'}
+                      style={styles.priceButtonChevron}
+                    />
+                  </Pressable>
+                  <Pressable
+                    onLayout={registerHole('toggle-votes')}
                   onPress={onToggleVotesFilter}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle 100 plus votes filter"
-                  accessibilityState={{ selected: votesFilterActive }}
-                  style={[
-                    styles.votesButton,
-                    votesFilterActive && [
-                      styles.votesButtonActive,
-                      { borderColor: accentColor, shadowColor: accentColor },
-                    ],
-                  ]}
-                >
-                  <Feather
+                    accessibilityState={{ selected: votesFilterActive }}
+                    style={[
+                      styles.votesButton,
+                      votesFilterActive && [
+                        styles.votesButtonActive,
+                        { backgroundColor: accentColor, shadowColor: accentColor },
+                      ],
+                    ]}
+                  >
+                    <Feather
                     name="thumbs-up"
                     size={14}
-                    color={votesFilterActive ? accentColor : '#475569'}
-                    style={styles.votesIcon}
-                  />
-                  <Text
-                    variant="caption"
-                    weight="semibold"
-                    style={[styles.votesText, votesFilterActive && { color: accentColor }]}
-                  >
-                    100+ votes
-                  </Text>
-                </Pressable>
-              </View>
+                    color={votesFilterActive ? '#ffffff' : '#111827'}
+                      style={styles.votesIcon}
+                    />
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+                    >
+                      100+ votes
+                    </Text>
+                  </Pressable>
+                </View>
             </View>
           </Reanimated.ScrollView>
 
@@ -474,8 +474,8 @@ const toggleBaseStyle = {
   flexDirection: 'row',
   alignItems: 'center',
   borderRadius: TOGGLE_BORDER_RADIUS,
-  borderWidth: 1,
-  borderColor: '#e2e8f0',
+  borderWidth: 0,
+  borderColor: 'transparent',
   backgroundColor: 'transparent',
   ...toggleContentPaddingStyle,
 };
@@ -536,23 +536,19 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   segmentedOptionActive: {
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 2,
+    borderRadius: TOGGLE_BORDER_RADIUS,
   },
   segmentedLabel: {
-    color: '#1f2937',
+    color: '#111827',
+  },
+  segmentedLabelActive: {
+    color: '#ffffff',
   },
   openNowButton: {
     ...toggleBaseStyle,
   },
   openNowButtonActive: {
     borderRadius: TOGGLE_BORDER_RADIUS,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 2,
   },
   openNowButtonDisabled: {
     opacity: 0.6,
@@ -561,7 +557,10 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   openNowText: {
-    color: '#475569',
+    color: '#111827',
+  },
+  openNowTextActive: {
+    color: '#ffffff',
   },
   priceButton: {
     ...toggleBaseStyle,
@@ -569,16 +568,15 @@ const styles = StyleSheet.create({
   },
   priceButtonActive: {
     borderRadius: TOGGLE_BORDER_RADIUS,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 2,
   },
   priceButtonDisabled: {
     opacity: 0.6,
   },
   priceButtonLabel: {
-    color: '#475569',
+    color: '#111827',
+  },
+  priceButtonLabelActive: {
+    color: '#ffffff',
   },
   priceButtonChevron: {
     marginLeft: 6,
@@ -666,10 +664,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   votesButtonActive: {
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 2,
   },
   votesButtonDisabled: {
     opacity: 0.6,
@@ -678,7 +672,10 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   votesText: {
-    color: '#475569',
+    color: '#111827',
+  },
+  votesTextActive: {
+    color: '#ffffff',
   },
   maskOverlay: {
     position: 'absolute',
