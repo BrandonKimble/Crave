@@ -233,34 +233,34 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             >
               <View style={styles.toggleRow}>
                 <View style={styles.segmentedControl}>
-                {SEGMENT_OPTIONS.map((option) => {
-                  const selected = activeTab === option.value;
-                  return (
-                    <Pressable
-                      key={option.value}
-                      onLayout={registerHole(`segment-${option.value}`, TOGGLE_BORDER_RADIUS)}
-                      style={[
-                        styles.segmentedOption,
-                        selected && [
-                          styles.segmentedOptionActive,
-                          { backgroundColor: accentColor, shadowColor: accentColor },
-                        ],
-                      ]}
-                      onPress={() => onTabChange(option.value)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`View ${option.label.toLowerCase()}`}
-                      accessibilityState={{ selected }}
+                  {SEGMENT_OPTIONS.map((option) => {
+                    const selected = activeTab === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onLayout={registerHole(`segment-${option.value}`, TOGGLE_BORDER_RADIUS)}
+                        style={[
+                          styles.segmentedOption,
+                          selected && [
+                            styles.segmentedOptionActive,
+                            { backgroundColor: accentColor, shadowColor: accentColor },
+                          ],
+                        ]}
+                        onPress={() => onTabChange(option.value)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`View ${option.label.toLowerCase()}`}
+                        accessibilityState={{ selected }}
                       >
                         <Text
-                        numberOfLines={1}
-                        variant="caption"
-                        weight="semibold"
-                        style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  );
+                          numberOfLines={1}
+                          variant="caption"
+                          weight="semibold"
+                          style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
                   })}
                 </View>
                 <Pressable
@@ -296,61 +296,64 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   onPress={onTogglePriceSelector}
                   accessibilityRole="button"
                   accessibilityLabel="Select price filters"
-                    accessibilityState={{
-                      expanded: isPriceSelectorVisible,
-                      selected: priceButtonActive,
-                    }}
+                  accessibilityState={{
+                    expanded: isPriceSelectorVisible,
+                    selected: priceButtonActive,
+                  }}
+                  style={[
+                    styles.priceButton,
+                    priceButtonActive && [
+                      styles.priceButtonActive,
+                      { backgroundColor: accentColor, shadowColor: accentColor },
+                    ],
+                  ]}
+                >
+                  <Text
+                    variant="caption"
+                    weight="semibold"
                     style={[
-                      styles.priceButton,
-                      priceButtonActive && [
-                        styles.priceButtonActive,
-                        { backgroundColor: accentColor, shadowColor: accentColor },
-                      ],
+                      styles.priceButtonLabel,
+                      priceButtonActive && styles.priceButtonLabelActive,
                     ]}
                   >
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={[styles.priceButtonLabel, priceButtonActive && styles.priceButtonLabelActive]}
-                    >
-                      {priceButtonLabel}
-                    </Text>
-                    <Feather
+                    {priceButtonLabel}
+                  </Text>
+                  <Feather
                     name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
                     size={14}
                     color={priceButtonActive ? '#ffffff' : '#111827'}
-                      style={styles.priceButtonChevron}
-                    />
-                  </Pressable>
-                  <Pressable
-                    onLayout={registerHole('toggle-votes')}
+                    style={styles.priceButtonChevron}
+                  />
+                </Pressable>
+                <Pressable
+                  onLayout={registerHole('toggle-votes')}
                   onPress={onToggleVotesFilter}
                   accessibilityRole="button"
                   accessibilityLabel="Toggle 100 plus votes filter"
-                    accessibilityState={{ selected: votesFilterActive }}
-                    style={[
-                      styles.votesButton,
-                      votesFilterActive && [
-                        styles.votesButtonActive,
-                        { backgroundColor: accentColor, shadowColor: accentColor },
-                      ],
-                    ]}
-                  >
-                    <Feather
+                  accessibilityState={{ selected: votesFilterActive }}
+                  style={[
+                    styles.votesButton,
+                    votesFilterActive && [
+                      styles.votesButtonActive,
+                      { backgroundColor: accentColor, shadowColor: accentColor },
+                    ],
+                  ]}
+                >
+                  <Feather
                     name="thumbs-up"
                     size={14}
                     color={votesFilterActive ? '#ffffff' : '#111827'}
-                      style={styles.votesIcon}
-                    />
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
-                    >
-                      100+ votes
-                    </Text>
-                  </Pressable>
-                </View>
+                    style={styles.votesIcon}
+                  />
+                  <Text
+                    variant="caption"
+                    weight="semibold"
+                    style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
+                  >
+                    100+ votes
+                  </Text>
+                </Pressable>
+              </View>
             </View>
           </Reanimated.ScrollView>
 
@@ -663,8 +666,7 @@ const styles = StyleSheet.create({
     ...toggleBaseStyle,
     flexDirection: 'row',
   },
-  votesButtonActive: {
-  },
+  votesButtonActive: {},
   votesButtonDisabled: {
     opacity: 0.6,
   },
