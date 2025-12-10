@@ -22,6 +22,7 @@ export const overlaySheetStyles = StyleSheet.create({
     paddingTop: 0,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingBottom: 10,
+    position: 'relative',
   },
   grabHandleWrapper: {
     alignItems: 'center',
@@ -47,10 +48,12 @@ export const overlaySheetStyles = StyleSheet.create({
     marginBottom: 8,
   },
   headerDivider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     height: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(15, 23, 42, 0.14)',
-    marginHorizontal: -OVERLAY_HORIZONTAL_PADDING,
-    marginBottom: 0,
   },
   closeButton: {
     minWidth: 44,

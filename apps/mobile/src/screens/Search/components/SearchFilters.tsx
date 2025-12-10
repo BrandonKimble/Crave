@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
 import MultiSlider from '@ptomasroos/react-native-multi-slider';
@@ -25,6 +25,10 @@ const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
 const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 const TOGGLE_STACK_GAP = 8;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
+const PRICE_CUTOUT_RADIUS = CONTROL_RADIUS + 6;
+const STRIP_BACKGROUND_HEIGHT = 14;
+const PRICE_CUTOUT_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
+const PRICE_CUTOUT_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING + 2;
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
@@ -130,6 +134,7 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   pendingPriceRange: [number, number];
   onPriceChange: (values: number[]) => void;
+  onPriceChangeFinish: (values: number[]) => void;
   onPriceDone: () => void;
   onPriceSliderLayout: (event: LayoutChangeEvent) => void;
   priceSliderWidth: number;
@@ -153,6 +158,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   pendingPriceRange,
   onPriceChange,
+  onPriceChangeFinish,
   onPriceDone,
   onPriceSliderLayout,
   priceSliderWidth,
@@ -165,6 +171,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const [viewportWidth, setViewportWidth] = React.useState(0);
   const [rowHeight, setRowHeight] = React.useState(0);
   const [holeMap, setHoleMap] = React.useState<Record<string, ExtendedHole>>({});
+  const [priceSelectorLayout, setPriceSelectorLayout] = React.useState({ width: 0, height: 0 });
   const maskIdRef = React.useRef<string>(
     `search-filter-mask-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -176,6 +183,43 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
+
+  const PriceSliderMarker = React.useCallback(
+    ({ pressed }: { pressed?: boolean }) => {
+      const scale = React.useRef(new Animated.Value(pressed ? 1 : 0)).current;
+
+      React.useEffect(() => {
+        Animated.spring(scale, {
+          toValue: pressed ? 1 : 0,
+          useNativeDriver: true,
+          friction: 7,
+          tension: 120,
+        }).start();
+      }, [pressed, scale]);
+
+      const animatedStyle = {
+        transform: [
+          {
+            scale: scale.interpolate({
+              inputRange: [0, 1],
+              outputRange: [1, 1.1],
+            }),
+          },
+        ],
+      };
+
+      return (
+        <Animated.View
+          style={[
+            styles.priceSliderMarker,
+            { backgroundColor: accentColor, borderColor: accentColor },
+            animatedStyle,
+          ]}
+        />
+      );
+    },
+    [accentColor]
+  );
 
   const registerHole = React.useCallback(
     (key: string, borderRadius: number | Partial<CornerRadii> = TOGGLE_BORDER_RADIUS) =>
@@ -424,50 +468,139 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           ) : null}
         </View>
 
+        <View style={styles.priceGapFiller} pointerEvents="none" />
+
         {isPriceSelectorVisible ? (
-          <View style={styles.priceSelector}>
-            <View style={styles.priceSelectorHeader}>
-              <View>
-                <Text variant="caption" style={styles.priceFilterLabel}>
-                  Price per person
-                </Text>
-                <Text style={styles.priceSelectorValue}>{pendingPriceSummary}</Text>
-              </View>
-              <Pressable
-                onPress={onPriceDone}
-                accessibilityRole="button"
-                accessibilityLabel="Apply price filters"
-                style={[styles.priceDoneButton, { backgroundColor: accentColor }]}
-              >
-                <Text style={styles.priceDoneButtonText}>Done</Text>
-              </Pressable>
-            </View>
-            <View style={styles.priceSliderWrapper} onLayout={onPriceSliderLayout}>
-              {priceSliderWidth > 0 ? (
-                <MultiSlider
-                  min={Math.min(...priceLevelValues)}
-                  max={Math.max(...priceLevelValues)}
-                  step={1}
-                  values={pendingPriceRange}
-                  sliderLength={priceSliderWidth}
-                  onValuesChange={onPriceChange}
-                  allowOverlap={false}
-                  snapped
-                  markerStyle={styles.priceSliderMarker}
-                  pressedMarkerStyle={styles.priceSliderMarkerActive}
-                  selectedStyle={[styles.priceSliderSelected, { backgroundColor: accentColor }]}
-                  unselectedStyle={styles.priceSliderUnselected}
-                  containerStyle={styles.priceSlider}
-                  trackStyle={styles.priceSliderTrack}
-                />
+          <View style={styles.priceSelectorWrapper}>
+            <View style={styles.priceSelectorSpacer} pointerEvents="none" />
+            <View
+              style={styles.priceSelectorCutoutWrapper}
+              onLayout={({ nativeEvent: { layout } }) =>
+                setPriceSelectorLayout({ width: layout.width, height: layout.height })
+              }
+            >
+              {priceSelectorLayout.width > 0 && priceSelectorLayout.height > 0 ? (
+                <MaskedView
+                  pointerEvents="none"
+                  style={[
+                    styles.priceSelectorMaskOverlay,
+                    {
+                      width: priceSelectorLayout.width,
+                      height: priceSelectorLayout.height,
+                      top: 0,
+                    },
+                  ]}
+                  maskElement={
+                    <Svg width={priceSelectorLayout.width} height={priceSelectorLayout.height}>
+                      <Defs>
+                        <Mask
+                          id="price-selector-mask"
+                          x="0"
+                          y="0"
+                          width={priceSelectorLayout.width}
+                          height={priceSelectorLayout.height}
+                          maskUnits="userSpaceOnUse"
+                          maskContentUnits="userSpaceOnUse"
+                        >
+                          <Rect
+                            x={0}
+                            y={0}
+                            width={priceSelectorLayout.width}
+                            height={priceSelectorLayout.height}
+                            fill="white"
+                          />
+                          <Rect
+                            x={contentHorizontalPadding}
+                            y={0}
+                            width={Math.max(
+                              priceSelectorLayout.width - contentHorizontalPadding * 2,
+                              0
+                            )}
+                            height={priceSelectorLayout.height}
+                            rx={PRICE_CUTOUT_RADIUS}
+                            ry={PRICE_CUTOUT_RADIUS}
+                            fill="black"
+                          />
+                        </Mask>
+                      </Defs>
+                      <Rect
+                        x={0}
+                        y={0}
+                        width={priceSelectorLayout.width}
+                        height={priceSelectorLayout.height}
+                        fill="white"
+                        mask="url(#price-selector-mask)"
+                      />
+                    </Svg>
+                  }
+                >
+                  <View style={styles.priceSelectorMaskFill} pointerEvents="none" />
+                </MaskedView>
               ) : null}
-            </View>
-            <View style={styles.priceSliderLabelsRow}>
-              {priceLevelValues.map((value) => (
-                <Text key={value} style={styles.priceSliderLabel}>
-                  {priceTickLabels[value]}
-                </Text>
-              ))}
+              <View
+                style={[
+                  styles.priceSelector,
+                  { marginHorizontal: contentHorizontalPadding },
+                ]}
+              >
+                <View style={styles.priceSelectorHeader}>
+                  <View>
+                    <Text variant="caption" style={styles.priceFilterLabel}>
+                      Price per person
+                    </Text>
+                    <View style={styles.priceSelectorValuePill}>
+                      <Text style={styles.priceSelectorValue}>{pendingPriceSummary}</Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={onPriceDone}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply price filters"
+                    style={[styles.priceDoneButton, { backgroundColor: accentColor }]}
+                  >
+                    <Text style={styles.priceDoneButtonText}>Done</Text>
+                  </Pressable>
+                </View>
+                <View
+                  style={[
+                    styles.priceSliderWrapper,
+                    {
+                      paddingHorizontal: contentHorizontalPadding + 10,
+                      maxWidth: 320,
+                      alignSelf: 'center',
+                    },
+                  ]}
+                  onLayout={onPriceSliderLayout}
+                >
+                  {priceSliderWidth > 0 ? (
+                    <MultiSlider
+                      min={Math.min(...priceLevelValues)}
+                      max={Math.max(...priceLevelValues)}
+                      step={0.01}
+                      values={pendingPriceRange}
+                      sliderLength={priceSliderWidth}
+                      onValuesChange={onPriceChange}
+                      onValuesChangeFinish={onPriceChangeFinish}
+                      allowOverlap={false}
+                      snapped={false}
+                      animateTransitions
+                      customMarkerLeft={PriceSliderMarker}
+                      customMarkerRight={PriceSliderMarker}
+                      selectedStyle={[styles.priceSliderSelected, { backgroundColor: accentColor }]}
+                      unselectedStyle={styles.priceSliderUnselected}
+                      containerStyle={styles.priceSlider}
+                      trackStyle={styles.priceSliderTrack}
+                    />
+                  ) : null}
+                </View>
+                <View style={styles.priceSliderLabelsRow}>
+                  {priceLevelValues.map((value) => (
+                    <Text key={value} style={styles.priceSliderLabel}>
+                      {priceTickLabels[value]}
+                    </Text>
+                  ))}
+                </View>
+              </View>
             </View>
           </View>
         ) : null}
@@ -497,6 +630,15 @@ const styles = StyleSheet.create({
   },
   paddedWrapper: {
     width: '100%',
+  },
+  stripBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: STRIP_BACKGROUND_HEIGHT,
+    backgroundColor: '#ffffff',
+    zIndex: 1,
   },
   stripContainer: {
     position: 'relative',
@@ -585,72 +727,122 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginTop: 0,
   },
-  priceSelector: {
-    marginTop: TOGGLE_STACK_GAP,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    paddingVertical: TOGGLE_STACK_GAP,
+  priceSelectorWrapper: {
+    marginTop: 0,
+    position: 'relative',
+  },
+  priceSelectorSpacer: {
+    height: 0,
+  },
+  priceSelectorCutoutWrapper: {
+    position: 'relative',
+    zIndex: 1,
+  },
+  priceGapFiller: {
+    height: TOGGLE_STACK_GAP,
     backgroundColor: '#ffffff',
+  },
+  priceSelectorMaskOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  priceSelectorMaskFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
+  },
+  priceSelector: {
+    borderRadius: PRICE_CUTOUT_RADIUS,
+    borderWidth: 0,
+    paddingHorizontal: PRICE_CUTOUT_HORIZONTAL_PADDING + 6,
+    paddingVertical: PRICE_CUTOUT_VERTICAL_PADDING + 8,
+    backgroundColor: 'transparent',
   },
   priceSelectorHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 14,
   },
   priceFilterLabel: {
-    color: '#475569',
+    color: '#1f2937',
+    fontWeight: '700',
+    fontSize: 16,
+    marginBottom: 2,
+  },
+  priceSelectorValuePill: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 4 },
   },
   priceSelectorValue: {
     color: '#0f172a',
     fontSize: 16,
-    fontWeight: '600',
-    marginTop: 2,
+    fontWeight: '700',
   },
   priceDoneButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#FB923C',
+    height: CONTROL_HEIGHT,
+    borderRadius: CONTROL_RADIUS,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING,
+    paddingVertical: CONTROL_VERTICAL_PADDING,
+    backgroundColor: '#1f2937',
+    shadowColor: '#0f172a',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   priceDoneButtonText: {
     color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 14,
+    fontWeight: '700',
   },
   priceSliderWrapper: {
     width: '100%',
     paddingHorizontal: 4,
+    marginTop: 12,
+    alignItems: 'center',
   },
   priceSlider: {
-    height: 30,
+    height: 32,
   },
   priceSliderTrack: {
     height: 6,
     borderRadius: 999,
   },
   priceSliderSelected: {
-    backgroundColor: '#FB923C',
+    backgroundColor: '#9fb1c5',
   },
   priceSliderUnselected: {
-    backgroundColor: '#e2e8f0',
+    backgroundColor: '#e6ecf3',
   },
   priceSliderMarker: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#FB923C',
-    backgroundColor: '#ffffff',
+    borderColor: '#1f2937',
+    backgroundColor: '#1f2937',
     shadowColor: '#0f172a',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
   },
   priceSliderMarkerActive: {
-    backgroundColor: '#fff7ed',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#27303f',
+    shadowOpacity: 0.28,
+    shadowRadius: 10,
   },
   priceSliderLabelsRow: {
     flexDirection: 'row',

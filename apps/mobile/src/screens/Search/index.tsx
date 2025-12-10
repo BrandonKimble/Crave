@@ -56,7 +56,11 @@ import Svg, {
   Mask as SvgMask,
 } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
-import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
+import {
+  getPriceSymbolLabel,
+  PRICE_LEVEL_RANGE_LABELS,
+  PRICE_LEVEL_SYMBOLS,
+} from '../../constants/pricing';
 import {
   overlaySheetStyles,
   OVERLAY_HORIZONTAL_PADDING,
@@ -110,17 +114,16 @@ const ACTIVE_TAB_COLOR = themeColors.primary;
 const MINIMUM_VOTES_FILTER = 100;
 const DEFAULT_PAGE_SIZE = 20;
 const RESULTS_BOTTOM_PADDING = 375;
-const PRICE_LEVEL_VALUES = [0, 1, 2, 3, 4] as const;
+const PRICE_LEVEL_VALUES = [1, 2, 3, 4] as const;
 type PriceLevelValue = (typeof PRICE_LEVEL_VALUES)[number];
-type PriceRangeTuple = [PriceLevelValue, PriceLevelValue];
+type PriceRangeTuple = [number, number];
 const PRICE_SLIDER_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
 const PRICE_SLIDER_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
 const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
-  0: 'Free',
-  1: '$',
-  2: '$$',
-  3: '$$$',
-  4: '$$$$',
+  1: PRICE_LEVEL_SYMBOLS[1],
+  2: PRICE_LEVEL_SYMBOLS[2],
+  3: PRICE_LEVEL_SYMBOLS[3],
+  4: PRICE_LEVEL_SYMBOLS[4],
 };
 const META_FONT_SIZE = 12;
 const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
@@ -170,6 +173,7 @@ const MAP_MOVE_DISTANCE_RATIO = 0.08;
 const CLOSE_BUTTON_HOLE_PADDING = 0;
 const CLOSE_BUTTON_HOLE_Y_OFFSET = 0;
 const RESULTS_HEADER_MASK_PADDING = 2;
+const PRICE_CUTOUT_RADIUS = CONTROL_RADIUS + 6;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -261,9 +265,6 @@ const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
 
 const formatPriceRangeText = (range: PriceRangeTuple): string => {
   const normalized = normalizePriceRangeValues(range);
-  if (isFullPriceRange(normalized)) {
-    return 'Any price';
-  }
   const [min, max] = normalized;
   const minLabel = PRICE_LEVEL_RANGE_LABELS[min] ?? `Level ${min}`;
   const maxLabel = PRICE_LEVEL_RANGE_LABELS[max] ?? `Level ${max}`;
@@ -773,6 +774,10 @@ const SearchScreen: React.FC = () => {
     width: number;
     height: number;
   } | null>(null);
+  const [priceSelectorLayout, setPriceSelectorLayout] = React.useState<{
+    width: number;
+    height: number;
+  }>({ width: 0, height: 0 });
   const [favoriteMap, setFavoriteMap] = React.useState<Map<string, Favorite>>(new Map());
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
@@ -2675,6 +2680,19 @@ const SearchScreen: React.FC = () => {
     if (!Array.isArray(values) || values.length === 0) {
       return;
     }
+    const sorted = [...values].sort((a, b) => a - b);
+    const min = Math.max(PRICE_SLIDER_MIN, Math.min(PRICE_SLIDER_MAX, sorted[0]));
+    const max = Math.max(
+      PRICE_SLIDER_MIN,
+      Math.min(PRICE_SLIDER_MAX, sorted[sorted.length - 1] ?? sorted[0])
+    );
+    setPendingPriceRange(min <= max ? [min, max] : [max, min]);
+  }, []);
+
+  const handlePriceSliderChangeFinish = React.useCallback((values: number[]) => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return;
+    }
     const nextRange: PriceRangeTuple = [
       clampPriceLevelValue(values[0]),
       clampPriceLevelValue(values[values.length - 1] ?? values[0]),
@@ -2845,7 +2863,7 @@ const SearchScreen: React.FC = () => {
     const isLiked = favoriteMap.has(item.foodId);
     const qualityColor = getQualityColor(index, dishes.length);
     const restaurantForDish = restaurantsById.get(item.restaurantId);
-    const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
+    const dishPriceLabel = getPriceSymbolLabel(item.restaurantPriceLevel);
     const dishMetaCombinedLine = renderMetaDetailLine(
       item.restaurantOperatingStatus,
       dishPriceLabel,
@@ -2967,7 +2985,7 @@ const SearchScreen: React.FC = () => {
   const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
     const isLiked = favoriteMap.has(restaurant.restaurantId);
     const qualityColor = getQualityColor(index, restaurants.length);
-    const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+    const priceRangeLabel = getPriceSymbolLabel(restaurant.priceLevel);
     const topFoodItems = restaurant.topFood ?? [];
     const topFoodAverage =
       topFoodItems.length > 0
@@ -3170,6 +3188,7 @@ const SearchScreen: React.FC = () => {
       isPriceSelectorVisible={isPriceSelectorVisible}
       pendingPriceRange={pendingPriceRange}
       onPriceChange={handlePriceSliderChange}
+      onPriceChangeFinish={handlePriceSliderChangeFinish}
       onPriceDone={handlePriceDone}
       onPriceSliderLayout={handlePriceSliderLayout}
       priceSliderWidth={priceSliderWidth}

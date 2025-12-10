@@ -100,7 +100,7 @@ export const useSearchStore = create<SearchState>()(
                 new Set(
                   levels
                     .map((level) => Math.round(level))
-                    .filter((level) => Number.isInteger(level) && level >= 0 && level <= 4)
+                    .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4)
                 )
               ).sort((a, b) => a - b)
             : [],

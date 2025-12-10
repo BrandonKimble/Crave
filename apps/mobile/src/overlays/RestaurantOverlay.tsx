@@ -24,6 +24,7 @@ import {
   type SheetPosition,
 } from './sheetUtils';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import { getPriceRangeLabel, getPriceSymbolLabel } from '../constants/pricing';
 
 type RestaurantOverlayData = {
   restaurant: RestaurantResult;
@@ -45,12 +46,6 @@ const PHONE_FALLBACK_SEARCH = 'phone';
 const WEBSITE_FALLBACK_SEARCH = 'website';
 
 const CARD_GAP = 4;
-const PRICE_RANGES: Record<number, string> = {
-  1: '10-20',
-  2: '20-40',
-  3: '40-70',
-  4: '70+',
-};
 
 const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
   visible,
@@ -138,7 +133,8 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
   }
 
   const { restaurant, dishes, queryLabel, isFavorite } = data;
-  const priceRange = PRICE_RANGES[restaurant.priceLevel ?? 0];
+  const priceSymbol = restaurant.priceSymbol ?? getPriceSymbolLabel(restaurant.priceLevel) ?? '$';
+  const priceRange = getPriceRangeLabel(restaurant.priceLevel);
   const handleWebsitePress = () => {
     const query = `${restaurant.restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
@@ -231,8 +227,8 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
         <View style={styles.detailRow}>
           <Text style={styles.detailText}>Price</Text>
           <Text style={styles.detailValue}>
-            {restaurant.priceSymbol ?? '$'}
-            {priceRange ? ` ${priceRange}` : ''}
+            {priceSymbol}
+            {priceRange ? ` · ${priceRange}` : ''}
           </Text>
         </View>
         <View style={styles.detailRow}>
