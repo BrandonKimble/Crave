@@ -21,7 +21,7 @@ export const overlaySheetStyles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingTop: 0,
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingBottom: 0,
+    paddingBottom: 10,
   },
   grabHandleWrapper: {
     alignItems: 'center',

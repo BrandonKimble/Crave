@@ -9,14 +9,22 @@ import Reanimated, {
   useAnimatedScrollHandler,
   useSharedValue,
 } from 'react-native-reanimated';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_HORIZONTAL_PADDING,
+  CONTROL_RADIUS,
+  CONTROL_VERTICAL_PADDING,
+} from '../constants/ui';
 
 import { Text } from '../../../components';
 import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
 
-const TOGGLE_BORDER_RADIUS = 8;
-const TOGGLE_HORIZONTAL_PADDING = 7;
-const TOGGLE_VERTICAL_PADDING = 5;
+const TOGGLE_HEIGHT = CONTROL_HEIGHT;
+const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
+const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
+const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 const TOGGLE_STACK_GAP = 8;
+const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
@@ -468,20 +476,17 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   );
 };
 
-const toggleContentPaddingStyle = {
-  paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
-  paddingVertical: TOGGLE_VERTICAL_PADDING,
-};
-
-const toggleBaseStyle = {
+const buildToggleBaseStyle = (height: number) => ({
   flexDirection: 'row',
   alignItems: 'center',
   borderRadius: TOGGLE_BORDER_RADIUS,
   borderWidth: 0,
   borderColor: 'transparent',
   backgroundColor: 'transparent',
-  ...toggleContentPaddingStyle,
-};
+  height,
+  paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
+  paddingVertical: TOGGLE_VERTICAL_PADDING,
+});
 
 const styles = StyleSheet.create({
   resultFiltersWrapper: {
@@ -532,7 +537,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   segmentedOption: {
-    ...toggleBaseStyle,
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     justifyContent: 'center',
     minWidth: 0,
     flexGrow: 0,
@@ -548,10 +553,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   openNowButton: {
-    ...toggleBaseStyle,
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
   openNowButtonActive: {
-    borderRadius: TOGGLE_BORDER_RADIUS,
   },
   openNowButtonDisabled: {
     opacity: 0.6,
@@ -566,11 +570,9 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   priceButton: {
-    ...toggleBaseStyle,
-    paddingVertical: TOGGLE_VERTICAL_PADDING,
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
   priceButtonActive: {
-    borderRadius: TOGGLE_BORDER_RADIUS,
   },
   priceButtonDisabled: {
     opacity: 0.6,
@@ -663,7 +665,7 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
   },
   votesButton: {
-    ...toggleBaseStyle,
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
   },
   votesButtonActive: {},

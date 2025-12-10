@@ -71,13 +71,13 @@ PODS:
     - hermes-engine/Pre-built (= 0.72.10)
   - hermes-engine/Pre-built (0.72.10)
   - libevent (2.1.12)
-  - MapboxCommon (24.15.4):
+  - MapboxCommon (24.16.6):
     - Turf (= 4.0.0)
-  - MapboxCoreMaps (11.15.4):
-    - MapboxCommon (= 24.15.4)
-  - MapboxMaps (11.15.4):
-    - MapboxCommon (= 24.15.4)
-    - MapboxCoreMaps (= 11.15.4)
+  - MapboxCoreMaps (11.16.6):
+    - MapboxCommon (= 24.16.6)
+  - MapboxMaps (11.16.6):
+    - MapboxCommon (= 24.16.6)
+    - MapboxCoreMaps (= 11.16.6)
     - Turf (= 4.0.0)
   - RCT-Folly (2021.07.22.00):
     - boost
@@ -511,14 +511,14 @@ PODS:
     - React-Core
   - RNGestureHandler (2.12.1):
     - React-Core
-  - rnmapbox-maps (10.2.6):
-    - MapboxMaps (~> 11.15.2)
+  - rnmapbox-maps (10.2.9):
+    - MapboxMaps (~> 11.16.2)
     - React
     - React-Core
-    - rnmapbox-maps/DynamicLibrary (= 10.2.6)
+    - rnmapbox-maps/DynamicLibrary (= 10.2.9)
     - Turf
-  - rnmapbox-maps/DynamicLibrary (10.2.6):
-    - MapboxMaps (~> 11.15.2)
+  - rnmapbox-maps/DynamicLibrary (10.2.9):
+    - MapboxMaps (~> 11.16.2)
     - React
     - React-Core
     - Turf
@@ -823,9 +823,9 @@ SPEC CHECKSUMS:
   glog: 04b94705f318337d7ead9e6d17c019bd9b1f6b1b
   hermes-engine: 90e4033deb00bee33330a9f15eff0f874bd82f6d
   libevent: 4049cae6c81cdb3654a443be001fb9bdceff7913
-  MapboxCommon: 975faa94b893bb64a1d28b09d9d6d820e1030a26
-  MapboxCoreMaps: 105af9894d850290fbb466e9f9a133f5d175abf1
-  MapboxMaps: e97e59d6ba48bb6f695a4c1dc2f174cb24743cd4
+  MapboxCommon: 10cbf74edb23c9abcfe2424899d804f288a47334
+  MapboxCoreMaps: f19680d20681797067268284b2292349de861730
+  MapboxMaps: 04c7bf46d66265ad0f4b98484a251777a926c423
   RCT-Folly: 8dc08ca5a393b48b1c523ab6220dfdcc0fe000ad
   RCTRequired: b4d3068afa6f52ec5260a8417053b1f1b421483d
   RCTTypeSafety: a4551b3d338c96435f63bf06d564055c1d3cc0ac
@@ -865,7 +865,7 @@ SPEC CHECKSUMS:
   RNCMaskedView: d261a7d0cc486eed758aad47afc406eff06a5b3c
   RNFlashList: 3e34440d6aac0effeed715224bcf0ba055a826e0
   RNGestureHandler: 627182485becfd74f122c83f93cce2be20c2e8c8
-  rnmapbox-maps: 2ed355c7948f8e310d54c9159f7fb7e8814ededc
+  rnmapbox-maps: 414ccc413cb0ef51cfd08160411f8030a57ad8b8
   RNReanimated: 00ab0dc16a90be96f2482a1e41f69a9c37494d81
   RNScreens: 39db1910d2ea9ae885dcda43086818e9f8b714d0
   RNSVG: 67c430ac7a54043cac37f6bd7bc94f8e22d8a64a

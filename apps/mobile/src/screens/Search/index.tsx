@@ -16,6 +16,7 @@ import {
   Easing as RNEasing,
 } from 'react-native';
 import type { TextInput } from 'react-native';
+import MaskedView from '@react-native-masked-view/masked-view';
 import {
   PanGestureHandler,
   NativeViewGestureHandler,
@@ -47,7 +48,7 @@ import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
 import { HandPlatter, Store, Heart } from 'lucide-react-native';
-import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Path, Circle as SvgCircle, Rect as SvgRect, Defs as SvgDefs, Mask as SvgMask } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
 import {
@@ -89,6 +90,12 @@ import { useSearchRequests } from '../../hooks/useSearchRequests';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
 import SearchFilters from './components/SearchFilters';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_HORIZONTAL_PADDING,
+  CONTROL_RADIUS,
+  CONTROL_VERTICAL_PADDING,
+} from './constants/ui';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
@@ -154,6 +161,9 @@ const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
 const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
 const MAP_MOVE_DISTANCE_RATIO = 0.08;
+const CLOSE_BUTTON_HOLE_PADDING = 0;
+const CLOSE_BUTTON_HOLE_Y_OFFSET = 0;
+const RESULTS_HEADER_MASK_PADDING = 2;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -501,9 +511,10 @@ const formatCompactCount = (value?: number | null): string => {
   }
   return formatWithSuffix(value, 1_000_000, 'M');
 };
-const TOGGLE_BORDER_RADIUS = 8;
-const TOGGLE_HORIZONTAL_PADDING = 7;
-const TOGGLE_VERTICAL_PADDING = 5;
+const TOGGLE_HEIGHT = CONTROL_HEIGHT; // single knob for pill height and close icon size
+const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed pill rounding
+const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
+const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 const TOGGLE_STACK_GAP = 8;
 const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
@@ -748,6 +759,14 @@ const SearchScreen: React.FC = () => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
+  const [resultsHeaderLayout, setResultsHeaderLayout] = React.useState({ width: 0, height: 0 });
+  const [resultsHeaderRowOffset, setResultsHeaderRowOffset] = React.useState({ x: 0, y: 0 });
+  const [resultsCloseLayout, setResultsCloseLayout] = React.useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [favoriteMap, setFavoriteMap] = React.useState<Map<string, Favorite>>(new Map());
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
@@ -776,6 +795,44 @@ const SearchScreen: React.FC = () => {
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
+  const handleResultsHeaderLayout = React.useCallback(
+    ({ nativeEvent: { layout } }) => {
+      setResultsHeaderLayout((prev) =>
+        prev.width === layout.width && prev.height === layout.height
+          ? prev
+          : { width: layout.width, height: layout.height }
+      );
+    },
+    []
+  );
+  const handleResultsHeaderRowLayout = React.useCallback(
+    ({ nativeEvent: { layout } }) => {
+      setResultsHeaderRowOffset((prev) => {
+        if (Math.abs(prev.x - layout.x) < 0.5 && Math.abs(prev.y - layout.y) < 0.5) {
+          return prev;
+        }
+        return { x: layout.x, y: layout.y };
+      });
+    },
+    []
+  );
+  const handleResultsCloseLayout = React.useCallback(
+    ({ nativeEvent: { layout } }) => {
+      setResultsCloseLayout((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.x - layout.x) < 0.5 &&
+          Math.abs(prev.y - layout.y) < 0.5 &&
+          Math.abs(prev.width - layout.width) < 0.5 &&
+          Math.abs(prev.height - layout.height) < 0.5
+        ) {
+          return prev;
+        }
+        return layout;
+      });
+    },
+    []
+  );
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
       opacity: resultsScrollY.interpolate({
@@ -3443,20 +3500,6 @@ const SearchScreen: React.FC = () => {
           {!isSearchFocused && !isSearchSessionActive && (
             <View style={styles.searchShortcutsRow} pointerEvents="box-none">
               <Pressable
-                onPress={handleBestDishesHere}
-                style={styles.searchShortcutChip}
-                accessibilityRole="button"
-                accessibilityLabel="Show best dishes here"
-                hitSlop={8}
-              >
-                <View style={styles.searchShortcutContent}>
-                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
-                    Best dishes
-                  </Text>
-                </View>
-              </Pressable>
-              <Pressable
                 onPress={handleBestRestaurantsHere}
                 style={styles.searchShortcutChip}
                 accessibilityRole="button"
@@ -3467,6 +3510,20 @@ const SearchScreen: React.FC = () => {
                   <Store size={16} color="#0f172a" strokeWidth={2} />
                   <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
                     Best restaurants
+                  </Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={handleBestDishesHere}
+                style={styles.searchShortcutChip}
+                accessibilityRole="button"
+                accessibilityLabel="Show best dishes here"
+                hitSlop={8}
+              >
+                <View style={styles.searchShortcutContent}>
+                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
+                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                    Best dishes
                   </Text>
                 </View>
               </Pressable>
@@ -3509,7 +3566,73 @@ const SearchScreen: React.FC = () => {
                 >
                   <FrostedGlassBackground />
 
-                  <Reanimated.View style={overlaySheetStyles.header}>
+                  <Reanimated.View
+                    style={[overlaySheetStyles.header, styles.resultsHeader]}
+                    onLayout={handleResultsHeaderLayout}
+                  >
+                    {resultsHeaderLayout.width > 0 && resultsHeaderLayout.height > 0 ? (
+                      <MaskedView
+                        pointerEvents="none"
+                        style={styles.resultsHeaderMaskOverlay}
+                        maskElement={
+                          <Svg
+                            width={resultsHeaderLayout.width}
+                            height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                          >
+                            <SvgDefs>
+                              <SvgMask
+                                id="results-close-mask"
+                                x={0}
+                                y={0}
+                                width={resultsHeaderLayout.width}
+                                height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                                maskUnits="userSpaceOnUse"
+                                maskContentUnits="userSpaceOnUse"
+                              >
+                                <SvgRect
+                                  x={0}
+                                  y={0}
+                                  width={resultsHeaderLayout.width}
+                                  height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                                  fill="white"
+                                />
+                                {resultsCloseLayout ? (
+                                  <SvgCircle
+                                    cx={
+                                      resultsHeaderRowOffset.x +
+                                      resultsCloseLayout.x +
+                                      resultsCloseLayout.width / 2
+                                    }
+                                    cy={
+                                      resultsHeaderRowOffset.y +
+                                      resultsCloseLayout.y +
+                                      resultsCloseLayout.height / 2 +
+                                      CLOSE_BUTTON_HOLE_Y_OFFSET
+                                    }
+                                    r={
+                                      CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING
+                                    }
+                                    fill="black"
+                                  />
+                                ) : null}
+                              </SvgMask>
+                            </SvgDefs>
+                            <SvgRect
+                              x={0}
+                              y={0}
+                              width={resultsHeaderLayout.width}
+                              height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                              fill="white"
+                              mask="url(#results-close-mask)"
+                            />
+                          </Svg>
+                        }
+                      >
+                        <View style={styles.resultsHeaderFill} pointerEvents="none" />
+                      </MaskedView>
+                    ) : (
+                      <View style={styles.resultsHeaderFallbackFill} pointerEvents="none" />
+                    )}
                     <View style={overlaySheetStyles.grabHandleWrapper}>
                       <Pressable
                         onPress={hidePanel}
@@ -3520,6 +3643,7 @@ const SearchScreen: React.FC = () => {
                       </Pressable>
                     </View>
                     <View
+                      onLayout={handleResultsHeaderRowLayout}
                       style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
                     >
                       <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
@@ -3530,6 +3654,7 @@ const SearchScreen: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel="Close results"
                         style={styles.resultsCloseButton}
+                        onLayout={handleResultsCloseLayout}
                         hitSlop={8}
                       >
                         <View style={styles.resultsCloseIcon}>
@@ -3788,11 +3913,12 @@ const styles = StyleSheet.create({
     zIndex: 25,
   },
   searchShortcutChip: {
-    borderRadius: 999,
+    borderRadius: 14,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    justifyContent: 'center',
     alignSelf: 'flex-start',
     marginRight: 0,
     shadowColor: '#000',
@@ -4259,14 +4385,28 @@ const styles = StyleSheet.create({
   segmentedLabelActive: {
     color: '#ffffff',
   },
+  resultsHeader: {
+    backgroundColor: 'transparent',
+  },
+  resultsHeaderMaskOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  resultsHeaderFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
+  },
+  resultsHeaderFallbackFill: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
+  },
   resultsCloseButton: {
     marginRight: -4,
   },
   resultsCloseIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#e5e7eb',
+    width: TOGGLE_HEIGHT,
+    height: TOGGLE_HEIGHT,
+    borderRadius: TOGGLE_HEIGHT / 2, // keep the close icon perfectly circular
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },

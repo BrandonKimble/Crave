@@ -3804,10 +3804,10 @@
   resolved "https://registry.npmjs.org/@redis/time-series/-/time-series-1.1.0.tgz"
   integrity sha512-c1Q99M5ljsIuc4YdaCwfUEXsofakb9c8+Zse2qxTadu8TalLXuAESzLvFAvNVbkmSlvlzIQOLpBCmWI9wTOt+g==
 
-"@rnmapbox/maps@10.2.6":
-  version "10.2.6"
-  resolved "https://registry.yarnpkg.com/@rnmapbox/maps/-/maps-10.2.6.tgz#0d036c29f9be88cda5215cd126e0a48bc88c2af9"
-  integrity sha512-402m/pHrgfo3Isvd3lhW8N8uX9rGQB4OiIqfAgYrpMq7qnBV0CgXaOuaJIBQI1kGgCyHzL1XiypHDRP8JhrvmQ==
+"@rnmapbox/maps@10.2.9":
+  version "10.2.9"
+  resolved "https://registry.yarnpkg.com/@rnmapbox/maps/-/maps-10.2.9.tgz#4a737b692cd8dfaf21858d957537649508d63ae6"
+  integrity sha512-wQHtoibKDBqJraly5ie4VHP9r8ZReLu3a5Q/yxqr/I1g50Mw71NSDFC4peopQ7AJVVBVy6kjvj3WddZ0nYD/IA==
   dependencies:
     "@turf/along" "6.5.0"
     "@turf/distance" "6.5.0"
