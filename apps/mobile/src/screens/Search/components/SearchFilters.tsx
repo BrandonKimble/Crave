@@ -555,8 +555,7 @@ const styles = StyleSheet.create({
   openNowButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
-  openNowButtonActive: {
-  },
+  openNowButtonActive: {},
   openNowButtonDisabled: {
     opacity: 0.6,
   },
@@ -572,8 +571,7 @@ const styles = StyleSheet.create({
   priceButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
   },
-  priceButtonActive: {
-  },
+  priceButtonActive: {},
   priceButtonDisabled: {
     opacity: 0.6,
   },

@@ -48,7 +48,13 @@ import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
 import { HandPlatter, Store, Heart } from 'lucide-react-native';
-import Svg, { Path, Circle as SvgCircle, Rect as SvgRect, Defs as SvgDefs, Mask as SvgMask } from 'react-native-svg';
+import Svg, {
+  Path,
+  Circle as SvgCircle,
+  Rect as SvgRect,
+  Defs as SvgDefs,
+  Mask as SvgMask,
+} from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
 import {
@@ -795,44 +801,35 @@ const SearchScreen: React.FC = () => {
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const sheetPanRef = React.useRef<PanGestureHandler>(null);
-  const handleResultsHeaderLayout = React.useCallback(
-    ({ nativeEvent: { layout } }) => {
-      setResultsHeaderLayout((prev) =>
-        prev.width === layout.width && prev.height === layout.height
-          ? prev
-          : { width: layout.width, height: layout.height }
-      );
-    },
-    []
-  );
-  const handleResultsHeaderRowLayout = React.useCallback(
-    ({ nativeEvent: { layout } }) => {
-      setResultsHeaderRowOffset((prev) => {
-        if (Math.abs(prev.x - layout.x) < 0.5 && Math.abs(prev.y - layout.y) < 0.5) {
-          return prev;
-        }
-        return { x: layout.x, y: layout.y };
-      });
-    },
-    []
-  );
-  const handleResultsCloseLayout = React.useCallback(
-    ({ nativeEvent: { layout } }) => {
-      setResultsCloseLayout((prev) => {
-        if (
-          prev &&
-          Math.abs(prev.x - layout.x) < 0.5 &&
-          Math.abs(prev.y - layout.y) < 0.5 &&
-          Math.abs(prev.width - layout.width) < 0.5 &&
-          Math.abs(prev.height - layout.height) < 0.5
-        ) {
-          return prev;
-        }
-        return layout;
-      });
-    },
-    []
-  );
+  const handleResultsHeaderLayout = React.useCallback(({ nativeEvent: { layout } }) => {
+    setResultsHeaderLayout((prev) =>
+      prev.width === layout.width && prev.height === layout.height
+        ? prev
+        : { width: layout.width, height: layout.height }
+    );
+  }, []);
+  const handleResultsHeaderRowLayout = React.useCallback(({ nativeEvent: { layout } }) => {
+    setResultsHeaderRowOffset((prev) => {
+      if (Math.abs(prev.x - layout.x) < 0.5 && Math.abs(prev.y - layout.y) < 0.5) {
+        return prev;
+      }
+      return { x: layout.x, y: layout.y };
+    });
+  }, []);
+  const handleResultsCloseLayout = React.useCallback(({ nativeEvent: { layout } }) => {
+    setResultsCloseLayout((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.x - layout.x) < 0.5 &&
+        Math.abs(prev.y - layout.y) < 0.5 &&
+        Math.abs(prev.width - layout.width) < 0.5 &&
+        Math.abs(prev.height - layout.height) < 0.5
+      ) {
+        return prev;
+      }
+      return layout;
+    });
+  }, []);
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
       opacity: resultsScrollY.interpolate({
@@ -1132,8 +1129,8 @@ const SearchScreen: React.FC = () => {
       status?.isOpen && typeof status.closesInMinutes === 'number'
         ? status.closesInMinutes
         : status?.isOpen
-          ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-          : null;
+        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+        : null;
     const isClosingSoon =
       status?.isOpen &&
       typeof effectiveMinutesUntilClose === 'number' &&
@@ -1715,17 +1712,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-            ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-              ? [
-                  {
-                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                    latitude: restaurant.latitude,
-                    longitude: restaurant.longitude,
-                    isPrimary: true,
-                  },
-                ]
-              : [];
+          ? [restaurant.displayLocation]
+          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+          ? [
+              {
+                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                latitude: restaurant.latitude,
+                longitude: restaurant.longitude,
+                isPrimary: true,
+              },
+            ]
+          : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
@@ -2183,8 +2180,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       try {
         if (append) {
@@ -3585,7 +3582,9 @@ const SearchScreen: React.FC = () => {
                                 x={0}
                                 y={0}
                                 width={resultsHeaderLayout.width}
-                                height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                                height={
+                                  resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2
+                                }
                                 maskUnits="userSpaceOnUse"
                                 maskContentUnits="userSpaceOnUse"
                               >
@@ -3593,7 +3592,9 @@ const SearchScreen: React.FC = () => {
                                   x={0}
                                   y={0}
                                   width={resultsHeaderLayout.width}
-                                  height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                                  height={
+                                    resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2
+                                  }
                                   fill="white"
                                 />
                                 {resultsCloseLayout ? (
@@ -3609,9 +3610,7 @@ const SearchScreen: React.FC = () => {
                                       resultsCloseLayout.height / 2 +
                                       CLOSE_BUTTON_HOLE_Y_OFFSET
                                     }
-                                    r={
-                                      CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING
-                                    }
+                                    r={CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING}
                                     fill="black"
                                   />
                                 ) : null}
