@@ -13,17 +13,6 @@ import {
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  PanGestureHandler,
-  type PanGestureHandlerGestureEvent,
-} from 'react-native-gesture-handler';
-import Reanimated, {
-  runOnJS,
-  useAnimatedGestureHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import { fetchPolls, voteOnPoll, addPollOption, Poll } from '../services/polls';
 import { API_BASE_URL } from '../services/api';
@@ -34,14 +23,7 @@ import { colors as themeColors } from '../constants/theme';
 import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import {
-  SHEET_SPRING_CONFIG,
-  SMALL_MOVEMENT_THRESHOLD,
-  clampValue,
-  snapPointForState,
-  type SheetGestureContext,
-  type SheetPosition,
-} from './sheetUtils';
+import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
@@ -80,19 +62,18 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const headerPaddingTop = 0;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const snapPoints = React.useMemo<Record<SheetPosition, number>>(() => {
+  const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(insets.top, 0);
+    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
+    const collapsed = Math.min(SCREEN_HEIGHT - 160, SCREEN_HEIGHT - 96);
     const hidden = SCREEN_HEIGHT + 80;
     return {
       expanded,
-      middle: expanded,
-      collapsed: expanded,
+      middle,
+      collapsed,
       hidden,
     };
   }, [insets.top]);
-  const sheetTranslateY = useSharedValue(snapPoints.hidden);
-  const sheetStateShared = useSharedValue<SheetPosition>('hidden');
-  const stateOrder = React.useMemo<SheetPosition[]>(() => ['expanded', 'hidden'], []);
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = activePoll?.topic?.topicType ?? 'best_dish';
@@ -104,26 +85,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
   const routeCity = params?.city;
   const routePollId = params?.pollId;
-
-  const animateSheetTo = useCallback(
-    (position: SheetPosition, velocity = 0) => {
-      const target = snapPoints[position];
-      sheetStateShared.value = position;
-      sheetTranslateY.value = withSpring(target, {
-        ...SHEET_SPRING_CONFIG,
-        velocity,
-      });
-    },
-    [snapPoints, sheetStateShared, sheetTranslateY]
-  );
-
-  useEffect(() => {
-    if (visible) {
-      animateSheetTo('expanded');
-    } else {
-      animateSheetTo('hidden');
-    }
-  }, [animateSheetTo, visible]);
 
   useEffect(() => {
     if (typeof routeCity !== 'string') {
@@ -479,250 +440,191 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
     setOverlay('search');
   }, [setOverlay]);
 
-  const sheetPanGesture = useAnimatedGestureHandler<
-    PanGestureHandlerGestureEvent,
-    SheetGestureContext
-  >(
-    {
-      onStart: (_, context) => {
-        context.startY = sheetTranslateY.value;
-        const currentState =
-          sheetStateShared.value === 'hidden'
-            ? stateOrder[Math.max(stateOrder.length - 2, 0)]
-            : sheetStateShared.value;
-        const startIndex = stateOrder.indexOf(currentState);
-        context.startStateIndex = startIndex >= 0 ? startIndex : stateOrder.length - 1;
-      },
-      onActive: (event, context) => {
-        const minY = snapPoints.expanded;
-        const maxY = snapPoints.hidden;
-        sheetTranslateY.value = clampValue(context.startY + event.translationY, minY, maxY);
-      },
-      onEnd: (event, context) => {
-        const minY = snapPoints.expanded;
-        const maxY = snapPoints.hidden;
-        const projected = clampValue(sheetTranslateY.value + event.velocityY * 0.05, minY, maxY);
-        let targetIndex = context.startStateIndex;
-        if (
-          event.translationY > SMALL_MOVEMENT_THRESHOLD &&
-          context.startStateIndex < stateOrder.length - 1
-        ) {
-          targetIndex = context.startStateIndex + 1;
-        } else if (event.translationY < -SMALL_MOVEMENT_THRESHOLD && context.startStateIndex > 0) {
-          targetIndex = context.startStateIndex - 1;
-        } else {
-          const distances = stateOrder.map((state) => {
-            return Math.abs(
-              projected -
-                snapPointForState(
-                  state,
-                  snapPoints.expanded,
-                  snapPoints.middle,
-                  snapPoints.collapsed,
-                  snapPoints.hidden
-                )
-            );
-          });
-          const smallest = Math.min(...distances);
-          targetIndex = Math.max(distances.indexOf(smallest), 0);
-        }
-
-        let targetState: SheetPosition = stateOrder[targetIndex];
-        const beforeHiddenState = stateOrder[Math.max(stateOrder.length - 2, 0)];
-        if (event.velocityY > 1200 || sheetTranslateY.value > snapPoints[beforeHiddenState] + 40) {
-          targetState = 'hidden';
-        } else if (event.velocityY < -1200) {
-          targetState = stateOrder[0];
-        }
-
-        const clampedVelocity = Math.max(Math.min(event.velocityY, 2500), -2500);
-        runOnJS(animateSheetTo)(targetState, clampedVelocity);
-        if (targetState === 'hidden') {
-          runOnJS(handleClose)();
-        }
-      },
-    },
-    [animateSheetTo, handleClose, snapPoints, stateOrder]
+  const headerComponent = (
+    <View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
+      <View style={overlaySheetStyles.grabHandleWrapper}>
+        <Pressable
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close polls"
+          hitSlop={10}
+        >
+          <View style={overlaySheetStyles.grabHandle} />
+        </Pressable>
+      </View>
+      <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+        <Text style={styles.sheetTitle}>Polls</Text>
+        <Pressable
+          onPress={handleClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close polls"
+          style={overlaySheetStyles.closeButton}
+          hitSlop={8}
+        >
+          <Feather name="x" size={20} color={ACCENT} />
+        </Pressable>
+      </View>
+      <View style={overlaySheetStyles.headerDivider} />
+    </View>
   );
 
-  const containerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetTranslateY.value }],
-  }));
+  const listHeaderComponent = (
+    <View style={styles.listHeader}>
+      <View style={styles.cityRow}>
+        <Text style={styles.cityLabel}>City / Region</Text>
+        <TextInput
+          value={cityInput}
+          onChangeText={setCityInput}
+          placeholder="City"
+          style={styles.cityInput}
+          returnKeyType="done"
+        />
+        <TouchableOpacity onPress={() => void loadPolls()} style={styles.refreshButton}>
+          <Text style={styles.refreshText}>Refresh</Text>
+        </TouchableOpacity>
+      </View>
+      {loading ? <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} /> : null}
+    </View>
+  );
 
-  return (
-    <Reanimated.View
-      pointerEvents={visible ? 'auto' : 'none'}
-      style={[overlaySheetStyles.container, containerAnimatedStyle]}
-    >
-      <FrostedGlassBackground />
-      <PanGestureHandler onGestureEvent={sheetPanGesture} enabled={visible}>
-        <Reanimated.View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
-          <View style={overlaySheetStyles.grabHandleWrapper}>
-            <Pressable
-              onPress={handleClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close polls"
-              hitSlop={10}
-            >
-              <View style={overlaySheetStyles.grabHandle} />
-            </Pressable>
-          </View>
-          <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
-            <Text style={styles.sheetTitle}>Polls</Text>
-            <Pressable
-              onPress={handleClose}
-              accessibilityRole="button"
-              accessibilityLabel="Close polls"
-              style={overlaySheetStyles.closeButton}
-              hitSlop={8}
-            >
-              <Feather name="x" size={20} color={ACCENT} />
-            </Pressable>
-          </View>
-          <View style={overlaySheetStyles.headerDivider} />
-        </Reanimated.View>
-      </PanGestureHandler>
-      <ScrollView
-        style={styles.scrollContainer}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
-        nestedScrollEnabled
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.cityRow}>
-          <Text style={styles.cityLabel}>City / Region</Text>
-          <TextInput
-            value={cityInput}
-            onChangeText={setCityInput}
-            placeholder="City"
-            style={styles.cityInput}
-            returnKeyType="done"
-          />
-          <TouchableOpacity onPress={() => void loadPolls()} style={styles.refreshButton}>
-            <Text style={styles.refreshText}>Refresh</Text>
+  const listEmptyComponent = React.useCallback(() => {
+    if (loading) {
+      return <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />;
+    }
+    return <Text style={styles.emptyState}>No polls available yet.</Text>;
+  }, [loading]);
+
+  const listFooterComponent = activePoll ? (
+    <View style={styles.detailCard}>
+      <Text style={styles.detailQuestion}>{activePoll.question}</Text>
+      {activePoll.options.map((option, index) => {
+        const color = OPTION_COLORS[index % OPTION_COLORS.length];
+        const rawFill = totalVotes > 0 ? (option.voteCount / totalVotes) * 100 : 0;
+        const minFill = option.voteCount > 0 ? 10 : 2;
+        const fillWidth = Math.min(Math.max(rawFill, minFill), 100);
+        return (
+          <TouchableOpacity
+            key={option.optionId}
+            style={styles.optionBarWrapper}
+            onPress={() => handleVote(activePoll.pollId, option.optionId)}
+          >
+            <View style={styles.optionBarTrack}>
+              <View
+                style={[
+                  styles.optionBarFill,
+                  {
+                    width: `${fillWidth}%`,
+                    backgroundColor: color,
+                  },
+                ]}
+              />
+              <View style={styles.optionLabelBubble}>
+                <Text style={styles.optionLabelText}>{option.label}</Text>
+                <Text style={styles.optionVoteCount}>{option.voteCount} votes</Text>
+              </View>
+            </View>
           </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />
-        ) : (
-          <View style={styles.pollList}>
-            {pollData.map((item) => (
-              <React.Fragment key={item.pollId}>{renderPoll({ item })}</React.Fragment>
-            ))}
-          </View>
-        )}
-
-        {activePoll ? (
-          <View style={styles.detailCard}>
-            <Text style={styles.detailQuestion}>{activePoll.question}</Text>
-            {activePoll.options.map((option, index) => {
-              const color = OPTION_COLORS[index % OPTION_COLORS.length];
-              const rawFill = totalVotes > 0 ? (option.voteCount / totalVotes) * 100 : 0;
-              const minFill = option.voteCount > 0 ? 10 : 2;
-              const fillWidth = Math.min(Math.max(rawFill, minFill), 100);
-              return (
-                <TouchableOpacity
-                  key={option.optionId}
-                  style={styles.optionBarWrapper}
-                  onPress={() => handleVote(activePoll.pollId, option.optionId)}
-                >
-                  <View style={styles.optionBarTrack}>
-                    <View
-                      style={[
-                        styles.optionBarFill,
-                        {
-                          width: `${fillWidth}%`,
-                          backgroundColor: color,
-                        },
-                      ]}
-                    />
-                    <View style={styles.optionLabelBubble}>
-                      <Text style={styles.optionLabelText}>{option.label}</Text>
-                      <Text style={styles.optionVoteCount}>{option.voteCount} votes</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            {activePollType === 'what_to_order' && (
-              <Text style={styles.topicNote}>Votes apply to dishes at this restaurant.</Text>
-            )}
-            <View style={styles.addOptionBlock}>
-              {activePollType === 'best_dish' ? (
-                <View style={styles.inputRow}>
-                  <View style={[styles.inputColumn, styles.inputColumnSpacing]}>
-                    <Text style={styles.fieldLabel}>Restaurant</Text>
-                    <TextInput
-                      value={restaurantQuery}
-                      onChangeText={(text) => {
-                        setRestaurantQuery(text);
-                        setRestaurantSelection(null);
-                      }}
-                      placeholder="Search for a restaurant"
-                      style={styles.optionInput}
-                      autoCapitalize="none"
-                    />
-                    {(showRestaurantSuggestions || restaurantLoading) &&
-                      renderSuggestionList(
-                        restaurantLoading,
-                        restaurantSuggestions,
-                        'Keep typing to add a restaurant',
-                        handleRestaurantSuggestionPress
-                      )}
-                  </View>
-                  <View style={styles.inputColumn}>
-                    <Text style={styles.fieldLabel}>Dish (optional)</Text>
-                    <TextInput
-                      value={dishQuery}
-                      onChangeText={(text) => {
-                        setDishQuery(text);
-                        setDishSelection(null);
-                      }}
-                      placeholder="Add a dish (optional)"
-                      style={styles.optionInput}
-                      autoCapitalize="none"
-                    />
-                    {(showDishSuggestions || dishLoading) &&
-                      renderSuggestionList(
-                        dishLoading,
-                        dishSuggestions,
-                        'Keep typing to add a dish',
-                        handleDishSuggestionPress
-                      )}
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.singleInputColumn}>
-                  <Text style={styles.fieldLabel}>Dish</Text>
-                  <TextInput
-                    value={dishQuery}
-                    onChangeText={(text) => {
-                      setDishQuery(text);
-                      setDishSelection(null);
-                    }}
-                    placeholder="Search for a dish"
-                    style={styles.optionInput}
-                    autoCapitalize="none"
-                  />
-                  {(showDishSuggestions || dishLoading) &&
-                    renderSuggestionList(
-                      dishLoading,
-                      dishSuggestions,
-                      'Keep typing to add a dish',
-                      handleDishSuggestionPress
-                    )}
-                </View>
-              )}
-              <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
-                <Text style={styles.submitButtonText}>Submit option</Text>
-              </TouchableOpacity>
+        );
+      })}
+      {activePollType === 'what_to_order' && (
+        <Text style={styles.topicNote}>Votes apply to dishes at this restaurant.</Text>
+      )}
+      <View style={styles.addOptionBlock}>
+        {activePollType === 'best_dish' ? (
+          <View style={styles.inputRow}>
+            <View style={[styles.inputColumn, styles.inputColumnSpacing]}>
+              <Text style={styles.fieldLabel}>Restaurant</Text>
+              <TextInput
+                value={restaurantQuery}
+                onChangeText={(text) => {
+                  setRestaurantQuery(text);
+                  setRestaurantSelection(null);
+                }}
+                placeholder="Search for a restaurant"
+                style={styles.optionInput}
+                autoCapitalize="none"
+              />
+              {(showRestaurantSuggestions || restaurantLoading) &&
+                renderSuggestionList(
+                  restaurantLoading,
+                  restaurantSuggestions,
+                  'Keep typing to add a restaurant',
+                  handleRestaurantSuggestionPress
+                )}
+            </View>
+            <View style={styles.inputColumn}>
+              <Text style={styles.fieldLabel}>Dish (optional)</Text>
+              <TextInput
+                value={dishQuery}
+                onChangeText={(text) => {
+                  setDishQuery(text);
+                  setDishSelection(null);
+                }}
+                placeholder="Add a dish (optional)"
+                style={styles.optionInput}
+                autoCapitalize="none"
+              />
+              {(showDishSuggestions || dishLoading) &&
+                renderSuggestionList(
+                  dishLoading,
+                  dishSuggestions,
+                  'Keep typing to add a dish',
+                  handleDishSuggestionPress
+                )}
             </View>
           </View>
         ) : (
-          <Text style={styles.emptyState}>No polls available yet.</Text>
+          <View style={styles.singleInputColumn}>
+            <Text style={styles.fieldLabel}>Dish</Text>
+            <TextInput
+              value={dishQuery}
+              onChangeText={(text) => {
+                setDishQuery(text);
+                setDishSelection(null);
+              }}
+              placeholder="Search for a dish"
+              style={styles.optionInput}
+              autoCapitalize="none"
+            />
+            {(showDishSuggestions || dishLoading) &&
+              renderSuggestionList(
+                dishLoading,
+                dishSuggestions,
+                'Keep typing to add a dish',
+                handleDishSuggestionPress
+              )}
+          </View>
         )}
-      </ScrollView>
-    </Reanimated.View>
+        <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
+          <Text style={styles.submitButtonText}>Submit option</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  ) : null;
+
+  return (
+    <BottomSheetWithFlashList
+      visible={visible}
+      snapPoints={snapPoints}
+      initialSnapPoint="expanded"
+      data={pollData}
+      renderItem={renderPoll}
+      keyExtractor={(item) => item.pollId}
+      estimatedItemSize={98}
+      ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
+      contentContainerStyle={[
+        styles.scrollContent,
+        { paddingBottom: contentBottomPadding },
+      ]}
+      ListHeaderComponent={listHeaderComponent}
+      ListFooterComponent={listFooterComponent}
+      ListEmptyComponent={listEmptyComponent}
+      keyboardShouldPersistTaps="handled"
+      backgroundComponent={<FrostedGlassBackground />}
+      headerComponent={headerComponent}
+      style={overlaySheetStyles.container}
+      onHidden={handleClose}
+    />
   );
 };
 
@@ -731,9 +633,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: ACCENT_DARK,
-    flex: 1,
-  },
-  scrollContainer: {
     flex: 1,
   },
   scrollContent: {
@@ -774,11 +673,6 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 24,
-  },
-  pollList: {
-    paddingVertical: 16,
-    gap: CARD_GAP,
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   pollCard: {
     paddingVertical: 16,

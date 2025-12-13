@@ -97,6 +97,7 @@ export interface GooglePlaceDetailsResult {
   utc_offset_minutes?: number;
   business_status?: string;
   price_level?: number;
+  price_range?: unknown;
   [key: string]: unknown;
 }
 

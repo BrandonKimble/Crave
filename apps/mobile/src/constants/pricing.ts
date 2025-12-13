@@ -6,10 +6,10 @@ export const PRICE_LEVEL_SYMBOLS: Record<number, string> = {
 };
 
 export const PRICE_LEVEL_RANGE_LABELS: Record<number, string> = {
-  1: 'Budget-friendly',
-  2: 'Casual',
-  3: 'Upscale',
-  4: 'Fine dining',
+  1: '$1–$25',
+  2: '$25–$50',
+  3: '$50–$75',
+  4: '$75+',
 };
 
 export const getPriceRangeLabel = (priceLevel?: number | null): string | undefined => {

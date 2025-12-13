@@ -1324,6 +1324,14 @@ export class RestaurantLocationEnrichmentService {
       updateData.priceLevel = normalizedPrice;
       updateData.priceLevelUpdatedAt = new Date();
       updatedFields.push('priceLevel', 'priceLevelUpdatedAt');
+    } else {
+      const priceRange = this.normalizeGooglePriceRange(details.price_range);
+      const derivedLevel = this.mapPriceRangeToLevel(priceRange);
+      if (derivedLevel !== null) {
+        updateData.priceLevel = derivedLevel;
+        updateData.priceLevelUpdatedAt = new Date();
+        updatedFields.push('priceLevel', 'priceLevelUpdatedAt');
+      }
     }
 
     return { updateData, updatedFields };
@@ -1376,6 +1384,13 @@ export class RestaurantLocationEnrichmentService {
     ) {
       priceLevel = Math.max(0, Math.min(4, Math.round(details.price_level)));
       priceLevelUpdatedAt = new Date();
+    } else {
+      const priceRange = this.normalizeGooglePriceRange(details.price_range);
+      const derivedLevel = this.mapPriceRangeToLevel(priceRange);
+      if (derivedLevel !== null) {
+        priceLevel = derivedLevel;
+        priceLevelUpdatedAt = new Date();
+      }
     }
 
     const updatedFields: string[] = [
@@ -1497,6 +1512,15 @@ export class RestaurantLocationEnrichmentService {
       );
       metadata.priceLevel = normalizedPrice;
       metadata.priceLevelUpdatedAt = new Date().toISOString();
+    }
+
+    const priceRange = this.normalizeGooglePriceRange(details.price_range);
+    if (priceRange) {
+      metadata.priceRange = priceRange;
+      const derivedLevel = this.mapPriceRangeToLevel(priceRange);
+      if (derivedLevel !== null) {
+        metadata.priceRangeLevel = derivedLevel;
+      }
     }
 
     if (Array.isArray(details.types) && details.types.length > 0) {
@@ -2213,9 +2237,137 @@ export class RestaurantLocationEnrichmentService {
     return null;
   }
 
-  private toNumberValue(
-    value: Prisma.Decimal | number | string | null | undefined,
-  ): number | undefined {
+  private normalizeGooglePriceRange(raw: unknown): {
+    min: number | null;
+    max: number | null;
+    rawText: string | null;
+    formattedText: string | null;
+  } | null {
+    if (raw === null || raw === undefined) {
+      return null;
+    }
+
+    let rawText: string | null = null;
+    if (typeof raw === 'string') {
+      rawText = raw.trim();
+    } else if (typeof raw === 'number' && Number.isFinite(raw)) {
+      rawText = `$${raw}`;
+    }
+
+    let min: number | null = null;
+    let max: number | null = null;
+
+    if (typeof raw === 'number' && Number.isFinite(raw)) {
+      min = raw;
+      max = raw;
+    } else if (typeof raw === 'string') {
+      const matches = Array.from(raw.matchAll(/\d+(?:\.\d+)?/g));
+      const numbers = matches
+        .map((match) => Number(match[0]))
+        .filter((value) => Number.isFinite(value));
+
+      if (numbers.length === 1) {
+        if (/under|less\s+than|up\s*to|^</i.test(raw)) {
+          max = numbers[0];
+        } else {
+          min = numbers[0];
+        }
+      } else if (numbers.length >= 2) {
+        min = Math.min(...numbers);
+        max = Math.max(...numbers);
+      }
+    } else if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      const record = raw as Record<string, unknown>;
+      const startPrice = this.parseGoogleMoney(
+        record.startPrice ?? record.start_price,
+      );
+      const endPrice = this.parseGoogleMoney(
+        record.endPrice ?? record.end_price,
+      );
+      const minCandidate = this.pickFirstNumber(
+        startPrice,
+        record.min,
+        record.minimum,
+        record.low,
+        record.lower,
+        record.from,
+        record.start,
+      );
+      const maxCandidate = this.pickFirstNumber(
+        endPrice,
+        record.max,
+        record.maximum,
+        record.high,
+        record.upper,
+        record.to,
+        record.end,
+      );
+      min = minCandidate ?? null;
+      max = maxCandidate ?? null;
+      if (typeof record.text === 'string' && !rawText) {
+        rawText = record.text.trim();
+      }
+    }
+
+    const formattedText =
+      min !== null && max !== null
+        ? `$${min}-${max}`
+        : max !== null
+          ? `<$${max}`
+          : min !== null
+            ? `$${min}+`
+            : rawText;
+
+    return {
+      min,
+      max,
+      rawText,
+      formattedText: formattedText ?? null,
+    };
+  }
+
+  private mapPriceRangeToLevel(
+    range: {
+      min: number | null;
+      max: number | null;
+      rawText?: string | null;
+    } | null,
+  ): number | null {
+    if (!range) {
+      return null;
+    }
+
+    const effective = range.max ?? range.min;
+    if (effective === null || !Number.isFinite(effective)) {
+      return null;
+    }
+
+    if (effective <= 0) {
+      return 0;
+    }
+    if (effective <= 25) {
+      return 1;
+    }
+    if (effective <= 50) {
+      return 2;
+    }
+    if (effective <= 75) {
+      return 3;
+    }
+    return 4;
+  }
+
+  private pickFirstNumber(...candidates: Array<unknown>): number | null {
+    for (const candidate of candidates) {
+      const value = this.toNumberValue(candidate);
+      if (value !== undefined && Number.isFinite(value)) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  private toNumberValue(value: unknown): number | undefined {
     if (value === null || value === undefined) {
       return undefined;
     }
@@ -2233,6 +2385,36 @@ export class RestaurantLocationEnrichmentService {
       return value.toNumber();
     }
 
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      'units' in value
+    ) {
+      return (
+        this.parseGoogleMoney(value as Record<string, unknown>) ?? undefined
+      );
+    }
+
     return undefined;
+  }
+
+  private parseGoogleMoney(raw: unknown): number | null {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+
+    const record = raw as Record<string, unknown>;
+    const unitsValue = record.units ?? record.value;
+    const nanosValue = record.nanos ?? record.nano ?? 0;
+    const units = this.toNumberValue(unitsValue);
+    const nanos = this.toNumberValue(nanosValue) ?? 0;
+
+    if (units === undefined) {
+      return null;
+    }
+
+    const total = units + nanos / 1_000_000_000;
+    return Number.isFinite(total) ? total : null;
   }
 }

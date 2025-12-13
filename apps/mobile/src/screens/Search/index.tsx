@@ -5,8 +5,6 @@ import {
   Dimensions,
   Keyboard,
   LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   Pressable,
   Share,
   StyleSheet,
@@ -17,18 +15,12 @@ import {
 } from 'react-native';
 import type { TextInput } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
-import {
-  PanGestureHandler,
-  NativeViewGestureHandler,
-  type PanGestureHandlerGestureEvent,
-} from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, {
   Extrapolation,
   Easing,
   interpolate,
   runOnJS,
-  useAnimatedGestureHandler,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -57,9 +49,8 @@ import Svg, {
 } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import {
-  getPriceSymbolLabel,
+  getPriceRangeLabel,
   PRICE_LEVEL_RANGE_LABELS,
-  PRICE_LEVEL_SYMBOLS,
 } from '../../constants/pricing';
 import {
   overlaySheetStyles,
@@ -84,6 +75,7 @@ import type {
   SearchResponse,
   FoodResult,
   RestaurantResult,
+  RestaurantFoodSnippet,
   MapBounds,
   Coordinate,
   NaturalSearchRequest,
@@ -91,6 +83,7 @@ import type {
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
+import BottomSheetWithFlashList, { type SnapPoints } from '../../overlays/BottomSheetWithFlashList';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
@@ -120,10 +113,10 @@ type PriceRangeTuple = [number, number];
 const PRICE_SLIDER_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
 const PRICE_SLIDER_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
 const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
-  1: PRICE_LEVEL_SYMBOLS[1],
-  2: PRICE_LEVEL_SYMBOLS[2],
-  3: PRICE_LEVEL_SYMBOLS[3],
-  4: PRICE_LEVEL_SYMBOLS[4],
+  1: PRICE_LEVEL_RANGE_LABELS[1],
+  2: PRICE_LEVEL_RANGE_LABELS[2],
+  3: PRICE_LEVEL_RANGE_LABELS[3],
+  4: PRICE_LEVEL_RANGE_LABELS[4],
 };
 const META_FONT_SIZE = 12;
 const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
@@ -263,12 +256,40 @@ const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
   { t: 1, color: [255, 110, 82] }, // warm red-orange (lowest rank)
 ];
 
+type PriceBounds = { min: number | null; max: number | null };
+
+const PRICE_LEVEL_BOUNDS: Record<PriceLevelValue, PriceBounds> = {
+  1: { min: 1, max: 25 },
+  2: { min: 25, max: 50 },
+  3: { min: 50, max: 75 },
+  4: { min: 75, max: null },
+};
+
 const formatPriceRangeText = (range: PriceRangeTuple): string => {
   const normalized = normalizePriceRangeValues(range);
   const [min, max] = normalized;
-  const minLabel = PRICE_LEVEL_RANGE_LABELS[min] ?? `Level ${min}`;
-  const maxLabel = PRICE_LEVEL_RANGE_LABELS[max] ?? `Level ${max}`;
-  return min === max ? minLabel : `${minLabel} – ${maxLabel}`;
+  if (isFullPriceRange(normalized)) {
+    return 'Any price';
+  }
+  if (min === max) {
+    return PRICE_LEVEL_RANGE_LABELS[min] ?? `Level ${min}`;
+  }
+
+  const lower = PRICE_LEVEL_BOUNDS[min];
+  const upper = PRICE_LEVEL_BOUNDS[max];
+  const overallMin = lower.min;
+  const overallMax = upper.max;
+
+  if (overallMin === null && overallMax !== null) {
+    return `<$${overallMax}`;
+  }
+  if (overallMin !== null && overallMax === null) {
+    return `$${overallMin}+`;
+  }
+  if (overallMin !== null && overallMax !== null) {
+    return `$${overallMin}–$${overallMax}`;
+  }
+  return 'Any price';
 };
 
 const getQualityColor = (index: number, total: number): string => {
@@ -426,6 +447,39 @@ const mapStateBoundsToMapBounds = (state?: MapboxMapState | null): MapBounds | n
 const capitalizeFirst = (value: string): string =>
   value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
+const buildTopFoodOneLinerParts = (
+  avgLabel: string,
+  avgScore: number | null,
+  topFoods: RestaurantFoodSnippet[],
+  limit: number
+): { primary: string | null; rest: string } => {
+  let primary: string | null = null;
+  const segments: string[] = [];
+
+  if (avgScore !== null && Number.isFinite(avgScore)) {
+    primary = avgScore.toFixed(1);
+    segments.push(avgLabel);
+  } else {
+    segments.push(avgLabel);
+  }
+
+  const top = topFoods.slice(0, limit);
+  if (top.length) {
+    const topLabel = top
+      .map((food) => `${food.foodName} ${food.qualityScore.toFixed(1)}`)
+      .join(', ');
+    segments.push(`Top: ${topLabel}`);
+  }
+
+  const remaining = Math.max(topFoods.length - top.length, 0);
+  if (remaining > 0) {
+    segments.push(`+${remaining} more`);
+  }
+
+  const rest = segments.length ? ` ${segments.join(' · ')}` : '';
+  return { primary, rest };
+};
+
 const hasBoundsMovedSignificantly = (previous: MapBounds, next: MapBounds): boolean => {
   const centerShift = haversineDistanceMiles(getBoundsCenter(previous), getBoundsCenter(next));
   const previousDiagonal = Math.max(getBoundsDiagonalMiles(previous), 0.01);
@@ -532,7 +586,7 @@ const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
 const SPACING_XS = 2;
 const SPACING_SM = 3;
 const SPACING_MD = 5;
-const CARD_LINE_GAP = 4;
+const CARD_LINE_GAP = 6;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
 const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 const PollIcon = ({
@@ -794,18 +848,17 @@ const SearchScreen: React.FC = () => {
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
-  const resultsScrollEnabled = sheetState === 'expanded';
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const searchThisAreaVisibility = useSharedValue(0);
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
   const resultsScrollOffset = useSharedValue(0);
+  const resultsMomentum = useSharedValue(false);
   const draggingFromTop = useSharedValue(false);
   const lastScrollYRef = React.useRef(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sheetPanRef = React.useRef<PanGestureHandler>(null);
   const handleResultsHeaderLayout = React.useCallback(({ nativeEvent: { layout } }) => {
     setResultsHeaderLayout((prev) =>
       prev.width === layout.width && prev.height === layout.height
@@ -876,7 +929,6 @@ const SearchScreen: React.FC = () => {
   const searchSurfaceAnim = useSharedValue(0);
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
-  const scrollGestureRef = React.useRef<NativeViewGestureHandler | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
@@ -1564,9 +1616,7 @@ const SearchScreen: React.FC = () => {
   );
 
   const onResultsScroll = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset } = event.nativeEvent;
-      const offsetY = contentOffset?.y ?? 0;
+    (offsetY: number) => {
       resultsScrollOffset.value = offsetY;
       if (draggingFromTop.value && offsetY > 0.5) {
         draggingFromTop.value = false;
@@ -1802,7 +1852,7 @@ const SearchScreen: React.FC = () => {
 
   // Intentionally avoid auto-fitting the map when results change; keep user camera position.
 
-  const snapPoints = React.useMemo<Record<SheetPosition, number>>(() => {
+  const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(searchLayout.top, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
@@ -1814,7 +1864,7 @@ const SearchScreen: React.FC = () => {
       collapsed,
       hidden,
     };
-  }, [insets.top, searchLayout]);
+  }, [searchLayout.top]);
   const shouldRenderSheet =
     isSearchOverlay && !isSearchFocused && (panelVisible || sheetState !== 'hidden');
 
@@ -1879,111 +1929,6 @@ const SearchScreen: React.FC = () => {
     [snapPoints, setPanelVisible, sheetStateShared, sheetTranslateY]
   );
 
-  const sheetPanGesture = useAnimatedGestureHandler<
-    PanGestureHandlerGestureEvent,
-    SheetGestureContext
-  >(
-    {
-      onStart: (event, context) => {
-        context.startY = sheetTranslateY.value;
-        const currentState =
-          sheetStateShared.value === 'hidden' ? 'collapsed' : sheetStateShared.value;
-        const startIndex = SHEET_STATES.indexOf(currentState);
-        context.startStateIndex = startIndex >= 0 ? startIndex : SHEET_STATES.length - 1;
-        context.isHeaderDrag = typeof event.absoluteY === 'number' ? event.absoluteY <= 200 : true;
-        context.canDriveSheet = false;
-        context.isExpandedAtStart = sheetStateShared.value === 'expanded';
-      },
-      onActive: (event, context) => {
-        const isListAtTop = resultsScrollOffset.value <= 0.5;
-        const pullingDown = event.translationY > 0;
-        const isExpandedStart = context.isExpandedAtStart;
-        const startedAtTop = draggingFromTop.value;
-
-        if (!context.isHeaderDrag && isExpandedStart) {
-          // When expanded, allow pull-down from anywhere in the list as long as we're at the top.
-          if (!pullingDown || (!startedAtTop && !isListAtTop)) {
-            return;
-          }
-        }
-
-        context.canDriveSheet = true;
-        const minY = snapPointExpanded.value;
-        const maxY = snapPointHidden.value;
-        sheetTranslateY.value = clampValue(context.startY + event.translationY, minY, maxY);
-      },
-      onEnd: (event, context) => {
-        if (!context.canDriveSheet) {
-          return;
-        }
-
-        const allowedStates: SheetPosition[] = ['expanded', 'middle', 'collapsed'];
-        const snapFor = (state: SheetPosition) =>
-          snapPointForState(
-            state,
-            snapPointExpanded.value,
-            snapPointMiddle.value,
-            snapPointCollapsed.value,
-            snapPointHidden.value
-          );
-
-        const projected = context.startY + event.translationY;
-
-        const startStateRaw = SHEET_STATES[context.startStateIndex] ?? 'collapsed';
-        let startAllowedIndex = allowedStates.indexOf(startStateRaw as SheetPosition);
-        if (startAllowedIndex < 0) {
-          const distancesToAllowed = allowedStates.map((state) =>
-            Math.abs(snapFor(state) - context.startY)
-          );
-          const minDist = Math.min(...distancesToAllowed);
-          startAllowedIndex = Math.max(distancesToAllowed.indexOf(minDist), 0);
-        }
-
-        let candidateIndex = startAllowedIndex;
-        const translationY = event.translationY;
-
-        if (translationY > 0) {
-          let remaining = translationY;
-          for (let i = startAllowedIndex; i < allowedStates.length - 1; i += 1) {
-            const segment = snapFor(allowedStates[i + 1]) - snapFor(allowedStates[i]);
-            if (remaining >= segment * 0.4) {
-              candidateIndex = i + 1;
-              remaining -= segment;
-            } else {
-              break;
-            }
-          }
-        } else if (translationY < 0) {
-          let remaining = Math.abs(translationY);
-          for (let i = startAllowedIndex; i > 0; i -= 1) {
-            const segment = snapFor(allowedStates[i]) - snapFor(allowedStates[i - 1]);
-            if (remaining >= segment * 0.4) {
-              candidateIndex = i - 1;
-              remaining -= segment;
-            } else {
-              break;
-            }
-          }
-        }
-
-        const distancesToProjected = allowedStates.map((state) =>
-          Math.abs(snapFor(state) - projected)
-        );
-        const nearestIndex = Math.max(
-          distancesToProjected.indexOf(Math.min(...distancesToProjected)),
-          0
-        );
-
-        const targetIndex = candidateIndex !== startAllowedIndex ? candidateIndex : nearestIndex;
-        const targetState: SheetPosition =
-          allowedStates[targetIndex] ?? allowedStates[allowedStates.length - 1];
-
-        runOnJS(animateSheetTo)(targetState, Math.max(Math.min(event.velocityY, 2500), -2500));
-      },
-    },
-    [animateSheetTo]
-  );
-
   const searchBarInputAnimatedStyle = useAnimatedStyle(() => {
     const visibility = interpolate(
       sheetTranslateY.value,
@@ -2026,6 +1971,15 @@ const SearchScreen: React.FC = () => {
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
+  const handleSheetSnapChange = React.useCallback(
+    (nextSnap: SheetPosition | 'hidden') => {
+      const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
+      setSheetState(nextState);
+      sheetStateShared.value = nextState;
+      setPanelVisible(nextSnap !== 'hidden');
+    },
+    [setPanelVisible, sheetStateShared]
+  );
   React.useEffect(() => {
     if (!panelVisible && isPriceSelectorVisible) {
       setIsPriceSelectorVisible(false);
@@ -2863,14 +2817,22 @@ const SearchScreen: React.FC = () => {
     const isLiked = favoriteMap.has(item.foodId);
     const qualityColor = getQualityColor(index, dishes.length);
     const restaurantForDish = restaurantsById.get(item.restaurantId);
-    const dishPriceLabel = getPriceSymbolLabel(item.restaurantPriceLevel);
-    const dishMetaCombinedLine = renderMetaDetailLine(
-      item.restaurantOperatingStatus,
+    const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
+    const dishMetaPrimaryLine = renderMetaDetailLine(
+      null,
       dishPriceLabel,
       item.restaurantDistanceMiles,
       'left',
       item.restaurantName,
       true
+    );
+    const dishStatusLine = renderMetaDetailLine(
+      item.restaurantOperatingStatus,
+      null,
+      null,
+      'left',
+      undefined,
+      false
     );
     const handleShare = () => {
       void Share.share({
@@ -2916,9 +2878,14 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={styles.cardBodyStack}>
-                {dishMetaCombinedLine ? (
+                {dishMetaPrimaryLine ? (
                   <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                    {dishMetaCombinedLine}
+                    {dishMetaPrimaryLine}
+                  </View>
+                ) : null}
+                {dishStatusLine ? (
+                  <View style={styles.resultMetaLine}>
+                    {dishStatusLine}
                   </View>
                 ) : null}
                 <View style={styles.metricBlock}>
@@ -2985,7 +2952,7 @@ const SearchScreen: React.FC = () => {
   const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
     const isLiked = favoriteMap.has(restaurant.restaurantId);
     const qualityColor = getQualityColor(index, restaurants.length);
-    const priceRangeLabel = getPriceSymbolLabel(restaurant.priceLevel);
+    const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
     const topFoodItems = restaurant.topFood ?? [];
     const topFoodAverage =
       topFoodItems.length > 0
@@ -2995,6 +2962,12 @@ const SearchScreen: React.FC = () => {
     const topFoodAvgLabel = primaryFoodTerm
       ? `${capitalizeFirst(primaryFoodTerm.trim())} avg`
       : 'Dish avg';
+    const topFoodOneLiner = buildTopFoodOneLinerParts(
+      topFoodAvgLabel,
+      topFoodAverage,
+      topFoodItems,
+      TOP_FOOD_RENDER_LIMIT
+    );
     const restaurantMetaLine = renderMetaDetailLine(
       null,
       null,
@@ -3005,7 +2978,7 @@ const SearchScreen: React.FC = () => {
     );
     const restaurantStatusLine = renderMetaDetailLine(
       restaurant.operatingStatus,
-      priceRangeLabel ?? null,
+      null,
       null,
       'left',
       undefined,
@@ -3057,31 +3030,48 @@ const SearchScreen: React.FC = () => {
               <View style={styles.metricBlock}>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={[styles.metricLine, styles.metricSupportRow]}>
-                    <Store size={SECONDARY_METRIC_ICON_SIZE} color="#0f172a" strokeWidth={2} />
+                  <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
+                    <View style={styles.restaurantMetricLeft}>
+                      <Store size={SECONDARY_METRIC_ICON_SIZE} color="#0f172a" strokeWidth={2} />
                     <Text
                       variant="caption"
-                      weight="medium"
-                      style={[styles.metricSupportValue, { color: qualityColor }]}
+                      weight="semibold"
+                      style={styles.metricSupportValue}
                     >
                       {restaurant.restaurantQualityScore.toFixed(1)}
                     </Text>
-                    <Text variant="caption" weight="regular" style={styles.metricSupportLabel}>
-                      Restaurant
-                    </Text>
-                    <TouchableOpacity
-                      onPress={handleRestaurantInfoPress}
-                      style={styles.scoreInfoIconButton}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="How restaurant scores are calculated"
-                    >
-                      <InfoCircleIcon
-                        size={SECONDARY_METRIC_ICON_SIZE + 2}
-                        color={themeColors.textBody}
-                        strokeWidth={2}
-                      />
-                    </TouchableOpacity>
+                      <Text
+                        variant="caption"
+                        weight="regular"
+                        style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
+                        numberOfLines={1}
+                      >
+                        Restaurant
+                      </Text>
+                      <TouchableOpacity
+                        onPress={handleRestaurantInfoPress}
+                        style={styles.scoreInfoIconButton}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="How restaurant scores are calculated"
+                      >
+                        <InfoCircleIcon
+                          size={SECONDARY_METRIC_ICON_SIZE + 2}
+                          color={themeColors.textBody}
+                          strokeWidth={2}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    {priceRangeLabel ? (
+                      <View style={styles.restaurantMetricRight}>
+                        <Text variant="caption" style={styles.metricDot}>
+                          {'·'}
+                        </Text>
+                        <Text variant="caption" style={styles.resultMetaPrice} numberOfLines={1}>
+                          {priceRangeLabel}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 ) : null}
               </View>
@@ -3114,58 +3104,38 @@ const SearchScreen: React.FC = () => {
           </View>
           <View style={styles.resultContent}>
             {topFoodItems.length ? (
-              <View style={styles.topFoodSection}>
-                <View style={styles.topFoodHeader}>
-                  <View style={styles.topFoodAvgRow}>
-                    <HandPlatter
-                      size={SECONDARY_METRIC_ICON_SIZE}
-                      color={themeColors.textPrimary}
-                      strokeWidth={2}
-                    />
-                    {topFoodAverage !== null ? (
-                      <Text variant="caption" weight="medium" style={styles.topFoodScorePrimary}>
-                        {topFoodAverage.toFixed(1)}
-                      </Text>
-                    ) : null}
-                    <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                      {topFoodAvgLabel}
+              <View style={styles.topFoodOneLinerRow}>
+                <HandPlatter
+                  size={SECONDARY_METRIC_ICON_SIZE}
+                  color={themeColors.textPrimary}
+                  strokeWidth={2}
+                />
+                <Text
+                  variant="caption"
+                  weight="regular"
+                  style={styles.topFoodOneLinerText}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {topFoodOneLiner.primary ? (
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={styles.topFoodOneLinerPrimary}
+                    >
+                      {topFoodOneLiner.primary}
                     </Text>
-                  </View>
-                  <View style={styles.topFoodDivider} />
-                </View>
-                {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
-                  <View key={food.connectionId} style={styles.topFoodRow}>
-                    <Text variant="caption" weight="semibold" style={styles.topFoodRankText}>
-                      {idx + 1}
-                    </Text>
+                  ) : null}
+                  {topFoodOneLiner.rest ? (
                     <Text
                       variant="caption"
                       weight="regular"
-                      style={styles.topFoodName}
-                      numberOfLines={1}
+                      style={styles.topFoodOneLinerRest}
                     >
-                      {food.foodName}
+                      {topFoodOneLiner.rest}
                     </Text>
-                    <Text variant="caption" style={styles.metricDot}>
-                      ·
-                    </Text>
-                    <View style={styles.topFoodScoreInline}>
-                      <HandPlatter
-                        size={SECONDARY_METRIC_ICON_SIZE}
-                        color={themeColors.textPrimary}
-                        strokeWidth={2}
-                      />
-                      <Text variant="caption" weight="regular" style={styles.topFoodScore}>
-                        {food.qualityScore.toFixed(1)}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-                {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
-                  <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
-                    +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
-                  </Text>
-                ) : null}
+                  ) : null}
+                </Text>
               </View>
             ) : null}
           </View>
@@ -3253,90 +3223,140 @@ const SearchScreen: React.FC = () => {
     () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
     [filtersHeader]
   );
-  const renderFlashListScrollComponent = React.useMemo(
-    () =>
-      React.forwardRef<any, any>((scrollProps, scrollRef) => {
-        const { contentContainerStyle, style, ...restProps } = scrollProps ?? {};
-        return (
-          <NativeViewGestureHandler ref={scrollGestureRef} simultaneousHandlers={[sheetPanRef]}>
-            <Animated.ScrollView
-              {...restProps}
-              ref={scrollRef}
-              style={[styles.resultsScroll, style]}
-              contentContainerStyle={[styles.resultsScrollContent, contentContainerStyle]}
-              bounces={false}
-              alwaysBounceVertical={false}
-              overScrollMode="never"
-              scrollEnabled={resultsScrollEnabled}
-            />
-          </NativeViewGestureHandler>
-        );
-      }),
-    [resultsScrollEnabled, scrollGestureRef, sheetPanRef]
+
+  const resultsListFooterComponent = React.useMemo(
+    () => (
+      <View style={styles.loadMoreSpacer}>
+        {isLoadingMore && canLoadMore ? (
+          <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+        ) : null}
+      </View>
+    ),
+    [canLoadMore, isLoadingMore]
   );
 
-  const flatListProps: FlashListProps<FoodResult | RestaurantResult> = React.useMemo(
-    () => ({
-      data: safeResultsData,
-      renderItem: renderSafeItem,
-      keyExtractor: isDishesTab ? dishKeyExtractor : restaurantKeyExtractor,
-      ListHeaderComponent: listHeader,
-      ListFooterComponent: (
-        <View style={styles.loadMoreSpacer}>
-          {isLoadingMore && canLoadMore ? (
-            <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
-          ) : null}
+  const resultsListEmptyComponent = React.useMemo(() => {
+    if (error) {
+      return (
+        <View style={[styles.resultsCard, styles.resultsCardSurface]}>
+          <Text variant="caption" style={styles.textRed600}>
+            {error}
+          </Text>
         </View>
-      ),
-      ListEmptyComponent: (
-        <EmptyState
-          message={
-            activeTab === 'dishes'
-              ? 'No dishes found. Try adjusting your search.'
-              : 'No restaurants found. Try adjusting your search.'
-          }
-        />
-      ),
-      contentContainerStyle: styles.resultsScrollContent,
-      testID: 'search-results-flatlist',
-      extraData: flatListDebugData,
-      estimatedItemSize: 240,
-      showsVerticalScrollIndicator: false,
-      keyboardShouldPersistTaps: 'handled',
-      keyboardDismissMode: 'on-drag',
-      onScroll: onResultsScroll,
-      onScrollBeginDrag: handleResultsScrollBeginDrag,
-      onScrollEndDrag: handleResultsScrollEndDrag,
-      scrollEventThrottle: 16,
-      bounces: false,
-      alwaysBounceVertical: false,
-      overScrollMode: 'never',
-      scrollEnabled: resultsScrollEnabled,
-      onEndReached: canLoadMore ? loadMoreResults : undefined,
-      onEndReachedThreshold: 0.2,
-      renderScrollComponent: renderFlashListScrollComponent,
-    }),
-    [
-      activeTab,
-      canLoadMore,
-      dishKeyExtractor,
-      flatListDebugData,
-      filtersHeader,
-      handleResultsScrollBeginDrag,
-      handleResultsScrollEndDrag,
-      isDishesTab,
-      isLoadingMore,
-      listHeader,
-      loadMoreResults,
-      onResultsScroll,
-      renderSafeItem,
-      restaurantKeyExtractor,
-      renderFlashListScrollComponent,
-      resultsScrollEnabled,
-      safeResultsData,
-    ]
-  );
+      );
+    }
+    if (isLoading && !results) {
+      return (
+        <View style={[styles.resultsCard, styles.resultsCardSurface, styles.resultsCardCentered]}>
+          <ActivityIndicator size="large" color="#FB923C" />
+          <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
+            Looking for the best matches...
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <EmptyState
+        message={
+          activeTab === 'dishes'
+            ? 'No dishes found. Try adjusting your search.'
+            : 'No restaurants found. Try adjusting your search.'
+        }
+      />
+    );
+  }, [activeTab, error, isLoading, results]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
+  const resultsHeaderComponent = (
+    <Reanimated.View style={[overlaySheetStyles.header, styles.resultsHeader]} onLayout={handleResultsHeaderLayout}>
+      {resultsHeaderLayout.width > 0 && resultsHeaderLayout.height > 0 ? (
+        <MaskedView
+          pointerEvents="none"
+          style={styles.resultsHeaderMaskOverlay}
+          maskElement={
+            <Svg
+              width={resultsHeaderLayout.width}
+              height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+            >
+              <SvgDefs>
+                <SvgMask
+                  id="results-close-mask"
+                  x={0}
+                  y={0}
+                  width={resultsHeaderLayout.width}
+                  height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                  maskUnits="userSpaceOnUse"
+                  maskContentUnits="userSpaceOnUse"
+                >
+                  <SvgRect
+                    x={0}
+                    y={0}
+                    width={resultsHeaderLayout.width}
+                    height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                    fill="white"
+                  />
+                  {resultsCloseLayout ? (
+                    <SvgCircle
+                      cx={
+                        resultsHeaderRowOffset.x +
+                        resultsCloseLayout.x +
+                        resultsCloseLayout.width / 2
+                      }
+                      cy={
+                        resultsHeaderRowOffset.y +
+                        resultsCloseLayout.y +
+                        resultsCloseLayout.height / 2 +
+                        CLOSE_BUTTON_HOLE_Y_OFFSET
+                      }
+                      r={CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING}
+                      fill="black"
+                    />
+                  ) : null}
+                </SvgMask>
+              </SvgDefs>
+              <SvgRect
+                x={0}
+                y={0}
+                width={resultsHeaderLayout.width}
+                height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
+                fill="white"
+                mask="url(#results-close-mask)"
+              />
+            </Svg>
+          }
+        >
+          <View style={styles.resultsHeaderFill} pointerEvents="none" />
+        </MaskedView>
+      ) : (
+        <View style={styles.resultsHeaderFallbackFill} pointerEvents="none" />
+      )}
+      <View style={overlaySheetStyles.grabHandleWrapper}>
+        <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
+          <View style={overlaySheetStyles.grabHandle} />
+        </Pressable>
+      </View>
+      <View
+        onLayout={handleResultsHeaderRowLayout}
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+      >
+        <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
+          {submittedQuery || 'Results'}
+        </Text>
+        <Pressable
+          onPress={handleCloseResults}
+          accessibilityRole="button"
+          accessibilityLabel="Close results"
+          style={styles.resultsCloseButton}
+          onLayout={handleResultsCloseLayout}
+          hitSlop={8}
+        >
+          <View style={styles.resultsCloseIcon}>
+            <LucideX size={18} color="#0f172a" strokeWidth={2} />
+          </View>
+        </Pressable>
+      </View>
+      <Animated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
+    </Reanimated.View>
+  );
 
   return (
     <View style={styles.container}>
@@ -3567,150 +3587,52 @@ const SearchScreen: React.FC = () => {
           </Reanimated.View>
           {shouldRenderSheet ? (
             <>
-              <Reanimated.View
-                pointerEvents="none"
-                style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
+              <Reanimated.View pointerEvents="none" style={[styles.resultsShadow, resultsContainerAnimatedStyle]} />
+              <BottomSheetWithFlashList
+                visible={shouldRenderSheet}
+                snapPoints={snapPoints}
+                initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
+                sheetYValue={sheetTranslateY}
+                scrollOffsetValue={resultsScrollOffset}
+                momentumFlag={resultsMomentum}
+                onScrollOffsetChange={onResultsScroll}
+                onScrollBeginDrag={handleResultsScrollBeginDrag}
+                onScrollEndDrag={handleResultsScrollEndDrag}
+                onMomentumBeginJS={() => {
+                  resultsMomentum.value = true;
+                }}
+                onMomentumEndJS={() => {
+                  resultsMomentum.value = false;
+                }}
+                onEndReached={canLoadMore ? loadMoreResults : undefined}
+                onEndReachedThreshold={0.2}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="on-drag"
+                bounces={false}
+                alwaysBounceVertical={false}
+                overScrollMode="never"
+                testID="search-results-flatlist"
+                extraData={flatListDebugData}
+                data={safeResultsData}
+                renderItem={renderSafeItem}
+                keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
+                estimatedItemSize={240}
+                ListHeaderComponent={listHeader}
+                ListFooterComponent={resultsListFooterComponent}
+                ListEmptyComponent={resultsListEmptyComponent}
+                contentContainerStyle={styles.resultsScrollContent}
+                backgroundComponent={<FrostedGlassBackground />}
+                headerComponent={resultsHeaderComponent}
+                listRef={resultsScrollRef}
+                style={overlaySheetStyles.container}
+                onHidden={() => {
+                  setPanelVisible(false);
+                  setSheetState('hidden');
+                  sheetStateShared.value = 'hidden';
+                }}
+                onSnapChange={handleSheetSnapChange}
               />
-              <PanGestureHandler
-                ref={sheetPanRef}
-                onGestureEvent={sheetPanGesture}
-                simultaneousHandlers={[scrollGestureRef]}
-              >
-                <Reanimated.View
-                  style={[overlaySheetStyles.container, resultsContainerAnimatedStyle]}
-                  pointerEvents={panelVisible ? 'auto' : 'none'}
-                >
-                  <FrostedGlassBackground />
-
-                  <Reanimated.View
-                    style={[overlaySheetStyles.header, styles.resultsHeader]}
-                    onLayout={handleResultsHeaderLayout}
-                  >
-                    {resultsHeaderLayout.width > 0 && resultsHeaderLayout.height > 0 ? (
-                      <MaskedView
-                        pointerEvents="none"
-                        style={styles.resultsHeaderMaskOverlay}
-                        maskElement={
-                          <Svg
-                            width={resultsHeaderLayout.width}
-                            height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-                          >
-                            <SvgDefs>
-                              <SvgMask
-                                id="results-close-mask"
-                                x={0}
-                                y={0}
-                                width={resultsHeaderLayout.width}
-                                height={
-                                  resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2
-                                }
-                                maskUnits="userSpaceOnUse"
-                                maskContentUnits="userSpaceOnUse"
-                              >
-                                <SvgRect
-                                  x={0}
-                                  y={0}
-                                  width={resultsHeaderLayout.width}
-                                  height={
-                                    resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2
-                                  }
-                                  fill="white"
-                                />
-                                {resultsCloseLayout ? (
-                                  <SvgCircle
-                                    cx={
-                                      resultsHeaderRowOffset.x +
-                                      resultsCloseLayout.x +
-                                      resultsCloseLayout.width / 2
-                                    }
-                                    cy={
-                                      resultsHeaderRowOffset.y +
-                                      resultsCloseLayout.y +
-                                      resultsCloseLayout.height / 2 +
-                                      CLOSE_BUTTON_HOLE_Y_OFFSET
-                                    }
-                                    r={CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING}
-                                    fill="black"
-                                  />
-                                ) : null}
-                              </SvgMask>
-                            </SvgDefs>
-                            <SvgRect
-                              x={0}
-                              y={0}
-                              width={resultsHeaderLayout.width}
-                              height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-                              fill="white"
-                              mask="url(#results-close-mask)"
-                            />
-                          </Svg>
-                        }
-                      >
-                        <View style={styles.resultsHeaderFill} pointerEvents="none" />
-                      </MaskedView>
-                    ) : (
-                      <View style={styles.resultsHeaderFallbackFill} pointerEvents="none" />
-                    )}
-                    <View style={overlaySheetStyles.grabHandleWrapper}>
-                      <Pressable
-                        onPress={hidePanel}
-                        accessibilityRole="button"
-                        accessibilityLabel="Hide results"
-                      >
-                        <View style={overlaySheetStyles.grabHandle} />
-                      </Pressable>
-                    </View>
-                    <View
-                      onLayout={handleResultsHeaderRowLayout}
-                      style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-                    >
-                      <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
-                        {submittedQuery || 'Results'}
-                      </Text>
-                      <Pressable
-                        onPress={handleCloseResults}
-                        accessibilityRole="button"
-                        accessibilityLabel="Close results"
-                        style={styles.resultsCloseButton}
-                        onLayout={handleResultsCloseLayout}
-                        hitSlop={8}
-                      >
-                        <View style={styles.resultsCloseIcon}>
-                          <LucideX size={18} color="#0f172a" strokeWidth={2} />
-                        </View>
-                      </Pressable>
-                    </View>
-                    <Animated.View
-                      style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
-                    />
-                  </Reanimated.View>
-
-                  {error ? (
-                    <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-                      <Text variant="caption" style={styles.textRed600}>
-                        {error}
-                      </Text>
-                    </View>
-                  ) : isLoading && !results ? (
-                    <View
-                      style={[
-                        styles.resultsCard,
-                        styles.resultsCardSurface,
-                        styles.resultsCardCentered,
-                      ]}
-                    >
-                      <ActivityIndicator size="large" color="#FB923C" />
-                      <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
-                        Looking for the best matches...
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.resultsCard}>
-                      <FlashList ref={resultsScrollRef} {...flatListProps} />
-                    </View>
-                  )}
-                </Reanimated.View>
-              </PanGestureHandler>
             </>
           ) : null}
         </SafeAreaView>
@@ -4664,6 +4586,31 @@ const styles = StyleSheet.create({
   metricSupportRow: {
     marginTop: 0,
   },
+  restaurantMetricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    minWidth: 0,
+  },
+  restaurantMetricLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexShrink: 1,
+    minWidth: 0,
+    columnGap: 4,
+  },
+  restaurantMetricLabel: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  restaurantMetricRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 'auto',
+    paddingLeft: 4,
+    flexShrink: 0,
+    columnGap: 4,
+  },
   metricSupportLabel: {
     color: themeColors.textBody,
     letterSpacing: 0.1,
@@ -4826,68 +4773,23 @@ const styles = StyleSheet.create({
   dishSubtitleSmall: {
     fontSize: 12,
   },
-  topFoodSection: {
+  topFoodOneLinerRow: {
     marginTop: CARD_LINE_GAP,
-    marginBottom: 0,
-    gap: CARD_LINE_GAP,
-  },
-  topFoodLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.6,
-    textTransform: 'none',
-  },
-  topFoodHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING_SM,
+    columnGap: SPACING_SM,
+    minWidth: 0,
   },
-  topFoodAvgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-  },
-  topFoodDivider: {
-    flex: 1,
-    height: 0,
-    backgroundColor: 'transparent',
-  },
-  topFoodRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-    marginTop: 0,
-  },
-  topFoodRankText: {
-    color: themeColors.primary,
-    width: 16,
-    textAlign: 'center',
-  },
-  topFoodName: {
+  topFoodOneLinerText: {
     color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
   },
-  topFoodScore: {
+  topFoodOneLinerPrimary: {
     color: themeColors.textPrimary,
   },
-  topFoodScorePrimary: {
-    color: themeColors.textPrimary,
-  },
-  topFoodScoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  topFoodScoreInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  topFoodMore: {
-    color: themeColors.secondaryAccent,
-    marginTop: 0,
-    alignSelf: 'flex-start',
-    paddingLeft: 0,
+  topFoodOneLinerRest: {
+    color: themeColors.textBody,
   },
   loadingText: {
     marginTop: 16,

@@ -1,30 +1,13 @@
 import React from 'react';
-import { Dimensions, Linking, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Dimensions, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import {
-  PanGestureHandler,
-  type PanGestureHandlerGestureEvent,
-} from 'react-native-gesture-handler';
-import Reanimated, {
-  runOnJS,
-  useAnimatedGestureHandler,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from 'react-native-reanimated';
 import { Text } from '../components';
 import type { FoodResult, RestaurantResult } from '../types';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
-import {
-  SHEET_SPRING_CONFIG,
-  clampValue,
-  SMALL_MOVEMENT_THRESHOLD,
-  type SheetGestureContext,
-  type SheetPosition,
-} from './sheetUtils';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import { getPriceRangeLabel, getPriceSymbolLabel } from '../constants/pricing';
+import { getPriceRangeLabel } from '../constants/pricing';
+import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 
 type RestaurantOverlayData = {
   restaurant: RestaurantResult;
@@ -55,86 +38,30 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
   onToggleFavorite,
 }) => {
   const insets = useSafeAreaInsets();
-  const expandedPoint = Math.max(insets.top, 0);
-  const hiddenPoint = SCREEN_HEIGHT + 80;
-  const translateY = useSharedValue(hiddenPoint);
-  const sheetState = useSharedValue<SheetPosition>('hidden');
-
-  const animateTo = React.useCallback(
-    (position: SheetPosition, velocity = 0) => {
-      const target = position === 'hidden' ? hiddenPoint : expandedPoint;
-      sheetState.value = position;
-      translateY.value = withSpring(
-        target,
-        {
-          ...SHEET_SPRING_CONFIG,
-          velocity,
-        },
-        (finished) => {
-          if (finished && position === 'hidden') {
-            runOnJS(onDismiss)();
-          }
-        }
-      );
-    },
-    [expandedPoint, hiddenPoint, onDismiss, sheetState, translateY]
-  );
-
-  React.useEffect(() => {
-    if (!data) {
-      return;
-    }
-    if (visible) {
-      animateTo('expanded');
-    } else {
-      animateTo('hidden');
-    }
-  }, [animateTo, data, visible]);
-
-  const panGesture = useAnimatedGestureHandler<PanGestureHandlerGestureEvent, SheetGestureContext>(
-    {
-      onStart: (_, context) => {
-        context.startY = translateY.value;
-        context.startStateIndex = 0;
-      },
-      onActive: (event, context) => {
-        translateY.value = clampValue(
-          context.startY + event.translationY,
-          expandedPoint,
-          hiddenPoint
-        );
-      },
-      onEnd: (event) => {
-        const projected = clampValue(
-          translateY.value + event.velocityY * 0.05,
-          expandedPoint,
-          hiddenPoint
-        );
-        let target: SheetPosition = 'expanded';
-        if (event.translationY > SMALL_MOVEMENT_THRESHOLD || projected > expandedPoint + 80) {
-          runOnJS(onRequestClose)();
-          return;
-        } else if (event.velocityY < -1200) {
-          target = 'expanded';
-        }
-        const clampedVelocity = Math.max(Math.min(event.velocityY, 2500), -2500);
-        runOnJS(animateTo)(target, clampedVelocity);
-      },
-    },
-    [animateTo, expandedPoint, hiddenPoint, onRequestClose]
-  );
-
-  const containerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-  }));
+  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const snapPoints = React.useMemo<SnapPoints>(() => {
+    const expanded = Math.max(insets.top, 0);
+    const middle = Math.max(expanded + 180, SCREEN_HEIGHT * 0.6);
+    const collapsed = SCREEN_HEIGHT - 180;
+    const hidden = SCREEN_HEIGHT + 80;
+    return {
+      expanded,
+      middle,
+      collapsed,
+      hidden,
+    };
+  }, [insets.top]);
 
   if (!data) {
     return null;
   }
 
   const { restaurant, dishes, queryLabel, isFavorite } = data;
-  const priceSymbol = restaurant.priceSymbol ?? getPriceSymbolLabel(restaurant.priceLevel) ?? '$';
-  const priceRange = getPriceRangeLabel(restaurant.priceLevel);
+  const priceLabel =
+    getPriceRangeLabel(restaurant.priceLevel) ??
+    restaurant.priceText ??
+    restaurant.priceSymbol ??
+    null;
   const handleWebsitePress = () => {
     const query = `${restaurant.restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
@@ -155,132 +82,134 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
     }
   };
 
-  return (
-    <Reanimated.View
-      pointerEvents={visible ? 'auto' : 'none'}
-      style={[overlaySheetStyles.container, containerAnimatedStyle]}
-    >
-      <FrostedGlassBackground />
-      <PanGestureHandler onGestureEvent={panGesture} enabled={visible}>
-        <Reanimated.View style={overlaySheetStyles.header}>
-          <View style={overlaySheetStyles.grabHandleWrapper}>
-            <View style={overlaySheetStyles.grabHandle} />
-          </View>
-          <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
-            <View style={styles.headerTextGroup}>
-              <Text style={styles.restaurantName}>{restaurant.restaurantName}</Text>
-              <Text style={styles.restaurantAddress} numberOfLines={1}>
-                {restaurant.address ?? 'Address unavailable'}
-              </Text>
-            </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                onPress={() => onToggleFavorite(restaurant.restaurantId)}
-                style={styles.headerIconButton}
-                accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
-              >
-                <Feather
-                  name="heart"
-                  size={20}
-                  color={isFavorite ? '#ef4444' : '#1f2937'}
-                  {...(isFavorite ? { fill: '#ef4444' } : {})}
-                />
-              </Pressable>
-              <Pressable
-                onPress={handleShare}
-                style={styles.headerIconButton}
-                accessibilityLabel="Share"
-              >
-                <Feather name="share-2" size={18} color="#1f2937" />
-              </Pressable>
-              <Pressable
-                onPress={onRequestClose}
-                style={styles.headerIconButton}
-                accessibilityLabel="Close"
-              >
-                <Feather name="x" size={20} color="#1f2937" />
-              </Pressable>
-            </View>
-          </View>
-          <View style={overlaySheetStyles.headerDivider} />
-        </Reanimated.View>
-      </PanGestureHandler>
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom + 48, 72) }}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.metricsRow}>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>Restaurant score</Text>
-            <Text style={styles.metricValue}>
-              {restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}
-            </Text>
-          </View>
-          <View style={styles.metricCard}>
-            <Text style={styles.metricLabel}>
-              {queryLabel ? `${queryLabel} score` : 'Query score'}
-            </Text>
-            <Text style={styles.metricValue}>{restaurant.contextualScore.toFixed(1)}</Text>
-          </View>
-        </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailText}>Price</Text>
-          <Text style={styles.detailValue}>
-            {priceSymbol}
-            {priceRange ? ` · ${priceRange}` : ''}
+  const headerComponent = (
+    <View style={overlaySheetStyles.header}>
+      <View style={overlaySheetStyles.grabHandleWrapper}>
+        <View style={overlaySheetStyles.grabHandle} />
+      </View>
+      <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+        <View style={styles.headerTextGroup}>
+          <Text style={styles.restaurantName}>{restaurant.restaurantName}</Text>
+          <Text style={styles.restaurantAddress} numberOfLines={1}>
+            {restaurant.address ?? 'Address unavailable'}
           </Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailText}>Hours</Text>
-          <Text style={styles.detailValue}>Hours unavailable</Text>
-        </View>
-        <View style={styles.actionsRow}>
-          <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
-            <Feather name="globe" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Website</Text>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => onToggleFavorite(restaurant.restaurantId)}
+            style={styles.headerIconButton}
+            accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
+          >
+            <Feather
+              name="heart"
+              size={20}
+              color={isFavorite ? '#ef4444' : '#1f2937'}
+              {...(isFavorite ? { fill: '#ef4444' } : {})}
+            />
           </Pressable>
-          <Pressable style={styles.primaryAction} onPress={handleCallPress}>
-            <Feather name="phone" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Call</Text>
+          <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
+            <Feather name="share-2" size={18} color="#1f2937" />
+          </Pressable>
+          <Pressable onPress={onRequestClose} style={styles.headerIconButton} accessibilityLabel="Close">
+            <Feather name="x" size={20} color="#1f2937" />
           </Pressable>
         </View>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Menu highlights</Text>
-          <Text style={styles.sectionSubtitle}>Ranked by dish score</Text>
+      </View>
+      <View style={overlaySheetStyles.headerDivider} />
+    </View>
+  );
+
+  const listHeaderComponent = (
+    <View>
+      <View style={styles.metricsRow}>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>Restaurant score</Text>
+          <Text style={styles.metricValue}>{restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}</Text>
         </View>
-        {dishes.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
-          </View>
-        ) : (
-          dishes.map((dish, index) => (
-            <View key={dish.connectionId} style={styles.dishCard}>
-              <View style={styles.dishHeader}>
-                <View style={styles.dishRank}>
-                  <Text style={styles.dishRankText}>{index + 1}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.dishName}>{dish.foodName}</Text>
-                  <Text style={styles.dishMeta}>Dish score: {dish.qualityScore.toFixed(1)}</Text>
-                </View>
-                <Text style={styles.dishActivity}>{dish.activityLevel}</Text>
-              </View>
-              <View style={styles.dishStatsRow}>
-                <View style={styles.dishStat}>
-                  <Text style={styles.dishStatLabel}>Poll count</Text>
-                  <Text style={styles.dishStatValue}>{dish.mentionCount}</Text>
-                </View>
-                <View style={styles.dishStat}>
-                  <Text style={styles.dishStatLabel}>Total votes</Text>
-                  <Text style={styles.dishStatValue}>{dish.totalUpvotes}</Text>
-                </View>
-              </View>
-            </View>
-          ))
-        )}
-      </ScrollView>
-    </Reanimated.View>
+        <View style={styles.metricCard}>
+          <Text style={styles.metricLabel}>
+            {queryLabel ? `${queryLabel} score` : 'Query score'}
+          </Text>
+          <Text style={styles.metricValue}>{restaurant.contextualScore.toFixed(1)}</Text>
+        </View>
+      </View>
+      <View style={styles.detailRow}>
+        <Text style={styles.detailText}>Price</Text>
+        <Text style={styles.detailValue}>{priceLabel ?? '—'}</Text>
+      </View>
+      <View style={styles.detailRow}>
+        <Text style={styles.detailText}>Hours</Text>
+        <Text style={styles.detailValue}>Hours unavailable</Text>
+      </View>
+      <View style={styles.actionsRow}>
+        <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
+          <Feather name="globe" size={18} color="#0f172a" />
+          <Text style={styles.primaryActionText}>Website</Text>
+        </Pressable>
+        <Pressable style={styles.primaryAction} onPress={handleCallPress}>
+          <Feather name="phone" size={18} color="#0f172a" />
+          <Text style={styles.primaryActionText}>Call</Text>
+        </Pressable>
+      </View>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Menu highlights</Text>
+        <Text style={styles.sectionSubtitle}>Ranked by dish score</Text>
+      </View>
+    </View>
+  );
+
+  const renderDish = ({ item, index }: { item: FoodResult; index: number }) => (
+    <View style={styles.dishCard}>
+      <View style={styles.dishHeader}>
+        <View style={styles.dishRank}>
+          <Text style={styles.dishRankText}>{index + 1}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.dishName}>{item.foodName}</Text>
+          <Text style={styles.dishMeta}>Dish score: {item.qualityScore.toFixed(1)}</Text>
+        </View>
+        <Text style={styles.dishActivity}>{item.activityLevel}</Text>
+      </View>
+      <View style={styles.dishStatsRow}>
+        <View style={styles.dishStat}>
+          <Text style={styles.dishStatLabel}>Poll count</Text>
+          <Text style={styles.dishStatValue}>{item.mentionCount}</Text>
+        </View>
+        <View style={styles.dishStat}>
+          <Text style={styles.dishStatLabel}>Total votes</Text>
+          <Text style={styles.dishStatValue}>{item.totalUpvotes}</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const listEmptyComponent = () => (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
+    </View>
+  );
+
+  return (
+    <BottomSheetWithFlashList
+      visible={visible}
+      snapPoints={snapPoints}
+      initialSnapPoint="middle"
+      data={dishes}
+      renderItem={renderDish}
+      keyExtractor={(item) => item.connectionId}
+      estimatedItemSize={136}
+      ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
+      contentContainerStyle={{
+        paddingBottom: contentBottomPadding,
+      }}
+      ListHeaderComponent={listHeaderComponent}
+      ListEmptyComponent={listEmptyComponent}
+      keyboardShouldPersistTaps="handled"
+      backgroundComponent={<FrostedGlassBackground />}
+      headerComponent={headerComponent}
+      style={overlaySheetStyles.container}
+      onHidden={onDismiss}
+    />
   );
 };
 
@@ -306,10 +235,6 @@ const styles = StyleSheet.create({
   },
   headerIconButton: {
     padding: 6,
-  },
-  scroll: {
-    flex: 1,
-    paddingHorizontal: 0,
   },
   metricsRow: {
     flexDirection: 'row',

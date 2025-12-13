@@ -702,6 +702,8 @@ export class SearchQueryExecutor {
               : null);
           const distanceMiles = restaurantContext?.distanceMiles ?? null;
           const locationMetadataRecord = this.coerceRecord(locationMetadata);
+          const resolvedPriceText =
+            this.extractPriceRangeText(locationMetadataRecord) ?? priceText;
           const displayLocation = {
             locationId,
             googlePlaceId: googlePlaceId ?? null,
@@ -768,7 +770,7 @@ export class SearchQueryExecutor {
             restaurantLocationId: locationId,
             priceLevel: resolvedPriceLevel,
             priceSymbol: resolvedPriceSymbol,
-            priceText,
+            priceText: resolvedPriceText,
             priceLevelUpdatedAt: priceLevelUpdatedAt
               ? priceLevelUpdatedAt.toISOString()
               : null,
@@ -1377,6 +1379,58 @@ export class SearchQueryExecutor {
     const normalized = value.trim().toLowerCase();
     const match = DAY_KEYS.find((day) => normalized.startsWith(day));
     return match ?? null;
+  }
+
+  private extractPriceRangeText(
+    metadata: Record<string, unknown> | null,
+  ): string | null {
+    if (!metadata) {
+      return null;
+    }
+
+    const googlePlaces = this.coerceRecord(metadata.googlePlaces);
+    const priceRangeCandidate =
+      googlePlaces?.priceRange ??
+      googlePlaces?.price_range ??
+      metadata.priceRange;
+
+    if (typeof priceRangeCandidate === 'string') {
+      const trimmed = priceRangeCandidate.trim();
+      return trimmed.length ? trimmed : null;
+    }
+
+    const priceRangeRecord = this.coerceRecord(priceRangeCandidate);
+    if (!priceRangeRecord) {
+      return null;
+    }
+
+    const min = this.toOptionalNumber(
+      priceRangeRecord.min as Prisma.Decimal | number | string | null,
+    );
+    const max = this.toOptionalNumber(
+      priceRangeRecord.max as Prisma.Decimal | number | string | null,
+    );
+
+    if (min !== null && max !== null) {
+      return `$${min}-${max}`;
+    }
+    if (max !== null) {
+      return `<$${max}`;
+    }
+    if (min !== null) {
+      return `$${min}+`;
+    }
+
+    const rawText =
+      typeof priceRangeRecord.formattedText === 'string'
+        ? priceRangeRecord.formattedText
+        : typeof priceRangeRecord.rawText === 'string'
+          ? priceRangeRecord.rawText
+          : typeof priceRangeRecord.text === 'string'
+            ? priceRangeRecord.text
+            : null;
+
+    return rawText?.trim() || null;
   }
 
   private coerceRecord(value: unknown): Record<string, unknown> | null {
