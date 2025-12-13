@@ -107,10 +107,18 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
               {...(isFavorite ? { fill: '#ef4444' } : {})}
             />
           </Pressable>
-          <Pressable onPress={handleShare} style={styles.headerIconButton} accessibilityLabel="Share">
+          <Pressable
+            onPress={handleShare}
+            style={styles.headerIconButton}
+            accessibilityLabel="Share"
+          >
             <Feather name="share-2" size={18} color="#1f2937" />
           </Pressable>
-          <Pressable onPress={onRequestClose} style={styles.headerIconButton} accessibilityLabel="Close">
+          <Pressable
+            onPress={onRequestClose}
+            style={styles.headerIconButton}
+            accessibilityLabel="Close"
+          >
             <Feather name="x" size={20} color="#1f2937" />
           </Pressable>
         </View>
@@ -124,7 +132,9 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
       <View style={styles.metricsRow}>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>Restaurant score</Text>
-          <Text style={styles.metricValue}>{restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}</Text>
+          <Text style={styles.metricValue}>
+            {restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}
+          </Text>
         </View>
         <View style={styles.metricCard}>
           <Text style={styles.metricLabel}>

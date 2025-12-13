@@ -48,10 +48,7 @@ import Svg, {
   Mask as SvgMask,
 } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
-import {
-  getPriceRangeLabel,
-  PRICE_LEVEL_RANGE_LABELS,
-} from '../../constants/pricing';
+import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
 import {
   overlaySheetStyles,
   OVERLAY_HORIZONTAL_PADDING,
@@ -75,7 +72,6 @@ import type {
   SearchResponse,
   FoodResult,
   RestaurantResult,
-  RestaurantFoodSnippet,
   MapBounds,
   Coordinate,
   NaturalSearchRequest,
@@ -124,7 +120,7 @@ const DISTANCE_MIN_DECIMALS = 1;
 const DISTANCE_MAX_DECIMALS = 0;
 const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
 const USA_FALLBACK_ZOOM = 3.2;
-const TOP_FOOD_RENDER_LIMIT = 2;
+const TOP_FOOD_RENDER_LIMIT = 3;
 const SINGLE_LOCATION_ZOOM_LEVEL = 13;
 const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
 const RESTAURANT_FIT_BOUNDS_PADDING = 80;
@@ -447,39 +443,6 @@ const mapStateBoundsToMapBounds = (state?: MapboxMapState | null): MapBounds | n
 const capitalizeFirst = (value: string): string =>
   value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
-const buildTopFoodOneLinerParts = (
-  avgLabel: string,
-  avgScore: number | null,
-  topFoods: RestaurantFoodSnippet[],
-  limit: number
-): { primary: string | null; rest: string } => {
-  let primary: string | null = null;
-  const segments: string[] = [];
-
-  if (avgScore !== null && Number.isFinite(avgScore)) {
-    primary = avgScore.toFixed(1);
-    segments.push(avgLabel);
-  } else {
-    segments.push(avgLabel);
-  }
-
-  const top = topFoods.slice(0, limit);
-  if (top.length) {
-    const topLabel = top
-      .map((food) => `${food.foodName} ${food.qualityScore.toFixed(1)}`)
-      .join(', ');
-    segments.push(`Top: ${topLabel}`);
-  }
-
-  const remaining = Math.max(topFoods.length - top.length, 0);
-  if (remaining > 0) {
-    segments.push(`+${remaining} more`);
-  }
-
-  const rest = segments.length ? ` ${segments.join(' · ')}` : '';
-  return { primary, rest };
-};
-
 const hasBoundsMovedSignificantly = (previous: MapBounds, next: MapBounds): boolean => {
   const centerShift = haversineDistanceMiles(getBoundsCenter(previous), getBoundsCenter(next));
   const previousDiagonal = Math.max(getBoundsDiagonalMiles(previous), 0.01);
@@ -581,7 +544,7 @@ const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
 const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
-const SECONDARY_METRIC_ICON_SIZE = 12;
+const SECONDARY_METRIC_ICON_SIZE = 14;
 const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
 const SPACING_XS = 2;
 const SPACING_SM = 3;
@@ -2878,28 +2841,27 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={styles.cardBodyStack}>
-                {dishMetaPrimaryLine ? (
-                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                    {dishMetaPrimaryLine}
-                  </View>
-                ) : null}
                 {dishStatusLine ? (
-                  <View style={styles.resultMetaLine}>
+                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
                     {dishStatusLine}
                   </View>
+                ) : null}
+                {dishMetaPrimaryLine ? (
+                  <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
                 ) : null}
                 <View style={styles.metricBlock}>
                   <View style={styles.metricLine}>
                     <HandPlatter
                       size={SECONDARY_METRIC_ICON_SIZE}
-                      color={themeColors.textPrimary}
+                      color={themeColors.primary}
                       strokeWidth={2}
+                      style={styles.metricIcon}
                     />
                     <Text variant="caption" weight="medium" style={styles.metricValue}>
                       {item.qualityScore.toFixed(1)}
                     </Text>
                     <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                      Dish
+                      Dish score
                     </Text>
                     <TouchableOpacity
                       onPress={handleDishInfoPress}
@@ -2959,15 +2921,12 @@ const SearchScreen: React.FC = () => {
         ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) /
           topFoodItems.length
         : null;
-    const topFoodAvgLabel = primaryFoodTerm
-      ? `${capitalizeFirst(primaryFoodTerm.trim())} avg`
-      : 'Dish avg';
-    const topFoodOneLiner = buildTopFoodOneLinerParts(
-      topFoodAvgLabel,
-      topFoodAverage,
-      topFoodItems,
-      TOP_FOOD_RENDER_LIMIT
-    );
+    const topFoodPrimaryLabel = primaryFoodTerm
+      ? capitalizeFirst(primaryFoodTerm.trim())
+      : null;
+    const topFoodAvgLabel = topFoodPrimaryLabel
+      ? 'Average dish score'
+      : 'Average dish score';
     const restaurantMetaLine = renderMetaDetailLine(
       null,
       null,
@@ -3024,29 +2983,27 @@ const SearchScreen: React.FC = () => {
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
-              {restaurantStatusLine ? (
-                <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
-              ) : null}
               <View style={styles.metricBlock}>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
-                      <Store size={SECONDARY_METRIC_ICON_SIZE} color="#0f172a" strokeWidth={2} />
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={styles.metricSupportValue}
-                    >
-                      {restaurant.restaurantQualityScore.toFixed(1)}
-                    </Text>
+                    <Store
+                      size={SECONDARY_METRIC_ICON_SIZE}
+                      color={themeColors.primary}
+                      strokeWidth={2}
+                      style={styles.metricIcon}
+                    />
+                      <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
+                        {restaurant.restaurantQualityScore.toFixed(1)}
+                      </Text>
                       <Text
                         variant="caption"
                         weight="regular"
                         style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
                         numberOfLines={1}
                       >
-                        Restaurant
+                        Restaurant score
                       </Text>
                       <TouchableOpacity
                         onPress={handleRestaurantInfoPress}
@@ -3103,40 +3060,89 @@ const SearchScreen: React.FC = () => {
             </View>
           </View>
           <View style={styles.resultContent}>
-            {topFoodItems.length ? (
-              <View style={styles.topFoodOneLinerRow}>
-                <HandPlatter
-                  size={SECONDARY_METRIC_ICON_SIZE}
-                  color={themeColors.textPrimary}
-                  strokeWidth={2}
-                />
-                <Text
-                  variant="caption"
-                  weight="regular"
-                  style={styles.topFoodOneLinerText}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {topFoodOneLiner.primary ? (
-                    <Text
-                      variant="caption"
-                      weight="semibold"
-                      style={styles.topFoodOneLinerPrimary}
-                    >
-                      {topFoodOneLiner.primary}
-                    </Text>
-                  ) : null}
-                  {topFoodOneLiner.rest ? (
-                    <Text
-                      variant="caption"
-                      weight="regular"
-                      style={styles.topFoodOneLinerRest}
-                    >
-                      {topFoodOneLiner.rest}
-                    </Text>
-                  ) : null}
-                </Text>
+            {restaurantStatusLine ? (
+              <View style={[styles.resultMetaLine, styles.resultContentStatusLine]}>
+                {restaurantStatusLine}
               </View>
+            ) : null}
+            {topFoodItems.length ? (
+              <View
+                style={[
+                  styles.topFoodSection,
+                  !restaurantStatusLine && styles.topFoodSectionWithMargin,
+                ]}
+              >
+                <View style={styles.topFoodHeader}>
+                  <View style={styles.topFoodAvgRow}>
+                    <HandPlatter
+                      size={SECONDARY_METRIC_ICON_SIZE}
+                      color={themeColors.primary}
+                      strokeWidth={2}
+                      style={styles.metricIcon}
+                    />
+                    {topFoodAverage !== null ? (
+                      <Text variant="caption" weight="medium" style={styles.topFoodScorePrimary}>
+                        {topFoodAverage.toFixed(1)}
+                      </Text>
+                    ) : null}
+                    {topFoodPrimaryLabel ? (
+                      <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                          Average{' '}
+                        </Text>
+                        <Text
+                          variant="caption"
+                          weight="semibold"
+                          style={styles.topFoodLabelStrong}
+                        >
+                          {topFoodPrimaryLabel}
+                        </Text>
+                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                          {' '}
+                          score
+                        </Text>
+                      </Text>
+                    ) : (
+                      <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                        {topFoodAvgLabel}
+                      </Text>
+                    )}
+                  </View>
+                  <View style={styles.topFoodDivider} />
+                </View>
+                <View style={styles.topFoodInlineRow}>
+                  <View style={styles.topFoodInlineList}>
+                    {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
+                      <Text key={food.connectionId} style={styles.topFoodInlineText}>
+                        <Text
+                          variant="caption"
+                          weight="semibold"
+                          style={styles.topFoodRankInline}
+                        >
+                          {idx + 1}.
+                        </Text>
+                        <Text
+                          variant="caption"
+                          weight="regular"
+                          style={styles.topFoodNameInline}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {' '}
+                          {food.foodName}
+                        </Text>
+                      </Text>
+                    ))}
+                    {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
+                      <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
+                        +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              </View>
+            ) : restaurantStatusLine ? (
+              <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
             ) : null}
           </View>
         </Pressable>
@@ -3267,7 +3273,10 @@ const SearchScreen: React.FC = () => {
   }, [activeTab, error, isLoading, results]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   const resultsHeaderComponent = (
-    <Reanimated.View style={[overlaySheetStyles.header, styles.resultsHeader]} onLayout={handleResultsHeaderLayout}>
+    <Reanimated.View
+      style={[overlaySheetStyles.header, styles.resultsHeader]}
+      onLayout={handleResultsHeaderLayout}
+    >
       {resultsHeaderLayout.width > 0 && resultsHeaderLayout.height > 0 ? (
         <MaskedView
           pointerEvents="none"
@@ -3587,7 +3596,10 @@ const SearchScreen: React.FC = () => {
           </Reanimated.View>
           {shouldRenderSheet ? (
             <>
-              <Reanimated.View pointerEvents="none" style={[styles.resultsShadow, resultsContainerAnimatedStyle]} />
+              <Reanimated.View
+                pointerEvents="none"
+                style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
+              />
               <BottomSheetWithFlashList
                 visible={shouldRenderSheet}
                 snapPoints={snapPoints}
@@ -4521,7 +4533,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 24,
+    height: 24,
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
@@ -4551,6 +4564,9 @@ const styles = StyleSheet.create({
     columnGap: 4,
     rowGap: 2,
   },
+  metricIcon: {
+    marginRight: 2,
+  },
   metricDot: {
     color: themeColors.textBody,
     fontSize: META_FONT_SIZE,
@@ -4573,7 +4589,7 @@ const styles = StyleSheet.create({
   metricCountersInline: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 14,
   },
   metricCounterItem: {
     flexDirection: 'row',
@@ -4773,23 +4789,81 @@ const styles = StyleSheet.create({
   dishSubtitleSmall: {
     fontSize: 12,
   },
-  topFoodOneLinerRow: {
+  topFoodSection: {
+    marginTop: 0,
+    marginBottom: 0,
+    gap: CARD_LINE_GAP,
+  },
+  topFoodSectionWithMargin: {
     marginTop: CARD_LINE_GAP,
+  },
+  topFoodLabel: {
+    color: themeColors.textBody,
+    letterSpacing: 0.6,
+    textTransform: 'none',
+  },
+  topFoodLabelStrong: {
+    color: themeColors.textBody,
+  },
+  topFoodHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: SPACING_SM,
+    gap: SPACING_SM,
+  },
+  topFoodAvgRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING_SM,
+  },
+  topFoodDivider: {
+    flex: 1,
+    height: 0,
+    backgroundColor: 'transparent',
+  },
+  topFoodInlineRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 0,
+    minWidth: 0,
+    flexWrap: 'wrap',
+    columnGap: CARD_LINE_GAP,
+    rowGap: CARD_LINE_GAP,
+  },
+  topFoodInlineList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: CARD_LINE_GAP,
+    rowGap: CARD_LINE_GAP,
+    flexShrink: 1,
     minWidth: 0,
   },
-  topFoodOneLinerText: {
+  topFoodInlineItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    columnGap: 6,
+    minWidth: 0,
+  },
+  topFoodInlineText: {
     color: themeColors.textBody,
     flexShrink: 1,
     minWidth: 0,
   },
-  topFoodOneLinerPrimary: {
-    color: themeColors.textPrimary,
+  topFoodRankInline: {
+    color: themeColors.secondaryAccent,
   },
-  topFoodOneLinerRest: {
+  topFoodNameInline: {
     color: themeColors.textBody,
+  },
+  topFoodMore: {
+    color: themeColors.secondaryAccent,
+    marginTop: 0,
+    alignSelf: 'flex-start',
+    paddingLeft: 0,
+    flexShrink: 0,
+  },
+  resultContentStatusLine: {
+    marginTop: CARD_LINE_GAP,
+    marginBottom: CARD_LINE_GAP,
   },
   loadingText: {
     marginTop: 16,

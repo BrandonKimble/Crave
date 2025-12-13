@@ -332,7 +332,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
     const restaurantLabel =
       pollType === 'best_dish'
-        ? (restaurantSelection?.name ?? restaurantQuery.trim())
+        ? restaurantSelection?.name ?? restaurantQuery.trim()
         : activePoll.question;
 
     const dishLabel = dishSelection?.name ?? dishQuery.trim();
@@ -612,10 +612,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
       keyExtractor={(item) => item.pollId}
       estimatedItemSize={98}
       ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
-      contentContainerStyle={[
-        styles.scrollContent,
-        { paddingBottom: contentBottomPadding },
-      ]}
+      contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
       ListHeaderComponent={listHeaderComponent}
       ListFooterComponent={listFooterComponent}
       ListEmptyComponent={listEmptyComponent}

@@ -1,5 +1,12 @@
 import React from 'react';
-import { ActivityIndicator, Dimensions, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../components';
@@ -88,7 +95,10 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
             {item.entity?.city ? ` • ${item.entity.city}` : ''}
           </Text>
         </View>
-        <TouchableOpacity onPress={() => void handleRemoveFavorite(item)} style={styles.removeButton}>
+        <TouchableOpacity
+          onPress={() => void handleRemoveFavorite(item)}
+          style={styles.removeButton}
+        >
           <Text variant="caption" weight="semibold" style={styles.removeButtonText}>
             Remove
           </Text>
