@@ -2754,14 +2754,14 @@ const SearchScreen: React.FC = () => {
                     {index + 1}
                   </Text>
                 </View>
-	                <Text
-	                  variant="subtitle"
-	                  weight="semibold"
-	                  style={styles.textSlate900}
-	                  numberOfLines={1}
-	                >
-	                  {item.foodName}
-	                </Text>
+                <Text
+                  variant="subtitle"
+                  weight="semibold"
+                  style={styles.textSlate900}
+                  numberOfLines={1}
+                >
+                  {item.foodName}
+                </Text>
               </View>
               <View style={styles.cardBodyStack}>
                 {dishMetaPrimaryLine ? (
@@ -2892,14 +2892,14 @@ const SearchScreen: React.FC = () => {
                     {index + 1}
                   </Text>
                 </View>
-	                <Text
-	                  variant="subtitle"
-	                  weight="semibold"
-	                  style={styles.textSlate900}
-	                  numberOfLines={1}
-	                >
-	                  {restaurant.restaurantName}
-	                </Text>
+                <Text
+                  variant="subtitle"
+                  weight="semibold"
+                  style={styles.textSlate900}
+                  numberOfLines={1}
+                >
+                  {restaurant.restaurantName}
+                </Text>
               </View>
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
@@ -2932,14 +2932,14 @@ const SearchScreen: React.FC = () => {
                           style={styles.scoreInfoIconButton}
                           hitSlop={8}
                           accessibilityRole="button"
-                      accessibilityLabel="How restaurant scores are calculated"
-                    >
-                      <InfoCircleIcon
-                        size={SECONDARY_METRIC_ICON_SIZE + 2}
-                        color={themeColors.secondaryAccent}
-                        strokeWidth={2}
-                      />
-                    </TouchableOpacity>
+                          accessibilityLabel="How restaurant scores are calculated"
+                        >
+                          <InfoCircleIcon
+                            size={SECONDARY_METRIC_ICON_SIZE + 2}
+                            color={themeColors.secondaryAccent}
+                            strokeWidth={2}
+                          />
+                        </TouchableOpacity>
                       </View>
                       {priceRangeLabel ? (
                         <View style={styles.restaurantMetricRight}>
@@ -3332,28 +3332,28 @@ const SearchScreen: React.FC = () => {
                   allowOverlap
                   style={[styles.markerView, { zIndex }]}
                 >
-	                  <View style={[styles.pinWrapper, styles.pinShadow]}>
-	                    <Image source={pinAsset} style={styles.pinBase} />
-	                    <Image
-	                      source={pinFillAsset}
-	                      style={[
-	                        styles.pinFill,
-	                        {
-	                          tintColor: feature.properties.pinColor,
-	                        },
-	                      ]}
-	                    />
-	                    <View style={styles.pinRankWrapper}>
-	                      <Text variant="caption" style={styles.pinRank}>
-	                        {feature.properties.rank}
-	                      </Text>
-	                    </View>
-	                  </View>
-	                </MapboxGL.MarkerView>
-	              );
-	            })}
-	          </React.Fragment>
-	        ) : null}
+                  <View style={[styles.pinWrapper, styles.pinShadow]}>
+                    <Image source={pinAsset} style={styles.pinBase} />
+                    <Image
+                      source={pinFillAsset}
+                      style={[
+                        styles.pinFill,
+                        {
+                          tintColor: feature.properties.pinColor,
+                        },
+                      ]}
+                    />
+                    <View style={styles.pinRankWrapper}>
+                      <Text variant="caption" style={styles.pinRank}>
+                        {feature.properties.rank}
+                      </Text>
+                    </View>
+                  </View>
+                </MapboxGL.MarkerView>
+              );
+            })}
+          </React.Fragment>
+        ) : null}
         {restaurantFeatures.features.length ? (
           <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
             <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />

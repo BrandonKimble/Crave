@@ -1,10 +1,6 @@
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  favoritesService,
-  type Favorite,
-  type FavoriteEntityType,
-} from '../services/favorites';
+import { favoritesService, type Favorite, type FavoriteEntityType } from '../services/favorites';
 import { logger } from '../utils';
 
 export const favoritesKeys = {
@@ -22,10 +18,7 @@ type ToggleFavoriteContext = {
   previousFavorites: Favorite[] | undefined;
 };
 
-const buildOptimisticFavorite = (
-  entityId: string,
-  entityType: FavoriteEntityType,
-): Favorite => ({
+const buildOptimisticFavorite = (entityId: string, entityType: FavoriteEntityType): Favorite => ({
   favoriteId: `temp-${entityId}`,
   entityId,
   entityType,
@@ -51,58 +44,54 @@ export function useFavorites(options: { enabled?: boolean } = {}) {
 
   const favoriteMap = React.useMemo(
     () => new Map(favorites.map((favorite) => [favorite.entityId, favorite])),
-    [favorites],
+    [favorites]
   );
 
-  const toggleMutation = useMutation<Favorite | void, unknown, ToggleFavoriteInput, ToggleFavoriteContext>(
-    {
-      mutationFn: async ({ entityId, entityType, nextIsFavorite }) => {
-        if (nextIsFavorite) {
-          return favoritesService.add(entityId, entityType);
-        }
-        await favoritesService.removeByEntityId(entityId);
-      },
-      onMutate: ({ entityId, entityType, nextIsFavorite }) => {
-        const previousFavorites = queryClient.getQueryData<Favorite[]>(
-          favoritesKeys.list(),
-        );
-
-        queryClient.setQueryData<Favorite[]>(favoritesKeys.list(), (current) => {
-          const existing = current ?? [];
-          const without = existing.filter((favorite) => favorite.entityId !== entityId);
-
-          if (!nextIsFavorite) {
-            return without;
-          }
-
-          return [buildOptimisticFavorite(entityId, entityType), ...without];
-        });
-
-        void queryClient.cancelQueries({ queryKey: favoritesKeys.list() });
-        return { previousFavorites };
-      },
-      onSuccess: (result, variables) => {
-        if (!variables.nextIsFavorite || !result) {
-          return;
-        }
-
-        queryClient.setQueryData<Favorite[]>(favoritesKeys.list(), (current) => {
-          const existing = current ?? [];
-          const without = existing.filter(
-            (favorite) => favorite.entityId !== variables.entityId,
-          );
-          return [result, ...without];
-        });
-      },
-      onError: (error, _variables, context) => {
-        logger.error('Failed to toggle favorite', error);
-        queryClient.setQueryData<Favorite[]>(
-          favoritesKeys.list(),
-          context?.previousFavorites ?? [],
-        );
-      },
+  const toggleMutation = useMutation<
+    Favorite | void,
+    unknown,
+    ToggleFavoriteInput,
+    ToggleFavoriteContext
+  >({
+    mutationFn: async ({ entityId, entityType, nextIsFavorite }) => {
+      if (nextIsFavorite) {
+        return favoritesService.add(entityId, entityType);
+      }
+      await favoritesService.removeByEntityId(entityId);
     },
-  );
+    onMutate: ({ entityId, entityType, nextIsFavorite }) => {
+      const previousFavorites = queryClient.getQueryData<Favorite[]>(favoritesKeys.list());
+
+      queryClient.setQueryData<Favorite[]>(favoritesKeys.list(), (current) => {
+        const existing = current ?? [];
+        const without = existing.filter((favorite) => favorite.entityId !== entityId);
+
+        if (!nextIsFavorite) {
+          return without;
+        }
+
+        return [buildOptimisticFavorite(entityId, entityType), ...without];
+      });
+
+      void queryClient.cancelQueries({ queryKey: favoritesKeys.list() });
+      return { previousFavorites };
+    },
+    onSuccess: (result, variables) => {
+      if (!variables.nextIsFavorite || !result) {
+        return;
+      }
+
+      queryClient.setQueryData<Favorite[]>(favoritesKeys.list(), (current) => {
+        const existing = current ?? [];
+        const without = existing.filter((favorite) => favorite.entityId !== variables.entityId);
+        return [result, ...without];
+      });
+    },
+    onError: (error, _variables, context) => {
+      logger.error('Failed to toggle favorite', error);
+      queryClient.setQueryData<Favorite[]>(favoritesKeys.list(), context?.previousFavorites ?? []);
+    },
+  });
 
   const toggleFavorite = React.useCallback(
     async (entityId: string, entityType: FavoriteEntityType) => {
@@ -117,11 +106,8 @@ export function useFavorites(options: { enabled?: boolean } = {}) {
       inFlightRef.current.add(entityId);
 
       try {
-        const currentFavorites =
-          queryClient.getQueryData<Favorite[]>(favoritesKeys.list()) ?? [];
-        const isFavorite = currentFavorites.some(
-          (favorite) => favorite.entityId === entityId,
-        );
+        const currentFavorites = queryClient.getQueryData<Favorite[]>(favoritesKeys.list()) ?? [];
+        const isFavorite = currentFavorites.some((favorite) => favorite.entityId === entityId);
 
         try {
           await toggleMutation.mutateAsync({
@@ -136,7 +122,7 @@ export function useFavorites(options: { enabled?: boolean } = {}) {
         inFlightRef.current.delete(entityId);
       }
     },
-    [queryClient, toggleMutation],
+    [queryClient, toggleMutation]
   );
 
   return {

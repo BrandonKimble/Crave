@@ -510,12 +510,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   <View style={styles.priceSelectorMaskFill} pointerEvents="none" />
                 </MaskedView>
               ) : null}
-              <View
-                style={[
-                  styles.priceSelector,
-                  { marginHorizontal: contentHorizontalPadding },
-                ]}
-              >
+              <View style={[styles.priceSelector, { marginHorizontal: contentHorizontalPadding }]}>
                 <View style={styles.priceSelectorHeader}>
                   <View>
                     <Text variant="caption" style={styles.priceFilterLabel}>
@@ -558,11 +553,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                       renderRailSelected={renderSliderRailSelected}
                       onValueChanged={(low: number, high: number, fromUser?: boolean) => {
                         const nextLow = Math.min(high, Math.max(low, priceLevelValues[0]));
-                        const nextHigh = Math.max(nextLow, Math.min(high, priceLevelValues.at(-1)!));
-                        if (
-                          nextLow === pendingPriceRange[0] &&
-                          nextHigh === pendingPriceRange[1]
-                        ) {
+                        const nextHigh = Math.max(
+                          nextLow,
+                          Math.min(high, priceLevelValues.at(-1)!)
+                        );
+                        if (nextLow === pendingPriceRange[0] && nextHigh === pendingPriceRange[1]) {
                           return;
                         }
                         onPriceChange([nextLow, nextHigh]);
