@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { CreateFavoriteDto } from './dto/create-favorite.dto';
@@ -38,7 +42,12 @@ export class FavoritesService {
     });
 
     if (!entity) {
+      // Keep this one strict so clients can surface a real error for missing entities.
       throw new NotFoundException('Entity not found');
+    }
+
+    if (dto.entityType && dto.entityType !== entity.type) {
+      throw new BadRequestException('Entity type mismatch for favorite');
     }
 
     const favorite = await this.prisma.userFavorite.upsert({
@@ -77,22 +86,37 @@ export class FavoritesService {
   }
 
   async removeFavorite(userId: string, favoriteId: string): Promise<void> {
-    const favorite = await this.prisma.userFavorite.findUnique({
-      where: { favoriteId },
-      select: { favoriteId: true, userId: true },
+    const result = await this.prisma.userFavorite.deleteMany({
+      where: { favoriteId, userId },
     });
 
-    if (!favorite || favorite.userId !== userId) {
-      throw new NotFoundException('Favorite not found');
+    if (result.count === 0) {
+      this.logger.debug('Favorite already removed', { userId, favoriteId });
+      return;
     }
-
-    await this.prisma.userFavorite.delete({
-      where: { favoriteId },
-    });
 
     this.logger.debug('Removed user favorite', {
       userId,
       favoriteId,
+    });
+  }
+
+  async removeFavoriteByEntityId(
+    userId: string,
+    entityId: string,
+  ): Promise<void> {
+    const result = await this.prisma.userFavorite.deleteMany({
+      where: { userId, entityId },
+    });
+
+    if (result.count === 0) {
+      this.logger.debug('Favorite already removed', { userId, entityId });
+      return;
+    }
+
+    this.logger.debug('Removed user favorite', {
+      userId,
+      entityId,
     });
   }
 }

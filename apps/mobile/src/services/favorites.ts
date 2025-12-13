@@ -17,15 +17,18 @@ export interface Favorite {
 }
 
 export const favoritesService = {
-  async list(): Promise<Favorite[]> {
-    const response = await api.get<Favorite[]>('/favorites');
+  async list(options: { signal?: AbortSignal } = {}): Promise<Favorite[]> {
+    const response = await api.get<Favorite[]>('/favorites', { signal: options.signal });
     return response.data;
   },
-  async add(entityId: string, entityType?: FavoriteEntityType): Promise<Favorite> {
+  async add(entityId: string, entityType: FavoriteEntityType): Promise<Favorite> {
     const response = await api.post<Favorite>('/favorites', { entityId, entityType });
     return response.data;
   },
   async remove(favoriteId: string): Promise<void> {
     await api.delete(`/favorites/${favoriteId}`);
+  },
+  async removeByEntityId(entityId: string): Promise<void> {
+    await api.delete(`/favorites/entity/${entityId}`);
   },
 };

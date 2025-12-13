@@ -3,7 +3,9 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
+  ParseUUIDPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -28,7 +30,20 @@ export class FavoritesController {
     return this.favoritesService.addFavorite(user.userId, dto);
   }
 
+  @Delete('entity/:entityId')
+  @HttpCode(204)
+  removeFavoriteByEntityId(
+    @CurrentUser() user: User,
+    @Param('entityId', ParseUUIDPipe) entityId: string,
+  ) {
+    return this.favoritesService.removeFavoriteByEntityId(
+      user.userId,
+      entityId,
+    );
+  }
+
   @Delete(':favoriteId')
+  @HttpCode(204)
   removeFavorite(
     @CurrentUser() user: User,
     @Param('favoriteId') favoriteId: string,

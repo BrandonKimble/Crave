@@ -72,7 +72,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   const handleRemoveFavorite = React.useCallback(async (favorite: Favorite) => {
     setFavorites((prev) => prev.filter((item) => item.favoriteId !== favorite.favoriteId));
     try {
-      await favoritesService.remove(favorite.favoriteId);
+      await favoritesService.removeByEntityId(favorite.entityId);
     } catch (removeError) {
       logger.error('Failed to remove favorite from bookmarks', removeError);
       setFavorites((prev) => [favorite, ...prev]);

@@ -66,7 +66,6 @@ import {
 import { logger } from '../../utils';
 import { searchService, type StructuredSearchRequest } from '../../services/search';
 import type { AutocompleteMatch } from '../../services/autocomplete';
-import { favoritesService, type Favorite } from '../../services/favorites';
 import { useSearchStore } from '../../store/searchStore';
 import type {
   SearchResponse,
@@ -86,6 +85,7 @@ import type { RootStackParamList } from '../../types/navigation';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import type { QueryPlan } from '../../types';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
+import { useFavorites } from '../../hooks/use-favorites';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
 import SearchFilters from './components/SearchFilters';
@@ -146,7 +146,6 @@ const PIN_FILL_LEFT_OFFSET =
 const PIN_FILL_TOP_OFFSET =
   (PIN_BASE_HEIGHT * PIN_BASE_SCALE - PIN_FILL_RENDER_HEIGHT) / 2 +
   PIN_FILL_VERTICAL_BIAS * PIN_BASE_SCALE;
-const PIN_RANK_TEXT_OFFSET_Y = -1; // lift rank text slightly toward the top of the fill
 const AUTOCOMPLETE_MIN_CHARS = 1;
 const MARKER_SHADOW_STYLE = {
   shadowColor: 'rgba(0, 0, 0, 0.35)',
@@ -551,6 +550,7 @@ const SPACING_SM = 3;
 const SPACING_MD = 5;
 const CARD_LINE_GAP = 6;
 const CARD_VERTICAL_PADDING = 12;
+const CARD_VERTICAL_PADDING_BALANCE = 2;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
 const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 const PollIcon = ({
@@ -640,6 +640,9 @@ const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
+  const { favoriteMap, favoritesVersion, toggleFavorite } = useFavorites({
+    enabled: !!isSignedIn,
+  });
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
@@ -796,7 +799,6 @@ const SearchScreen: React.FC = () => {
     width: number;
     height: number;
   }>({ width: 0, height: 0 });
-  const [favoriteMap, setFavoriteMap] = React.useState<Map<string, Favorite>>(new Map());
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [isRecentLoading, setIsRecentLoading] = React.useState(false);
@@ -1605,20 +1607,6 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
-  const loadFavorites = React.useCallback(async () => {
-    try {
-      const data = await favoritesService.list();
-      setFavoriteMap(new Map(data.map((favorite) => [favorite.entityId, favorite])));
-    } catch (favoriteError) {
-      logger.warn('Failed to load favorites', {
-        error: favoriteError instanceof Error ? favoriteError.message : 'unknown',
-      });
-    }
-  }, []);
-
-  React.useEffect(() => {
-    void loadFavorites();
-  }, [loadFavorites]);
 
   const restaurantsById = React.useMemo(() => {
     const map = new Map<string, RestaurantResult>();
@@ -2646,74 +2634,6 @@ const SearchScreen: React.FC = () => {
     commitPriceSelection();
   }, [commitPriceSelection]);
 
-  const toggleFavorite = React.useCallback(
-    async (entityId: string, entityType: FavoriteEntityType) => {
-      if (!entityId) {
-        return;
-      }
-      const existing = favoriteMap.get(entityId);
-      if (existing) {
-        setFavoriteMap((prev) => {
-          const next = new Map(prev);
-          next.delete(entityId);
-          return next;
-        });
-        try {
-          if (!existing.favoriteId.startsWith('temp-')) {
-            await favoritesService.remove(existing.favoriteId);
-          }
-        } catch (error) {
-          const status = (error as { response?: { status?: number } })?.response?.status;
-          if (status === 404) {
-            logger.warn('Favorite already removed remotely; syncing local state', { entityId });
-          } else {
-            logger.error('Failed to remove favorite', error);
-            setFavoriteMap((prev) => {
-              const next = new Map(prev);
-              next.set(entityId, existing);
-              return next;
-            });
-          }
-        }
-        return;
-      }
-
-      const optimistic: Favorite = {
-        favoriteId: `temp-${entityId}`,
-        entityId,
-        entityType,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        entity: null,
-      };
-
-      setFavoriteMap((prev) => {
-        const next = new Map(prev);
-        next.set(entityId, optimistic);
-        return next;
-      });
-
-      try {
-        const saved = await favoritesService.add(entityId, entityType);
-        setFavoriteMap((prev) => {
-          const next = new Map(prev);
-          next.set(entityId, saved);
-          return next;
-        });
-      } catch (error) {
-        logger.error('Failed to add favorite', error);
-        setFavoriteMap((prev) => {
-          const next = new Map(prev);
-          if (next.get(entityId)?.favoriteId === optimistic.favoriteId) {
-            next.delete(entityId);
-          }
-          return next;
-        });
-      }
-    },
-    [favoriteMap]
-  );
-
   const openRestaurantProfile = React.useCallback(
     (restaurant: RestaurantResult, foodResultsOverride?: FoodResult[]) => {
       const sourceDishes = foodResultsOverride ?? dishes;
@@ -2764,7 +2684,7 @@ const SearchScreen: React.FC = () => {
 
   const handleRestaurantFavoriteToggle = React.useCallback(
     (restaurantId: string) => {
-      void toggleFavorite(restaurantId);
+      void toggleFavorite(restaurantId, 'restaurant');
     },
     [toggleFavorite]
   );
@@ -2830,16 +2750,18 @@ const SearchScreen: React.FC = () => {
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
                 <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                  <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                  <Text variant="caption" style={styles.rankBadgeText}>
+                    {index + 1}
+                  </Text>
                 </View>
-                <Text
-                  variant="subtitle"
-                  weight="semibold"
-                  style={[styles.textSlate900, styles.resultTitle]}
-                  numberOfLines={1}
-                >
-                  {item.foodName}
-                </Text>
+	                <Text
+	                  variant="subtitle"
+	                  weight="semibold"
+	                  style={styles.textSlate900}
+	                  numberOfLines={1}
+	                >
+	                  {item.foodName}
+	                </Text>
               </View>
               <View style={styles.cardBodyStack}>
                 {dishMetaPrimaryLine ? (
@@ -2966,16 +2888,18 @@ const SearchScreen: React.FC = () => {
             <View style={styles.resultTitleContainer}>
               <View style={styles.titleRow}>
                 <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                  <Text style={styles.rankBadgeText}>{index + 1}</Text>
+                  <Text variant="caption" style={styles.rankBadgeText}>
+                    {index + 1}
+                  </Text>
                 </View>
-                <Text
-                  variant="subtitle"
-                  weight="semibold"
-                  style={[styles.textSlate900, styles.resultTitle]}
-                  numberOfLines={1}
-                >
-                  {restaurant.restaurantName}
-                </Text>
+	                <Text
+	                  variant="subtitle"
+	                  weight="semibold"
+	                  style={styles.textSlate900}
+	                  numberOfLines={1}
+	                >
+	                  {restaurant.restaurantName}
+	                </Text>
               </View>
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
@@ -3202,8 +3126,13 @@ const SearchScreen: React.FC = () => {
   const flatListDebugData = React.useMemo(() => {
     const length = safeResultsData.length;
     const sample = length > 0 ? safeResultsData[0] : null;
-    return { isDishesTab, length, sampleType: sample ? typeof sample : 'nullish' };
-  }, [isDishesTab, safeResultsData]);
+    return {
+      isDishesTab,
+      length,
+      sampleType: sample ? typeof sample : 'nullish',
+      favoritesVersion,
+    };
+  }, [favoritesVersion, isDishesTab, safeResultsData]);
 
   const renderSafeItem = React.useCallback<
     NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
@@ -3341,7 +3270,7 @@ const SearchScreen: React.FC = () => {
         onLayout={handleResultsHeaderRowLayout}
         style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
       >
-        <Text variant="subtitle" weight="semibold" style={styles.submittedQueryLabel}>
+        <Text variant="title" weight="semibold" style={styles.submittedQueryLabel}>
           {submittedQuery || 'Results'}
         </Text>
         <Pressable
@@ -3403,24 +3332,28 @@ const SearchScreen: React.FC = () => {
                   allowOverlap
                   style={[styles.markerView, { zIndex }]}
                 >
-                  <View style={[styles.pinWrapper, styles.pinShadow]}>
-                    <Image source={pinAsset} style={styles.pinBase} />
-                    <Image
-                      source={pinFillAsset}
-                      style={[
-                        styles.pinFill,
-                        {
-                          tintColor: feature.properties.pinColor,
-                        },
-                      ]}
-                    />
-                    <Text style={styles.pinRank}>{feature.properties.rank}</Text>
-                  </View>
-                </MapboxGL.MarkerView>
-              );
-            })}
-          </React.Fragment>
-        ) : null}
+	                  <View style={[styles.pinWrapper, styles.pinShadow]}>
+	                    <Image source={pinAsset} style={styles.pinBase} />
+	                    <Image
+	                      source={pinFillAsset}
+	                      style={[
+	                        styles.pinFill,
+	                        {
+	                          tintColor: feature.properties.pinColor,
+	                        },
+	                      ]}
+	                    />
+	                    <View style={styles.pinRankWrapper}>
+	                      <Text variant="caption" style={styles.pinRank}>
+	                        {feature.properties.rank}
+	                      </Text>
+	                    </View>
+	                  </View>
+	                </MapboxGL.MarkerView>
+	              );
+	            })}
+	          </React.Fragment>
+	        ) : null}
         {restaurantFeatures.features.length ? (
           <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
             <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
@@ -3627,7 +3560,7 @@ const SearchScreen: React.FC = () => {
                 ListHeaderComponent={listHeader}
                 ListFooterComponent={resultsListFooterComponent}
                 ListEmptyComponent={resultsListEmptyComponent}
-                contentContainerStyle={styles.resultsScrollContent}
+                contentContainerStyle={{ paddingBottom: RESULTS_BOTTOM_PADDING }}
                 backgroundComponent={<FrostedGlassBackground />}
                 headerComponent={resultsHeaderComponent}
                 listRef={resultsScrollRef}
@@ -3832,12 +3765,23 @@ const styles = StyleSheet.create({
     left: PIN_FILL_LEFT_OFFSET,
     top: PIN_FILL_TOP_OFFSET,
   },
+  pinRankWrapper: {
+    position: 'absolute',
+    left: PIN_FILL_LEFT_OFFSET,
+    top: PIN_FILL_TOP_OFFSET,
+    width: PIN_FILL_RENDER_WIDTH,
+    height: PIN_FILL_RENDER_HEIGHT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pinRank: {
     fontSize: 12,
     fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
-    transform: [{ translateY: PIN_RANK_TEXT_OFFSET_Y }],
+    fontVariant: ['tabular-nums'],
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   overlay: {
     flex: 1,
@@ -4388,10 +4332,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  resultsScrollContent: {
-    paddingBottom: RESULTS_BOTTOM_PADDING,
-    paddingTop: 0,
-  },
   resultsListHeader: {
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
@@ -4467,8 +4407,8 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   resultItem: {
-    paddingTop: CARD_VERTICAL_PADDING,
-    paddingBottom: CARD_VERTICAL_PADDING,
+    paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
+    paddingBottom: CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
     marginBottom: CARD_GAP,
@@ -4476,7 +4416,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   resultItemWithFilters: {
-    paddingTop: CARD_VERTICAL_PADDING,
+    paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
   },
   resultPressable: {
     width: '100%',
@@ -4514,14 +4454,12 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   rankBadge: {
-    minWidth: 26,
+    width: 26,
     height: 24,
     borderRadius: 12,
     backgroundColor: themeColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    marginTop: -1,
   },
   rankBadgeText: {
     color: '#ffffff',
@@ -4532,10 +4470,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
-  },
-  resultTitle: {
-    fontSize: 18,
-    lineHeight: 24,
   },
   cardBodyStack: {
     width: '100%',
@@ -4845,7 +4779,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   topFoodRankInline: {
-    color: themeColors.secondaryAccent,
+    color: themeColors.primary,
   },
   topFoodNameInline: {
     color: themeColors.textBody,

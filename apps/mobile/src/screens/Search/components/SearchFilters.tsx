@@ -1,8 +1,8 @@
 import React from 'react';
-import { Animated, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
-import MultiSlider from '@ptomasroos/react-native-multi-slider';
+import RangeSlider from 'rn-range-slider';
 import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import Reanimated, {
   useAnimatedProps,
@@ -184,40 +184,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     scrollX.value = event.contentOffset.x;
   });
 
-  const PriceSliderMarker = React.useCallback(
-    ({ pressed }: { pressed?: boolean }) => {
-      const scale = React.useRef(new Animated.Value(pressed ? 1 : 0)).current;
-
-      React.useEffect(() => {
-        Animated.spring(scale, {
-          toValue: pressed ? 1 : 0,
-          useNativeDriver: true,
-          friction: 7,
-          tension: 120,
-        }).start();
-      }, [pressed, scale]);
-
-      const animatedStyle = {
-        transform: [
-          {
-            scale: scale.interpolate({
-              inputRange: [0, 1],
-              outputRange: [1, 1.1],
-            }),
-          },
-        ],
-      };
-
-      return (
-        <Animated.View
-          style={[
-            styles.priceSliderMarker,
-            { backgroundColor: accentColor, borderColor: accentColor },
-            animatedStyle,
-          ]}
-        />
-      );
-    },
+  const renderSliderThumb = React.useCallback(
+    () => <View style={[styles.priceSliderThumb, styles.priceSliderThumbShadow]} />,
+    []
+  );
+  const renderSliderRail = React.useCallback(() => <View style={styles.priceSliderRail} />, []);
+  const renderSliderRailSelected = React.useCallback(
+    () => <View style={[styles.priceSliderRailSelected, { backgroundColor: accentColor }]} />,
     [accentColor]
   );
 
@@ -573,23 +546,30 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   onLayout={onPriceSliderLayout}
                 >
                   {priceSliderWidth > 0 ? (
-                    <MultiSlider
+                    <RangeSlider
+                      style={[styles.priceSlider, { width: priceSliderWidth }]}
                       min={Math.min(...priceLevelValues)}
                       max={Math.max(...priceLevelValues)}
-                      step={0.01}
-                      values={pendingPriceRange}
-                      sliderLength={priceSliderWidth}
-                      onValuesChange={onPriceChange}
-                      onValuesChangeFinish={onPriceChangeFinish}
-                      allowOverlap={false}
-                      snapped={false}
-                      animateTransitions
-                      customMarkerLeft={PriceSliderMarker}
-                      customMarkerRight={PriceSliderMarker}
-                      selectedStyle={[styles.priceSliderSelected, { backgroundColor: accentColor }]}
-                      unselectedStyle={styles.priceSliderUnselected}
-                      containerStyle={styles.priceSlider}
-                      trackStyle={styles.priceSliderTrack}
+                      step={1}
+                      low={pendingPriceRange[0]}
+                      high={pendingPriceRange[1]}
+                      renderThumb={renderSliderThumb}
+                      renderRail={renderSliderRail}
+                      renderRailSelected={renderSliderRailSelected}
+                      onValueChanged={(low: number, high: number, fromUser?: boolean) => {
+                        const nextLow = Math.min(high, Math.max(low, priceLevelValues[0]));
+                        const nextHigh = Math.max(nextLow, Math.min(high, priceLevelValues.at(-1)!));
+                        if (
+                          nextLow === pendingPriceRange[0] &&
+                          nextHigh === pendingPriceRange[1]
+                        ) {
+                          return;
+                        }
+                        onPriceChange([nextLow, nextHigh]);
+                        if (fromUser !== false) {
+                          onPriceChangeFinish([nextLow, nextHigh]);
+                        }
+                      }}
                     />
                   ) : null}
                 </View>
@@ -812,37 +792,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   priceSlider: {
-    height: 32,
+    height: 40,
   },
-  priceSliderTrack: {
+  priceSliderRail: {
     height: 6,
     borderRadius: 999,
-  },
-  priceSliderSelected: {
-    backgroundColor: '#9fb1c5',
-  },
-  priceSliderUnselected: {
     backgroundColor: '#e6ecf3',
   },
-  priceSliderMarker: {
+  priceSliderRailSelected: {
+    height: 6,
+    borderRadius: 999,
+    backgroundColor: '#9fb1c5',
+  },
+  priceSliderThumb: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: '#1f2937',
-    backgroundColor: '#1f2937',
+    backgroundColor: '#ffffff',
+  },
+  priceSliderThumbShadow: {
     shadowColor: '#0f172a',
     shadowOpacity: 0.2,
     shadowOffset: { width: 0, height: 4 },
     shadowRadius: 8,
-  },
-  priceSliderMarkerActive: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#27303f',
-    shadowOpacity: 0.28,
-    shadowRadius: 10,
   },
   priceSliderLabelsRow: {
     flexDirection: 'row',

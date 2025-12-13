@@ -8,8 +8,8 @@ import {
 } from 'react-native';
 
 const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = {
-  title: { fontSize: 28, lineHeight: 34 },
-  subtitle: { fontSize: 20, lineHeight: 26 },
+  title: { fontSize: 20, lineHeight: 26 },
+  subtitle: { fontSize: 16, lineHeight: 24, includeFontPadding: false },
   body: { fontSize: 16, lineHeight: 22 },
   caption: { fontSize: 12, lineHeight: 15 },
 };
