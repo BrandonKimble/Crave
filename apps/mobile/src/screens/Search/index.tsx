@@ -550,6 +550,7 @@ const SPACING_XS = 2;
 const SPACING_SM = 3;
 const SPACING_MD = 5;
 const CARD_LINE_GAP = 6;
+const CARD_VERTICAL_PADDING = 12;
 const CAMERA_STORAGE_KEY = 'search:lastCamera';
 const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
 const PollIcon = ({
@@ -2841,11 +2842,6 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={styles.cardBodyStack}>
-                {dishStatusLine ? (
-                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                    {dishStatusLine}
-                  </View>
-                ) : null}
                 {dishMetaPrimaryLine ? (
                   <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
                 ) : null}
@@ -2872,12 +2868,17 @@ const SearchScreen: React.FC = () => {
                     >
                       <InfoCircleIcon
                         size={SECONDARY_METRIC_ICON_SIZE + 2}
-                        color={themeColors.textBody}
+                        color={themeColors.secondaryAccent}
                         strokeWidth={2}
                       />
                     </TouchableOpacity>
                   </View>
                 </View>
+                {dishStatusLine ? (
+                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
+                    {dishStatusLine}
+                  </View>
+                ) : null}
               </View>
             </View>
             <View style={styles.resultActions}>
@@ -2921,12 +2922,8 @@ const SearchScreen: React.FC = () => {
         ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) /
           topFoodItems.length
         : null;
-    const topFoodPrimaryLabel = primaryFoodTerm
-      ? capitalizeFirst(primaryFoodTerm.trim())
-      : null;
-    const topFoodAvgLabel = topFoodPrimaryLabel
-      ? 'Average dish score'
-      : 'Average dish score';
+    const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
+    const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
     const restaurantMetaLine = renderMetaDetailLine(
       null,
       null,
@@ -2983,52 +2980,135 @@ const SearchScreen: React.FC = () => {
               {restaurantMetaLine ? (
                 <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
               ) : null}
-              <View style={styles.metricBlock}>
+              <View style={[styles.resultContent, styles.resultContentStack]}>
                 {restaurant.restaurantQualityScore !== null &&
                 restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
-                    <View style={styles.restaurantMetricLeft}>
-                    <Store
-                      size={SECONDARY_METRIC_ICON_SIZE}
-                      color={themeColors.primary}
-                      strokeWidth={2}
-                      style={styles.metricIcon}
-                    />
-                      <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
-                        {restaurant.restaurantQualityScore.toFixed(1)}
-                      </Text>
-                      <Text
-                        variant="caption"
-                        weight="regular"
-                        style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
-                        numberOfLines={1}
-                      >
-                        Restaurant score
-                      </Text>
-                      <TouchableOpacity
-                        onPress={handleRestaurantInfoPress}
-                        style={styles.scoreInfoIconButton}
-                        hitSlop={8}
-                        accessibilityRole="button"
-                        accessibilityLabel="How restaurant scores are calculated"
-                      >
-                        <InfoCircleIcon
-                          size={SECONDARY_METRIC_ICON_SIZE + 2}
-                          color={themeColors.textBody}
+                  <View style={styles.metricBlock}>
+                    <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
+                      <View style={styles.restaurantMetricLeft}>
+                        <Store
+                          size={SECONDARY_METRIC_ICON_SIZE}
+                          color={themeColors.primary}
                           strokeWidth={2}
+                          style={styles.metricIcon}
                         />
-                      </TouchableOpacity>
-                    </View>
-                    {priceRangeLabel ? (
-                      <View style={styles.restaurantMetricRight}>
-                        <Text variant="caption" style={styles.metricDot}>
-                          {'·'}
+                        <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
+                          {restaurant.restaurantQualityScore.toFixed(1)}
                         </Text>
-                        <Text variant="caption" style={styles.resultMetaPrice} numberOfLines={1}>
-                          {priceRangeLabel}
+                        <Text
+                          variant="caption"
+                          weight="regular"
+                          style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
+                          numberOfLines={1}
+                        >
+                          Restaurant score
                         </Text>
+                        <TouchableOpacity
+                          onPress={handleRestaurantInfoPress}
+                          style={styles.scoreInfoIconButton}
+                          hitSlop={8}
+                          accessibilityRole="button"
+                      accessibilityLabel="How restaurant scores are calculated"
+                    >
+                      <InfoCircleIcon
+                        size={SECONDARY_METRIC_ICON_SIZE + 2}
+                        color={themeColors.secondaryAccent}
+                        strokeWidth={2}
+                      />
+                    </TouchableOpacity>
                       </View>
-                    ) : null}
+                      {priceRangeLabel ? (
+                        <View style={styles.restaurantMetricRight}>
+                          <Text variant="caption" style={styles.metricDot}>
+                            {'·'}
+                          </Text>
+                          <Text variant="caption" style={styles.resultMetaPrice} numberOfLines={1}>
+                            {priceRangeLabel}
+                          </Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                ) : null}
+                {topFoodItems.length ? (
+                  <View style={styles.topFoodSection}>
+                    <View style={styles.topFoodHeader}>
+                      <View style={styles.topFoodAvgRow}>
+                        <HandPlatter
+                          size={SECONDARY_METRIC_ICON_SIZE}
+                          color={themeColors.primary}
+                          strokeWidth={2}
+                          style={styles.metricIcon}
+                        />
+                        {topFoodAverage !== null ? (
+                          <Text
+                            variant="caption"
+                            weight="medium"
+                            style={styles.topFoodScorePrimary}
+                          >
+                            {topFoodAverage.toFixed(1)}
+                          </Text>
+                        ) : null}
+                        {topFoodPrimaryLabel ? (
+                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                            <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                              Average{' '}
+                            </Text>
+                            <Text
+                              variant="caption"
+                              weight="semibold"
+                              style={styles.topFoodLabelStrong}
+                            >
+                              {topFoodPrimaryLabel}
+                            </Text>
+                            <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                              {' '}
+                              score
+                            </Text>
+                          </Text>
+                        ) : (
+                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                            {topFoodAvgLabel}
+                          </Text>
+                        )}
+                      </View>
+                      <View style={styles.topFoodDivider} />
+                    </View>
+                    <View style={styles.topFoodInlineRow}>
+                      <View style={styles.topFoodInlineList}>
+                        {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
+                          <Text key={food.connectionId} style={styles.topFoodInlineText}>
+                            <Text
+                              variant="caption"
+                              weight="semibold"
+                              style={styles.topFoodRankInline}
+                            >
+                              {idx + 1}.
+                            </Text>
+                            <Text
+                              variant="caption"
+                              weight="regular"
+                              style={styles.topFoodNameInline}
+                              numberOfLines={1}
+                              ellipsizeMode="tail"
+                            >
+                              {' '}
+                              {food.foodName}
+                            </Text>
+                          </Text>
+                        ))}
+                        {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
+                          <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
+                            +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
+                          </Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  </View>
+                ) : null}
+                {restaurantStatusLine ? (
+                  <View style={[styles.resultMetaLine, styles.resultContentStatusLine]}>
+                    {restaurantStatusLine}
                   </View>
                 ) : null}
               </View>
@@ -3058,92 +3138,6 @@ const SearchScreen: React.FC = () => {
                 <LucideShare size={20} color="#cbd5e1" strokeWidth={2} />
               </Pressable>
             </View>
-          </View>
-          <View style={styles.resultContent}>
-            {restaurantStatusLine ? (
-              <View style={[styles.resultMetaLine, styles.resultContentStatusLine]}>
-                {restaurantStatusLine}
-              </View>
-            ) : null}
-            {topFoodItems.length ? (
-              <View
-                style={[
-                  styles.topFoodSection,
-                  !restaurantStatusLine && styles.topFoodSectionWithMargin,
-                ]}
-              >
-                <View style={styles.topFoodHeader}>
-                  <View style={styles.topFoodAvgRow}>
-                    <HandPlatter
-                      size={SECONDARY_METRIC_ICON_SIZE}
-                      color={themeColors.primary}
-                      strokeWidth={2}
-                      style={styles.metricIcon}
-                    />
-                    {topFoodAverage !== null ? (
-                      <Text variant="caption" weight="medium" style={styles.topFoodScorePrimary}>
-                        {topFoodAverage.toFixed(1)}
-                      </Text>
-                    ) : null}
-                    {topFoodPrimaryLabel ? (
-                      <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                          Average{' '}
-                        </Text>
-                        <Text
-                          variant="caption"
-                          weight="semibold"
-                          style={styles.topFoodLabelStrong}
-                        >
-                          {topFoodPrimaryLabel}
-                        </Text>
-                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                          {' '}
-                          score
-                        </Text>
-                      </Text>
-                    ) : (
-                      <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                        {topFoodAvgLabel}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={styles.topFoodDivider} />
-                </View>
-                <View style={styles.topFoodInlineRow}>
-                  <View style={styles.topFoodInlineList}>
-                    {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
-                      <Text key={food.connectionId} style={styles.topFoodInlineText}>
-                        <Text
-                          variant="caption"
-                          weight="semibold"
-                          style={styles.topFoodRankInline}
-                        >
-                          {idx + 1}.
-                        </Text>
-                        <Text
-                          variant="caption"
-                          weight="regular"
-                          style={styles.topFoodNameInline}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
-                          {' '}
-                          {food.foodName}
-                        </Text>
-                      </Text>
-                    ))}
-                    {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
-                      <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
-                        +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              </View>
-            ) : restaurantStatusLine ? (
-              <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
-            ) : null}
           </View>
         </Pressable>
       </View>
@@ -4473,8 +4467,8 @@ const styles = StyleSheet.create({
     gap: 0,
   },
   resultItem: {
-    paddingTop: 12,
-    paddingBottom: 10,
+    paddingTop: CARD_VERTICAL_PADDING,
+    paddingBottom: CARD_VERTICAL_PADDING,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
     marginBottom: CARD_GAP,
@@ -4482,7 +4476,7 @@ const styles = StyleSheet.create({
     borderRadius: 0,
   },
   resultItemWithFilters: {
-    paddingTop: 12,
+    paddingTop: CARD_VERTICAL_PADDING,
   },
   resultPressable: {
     width: '100%',
@@ -4555,6 +4549,7 @@ const styles = StyleSheet.create({
   },
   metricBlock: {
     marginTop: 0,
+    marginBottom: 0,
     gap: CARD_LINE_GAP,
   },
   metricLine: {
@@ -4571,7 +4566,7 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
     fontSize: META_FONT_SIZE,
     lineHeight: CAPTION_LINE_HEIGHT,
-    marginHorizontal: SPACING_XS,
+    marginHorizontal: SPACING_SM,
   },
   metricLabel: {
     color: themeColors.textBody,
@@ -4605,8 +4600,10 @@ const styles = StyleSheet.create({
   restaurantMetricRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'nowrap',
+    flexWrap: 'wrap',
     minWidth: 0,
+    columnGap: 0,
+    rowGap: CARD_LINE_GAP,
   },
   restaurantMetricLeft: {
     flexDirection: 'row',
@@ -4622,10 +4619,9 @@ const styles = StyleSheet.create({
   restaurantMetricRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 'auto',
-    paddingLeft: 4,
+    paddingLeft: 0,
     flexShrink: 0,
-    columnGap: 4,
+    columnGap: SPACING_XS,
   },
   metricSupportLabel: {
     color: themeColors.textBody,
@@ -4734,6 +4730,9 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingBottom: 0,
   },
+  resultContentStack: {
+    gap: CARD_LINE_GAP,
+  },
   secondaryMetricsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -4793,9 +4792,6 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0,
     gap: CARD_LINE_GAP,
-  },
-  topFoodSectionWithMargin: {
-    marginTop: CARD_LINE_GAP,
   },
   topFoodLabel: {
     color: themeColors.textBody,
@@ -4862,8 +4858,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   resultContentStatusLine: {
-    marginTop: CARD_LINE_GAP,
-    marginBottom: CARD_LINE_GAP,
+    marginTop: 0,
+    marginBottom: 0,
   },
   loadingText: {
     marginTop: 16,
