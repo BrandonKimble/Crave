@@ -252,10 +252,7 @@ const getRangeFromLevels = (levels: number[]): PriceRangeTuple => {
   const sorted = [...levels].sort((a, b) => a - b);
   const start = clampPriceLevelValue(sorted[0]);
   const end = clampPriceSliderValue(clampPriceLevelValue(sorted[sorted.length - 1]) + 1);
-  return normalizePriceRangeValues([
-    start,
-    end,
-  ]);
+  return normalizePriceRangeValues([start, end]);
 };
 
 const isFullPriceRange = (range: PriceRangeTuple): boolean => {
