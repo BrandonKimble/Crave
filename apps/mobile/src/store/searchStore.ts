@@ -5,6 +5,23 @@ import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
+const SEARCH_STORE_VERSION = 1;
+
+const normalizePriceLevels = (levels: unknown): number[] => {
+  if (!Array.isArray(levels)) {
+    return [];
+  }
+
+  const normalized = levels
+    .map((level) => Math.round(Number(level)))
+    .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4);
+
+  const uniqueSorted = Array.from(new Set(normalized)).sort((a, b) => a - b);
+  if (uniqueSorted.length === 4 && uniqueSorted[0] === 1 && uniqueSorted[3] === 4) {
+    return [];
+  }
+  return uniqueSorted;
+};
 
 interface SearchHistoryEntry {
   query: string;
@@ -95,15 +112,7 @@ export const useSearchStore = create<SearchState>()(
         })),
       setPriceLevels: (levels) =>
         set(() => ({
-          priceLevels: Array.isArray(levels)
-            ? Array.from(
-                new Set(
-                  levels
-                    .map((level) => Math.round(level))
-                    .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4)
-                )
-              ).sort((a, b) => a - b)
-            : [],
+          priceLevels: normalizePriceLevels(levels),
         })),
       setVotes100Plus: (enabled) =>
         set(() => ({
@@ -143,6 +152,18 @@ export const useSearchStore = create<SearchState>()(
     }),
     {
       name: 'search-store',
+      version: SEARCH_STORE_VERSION,
+      migrate: (persistedState) => {
+        if (!persistedState || typeof persistedState !== 'object') {
+          return persistedState as SearchState;
+        }
+
+        const state = persistedState as SearchState;
+        return {
+          ...state,
+          priceLevels: normalizePriceLevels((state as SearchState).priceLevels),
+        };
+      },
       storage: createJSONStorage(() => {
         if (
           AsyncStorage &&

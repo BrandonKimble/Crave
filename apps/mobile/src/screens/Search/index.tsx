@@ -48,7 +48,7 @@ import Svg, {
   Mask as SvgMask,
 } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
-import { getPriceRangeLabel, PRICE_LEVEL_RANGE_LABELS } from '../../constants/pricing';
+import { formatPriceRangeText, getPriceRangeLabel } from '../../constants/pricing';
 import {
   overlaySheetStyles,
   OVERLAY_HORIZONTAL_PADDING,
@@ -104,16 +104,14 @@ const MINIMUM_VOTES_FILTER = 100;
 const DEFAULT_PAGE_SIZE = 20;
 const RESULTS_BOTTOM_PADDING = 375;
 const PRICE_LEVEL_VALUES = [1, 2, 3, 4] as const;
+const PRICE_SLIDER_VALUES = [1, 2, 3, 4, 5] as const;
 type PriceLevelValue = (typeof PRICE_LEVEL_VALUES)[number];
+type PriceSliderValue = (typeof PRICE_SLIDER_VALUES)[number];
 type PriceRangeTuple = [number, number];
-const PRICE_SLIDER_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
-const PRICE_SLIDER_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
-const PRICE_LEVEL_TICK_LABELS: Record<PriceLevelValue, string> = {
-  1: PRICE_LEVEL_RANGE_LABELS[1],
-  2: PRICE_LEVEL_RANGE_LABELS[2],
-  3: PRICE_LEVEL_RANGE_LABELS[3],
-  4: PRICE_LEVEL_RANGE_LABELS[4],
-};
+const PRICE_LEVEL_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
+const PRICE_LEVEL_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
+const PRICE_SLIDER_MIN: PriceSliderValue = PRICE_SLIDER_VALUES[0];
+const PRICE_SLIDER_MAX: PriceSliderValue = PRICE_SLIDER_VALUES[PRICE_SLIDER_VALUES.length - 1];
 const META_FONT_SIZE = 12;
 const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
 const DISTANCE_MIN_DECIMALS = 1;
@@ -204,25 +202,44 @@ const resolveSingleRestaurantCandidate = (
 
 const clampPriceLevelValue = (value: number): PriceLevelValue => {
   if (!Number.isFinite(value)) {
+    return PRICE_LEVEL_MIN;
+  }
+  return Math.min(PRICE_LEVEL_MAX, Math.max(PRICE_LEVEL_MIN, Math.round(value))) as PriceLevelValue;
+};
+
+const clampPriceSliderValue = (value: number): PriceSliderValue => {
+  if (!Number.isFinite(value)) {
     return PRICE_SLIDER_MIN;
   }
   return Math.min(
     PRICE_SLIDER_MAX,
     Math.max(PRICE_SLIDER_MIN, Math.round(value))
-  ) as PriceLevelValue;
+  ) as PriceSliderValue;
 };
 
 const normalizePriceRangeValues = (range: PriceRangeTuple): PriceRangeTuple => {
   const [rawMin, rawMax] = range;
-  const min = clampPriceLevelValue(rawMin);
-  const max = clampPriceLevelValue(rawMax);
-  return min <= max ? [min, max] : [max, min];
+  let min = clampPriceSliderValue(rawMin);
+  let max = clampPriceSliderValue(rawMax);
+  if (min > max) {
+    [min, max] = [max, min];
+  }
+  if (min === max) {
+    if (max < PRICE_SLIDER_MAX) {
+      max = clampPriceSliderValue(max + 1);
+    } else if (min > PRICE_SLIDER_MIN) {
+      min = clampPriceSliderValue(min - 1);
+    }
+  }
+  return [min, max];
 };
 
 const buildLevelsFromRange = (range: PriceRangeTuple): number[] => {
   const [start, end] = normalizePriceRangeValues(range);
+  const startLevel = clampPriceLevelValue(start);
+  const endBoundary = clampPriceSliderValue(end);
   const values: number[] = [];
-  for (let value = start; value <= end; value += 1) {
+  for (let value = startLevel; value < endBoundary; value += 1) {
     values.push(value);
   }
   return values;
@@ -233,12 +250,24 @@ const getRangeFromLevels = (levels: number[]): PriceRangeTuple => {
     return [PRICE_SLIDER_MIN, PRICE_SLIDER_MAX];
   }
   const sorted = [...levels].sort((a, b) => a - b);
-  return [clampPriceLevelValue(sorted[0]), clampPriceLevelValue(sorted[sorted.length - 1])];
+  const start = clampPriceLevelValue(sorted[0]);
+  const end = clampPriceSliderValue(clampPriceLevelValue(sorted[sorted.length - 1]) + 1);
+  return normalizePriceRangeValues([
+    start,
+    end,
+  ]);
 };
 
 const isFullPriceRange = (range: PriceRangeTuple): boolean => {
   const [min, max] = normalizePriceRangeValues(range);
   return min === PRICE_SLIDER_MIN && max === PRICE_SLIDER_MAX;
+};
+
+const toPriceLevelRange = (range: PriceRangeTuple): [number, number] => {
+  const [minBoundary, maxBoundary] = normalizePriceRangeValues(range);
+  const minLevel = clampPriceLevelValue(minBoundary);
+  const maxLevel = clampPriceLevelValue(maxBoundary - 1);
+  return [minLevel, Math.max(minLevel, maxLevel)];
 };
 
 type RgbTuple = [number, number, number];
@@ -251,40 +280,12 @@ const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
   { t: 1, color: [255, 110, 82] }, // warm red-orange (lowest rank)
 ];
 
-type PriceBounds = { min: number | null; max: number | null };
-
-const PRICE_LEVEL_BOUNDS: Record<PriceLevelValue, PriceBounds> = {
-  1: { min: 1, max: 25 },
-  2: { min: 25, max: 50 },
-  3: { min: 50, max: 75 },
-  4: { min: 75, max: null },
-};
-
-const formatPriceRangeText = (range: PriceRangeTuple): string => {
+const formatPriceRangeSummary = (range: PriceRangeTuple): string => {
   const normalized = normalizePriceRangeValues(range);
-  const [min, max] = normalized;
   if (isFullPriceRange(normalized)) {
     return 'Any price';
   }
-  if (min === max) {
-    return PRICE_LEVEL_RANGE_LABELS[min] ?? `Level ${min}`;
-  }
-
-  const lower = PRICE_LEVEL_BOUNDS[min];
-  const upper = PRICE_LEVEL_BOUNDS[max];
-  const overallMin = lower.min;
-  const overallMax = upper.max;
-
-  if (overallMin === null && overallMax !== null) {
-    return `<$${overallMax}`;
-  }
-  if (overallMin !== null && overallMax === null) {
-    return `$${overallMin}+`;
-  }
-  if (overallMin !== null && overallMax !== null) {
-    return `$${overallMin}–$${overallMax}`;
-  }
-  return 'Any price';
+  return formatPriceRangeText(toPriceLevelRange(normalized));
 };
 
 const getQualityColor = (index: number, total: number): string => {
@@ -629,7 +630,7 @@ const normalizePriceFilter = (levels?: number[] | null): number[] => {
     new Set(
       levels
         .map((level) => Math.round(level))
-        .filter((level) => Number.isInteger(level) && level >= 0 && level <= 4)
+        .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4)
     )
   ).sort((a, b) => a - b);
 };
@@ -1058,13 +1059,9 @@ const SearchScreen: React.FC = () => {
     if (!priceLevels.length) {
       return 'Any price';
     }
-    return formatPriceRangeText(getRangeFromLevels(priceLevels));
+    return formatPriceRangeSummary(getRangeFromLevels(priceLevels));
   }, [priceLevels]);
   const priceButtonLabelText = priceFiltersActive ? priceButtonSummary : 'Price';
-  const pendingPriceSummary = React.useMemo(
-    () => formatPriceRangeText(pendingPriceRange),
-    [pendingPriceRange]
-  );
   const trimmedQuery = query.trim();
   const hasTypedQuery = trimmedQuery.length > 0;
   const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
@@ -2582,26 +2579,13 @@ const SearchScreen: React.FC = () => {
     [priceSliderWidth]
   );
 
-  const handlePriceSliderChange = React.useCallback((values: number[]) => {
-    if (!Array.isArray(values) || values.length === 0) {
-      return;
-    }
-    const sorted = [...values].sort((a, b) => a - b);
-    const min = Math.max(PRICE_SLIDER_MIN, Math.min(PRICE_SLIDER_MAX, sorted[0]));
-    const max = Math.max(
-      PRICE_SLIDER_MIN,
-      Math.min(PRICE_SLIDER_MAX, sorted[sorted.length - 1] ?? sorted[0])
-    );
-    setPendingPriceRange(min <= max ? [min, max] : [max, min]);
-  }, []);
-
   const handlePriceSliderChangeFinish = React.useCallback((values: number[]) => {
     if (!Array.isArray(values) || values.length === 0) {
       return;
     }
     const nextRange: PriceRangeTuple = [
-      clampPriceLevelValue(values[0]),
-      clampPriceLevelValue(values[values.length - 1] ?? values[0]),
+      clampPriceSliderValue(values[0]),
+      clampPriceSliderValue(values[values.length - 1] ?? values[0]),
     ];
     setPendingPriceRange(normalizePriceRangeValues(nextRange));
   }, []);
@@ -2764,9 +2748,6 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               <View style={styles.cardBodyStack}>
-                {dishMetaPrimaryLine ? (
-                  <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
-                ) : null}
                 <View style={styles.metricBlock}>
                   <View style={styles.metricLine}>
                     <HandPlatter
@@ -2775,7 +2756,7 @@ const SearchScreen: React.FC = () => {
                       strokeWidth={2}
                       style={styles.metricIcon}
                     />
-                    <Text variant="caption" weight="medium" style={styles.metricValue}>
+                    <Text variant="caption" weight="semibold" style={styles.metricValue}>
                       {item.qualityScore.toFixed(1)}
                     </Text>
                     <Text variant="caption" weight="regular" style={styles.metricLabel}>
@@ -2796,6 +2777,9 @@ const SearchScreen: React.FC = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
+                {dishMetaPrimaryLine ? (
+                  <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
+                ) : null}
                 {dishStatusLine ? (
                   <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
                     {dishStatusLine}
@@ -2914,9 +2898,9 @@ const SearchScreen: React.FC = () => {
                           size={SECONDARY_METRIC_ICON_SIZE}
                           color={themeColors.primary}
                           strokeWidth={2}
-                          style={styles.metricIcon}
+                          style={[styles.metricIcon, styles.restaurantScoreIcon]}
                         />
-                        <Text variant="caption" weight="semibold" style={styles.metricSupportValue}>
+                        <Text variant="caption" weight="semibold" style={styles.metricValue}>
                           {restaurant.restaurantQualityScore.toFixed(1)}
                         </Text>
                         <Text
@@ -3081,14 +3065,11 @@ const SearchScreen: React.FC = () => {
       onTogglePriceSelector={togglePriceSelector}
       isPriceSelectorVisible={isPriceSelectorVisible}
       pendingPriceRange={pendingPriceRange}
-      onPriceChange={handlePriceSliderChange}
       onPriceChangeFinish={handlePriceSliderChangeFinish}
       onPriceDone={handlePriceDone}
       onPriceSliderLayout={handlePriceSliderLayout}
       priceSliderWidth={priceSliderWidth}
-      priceLevelValues={Array.from(PRICE_LEVEL_VALUES)}
-      priceTickLabels={PRICE_LEVEL_TICK_LABELS}
-      pendingPriceSummary={pendingPriceSummary}
+      priceLevelValues={Array.from(PRICE_SLIDER_VALUES)}
       contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
       accentColor={ACTIVE_TAB_COLOR}
     />
@@ -3365,6 +3346,8 @@ const SearchScreen: React.FC = () => {
             coordinate={[userLocation.lng, userLocation.lat]}
             anchor={{ x: 0.5, y: 0.5 }}
             allowOverlap
+            isSelected
+            style={[styles.markerView, styles.userLocationMarkerView]}
           >
             <View style={styles.userLocationWrapper}>
               <View style={styles.userLocationShadow}>
@@ -3529,6 +3512,7 @@ const SearchScreen: React.FC = () => {
               />
               <BottomSheetWithFlashList
                 visible={shouldRenderSheet}
+                listScrollEnabled={!isPriceSelectorVisible}
                 snapPoints={snapPoints}
                 initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
                 sheetYValue={sheetTranslateY}
@@ -3740,6 +3724,10 @@ const styles = StyleSheet.create({
   markerView: {
     flex: 0,
     alignSelf: 'flex-start',
+  },
+  userLocationMarkerView: {
+    zIndex: 10000,
+    elevation: 10000,
   },
   pinWrapper: {
     width: PIN_MARKER_RENDER_SIZE,
@@ -4450,7 +4438,7 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     maxWidth: '100%',
   },
   rankBadge: {
@@ -4495,6 +4483,9 @@ const styles = StyleSheet.create({
   },
   metricIcon: {
     marginRight: 2,
+  },
+  restaurantScoreIcon: {
+    marginRight: 1,
   },
   metricDot: {
     color: themeColors.textBody,
@@ -4560,9 +4551,6 @@ const styles = StyleSheet.create({
   metricSupportLabel: {
     color: themeColors.textBody,
     letterSpacing: 0.1,
-  },
-  metricSupportValue: {
-    color: '#0f172a',
   },
   resultMetaLineRight: {
     marginTop: 0,

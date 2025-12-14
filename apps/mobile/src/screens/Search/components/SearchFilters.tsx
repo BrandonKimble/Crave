@@ -18,13 +18,15 @@ import {
 
 import { Text } from '../../../components';
 import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
+import { formatPriceRangeText } from '../../../constants/pricing';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
-const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
+const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
 const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 const TOGGLE_STACK_GAP = 8;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
+const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const PRICE_CUTOUT_RADIUS = CONTROL_RADIUS + 6;
 const STRIP_BACKGROUND_HEIGHT = 14;
 const PRICE_CUTOUT_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
@@ -133,14 +135,11 @@ type SearchFiltersProps = {
   onTogglePriceSelector: () => void;
   isPriceSelectorVisible: boolean;
   pendingPriceRange: [number, number];
-  onPriceChange: (values: number[]) => void;
   onPriceChangeFinish: (values: number[]) => void;
   onPriceDone: () => void;
   onPriceSliderLayout: (event: LayoutChangeEvent) => void;
   priceSliderWidth: number;
   priceLevelValues: number[];
-  priceTickLabels: Record<number, string>;
-  pendingPriceSummary: string;
   contentHorizontalPadding: number;
   accentColor: string;
 };
@@ -157,14 +156,11 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   onTogglePriceSelector,
   isPriceSelectorVisible,
   pendingPriceRange,
-  onPriceChange,
   onPriceChangeFinish,
   onPriceDone,
   onPriceSliderLayout,
   priceSliderWidth,
   priceLevelValues,
-  priceTickLabels,
-  pendingPriceSummary,
   contentHorizontalPadding,
   accentColor,
 }) => {
@@ -180,13 +176,34 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
 
+  const minPriceLevel = priceLevelValues.length ? Math.min(...priceLevelValues) : 1;
+  const maxPriceLevel = priceLevelValues.length ? Math.max(...priceLevelValues) : 4;
+  const normalizeRange = React.useCallback(
+    (low: number, high: number): [number, number] => {
+      const clampedLow = Math.max(minPriceLevel, Math.min(maxPriceLevel, Math.round(low)));
+      const clampedHigh = Math.max(minPriceLevel, Math.min(maxPriceLevel, Math.round(high)));
+      return clampedLow <= clampedHigh ? [clampedLow, clampedHigh] : [clampedHigh, clampedLow];
+    },
+    [maxPriceLevel, minPriceLevel]
+  );
+
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
 
   const renderSliderThumb = React.useCallback(
-    () => <View style={[styles.priceSliderThumb, styles.priceSliderThumbShadow]} />,
-    []
+    () => (
+      <View style={styles.priceSliderThumbContainer}>
+        <View
+          style={[
+            styles.priceSliderThumb,
+            styles.priceSliderThumbShadow,
+            { backgroundColor: accentColor },
+          ]}
+        />
+      </View>
+    ),
+    [accentColor]
   );
   const renderSliderRail = React.useCallback(() => <View style={styles.priceSliderRail} />, []);
   const renderSliderRailSelected = React.useCallback(
@@ -235,6 +252,23 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   }));
   const AnimatedG = Reanimated.createAnimatedComponent(G);
 
+  const priceSummary = React.useMemo(
+    () => formatPriceRangeText(pendingPriceRange),
+    [pendingPriceRange]
+  );
+  const sliderStyle = React.useMemo(
+    () => [styles.priceSlider, { width: priceSliderWidth }],
+    [priceSliderWidth]
+  );
+
+  const handleSliderTouchEnd = React.useCallback(
+    (low: number, high: number) => {
+      const normalized = normalizeRange(low, high);
+      onPriceChangeFinish(normalized);
+    },
+    [normalizeRange, onPriceChangeFinish]
+  );
+
   return (
     <View style={styles.resultFiltersWrapper}>
       <View style={styles.paddedWrapper}>
@@ -247,7 +281,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             showsHorizontalScrollIndicator={false}
             scrollEventThrottle={16}
             onScroll={onScroll}
-            bounces
+            scrollEnabled={!isPriceSelectorVisible}
+            bounces={!isPriceSelectorVisible}
             alwaysBounceHorizontal
             contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
             style={styles.filterButtonsScroll}
@@ -512,13 +547,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               ) : null}
               <View style={[styles.priceSelector, { marginHorizontal: contentHorizontalPadding }]}>
                 <View style={styles.priceSelectorHeader}>
-                  <View>
+                  <View style={styles.priceSelectorTextBlock}>
                     <Text variant="caption" style={styles.priceFilterLabel}>
                       Price per person
                     </Text>
-                    <View style={styles.priceSelectorValuePill}>
-                      <Text style={styles.priceSelectorValue}>{pendingPriceSummary}</Text>
-                    </View>
+                    <Text variant="body" weight="semibold" style={styles.priceSelectorValueText}>
+                      {priceSummary}
+                    </Text>
                   </View>
                   <Pressable
                     onPress={onPriceDone}
@@ -526,7 +561,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     accessibilityLabel="Apply price filters"
                     style={[styles.priceDoneButton, { backgroundColor: accentColor }]}
                   >
-                    <Text style={styles.priceDoneButtonText}>Done</Text>
+                    <Text variant="caption" weight="semibold" style={styles.priceDoneButtonText}>
+                      Done
+                    </Text>
                   </Pressable>
                 </View>
                 <View
@@ -542,38 +579,18 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                 >
                   {priceSliderWidth > 0 ? (
                     <RangeSlider
-                      style={[styles.priceSlider, { width: priceSliderWidth }]}
-                      min={Math.min(...priceLevelValues)}
-                      max={Math.max(...priceLevelValues)}
+                      style={sliderStyle}
+                      min={minPriceLevel}
+                      max={maxPriceLevel}
                       step={1}
                       low={pendingPriceRange[0]}
                       high={pendingPriceRange[1]}
                       renderThumb={renderSliderThumb}
                       renderRail={renderSliderRail}
                       renderRailSelected={renderSliderRailSelected}
-                      onValueChanged={(low: number, high: number, fromUser?: boolean) => {
-                        const nextLow = Math.min(high, Math.max(low, priceLevelValues[0]));
-                        const nextHigh = Math.max(
-                          nextLow,
-                          Math.min(high, priceLevelValues.at(-1)!)
-                        );
-                        if (nextLow === pendingPriceRange[0] && nextHigh === pendingPriceRange[1]) {
-                          return;
-                        }
-                        onPriceChange([nextLow, nextHigh]);
-                        if (fromUser !== false) {
-                          onPriceChangeFinish([nextLow, nextHigh]);
-                        }
-                      }}
+                      onSliderTouchEnd={handleSliderTouchEnd}
                     />
                   ) : null}
-                </View>
-                <View style={styles.priceSliderLabelsRow}>
-                  {priceLevelValues.map((value) => (
-                    <Text key={value} style={styles.priceSliderLabel}>
-                      {priceTickLabels[value]}
-                    </Text>
-                  ))}
                 </View>
               </View>
             </View>
@@ -687,6 +704,7 @@ const styles = StyleSheet.create({
   },
   priceButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
+    paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
   },
   priceButtonActive: {},
   priceButtonDisabled: {
@@ -737,91 +755,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 14,
+    marginBottom: 10,
   },
   priceFilterLabel: {
-    color: '#1f2937',
-    fontWeight: '700',
-    fontSize: 16,
-    marginBottom: 2,
-  },
-  priceSelectorValuePill: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 4 },
-  },
-  priceSelectorValue: {
     color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  priceSelectorTextBlock: {
+    flexShrink: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  priceSelectorValueText: {
+    color: '#0f172a',
+    letterSpacing: 0.1,
   },
   priceDoneButton: {
     height: CONTROL_HEIGHT,
     borderRadius: CONTROL_RADIUS,
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING,
-    paddingVertical: CONTROL_VERTICAL_PADDING,
+    paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
+    paddingVertical: TOGGLE_VERTICAL_PADDING,
     backgroundColor: '#1f2937',
     shadowColor: '#0f172a',
     shadowOpacity: 0.18,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 3 },
-    minWidth: 96,
     alignItems: 'center',
     justifyContent: 'center',
   },
   priceDoneButtonText: {
     color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '700',
   },
   priceSliderWrapper: {
     width: '100%',
     paddingHorizontal: 4,
-    marginTop: 12,
+    marginTop: 8,
     alignItems: 'center',
   },
   priceSlider: {
-    height: 40,
+    height: 34,
   },
   priceSliderRail: {
-    height: 6,
+    flex: 1,
+    height: 3,
     borderRadius: 999,
-    backgroundColor: '#e6ecf3',
+    backgroundColor: '#cbd5e1',
   },
   priceSliderRailSelected: {
-    height: 6,
+    height: 3,
     borderRadius: 999,
     backgroundColor: '#9fb1c5',
   },
+  priceSliderThumbContainer: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
   priceSliderThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#1f2937',
-    backgroundColor: '#ffffff',
+    width: 18,
+    height: 18,
+    borderRadius: 9,
   },
   priceSliderThumbShadow: {
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 4 },
-    shadowRadius: 8,
-  },
-  priceSliderLabelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    paddingHorizontal: 2,
-  },
-  priceSliderLabel: {
-    fontSize: 11,
-    color: '#94a3b8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.5,
+    elevation: 2,
   },
   votesButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),

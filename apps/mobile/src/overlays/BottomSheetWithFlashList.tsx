@@ -30,6 +30,7 @@ type SnapPoints = Record<SheetSnapPoint, number> & {
 
 type BottomSheetWithFlashListProps<T> = {
   visible: boolean;
+  listScrollEnabled?: boolean;
   snapPoints: SnapPoints;
   initialSnapPoint?: SheetSnapPoint;
   data: ReadonlyArray<T>;
@@ -133,6 +134,7 @@ const resolveSnapKeyFromValues = (
 
 const BottomSheetWithFlashList = <T,>({
   visible,
+  listScrollEnabled = true,
   snapPoints,
   initialSnapPoint = 'middle',
   data,
@@ -171,6 +173,7 @@ const BottomSheetWithFlashList = <T,>({
   momentumFlag,
   style,
 }: BottomSheetWithFlashListProps<T>): React.ReactElement | null => {
+  const shouldEnableScroll = visible && listScrollEnabled;
   const internalSheetY = useSharedValue(snapPoints[initialSnapPoint]);
   const sheetY = sheetYValue ?? internalSheetY;
   const expandedSnap = snapPoints.expanded;
@@ -462,7 +465,7 @@ const BottomSheetWithFlashList = <T,>({
       });
 
     const nativeScrollGesture = Gesture.Native()
-      .enabled(visible)
+      .enabled(shouldEnableScroll)
       .requireExternalGestureToFail(expandPanGesture)
       .simultaneousWithExternalGesture(collapsePanGesture);
 
@@ -493,6 +496,7 @@ const BottomSheetWithFlashList = <T,>({
     snapPoints.expanded,
     snapPoints.hidden,
     snapPoints.middle,
+    shouldEnableScroll,
     visible,
   ]);
 
@@ -572,7 +576,7 @@ const BottomSheetWithFlashList = <T,>({
             ListEmptyComponent={ListEmptyComponent}
             ItemSeparatorComponent={ItemSeparatorComponent}
             keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-            scrollEnabled={visible}
+            scrollEnabled={shouldEnableScroll}
             renderScrollComponent={ScrollComponent}
             onScroll={onScroll}
             scrollEventThrottle={16}
