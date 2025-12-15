@@ -45,6 +45,7 @@ interface SearchState extends SearchFilters {
   clearQuery: () => void;
   setPage: (page: number) => void;
   resetPage: () => void;
+  resetFilters: () => void;
   setOpenNow: (openNow: boolean) => void;
   setBounds: (
     bounds: MapBounds | null,
@@ -99,6 +100,15 @@ export const useSearchStore = create<SearchState>()(
       resetPage: () =>
         set(() => ({
           page: 1,
+        })),
+      resetFilters: () =>
+        set(() => ({
+          openNow: defaultState.openNow,
+          bounds: defaultState.bounds,
+          boundsLabel: defaultState.boundsLabel,
+          boundsPresetId: defaultState.boundsPresetId,
+          priceLevels: defaultState.priceLevels,
+          votes100Plus: defaultState.votes100Plus,
         })),
       setOpenNow: (openNow) =>
         set(() => ({

@@ -33,6 +33,7 @@ type SearchHeaderProps = {
   editable?: boolean;
   showInactiveSearchIcon?: boolean;
   isSearchSessionActive?: boolean;
+  surfaceVariant?: 'solid' | 'transparent';
 };
 
 const SearchHeader: React.FC<SearchHeaderProps> = ({
@@ -54,10 +55,17 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   editable = true,
   showInactiveSearchIcon = false,
   isSearchSessionActive = false,
+  surfaceVariant = 'solid',
 }) => {
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
-      <Reanimated.View style={[styles.promptCard, containerAnimatedStyle]}>
+      <Reanimated.View
+        style={[
+          styles.promptCard,
+          containerAnimatedStyle,
+          surfaceVariant === 'transparent' ? styles.promptCardTransparent : null,
+        ]}
+      >
         <Pressable style={styles.promptRow} onPress={onPress ?? onFocus}>
           <View style={styles.promptInner}>
             <Reanimated.View
@@ -155,6 +163,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 1,
+  },
+  promptCardTransparent: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   promptRow: {
     flexDirection: 'row',

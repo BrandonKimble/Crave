@@ -4,7 +4,6 @@ import {
   Animated,
   Dimensions,
   Keyboard,
-  LayoutChangeEvent,
   Pressable,
   Share,
   StyleSheet,
@@ -13,9 +12,10 @@ import {
   Image,
   Easing as RNEasing,
 } from 'react-native';
-import type { TextInput } from 'react-native';
+import type { LayoutRectangle, TextInput, TextLayoutEvent } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
   Easing,
@@ -55,6 +55,7 @@ import {
   OVERLAY_CORNER_RADIUS,
 } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
+import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import {
   SHEET_STATES,
   clampValue,
@@ -83,6 +84,7 @@ import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import type { QueryPlan } from '../../types';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
 import { useFavorites } from '../../hooks/use-favorites';
@@ -96,9 +98,14 @@ import {
   CONTROL_VERTICAL_PADDING,
 } from './constants/ui';
 const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SCREEN_WIDTH = Dimensions.get('window').width;
 const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
-const CARD_GAP = 4;
+const SEARCH_CONTAINER_PADDING_TOP = 10;
+const CARD_GAP = 6;
+const SHARED_SECTION_GAP = CARD_GAP; // reuse across sections and result spacing
+const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
+const SECTION_GAP = SHARED_SECTION_GAP;
 const ACTIVE_TAB_COLOR = themeColors.primary;
 const MINIMUM_VOTES_FILTER = 100;
 const DEFAULT_PAGE_SIZE = 20;
@@ -108,10 +115,18 @@ const PRICE_SLIDER_VALUES = [1, 2, 3, 4, 5] as const;
 type PriceLevelValue = (typeof PRICE_LEVEL_VALUES)[number];
 type PriceSliderValue = (typeof PRICE_SLIDER_VALUES)[number];
 type PriceRangeTuple = [number, number];
+const PRICE_THUMB_SIZE = 20;
+const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 4;
 const PRICE_LEVEL_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
 const PRICE_LEVEL_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
 const PRICE_SLIDER_MIN: PriceSliderValue = PRICE_SLIDER_VALUES[0];
 const PRICE_SLIDER_MAX: PriceSliderValue = PRICE_SLIDER_VALUES[PRICE_SLIDER_VALUES.length - 1];
+const PRICE_SLIDER_TRACK_WIDTH_ESTIMATE = Math.max(
+  0,
+  SCREEN_WIDTH -
+    (OVERLAY_HORIZONTAL_PADDING + PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING) * 2 -
+    PRICE_THUMB_SIZE
+);
 const META_FONT_SIZE = 12;
 const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
 const DISTANCE_MIN_DECIMALS = 1;
@@ -145,6 +160,16 @@ const PIN_FILL_TOP_OFFSET =
   (PIN_BASE_HEIGHT * PIN_BASE_SCALE - PIN_FILL_RENDER_HEIGHT) / 2 +
   PIN_FILL_VERTICAL_BIAS * PIN_BASE_SCALE;
 const AUTOCOMPLETE_MIN_CHARS = 1;
+const SEARCH_BAR_HOLE_PADDING = 0; // keep cutout tight to the actual bar
+const SEARCH_BAR_HOLE_RADIUS = 14;
+const SHORTCUT_CHIP_HOLE_PADDING = 0; // keep cutout tight to the actual chips
+const SHORTCUT_CHIP_HOLE_RADIUS = 14;
+const SEARCH_SUGGESTION_PANEL_OVERLAP = 12;
+const SEARCH_SUGGESTION_PANEL_PADDING_TOP = 0; // rely on shared gap below header instead
+const SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM = SECTION_GAP;
+const SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM = 12; // add chin under chips
+const SEARCH_SUGGESTION_HEADER_PANEL_GAP = 0; // keep the panel close; final gap applied later
+const SEARCH_SHORTCUTS_BOTTOM_MARGIN = SECTION_GAP;
 const MARKER_SHADOW_STYLE = {
   shadowColor: 'rgba(0, 0, 0, 0.35)',
   shadowOpacity: 0.45,
@@ -159,7 +184,6 @@ const MAP_MOVE_DISTANCE_RATIO = 0.08;
 const CLOSE_BUTTON_HOLE_PADDING = 0;
 const CLOSE_BUTTON_HOLE_Y_OFFSET = 0;
 const RESULTS_HEADER_MASK_PADDING = 2;
-const PRICE_CUTOUT_RADIUS = CONTROL_RADIUS + 6;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -284,6 +308,191 @@ const formatPriceRangeSummary = (range: PriceRangeTuple): string => {
   }
   return formatPriceRangeText(toPriceLevelRange(normalized));
 };
+
+type PriceRangeSliderProps = {
+  range: PriceRangeTuple;
+  onRangePreview?: (range: PriceRangeTuple) => void;
+  onRangeCommit: (range: PriceRangeTuple) => void;
+};
+
+const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
+  ({ range, onRangePreview, onRangeCommit }) => {
+    const trackWidth = useSharedValue(PRICE_SLIDER_TRACK_WIDTH_ESTIMATE);
+    const lowValue = useSharedValue(range[0]);
+    const highValue = useSharedValue(range[1]);
+    const lowStartValue = useSharedValue(range[0]);
+    const highStartValue = useSharedValue(range[1]);
+    const lastPreviewLow = useSharedValue(clampPriceSliderValue(range[0]));
+    const lastPreviewHigh = useSharedValue(clampPriceSliderValue(range[1]));
+
+    const normalizeWorklet = React.useCallback(
+      (low: number, high: number): PriceRangeTuple => {
+        'worklet';
+        const clamp = (value: number, min: number, max: number) =>
+          Math.min(max, Math.max(min, value));
+        let min = clamp(Math.round(low), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+        let max = clamp(Math.round(high), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+        if (min > max) {
+          const temp = min;
+          min = max;
+          max = temp;
+        }
+        if (min === max) {
+          if (max < PRICE_SLIDER_MAX) {
+            max = clamp(max + 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+          } else if (min > PRICE_SLIDER_MIN) {
+            min = clamp(min - 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+          }
+        }
+        return [min, max];
+      },
+      []
+    );
+
+    const trackStart = PRICE_THUMB_SIZE / 2;
+    const trackSpan = PRICE_SLIDER_MAX - PRICE_SLIDER_MIN;
+    const minGap = 1;
+
+    const valueToPosition = (value: number) => {
+      'worklet';
+      const width = Math.max(trackWidth.value, 1);
+      const clamped = Math.max(PRICE_SLIDER_MIN, Math.min(PRICE_SLIDER_MAX, value));
+      return ((clamped - PRICE_SLIDER_MIN) / trackSpan) * width;
+    };
+
+    const notifyPreview = React.useCallback(
+      (low: number, high: number) => {
+        'worklet';
+        if (!onRangePreview) {
+          return;
+        }
+        const normalized = normalizeWorklet(low, high);
+        const nextLow = normalized[0];
+        const nextHigh = normalized[1];
+        if (nextLow === lastPreviewLow.value && nextHigh === lastPreviewHigh.value) {
+          return;
+        }
+        lastPreviewLow.value = nextLow;
+        lastPreviewHigh.value = nextHigh;
+        runOnJS(onRangePreview)(normalized);
+      },
+      [lastPreviewHigh, lastPreviewLow, normalizeWorklet, onRangePreview]
+    );
+
+    const commitSnap = React.useCallback(() => {
+      'worklet';
+      const snapped = normalizeWorklet(lowValue.value, highValue.value);
+      lowValue.value = withTiming(snapped[0], { duration: 160, easing: Easing.out(Easing.cubic) });
+      highValue.value = withTiming(snapped[1], { duration: 160, easing: Easing.out(Easing.cubic) });
+      runOnJS(onRangeCommit)(snapped);
+    }, [highValue, lowValue, normalizeWorklet, onRangeCommit]);
+
+    const lowGesture = React.useMemo(
+      () =>
+        Gesture.Pan()
+          .hitSlop(12)
+          .onBegin(() => {
+            lowStartValue.value = lowValue.value;
+          })
+          .onUpdate((event) => {
+            const width = trackWidth.value;
+            if (width <= 0) {
+              return;
+            }
+            const deltaValue = (event.translationX / width) * trackSpan;
+            let nextLow = lowStartValue.value + deltaValue;
+            nextLow = Math.max(PRICE_SLIDER_MIN, Math.min(nextLow, highValue.value - minGap));
+            lowValue.value = nextLow;
+            notifyPreview(lowValue.value, highValue.value);
+          })
+          .onFinalize(() => {
+            commitSnap();
+          }),
+      [commitSnap, highValue, lowStartValue, lowValue, notifyPreview, trackSpan, trackWidth]
+    );
+
+    const highGesture = React.useMemo(
+      () =>
+        Gesture.Pan()
+          .hitSlop(12)
+          .onBegin(() => {
+            highStartValue.value = highValue.value;
+          })
+          .onUpdate((event) => {
+            const width = trackWidth.value;
+            if (width <= 0) {
+              return;
+            }
+            const deltaValue = (event.translationX / width) * trackSpan;
+            let nextHigh = highStartValue.value + deltaValue;
+            nextHigh = Math.min(PRICE_SLIDER_MAX, Math.max(nextHigh, lowValue.value + minGap));
+            highValue.value = nextHigh;
+            notifyPreview(lowValue.value, highValue.value);
+          })
+          .onFinalize(() => {
+            commitSnap();
+          }),
+      [commitSnap, highStartValue, highValue, lowValue, notifyPreview, trackSpan, trackWidth]
+    );
+
+    const lowThumbAnimatedStyle = useAnimatedStyle(() => ({
+      transform: [
+        {
+          translateX: trackStart + valueToPosition(lowValue.value) - PRICE_THUMB_SIZE / 2,
+        },
+      ],
+    }));
+
+    const highThumbAnimatedStyle = useAnimatedStyle(() => ({
+      transform: [
+        {
+          translateX: trackStart + valueToPosition(highValue.value) - PRICE_THUMB_SIZE / 2,
+        },
+      ],
+    }));
+
+    const selectedRailAnimatedStyle = useAnimatedStyle(() => {
+      const left = trackStart + valueToPosition(lowValue.value);
+      const right = trackStart + valueToPosition(highValue.value);
+      return {
+        left,
+        width: Math.max(0, right - left),
+      };
+    });
+
+    const handleTrackLayout = React.useCallback(
+      (event: { nativeEvent: { layout: { width: number } } }) => {
+        const width = event.nativeEvent.layout.width;
+        const usable = Math.max(0, width - PRICE_THUMB_SIZE);
+        if (Math.abs(trackWidth.value - usable) > 1) {
+          trackWidth.value = usable;
+        }
+      },
+      [trackWidth]
+    );
+
+    return (
+      <View
+        style={styles.priceTrackContainer}
+        onLayout={handleTrackLayout}
+        pointerEvents="box-none"
+        collapsable={false}
+      >
+        <View style={styles.priceSliderRail} pointerEvents="none" />
+        <Reanimated.View
+          style={[styles.priceSliderRailSelected, selectedRailAnimatedStyle]}
+          pointerEvents="none"
+        />
+        <GestureDetector gesture={lowGesture}>
+          <Reanimated.View style={[styles.priceSliderThumb, lowThumbAnimatedStyle]} />
+        </GestureDetector>
+        <GestureDetector gesture={highGesture}>
+          <Reanimated.View style={[styles.priceSliderThumb, highThumbAnimatedStyle]} />
+        </GestureDetector>
+      </View>
+    );
+  }
+);
 
 const getQualityColor = (index: number, total: number): string => {
   const t = Math.max(0, Math.min(1, total <= 1 ? 0 : index / Math.max(total - 1, 1)));
@@ -533,10 +742,6 @@ const formatCompactCount = (value?: number | null): string => {
   return formatWithSuffix(value, 1_000_000, 'M');
 };
 const TOGGLE_HEIGHT = CONTROL_HEIGHT; // single knob for pill height and close icon size
-const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed pill rounding
-const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
-const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
-const TOGGLE_STACK_GAP = 8;
 const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
@@ -617,6 +822,50 @@ const VoteIcon = ({ color, size = VOTE_ICON_SIZE }: { color: string; size?: numb
 );
 
 const RECENT_HISTORY_LIMIT = 8;
+const calculateTopFoodVisibleCount = (
+  items: FoodResult[],
+  maxRender: number,
+  availableWidth: number | undefined,
+  itemWidths: Record<string, number> | undefined,
+  moreWidths: Record<number, number> | undefined
+): number => {
+  const maxInline = Math.min(maxRender, items.length);
+  if (maxInline <= 1) {
+    return maxInline;
+  }
+  if (!availableWidth || !itemWidths) {
+    return maxInline;
+  }
+  let hasMeasurements = false;
+  let bestCount = maxInline;
+  for (let count = maxInline; count >= 1; count--) {
+    const widths = items.slice(0, count).map((item) => itemWidths[item.connectionId]);
+    if (widths.some((width) => typeof width !== 'number')) {
+      continue;
+    }
+    const hiddenCount = items.length - count;
+    const needsMore = hiddenCount > 0;
+    const moreWidth = needsMore ? moreWidths?.[hiddenCount] : 0;
+    if (needsMore && typeof moreWidth !== 'number') {
+      continue;
+    }
+    hasMeasurements = true;
+    const elementCount = count + (needsMore ? 1 : 0);
+    const gapWidth = Math.max(0, elementCount - 1) * CARD_LINE_GAP;
+    const totalWidth =
+      widths.reduce((sum, width) => sum + (width ?? 0), 0) +
+      gapWidth +
+      (needsMore ? moreWidth ?? 0 : 0);
+    if (totalWidth <= availableWidth) {
+      bestCount = count;
+      break;
+    }
+    if (count === 1) {
+      bestCount = 1;
+    }
+  }
+  return hasMeasurements ? bestCount : maxInline;
+};
 
 const normalizePriceFilter = (levels?: number[] | null): number[] => {
   if (!Array.isArray(levels) || levels.length === 0) {
@@ -785,6 +1034,15 @@ const SearchScreen: React.FC = () => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
+  const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
+    null
+  );
+  const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
+    null
+  );
+  const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
+    Record<string, LayoutRectangle>
+  >({});
   const [resultsHeaderLayout, setResultsHeaderLayout] = React.useState({ width: 0, height: 0 });
   const [resultsHeaderRowOffset, setResultsHeaderRowOffset] = React.useState({ x: 0, y: 0 });
   const [resultsCloseLayout, setResultsCloseLayout] = React.useState<{
@@ -793,14 +1051,17 @@ const SearchScreen: React.FC = () => {
     width: number;
     height: number;
   } | null>(null);
-  const [priceSelectorLayout, setPriceSelectorLayout] = React.useState<{
-    width: number;
-    height: number;
-  }>({ width: 0, height: 0 });
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [isRecentLoading, setIsRecentLoading] = React.useState(false);
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
+  const [topFoodInlineWidths, setTopFoodInlineWidths] = React.useState<Record<string, number>>({});
+  const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<
+    Record<string, Record<string, number>>
+  >({});
+  const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<
+    Record<string, Record<number, number>>
+  >({});
   const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
     null
   );
@@ -852,6 +1113,41 @@ const SearchScreen: React.FC = () => {
       return layout;
     });
   }, []);
+  const updateTopFoodInlineWidth = React.useCallback(
+    (restaurantId: string, width: number) => {
+      setTopFoodInlineWidths((prev) => {
+        if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
+          return prev;
+        }
+        return { ...prev, [restaurantId]: width };
+      });
+    },
+    []
+  );
+  const updateTopFoodItemWidth = React.useCallback(
+    (restaurantId: string, connectionId: string, width: number) => {
+      setTopFoodItemWidths((prev) => {
+        const existing = prev[restaurantId] ?? {};
+        if (existing[connectionId] && Math.abs(existing[connectionId] - width) < 0.5) {
+          return prev;
+        }
+        return { ...prev, [restaurantId]: { ...existing, [connectionId]: width } };
+      });
+    },
+    []
+  );
+  const updateTopFoodMoreWidth = React.useCallback(
+    (restaurantId: string, hiddenCount: number, width: number) => {
+      setTopFoodMoreWidths((prev) => {
+        const existing = prev[restaurantId] ?? {};
+        if (existing[hiddenCount] && Math.abs(existing[hiddenCount] - width) < 0.5) {
+          return prev;
+        }
+        return { ...prev, [restaurantId]: { ...existing, [hiddenCount]: width } };
+      });
+    },
+    []
+  );
   const headerDividerAnimatedStyle = React.useMemo(
     () => ({
       opacity: resultsScrollY.interpolate({
@@ -914,7 +1210,6 @@ const SearchScreen: React.FC = () => {
     polls: number | null | undefined;
   } | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
-  const scoreInfoTranslateY = React.useRef(new Animated.Value(SCORE_INFO_MAX_HEIGHT + 48)).current;
   const openScoreInfo = React.useCallback(
     (payload: {
       type: 'dish' | 'restaurant';
@@ -925,29 +1220,12 @@ const SearchScreen: React.FC = () => {
     }) => {
       setScoreInfo(payload);
       setScoreInfoVisible(true);
-      scoreInfoTranslateY.setValue(SCORE_INFO_MAX_HEIGHT + 48);
-      Animated.timing(scoreInfoTranslateY, {
-        toValue: 0,
-        duration: 220,
-        easing: RNEasing.out(RNEasing.cubic),
-        useNativeDriver: true,
-      }).start();
     },
-    [scoreInfoTranslateY]
+    []
   );
   const closeScoreInfo = React.useCallback(() => {
-    Animated.timing(scoreInfoTranslateY, {
-      toValue: SCORE_INFO_MAX_HEIGHT + 48,
-      duration: 200,
-      easing: RNEasing.in(RNEasing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (finished) {
-        setScoreInfoVisible(false);
-        setScoreInfo(null);
-      }
-    });
-  }, [scoreInfoTranslateY]);
+    setScoreInfoVisible(false);
+  }, []);
   const handleOverlaySelect = React.useCallback(
     (target: OverlayKey) => {
       setOverlay(target);
@@ -1047,10 +1325,10 @@ const SearchScreen: React.FC = () => {
   const setPriceLevels = useSearchStore((state) => state.setPriceLevels);
   const votes100Plus = useSearchStore((state) => state.votes100Plus);
   const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
+  const resetFilters = useSearchStore((state) => state.resetFilters);
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
     getRangeFromLevels(priceLevels)
   );
-  const [priceSliderWidth, setPriceSliderWidth] = React.useState(0);
   const priceFiltersActive = priceLevels.length > 0;
   const priceButtonSummary = React.useMemo(() => {
     if (!priceLevels.length) {
@@ -1059,6 +1337,14 @@ const SearchScreen: React.FC = () => {
     return formatPriceRangeSummary(getRangeFromLevels(priceLevels));
   }, [priceLevels]);
   const priceButtonLabelText = priceFiltersActive ? priceButtonSummary : 'Price';
+  const priceSheetSummary = React.useMemo(
+    () => formatPriceRangeSummary(pendingPriceRange),
+    [pendingPriceRange]
+  );
+  const priceSheetHeadline = React.useMemo(
+    () => `${priceSheetSummary} per person`,
+    [priceSheetSummary]
+  );
   const trimmedQuery = query.trim();
   const hasTypedQuery = trimmedQuery.length > 0;
   const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
@@ -1068,6 +1354,96 @@ const SearchScreen: React.FC = () => {
     !isAutocompleteSuppressed &&
     trimmedQuery.length >= AUTOCOMPLETE_MIN_CHARS;
   const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
+  const isSuggestionScreenActive = isSearchOverlay && isSearchFocused;
+  const suggestionHeaderContentBottom = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return 0;
+    }
+
+    if (searchShortcutsFrame) {
+      return searchShortcutsFrame.y + searchShortcutsFrame.height;
+    }
+    if (searchContainerFrame) {
+      return searchContainerFrame.y + searchContainerFrame.height;
+    }
+    return 0;
+  }, [isSuggestionScreenActive, searchContainerFrame, searchShortcutsFrame]);
+  const suggestionHeaderHeight = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return 0;
+    }
+    const contentBottom = suggestionHeaderContentBottom;
+    if (contentBottom <= 0) {
+      return 0;
+    }
+    return Math.max(0, contentBottom + SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM);
+  }, [isSuggestionScreenActive, suggestionHeaderContentBottom]);
+  const suggestionScrollTop = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return 0;
+    }
+
+    const fallback = searchLayout.top + searchLayout.height + 8;
+    const headerBottom =
+      suggestionHeaderHeight > 0 ? suggestionHeaderHeight + SEARCH_SUGGESTION_HEADER_PANEL_GAP : fallback;
+    return Math.max(0, headerBottom + SHARED_SECTION_GAP);
+  }, [
+    isSuggestionScreenActive,
+    searchLayout.height,
+    searchLayout.top,
+    suggestionHeaderHeight,
+  ]);
+  const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
+    if (!isSuggestionScreenActive) {
+      return [];
+    }
+
+    const holes: MaskedHole[] = [];
+
+    if (searchContainerFrame) {
+      const x = searchContainerFrame.x + SEARCH_HORIZONTAL_PADDING - SEARCH_BAR_HOLE_PADDING;
+      const y = searchContainerFrame.y + SEARCH_CONTAINER_PADDING_TOP - SEARCH_BAR_HOLE_PADDING;
+      const width =
+        searchContainerFrame.width - SEARCH_HORIZONTAL_PADDING * 2 + SEARCH_BAR_HOLE_PADDING * 2;
+      const height = searchContainerFrame.height - SEARCH_CONTAINER_PADDING_TOP;
+
+      if (width > 0 && height > 0) {
+        holes.push({
+          x,
+          y,
+          width,
+          height: height + SEARCH_BAR_HOLE_PADDING * 2,
+          borderRadius: SEARCH_BAR_HOLE_RADIUS + SEARCH_BAR_HOLE_PADDING,
+        });
+      }
+    }
+
+    if (searchShortcutsFrame) {
+      Object.values(searchShortcutChipFrames).forEach((chip) => {
+        const x = searchShortcutsFrame.x + chip.x - SHORTCUT_CHIP_HOLE_PADDING;
+        const y = searchShortcutsFrame.y + chip.y - SHORTCUT_CHIP_HOLE_PADDING;
+        const width = chip.width + SHORTCUT_CHIP_HOLE_PADDING * 2;
+        const height = chip.height + SHORTCUT_CHIP_HOLE_PADDING * 2;
+        if (width <= 0 || height <= 0) {
+          return;
+        }
+        holes.push({
+          x,
+          y,
+          width,
+          height,
+          borderRadius: SHORTCUT_CHIP_HOLE_RADIUS + SHORTCUT_CHIP_HOLE_PADDING,
+        });
+      });
+    }
+
+    return holes;
+  }, [
+    isSuggestionScreenActive,
+    searchContainerFrame,
+    searchShortcutChipFrames,
+    searchShortcutsFrame,
+  ]);
   const searchSurfaceAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchSurfaceAnim.value,
     transform: [{ scale: 1 }],
@@ -1090,6 +1466,15 @@ const SearchScreen: React.FC = () => {
     !isLoading &&
     !isLoadingMore &&
     Boolean(results);
+
+  React.useEffect(() => {
+    if (!isSearchSessionActive) {
+      return;
+    }
+    setSearchShortcutsFrame(null);
+    setSearchShortcutChipFrames({});
+  }, [isSearchSessionActive]);
+
   React.useEffect(() => {
     const target = shouldShowSearchThisArea ? 1 : 0;
     searchThisAreaVisibility.value = withTiming(target, { duration: 200 });
@@ -1272,7 +1657,44 @@ const SearchScreen: React.FC = () => {
     );
   };
   const bottomInset = Math.max(insets.bottom, 12);
-  const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isLoading);
+  const suggestionPanelTopMargin = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return 0;
+    }
+    return Math.max(0, suggestionScrollTop - SEARCH_SUGGESTION_PANEL_OVERLAP);
+  }, [isSuggestionScreenActive, suggestionScrollTop]);
+  const suggestionPanelOverlap = React.useMemo(
+    () =>
+      isSuggestionScreenActive
+        ? Math.min(SEARCH_SUGGESTION_PANEL_OVERLAP, suggestionScrollTop)
+        : 0,
+    [isSuggestionScreenActive, suggestionScrollTop]
+  );
+  const suggestionScrollMaxHeight = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return undefined;
+    }
+    const available =
+      SCREEN_HEIGHT -
+      suggestionPanelTopMargin -
+      bottomInset -
+      SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM;
+    return available > 0 ? available : undefined;
+  }, [bottomInset, isSuggestionScreenActive, suggestionPanelTopMargin]);
+  const suggestionPanelMaxHeight = React.useMemo(() => {
+    if (!suggestionScrollMaxHeight) {
+      return undefined;
+    }
+    return Math.max(
+      0,
+      suggestionScrollMaxHeight -
+        (SEARCH_SUGGESTION_PANEL_PADDING_TOP +
+          SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM +
+          suggestionPanelOverlap)
+    );
+  }, [suggestionPanelOverlap, suggestionScrollMaxHeight]);
+  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
+  const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
   const showCachedSuggestionsIfFresh = React.useCallback(
     (trimmed: string) => {
       const now = Date.now();
@@ -1475,7 +1897,15 @@ const SearchScreen: React.FC = () => {
         }
 
         if (submittedLabel && pushToHistory) {
-          updateLocalRecentSearches(submittedLabel);
+          const hasEntityTargets = [
+            ...(response.plan?.restaurantFilters ?? []),
+            ...(response.plan?.connectionFilters ?? []),
+          ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
+
+          if (hasEntityTargets) {
+            updateLocalRecentSearches(submittedLabel);
+          }
+
           void loadRecentHistory();
         }
 
@@ -1962,7 +2392,7 @@ const SearchScreen: React.FC = () => {
     }
     setPendingPriceRange(getRangeFromLevels(priceLevels));
     setIsPriceSelectorVisible(true);
-  }, [isLoading, isPriceSelectorVisible, commitPriceSelection, priceLevels]);
+  }, [isPriceSelectorVisible, commitPriceSelection, priceLevels]);
 
   const toggleVotesFilter = React.useCallback(() => {
     const nextValue = !votes100Plus;
@@ -2347,6 +2777,11 @@ const SearchScreen: React.FC = () => {
     ({ shouldRefocusInput = false }: { shouldRefocusInput?: boolean } = {}) => {
       cancelSearch();
       cancelAutocomplete();
+      if (filterDebounceRef.current) {
+        clearTimeout(filterDebounceRef.current);
+        filterDebounceRef.current = null;
+      }
+      resetFilters();
       setIsSearchFocused(false);
       setIsAutocompleteSuppressed(true);
       setShowSuggestions(false);
@@ -2378,10 +2813,11 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete,
       cancelSearch,
       hidePanel,
+      resetFilters,
+      resetMapMoveFlag,
       setIsSearchSessionActive,
       setSearchMode,
       scrollResultsToTop,
-      resetMapMoveFlag,
     ]
   );
 
@@ -2566,27 +3002,6 @@ const SearchScreen: React.FC = () => {
     }
   }, [openNow, query, setOpenNow, submitSearch]);
 
-  const handlePriceSliderLayout = React.useCallback(
-    (event: LayoutChangeEvent) => {
-      const { width } = event.nativeEvent.layout;
-      if (Math.abs(width - priceSliderWidth) > 2) {
-        setPriceSliderWidth(width);
-      }
-    },
-    [priceSliderWidth]
-  );
-
-  const handlePriceSliderChangeFinish = React.useCallback((values: number[]) => {
-    if (!Array.isArray(values) || values.length === 0) {
-      return;
-    }
-    const nextRange: PriceRangeTuple = [
-      clampPriceSliderValue(values[0]),
-      clampPriceSliderValue(values[values.length - 1] ?? values[0]),
-    ];
-    setPendingPriceRange(normalizePriceRangeValues(nextRange));
-  }, []);
-
   const commitPriceSelection = React.useCallback(() => {
     const normalizedRange = normalizePriceRangeValues(pendingPriceRange);
     setPendingPriceRange(normalizedRange);
@@ -2610,6 +3025,10 @@ const SearchScreen: React.FC = () => {
       }, 150);
     }
   }, [pendingPriceRange, priceLevels, query, setPriceLevels, submitSearch]);
+
+  const closePriceSelector = React.useCallback(() => {
+    setIsPriceSelectorVisible(false);
+  }, []);
 
   const handlePriceDone = React.useCallback(() => {
     commitPriceSelection();
@@ -2719,7 +3138,10 @@ const SearchScreen: React.FC = () => {
       });
     };
     return (
-      <View key={item.connectionId} style={styles.resultItem}>
+      <View
+        key={item.connectionId}
+        style={[styles.resultItem, index === 0 && styles.firstResultItem]}
+      >
         <Pressable
           style={styles.resultPressable}
           onPress={handleDishPress}
@@ -2827,6 +3249,35 @@ const SearchScreen: React.FC = () => {
         : null;
     const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
     const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
+    const maxTopFoodToRender = Math.min(topFoodItems.length, TOP_FOOD_RENDER_LIMIT);
+    const topFoodInlineWidth = topFoodInlineWidths[restaurant.restaurantId];
+    const topFoodItemWidthMap = topFoodItemWidths[restaurant.restaurantId];
+    const topFoodMoreWidthMap = topFoodMoreWidths[restaurant.restaurantId];
+    const visibleTopFoodCount =
+      maxTopFoodToRender > 0
+        ? Math.max(
+            1,
+            calculateTopFoodVisibleCount(
+              topFoodItems,
+              maxTopFoodToRender,
+              topFoodInlineWidth,
+              topFoodItemWidthMap,
+              topFoodMoreWidthMap
+            )
+          )
+        : 0;
+    const inlineTopFoods = topFoodItems.slice(
+      0,
+      Math.max(1, Math.min(visibleTopFoodCount, maxTopFoodToRender))
+    );
+    const hiddenTopFoodCount = Math.max(0, topFoodItems.length - inlineTopFoods.length);
+    const potentialHiddenCounts: number[] = [];
+    for (let count = 1; count <= maxTopFoodToRender; count++) {
+      const hidden = topFoodItems.length - count;
+      if (hidden > 0) {
+        potentialHiddenCounts.push(hidden);
+      }
+    }
     const restaurantMetaLine = renderMetaDetailLine(
       null,
       null,
@@ -2858,7 +3309,10 @@ const SearchScreen: React.FC = () => {
       });
     };
     return (
-      <View key={restaurant.restaurantId} style={styles.resultItem}>
+      <View
+        key={restaurant.restaurantId}
+        style={[styles.resultItem, index === 0 && styles.firstResultItem]}
+      >
         <Pressable
           style={styles.resultPressable}
           onPress={() => openRestaurantProfile(restaurant)}
@@ -2883,7 +3337,14 @@ const SearchScreen: React.FC = () => {
                 </Text>
               </View>
               {restaurantMetaLine ? (
-                <View style={styles.resultMetaLine}>{restaurantMetaLine}</View>
+                <View
+                  style={[
+                    styles.resultMetaLine,
+                    index === 0 && styles.resultMetaLineFirstInList,
+                  ]}
+                >
+                  {restaurantMetaLine}
+                </View>
               ) : null}
               <View style={[styles.resultContent, styles.resultContentStack]}>
                 {restaurant.restaurantQualityScore !== null &&
@@ -2980,9 +3441,20 @@ const SearchScreen: React.FC = () => {
                       <View style={styles.topFoodDivider} />
                     </View>
                     <View style={styles.topFoodInlineRow}>
-                      <View style={styles.topFoodInlineList}>
-                        {topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT).map((food, idx) => (
-                          <Text key={food.connectionId} style={styles.topFoodInlineText}>
+                      <View
+                        style={styles.topFoodInlineList}
+                        onLayout={({ nativeEvent: { layout } }) => {
+                          if (layout.width > 0) {
+                            updateTopFoodInlineWidth(restaurant.restaurantId, layout.width);
+                          }
+                        }}
+                      >
+                        {inlineTopFoods.map((food, idx) => (
+                          <Text
+                            key={food.connectionId}
+                            style={styles.topFoodInlineText}
+                            numberOfLines={1}
+                          >
                             <Text
                               variant="caption"
                               weight="semibold"
@@ -3002,11 +3474,62 @@ const SearchScreen: React.FC = () => {
                             </Text>
                           </Text>
                         ))}
-                        {topFoodItems.length > TOP_FOOD_RENDER_LIMIT ? (
+                        {hiddenTopFoodCount > 0 ? (
                           <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
-                            +{topFoodItems.length - TOP_FOOD_RENDER_LIMIT} more
+                            +{hiddenTopFoodCount} more
                           </Text>
                         ) : null}
+                      </View>
+                      <View
+                        style={styles.topFoodInlineMeasure}
+                        pointerEvents="none"
+                        accessibilityElementsHidden
+                        importantForAccessibility="no-hide-descendants"
+                      >
+                        {topFoodItems.slice(0, maxTopFoodToRender).map((food, idx) => (
+                          <Text
+                            key={`${food.connectionId}-measure`}
+                            variant="caption"
+                            weight="regular"
+                            style={styles.topFoodMeasureText}
+                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
+                              const width = nativeEvent.lines?.[0]?.width;
+                              if (typeof width === 'number') {
+                                updateTopFoodItemWidth(restaurant.restaurantId, food.connectionId, width);
+                              }
+                            }}
+                            numberOfLines={1}
+                          >
+                            <Text
+                              variant="caption"
+                              weight="semibold"
+                              style={styles.topFoodRankInline}
+                            >
+                              {idx + 1}.
+                            </Text>
+                            <Text variant="caption" weight="regular" style={styles.topFoodNameInline}>
+                              {' '}
+                              {food.foodName}
+                            </Text>
+                          </Text>
+                        ))}
+                        {potentialHiddenCounts.map((hidden) => (
+                          <Text
+                            key={`${restaurant.restaurantId}-more-${hidden}`}
+                            variant="caption"
+                            weight="semibold"
+                            style={styles.topFoodMeasureText}
+                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
+                              const width = nativeEvent.lines?.[0]?.width;
+                              if (typeof width === 'number') {
+                                updateTopFoodMoreWidth(restaurant.restaurantId, hidden, width);
+                              }
+                            }}
+                            numberOfLines={1}
+                          >
+                            +{hidden} more
+                          </Text>
+                        ))}
                       </View>
                     </View>
                   </View>
@@ -3061,12 +3584,6 @@ const SearchScreen: React.FC = () => {
       priceButtonActive={priceButtonIsActive}
       onTogglePriceSelector={togglePriceSelector}
       isPriceSelectorVisible={isPriceSelectorVisible}
-      pendingPriceRange={pendingPriceRange}
-      onPriceChangeFinish={handlePriceSliderChangeFinish}
-      onPriceDone={handlePriceDone}
-      onPriceSliderLayout={handlePriceSliderLayout}
-      priceSliderWidth={priceSliderWidth}
-      priceLevelValues={Array.from(PRICE_SLIDER_VALUES)}
       contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
       accentColor={ACTIVE_TAB_COLOR}
     />
@@ -3388,32 +3905,66 @@ const SearchScreen: React.FC = () => {
             ]}
           >
             <FrostedGlassBackground />
-            <Animated.ScrollView
-              style={styles.searchSurfaceScroll}
-              contentContainerStyle={[
-                styles.searchSurfaceContent,
-                {
-                  paddingTop: searchLayout.top + searchLayout.height + 8,
-                  paddingBottom: bottomInset + 32,
-                },
-              ]}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              <SearchSuggestions
-                visible={shouldRenderSuggestionPanel}
-                showAutocomplete={shouldRenderAutocompleteSection}
-                showRecent={shouldShowRecentSection}
-                suggestions={suggestions}
-                recentSearches={recentSearches}
-                hasRecentSearches={hasRecentSearches}
-                isAutocompleteLoading={isAutocompleteLoading}
-                isRecentLoading={isRecentLoading}
-                onSelectSuggestion={handleSuggestionPress}
-                onSelectRecent={handleRecentSearchPress}
-                contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
+            {isSuggestionScreenActive && suggestionHeaderHeight > 0 ? (
+              <MaskedHoleOverlay
+                holes={suggestionHeaderHoles}
+                backgroundColor="#ffffff"
+                style={[styles.searchSuggestionHeaderSurface, { height: suggestionHeaderHeight }]}
+                pointerEvents="none"
               />
-            </Animated.ScrollView>
+            ) : null}
+            <View
+              style={[
+                styles.searchSurfaceScroll,
+                isSuggestionScreenActive
+                  ? [
+                      styles.searchSuggestionScrollSurface,
+                      {
+                        marginTop: suggestionPanelTopMargin,
+                        maxHeight: suggestionScrollMaxHeight,
+                      },
+                    ]
+                  : null,
+              ]}
+            >
+              <View
+                style={[
+                  styles.searchSurfaceContent,
+                  {
+                    paddingTop: isSuggestionScreenActive ? 0 : searchLayout.top + searchLayout.height + 8,
+                    paddingBottom: bottomInset + 32,
+                  },
+                ]}
+              >
+                {shouldRenderSuggestionPanel ? (
+                  <View
+                    style={[
+                      styles.searchMiddlePanel,
+                      {
+                        marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
+                        paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
+                        paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+                      },
+                      suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
+                    ]}
+                  >
+                    <SearchSuggestions
+                      visible={shouldRenderSuggestionPanel}
+                      showAutocomplete={shouldRenderAutocompleteSection}
+                      showRecent={shouldShowRecentSection}
+                      suggestions={suggestions}
+                      recentSearches={recentSearches}
+                      hasRecentSearches={hasRecentSearches}
+                      isAutocompleteLoading={isAutocompleteLoading}
+                      isRecentLoading={isRecentLoading}
+                      onSelectSuggestion={handleSuggestionPress}
+                      onSelectRecent={handleRecentSearchPress}
+                      panelMaxHeight={suggestionPanelMaxHeight}
+                    />
+                  </View>
+                ) : null}
+              </View>
+            </View>
           </Reanimated.View>
           <View
             pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
@@ -3425,6 +3976,19 @@ const SearchScreen: React.FC = () => {
                 }
 
                 return { top: layout.y, height: layout.height };
+              });
+
+              setSearchContainerFrame((prev) => {
+                if (
+                  prev &&
+                  Math.abs(prev.x - layout.x) < 0.5 &&
+                  Math.abs(prev.y - layout.y) < 0.5 &&
+                  Math.abs(prev.width - layout.width) < 0.5 &&
+                  Math.abs(prev.height - layout.height) < 0.5
+                ) {
+                  return prev;
+                }
+                return layout;
               });
             }}
           >
@@ -3443,20 +4007,59 @@ const SearchScreen: React.FC = () => {
               onBackPress={handleCloseResults}
               inputRef={inputRef}
               inputAnimatedStyle={searchBarInputAnimatedStyle}
-              containerAnimatedStyle={[searchBarSheetAnimatedStyle, searchBarAnimatedStyle]}
+              containerAnimatedStyle={[
+                isSuggestionScreenActive ? null : searchBarSheetAnimatedStyle,
+                searchBarAnimatedStyle,
+              ]}
               editable
               showInactiveSearchIcon={!isSearchFocused && !isSearchSessionActive}
               isSearchSessionActive={isSearchSessionActive}
+              surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}
             />
           </View>
-          {!isSearchFocused && !isSearchSessionActive && (
-            <View style={styles.searchShortcutsRow} pointerEvents="box-none">
+          {!isSearchSessionActive && (
+            <View
+              style={styles.searchShortcutsRow}
+              pointerEvents="box-none"
+              onLayout={({ nativeEvent: { layout } }) => {
+                setSearchShortcutsFrame((prev) => {
+                  if (
+                    prev &&
+                    Math.abs(prev.x - layout.x) < 0.5 &&
+                    Math.abs(prev.y - layout.y) < 0.5 &&
+                    Math.abs(prev.width - layout.width) < 0.5 &&
+                    Math.abs(prev.height - layout.height) < 0.5
+                  ) {
+                    return prev;
+                  }
+                  return layout;
+                });
+              }}
+            >
               <Pressable
                 onPress={handleBestRestaurantsHere}
-                style={styles.searchShortcutChip}
+                style={[
+                  styles.searchShortcutChip,
+                  isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel="Show best restaurants here"
                 hitSlop={8}
+                onLayout={({ nativeEvent: { layout } }) => {
+                  setSearchShortcutChipFrames((prev) => {
+                    const prevLayout = prev.restaurants;
+                    if (
+                      prevLayout &&
+                      Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                      Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                      Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                      Math.abs(prevLayout.height - layout.height) < 0.5
+                    ) {
+                      return prev;
+                    }
+                    return { ...prev, restaurants: layout };
+                  });
+                }}
               >
                 <View style={styles.searchShortcutContent}>
                   <Store size={16} color="#0f172a" strokeWidth={2} />
@@ -3467,10 +4070,28 @@ const SearchScreen: React.FC = () => {
               </Pressable>
               <Pressable
                 onPress={handleBestDishesHere}
-                style={styles.searchShortcutChip}
+                style={[
+                  styles.searchShortcutChip,
+                  isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
+                ]}
                 accessibilityRole="button"
                 accessibilityLabel="Show best dishes here"
                 hitSlop={8}
+                onLayout={({ nativeEvent: { layout } }) => {
+                  setSearchShortcutChipFrames((prev) => {
+                    const prevLayout = prev.dishes;
+                    if (
+                      prevLayout &&
+                      Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                      Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                      Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                      Math.abs(prevLayout.height - layout.height) < 0.5
+                    ) {
+                      return prev;
+                    }
+                    return { ...prev, dishes: layout };
+                  });
+                }}
               >
                 <View style={styles.searchShortcutContent}>
                   <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
@@ -3611,105 +4232,117 @@ const SearchScreen: React.FC = () => {
         onDismiss={handleRestaurantOverlayDismissed}
         onToggleFavorite={handleRestaurantFavoriteToggle}
       />
-      {isScoreInfoVisible && scoreInfo ? (
-        <View style={styles.scoreInfoOverlay} pointerEvents="box-none">
-          <Pressable style={styles.scoreInfoBackdrop} onPress={closeScoreInfo} />
-          <Animated.View
-            style={[
-              styles.scoreInfoSheet,
-              {
-                height: SCORE_INFO_MAX_HEIGHT,
-                paddingBottom: Math.max(insets.bottom, 12),
-                transform: [{ translateY: scoreInfoTranslateY }],
-              },
-            ]}
+      <SecondaryBottomSheet
+        visible={isPriceSelectorVisible}
+        onRequestClose={closePriceSelector}
+        paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
+        paddingTop={12}
+      >
+        <View style={styles.priceSheetHeaderRow}>
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            variant="body"
+            weight="semibold"
+            style={styles.priceSheetHeadline}
           >
-            <View style={styles.scoreInfoGrabHandleWrapper}>
-              <View style={styles.scoreInfoGrabHandle} />
-            </View>
-            <View style={styles.scoreInfoContent}>
-              <View style={styles.scoreInfoHeaderRow}>
-                <View style={styles.scoreInfoTitleRow}>
-                  {scoreInfo.type === 'dish' ? (
-                    <HandPlatter
-                      size={SECONDARY_METRIC_ICON_SIZE + 2}
-                      color={themeColors.textPrimary}
-                      strokeWidth={2}
-                    />
-                  ) : (
-                    <Store
-                      size={SECONDARY_METRIC_ICON_SIZE + 2}
-                      color={themeColors.textPrimary}
-                      strokeWidth={2}
-                    />
-                  )}
-                  <Text variant="caption" weight="semibold" style={styles.scoreInfoTitle}>
-                    {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
-                  </Text>
-                  <Text variant="caption" weight="semibold" style={styles.scoreInfoValue}>
-                    {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={closeScoreInfo}
-                  style={styles.scoreInfoClose}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Close score details"
-                >
-                  <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
-                </TouchableOpacity>
-              </View>
-              <Text variant="caption" style={styles.scoreInfoSubtitle} numberOfLines={1}>
-                {scoreInfo.title}
-              </Text>
-              <View style={styles.scoreInfoMetricsRow}>
-                <View style={styles.scoreInfoMetricItem}>
-                  <VoteIcon color={themeColors.textPrimary} size={14} />
-                  <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
-                    {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
-                  </Text>
-                  <Text variant="caption" style={styles.scoreInfoMetricLabel}>
-                    Votes
-                  </Text>
-                </View>
-                <View style={styles.scoreInfoMetricItem}>
-                  <PollIcon color={themeColors.textPrimary} size={14} />
-                  <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
-                    {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
-                  </Text>
-                  <Text variant="caption" style={styles.scoreInfoMetricLabel}>
-                    Polls
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.scoreInfoDivider} />
-              <Text variant="caption" style={styles.scoreInfoDescription}>
-                {scoreInfo.type === 'dish'
-                  ? "Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant's overall quality, scaled 0–100."
-                  : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}
-              </Text>
-            </View>
-          </Animated.View>
+            {priceSheetHeadline}
+          </Text>
+          <Pressable
+            onPress={handlePriceDone}
+            accessibilityRole="button"
+            accessibilityLabel="Apply price filters"
+            style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
+          >
+            <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
+              Done
+            </Text>
+          </Pressable>
         </View>
-      ) : null}
+        <View style={styles.priceSheetSliderWrapper}>
+          <PriceRangeSlider
+            range={pendingPriceRange}
+            onRangePreview={setPendingPriceRange}
+            onRangeCommit={setPendingPriceRange}
+          />
+        </View>
+      </SecondaryBottomSheet>
+      <SecondaryBottomSheet
+        visible={Boolean(isScoreInfoVisible && scoreInfo)}
+        onRequestClose={closeScoreInfo}
+        onDismiss={() => setScoreInfo(null)}
+        paddingHorizontal={CONTENT_HORIZONTAL_PADDING}
+        paddingTop={12}
+        sheetStyle={{ height: SCORE_INFO_MAX_HEIGHT }}
+      >
+        {scoreInfo ? (
+          <View style={styles.scoreInfoContent}>
+            <View style={styles.scoreInfoHeaderRow}>
+              <View style={styles.scoreInfoTitleRow}>
+                {scoreInfo.type === 'dish' ? (
+                  <HandPlatter
+                    size={SECONDARY_METRIC_ICON_SIZE + 2}
+                    color={themeColors.textPrimary}
+                    strokeWidth={2}
+                  />
+                ) : (
+                  <Store
+                    size={SECONDARY_METRIC_ICON_SIZE + 2}
+                    color={themeColors.textPrimary}
+                    strokeWidth={2}
+                  />
+                )}
+                <Text variant="caption" weight="semibold" style={styles.scoreInfoTitle}>
+                  {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
+                </Text>
+                <Text variant="caption" weight="semibold" style={styles.scoreInfoValue}>
+                  {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={closeScoreInfo}
+                style={styles.scoreInfoClose}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Close score details"
+              >
+                <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+            <Text variant="caption" style={styles.scoreInfoSubtitle} numberOfLines={1}>
+              {scoreInfo.title}
+            </Text>
+            <View style={styles.scoreInfoMetricsRow}>
+              <View style={styles.scoreInfoMetricItem}>
+                <VoteIcon color={themeColors.textPrimary} size={14} />
+                <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                  {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
+                </Text>
+                <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                  Votes
+                </Text>
+              </View>
+              <View style={styles.scoreInfoMetricItem}>
+                <PollIcon color={themeColors.textPrimary} size={14} />
+                <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                  {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
+                </Text>
+                <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                  Polls
+                </Text>
+              </View>
+            </View>
+            <View style={styles.scoreInfoDivider} />
+            <Text variant="caption" style={styles.scoreInfoDescription}>
+              {scoreInfo.type === 'dish'
+                ? "Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant's overall quality, scaled 0–100."
+                : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}
+            </Text>
+          </View>
+        ) : null}
+      </SecondaryBottomSheet>
     </View>
   );
-};
-
-const toggleContentPaddingStyle = {
-  paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
-  paddingVertical: TOGGLE_VERTICAL_PADDING,
-};
-
-const toggleBaseStyle = {
-  flexDirection: 'row',
-  alignItems: 'center',
-  borderRadius: TOGGLE_BORDER_RADIUS,
-  borderWidth: 1,
-  borderColor: '#cbd5e1',
-  backgroundColor: '#ffffff',
-  ...toggleContentPaddingStyle,
 };
 
 const styles = StyleSheet.create({
@@ -3775,12 +4408,12 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
-    paddingTop: 10,
+    paddingTop: SEARCH_CONTAINER_PADDING_TOP,
     zIndex: 20,
   },
   searchShortcutsRow: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
-    marginBottom: 8,
+    marginBottom: SEARCH_SHORTCUTS_BOTTOM_MARGIN,
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -3801,6 +4434,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 1.5,
     elevation: 2,
+  },
+  searchShortcutChipTransparent: {
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   searchShortcutContent: {
     flexDirection: 'row',
@@ -3871,12 +4510,32 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     zIndex: 10,
   },
+  searchSurfaceSolidBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
+  },
   searchSurfaceScroll: {
-    flex: 1,
+    alignSelf: 'stretch',
+    width: '100%',
+  },
+  searchSuggestionHeaderSurface: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  searchSuggestionScrollSurface: {
+    backgroundColor: 'transparent',
   },
   searchSurfaceContent: {
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingVertical: 12,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+  },
+  searchMiddlePanel: {
+    width: '100%',
+    alignSelf: 'center',
+    backgroundColor: '#ffffff',
+    paddingTop: 0,
   },
   autocompleteSectionSurface: {
     paddingHorizontal: 14,
@@ -3989,125 +4648,6 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
   },
-  filterButtonsScroll: {
-    flexGrow: 0,
-    marginHorizontal: -CONTENT_HORIZONTAL_PADDING,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-  },
-  filterButtonsContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: TOGGLE_STACK_GAP,
-    paddingRight: 4,
-  },
-  priceButton: {
-    ...toggleBaseStyle,
-  },
-  priceButtonActive: {
-    borderRadius: TOGGLE_BORDER_RADIUS,
-    backgroundColor: ACTIVE_TAB_COLOR,
-    borderColor: ACTIVE_TAB_COLOR,
-  },
-  priceButtonDisabled: {
-    opacity: 0.6,
-  },
-  priceButtonBullet: {
-    marginRight: 6,
-    fontSize: 18,
-    color: '#94a3b8',
-    marginTop: -2,
-  },
-  priceButtonBulletActive: {
-    color: '#ffffff',
-  },
-  priceButtonLabel: {
-    color: '#475569',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  priceButtonLabelActive: {
-    color: '#ffffff',
-  },
-  priceButtonChevron: {
-    marginLeft: 8,
-  },
-  priceSelector: {
-    marginTop: TOGGLE_STACK_GAP,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 12,
-    paddingVertical: TOGGLE_STACK_GAP,
-    backgroundColor: '#ffffff',
-  },
-  priceSelectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  priceFilterLabel: {
-    color: '#475569',
-  },
-  priceSelectorValue: {
-    color: '#0f172a',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 2,
-  },
-  priceDoneButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: ACTIVE_TAB_COLOR,
-  },
-  priceDoneButtonText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  priceSliderWrapper: {
-    width: '100%',
-    paddingHorizontal: 4,
-  },
-  priceSlider: {
-    height: 30,
-  },
-  priceSliderTrack: {
-    height: 6,
-    borderRadius: 999,
-  },
-  priceSliderSelected: {
-    backgroundColor: ACTIVE_TAB_COLOR,
-  },
-  priceSliderUnselected: {
-    backgroundColor: '#e2e8f0',
-  },
-  priceSliderMarker: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: ACTIVE_TAB_COLOR,
-    backgroundColor: '#ffffff',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.15,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
-  },
-  priceSliderMarkerActive: {
-    backgroundColor: '#fff7ed',
-  },
-  priceSliderLabelsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-    paddingHorizontal: 2,
-  },
-  priceSliderLabel: {
-    fontSize: 11,
-    color: '#94a3b8',
-  },
   bottomNavWrapper: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'flex-end',
@@ -4155,7 +4695,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 8,
+    paddingTop: 12,
   },
   scoreInfoGrabHandleWrapper: {
     alignItems: 'center',
@@ -4225,41 +4765,6 @@ const styles = StyleSheet.create({
   pollsIcon: {
     transform: [{ rotate: '90deg' }, { scaleX: -1 }],
   },
-  inlineSegmentWrapper: {
-    flexBasis: 'auto',
-    flexGrow: 0,
-    flexShrink: 0,
-    alignItems: 'flex-start',
-  },
-  segmentedControl: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: TOGGLE_STACK_GAP,
-    padding: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS + 3,
-    backgroundColor: 'transparent',
-    alignSelf: 'flex-start',
-    flexShrink: 0,
-  },
-  segmentedOption: {
-    ...toggleBaseStyle,
-    justifyContent: 'center',
-    minWidth: 0,
-    flexGrow: 0,
-    flexShrink: 1,
-  },
-  segmentedOptionActive: {
-    backgroundColor: ACTIVE_TAB_COLOR,
-    borderColor: ACTIVE_TAB_COLOR,
-  },
-  segmentedLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  segmentedLabelActive: {
-    color: '#ffffff',
-  },
   resultsHeader: {
     backgroundColor: 'transparent',
   },
@@ -4275,7 +4780,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   resultsCloseButton: {
-    marginRight: -4,
+    marginRight: 0,
   },
   resultsCloseIcon: {
     width: TOGGLE_HEIGHT,
@@ -4329,55 +4834,6 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     paddingLeft: 0,
   },
-  openNowButton: {
-    ...toggleBaseStyle,
-  },
-  openNowButtonActive: {
-    borderRadius: TOGGLE_BORDER_RADIUS,
-    borderColor: ACTIVE_TAB_COLOR,
-    backgroundColor: ACTIVE_TAB_COLOR,
-    shadowColor: ACTIVE_TAB_COLOR,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-  },
-  openNowButtonDisabled: {
-    opacity: 0.6,
-  },
-  openNowIcon: {
-    marginRight: 6,
-  },
-  openNowText: {
-    color: themeColors.textBody,
-    fontSize: 13,
-  },
-  openNowTextActive: {
-    color: '#ffffff',
-  },
-  votesButton: {
-    ...toggleBaseStyle,
-    flexDirection: 'row',
-  },
-  votesButtonActive: {
-    borderColor: ACTIVE_TAB_COLOR,
-    backgroundColor: ACTIVE_TAB_COLOR,
-    shadowColor: ACTIVE_TAB_COLOR,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-  },
-  votesButtonDisabled: {
-    opacity: 0.6,
-  },
-  votesIcon: {
-    marginRight: 6,
-  },
-  votesText: {
-    color: themeColors.textBody,
-  },
-  votesTextActive: {
-    color: '#ffffff',
-  },
   resultsInner: {
     width: '100%',
   },
@@ -4391,14 +4847,109 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     gap: 0,
   },
+  priceSheetOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  priceSheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15, 23, 42, 0.2)',
+  },
+  priceSheetContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 30,
+  },
+  priceSheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 10,
+  },
+  priceSheetHeadline: {
+    flex: 1,
+    minWidth: 0,
+    color: '#0f172a',
+  },
+  priceSheetSliderWrapper: {
+    width: '100%',
+    paddingHorizontal: PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
+    marginTop: 0,
+    marginBottom: 8,
+  },
+  priceTrackContainer: {
+    width: '100%',
+    height: 32,
+    justifyContent: 'center',
+  },
+  priceSliderRail: {
+    position: 'absolute',
+    left: PRICE_THUMB_SIZE / 2,
+    right: PRICE_THUMB_SIZE / 2,
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: `${themeColors.primary}17`,
+    top: '50%',
+    marginTop: -1.5,
+  },
+  priceSliderRailSelected: {
+    position: 'absolute',
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: themeColors.primary,
+    top: '50%',
+    marginTop: -1.5,
+  },
+  priceSliderThumb: {
+    position: 'absolute',
+    top: 6,
+    width: PRICE_THUMB_SIZE,
+    height: PRICE_THUMB_SIZE,
+    borderRadius: PRICE_THUMB_SIZE / 2,
+    backgroundColor: themeColors.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.18,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  priceSheetDoneButton: {
+    height: CONTROL_HEIGHT,
+    borderRadius: CONTROL_RADIUS,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 4,
+    paddingVertical: CONTROL_VERTICAL_PADDING,
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-end',
+  },
+  priceSheetDoneText: {
+    color: '#ffffff',
+  },
   resultItem: {
     paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
     paddingBottom: CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
-    marginBottom: CARD_GAP,
+    marginBottom: SHARED_SECTION_GAP,
     alignSelf: 'stretch',
     borderRadius: 0,
+  },
+  firstResultItem: {
+    paddingTop:
+      CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE + FIRST_RESULT_TOP_PADDING_EXTRA,
   },
   resultItemWithFilters: {
     paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
@@ -4740,15 +5291,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 0,
     minWidth: 0,
-    flexWrap: 'wrap',
+    width: '100%',
     columnGap: CARD_LINE_GAP,
     rowGap: CARD_LINE_GAP,
   },
   topFoodInlineList: {
+    flex: 1,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     columnGap: CARD_LINE_GAP,
-    rowGap: CARD_LINE_GAP,
     flexShrink: 1,
     minWidth: 0,
   },
@@ -4775,6 +5326,16 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingLeft: 0,
     flexShrink: 0,
+  },
+  topFoodInlineMeasure: {
+    position: 'absolute',
+    opacity: 0,
+    left: 0,
+    top: 0,
+    pointerEvents: 'none',
+  },
+  topFoodMeasureText: {
+    color: themeColors.textBody,
   },
   resultContentStatusLine: {
     marginTop: 0,

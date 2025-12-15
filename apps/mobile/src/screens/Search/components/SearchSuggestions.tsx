@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -23,8 +24,8 @@ type SearchSuggestionsProps = {
   isRecentLoading: boolean;
   onSelectSuggestion: (match: AutocompleteMatch) => void;
   onSelectRecent: (term: string) => void;
-  contentHorizontalPadding: number;
   style?: StyleProp<ViewStyle>;
+  panelMaxHeight?: number;
 };
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
@@ -38,16 +39,22 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   isRecentLoading,
   onSelectSuggestion,
   onSelectRecent,
-  contentHorizontalPadding,
   style,
+  panelMaxHeight,
 }) => {
   if (!visible) {
     return null;
   }
 
+  const containerStyles = [styles.container, style];
+  const recentScrollStyles: ViewStyle[] = [styles.recentScroll as ViewStyle];
+  if (typeof panelMaxHeight === 'number' && panelMaxHeight > 0) {
+    recentScrollStyles.push({ maxHeight: panelMaxHeight });
+  }
+
   return (
-    <View style={style}>
-      {showAutocomplete && (
+    <View style={containerStyles}>
+      {showAutocomplete ? (
         <View style={styles.autocompleteSectionSurface}>
           {isAutocompleteLoading && (
             <View style={styles.autocompleteLoadingRow}>
@@ -82,17 +89,17 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             })
           )}
         </View>
-      )}
+      ) : null}
 
-      {showRecent && (
-        <View
-          style={[
-            styles.recentSectionSurface,
-            {
-              marginHorizontal: -contentHorizontalPadding,
-              paddingHorizontal: contentHorizontalPadding,
-            },
+      {showRecent ? (
+        <ScrollView
+          style={recentScrollStyles}
+          contentContainerStyle={[
+            styles.recentScrollContent,
+            showAutocomplete ? styles.recentScrollContentGap : null,
           ]}
+          showsVerticalScrollIndicator={false}
+          nestedScrollEnabled
         >
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>RECENT</Text>
@@ -112,18 +119,23 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </TouchableOpacity>
             ))
           )}
-        </View>
-      )}
+        </ScrollView>
+      ) : null}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+  },
   autocompleteSectionSurface: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 0,
     paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: '#ffffff',
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
   },
   autocompleteLoadingRow: {
     flexDirection: 'row',
@@ -162,12 +174,15 @@ const styles = StyleSheet.create({
     color: '#64748b',
     textTransform: 'capitalize',
   },
-  recentSectionSurface: {
+  recentScroll: {
+    flexGrow: 0,
+  },
+  recentScrollContent: {
+    paddingHorizontal: 0,
+    paddingVertical: 12,
+  },
+  recentScrollContentGap: {
     marginTop: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 0,
-    backgroundColor: '#ffffff',
   },
   recentHeaderRow: {
     flexDirection: 'row',

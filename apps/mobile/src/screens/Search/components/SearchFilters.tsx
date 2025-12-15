@@ -2,7 +2,6 @@ import React from 'react';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
-import RangeSlider from 'rn-range-slider';
 import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import Reanimated, {
   useAnimatedProps,
@@ -18,26 +17,21 @@ import {
 
 import { Text } from '../../../components';
 import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
-import { formatPriceRangeText } from '../../../constants/pricing';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
 const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
 const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
-const TOGGLE_STACK_GAP = 8;
+const TOGGLE_STACK_GAP = 7;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
-const PRICE_CUTOUT_RADIUS = CONTROL_RADIUS + 6;
 const STRIP_BACKGROUND_HEIGHT = 14;
-const PRICE_CUTOUT_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING;
-const PRICE_CUTOUT_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING + 2;
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
   { label: 'Dishes', value: 'dishes' as const },
 ] as const;
 
-const HOLE_VERTICAL_PADDING = 0;
 const HOLE_RADIUS_BOOST = 1;
 
 type CornerRadii = {
@@ -134,12 +128,6 @@ type SearchFiltersProps = {
   priceButtonActive: boolean;
   onTogglePriceSelector: () => void;
   isPriceSelectorVisible: boolean;
-  pendingPriceRange: [number, number];
-  onPriceChangeFinish: (values: number[]) => void;
-  onPriceDone: () => void;
-  onPriceSliderLayout: (event: LayoutChangeEvent) => void;
-  priceSliderWidth: number;
-  priceLevelValues: number[];
   contentHorizontalPadding: number;
   accentColor: string;
 };
@@ -155,19 +143,12 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   priceButtonActive,
   onTogglePriceSelector,
   isPriceSelectorVisible,
-  pendingPriceRange,
-  onPriceChangeFinish,
-  onPriceDone,
-  onPriceSliderLayout,
-  priceSliderWidth,
-  priceLevelValues,
   contentHorizontalPadding,
   accentColor,
 }) => {
   const [viewportWidth, setViewportWidth] = React.useState(0);
   const [rowHeight, setRowHeight] = React.useState(0);
   const [holeMap, setHoleMap] = React.useState<Record<string, ExtendedHole>>({});
-  const [priceSelectorLayout, setPriceSelectorLayout] = React.useState({ width: 0, height: 0 });
   const maskIdRef = React.useRef<string>(
     `search-filter-mask-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -176,40 +157,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
 
-  const minPriceLevel = priceLevelValues.length ? Math.min(...priceLevelValues) : 1;
-  const maxPriceLevel = priceLevelValues.length ? Math.max(...priceLevelValues) : 4;
-  const normalizeRange = React.useCallback(
-    (low: number, high: number): [number, number] => {
-      const clampedLow = Math.max(minPriceLevel, Math.min(maxPriceLevel, Math.round(low)));
-      const clampedHigh = Math.max(minPriceLevel, Math.min(maxPriceLevel, Math.round(high)));
-      return clampedLow <= clampedHigh ? [clampedLow, clampedHigh] : [clampedHigh, clampedLow];
-    },
-    [maxPriceLevel, minPriceLevel]
-  );
-
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
-
-  const renderSliderThumb = React.useCallback(
-    () => (
-      <View style={styles.priceSliderThumbContainer}>
-        <View
-          style={[
-            styles.priceSliderThumb,
-            styles.priceSliderThumbShadow,
-            { backgroundColor: accentColor },
-          ]}
-        />
-      </View>
-    ),
-    [accentColor]
-  );
-  const renderSliderRail = React.useCallback(() => <View style={styles.priceSliderRail} />, []);
-  const renderSliderRailSelected = React.useCallback(
-    () => <View style={[styles.priceSliderRailSelected, { backgroundColor: accentColor }]} />,
-    [accentColor]
-  );
 
   const registerHole = React.useCallback(
     (key: string, borderRadius: number | Partial<CornerRadii> = TOGGLE_BORDER_RADIUS) =>
@@ -251,23 +201,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     transform: [{ translateX: -scrollX.value }],
   }));
   const AnimatedG = Reanimated.createAnimatedComponent(G);
-
-  const priceSummary = React.useMemo(
-    () => formatPriceRangeText(pendingPriceRange),
-    [pendingPriceRange]
-  );
-  const sliderStyle = React.useMemo(
-    () => [styles.priceSlider, { width: priceSliderWidth }],
-    [priceSliderWidth]
-  );
-
-  const handleSliderTouchEnd = React.useCallback(
-    (low: number, high: number) => {
-      const normalized = normalizeRange(low, high);
-      onPriceChangeFinish(normalized);
-    },
-    [normalizeRange, onPriceChangeFinish]
-  );
 
   return (
     <View style={styles.resultFiltersWrapper}>
@@ -337,12 +270,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     ],
                   ]}
                 >
-                  <Feather
-                    name="clock"
-                    size={14}
-                    color={openNow ? '#ffffff' : '#111827'}
-                    style={styles.openNowIcon}
-                  />
                   <Text
                     variant="caption"
                     weight="semibold"
@@ -399,12 +326,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     ],
                   ]}
                 >
-                  <Feather
-                    name="thumbs-up"
-                    size={14}
-                    color={votesFilterActive ? '#ffffff' : '#111827'}
-                    style={styles.votesIcon}
-                  />
                   <Text
                     variant="caption"
                     weight="semibold"
@@ -475,127 +396,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             </MaskedView>
           ) : null}
         </View>
-
-        <View style={styles.priceGapFiller} pointerEvents="none" />
-
-        {isPriceSelectorVisible ? (
-          <View style={styles.priceSelectorWrapper}>
-            <View style={styles.priceSelectorSpacer} pointerEvents="none" />
-            <View
-              style={styles.priceSelectorCutoutWrapper}
-              onLayout={({ nativeEvent: { layout } }) =>
-                setPriceSelectorLayout({ width: layout.width, height: layout.height })
-              }
-            >
-              {priceSelectorLayout.width > 0 && priceSelectorLayout.height > 0 ? (
-                <MaskedView
-                  pointerEvents="none"
-                  style={[
-                    styles.priceSelectorMaskOverlay,
-                    {
-                      width: priceSelectorLayout.width,
-                      height: priceSelectorLayout.height,
-                      top: 0,
-                    },
-                  ]}
-                  maskElement={
-                    <Svg width={priceSelectorLayout.width} height={priceSelectorLayout.height}>
-                      <Defs>
-                        <Mask
-                          id="price-selector-mask"
-                          x="0"
-                          y="0"
-                          width={priceSelectorLayout.width}
-                          height={priceSelectorLayout.height}
-                          maskUnits="userSpaceOnUse"
-                          maskContentUnits="userSpaceOnUse"
-                        >
-                          <Rect
-                            x={0}
-                            y={0}
-                            width={priceSelectorLayout.width}
-                            height={priceSelectorLayout.height}
-                            fill="white"
-                          />
-                          <Rect
-                            x={contentHorizontalPadding}
-                            y={0}
-                            width={Math.max(
-                              priceSelectorLayout.width - contentHorizontalPadding * 2,
-                              0
-                            )}
-                            height={priceSelectorLayout.height}
-                            rx={PRICE_CUTOUT_RADIUS}
-                            ry={PRICE_CUTOUT_RADIUS}
-                            fill="black"
-                          />
-                        </Mask>
-                      </Defs>
-                      <Rect
-                        x={0}
-                        y={0}
-                        width={priceSelectorLayout.width}
-                        height={priceSelectorLayout.height}
-                        fill="white"
-                        mask="url(#price-selector-mask)"
-                      />
-                    </Svg>
-                  }
-                >
-                  <View style={styles.priceSelectorMaskFill} pointerEvents="none" />
-                </MaskedView>
-              ) : null}
-              <View style={[styles.priceSelector, { marginHorizontal: contentHorizontalPadding }]}>
-                <View style={styles.priceSelectorHeader}>
-                  <View style={styles.priceSelectorTextBlock}>
-                    <Text variant="caption" style={styles.priceFilterLabel}>
-                      Price per person
-                    </Text>
-                    <Text variant="body" weight="semibold" style={styles.priceSelectorValueText}>
-                      {priceSummary}
-                    </Text>
-                  </View>
-                  <Pressable
-                    onPress={onPriceDone}
-                    accessibilityRole="button"
-                    accessibilityLabel="Apply price filters"
-                    style={[styles.priceDoneButton, { backgroundColor: accentColor }]}
-                  >
-                    <Text variant="caption" weight="semibold" style={styles.priceDoneButtonText}>
-                      Done
-                    </Text>
-                  </Pressable>
-                </View>
-                <View
-                  style={[
-                    styles.priceSliderWrapper,
-                    {
-                      paddingHorizontal: contentHorizontalPadding + 10,
-                      maxWidth: 320,
-                      alignSelf: 'center',
-                    },
-                  ]}
-                  onLayout={onPriceSliderLayout}
-                >
-                  {priceSliderWidth > 0 ? (
-                    <RangeSlider
-                      style={sliderStyle}
-                      min={minPriceLevel}
-                      max={maxPriceLevel}
-                      step={1}
-                      low={pendingPriceRange[0]}
-                      high={pendingPriceRange[1]}
-                      renderThumb={renderSliderThumb}
-                      renderRail={renderSliderRail}
-                      renderRailSelected={renderSliderRailSelected}
-                      onSliderTouchEnd={handleSliderTouchEnd}
-                    />
-                  ) : null}
-                </View>
-              </View>
-            </View>
-          </View>
-        ) : null}
       </View>
     </View>
   );
@@ -693,9 +493,6 @@ const styles = StyleSheet.create({
   openNowButtonDisabled: {
     opacity: 0.6,
   },
-  openNowIcon: {
-    marginRight: 6,
-  },
   openNowText: {
     color: '#111827',
   },
@@ -720,112 +517,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     marginTop: 0,
   },
-  priceSelectorWrapper: {
-    marginTop: 0,
-    position: 'relative',
-  },
-  priceSelectorSpacer: {
-    height: 0,
-  },
-  priceSelectorCutoutWrapper: {
-    position: 'relative',
-    zIndex: 1,
-  },
-  priceGapFiller: {
-    height: TOGGLE_STACK_GAP,
-    backgroundColor: '#ffffff',
-  },
-  priceSelectorMaskOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-  },
-  priceSelectorMaskFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  priceSelector: {
-    borderRadius: PRICE_CUTOUT_RADIUS,
-    borderWidth: 0,
-    paddingHorizontal: PRICE_CUTOUT_HORIZONTAL_PADDING + 6,
-    paddingVertical: PRICE_CUTOUT_VERTICAL_PADDING + 8,
-    backgroundColor: 'transparent',
-  },
-  priceSelectorHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  priceFilterLabel: {
-    color: '#0f172a',
-    letterSpacing: 0.2,
-  },
-  priceSelectorTextBlock: {
-    flexShrink: 1,
-    minWidth: 0,
-    gap: 2,
-  },
-  priceSelectorValueText: {
-    color: '#0f172a',
-    letterSpacing: 0.1,
-  },
-  priceDoneButton: {
-    height: CONTROL_HEIGHT,
-    borderRadius: CONTROL_RADIUS,
-    paddingHorizontal: TOGGLE_HORIZONTAL_PADDING,
-    paddingVertical: TOGGLE_VERTICAL_PADDING,
-    backgroundColor: '#1f2937',
-    shadowColor: '#0f172a',
-    shadowOpacity: 0.18,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 3 },
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  priceDoneButtonText: {
-    color: '#ffffff',
-  },
-  priceSliderWrapper: {
-    width: '100%',
-    paddingHorizontal: 4,
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  priceSlider: {
-    height: 34,
-  },
-  priceSliderRail: {
-    flex: 1,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: '#cbd5e1',
-  },
-  priceSliderRailSelected: {
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: '#9fb1c5',
-  },
-  priceSliderThumbContainer: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  priceSliderThumb: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-  },
-  priceSliderThumbShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
-    elevation: 2,
-  },
   votesButton: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
     flexDirection: 'row',
@@ -833,9 +524,6 @@ const styles = StyleSheet.create({
   votesButtonActive: {},
   votesButtonDisabled: {
     opacity: 0.6,
-  },
-  votesIcon: {
-    marginRight: 6,
   },
   votesText: {
     color: '#111827',

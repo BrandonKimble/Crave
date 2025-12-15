@@ -42,7 +42,7 @@ export const overlaySheetStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 2,
+    marginTop: 6,
   },
   headerRowSpaced: {
     marginBottom: 8,
