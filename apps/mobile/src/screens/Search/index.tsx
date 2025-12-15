@@ -325,29 +325,26 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
     const lastPreviewLow = useSharedValue(clampPriceSliderValue(range[0]));
     const lastPreviewHigh = useSharedValue(clampPriceSliderValue(range[1]));
 
-    const normalizeWorklet = React.useCallback(
-      (low: number, high: number): PriceRangeTuple => {
-        'worklet';
-        const clamp = (value: number, min: number, max: number) =>
-          Math.min(max, Math.max(min, value));
-        let min = clamp(Math.round(low), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-        let max = clamp(Math.round(high), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-        if (min > max) {
-          const temp = min;
-          min = max;
-          max = temp;
+    const normalizeWorklet = React.useCallback((low: number, high: number): PriceRangeTuple => {
+      'worklet';
+      const clamp = (value: number, min: number, max: number) =>
+        Math.min(max, Math.max(min, value));
+      let min = clamp(Math.round(low), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+      let max = clamp(Math.round(high), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+      if (min > max) {
+        const temp = min;
+        min = max;
+        max = temp;
+      }
+      if (min === max) {
+        if (max < PRICE_SLIDER_MAX) {
+          max = clamp(max + 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
+        } else if (min > PRICE_SLIDER_MIN) {
+          min = clamp(min - 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
         }
-        if (min === max) {
-          if (max < PRICE_SLIDER_MAX) {
-            max = clamp(max + 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-          } else if (min > PRICE_SLIDER_MIN) {
-            min = clamp(min - 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-          }
-        }
-        return [min, max];
-      },
-      []
-    );
+      }
+      return [min, max];
+    }, []);
 
     const trackStart = PRICE_THUMB_SIZE / 2;
     const trackSpan = PRICE_SLIDER_MAX - PRICE_SLIDER_MIN;
@@ -1113,17 +1110,14 @@ const SearchScreen: React.FC = () => {
       return layout;
     });
   }, []);
-  const updateTopFoodInlineWidth = React.useCallback(
-    (restaurantId: string, width: number) => {
-      setTopFoodInlineWidths((prev) => {
-        if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
-          return prev;
-        }
-        return { ...prev, [restaurantId]: width };
-      });
-    },
-    []
-  );
+  const updateTopFoodInlineWidth = React.useCallback((restaurantId: string, width: number) => {
+    setTopFoodInlineWidths((prev) => {
+      if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
+        return prev;
+      }
+      return { ...prev, [restaurantId]: width };
+    });
+  }, []);
   const updateTopFoodItemWidth = React.useCallback(
     (restaurantId: string, connectionId: string, width: number) => {
       setTopFoodItemWidths((prev) => {
@@ -1385,14 +1379,11 @@ const SearchScreen: React.FC = () => {
 
     const fallback = searchLayout.top + searchLayout.height + 8;
     const headerBottom =
-      suggestionHeaderHeight > 0 ? suggestionHeaderHeight + SEARCH_SUGGESTION_HEADER_PANEL_GAP : fallback;
+      suggestionHeaderHeight > 0
+        ? suggestionHeaderHeight + SEARCH_SUGGESTION_HEADER_PANEL_GAP
+        : fallback;
     return Math.max(0, headerBottom + SHARED_SECTION_GAP);
-  }, [
-    isSuggestionScreenActive,
-    searchLayout.height,
-    searchLayout.top,
-    suggestionHeaderHeight,
-  ]);
+  }, [isSuggestionScreenActive, searchLayout.height, searchLayout.top, suggestionHeaderHeight]);
   const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
     if (!isSuggestionScreenActive) {
       return [];
@@ -1665,9 +1656,7 @@ const SearchScreen: React.FC = () => {
   }, [isSuggestionScreenActive, suggestionScrollTop]);
   const suggestionPanelOverlap = React.useMemo(
     () =>
-      isSuggestionScreenActive
-        ? Math.min(SEARCH_SUGGESTION_PANEL_OVERLAP, suggestionScrollTop)
-        : 0,
+      isSuggestionScreenActive ? Math.min(SEARCH_SUGGESTION_PANEL_OVERLAP, suggestionScrollTop) : 0,
     [isSuggestionScreenActive, suggestionScrollTop]
   );
   const suggestionScrollMaxHeight = React.useMemo(() => {
@@ -1694,7 +1683,8 @@ const SearchScreen: React.FC = () => {
     );
   }, [suggestionPanelOverlap, suggestionScrollMaxHeight]);
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
-  const shouldHideBottomNav = isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
+  const shouldHideBottomNav =
+    isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
   const showCachedSuggestionsIfFresh = React.useCallback(
     (trimmed: string) => {
       const now = Date.now();
@@ -3338,10 +3328,7 @@ const SearchScreen: React.FC = () => {
               </View>
               {restaurantMetaLine ? (
                 <View
-                  style={[
-                    styles.resultMetaLine,
-                    index === 0 && styles.resultMetaLineFirstInList,
-                  ]}
+                  style={[styles.resultMetaLine, index === 0 && styles.resultMetaLineFirstInList]}
                 >
                   {restaurantMetaLine}
                 </View>
@@ -3495,7 +3482,11 @@ const SearchScreen: React.FC = () => {
                             onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
                               const width = nativeEvent.lines?.[0]?.width;
                               if (typeof width === 'number') {
-                                updateTopFoodItemWidth(restaurant.restaurantId, food.connectionId, width);
+                                updateTopFoodItemWidth(
+                                  restaurant.restaurantId,
+                                  food.connectionId,
+                                  width
+                                );
                               }
                             }}
                             numberOfLines={1}
@@ -3507,7 +3498,11 @@ const SearchScreen: React.FC = () => {
                             >
                               {idx + 1}.
                             </Text>
-                            <Text variant="caption" weight="regular" style={styles.topFoodNameInline}>
+                            <Text
+                              variant="caption"
+                              weight="regular"
+                              style={styles.topFoodNameInline}
+                            >
                               {' '}
                               {food.foodName}
                             </Text>
@@ -3931,7 +3926,9 @@ const SearchScreen: React.FC = () => {
                 style={[
                   styles.searchSurfaceContent,
                   {
-                    paddingTop: isSuggestionScreenActive ? 0 : searchLayout.top + searchLayout.height + 8,
+                    paddingTop: isSuggestionScreenActive
+                      ? 0
+                      : searchLayout.top + searchLayout.height + 8,
                     paddingBottom: bottomInset + 32,
                   },
                 ]}
