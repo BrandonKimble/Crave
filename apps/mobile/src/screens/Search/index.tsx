@@ -13,7 +13,6 @@ import {
   Easing as RNEasing,
 } from 'react-native';
 import type { LayoutRectangle, TextInput, TextLayoutEvent } from 'react-native';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
@@ -40,13 +39,7 @@ import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
 import type { OperatingStatus } from '@crave-search/shared';
 import { HandPlatter, Store, Heart } from 'lucide-react-native';
-import Svg, {
-  Path,
-  Circle as SvgCircle,
-  Rect as SvgRect,
-  Defs as SvgDefs,
-  Mask as SvgMask,
-} from 'react-native-svg';
+import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { formatPriceRangeText, getPriceRangeLabel } from '../../constants/pricing';
 import {
@@ -56,6 +49,7 @@ import {
 } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
+import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import {
   SHEET_STATES,
   clampValue,
@@ -186,9 +180,6 @@ const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
 const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
 const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
 const MAP_MOVE_DISTANCE_RATIO = 0.08;
-const CLOSE_BUTTON_HOLE_PADDING = 0;
-const CLOSE_BUTTON_HOLE_Y_OFFSET = 0;
-const RESULTS_HEADER_MASK_PADDING = 2;
 
 const extractTargetRestaurantId = (
   restaurantFilters?: QueryPlan['restaurantFilters']
@@ -747,7 +738,6 @@ const formatCompactCount = (value?: number | null): string => {
   }
   return formatWithSuffix(value, 1_000_000, 'M');
 };
-const TOGGLE_HEIGHT = CONTROL_HEIGHT; // single knob for pill height and close icon size
 const NAV_TOP_PADDING = 8;
 const NAV_BOTTOM_PADDING = 0;
 const RESULT_HEADER_ICON_SIZE = 35;
@@ -1049,14 +1039,7 @@ const SearchScreen: React.FC = () => {
   const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
     Record<string, LayoutRectangle>
   >({});
-  const [resultsHeaderLayout, setResultsHeaderLayout] = React.useState({ width: 0, height: 0 });
-  const [resultsHeaderRowOffset, setResultsHeaderRowOffset] = React.useState({ x: 0, y: 0 });
-  const [resultsCloseLayout, setResultsCloseLayout] = React.useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const resultsHeaderCutout = useHeaderCloseCutout();
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
   const [isRecentLoading, setIsRecentLoading] = React.useState(false);
@@ -1094,35 +1077,6 @@ const SearchScreen: React.FC = () => {
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleResultsHeaderLayout = React.useCallback(({ nativeEvent: { layout } }) => {
-    setResultsHeaderLayout((prev) =>
-      prev.width === layout.width && prev.height === layout.height
-        ? prev
-        : { width: layout.width, height: layout.height }
-    );
-  }, []);
-  const handleResultsHeaderRowLayout = React.useCallback(({ nativeEvent: { layout } }) => {
-    setResultsHeaderRowOffset((prev) => {
-      if (Math.abs(prev.x - layout.x) < 0.5 && Math.abs(prev.y - layout.y) < 0.5) {
-        return prev;
-      }
-      return { x: layout.x, y: layout.y };
-    });
-  }, []);
-  const handleResultsCloseLayout = React.useCallback(({ nativeEvent: { layout } }) => {
-    setResultsCloseLayout((prev) => {
-      if (
-        prev &&
-        Math.abs(prev.x - layout.x) < 0.5 &&
-        Math.abs(prev.y - layout.y) < 0.5 &&
-        Math.abs(prev.width - layout.width) < 0.5 &&
-        Math.abs(prev.height - layout.height) < 0.5
-      ) {
-        return prev;
-      }
-      return layout;
-    });
-  }, []);
   const updateTopFoodInlineWidth = React.useCallback((restaurantId: string, width: number) => {
     setTopFoodInlineWidths((prev) => {
       if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
@@ -3862,77 +3816,17 @@ const SearchScreen: React.FC = () => {
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   const resultsHeaderComponent = (
     <Reanimated.View
-      style={[overlaySheetStyles.header, styles.resultsHeader]}
-      onLayout={handleResultsHeaderLayout}
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
+      onLayout={resultsHeaderCutout.onHeaderLayout}
     >
-      {resultsHeaderLayout.width > 0 && resultsHeaderLayout.height > 0 ? (
-        <MaskedView
-          pointerEvents="none"
-          style={styles.resultsHeaderMaskOverlay}
-          maskElement={
-            <Svg
-              width={resultsHeaderLayout.width}
-              height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-            >
-              <SvgDefs>
-                <SvgMask
-                  id="results-close-mask"
-                  x={0}
-                  y={0}
-                  width={resultsHeaderLayout.width}
-                  height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-                  maskUnits="userSpaceOnUse"
-                  maskContentUnits="userSpaceOnUse"
-                >
-                  <SvgRect
-                    x={0}
-                    y={0}
-                    width={resultsHeaderLayout.width}
-                    height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-                    fill="white"
-                  />
-                  {resultsCloseLayout ? (
-                    <SvgCircle
-                      cx={
-                        resultsHeaderRowOffset.x +
-                        resultsCloseLayout.x +
-                        resultsCloseLayout.width / 2
-                      }
-                      cy={
-                        resultsHeaderRowOffset.y +
-                        resultsCloseLayout.y +
-                        resultsCloseLayout.height / 2 +
-                        CLOSE_BUTTON_HOLE_Y_OFFSET
-                      }
-                      r={CONTROL_HEIGHT / 2 + CLOSE_BUTTON_HOLE_PADDING}
-                      fill="black"
-                    />
-                  ) : null}
-                </SvgMask>
-              </SvgDefs>
-              <SvgRect
-                x={0}
-                y={0}
-                width={resultsHeaderLayout.width}
-                height={resultsHeaderLayout.height + RESULTS_HEADER_MASK_PADDING * 2}
-                fill="white"
-                mask="url(#results-close-mask)"
-              />
-            </Svg>
-          }
-        >
-          <View style={styles.resultsHeaderFill} pointerEvents="none" />
-        </MaskedView>
-      ) : (
-        <View style={styles.resultsHeaderFallbackFill} pointerEvents="none" />
-      )}
+      {resultsHeaderCutout.background}
       <View style={overlaySheetStyles.grabHandleWrapper}>
         <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
           <View style={overlaySheetStyles.grabHandle} />
         </Pressable>
       </View>
       <View
-        onLayout={handleResultsHeaderRowLayout}
+        onLayout={resultsHeaderCutout.onHeaderRowLayout}
         style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
       >
         <Text variant="title" weight="semibold" style={styles.submittedQueryLabel}>
@@ -3942,11 +3836,11 @@ const SearchScreen: React.FC = () => {
           onPress={handleCloseResults}
           accessibilityRole="button"
           accessibilityLabel="Close results"
-          style={styles.resultsCloseButton}
-          onLayout={handleResultsCloseLayout}
+          style={overlaySheetStyles.closeButton}
+          onLayout={resultsHeaderCutout.onCloseLayout}
           hitSlop={8}
         >
-          <View style={styles.resultsCloseIcon}>
+          <View style={overlaySheetStyles.closeIcon}>
             <LucideX size={18} color="#0f172a" strokeWidth={2} />
           </View>
         </Pressable>
@@ -4941,31 +4835,6 @@ const styles = StyleSheet.create({
   },
   pollsIcon: {
     transform: [{ rotate: '90deg' }, { scaleX: -1 }],
-  },
-  resultsHeader: {
-    backgroundColor: 'transparent',
-  },
-  resultsHeaderMaskOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  resultsHeaderFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  resultsHeaderFallbackFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  resultsCloseButton: {
-    marginRight: 0,
-  },
-  resultsCloseIcon: {
-    width: TOGGLE_HEIGHT,
-    height: TOGGLE_HEIGHT,
-    borderRadius: TOGGLE_HEIGHT / 2, // keep the close icon perfectly circular
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   resultsShadow: {
     position: 'absolute',

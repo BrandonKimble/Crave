@@ -24,6 +24,7 @@ import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
@@ -439,9 +440,14 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   const handleClose = useCallback(() => {
     setOverlay('search');
   }, [setOverlay]);
+  const closeCutout = useHeaderCloseCutout();
 
   const headerComponent = (
-    <View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
+    <View
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: headerPaddingTop }]}
+      onLayout={closeCutout.onHeaderLayout}
+    >
+      {closeCutout.background}
       <View style={overlaySheetStyles.grabHandleWrapper}>
         <Pressable
           onPress={handleClose}
@@ -452,16 +458,22 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
           <View style={overlaySheetStyles.grabHandle} />
         </Pressable>
       </View>
-      <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+      <View
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+        onLayout={closeCutout.onHeaderRowLayout}
+      >
         <Text style={styles.sheetTitle}>Polls</Text>
         <Pressable
           onPress={handleClose}
           accessibilityRole="button"
           accessibilityLabel="Close polls"
           style={overlaySheetStyles.closeButton}
+          onLayout={closeCutout.onCloseLayout}
           hitSlop={8}
         >
-          <Feather name="x" size={20} color={ACCENT} />
+          <View style={overlaySheetStyles.closeIcon}>
+            <Feather name="x" size={20} color={ACCENT} />
+          </View>
         </Pressable>
       </View>
       <View style={overlaySheetStyles.headerDivider} />

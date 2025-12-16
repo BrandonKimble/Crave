@@ -2,6 +2,7 @@ import { StyleSheet } from 'react-native';
 
 export const OVERLAY_HORIZONTAL_PADDING = 15;
 export const OVERLAY_CORNER_RADIUS = 22;
+export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = 30;
 
 export const overlaySheetStyles = StyleSheet.create({
   container: {
@@ -23,6 +24,9 @@ export const overlaySheetStyles = StyleSheet.create({
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingBottom: 10,
     position: 'relative',
+  },
+  headerTransparent: {
+    backgroundColor: 'transparent',
   },
   grabHandleWrapper: {
     alignItems: 'center',
@@ -56,14 +60,14 @@ export const overlaySheetStyles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.14)',
   },
   closeButton: {
-    minWidth: 44,
-    minHeight: 44,
-    padding: 8,
-    borderRadius: 22,
+    marginRight: 0,
+  },
+  closeIcon: {
+    width: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+    height: OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+    borderRadius: OVERLAY_HEADER_CLOSE_BUTTON_SIZE / 2,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 0,
-    marginRight: -8,
-    borderWidth: 0,
   },
 });

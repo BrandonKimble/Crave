@@ -8,6 +8,7 @@ import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetSt
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { getPriceRangeLabel } from '../constants/pricing';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 
 type RestaurantOverlayData = {
   restaurant: RestaurantResult;
@@ -39,6 +40,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
+  const closeCutout = useHeaderCloseCutout();
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(insets.top, 0);
     const middle = Math.max(expanded + 180, SCREEN_HEIGHT * 0.6);
@@ -83,11 +85,18 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
   };
 
   const headerComponent = (
-    <View style={overlaySheetStyles.header}>
+    <View
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
+      onLayout={closeCutout.onHeaderLayout}
+    >
+      {closeCutout.background}
       <View style={overlaySheetStyles.grabHandleWrapper}>
         <View style={overlaySheetStyles.grabHandle} />
       </View>
-      <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+      <View
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, styles.headerRow]}
+        onLayout={closeCutout.onHeaderRowLayout}
+      >
         <View style={styles.headerTextGroup}>
           <Text style={styles.restaurantName}>{restaurant.restaurantName}</Text>
           <Text style={styles.restaurantAddress} numberOfLines={1}>
@@ -114,14 +123,19 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
           >
             <Feather name="share-2" size={18} color="#1f2937" />
           </Pressable>
-          <Pressable
-            onPress={onRequestClose}
-            style={styles.headerIconButton}
-            accessibilityLabel="Close"
-          >
-            <Feather name="x" size={20} color="#1f2937" />
-          </Pressable>
         </View>
+        <Pressable
+          onPress={onRequestClose}
+          accessibilityLabel="Close"
+          accessibilityRole="button"
+          style={[overlaySheetStyles.closeButton, styles.headerCloseButton]}
+          onLayout={closeCutout.onCloseLayout}
+          hitSlop={8}
+        >
+          <View style={overlaySheetStyles.closeIcon}>
+            <Feather name="x" size={20} color="#1f2937" />
+          </View>
+        </Pressable>
       </View>
       <View style={overlaySheetStyles.headerDivider} />
     </View>
@@ -224,6 +238,12 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
 };
 
 const styles = StyleSheet.create({
+  headerRow: {
+    justifyContent: 'flex-start',
+  },
+  headerCloseButton: {
+    marginLeft: 8,
+  },
   headerTextGroup: {
     flex: 1,
     marginRight: 12,

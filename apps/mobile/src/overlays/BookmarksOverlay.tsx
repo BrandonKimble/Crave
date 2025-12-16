@@ -17,6 +17,7 @@ import { colors as themeColors } from '../constants/theme';
 import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -82,6 +83,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   const handleClose = React.useCallback(() => {
     setOverlay('search');
   }, [setOverlay]);
+  const closeCutout = useHeaderCloseCutout();
 
   const renderFavorite = React.useCallback(
     ({ item }: { item: Favorite }) => (
@@ -109,7 +111,11 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   );
 
   const headerComponent = (
-    <View style={[overlaySheetStyles.header, { paddingTop: headerPaddingTop }]}>
+    <View
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: headerPaddingTop }]}
+      onLayout={closeCutout.onHeaderLayout}
+    >
+      {closeCutout.background}
       <View style={overlaySheetStyles.grabHandleWrapper}>
         <Pressable
           onPress={handleClose}
@@ -120,7 +126,10 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
           <View style={overlaySheetStyles.grabHandle} />
         </Pressable>
       </View>
-      <View style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}>
+      <View
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+        onLayout={closeCutout.onHeaderRowLayout}
+      >
         <View style={styles.headerTextGroup}>
           <Text variant="body" weight="semibold" style={styles.headerTitle}>
             Bookmarks
@@ -134,9 +143,12 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
           accessibilityRole="button"
           accessibilityLabel="Close bookmarks"
           style={overlaySheetStyles.closeButton}
+          onLayout={closeCutout.onCloseLayout}
           hitSlop={8}
         >
-          <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+          <View style={overlaySheetStyles.closeIcon}>
+            <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+          </View>
         </Pressable>
       </View>
       <View style={overlaySheetStyles.headerDivider} />
