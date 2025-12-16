@@ -83,6 +83,12 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   const handleClose = React.useCallback(() => {
     setOverlay('search');
   }, [setOverlay]);
+  const handleHidden = React.useCallback(() => {
+    if (!visible) {
+      return;
+    }
+    setOverlay('search');
+  }, [setOverlay, visible]);
   const closeCutout = useHeaderCloseCutout();
 
   const renderFavorite = React.useCallback(
@@ -202,7 +208,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
       backgroundComponent={<FrostedGlassBackground />}
       headerComponent={headerComponent}
       style={overlaySheetStyles.container}
-      onHidden={handleClose}
+      onHidden={handleHidden}
     />
   );
 };

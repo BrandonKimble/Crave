@@ -2,19 +2,15 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
   Keyboard,
   Pressable,
-  Share,
   StyleSheet,
   TouchableOpacity,
   View,
-  Image,
   Easing as RNEasing,
 } from 'react-native';
-import type { LayoutRectangle, TextInput, TextLayoutEvent } from 'react-native';
+import type { LayoutRectangle, TextInput } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, {
   Extrapolation,
   Easing,
@@ -25,38 +21,27 @@ import Reanimated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { BlurView } from 'expo-blur';
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
-import { Share as LucideShare, Heart as LucideHeart, X as LucideX } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
-import pinAsset from '../../assets/pin.png';
-import pinFillAsset from '../../assets/pin-fill.png';
 import { Text } from '../../components';
-import type { OperatingStatus } from '@crave-search/shared';
-import { HandPlatter, Store, Heart } from 'lucide-react-native';
+import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
-import { formatPriceRangeText, getPriceRangeLabel } from '../../constants/pricing';
 import {
   overlaySheetStyles,
   OVERLAY_HORIZONTAL_PADDING,
-  OVERLAY_CORNER_RADIUS,
 } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import {
-  SHEET_STATES,
-  clampValue,
-  snapPointForState,
   SHEET_SPRING_CONFIG,
   type SheetPosition,
-  type SheetGestureContext,
 } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import {
@@ -77,497 +62,76 @@ import type {
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
-import BottomSheetWithFlashList, { type SnapPoints } from '../../overlays/BottomSheetWithFlashList';
+import type { SnapPoints } from '../../overlays/BottomSheetWithFlashList';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
-import type { QueryPlan } from '../../types';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
 import { useFavorites } from '../../hooks/use-favorites';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
 import SearchFilters from './components/SearchFilters';
+import DishResultCard from './components/dish-result-card';
+import EmptyState from './components/empty-state';
+import RestaurantResultCard from './components/restaurant-result-card';
+import { PollIcon, VoteIcon } from './components/metric-icons';
+import PriceRangeSlider from './components/price-range-slider';
+import SearchMap, { type MapboxMapRef, type RestaurantFeatureProperties } from './components/search-map';
+import SearchResultsSheet from './components/search-results-sheet';
+import useSearchHistory from './hooks/use-search-history';
+import useSearchSheet from './hooks/use-search-sheet';
+import styles from './styles';
 import {
-  CONTROL_HEIGHT,
-  CONTROL_HORIZONTAL_PADDING,
-  CONTROL_RADIUS,
-  CONTROL_VERTICAL_PADDING,
-} from './constants/ui';
-const SCREEN_HEIGHT = Dimensions.get('window').height;
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
-const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
-const SEARCH_CONTAINER_PADDING_TOP = 10;
-const CARD_GAP = 6;
-const SHARED_SECTION_GAP = CARD_GAP; // reuse across sections and result spacing
-const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
-const SECTION_GAP = SHARED_SECTION_GAP;
-const TOP_FOOD_INLINE_WIDTH_BUFFER = CONTENT_HORIZONTAL_PADDING; // allow inline dishes to span full card width
-const ACTIVE_TAB_COLOR = themeColors.primary;
-const MINIMUM_VOTES_FILTER = 100;
-const DEFAULT_PAGE_SIZE = 20;
-const RESULTS_BOTTOM_PADDING = 375;
-const PRICE_LEVEL_VALUES = [1, 2, 3, 4] as const;
-const PRICE_SLIDER_VALUES = [1, 2, 3, 4, 5] as const;
-type PriceLevelValue = (typeof PRICE_LEVEL_VALUES)[number];
-type PriceSliderValue = (typeof PRICE_SLIDER_VALUES)[number];
-type PriceRangeTuple = [number, number];
-const PRICE_THUMB_SIZE = 20;
-const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 4;
-const PRICE_LEVEL_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
-const PRICE_LEVEL_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
-const PRICE_SLIDER_MIN: PriceSliderValue = PRICE_SLIDER_VALUES[0];
-const PRICE_SLIDER_MAX: PriceSliderValue = PRICE_SLIDER_VALUES[PRICE_SLIDER_VALUES.length - 1];
-const PRICE_SLIDER_TRACK_WIDTH_ESTIMATE = Math.max(
-  0,
-  SCREEN_WIDTH -
-    (OVERLAY_HORIZONTAL_PADDING + PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING) * 2 -
-    PRICE_THUMB_SIZE
-);
-const META_FONT_SIZE = 12;
-const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
-const DISTANCE_MIN_DECIMALS = 1;
-const DISTANCE_MAX_DECIMALS = 0;
-const USA_FALLBACK_CENTER: [number, number] = [-98.5795, 39.8283];
-const USA_FALLBACK_ZOOM = 3.2;
-const TOP_FOOD_RENDER_LIMIT = 3;
-const SINGLE_LOCATION_ZOOM_LEVEL = 13;
-const TIGHT_BOUNDS_THRESHOLD_DEGREES = 0.002;
-const RESTAURANT_FIT_BOUNDS_PADDING = 80;
-const LABEL_TEXT_SIZE = 12;
-const PIN_MARKER_SIZE = 28;
-const PIN_MARKER_SCALE = 1;
-const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
-const LABEL_RADIAL_OFFSET_EM = 1.3; // keep labels close to pins
-const LABEL_TRANSLATE_Y = -PIN_MARKER_RENDER_SIZE * 0.45; // raise labels relative to pin center
-const PIN_BASE_WIDTH = 96;
-const PIN_BASE_HEIGHT = 96;
-const PIN_FILL_WIDTH = 80;
-const PIN_FILL_HEIGHT = 72;
-const PIN_FILL_SCALE = 0.97;
-const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT; // single scale applied to base and fill to preserve proportions
-const PIN_FILL_VERTICAL_BIAS = -4.8; // nudge up to account for pin tip area
-const PIN_FILL_HORIZONTAL_BIAS = -0.1; // tweak left/right centering if asset padding looks uneven
-const PIN_FILL_RENDER_WIDTH = PIN_FILL_WIDTH * PIN_BASE_SCALE * PIN_FILL_SCALE;
-const PIN_FILL_RENDER_HEIGHT = PIN_FILL_HEIGHT * PIN_BASE_SCALE * PIN_FILL_SCALE;
-const PIN_FILL_LEFT_OFFSET =
-  (PIN_BASE_WIDTH * PIN_BASE_SCALE - PIN_FILL_RENDER_WIDTH) / 2 +
-  PIN_FILL_HORIZONTAL_BIAS * PIN_BASE_SCALE;
-const PIN_FILL_TOP_OFFSET =
-  (PIN_BASE_HEIGHT * PIN_BASE_SCALE - PIN_FILL_RENDER_HEIGHT) / 2 +
-  PIN_FILL_VERTICAL_BIAS * PIN_BASE_SCALE;
-const AUTOCOMPLETE_MIN_CHARS = 1;
-const SEARCH_BAR_HOLE_PADDING = 0; // keep cutout tight to the actual bar
-const SEARCH_BAR_HOLE_RADIUS = 14;
-const SHORTCUT_CHIP_HOLE_PADDING = 0; // keep cutout tight to the actual chips
-const SHORTCUT_CHIP_HOLE_RADIUS = 14;
-const SEARCH_SUGGESTION_PANEL_OVERLAP = 12;
-const SEARCH_SUGGESTION_PANEL_PADDING_TOP = 0; // rely on shared gap below header instead
-const SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM = SECTION_GAP;
-const SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM = 12; // add chin under chips
-const SEARCH_SUGGESTION_HEADER_PANEL_GAP = 0; // keep the panel close; final gap applied later
-const SEARCH_SHORTCUTS_BOTTOM_MARGIN = SECTION_GAP;
-const MARKER_SHADOW_STYLE = {
-  shadowColor: 'rgba(0, 0, 0, 0.35)',
-  shadowOpacity: 0.45,
-  shadowOffset: { width: 0, height: 2 },
-  shadowRadius: 4,
-  elevation: 8,
-};
-const AUTOCOMPLETE_CACHE_TTL_MS = 5 * 60 * 1000;
-const SEARCH_THIS_AREA_COLOR = '#0ea5e9';
-const MAP_MOVE_MIN_DISTANCE_MILES = 0.1;
-const MAP_MOVE_DISTANCE_RATIO = 0.08;
+  ACTIVE_TAB_COLOR,
+  AUTOCOMPLETE_CACHE_TTL_MS,
+  AUTOCOMPLETE_MIN_CHARS,
+  CAMERA_STORAGE_KEY,
+  CONTENT_HORIZONTAL_PADDING,
+  DEFAULT_PAGE_SIZE,
+  LABEL_RADIAL_OFFSET_EM,
+  LABEL_TEXT_SIZE,
+  LABEL_TRANSLATE_Y,
+  MINIMUM_VOTES_FILTER,
+  NAV_BOTTOM_PADDING,
+  SCORE_INFO_MAX_HEIGHT,
+  SCREEN_HEIGHT,
+  SEARCH_CONTAINER_PADDING_TOP,
+  SEARCH_HORIZONTAL_PADDING,
+  SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
+  SEARCH_SUGGESTION_HEADER_PANEL_GAP,
+  SEARCH_SUGGESTION_PANEL_OVERLAP,
+  SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
+  SEARCH_SUGGESTION_PANEL_PADDING_TOP,
+  SECONDARY_METRIC_ICON_SIZE,
+  SHARED_SECTION_GAP,
+  SHORTCUT_CHIP_HOLE_PADDING,
+  SHORTCUT_CHIP_HOLE_RADIUS,
+  USA_FALLBACK_CENTER,
+  USA_FALLBACK_ZOOM,
+  type SegmentValue,
+} from './constants/search';
+import {
+  buildLevelsFromRange,
+  formatPriceRangeSummary,
+  getRangeFromLevels,
+  isFullPriceRange,
+  normalizePriceFilter,
+  normalizePriceRangeValues,
+  type PriceRangeTuple,
+} from './utils/price';
+import { mergeSearchResponses } from './utils/merge';
+import { getQualityColor } from './utils/quality';
+import { formatCompactCount } from './utils/format';
+import { resolveSingleRestaurantCandidate } from './utils/response';
+import {
+  boundsFromPairs,
+  hasBoundsMovedSignificantly,
+  isLngLatTuple,
+  mapStateBoundsToMapBounds,
+} from './utils/geo';
 
-const extractTargetRestaurantId = (
-  restaurantFilters?: QueryPlan['restaurantFilters']
-): string | null => {
-  if (!restaurantFilters?.length) {
-    return null;
-  }
-  const ids = new Set<string>();
-  for (const filter of restaurantFilters) {
-    if (filter.entityType !== 'restaurant') {
-      continue;
-    }
-    for (const id of filter.entityIds || []) {
-      if (typeof id === 'string' && id.trim()) {
-        ids.add(id);
-      }
-    }
-  }
-  return ids.size === 1 ? Array.from(ids)[0] : null;
-};
-
-const resolveSingleRestaurantCandidate = (
-  response: SearchResponse | null
-): RestaurantResult | null => {
-  if (!response?.restaurants?.length) {
-    return null;
-  }
-  const targetedId = extractTargetRestaurantId(response.plan?.restaurantFilters);
-  if (targetedId) {
-    const match = response.restaurants.find((restaurant) => restaurant.restaurantId === targetedId);
-    if (match) {
-      return match;
-    }
-  }
-  if (response.format === 'single_list' && response.restaurants.length === 1) {
-    return response.restaurants[0];
-  }
-  return null;
-};
-
-const clampPriceLevelValue = (value: number): PriceLevelValue => {
-  if (!Number.isFinite(value)) {
-    return PRICE_LEVEL_MIN;
-  }
-  return Math.min(PRICE_LEVEL_MAX, Math.max(PRICE_LEVEL_MIN, Math.round(value))) as PriceLevelValue;
-};
-
-const clampPriceSliderValue = (value: number): PriceSliderValue => {
-  if (!Number.isFinite(value)) {
-    return PRICE_SLIDER_MIN;
-  }
-  return Math.min(
-    PRICE_SLIDER_MAX,
-    Math.max(PRICE_SLIDER_MIN, Math.round(value))
-  ) as PriceSliderValue;
-};
-
-const normalizePriceRangeValues = (range: PriceRangeTuple): PriceRangeTuple => {
-  const [rawMin, rawMax] = range;
-  let min = clampPriceSliderValue(rawMin);
-  let max = clampPriceSliderValue(rawMax);
-  if (min > max) {
-    [min, max] = [max, min];
-  }
-  if (min === max) {
-    if (max < PRICE_SLIDER_MAX) {
-      max = clampPriceSliderValue(max + 1);
-    } else if (min > PRICE_SLIDER_MIN) {
-      min = clampPriceSliderValue(min - 1);
-    }
-  }
-  return [min, max];
-};
-
-const buildLevelsFromRange = (range: PriceRangeTuple): number[] => {
-  const [start, end] = normalizePriceRangeValues(range);
-  const startLevel = clampPriceLevelValue(start);
-  const endBoundary = clampPriceSliderValue(end);
-  const values: number[] = [];
-  for (let value = startLevel; value < endBoundary; value += 1) {
-    values.push(value);
-  }
-  return values;
-};
-
-const getRangeFromLevels = (levels: number[]): PriceRangeTuple => {
-  if (!levels.length) {
-    return [PRICE_SLIDER_MIN, PRICE_SLIDER_MAX];
-  }
-  const sorted = [...levels].sort((a, b) => a - b);
-  const start = clampPriceLevelValue(sorted[0]);
-  const end = clampPriceSliderValue(clampPriceLevelValue(sorted[sorted.length - 1]) + 1);
-  return normalizePriceRangeValues([start, end]);
-};
-
-const isFullPriceRange = (range: PriceRangeTuple): boolean => {
-  const [min, max] = normalizePriceRangeValues(range);
-  return min === PRICE_SLIDER_MIN && max === PRICE_SLIDER_MAX;
-};
-
-const toPriceLevelRange = (range: PriceRangeTuple): [number, number] => {
-  const [minBoundary, maxBoundary] = normalizePriceRangeValues(range);
-  const minLevel = clampPriceLevelValue(minBoundary);
-  const maxLevel = clampPriceLevelValue(maxBoundary - 1);
-  return [minLevel, Math.max(minLevel, maxLevel)];
-};
-
-type RgbTuple = [number, number, number];
-
-const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
-  { t: 0, color: [40, 186, 130] }, // crisp jade green (top rank)
-  { t: 0.18, color: [68, 200, 120] }, // steady green, avoids minty drift
-  { t: 0.45, color: [255, 201, 94] }, // golden yellow midpoint
-  { t: 0.7, color: [255, 157, 75] }, // bright orange transition
-  { t: 1, color: [255, 110, 82] }, // warm red-orange (lowest rank)
-];
-
-const formatPriceRangeSummary = (range: PriceRangeTuple): string => {
-  const normalized = normalizePriceRangeValues(range);
-  if (isFullPriceRange(normalized)) {
-    return 'Any price';
-  }
-  return formatPriceRangeText(toPriceLevelRange(normalized));
-};
-
-type PriceRangeSliderProps = {
-  range: PriceRangeTuple;
-  onRangePreview?: (range: PriceRangeTuple) => void;
-  onRangeCommit: (range: PriceRangeTuple) => void;
-};
-
-const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
-  ({ range, onRangePreview, onRangeCommit }) => {
-    const trackWidth = useSharedValue(PRICE_SLIDER_TRACK_WIDTH_ESTIMATE);
-    const lowValue = useSharedValue(range[0]);
-    const highValue = useSharedValue(range[1]);
-    const lowStartValue = useSharedValue(range[0]);
-    const highStartValue = useSharedValue(range[1]);
-    const lastPreviewLow = useSharedValue(clampPriceSliderValue(range[0]));
-    const lastPreviewHigh = useSharedValue(clampPriceSliderValue(range[1]));
-
-    const normalizeWorklet = React.useCallback((low: number, high: number): PriceRangeTuple => {
-      'worklet';
-      const clamp = (value: number, min: number, max: number) =>
-        Math.min(max, Math.max(min, value));
-      let min = clamp(Math.round(low), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-      let max = clamp(Math.round(high), PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-      if (min > max) {
-        const temp = min;
-        min = max;
-        max = temp;
-      }
-      if (min === max) {
-        if (max < PRICE_SLIDER_MAX) {
-          max = clamp(max + 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-        } else if (min > PRICE_SLIDER_MIN) {
-          min = clamp(min - 1, PRICE_SLIDER_MIN, PRICE_SLIDER_MAX);
-        }
-      }
-      return [min, max];
-    }, []);
-
-    const trackStart = PRICE_THUMB_SIZE / 2;
-    const trackSpan = PRICE_SLIDER_MAX - PRICE_SLIDER_MIN;
-    const minGap = 1;
-
-    const valueToPosition = (value: number) => {
-      'worklet';
-      const width = Math.max(trackWidth.value, 1);
-      const clamped = Math.max(PRICE_SLIDER_MIN, Math.min(PRICE_SLIDER_MAX, value));
-      return ((clamped - PRICE_SLIDER_MIN) / trackSpan) * width;
-    };
-
-    const notifyPreview = React.useCallback(
-      (low: number, high: number) => {
-        'worklet';
-        if (!onRangePreview) {
-          return;
-        }
-        const normalized = normalizeWorklet(low, high);
-        const nextLow = normalized[0];
-        const nextHigh = normalized[1];
-        if (nextLow === lastPreviewLow.value && nextHigh === lastPreviewHigh.value) {
-          return;
-        }
-        lastPreviewLow.value = nextLow;
-        lastPreviewHigh.value = nextHigh;
-        runOnJS(onRangePreview)(normalized);
-      },
-      [lastPreviewHigh, lastPreviewLow, normalizeWorklet, onRangePreview]
-    );
-
-    const commitSnap = React.useCallback(() => {
-      'worklet';
-      const snapped = normalizeWorklet(lowValue.value, highValue.value);
-      lowValue.value = withTiming(snapped[0], { duration: 160, easing: Easing.out(Easing.cubic) });
-      highValue.value = withTiming(snapped[1], { duration: 160, easing: Easing.out(Easing.cubic) });
-      runOnJS(onRangeCommit)(snapped);
-    }, [highValue, lowValue, normalizeWorklet, onRangeCommit]);
-
-    const lowGesture = React.useMemo(
-      () =>
-        Gesture.Pan()
-          .hitSlop(12)
-          .onBegin(() => {
-            lowStartValue.value = lowValue.value;
-          })
-          .onUpdate((event) => {
-            const width = trackWidth.value;
-            if (width <= 0) {
-              return;
-            }
-            const deltaValue = (event.translationX / width) * trackSpan;
-            let nextLow = lowStartValue.value + deltaValue;
-            nextLow = Math.max(PRICE_SLIDER_MIN, Math.min(nextLow, highValue.value - minGap));
-            lowValue.value = nextLow;
-            notifyPreview(lowValue.value, highValue.value);
-          })
-          .onFinalize(() => {
-            commitSnap();
-          }),
-      [commitSnap, highValue, lowStartValue, lowValue, notifyPreview, trackSpan, trackWidth]
-    );
-
-    const highGesture = React.useMemo(
-      () =>
-        Gesture.Pan()
-          .hitSlop(12)
-          .onBegin(() => {
-            highStartValue.value = highValue.value;
-          })
-          .onUpdate((event) => {
-            const width = trackWidth.value;
-            if (width <= 0) {
-              return;
-            }
-            const deltaValue = (event.translationX / width) * trackSpan;
-            let nextHigh = highStartValue.value + deltaValue;
-            nextHigh = Math.min(PRICE_SLIDER_MAX, Math.max(nextHigh, lowValue.value + minGap));
-            highValue.value = nextHigh;
-            notifyPreview(lowValue.value, highValue.value);
-          })
-          .onFinalize(() => {
-            commitSnap();
-          }),
-      [commitSnap, highStartValue, highValue, lowValue, notifyPreview, trackSpan, trackWidth]
-    );
-
-    const lowThumbAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [
-        {
-          translateX: trackStart + valueToPosition(lowValue.value) - PRICE_THUMB_SIZE / 2,
-        },
-      ],
-    }));
-
-    const highThumbAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [
-        {
-          translateX: trackStart + valueToPosition(highValue.value) - PRICE_THUMB_SIZE / 2,
-        },
-      ],
-    }));
-
-    const selectedRailAnimatedStyle = useAnimatedStyle(() => {
-      const left = trackStart + valueToPosition(lowValue.value);
-      const right = trackStart + valueToPosition(highValue.value);
-      return {
-        left,
-        width: Math.max(0, right - left),
-      };
-    });
-
-    const handleTrackLayout = React.useCallback(
-      (event: { nativeEvent: { layout: { width: number } } }) => {
-        const width = event.nativeEvent.layout.width;
-        const usable = Math.max(0, width - PRICE_THUMB_SIZE);
-        if (Math.abs(trackWidth.value - usable) > 1) {
-          trackWidth.value = usable;
-        }
-      },
-      [trackWidth]
-    );
-
-    return (
-      <View
-        style={styles.priceTrackContainer}
-        onLayout={handleTrackLayout}
-        pointerEvents="box-none"
-        collapsable={false}
-      >
-        <View style={styles.priceSliderRail} pointerEvents="none" />
-        <Reanimated.View
-          style={[styles.priceSliderRailSelected, selectedRailAnimatedStyle]}
-          pointerEvents="none"
-        />
-        <GestureDetector gesture={lowGesture}>
-          <Reanimated.View style={[styles.priceSliderThumb, lowThumbAnimatedStyle]} />
-        </GestureDetector>
-        <GestureDetector gesture={highGesture}>
-          <Reanimated.View style={[styles.priceSliderThumb, highThumbAnimatedStyle]} />
-        </GestureDetector>
-      </View>
-    );
-  }
-);
-
-const getQualityColor = (index: number, total: number): string => {
-  const t = Math.max(0, Math.min(1, total <= 1 ? 0 : index / Math.max(total - 1, 1)));
-  const next =
-    QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= t) ??
-    QUALITY_GRADIENT_STOPS[QUALITY_GRADIENT_STOPS.length - 1];
-  const prev =
-    [...QUALITY_GRADIENT_STOPS].reverse().find((stop) => stop.t <= t) ?? QUALITY_GRADIENT_STOPS[0];
-  const span = Math.max(next.t - prev.t, 0.0001);
-  const localT = (t - prev.t) / span;
-  const mix = prev.color.map((channel, channelIndex) =>
-    Math.round(channel + (next.color[channelIndex] - channel) * localT)
-  ) as RgbTuple;
-  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
-};
-
-const getMarkerZIndex = (rank: unknown, total: number): number => {
-  if (typeof rank !== 'number' || !Number.isFinite(rank) || rank <= 0) {
-    return 0;
-  }
-  return Math.max(0, total - rank + 1);
-};
-
-const mergeById = <T extends Record<string, unknown>>(
-  existing: T[],
-  incoming: T[],
-  getKey: (item: T) => string
-): T[] => {
-  if (!existing.length) {
-    return incoming.slice();
-  }
-  const seen = new Set(existing.map((item) => getKey(item)));
-  const merged = existing.slice();
-  for (const item of incoming) {
-    const key = getKey(item);
-    if (!key || seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    merged.push(item);
-  }
-  return merged;
-};
-
-const mergeSearchResponses = (
-  previous: SearchResponse | null,
-  incoming: SearchResponse,
-  append: boolean
-): SearchResponse => {
-  if (!append || !previous) {
-    return incoming;
-  }
-
-  const mergedFood = mergeById(
-    previous.food ?? [],
-    incoming.food ?? [],
-    (item) => item.connectionId
-  );
-  const mergedRestaurants = mergeById(
-    previous.restaurants ?? [],
-    incoming.restaurants ?? [],
-    (item) => item.restaurantId
-  );
-
-  return {
-    ...incoming,
-    food: mergedFood,
-    restaurants: mergedRestaurants,
-    metadata: {
-      ...previous.metadata,
-      ...incoming.metadata,
-    },
-  };
-};
-type RestaurantFeatureProperties = {
-  restaurantId: string;
-  restaurantName: string;
-  contextualScore: number;
-  rank: number;
-  pinColor: string;
-  anchor?: 'top' | 'bottom' | 'left' | 'right';
-};
 type SubmitSearchOptions = {
   openNow?: boolean;
   priceLevels?: number[] | null;
@@ -579,302 +143,6 @@ type SubmitSearchOptions = {
     source: NaturalSearchRequest['submissionSource'];
     context?: NaturalSearchRequest['submissionContext'];
   };
-};
-
-type OpenNowNotice = {
-  variant: 'warning' | 'info' | 'success';
-  message: string;
-};
-type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
-  getVisibleBounds?: () => Promise<[number[], number[]]>;
-};
-
-const isLngLatTuple = (value: unknown): value is [number, number] =>
-  Array.isArray(value) &&
-  value.length === 2 &&
-  typeof value[0] === 'number' &&
-  Number.isFinite(value[0]) &&
-  typeof value[1] === 'number' &&
-  Number.isFinite(value[1]);
-
-const boundsFromPairs = (first: [number, number], second: [number, number]): MapBounds => {
-  const lngs = [first[0], second[0]];
-  const lats = [first[1], second[1]];
-  return {
-    northEast: {
-      lat: Math.max(lats[0], lats[1]),
-      lng: Math.max(lngs[0], lngs[1]),
-    },
-    southWest: {
-      lat: Math.min(lats[0], lats[1]),
-      lng: Math.min(lngs[0], lngs[1]),
-    },
-  };
-};
-
-const toRadians = (degrees: number): number => (degrees * Math.PI) / 180;
-
-const haversineDistanceMiles = (a: Coordinate, b: Coordinate): number => {
-  const dLat = toRadians(b.lat - a.lat);
-  const dLng = toRadians(b.lng - a.lng);
-  const lat1 = toRadians(a.lat);
-  const lat2 = toRadians(b.lat);
-  const earthRadiusMiles = 3958.8;
-  const sinLat = Math.sin(dLat / 2);
-  const sinLng = Math.sin(dLng / 2);
-  const haversine = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
-  const c = 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(Math.max(1 - haversine, 0)));
-  return earthRadiusMiles * c;
-};
-
-const getBoundsCenter = (bounds: MapBounds): Coordinate => ({
-  lat: (bounds.northEast.lat + bounds.southWest.lat) / 2,
-  lng: (bounds.northEast.lng + bounds.southWest.lng) / 2,
-});
-
-const getBoundsDiagonalMiles = (bounds: MapBounds): number =>
-  haversineDistanceMiles(bounds.northEast, bounds.southWest);
-
-const mapStateBoundsToMapBounds = (state?: MapboxMapState | null): MapBounds | null => {
-  const bounds = state?.properties?.bounds;
-  if (!bounds || !isLngLatTuple(bounds.ne as unknown) || !isLngLatTuple(bounds.sw as unknown)) {
-    return null;
-  }
-  return boundsFromPairs(bounds.ne as [number, number], bounds.sw as [number, number]);
-};
-
-const capitalizeFirst = (value: string): string =>
-  value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
-
-const hasBoundsMovedSignificantly = (previous: MapBounds, next: MapBounds): boolean => {
-  const centerShift = haversineDistanceMiles(getBoundsCenter(previous), getBoundsCenter(next));
-  const previousDiagonal = Math.max(getBoundsDiagonalMiles(previous), 0.01);
-  const nextDiagonal = Math.max(getBoundsDiagonalMiles(next), 0.01);
-  const normalizedShift = centerShift / previousDiagonal;
-  const sizeDeltaRatio = Math.abs(nextDiagonal - previousDiagonal) / previousDiagonal;
-  return (
-    centerShift >= MAP_MOVE_MIN_DISTANCE_MILES &&
-    (normalizedShift >= MAP_MOVE_DISTANCE_RATIO || sizeDeltaRatio >= MAP_MOVE_DISTANCE_RATIO)
-  );
-};
-
-const SEGMENT_OPTIONS = [
-  { label: 'Restaurants', value: 'restaurants' as const },
-  { label: 'Dishes', value: 'dishes' as const },
-] as const;
-type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
-
-const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
-  if (!value || typeof value !== 'string') {
-    return null;
-  }
-  const match = value
-    .trim()
-    .toLowerCase()
-    .match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
-  if (!match) {
-    return null;
-  }
-  let hour = Number(match[1]);
-  const minute = match[2] ? Number(match[2]) : 0;
-  const period = match[3];
-
-  if (period === 'pm' && hour < 12) {
-    hour += 12;
-  } else if (period === 'am' && hour === 12) {
-    hour = 0;
-  }
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return null;
-  }
-
-  return hour * 60 + minute;
-};
-
-const minutesUntilCloseFromDisplay = (closesAtDisplay?: string | null): number | null => {
-  const closeMinutes = parseTimeDisplayToMinutes(closesAtDisplay);
-  if (closeMinutes === null) {
-    return null;
-  }
-
-  const now = new Date();
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
-  let diff = closeMinutes - currentMinutes;
-
-  // Handle cross-midnight times (e.g., 1:00 AM close when it's 11:30 PM).
-  if (diff < -60) {
-    diff += 24 * 60;
-  }
-
-  return diff >= 0 ? diff : null;
-};
-
-const formatDistanceMiles = (distance?: number | null): string | null => {
-  if (typeof distance !== 'number' || !Number.isFinite(distance) || distance < 0) {
-    return null;
-  }
-  const decimals = distance >= 10 ? DISTANCE_MAX_DECIMALS : DISTANCE_MIN_DECIMALS;
-  return `${distance.toFixed(decimals)} mi`;
-};
-const formatCompactCount = (value?: number | null): string => {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
-    return '0';
-  }
-  if (value < 1000) {
-    return Math.round(value).toString();
-  }
-  const formatWithSuffix = (num: number, divisor: number, suffix: string) => {
-    const scaled = num / divisor;
-    if (scaled >= 100) {
-      return `${Math.round(scaled)}${suffix}`;
-    }
-    const fixed = Number(scaled.toFixed(1));
-    const text = fixed % 1 === 0 ? fixed.toFixed(0) : fixed.toString();
-    return `${text}${suffix}`;
-  };
-  if (value < 1_000_000) {
-    return formatWithSuffix(value, 1000, 'K');
-  }
-  return formatWithSuffix(value, 1_000_000, 'M');
-};
-const NAV_TOP_PADDING = 8;
-const NAV_BOTTOM_PADDING = 0;
-const RESULT_HEADER_ICON_SIZE = 35;
-const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
-const SECONDARY_METRIC_ICON_SIZE = 14;
-const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
-const SPACING_XS = 2;
-const SPACING_SM = 3;
-const SPACING_MD = 5;
-const CARD_LINE_GAP = 6;
-const CARD_VERTICAL_PADDING = 12;
-const CARD_VERTICAL_PADDING_BALANCE = 2;
-const CAMERA_STORAGE_KEY = 'search:lastCamera';
-const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
-const PollIcon = ({
-  color,
-  size = SECONDARY_METRIC_ICON_SIZE,
-  strokeWidth = 2,
-}: {
-  color: string;
-  size?: number;
-  strokeWidth?: number;
-}) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    style={{ transform: [{ rotate: '90deg' }] }}
-  >
-    <Path d="M5 21v-6" />
-    <Path d="M12 21V3" />
-    <Path d="M19 21V9" />
-  </Svg>
-);
-const InfoCircleIcon = ({
-  color,
-  size = SECONDARY_METRIC_ICON_SIZE,
-  strokeWidth = 2,
-}: {
-  color: string;
-  size?: number;
-  strokeWidth?: number;
-}) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth={strokeWidth}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <Path d="M12 16v-4" />
-    <Path d="M12 8h.01" />
-    <Path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z" />
-  </Svg>
-);
-const VoteIcon = ({ color, size = VOTE_ICON_SIZE }: { color: string; size?: number }) => (
-  <Svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke={color}
-    strokeWidth={2}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <Path d="M21 10.656V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h12.344" />
-    <Path d="m9 11 3 3L22 4" />
-  </Svg>
-);
-
-const RECENT_HISTORY_LIMIT = 8;
-const calculateTopFoodVisibleCount = (
-  items: FoodResult[],
-  maxRender: number,
-  availableWidth: number | undefined,
-  itemWidths: Record<string, number> | undefined,
-  moreWidths: Record<number, number> | undefined
-): number => {
-  const maxInline = Math.min(maxRender, items.length);
-  if (maxInline <= 1) {
-    return maxInline;
-  }
-  if (!availableWidth || !itemWidths) {
-    return maxInline;
-  }
-  let hasMeasurements = false;
-  let bestCount = maxInline;
-  for (let count = maxInline; count >= 1; count--) {
-    const widths = items.slice(0, count).map((item) => itemWidths[item.connectionId]);
-    if (widths.some((width) => typeof width !== 'number')) {
-      continue;
-    }
-    const hiddenCount = items.length - count;
-    const needsMore = hiddenCount > 0;
-    const moreWidth = needsMore ? moreWidths?.[hiddenCount] : 0;
-    if (needsMore && typeof moreWidth !== 'number') {
-      continue;
-    }
-    hasMeasurements = true;
-    const elementCount = count + (needsMore ? 1 : 0);
-    const gapWidth = Math.max(0, elementCount - 1) * CARD_LINE_GAP;
-    const totalWidth =
-      widths.reduce((sum, width) => sum + (width ?? 0), 0) +
-      gapWidth +
-      (needsMore ? moreWidth ?? 0 : 0);
-    if (totalWidth <= availableWidth) {
-      bestCount = count;
-      break;
-    }
-    if (count === 1) {
-      bestCount = 1;
-    }
-  }
-  return hasMeasurements ? bestCount : maxInline;
-};
-
-const normalizePriceFilter = (levels?: number[] | null): number[] => {
-  if (!Array.isArray(levels) || levels.length === 0) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      levels
-        .map((level) => Math.round(level))
-        .filter((level) => Number.isInteger(level) && level >= 1 && level <= 4)
-    )
-  ).sort((a, b) => a - b);
 };
 
 MapboxGL.setTelemetryEnabled(false);
@@ -893,7 +161,6 @@ const SearchScreen: React.FC = () => {
   const [mapCenter, setMapCenter] = React.useState<[number, number]>(USA_FALLBACK_CENTER);
   const [mapZoom, setMapZoom] = React.useState<number>(USA_FALLBACK_ZOOM);
   const [isFollowingUser, setIsFollowingUser] = React.useState(true);
-  const [cameraHydrated, setCameraHydrated] = React.useState(false);
 
   React.useEffect(() => {
     if (accessToken) {
@@ -907,7 +174,7 @@ const SearchScreen: React.FC = () => {
 
   // Hydrate last camera position to avoid globe spin before we get user location
   React.useEffect(() => {
-    (async () => {
+    void (async () => {
       try {
         const stored = await AsyncStorage.getItem(CAMERA_STORAGE_KEY);
         if (stored) {
@@ -926,8 +193,6 @@ const SearchScreen: React.FC = () => {
         }
       } catch {
         // ignore
-      } finally {
-        setCameraHydrated(true);
       }
     })();
   }, []);
@@ -1027,8 +292,6 @@ const SearchScreen: React.FC = () => {
   const lastAutocompleteResultsRef = React.useRef<AutocompleteMatch[]>([]);
   const lastAutocompleteTimestampRef = React.useRef<number>(0);
   const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
-  const [panelVisible, setPanelVisible] = React.useState(false);
-  const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
     null
@@ -1041,12 +304,16 @@ const SearchScreen: React.FC = () => {
   >({});
   const resultsHeaderCutout = useHeaderCloseCutout();
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
-  const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
-  const [isRecentLoading, setIsRecentLoading] = React.useState(false);
-  const [recentlyViewedRestaurants, setRecentlyViewedRestaurants] = React.useState<
-    RecentlyViewedRestaurant[]
-  >([]);
-  const [isRecentlyViewedLoading, setIsRecentlyViewedLoading] = React.useState(false);
+  const {
+    recentSearches,
+    isRecentLoading,
+    recentlyViewedRestaurants,
+    isRecentlyViewedLoading,
+    loadRecentHistory,
+    loadRecentlyViewedRestaurants,
+    updateLocalRecentSearches,
+    trackRecentlyViewedRestaurant,
+  } = useSearchHistory({ isSignedIn: !!isSignedIn });
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [topFoodInlineWidths, setTopFoodInlineWidths] = React.useState<Record<string, number>>({});
   const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<
@@ -1066,13 +333,7 @@ const SearchScreen: React.FC = () => {
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
-  const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const searchThisAreaVisibility = useSharedValue(0);
-  const resultsScrollY = React.useRef(new Animated.Value(0)).current;
-  const resultsScrollOffset = useSharedValue(0);
-  const resultsMomentum = useSharedValue(false);
-  const draggingFromTop = useSharedValue(false);
-  const lastScrollYRef = React.useRef(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
@@ -1109,16 +370,6 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
-  const headerDividerAnimatedStyle = React.useMemo(
-    () => ({
-      opacity: resultsScrollY.interpolate({
-        inputRange: [0, 12],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    }),
-    [resultsScrollY]
-  );
   const resetMapMoveFlag = React.useCallback(() => {
     if (mapIdleTimeoutRef.current) {
       clearTimeout(mapIdleTimeoutRef.current);
@@ -1141,13 +392,6 @@ const SearchScreen: React.FC = () => {
       }
     }, 450);
   }, []);
-  const snapPointExpanded = useSharedValue(0);
-  const snapPointMiddle = useSharedValue(SCREEN_HEIGHT * 0.4);
-  const snapPointCollapsed = useSharedValue(SCREEN_HEIGHT - 160);
-  const snapPointHidden = useSharedValue(SCREEN_HEIGHT + 80);
-  const sheetStateShared = useSharedValue<SheetPosition>('hidden');
-  const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
-  const recentlyViewedRequest = React.useRef<Promise<void> | null>(null);
   const lastSearchRequestIdRef = React.useRef<string | null>(null);
   const searchSurfaceAnim = useSharedValue(0);
   const suggestionTransition = useSharedValue(0);
@@ -1170,6 +414,34 @@ const SearchScreen: React.FC = () => {
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
   const showPollsOverlay = activeOverlay === 'polls';
   const pollOverlayParams = overlayParams.polls;
+  const {
+    panelVisible,
+    setPanelVisible,
+    sheetState,
+    setSheetState,
+    snapPoints,
+    shouldRenderSheet,
+    sheetTranslateY,
+    sheetStateShared,
+    resetSheetToHidden,
+    animateSheetTo,
+    showPanel,
+    hideSheet,
+    handleSheetSnapChange,
+    searchBarInputAnimatedStyle,
+    searchBarSheetAnimatedStyle,
+    resultsContainerAnimatedStyle,
+    resultsScrollOffset,
+    resultsMomentum,
+    onResultsScroll,
+    onResultsScrollBeginDrag: handleResultsScrollBeginDrag,
+    onResultsScrollEndDrag: handleResultsScrollEndDrag,
+    headerDividerAnimatedStyle,
+  } = useSearchSheet({
+    isSearchOverlay,
+    isSearchFocused,
+    searchLayoutTop: searchLayout.top,
+  });
   const [scoreInfo, setScoreInfo] = React.useState<{
     type: 'dish' | 'restaurant';
     title: string;
@@ -1446,6 +718,7 @@ const SearchScreen: React.FC = () => {
     opacity: suggestionTransition.value,
   }));
   const hasRecentSearches = recentSearches.length > 0;
+  const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const votesFilterActive = votes100Plus;
   const canLoadMore =
@@ -1494,160 +767,6 @@ const SearchScreen: React.FC = () => {
     }
     return null;
   }, [results?.metadata?.primaryFoodTerm]);
-  const restaurantScoreLabel = 'Context score';
-  const renderMetaDetailLine = (
-    status: OperatingStatus | null | undefined,
-    priceLabel?: string | null,
-    distanceMiles?: number | null,
-    align: 'left' | 'right' = 'left',
-    prefix?: React.ReactNode,
-    showLocationDetails = true
-  ): React.ReactNode => {
-    const segments: React.ReactNode[] = [];
-    if (prefix) {
-      segments.push(
-        <Text
-          key="meta-prefix"
-          variant="caption"
-          weight="regular"
-          style={[styles.resultMetaText, styles.resultMetaPrefix]}
-          numberOfLines={1}
-        >
-          {prefix}
-        </Text>
-      );
-    }
-    const normalizedPriceLabel = priceLabel ?? null;
-    const distanceLabel = formatDistanceMiles(distanceMiles);
-    const effectiveMinutesUntilClose =
-      status?.isOpen && typeof status.closesInMinutes === 'number'
-        ? status.closesInMinutes
-        : status?.isOpen
-        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-        : null;
-    const isClosingSoon =
-      status?.isOpen &&
-      typeof effectiveMinutesUntilClose === 'number' &&
-      effectiveMinutesUntilClose <= 45;
-
-    if (showLocationDetails) {
-      if (normalizedPriceLabel) {
-        if (segments.length) {
-          segments.push(
-            <Text
-              key={`separator-${segments.length}`}
-              variant="caption"
-              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
-            >
-              {' · '}
-            </Text>
-          );
-        }
-        segments.push(
-          <Text key="price" variant="caption" style={styles.resultMetaPrice}>
-            {normalizedPriceLabel}
-          </Text>
-        );
-      }
-      if (distanceLabel) {
-        if (segments.length) {
-          segments.push(
-            <Text
-              key={`separator-${segments.length}`}
-              variant="caption"
-              style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
-            >
-              {' · '}
-            </Text>
-          );
-        }
-        segments.push(
-          <Text
-            key="distance"
-            variant="caption"
-            style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
-          >
-            {distanceLabel}
-          </Text>
-        );
-      }
-    }
-
-    if (status) {
-      if (segments.length) {
-        segments.push(
-          <Text
-            key={`separator-${segments.length}`}
-            variant="caption"
-            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
-          >
-            {' · '}
-          </Text>
-        );
-      }
-      if (isClosingSoon) {
-        segments.push(
-          <Text key="status-closing-soon" variant="caption" weight="semibold">
-            <Text variant="caption" weight="semibold" style={styles.resultMetaClosingSoon}>
-              Closes
-            </Text>
-            {status.closesAtDisplay ? (
-              <Text
-                variant="caption"
-                style={styles.resultMetaSuffix}
-              >{` at ${status.closesAtDisplay}`}</Text>
-            ) : null}
-          </Text>
-        );
-      } else if (status.isOpen) {
-        segments.push(
-          <Text key="status-open" variant="caption" weight="semibold">
-            <Text variant="caption" weight="semibold" style={styles.resultMetaOpen}>
-              Open
-            </Text>
-            {status.closesAtDisplay ? (
-              <Text
-                variant="caption"
-                style={styles.resultMetaSuffix}
-              >{` until ${status.closesAtDisplay}`}</Text>
-            ) : null}
-          </Text>
-        );
-      } else if (status.isOpen === false) {
-        segments.push(
-          <Text key="status-closed" variant="caption" weight="semibold">
-            <Text variant="caption" weight="semibold" style={styles.resultMetaClosed}>
-              Closed
-            </Text>
-            {status.nextOpenDisplay ? (
-              <Text
-                variant="caption"
-                style={styles.resultMetaSuffix}
-              >{` until ${status.nextOpenDisplay}`}</Text>
-            ) : null}
-          </Text>
-        );
-      }
-    }
-    if (!segments.length) {
-      return null;
-    }
-    return (
-      <Text
-        variant="caption"
-        weight="regular"
-        style={[
-          styles.resultMetaText,
-          { fontSize: META_FONT_SIZE },
-          align === 'right' && styles.resultMetaTextRight,
-        ]}
-        numberOfLines={1}
-        ellipsizeMode="tail"
-      >
-        {segments}
-      </Text>
-    );
-  };
   const bottomInset = Math.max(insets.bottom, 12);
   const suggestionPanelTopMargin = React.useMemo(() => {
     if (!isSuggestionScreenActive) {
@@ -1998,26 +1117,6 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
-  const onResultsScroll = React.useCallback(
-    (offsetY: number) => {
-      resultsScrollOffset.value = offsetY;
-      if (draggingFromTop.value && offsetY > 0.5) {
-        draggingFromTop.value = false;
-      }
-      resultsScrollY.setValue(offsetY);
-      lastScrollYRef.current = offsetY;
-    },
-    [draggingFromTop, resultsScrollY]
-  );
-
-  const handleResultsScrollBeginDrag = React.useCallback(() => {
-    // Track whether the list drag began at the very top so we can hand off to the sheet pan.
-    draggingFromTop.value = resultsScrollOffset.value <= 0.5;
-  }, [draggingFromTop, resultsScrollOffset]);
-
-  const handleResultsScrollEndDrag = React.useCallback(() => {
-    draggingFromTop.value = false;
-  }, [draggingFromTop]);
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
     setQuery(value);
@@ -2217,41 +1316,7 @@ const SearchScreen: React.FC = () => {
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
-  const openNowNotice = null;
-
   // Intentionally avoid auto-fitting the map when results change; keep user camera position.
-
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(searchLayout.top, 0);
-    const rawMiddle = SCREEN_HEIGHT * 0.4;
-    const middle = Math.max(expanded + 96, rawMiddle);
-    const collapsed = SCREEN_HEIGHT - 130;
-    const hidden = SCREEN_HEIGHT + 80;
-    return {
-      expanded,
-      middle: Math.min(middle, hidden - 120),
-      collapsed,
-      hidden,
-    };
-  }, [searchLayout.top]);
-  const shouldRenderSheet =
-    isSearchOverlay && !isSearchFocused && (panelVisible || sheetState !== 'hidden');
-
-  React.useEffect(() => {
-    if (!isSearchOverlay) {
-      setPanelVisible(false);
-      setSheetState('hidden');
-      sheetStateShared.value = 'hidden';
-      sheetTranslateY.value = snapPoints.hidden;
-    }
-  }, [isSearchOverlay, snapPoints.hidden, sheetStateShared, sheetTranslateY]);
-
-  React.useEffect(() => {
-    snapPointExpanded.value = snapPoints.expanded;
-    snapPointMiddle.value = snapPoints.middle;
-    snapPointCollapsed.value = snapPoints.collapsed;
-    snapPointHidden.value = snapPoints.hidden;
-  }, [snapPoints, snapPointCollapsed, snapPointExpanded, snapPointHidden, snapPointMiddle]);
 
   React.useEffect(() => {
     if (!isSearchOverlay && isRestaurantOverlayVisible) {
@@ -2409,78 +1474,6 @@ const SearchScreen: React.FC = () => {
       }, 150);
     }
   }, [votes100Plus, setVotes100Plus, query, submitSearch]);
-
-  const loadRecentHistory = React.useCallback(async () => {
-    if (!isSignedIn) {
-      setIsRecentLoading(false);
-      setRecentSearches([]);
-      return;
-    }
-
-    if (recentHistoryRequest.current) {
-      return recentHistoryRequest.current;
-    }
-
-    const request = (async () => {
-      setIsRecentLoading(true);
-      try {
-        const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
-        setRecentSearches(history);
-      } catch (err) {
-        logger.warn('Unable to load recent searches', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-      } finally {
-        setIsRecentLoading(false);
-        recentHistoryRequest.current = null;
-      }
-    })();
-
-    recentHistoryRequest.current = request;
-    return request;
-  }, [isSignedIn]);
-
-  const loadRecentlyViewedRestaurants = React.useCallback(async () => {
-    if (!isSignedIn) {
-      setIsRecentlyViewedLoading(false);
-      setRecentlyViewedRestaurants([]);
-      return;
-    }
-
-    if (recentlyViewedRequest.current) {
-      return recentlyViewedRequest.current;
-    }
-
-    const request = (async () => {
-      setIsRecentlyViewedLoading(true);
-      try {
-        const items = await searchService.recentlyViewedRestaurants(10);
-        setRecentlyViewedRestaurants(items);
-      } catch (err) {
-        logger.warn('Unable to load recently viewed restaurants', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-      } finally {
-        setIsRecentlyViewedLoading(false);
-        recentlyViewedRequest.current = null;
-      }
-    })();
-
-    recentlyViewedRequest.current = request;
-    return request;
-  }, [isSignedIn]);
-
-  const updateLocalRecentSearches = React.useCallback((value: string) => {
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
-      return;
-    }
-    const normalized = trimmedValue.toLowerCase();
-    setRecentSearches((prev) => {
-      const withoutMatch = prev.filter((entry) => entry.toLowerCase() !== normalized);
-      return [trimmedValue, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT);
-    });
-  }, []);
 
   const scrollResultsToTop = React.useCallback(() => {
     if (resultsScrollRef.current?.scrollToOffset) {
@@ -3151,24 +2144,18 @@ const SearchScreen: React.FC = () => {
         isFavorite: favoriteMap.has(restaurant.restaurantId),
       });
       setRestaurantOverlayVisible(true);
-
-      setRecentlyViewedRestaurants((prev) => {
-        const existing = prev.find((item) => item.restaurantId === restaurant.restaurantId);
-        const next: RecentlyViewedRestaurant = {
-          restaurantId: restaurant.restaurantId,
-          restaurantName: restaurant.restaurantName,
-          city: existing?.city ?? null,
-          region: existing?.region ?? null,
-          lastViewedAt: new Date().toISOString(),
-          viewCount: existing ? existing.viewCount + 1 : 1,
-        };
-        const withoutMatch = prev.filter((item) => item.restaurantId !== restaurant.restaurantId);
-        return [next, ...withoutMatch].slice(0, 10);
-      });
+      trackRecentlyViewedRestaurant(restaurant.restaurantId, restaurant.restaurantName);
 
       void recordRestaurantView(restaurant.restaurantId, source);
     },
-    [dishes, favoriteMap, submittedQuery, trimmedQuery, recordRestaurantView]
+    [
+      dishes,
+      favoriteMap,
+      submittedQuery,
+      trimmedQuery,
+      trackRecentlyViewedRestaurant,
+      recordRestaurantView,
+    ]
   );
 
   React.useEffect(() => {
@@ -3216,485 +2203,66 @@ const SearchScreen: React.FC = () => {
     setRestaurantProfile(null);
     setRestaurantOverlayVisible(false);
   }, []);
-  const renderDishCard = (item: FoodResult, index: number) => {
-    const isLiked = favoriteMap.has(item.foodId);
-    const qualityColor = getQualityColor(index, dishes.length);
-    const restaurantForDish = restaurantsById.get(item.restaurantId);
-    const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
-    const dishMetaPrimaryLine = renderMetaDetailLine(
-      null,
-      dishPriceLabel,
-      item.restaurantDistanceMiles,
-      'left',
-      item.restaurantName,
-      true
-    );
-    const dishStatusLine = renderMetaDetailLine(
-      item.restaurantOperatingStatus,
-      null,
-      null,
-      'left',
-      undefined,
-      false
-    );
-    const handleShare = () => {
-      void Share.share({
-        message: `${item.foodName} at ${item.restaurantName} · View on Crave Search`,
-      }).catch(() => undefined);
-    };
-    const handleDishPress = () => {
-      if (restaurantForDish) {
-        openRestaurantProfile(restaurantForDish, undefined, 'results_sheet');
-      }
-    };
-    const handleDishInfoPress = () => {
-      openScoreInfo({
-        type: 'dish',
-        title: item.foodName,
-        score: item.qualityScore,
-        votes: item.totalUpvotes,
-        polls: item.mentionCount,
-      });
-    };
-    return (
-      <View
-        key={item.connectionId}
-        style={[styles.resultItem, index === 0 && styles.firstResultItem]}
-      >
-        <Pressable
-          style={styles.resultPressable}
-          onPress={handleDishPress}
-          accessibilityRole={restaurantForDish ? 'button' : undefined}
-          accessibilityLabel={restaurantForDish ? `View ${item.restaurantName}` : undefined}
-          disabled={!restaurantForDish}
-        >
-          <View style={styles.resultHeader}>
-            <View style={styles.resultTitleContainer}>
-              <View style={styles.titleRow}>
-                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                  <Text variant="caption" style={styles.rankBadgeText}>
-                    {index + 1}
-                  </Text>
-                </View>
-                <Text
-                  variant="subtitle"
-                  weight="semibold"
-                  style={styles.textSlate900}
-                  numberOfLines={1}
-                >
-                  {item.foodName}
-                </Text>
-              </View>
-              <View style={styles.cardBodyStack}>
-                <View style={styles.metricBlock}>
-                  <View style={styles.metricLine}>
-                    <HandPlatter
-                      size={SECONDARY_METRIC_ICON_SIZE}
-                      color={themeColors.primary}
-                      strokeWidth={2}
-                      style={styles.metricIcon}
-                    />
-                    <Text variant="caption" weight="semibold" style={styles.metricValue}>
-                      {item.qualityScore.toFixed(1)}
-                    </Text>
-                    <Text variant="caption" weight="regular" style={styles.metricLabel}>
-                      Dish score
-                    </Text>
-                    <TouchableOpacity
-                      onPress={handleDishInfoPress}
-                      style={styles.scoreInfoIconButton}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="How dish scores are calculated"
-                    >
-                      <InfoCircleIcon
-                        size={SECONDARY_METRIC_ICON_SIZE + 2}
-                        color={themeColors.secondaryAccent}
-                        strokeWidth={2}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                {dishMetaPrimaryLine ? (
-                  <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
-                ) : null}
-                {dishStatusLine ? (
-                  <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
-                    {dishStatusLine}
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.resultActions}>
-              <Pressable
-                onPress={() => toggleFavorite(item.foodId, 'food')}
-                accessibilityRole="button"
-                accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
-                style={styles.likeButton}
-                hitSlop={8}
-              >
-                <LucideHeart
-                  size={20}
-                  color={isLiked ? themeColors.primary : '#cbd5e1'}
-                  fill={isLiked ? themeColors.primary : 'none'}
-                  strokeWidth={2}
-                />
-              </Pressable>
-              <Pressable
-                onPress={handleShare}
-                accessibilityRole="button"
-                accessibilityLabel="Share"
-                style={styles.shareButton}
-                hitSlop={8}
-              >
-                <LucideShare size={20} color="#cbd5e1" strokeWidth={2} />
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </View>
-    );
-  };
+  const dishesCount = dishes.length;
+  const restaurantsCount = restaurants.length;
 
-  const renderRestaurantCard = (restaurant: RestaurantResult, index: number) => {
-    const isLiked = favoriteMap.has(restaurant.restaurantId);
-    const qualityColor = getQualityColor(index, restaurants.length);
-    const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
-    const topFoodItems = restaurant.topFood ?? [];
-    const topFoodAverage =
-      topFoodItems.length > 0
-        ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) /
-          topFoodItems.length
-        : null;
-    const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
-    const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
-    const maxTopFoodToRender = Math.min(topFoodItems.length, TOP_FOOD_RENDER_LIMIT);
-    const topFoodInlineWidth = topFoodInlineWidths[restaurant.restaurantId];
-    const topFoodItemWidthMap = topFoodItemWidths[restaurant.restaurantId];
-    const topFoodMoreWidthMap = topFoodMoreWidths[restaurant.restaurantId];
-    const visibleTopFoodCount =
-      maxTopFoodToRender > 0
-        ? Math.max(
-            1,
-            calculateTopFoodVisibleCount(
-              topFoodItems,
-              maxTopFoodToRender,
-              topFoodInlineWidth,
-              topFoodItemWidthMap,
-              topFoodMoreWidthMap
-            )
-          )
-        : 0;
-    const inlineTopFoods = topFoodItems.slice(
-      0,
-      Math.max(1, Math.min(visibleTopFoodCount, maxTopFoodToRender))
-    );
-    const hiddenTopFoodCount = Math.max(0, topFoodItems.length - inlineTopFoods.length);
-    const potentialHiddenCounts: number[] = [];
-    for (let count = 1; count <= maxTopFoodToRender; count++) {
-      const hidden = topFoodItems.length - count;
-      if (hidden > 0) {
-        potentialHiddenCounts.push(hidden);
-      }
-    }
-    const restaurantMetaLine = renderMetaDetailLine(
-      null,
-      null,
-      restaurant.distanceMiles,
-      'left',
-      undefined,
-      true
-    );
-    const restaurantStatusLine = renderMetaDetailLine(
-      restaurant.operatingStatus,
-      null,
-      null,
-      'left',
-      undefined,
-      true
-    );
-    const handleShare = () => {
-      void Share.share({
-        message: `${restaurant.restaurantName} · View on Crave Search`,
-      }).catch(() => undefined);
-    };
-    const handleRestaurantInfoPress = () => {
-      openScoreInfo({
-        type: 'restaurant',
-        title: restaurant.restaurantName,
-        score: restaurant.restaurantQualityScore,
-        votes: restaurant.totalUpvotes,
-        polls: restaurant.mentionCount,
-      });
-    };
-    return (
-      <View
-        key={restaurant.restaurantId}
-        style={[styles.resultItem, index === 0 && styles.firstResultItem]}
-      >
-        <Pressable
-          style={styles.resultPressable}
-          onPress={() => openRestaurantProfile(restaurant)}
-          accessibilityRole="button"
-          accessibilityLabel={`View ${restaurant.restaurantName}`}
-        >
-          <View style={styles.resultHeader}>
-            <View style={styles.resultTitleContainer}>
-              <View style={styles.titleRow}>
-                <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                  <Text variant="caption" style={styles.rankBadgeText}>
-                    {index + 1}
-                  </Text>
-                </View>
-                <Text
-                  variant="subtitle"
-                  weight="semibold"
-                  style={styles.textSlate900}
-                  numberOfLines={1}
-                >
-                  {restaurant.restaurantName}
-                </Text>
-              </View>
-              {restaurantMetaLine ? (
-                <View
-                  style={[styles.resultMetaLine, index === 0 && styles.resultMetaLineFirstInList]}
-                >
-                  {restaurantMetaLine}
-                </View>
-              ) : null}
-              <View style={[styles.resultContent, styles.resultContentStack]}>
-                {restaurant.restaurantQualityScore !== null &&
-                restaurant.restaurantQualityScore !== undefined ? (
-                  <View style={styles.metricBlock}>
-                    <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
-                      <View style={styles.restaurantMetricLeft}>
-                        <Store
-                          size={SECONDARY_METRIC_ICON_SIZE}
-                          color={themeColors.primary}
-                          strokeWidth={2}
-                          style={[styles.metricIcon, styles.restaurantScoreIcon]}
-                        />
-                        <Text variant="caption" weight="semibold" style={styles.metricValue}>
-                          {restaurant.restaurantQualityScore.toFixed(1)}
-                        </Text>
-                        <Text
-                          variant="caption"
-                          weight="regular"
-                          style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
-                          numberOfLines={1}
-                        >
-                          Restaurant score
-                        </Text>
-                        <TouchableOpacity
-                          onPress={handleRestaurantInfoPress}
-                          style={styles.scoreInfoIconButton}
-                          hitSlop={8}
-                          accessibilityRole="button"
-                          accessibilityLabel="How restaurant scores are calculated"
-                        >
-                          <InfoCircleIcon
-                            size={SECONDARY_METRIC_ICON_SIZE + 2}
-                            color={themeColors.secondaryAccent}
-                            strokeWidth={2}
-                          />
-                        </TouchableOpacity>
-                      </View>
-                      {priceRangeLabel ? (
-                        <View style={styles.restaurantMetricRight}>
-                          <Text variant="caption" style={styles.metricDot}>
-                            {'·'}
-                          </Text>
-                          <Text variant="caption" style={styles.resultMetaPrice} numberOfLines={1}>
-                            {priceRangeLabel}
-                          </Text>
-                        </View>
-                      ) : null}
-                    </View>
-                  </View>
-                ) : null}
-                {topFoodItems.length ? (
-                  <View style={styles.topFoodSection}>
-                    <View style={styles.topFoodHeader}>
-                      <View style={styles.topFoodAvgRow}>
-                        <HandPlatter
-                          size={SECONDARY_METRIC_ICON_SIZE}
-                          color={themeColors.primary}
-                          strokeWidth={2}
-                          style={styles.metricIcon}
-                        />
-                        {topFoodAverage !== null ? (
-                          <Text
-                            variant="caption"
-                            weight="medium"
-                            style={styles.topFoodScorePrimary}
-                          >
-                            {topFoodAverage.toFixed(1)}
-                          </Text>
-                        ) : null}
-                        {topFoodPrimaryLabel ? (
-                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                            <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                              Average{' '}
-                            </Text>
-                            <Text
-                              variant="caption"
-                              weight="semibold"
-                              style={styles.topFoodLabelStrong}
-                            >
-                              {topFoodPrimaryLabel}
-                            </Text>
-                            <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                              {' '}
-                              score
-                            </Text>
-                          </Text>
-                        ) : (
-                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                            {topFoodAvgLabel}
-                          </Text>
-                        )}
-                      </View>
-                      <View style={styles.topFoodDivider} />
-                    </View>
-                    <View style={styles.topFoodInlineRow}>
-                      <View
-                        style={styles.topFoodInlineList}
-                        onLayout={({ nativeEvent: { layout } }) => {
-                          if (layout.width > 0) {
-                            updateTopFoodInlineWidth(restaurant.restaurantId, layout.width);
-                          }
-                        }}
-                      >
-                        {inlineTopFoods.map((food, idx) => (
-                          <Text
-                            key={food.connectionId}
-                            style={styles.topFoodInlineText}
-                            numberOfLines={1}
-                          >
-                            <Text
-                              variant="caption"
-                              weight="semibold"
-                              style={styles.topFoodRankInline}
-                            >
-                              {idx + 1}.
-                            </Text>
-                            <Text
-                              variant="caption"
-                              weight="regular"
-                              style={styles.topFoodNameInline}
-                              numberOfLines={1}
-                              ellipsizeMode="tail"
-                            >
-                              {' '}
-                              {food.foodName}
-                            </Text>
-                          </Text>
-                        ))}
-                        {hiddenTopFoodCount > 0 ? (
-                          <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
-                            +{hiddenTopFoodCount} more
-                          </Text>
-                        ) : null}
-                      </View>
-                      <View
-                        style={styles.topFoodInlineMeasure}
-                        pointerEvents="none"
-                        accessibilityElementsHidden
-                        importantForAccessibility="no-hide-descendants"
-                      >
-                        {topFoodItems.slice(0, maxTopFoodToRender).map((food, idx) => (
-                          <Text
-                            key={`${food.connectionId}-measure`}
-                            variant="caption"
-                            weight="regular"
-                            style={styles.topFoodMeasureText}
-                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
-                              const width = nativeEvent.lines?.[0]?.width;
-                              if (typeof width === 'number') {
-                                updateTopFoodItemWidth(
-                                  restaurant.restaurantId,
-                                  food.connectionId,
-                                  width
-                                );
-                              }
-                            }}
-                            numberOfLines={1}
-                          >
-                            <Text
-                              variant="caption"
-                              weight="semibold"
-                              style={styles.topFoodRankInline}
-                            >
-                              {idx + 1}.
-                            </Text>
-                            <Text
-                              variant="caption"
-                              weight="regular"
-                              style={styles.topFoodNameInline}
-                            >
-                              {' '}
-                              {food.foodName}
-                            </Text>
-                          </Text>
-                        ))}
-                        {potentialHiddenCounts.map((hidden) => (
-                          <Text
-                            key={`${restaurant.restaurantId}-more-${hidden}`}
-                            variant="caption"
-                            weight="semibold"
-                            style={styles.topFoodMeasureText}
-                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
-                              const width = nativeEvent.lines?.[0]?.width;
-                              if (typeof width === 'number') {
-                                updateTopFoodMoreWidth(restaurant.restaurantId, hidden, width);
-                              }
-                            }}
-                            numberOfLines={1}
-                          >
-                            +{hidden} more
-                          </Text>
-                        ))}
-                      </View>
-                    </View>
-                  </View>
-                ) : null}
-                {restaurantStatusLine ? (
-                  <View style={[styles.resultMetaLine, styles.resultContentStatusLine]}>
-                    {restaurantStatusLine}
-                  </View>
-                ) : null}
-              </View>
-            </View>
-            <View style={styles.resultActions}>
-              <Pressable
-                onPress={() => toggleFavorite(restaurant.restaurantId, 'restaurant')}
-                accessibilityRole="button"
-                accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
-                style={styles.likeButton}
-                hitSlop={8}
-              >
-                <LucideHeart
-                  size={20}
-                  color={isLiked ? themeColors.primary : '#cbd5e1'}
-                  fill={isLiked ? themeColors.primary : 'none'}
-                  strokeWidth={2}
-                />
-              </Pressable>
-              <Pressable
-                onPress={handleShare}
-                accessibilityRole="button"
-                accessibilityLabel="Share"
-                style={styles.shareButton}
-                hitSlop={8}
-              >
-                <LucideShare size={20} color="#cbd5e1" strokeWidth={2} />
-              </Pressable>
-            </View>
-          </View>
-        </Pressable>
-      </View>
-    );
-  };
+  const renderDishCard = React.useCallback(
+    (item: FoodResult, index: number) => (
+      <DishResultCard
+        item={item}
+        index={index}
+        dishesCount={dishesCount}
+        favoriteMap={favoriteMap}
+        restaurantsById={restaurantsById}
+        toggleFavorite={toggleFavorite}
+        openRestaurantProfile={openRestaurantProfile}
+        openScoreInfo={openScoreInfo}
+      />
+    ),
+    [
+      dishesCount,
+      favoriteMap,
+      openRestaurantProfile,
+      openScoreInfo,
+      restaurantsById,
+      toggleFavorite,
+    ]
+  );
+
+  const renderRestaurantCard = React.useCallback(
+    (restaurant: RestaurantResult, index: number) => (
+      <RestaurantResultCard
+        restaurant={restaurant}
+        index={index}
+        restaurantsCount={restaurantsCount}
+        favoriteMap={favoriteMap}
+        toggleFavorite={toggleFavorite}
+        openRestaurantProfile={openRestaurantProfile}
+        openScoreInfo={openScoreInfo}
+        primaryFoodTerm={primaryFoodTerm}
+        topFoodInlineWidths={topFoodInlineWidths}
+        topFoodItemWidths={topFoodItemWidths}
+        topFoodMoreWidths={topFoodMoreWidths}
+        updateTopFoodInlineWidth={updateTopFoodInlineWidth}
+        updateTopFoodItemWidth={updateTopFoodItemWidth}
+        updateTopFoodMoreWidth={updateTopFoodMoreWidth}
+      />
+    ),
+    [
+      favoriteMap,
+      openRestaurantProfile,
+      openScoreInfo,
+      primaryFoodTerm,
+      restaurantsCount,
+      toggleFavorite,
+      topFoodInlineWidths,
+      topFoodItemWidths,
+      topFoodMoreWidths,
+      updateTopFoodInlineWidth,
+      updateTopFoodItemWidth,
+      updateTopFoodMoreWidth,
+    ]
+  );
 
   const filtersHeader = (
     <SearchFilters
@@ -3851,106 +2419,23 @@ const SearchScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <MapboxGL.MapView
-        ref={mapRef}
-        style={styles.map}
+      <SearchMap
+        mapRef={mapRef}
+        cameraRef={cameraRef}
         styleURL={mapStyleURL}
-        logoEnabled={false}
-        attributionEnabled={false}
-        scaleBarEnabled={false}
+        mapCenter={mapCenter}
+        mapZoom={mapZoom}
+        isFollowingUser={isFollowingUser}
         onPress={handleMapPress}
         onCameraChanged={handleCameraChanged}
-      >
-        <MapboxGL.Camera
-          ref={cameraRef}
-          centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
-          zoomLevel={mapZoom}
-          followUserLocation={isFollowingUser}
-          followZoomLevel={13}
-          followPitch={0}
-          followHeading={0}
-          animationMode="none"
-          animationDuration={0}
-          pitch={32}
-        />
-        {sortedRestaurantMarkers.length ? (
-          <React.Fragment key={`markers-${markersRenderKey}`}>
-            {sortedRestaurantMarkers.map((feature) => {
-              const coordinates = feature.geometry.coordinates as [number, number];
-              const markerKey = buildMarkerKey(feature);
-              const zIndex = getMarkerZIndex(
-                feature.properties.rank,
-                sortedRestaurantMarkers.length
-              );
-              return (
-                <MapboxGL.MarkerView
-                  key={markerKey}
-                  id={`restaurant-marker-${markerKey}`}
-                  coordinate={coordinates}
-                  anchor={{ x: 0.5, y: 1 }}
-                  allowOverlap
-                  style={[styles.markerView, { zIndex }]}
-                >
-                  <View style={[styles.pinWrapper, styles.pinShadow]}>
-                    <Image source={pinAsset} style={styles.pinBase} />
-                    <Image
-                      source={pinFillAsset}
-                      style={[
-                        styles.pinFill,
-                        {
-                          tintColor: feature.properties.pinColor,
-                        },
-                      ]}
-                    />
-                    <View style={styles.pinRankWrapper}>
-                      <Text variant="caption" style={styles.pinRank}>
-                        {feature.properties.rank}
-                      </Text>
-                    </View>
-                  </View>
-                </MapboxGL.MarkerView>
-              );
-            })}
-          </React.Fragment>
-        ) : null}
-        {restaurantFeatures.features.length ? (
-          <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
-            <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
-          </MapboxGL.ShapeSource>
-        ) : null}
-        {userLocation ? (
-          <MapboxGL.MarkerView
-            id="user-location"
-            coordinate={[userLocation.lng, userLocation.lat]}
-            anchor={{ x: 0.5, y: 0.5 }}
-            allowOverlap
-            isSelected
-            style={[styles.markerView, styles.userLocationMarkerView]}
-          >
-            <View style={styles.userLocationWrapper}>
-              <View style={styles.userLocationShadow}>
-                <BlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
-                  <Animated.View
-                    style={[
-                      styles.userLocationDot,
-                      {
-                        transform: [
-                          {
-                            scale: locationPulse.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1.4, 1.8],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </BlurView>
-              </View>
-            </View>
-          </MapboxGL.MarkerView>
-        ) : null}
-      </MapboxGL.MapView>
+        sortedRestaurantMarkers={sortedRestaurantMarkers}
+        markersRenderKey={markersRenderKey}
+        buildMarkerKey={buildMarkerKey}
+        restaurantFeatures={restaurantFeatures}
+        restaurantLabelStyle={restaurantLabelStyle}
+        userLocation={userLocation}
+        locationPulse={locationPulse}
+      />
 
       {isSearchOverlay && (
         <SafeAreaView
@@ -4006,33 +2491,37 @@ const SearchScreen: React.FC = () => {
                   },
                 ]}
               >
-                {shouldRenderSuggestionPanel ? (
-                  <View
-                    style={[
-                      styles.searchMiddlePanel,
-                      {
-                        marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
-                        paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
-                        paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-                      },
-                      suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
-                    ]}
-                  >
-                    <SearchSuggestions
-                      visible={shouldRenderSuggestionPanel}
-                      showAutocomplete={shouldRenderAutocompleteSection}
-                      showRecent={shouldShowRecentSection}
-                      suggestions={suggestions}
-                      recentSearches={recentSearches}
-                      hasRecentSearches={hasRecentSearches}
-                      isAutocompleteLoading={isAutocompleteLoading}
-                      isRecentLoading={isRecentLoading}
-                      onSelectSuggestion={handleSuggestionPress}
-                      onSelectRecent={handleRecentSearchPress}
-                      panelMaxHeight={suggestionPanelMaxHeight}
-                    />
-                  </View>
-                ) : null}
+                  {shouldRenderSuggestionPanel ? (
+                    <View
+                      style={[
+                        styles.searchMiddlePanel,
+                        {
+                          marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
+                          paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
+                          paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+                        },
+                        suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
+                      ]}
+                    >
+                      <SearchSuggestions
+                        visible={shouldRenderSuggestionPanel}
+                        showAutocomplete={shouldRenderAutocompleteSection}
+                        showRecent={shouldShowRecentSection}
+                        suggestions={suggestions}
+                        recentSearches={recentSearches}
+                        recentlyViewedRestaurants={recentlyViewedRestaurants}
+                        hasRecentSearches={hasRecentSearches}
+                        hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
+                        isAutocompleteLoading={isAutocompleteLoading}
+                        isRecentLoading={isRecentLoading}
+                        isRecentlyViewedLoading={isRecentlyViewedLoading}
+                        onSelectSuggestion={handleSuggestionPress}
+                        onSelectRecent={handleRecentSearchPress}
+                        onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                        panelMaxHeight={suggestionPanelMaxHeight}
+                      />
+                    </View>
+                  ) : null}
               </View>
             </View>
           </Reanimated.View>
@@ -4193,60 +2682,36 @@ const SearchScreen: React.FC = () => {
               </Text>
             </Pressable>
           </Reanimated.View>
-          {shouldRenderSheet ? (
-            <>
-              <Reanimated.View
-                pointerEvents="none"
-                style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
-              />
-              <BottomSheetWithFlashList
-                visible={shouldRenderSheet}
-                listScrollEnabled={!isPriceSelectorVisible}
-                snapPoints={snapPoints}
-                initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
-                sheetYValue={sheetTranslateY}
-                scrollOffsetValue={resultsScrollOffset}
-                momentumFlag={resultsMomentum}
-                onScrollOffsetChange={onResultsScroll}
-                onScrollBeginDrag={handleResultsScrollBeginDrag}
-                onScrollEndDrag={handleResultsScrollEndDrag}
-                onMomentumBeginJS={() => {
-                  resultsMomentum.value = true;
-                }}
-                onMomentumEndJS={() => {
-                  resultsMomentum.value = false;
-                }}
-                onEndReached={canLoadMore ? loadMoreResults : undefined}
-                onEndReachedThreshold={0.2}
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                keyboardDismissMode="on-drag"
-                bounces={false}
-                alwaysBounceVertical={false}
-                overScrollMode="never"
-                testID="search-results-flatlist"
-                extraData={flatListDebugData}
-                data={safeResultsData}
-                renderItem={renderSafeItem}
-                keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
-                estimatedItemSize={240}
-                ListHeaderComponent={listHeader}
-                ListFooterComponent={resultsListFooterComponent}
-                ListEmptyComponent={resultsListEmptyComponent}
-                contentContainerStyle={{ paddingBottom: RESULTS_BOTTOM_PADDING }}
-                backgroundComponent={<FrostedGlassBackground />}
-                headerComponent={resultsHeaderComponent}
-                listRef={resultsScrollRef}
-                style={overlaySheetStyles.container}
-                onHidden={() => {
-                  setPanelVisible(false);
-                  setSheetState('hidden');
-                  sheetStateShared.value = 'hidden';
-                }}
-                onSnapChange={handleSheetSnapChange}
-              />
-            </>
-          ) : null}
+          <SearchResultsSheet
+            visible={shouldRenderSheet}
+            listScrollEnabled={!isPriceSelectorVisible}
+            snapPoints={snapPoints}
+            initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
+            sheetYValue={sheetTranslateY}
+            scrollOffsetValue={resultsScrollOffset}
+            momentumFlag={resultsMomentum}
+            onScrollOffsetChange={onResultsScroll}
+            onScrollBeginDrag={handleResultsScrollBeginDrag}
+            onScrollEndDrag={handleResultsScrollEndDrag}
+            onEndReached={canLoadMore ? loadMoreResults : undefined}
+            extraData={flatListDebugData}
+            data={safeResultsData}
+            renderItem={renderSafeItem}
+            keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
+            estimatedItemSize={240}
+            ListHeaderComponent={listHeader}
+            ListFooterComponent={resultsListFooterComponent}
+            ListEmptyComponent={resultsListEmptyComponent}
+            headerComponent={resultsHeaderComponent}
+            listRef={resultsScrollRef}
+            resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
+            onHidden={() => {
+              setPanelVisible(false);
+              setSheetState('hidden');
+              sheetStateShared.value = 'hidden';
+            }}
+            onSnapChange={handleSheetSnapChange}
+          />
         </SafeAreaView>
       )}
       {!shouldHideBottomNav && (
@@ -4415,996 +2880,5 @@ const SearchScreen: React.FC = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  map: StyleSheet.absoluteFillObject,
-  markerView: {
-    flex: 0,
-    alignSelf: 'flex-start',
-  },
-  userLocationMarkerView: {
-    zIndex: 10000,
-    elevation: 10000,
-  },
-  pinWrapper: {
-    width: PIN_MARKER_RENDER_SIZE,
-    height: PIN_MARKER_RENDER_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
-  pinShadow: {
-    ...MARKER_SHADOW_STYLE,
-  },
-  pinBase: {
-    position: 'absolute',
-    width: PIN_BASE_WIDTH * PIN_BASE_SCALE,
-    height: PIN_BASE_HEIGHT * PIN_BASE_SCALE,
-    resizeMode: 'contain',
-  },
-  pinFill: {
-    position: 'absolute',
-    width: PIN_FILL_RENDER_WIDTH,
-    height: PIN_FILL_RENDER_HEIGHT,
-    resizeMode: 'contain',
-    left: PIN_FILL_LEFT_OFFSET,
-    top: PIN_FILL_TOP_OFFSET,
-  },
-  pinRankWrapper: {
-    position: 'absolute',
-    left: PIN_FILL_LEFT_OFFSET,
-    top: PIN_FILL_TOP_OFFSET,
-    width: PIN_FILL_RENDER_WIDTH,
-    height: PIN_FILL_RENDER_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pinRank: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#fff',
-    textAlign: 'center',
-    fontVariant: ['tabular-nums'],
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-  },
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    paddingBottom: 24,
-  },
-  searchContainer: {
-    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
-    paddingTop: SEARCH_CONTAINER_PADDING_TOP,
-    zIndex: 20,
-  },
-  searchShortcutsRow: {
-    paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
-    marginBottom: SEARCH_SHORTCUTS_BOTTOM_MARGIN,
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
-    zIndex: 25,
-  },
-  searchShortcutChip: {
-    borderRadius: 14,
-    borderWidth: 0,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    justifyContent: 'center',
-    alignSelf: 'flex-start',
-    marginRight: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
-    elevation: 2,
-  },
-  searchShortcutChipTransparent: {
-    backgroundColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  searchShortcutContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 6,
-  },
-  searchThisAreaContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 30,
-  },
-  searchThisAreaButton: {
-    borderRadius: 999,
-    borderWidth: 0,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
-    elevation: 2,
-  },
-  searchThisAreaText: {
-    color: SEARCH_THIS_AREA_COLOR,
-  },
-  searchShortcutChipText: {
-    color: '#0f172a',
-  },
-  promptCardTopShadow: {
-    borderRadius: 0,
-  },
-  promptCardWrapper: {
-    borderRadius: 0,
-  },
-  promptCard: {
-    borderRadius: 16,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    minHeight: 52,
-  },
-  promptRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 40,
-  },
-  promptInner: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    gap: 8,
-  },
-  searchBarTint: {
-    backgroundColor: 'transparent',
-  },
-  searchSurface: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
-    borderColor: 'transparent',
-    overflow: 'hidden',
-    zIndex: 10,
-  },
-  searchSurfaceSolidBackground: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
-  searchSurfaceScroll: {
-    alignSelf: 'stretch',
-    width: '100%',
-  },
-  searchSuggestionHeaderSurface: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-  },
-  searchSuggestionScrollSurface: {
-    backgroundColor: 'transparent',
-  },
-  searchSurfaceContent: {
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  searchMiddlePanel: {
-    width: '100%',
-    alignSelf: 'center',
-    backgroundColor: '#ffffff',
-    paddingTop: 0,
-  },
-  autocompleteSectionSurface: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
-  },
-  recentSectionSurface: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255, 255, 255, 0.6)',
-    borderWidth: 1,
-    borderColor: 'rgba(241, 245, 249, 0.8)',
-  },
-  autocompleteLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  autocompleteLoadingText: {
-    fontSize: 13,
-    color: '#475569',
-    marginLeft: 8,
-  },
-  autocompleteEmptyText: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    fontSize: 13,
-    color: '#94a3b8',
-  },
-  autocompleteItem: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  autocompleteItemLast: {
-    borderBottomWidth: 0,
-  },
-  autocompletePrimaryText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  autocompleteSecondaryText: {
-    fontSize: 12,
-    color: themeColors.textBody,
-    textTransform: 'capitalize',
-  },
-  recentHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  recentHeaderText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#0f172a',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
-  recentRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
-  },
-  recentRowFirst: {
-    borderTopWidth: 0,
-  },
-  recentIcon: {
-    marginRight: 10,
-  },
-  recentText: {
-    fontSize: 14,
-    color: themeColors.textPrimary,
-    flex: 1,
-  },
-  searchIcon: {
-    marginRight: 12,
-  },
-  promptInput: {
-    flex: 1,
-    fontSize: 16,
-    color: themeColors.textPrimary,
-    textAlign: 'left',
-    paddingVertical: 0,
-    height: '100%',
-  },
-  trailingContainer: {
-    marginLeft: 'auto',
-    minWidth: 24,
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  trailingButton: {
-    width: 24,
-    height: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  trailingPlaceholder: {
-    width: 24,
-    height: 24,
-  },
-  bottomNavWrapper: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'stretch',
-    zIndex: 120,
-  },
-  bottomNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 22,
-    paddingTop: NAV_TOP_PADDING,
-    backgroundColor: '#ffffff',
-  },
-  navButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 68,
-    paddingHorizontal: 4,
-  },
-  navIcon: {
-    marginBottom: 2,
-  },
-  navLabel: {
-    marginTop: 0,
-    color: '#94a3b8',
-  },
-  navLabelActive: {
-    color: ACTIVE_TAB_COLOR,
-  },
-  scoreInfoIconButton: {
-    padding: 0,
-  },
-  scoreInfoOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 130,
-    justifyContent: 'flex-end',
-  },
-  scoreInfoBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
-  },
-  scoreInfoSheet: {
-    backgroundColor: '#ffffff',
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 12,
-  },
-  scoreInfoGrabHandleWrapper: {
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  scoreInfoGrabHandle: {
-    width: 42,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#e2e8f0',
-  },
-  scoreInfoContent: {
-    gap: 12,
-  },
-  scoreInfoHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  scoreInfoTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  scoreInfoTitle: {
-    color: '#0f172a',
-  },
-  scoreInfoValue: {
-    color: themeColors.textPrimary,
-  },
-  scoreInfoClose: {
-    padding: 6,
-    borderRadius: 999,
-  },
-  scoreInfoSubtitle: {
-    color: themeColors.textBody,
-  },
-  scoreInfoMetricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  scoreInfoMetricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: '#f8fafc',
-  },
-  scoreInfoMetricText: {
-    color: '#0f172a',
-  },
-  scoreInfoMetricLabel: {
-    color: themeColors.textBody,
-  },
-  scoreInfoDivider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: '#e2e8f0',
-    marginVertical: 4,
-  },
-  scoreInfoDescription: {
-    color: themeColors.textBody,
-    lineHeight: 18,
-  },
-  pollsIcon: {
-    transform: [{ rotate: '90deg' }, { scaleX: -1 }],
-  },
-  resultsShadow: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    backgroundColor: 'transparent',
-  },
-  resultsCard: {
-    flex: 1,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
-    alignSelf: 'stretch',
-  },
-  resultsCardSurface: {
-    backgroundColor: '#ffffff',
-  },
-  resultsCardCentered: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-  },
-  resultsScroll: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  resultsListHeader: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 0,
-    paddingVertical: 0,
-  },
-  submittedQueryLabel: {
-    flexShrink: 1,
-    marginRight: 12,
-    color: '#0f172a',
-    marginBottom: 0,
-    paddingLeft: 0,
-  },
-  resultsInner: {
-    width: '100%',
-  },
-  loadMoreSpacer: {
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resultFiltersWrapper: {
-    marginTop: -3,
-    marginBottom: 14,
-    gap: 0,
-  },
-  priceSheetOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-  },
-  priceSheetBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.2)',
-  },
-  priceSheetContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
-    borderTopRightRadius: OVERLAY_CORNER_RADIUS,
-    backgroundColor: '#ffffff',
-    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
-    paddingTop: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 30,
-  },
-  priceSheetHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 10,
-  },
-  priceSheetHeadline: {
-    flex: 1,
-    minWidth: 0,
-    color: '#0f172a',
-  },
-  priceSheetSliderWrapper: {
-    width: '100%',
-    paddingHorizontal: PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
-    marginTop: 0,
-    marginBottom: 8,
-  },
-  priceTrackContainer: {
-    width: '100%',
-    height: 32,
-    justifyContent: 'center',
-  },
-  priceSliderRail: {
-    position: 'absolute',
-    left: PRICE_THUMB_SIZE / 2,
-    right: PRICE_THUMB_SIZE / 2,
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: `${themeColors.primary}17`,
-    top: '50%',
-    marginTop: -1.5,
-  },
-  priceSliderRailSelected: {
-    position: 'absolute',
-    height: 3,
-    borderRadius: 999,
-    backgroundColor: themeColors.primary,
-    top: '50%',
-    marginTop: -1.5,
-  },
-  priceSliderThumb: {
-    position: 'absolute',
-    top: 6,
-    width: PRICE_THUMB_SIZE,
-    height: PRICE_THUMB_SIZE,
-    borderRadius: PRICE_THUMB_SIZE / 2,
-    backgroundColor: themeColors.primary,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
-    elevation: 2,
-  },
-  priceSheetDoneButton: {
-    height: CONTROL_HEIGHT,
-    borderRadius: CONTROL_RADIUS,
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 4,
-    paddingVertical: CONTROL_VERTICAL_PADDING,
-    alignItems: 'center',
-    justifyContent: 'center',
-    alignSelf: 'flex-end',
-  },
-  priceSheetDoneText: {
-    color: '#ffffff',
-  },
-  resultItem: {
-    paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
-    paddingBottom: CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE,
-    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    backgroundColor: '#ffffff',
-    marginBottom: SHARED_SECTION_GAP,
-    alignSelf: 'stretch',
-    borderRadius: 0,
-  },
-  firstResultItem: {
-    paddingTop:
-      CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE + FIRST_RESULT_TOP_PADDING_EXTRA,
-  },
-  resultItemWithFilters: {
-    paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,
-  },
-  resultPressable: {
-    width: '100%',
-  },
-  resultHeader: {
-    position: 'relative',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    minHeight: 32,
-    marginBottom: 0,
-  },
-  resultActions: {
-    position: 'absolute',
-    top: 0,
-    right: -(CONTENT_HORIZONTAL_PADDING / 2),
-    width: 32,
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 4,
-  },
-  resultTitleContainer: {
-    flex: 1,
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    minHeight: 0,
-    paddingTop: 0,
-    paddingRight: 48,
-    gap: CARD_LINE_GAP,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    maxWidth: '100%',
-  },
-  rankBadge: {
-    width: 26,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: themeColors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rankBadgeText: {
-    color: '#ffffff',
-    fontWeight: '700',
-    fontSize: 14,
-    lineHeight: 24,
-    height: 24,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-  },
-  cardBodyStack: {
-    width: '100%',
-    gap: CARD_LINE_GAP,
-  },
-  resultMetaLine: {
-    marginTop: 0,
-  },
-  dishMetaLineFirst: {
-    marginTop: 0,
-  },
-  metricBlock: {
-    marginTop: 0,
-    marginBottom: 0,
-    gap: CARD_LINE_GAP,
-  },
-  metricLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    columnGap: 4,
-    rowGap: 2,
-  },
-  metricIcon: {
-    marginRight: 2,
-  },
-  restaurantScoreIcon: {
-    marginRight: 1,
-  },
-  metricDot: {
-    color: themeColors.textBody,
-    fontSize: META_FONT_SIZE,
-    lineHeight: CAPTION_LINE_HEIGHT,
-    marginHorizontal: SPACING_SM,
-  },
-  metricLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.2,
-    textTransform: 'none',
-  },
-  metricValueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  metricValue: {
-    color: themeColors.textPrimary,
-  },
-  metricCountersInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  metricCounterItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metricCounterText: {
-    color: themeColors.textBody,
-  },
-  metricSupportRow: {
-    marginTop: 0,
-  },
-  restaurantMetricRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    minWidth: 0,
-    columnGap: 0,
-    rowGap: CARD_LINE_GAP,
-  },
-  restaurantMetricLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexShrink: 1,
-    minWidth: 0,
-    columnGap: 4,
-  },
-  restaurantMetricLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  restaurantMetricRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: 0,
-    flexShrink: 0,
-    columnGap: SPACING_XS,
-  },
-  metricSupportLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.1,
-  },
-  resultMetaLineRight: {
-    marginTop: 0,
-    marginLeft: 'auto',
-    alignItems: 'flex-end',
-    maxWidth: '65%',
-    flexShrink: 1,
-  },
-  resultMetaLineInline: {
-    marginTop: 0,
-    flexShrink: 1,
-  },
-  resultMetaText: {
-    color: themeColors.textBody,
-    flexShrink: 1,
-  },
-  resultMetaPrefix: {
-    color: themeColors.textBody,
-  },
-  resultMetaTextRight: {
-    textAlign: 'right',
-  },
-  resultMetaOpen: {
-    color: '#16a34a',
-  },
-  resultMetaClosingSoon: {
-    color: '#f59e0b',
-  },
-  resultMetaSuffix: {
-    color: themeColors.textBody,
-  },
-  resultMetaClosed: {
-    color: '#dc2626',
-  },
-  resultMetaSeparator: {
-    color: themeColors.textBody,
-  },
-  resultMetaPrice: {
-    color: themeColors.textBody,
-  },
-  resultMetaDistance: {
-    color: themeColors.textBody,
-  },
-  dishMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 8,
-    marginTop: 0,
-  },
-  userLocationWrapper: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 100,
-  },
-  userLocationHaloWrapper: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-  },
-  userLocationShadow: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...MARKER_SHADOW_STYLE,
-  },
-  userLocationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: themeColors.secondaryAccent,
-  },
-  userLocationHalo: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.65)',
-  },
-  shareButton: {
-    padding: 4,
-    borderRadius: 999,
-  },
-  likeButton: {
-    padding: 4,
-    borderRadius: 999,
-  },
-  resultContent: {
-    marginLeft: 0,
-    marginTop: 0,
-    paddingBottom: 0,
-  },
-  resultContentStack: {
-    gap: CARD_LINE_GAP,
-  },
-  secondaryMetricsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 6,
-  },
-  secondaryMetricItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  secondaryMetricInline: {
-    color: themeColors.textBody,
-  },
-  emptyState: {
-    paddingVertical: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textSlate900: {
-    color: themeColors.textPrimary,
-  },
-  textSlate700: {
-    color: themeColors.textBody,
-  },
-  textSlate600: {
-    color: themeColors.textBody,
-  },
-  textSlate500: {
-    color: themeColors.textMuted,
-  },
-  textRed600: {
-    color: '#dc2626',
-  },
-  dishTitle: {
-    fontSize: 17,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishCardTitle: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishRestaurantName: {
-    color: themeColors.textMuted,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  dishSubtitle: {
-    fontSize: 14,
-    marginTop: 4,
-  },
-  dishSubtitleSmall: {
-    fontSize: 12,
-  },
-  topFoodSection: {
-    marginTop: 0,
-    marginBottom: 0,
-    gap: CARD_LINE_GAP,
-  },
-  topFoodLabel: {
-    color: themeColors.textBody,
-    letterSpacing: 0.6,
-    textTransform: 'none',
-  },
-  topFoodLabelStrong: {
-    color: themeColors.textBody,
-  },
-  topFoodHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-  },
-  topFoodAvgRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING_SM,
-  },
-  topFoodDivider: {
-    flex: 1,
-    height: 0,
-    backgroundColor: 'transparent',
-  },
-  topFoodInlineRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 0,
-    minWidth: 0,
-    width: '100%',
-    columnGap: CARD_LINE_GAP,
-    rowGap: CARD_LINE_GAP,
-  },
-  topFoodInlineList: {
-    flex: 1,
-    flexDirection: 'row',
-    flexWrap: 'nowrap',
-    columnGap: CARD_LINE_GAP,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  topFoodInlineItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    columnGap: 6,
-    minWidth: 0,
-  },
-  topFoodInlineText: {
-    color: themeColors.textBody,
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  topFoodRankInline: {
-    color: themeColors.primary,
-  },
-  topFoodNameInline: {
-    color: themeColors.textBody,
-  },
-  topFoodMore: {
-    color: themeColors.secondaryAccent,
-    marginTop: 0,
-    alignSelf: 'flex-start',
-    paddingLeft: 0,
-    flexShrink: 0,
-  },
-  topFoodInlineMeasure: {
-    position: 'absolute',
-    opacity: 0,
-    left: 0,
-    top: 0,
-    pointerEvents: 'none',
-  },
-  topFoodMeasureText: {
-    color: themeColors.textBody,
-  },
-  resultContentStatusLine: {
-    marginTop: 0,
-    marginBottom: 0,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 15,
-    textAlign: 'center',
-  },
-  glassHighlightSmall: {
-    position: 'absolute',
-    width: 0,
-    height: 0,
-  },
-});
-
-const EmptyState: React.FC<{ message: string }> = ({ message }) => (
-  <View style={styles.emptyState}>
-    <Text variant="caption" style={styles.textSlate500}>
-      {message}
-    </Text>
-  </View>
-);
 
 export default SearchScreen;

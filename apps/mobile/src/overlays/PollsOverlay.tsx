@@ -440,6 +440,12 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   const handleClose = useCallback(() => {
     setOverlay('search');
   }, [setOverlay]);
+  const handleHidden = useCallback(() => {
+    if (!visible) {
+      return;
+    }
+    setOverlay('search');
+  }, [setOverlay, visible]);
   const closeCutout = useHeaderCloseCutout();
 
   const headerComponent = (
@@ -636,7 +642,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
       backgroundComponent={<FrostedGlassBackground />}
       headerComponent={headerComponent}
       style={overlaySheetStyles.container}
-      onHidden={handleClose}
+      onHidden={handleHidden}
     />
   );
 };
