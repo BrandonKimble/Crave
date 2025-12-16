@@ -2257,6 +2257,28 @@ const SearchScreen: React.FC = () => {
   }, [isSearchOverlay, isRestaurantOverlayVisible]);
 
   React.useEffect(() => {
+    if (!isSuggestionScreenActive) {
+      return;
+    }
+    if (isRestaurantOverlayVisible) {
+      setRestaurantOverlayVisible(false);
+    }
+    if (isPriceSelectorVisible) {
+      closePriceSelector();
+    }
+    if (isScoreInfoVisible) {
+      closeScoreInfo();
+    }
+  }, [
+    closePriceSelector,
+    closeScoreInfo,
+    isPriceSelectorVisible,
+    isRestaurantOverlayVisible,
+    isScoreInfoVisible,
+    isSuggestionScreenActive,
+  ]);
+
+  React.useEffect(() => {
     sheetStateShared.value = sheetState;
   }, [sheetState, sheetStateShared]);
 
