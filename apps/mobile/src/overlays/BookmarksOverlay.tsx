@@ -112,7 +112,11 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
 
   const headerComponent = (
     <View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: headerPaddingTop }]}
+      style={[
+        overlaySheetStyles.header,
+        overlaySheetStyles.headerTransparent,
+        { paddingTop: headerPaddingTop },
+      ]}
       onLayout={closeCutout.onHeaderLayout}
     >
       {closeCutout.background}

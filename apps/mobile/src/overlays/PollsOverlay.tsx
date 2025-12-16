@@ -444,7 +444,11 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
   const headerComponent = (
     <View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: headerPaddingTop }]}
+      style={[
+        overlaySheetStyles.header,
+        overlaySheetStyles.headerTransparent,
+        { paddingTop: headerPaddingTop },
+      ]}
       onLayout={closeCutout.onHeaderLayout}
     >
       {closeCutout.background}

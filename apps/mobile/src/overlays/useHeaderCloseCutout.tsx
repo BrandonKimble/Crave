@@ -111,12 +111,7 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
               >
                 <SvgRect x={0} y={0} width={headerLayout.width} height={maskHeight} fill="white" />
                 {closeCenterX !== null && closeCenterY !== null ? (
-                  <SvgCircle
-                    cx={closeCenterX}
-                    cy={closeCenterY}
-                    r={holeRadius}
-                    fill="black"
-                  />
+                  <SvgCircle cx={closeCenterX} cy={closeCenterY} r={holeRadius} fill="black" />
                 ) : null}
               </SvgMask>
             </SvgDefs>
@@ -168,4 +163,3 @@ const styles = StyleSheet.create({
 });
 
 export { useHeaderCloseCutout };
-
