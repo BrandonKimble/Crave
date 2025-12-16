@@ -35,8 +35,8 @@ export const renderMetaDetailLine = (
     status?.isOpen && typeof status.closesInMinutes === 'number'
       ? status.closesInMinutes
       : status?.isOpen
-        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-        : null;
+      ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+      : null;
   const isClosingSoon =
     status?.isOpen &&
     typeof effectiveMinutesUntilClose === 'number' &&
@@ -104,7 +104,10 @@ export const renderMetaDetailLine = (
             Closes
           </Text>
           {status.closesAtDisplay ? (
-            <Text variant="caption" style={styles.resultMetaSuffix}>{` at ${status.closesAtDisplay}`}</Text>
+            <Text
+              variant="caption"
+              style={styles.resultMetaSuffix}
+            >{` at ${status.closesAtDisplay}`}</Text>
           ) : null}
         </Text>
       );
@@ -115,7 +118,10 @@ export const renderMetaDetailLine = (
             Open
           </Text>
           {status.closesAtDisplay ? (
-            <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.closesAtDisplay}`}</Text>
+            <Text
+              variant="caption"
+              style={styles.resultMetaSuffix}
+            >{` until ${status.closesAtDisplay}`}</Text>
           ) : null}
         </Text>
       );
@@ -126,7 +132,10 @@ export const renderMetaDetailLine = (
             Closed
           </Text>
           {status.nextOpenDisplay ? (
-            <Text variant="caption" style={styles.resultMetaSuffix}>{` until ${status.nextOpenDisplay}`}</Text>
+            <Text
+              variant="caption"
+              style={styles.resultMetaSuffix}
+            >{` until ${status.nextOpenDisplay}`}</Text>
           ) : null}
         </Text>
       );
@@ -151,4 +160,3 @@ export const renderMetaDetailLine = (
     </Text>
   );
 };
-

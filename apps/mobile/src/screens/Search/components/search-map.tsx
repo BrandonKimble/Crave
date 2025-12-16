@@ -163,4 +163,3 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
 );
 
 export default SearchMap;
-

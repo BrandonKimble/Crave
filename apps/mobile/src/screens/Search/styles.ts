@@ -1,7 +1,10 @@
 import { StyleSheet } from 'react-native';
 
 import { colors as themeColors } from '../../constants/theme';
-import { OVERLAY_CORNER_RADIUS, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
+import {
+  OVERLAY_CORNER_RADIUS,
+  OVERLAY_HORIZONTAL_PADDING,
+} from '../../overlays/overlaySheetStyles';
 import {
   ACTIVE_TAB_COLOR,
   CAPTION_LINE_HEIGHT,
@@ -1022,4 +1025,3 @@ const styles = StyleSheet.create({
 });
 
 export default styles;
-

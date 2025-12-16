@@ -13,4 +13,3 @@ const EmptyState: React.FC<{ message: string }> = ({ message }) => (
 );
 
 export default EmptyState;
-

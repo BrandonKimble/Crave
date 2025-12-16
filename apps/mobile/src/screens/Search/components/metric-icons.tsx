@@ -69,4 +69,3 @@ export const VoteIcon = ({ color, size = VOTE_ICON_SIZE }: { color: string; size
     <Path d="m9 11 3 3L22 4" />
   </Svg>
 );
-

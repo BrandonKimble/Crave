@@ -32,17 +32,11 @@ import { Text } from '../../components';
 import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
 import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
-import {
-  overlaySheetStyles,
-  OVERLAY_HORIZONTAL_PADDING,
-} from '../../overlays/overlaySheetStyles';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
-import {
-  SHEET_SPRING_CONFIG,
-  type SheetPosition,
-} from '../../overlays/sheetUtils';
+import { SHEET_SPRING_CONFIG, type SheetPosition } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import {
   searchService,
@@ -78,7 +72,10 @@ import EmptyState from './components/empty-state';
 import RestaurantResultCard from './components/restaurant-result-card';
 import { PollIcon, VoteIcon } from './components/metric-icons';
 import PriceRangeSlider from './components/price-range-slider';
-import SearchMap, { type MapboxMapRef, type RestaurantFeatureProperties } from './components/search-map';
+import SearchMap, {
+  type MapboxMapRef,
+  type RestaurantFeatureProperties,
+} from './components/search-map';
 import SearchResultsSheet from './components/search-results-sheet';
 import useSearchHistory from './hooks/use-search-history';
 import useSearchSheet from './hooks/use-search-sheet';
@@ -2491,37 +2488,37 @@ const SearchScreen: React.FC = () => {
                   },
                 ]}
               >
-                  {shouldRenderSuggestionPanel ? (
-                    <View
-                      style={[
-                        styles.searchMiddlePanel,
-                        {
-                          marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
-                          paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
-                          paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-                        },
-                        suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
-                      ]}
-                    >
-                      <SearchSuggestions
-                        visible={shouldRenderSuggestionPanel}
-                        showAutocomplete={shouldRenderAutocompleteSection}
-                        showRecent={shouldShowRecentSection}
-                        suggestions={suggestions}
-                        recentSearches={recentSearches}
-                        recentlyViewedRestaurants={recentlyViewedRestaurants}
-                        hasRecentSearches={hasRecentSearches}
-                        hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                        isAutocompleteLoading={isAutocompleteLoading}
-                        isRecentLoading={isRecentLoading}
-                        isRecentlyViewedLoading={isRecentlyViewedLoading}
-                        onSelectSuggestion={handleSuggestionPress}
-                        onSelectRecent={handleRecentSearchPress}
-                        onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
-                        panelMaxHeight={suggestionPanelMaxHeight}
-                      />
-                    </View>
-                  ) : null}
+                {shouldRenderSuggestionPanel ? (
+                  <View
+                    style={[
+                      styles.searchMiddlePanel,
+                      {
+                        marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
+                        paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
+                        paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+                      },
+                      suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
+                    ]}
+                  >
+                    <SearchSuggestions
+                      visible={shouldRenderSuggestionPanel}
+                      showAutocomplete={shouldRenderAutocompleteSection}
+                      showRecent={shouldShowRecentSection}
+                      suggestions={suggestions}
+                      recentSearches={recentSearches}
+                      recentlyViewedRestaurants={recentlyViewedRestaurants}
+                      hasRecentSearches={hasRecentSearches}
+                      hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
+                      isAutocompleteLoading={isAutocompleteLoading}
+                      isRecentLoading={isRecentLoading}
+                      isRecentlyViewedLoading={isRecentlyViewedLoading}
+                      onSelectSuggestion={handleSuggestionPress}
+                      onSelectRecent={handleRecentSearchPress}
+                      onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                      panelMaxHeight={suggestionPanelMaxHeight}
+                    />
+                  </View>
+                ) : null}
               </View>
             </View>
           </Reanimated.View>

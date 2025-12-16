@@ -10,7 +10,8 @@ export type PriceRangeTuple = [number, number];
 export const PRICE_LEVEL_MIN: PriceLevelValue = PRICE_LEVEL_VALUES[0];
 export const PRICE_LEVEL_MAX: PriceLevelValue = PRICE_LEVEL_VALUES[PRICE_LEVEL_VALUES.length - 1];
 export const PRICE_SLIDER_MIN: PriceSliderValue = PRICE_SLIDER_VALUES[0];
-export const PRICE_SLIDER_MAX: PriceSliderValue = PRICE_SLIDER_VALUES[PRICE_SLIDER_VALUES.length - 1];
+export const PRICE_SLIDER_MAX: PriceSliderValue =
+  PRICE_SLIDER_VALUES[PRICE_SLIDER_VALUES.length - 1];
 
 export const clampPriceLevelValue = (value: number): PriceLevelValue => {
   if (!Number.isFinite(value)) {
@@ -100,4 +101,3 @@ export const normalizePriceFilter = (levels?: number[] | null): number[] => {
     )
   ).sort((a, b) => a - b);
 };
-

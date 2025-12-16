@@ -5,7 +5,9 @@ import type { FlashList, FlashListProps } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
-import BottomSheetWithFlashList, { type SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
+import BottomSheetWithFlashList, {
+  type SnapPoints,
+} from '../../../overlays/BottomSheetWithFlashList';
 import { overlaySheetStyles } from '../../../overlays/overlaySheetStyles';
 import { RESULTS_BOTTOM_PADDING } from '../constants/search';
 import styles from '../styles';
@@ -113,9 +115,7 @@ const SearchResultsSheet = <T,>({
         ListHeaderComponent={ListHeaderComponent}
         ListFooterComponent={ListFooterComponent}
         ListEmptyComponent={ListEmptyComponent}
-        contentContainerStyle={
-          contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }
-        }
+        contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
         backgroundComponent={<FrostedGlassBackground />}
         headerComponent={headerComponent}
         listRef={listRef}

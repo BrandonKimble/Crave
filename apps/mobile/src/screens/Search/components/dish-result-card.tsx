@@ -92,7 +92,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   }, [item.foodName, item.mentionCount, item.qualityScore, item.totalUpvotes, openScoreInfo]);
 
   return (
-    <View key={item.connectionId} style={[styles.resultItem, index === 0 && styles.firstResultItem]}>
+    <View
+      key={item.connectionId}
+      style={[styles.resultItem, index === 0 && styles.firstResultItem]}
+    >
       <Pressable
         style={styles.resultPressable}
         onPress={handleDishPress}
@@ -147,9 +150,13 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                   </TouchableOpacity>
                 </View>
               </View>
-              {dishMetaPrimaryLine ? <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View> : null}
+              {dishMetaPrimaryLine ? (
+                <View style={styles.resultMetaLine}>{dishMetaPrimaryLine}</View>
+              ) : null}
               {dishStatusLine ? (
-                <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>{dishStatusLine}</View>
+                <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
+                  {dishStatusLine}
+                </View>
               ) : null}
             </View>
           </View>
@@ -185,4 +192,3 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
 };
 
 export default DishResultCard;
-

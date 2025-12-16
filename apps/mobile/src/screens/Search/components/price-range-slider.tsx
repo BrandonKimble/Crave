@@ -210,4 +210,3 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
 );
 
 export default PriceRangeSlider;
-

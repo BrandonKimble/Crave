@@ -45,4 +45,3 @@ export const calculateTopFoodVisibleCount = (
   }
   return hasMeasurements ? bestCount : maxInline;
 };
-

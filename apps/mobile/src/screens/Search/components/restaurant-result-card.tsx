@@ -102,7 +102,14 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       potentialHiddenCounts.push(hidden);
     }
   }
-  const restaurantMetaLine = renderMetaDetailLine(null, null, restaurant.distanceMiles, 'left', undefined, true);
+  const restaurantMetaLine = renderMetaDetailLine(
+    null,
+    null,
+    restaurant.distanceMiles,
+    'left',
+    undefined,
+    true
+  );
   const restaurantStatusLine = renderMetaDetailLine(
     restaurant.operatingStatus,
     null,
@@ -163,7 +170,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
               </Text>
             </View>
             {restaurantMetaLine ? (
-              <View style={[styles.resultMetaLine, index === 0 && styles.resultMetaLineFirstInList]}>
+              <View
+                style={[styles.resultMetaLine, index === 0 && styles.resultMetaLineFirstInList]}
+              >
                 {restaurantMetaLine}
               </View>
             ) : null}
@@ -267,8 +276,16 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       }}
                     >
                       {inlineTopFoods.map((food, idx) => (
-                        <Text key={food.connectionId} style={styles.topFoodInlineText} numberOfLines={1}>
-                          <Text variant="caption" weight="semibold" style={styles.topFoodRankInline}>
+                        <Text
+                          key={food.connectionId}
+                          style={styles.topFoodInlineText}
+                          numberOfLines={1}
+                        >
+                          <Text
+                            variant="caption"
+                            weight="semibold"
+                            style={styles.topFoodRankInline}
+                          >
                             {idx + 1}.
                           </Text>
                           <Text
@@ -313,7 +330,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           }}
                           numberOfLines={1}
                         >
-                          <Text variant="caption" weight="semibold" style={styles.topFoodRankInline}>
+                          <Text
+                            variant="caption"
+                            weight="semibold"
+                            style={styles.topFoodRankInline}
+                          >
                             {idx + 1}.
                           </Text>
                           <Text variant="caption" weight="regular" style={styles.topFoodNameInline}>
@@ -382,4 +403,3 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
 };
 
 export default RestaurantResultCard;
-

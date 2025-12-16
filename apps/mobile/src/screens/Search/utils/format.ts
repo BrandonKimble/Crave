@@ -77,4 +77,3 @@ export const formatCompactCount = (value?: number | null): string => {
   }
   return formatWithSuffix(value, 1_000_000, 'M');
 };
-

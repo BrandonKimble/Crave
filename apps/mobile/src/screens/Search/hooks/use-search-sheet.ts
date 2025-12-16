@@ -267,4 +267,3 @@ const useSearchSheet = ({
 };
 
 export default useSearchSheet;
-

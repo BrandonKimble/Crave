@@ -22,4 +22,3 @@ export const getQualityColor = (index: number, total: number): string => {
   ) as RgbTuple;
   return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
 };
-

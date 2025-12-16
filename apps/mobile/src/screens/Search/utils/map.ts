@@ -4,4 +4,3 @@ export const getMarkerZIndex = (rank: unknown, total: number): number => {
   }
   return Math.max(0, total - rank + 1);
 };
-
