@@ -33,11 +33,11 @@ The key best-practice decision is: treat events as **signals** with clear semant
 
 ### Events (minimum set)
 
-| Event | When it fires | Stored where | Primary consumers | Notes |
-| --- | --- | --- | --- | --- |
-| `search_submitted` | User submits a search (manual submit, recent tap, autocomplete tap, shortcut) | `search_log` (existing) | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `search_log` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
-| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `restaurant_views` (new) | “Recently viewed” UI, personal autocomplete boost, collection priority | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event. |
-| `favorite_toggled` | User favorites/unfavorites an entity | `user_favorites` (existing) + `entity_priority.favoriteCount` (new) | Autocomplete boost, collection priority | Favorites are durable preference; boost is “always on” when relevant. |
+| Event               | When it fires                                                                                               | Stored where                                                        | Primary consumers                                                        | Notes                                                                                                                                 |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `search_log` (existing)                                             | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `search_log` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
+| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `restaurant_views` (new)                                            | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                          |
+| `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | `user_favorites` (existing) + `entity_priority.favoriteCount` (new) | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                 |
 
 **About “autocomplete_selected”:** we do not emit it as a separate API event. Instead, we capture it on `search_submitted` via `submissionSource='autocomplete'` and (for non-restaurant entity selections) `selectedEntityId/selectedEntityType` so collection priority can give that entity an extra, small bump.
 
@@ -189,7 +189,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
   - Show a single mixed autocomplete list (no secondary labels under names):
     - entity matches (dish/restaurant icons)
     - query suggestions (suggested search text from `search_log.query_text` prefix matches; capped at 3)
-    - favorites and recently viewed restaurants are *not separate sections*; they are injected/boosted into the same list when they match the typed prefix.
+    - favorites and recently viewed restaurants are _not separate sections_; they are injected/boosted into the same list when they match the typed prefix.
   - Icons/badges (recommended):
     - Left icon: dish vs restaurant vs query-text
     - Badges: `heart` for favorite matches, `view` for recently viewed restaurants, `clock` for personal recent-search query suggestions.
@@ -208,12 +208,14 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
 ### Implementation
 
 - Candidate pool construction (best practice):
+
   - Start with text search results (current behavior).
   - Union-in any matching favorites (any entity type) and matching recently viewed restaurants (so they can appear even if they wouldn’t make the top-N text list).
   - Add query suggestions (suggested search text) from `search_log.query_text` prefix matches (capped at 3).
   - Deduplicate, then score and rank.
 
 - Scoring (initial, tunable defaults):
+
   - **Entity matches** keep the existing backbone score:
     - `score = 0.5*confidence + 0.35*globalPopularity + 0.1*userAffinity + favoriteBoost`
   - Add **restaurant view affinity** (restaurants only) as a small component:
@@ -225,6 +227,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
     - `favoriteBoost = 0.05` (applies when the entity is already a candidate match)
 
 - **Query suggestion scoring** (suggested search text):
+
   - Update `SearchQuerySuggestionService` to return `{ text, globalCount, userCount, source }` where counts are based on `COUNT(DISTINCT searchRequestId)` when available.
   - Treat query suggestions as first-class candidates with their own score so they can intermix with entities:
     - `queryScore = 0.5*1 + 0.35*normalize(globalCount) + 0.1*normalize(userCount) + personalBoost`
@@ -252,6 +255,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
 We should incorporate app interaction signals as a **small component** of demand (not just a tie-breaker), while keeping the existing connection-based proxy.
 
 #### Data model updates (`apps/api/prisma/schema.prisma`)
+
 - Extend `EntityPriorityMetric` to support additional app-demand signals:
   - `viewImpressions Int @default(0) @map("view_impressions")` (restaurants only; updated on `restaurant_opened`)
   - `lastViewAt DateTime? @map("last_view_at")`
@@ -259,12 +263,14 @@ We should incorporate app interaction signals as a **small component** of demand
   - `autocompleteSelections Int @default(0) @map("autocomplete_selections")` (updated only for non-restaurant `selectedEntityId`)
 
 #### Write paths
+
 - `search_submitted` (existing): continues to increment `queryImpressions` per resolved entity target.
 - `restaurant_opened` (new): increments `viewImpressions` and sets `lastViewAt` for that restaurant entity.
 - `favorite_toggled` (existing): FavoritesService increments/decrements `favoriteCount` for that entity.
 - `autocomplete selected` (implicit): if `submissionSource='autocomplete'` and `selectedEntityId` is non-restaurant, increment `autocompleteSelections` for that entity.
 
 #### Priority selection scoring changes (`EntityPrioritySelectionService`)
+
 - Keep the existing 3-factor structure (recency/quality/demand) but update `calculateUserDemandScore` to include app-demand signals.
 - Initial weighting (tunable defaults):
   - `connectionDemand` (existing proxy from connection activity): **0.6**

@@ -1210,9 +1210,7 @@ const SearchScreen: React.FC = () => {
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
   const overlayParams = useOverlayStore((state) => state.overlayParams);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
-  const registerTransientDismissor = useOverlayStore(
-    (state) => state.registerTransientDismissor
-  );
+  const registerTransientDismissor = useOverlayStore((state) => state.registerTransientDismissor);
   const dismissTransientOverlays = useOverlayStore((state) => state.dismissTransientOverlays);
   const isSearchOverlay = activeOverlay === 'search';
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
@@ -2853,7 +2851,8 @@ const SearchScreen: React.FC = () => {
       setSuggestions([]);
       setIsAutocompleteSuppressed(true);
       setIsSearchFocused(false);
-      const matchType = match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
+      const matchType =
+        match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
       const submissionContext: Record<string, unknown> = {
         typedPrefix,
         matchType,
@@ -3159,10 +3158,7 @@ const SearchScreen: React.FC = () => {
   }, [commitPriceSelection]);
 
   const recordRestaurantView = React.useCallback(
-    async (
-      restaurantId: string,
-      source: 'results_sheet' | 'auto_open_single_candidate'
-    ) => {
+    async (restaurantId: string, source: 'results_sheet' | 'auto_open_single_candidate') => {
       if (!isSignedIn) {
         return;
       }
