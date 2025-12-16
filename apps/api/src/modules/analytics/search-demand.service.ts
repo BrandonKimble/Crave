@@ -36,7 +36,7 @@ export class SearchDemandService {
           SELECT
             COALESCE(location_key, 'global') AS location_key,
             COUNT(*)::bigint AS impressions
-          FROM search_log
+          FROM user_search_logs
           WHERE logged_at >= ${params.since}
           GROUP BY COALESCE(location_key, 'global')
           HAVING COUNT(*) >= ${params.minImpressions}
@@ -101,7 +101,7 @@ export class SearchDemandService {
             COALESCE(location_key, 'global') AS location_key,
             COUNT(*)::bigint AS impressions,
             MAX(logged_at) AS last_logged_at
-          FROM search_log
+          FROM user_search_logs
           WHERE ${Prisma.join(filters, ' AND ')}
           GROUP BY entity_id, entity_type, COALESCE(location_key, 'global')
           HAVING COUNT(*) >= ${params.minImpressions}

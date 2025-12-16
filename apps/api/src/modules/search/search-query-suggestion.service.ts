@@ -56,7 +56,7 @@ export class SearchQuerySuggestionService {
               LOWER(query_text) AS "queryKey",
               COUNT(DISTINCT COALESCE(search_request_id, log_id))::int AS "usage",
               MAX(logged_at) AS "lastUsed"
-            FROM search_log
+            FROM user_search_logs
             WHERE user_id = ${userUuid}
               AND source = 'search'
               AND query_text IS NOT NULL
@@ -95,7 +95,7 @@ export class SearchQuerySuggestionService {
             LOWER(query_text) AS "queryKey",
             COUNT(DISTINCT COALESCE(search_request_id, log_id))::int AS "usage",
             MAX(logged_at) AS "lastUsed"
-          FROM search_log
+          FROM user_search_logs
           WHERE source = 'search'
             AND query_text IS NOT NULL
             AND LOWER(query_text) LIKE ${likePattern}
@@ -149,7 +149,7 @@ export class SearchQuerySuggestionService {
       Prisma.sql`
         SELECT LOWER(query_text) AS "queryKey",
                COUNT(DISTINCT COALESCE(search_request_id, log_id))::int AS "usage"
-        FROM search_log
+        FROM user_search_logs
         WHERE source = 'search'
           AND query_text IS NOT NULL
           AND LOWER(query_text) IN (${keySql})
@@ -170,7 +170,7 @@ export class SearchQuerySuggestionService {
         Prisma.sql`
           SELECT LOWER(query_text) AS "queryKey",
                  COUNT(DISTINCT COALESCE(search_request_id, log_id))::int AS "usage"
-          FROM search_log
+          FROM user_search_logs
           WHERE source = 'search'
             AND user_id = ${userUuid}
             AND query_text IS NOT NULL

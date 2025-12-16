@@ -65,13 +65,13 @@ export class OnDemandPlaceholderCleanupService
     const cutoff = new Date(Date.now() - this.retentionMs);
     const deleted = await this.prisma.$executeRaw(
       Prisma.sql`
-        DELETE FROM entities e
+        DELETE FROM core_entities e
         WHERE e.type = 'restaurant'
           AND e.restaurant_metadata->>'origin' = 'on_demand'
           AND e.created_at < ${cutoff}
           AND NOT EXISTS (
             SELECT 1
-            FROM connections c
+            FROM core_connections c
             WHERE c.restaurant_id = e.entity_id
           )
       `,

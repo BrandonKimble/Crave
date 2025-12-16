@@ -33,7 +33,7 @@ export class SearchPopularityService {
       >(Prisma.sql`
         SELECT entity_id AS "entityId",
                COUNT(*)::float AS score
-        FROM search_log
+        FROM user_search_logs
         WHERE source = 'search'
           AND entity_id = ANY(${entityIdArray})
         GROUP BY entity_id
@@ -72,7 +72,7 @@ export class SearchPopularityService {
       >(Prisma.sql`
         SELECT entity_id AS "entityId",
                COUNT(*)::float AS score
-        FROM search_log
+        FROM user_search_logs
         WHERE user_id = ${userUuid}
           AND source = 'search'
           AND entity_id = ANY(${entityIdArray})

@@ -179,14 +179,14 @@ filtered_restaurants AS (
     r.aliases,
     r.restaurant_quality_score,
     r.restaurant_attributes
-  FROM entities r
+  FROM core_entities r
   WHERE ${restaurantWhereSql}
 )`;
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
   SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.restaurant_attributes
-  FROM entities r
+  FROM core_entities r
   WHERE ${restaurantWherePreview}
 )`.trim();
 
@@ -210,7 +210,7 @@ filtered_locations AS (
     rl.last_polled_at,
     rl.created_at,
     rl.updated_at
-  FROM restaurant_locations rl
+  FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   WHERE ${locationWhereSql}
     AND rl.latitude IS NOT NULL
@@ -220,7 +220,7 @@ filtered_locations AS (
     const filteredLocationsPreview = `
 filtered_locations AS (
   SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.price_level, rl.price_level_updated_at, rl.metadata, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
-  FROM restaurant_locations rl
+  FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   WHERE ${locationWherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
 )`.trim();
@@ -266,7 +266,7 @@ location_aggregates AS (
       )
       ORDER BY rl.is_primary DESC, rl.updated_at DESC
     ) AS locations_json
-  FROM restaurant_locations rl
+  FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   GROUP BY rl.restaurant_id
 )`;
@@ -297,7 +297,7 @@ location_aggregates AS (
       )
       ORDER BY rl.is_primary DESC, rl.updated_at DESC
     ) AS locations_json
-  FROM restaurant_locations rl
+  FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
   GROUP BY rl.restaurant_id
 )`.trim();
@@ -308,7 +308,7 @@ restaurant_vote_totals AS (
     c.restaurant_id,
     SUM(c.total_upvotes) AS total_upvotes,
     SUM(c.mention_count) AS total_mentions
-  FROM connections c
+  FROM core_connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   GROUP BY c.restaurant_id
 )`;
@@ -316,7 +316,7 @@ restaurant_vote_totals AS (
     const restaurantVoteTotalsPreview = `
 restaurant_vote_totals AS (
   SELECT c.restaurant_id, SUM(c.total_upvotes) AS total_upvotes, SUM(c.mention_count) AS total_mentions
-  FROM connections c
+  FROM core_connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   GROUP BY c.restaurant_id
 )`.trim();
@@ -360,12 +360,12 @@ filtered_connections AS (
     la.location_count,
     f.name AS food_name,
     f.aliases AS food_aliases
-  FROM connections c
+  FROM core_connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
-  JOIN entities f ON f.entity_id = c.food_id
+  JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${connectionWhereSql}
 )`;
 
@@ -375,12 +375,12 @@ filtered_connections AS (
          rvt.total_upvotes AS restaurant_total_upvotes, rvt.total_mentions AS restaurant_total_mentions,
          fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.price_level, sl.price_level_updated_at, sl.metadata AS location_metadata, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,
          f.name AS food_name, f.aliases AS food_aliases
-  FROM connections c
+  FROM core_connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
   LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
-  JOIN entities f ON f.entity_id = c.food_id
+  JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${connectionWherePreview}
 )`.trim();
 

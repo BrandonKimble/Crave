@@ -66,7 +66,7 @@ export class EntitySearchService {
           END AS "phoneticMatch",
           e.restaurant_quality_score AS "restaurantQualityScore",
           e.general_praise_upvotes AS "generalPraiseUpvotes"
-        FROM entities e
+        FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
           AND (
             lower(e.name) LIKE ${containsPattern}

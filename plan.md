@@ -4,14 +4,14 @@
 
 This plan implements (1) query-level analytics **without** introducing a new `search_query_log` table, (2) a dedicated **recently viewed restaurants** feature (with its own table), and (3) a clean “first‑class signal” taxonomy that powers **recents UI**, **autocomplete ranking**, and **collection priority**.
 
-Key constraint: `search_log` remains the single store for “search submitted” analytics, even though it is **per-target** (one search can write multiple rows). We make query-level analytics reliable by adding a **per-search request id** and **result counts** to each written `search_log` row.
+Key constraint: `user_search_logs` remains the single store for “search submitted” analytics, even though it is **per-target** (one search can write multiple rows). We make query-level analytics reliable by adding a **per-search request id** and **result counts** to each written `user_search_logs` row.
 
 ## Goals / Non-goals
 
 ### Goals
 
-- Keep `search_log` as the only “search analytics” table (no `search_query_log`).
-- Add query-level grouping + result counts to `search_log` to enable query analytics with deduping.
+- Keep `user_search_logs` as the only “search analytics” table (no `search_query_log`).
+- Add query-level grouping + result counts to `user_search_logs` to enable query analytics with deduping.
 - Add a dedicated “restaurant views” store and API for recently viewed restaurants.
 - Wire mobile to emit the minimum first-class signals:
   - `search_submitted`
@@ -25,7 +25,7 @@ Key constraint: `search_log` remains the single store for “search submitted”
 
 - Dashboards / BI / metrics UI.
 - Recording every keystroke (typing telemetry).
-- Logging “no entity target” searches (we keep current behavior: no targets ⇒ no search_log rows).
+- Logging “no entity target” searches (we keep current behavior: no targets ⇒ no `user_search_logs` rows).
 
 ## Event taxonomy + recommended downstream consumers
 
@@ -35,9 +35,9 @@ The key best-practice decision is: treat events as **signals** with clear semant
 
 | Event               | When it fires                                                                                               | Stored where                                                        | Primary consumers                                                        | Notes                                                                                                                                 |
 | ------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `search_log` (existing)                                             | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `search_log` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
-| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `restaurant_views` (new)                                            | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                          |
-| `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | `user_favorites` (existing) + `entity_priority.favoriteCount` (new) | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                 |
+| `search_submitted`  | User submits a search (manual submit, recent tap, autocomplete tap, shortcut)                               | `user_search_logs` (existing)                                       | Recents UI, query suggestions, autocomplete ranking, collection priority | 1 search ⇒ N `user_search_logs` rows (one per resolved target entity). We add `searchRequestId` + result totals to dedupe per-search later. |
+| `restaurant_opened` | Restaurant overlay opens **from Search UX only** (suggestion tap, results card, single-candidate auto-open) | `user_restaurant_views` (new)                                       | “Recently viewed” UI, personal autocomplete boost, collection priority   | Do **not** record opens from Favorites/Bookmarks screens. In this UX, “click” and “open” are the same event.                               |
+| `favorite_toggled`  | User favorites/unfavorites an entity                                                                        | `user_favorites` (existing) + `collection_entity_priority_metrics.favoriteCount` (new) | Autocomplete boost, collection priority                                  | Favorites are durable preference; boost is “always on” when relevant.                                                                      |
 
 **About “autocomplete_selected”:** we do not emit it as a separate API event. Instead, we capture it on `search_submitted` via `submissionSource='autocomplete'` and (for non-restaurant entity selections) `selectedEntityId/selectedEntityType` so collection priority can give that entity an extra, small bump.
 
@@ -47,9 +47,9 @@ The key best-practice decision is: treat events as **signals** with clear semant
 
 ## Storage changes
 
-### 1) Extend `search_log` for query-level analytics
+### 1) Extend `user_search_logs` for query-level analytics
 
-**Why:** `search_log` is per-target, so “query-level analytics” must dedupe. A stable `searchRequestId` makes this clean, and `totalResults` enables “zero result rate” without a second table.
+**Why:** `user_search_logs` is per-target, so “query-level analytics” must dedupe. A stable `searchRequestId` makes this clean, and `totalResults` enables “zero result rate” without a second table.
 
 #### Prisma changes (`apps/api/prisma/schema.prisma`)
 
@@ -77,13 +77,13 @@ The key best-practice decision is: treat events as **signals** with clear semant
   - `@@unique([searchRequestId, entityId], map: "uq_search_log_request_entity")`
   - This preserves “one row per entity per search request” while still allowing repeated searches over time.
 
-### 2) Add `restaurant_views` (deduped aggregate state)
+### 2) Add `user_restaurant_views` (deduped aggregate state)
 
 **Why:** “Recently viewed restaurants” is an aggregate list (distinct + ordered by recency). Storing it as an append-only event stream makes reads and deduping harder than necessary.
 
 #### Prisma model (`apps/api/prisma/schema.prisma`)
 
-- Create `RestaurantView` (table `restaurant_views`):
+- Create `RestaurantView` (table `user_restaurant_views`):
   - Keys:
     - `userId` (FK → `User`)
     - `restaurantId` (FK → `Entity` where `type = restaurant`)
@@ -117,7 +117,7 @@ The key best-practice decision is: treat events as **signals** with clear semant
     - Otherwise generate server-side UUID.
   - After query execution, compute totals:
     - `totalResults = totalFoodResults + totalRestaurantResults`
-  - Pass this context into the search logging function so it can be written onto each `search_log` row.
+- Pass this context into the search logging function so it can be written onto each `user_search_logs` row.
 - Update `SearchService.recordQueryImpressions()` / `recordSearchLogEntries()`:
   - Accept a context param (`searchRequestId`, totals, coverageStatus, etc.) and write it into the new columns + metadata.
   - Include `filtersApplied` metadata from the request (`openNow`, `priceLevels`, `minimumVotes`).
@@ -188,7 +188,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
 - Typed query (typing active):
   - Show a single mixed autocomplete list (no secondary labels under names):
     - entity matches (dish/restaurant icons)
-    - query suggestions (suggested search text from `search_log.query_text` prefix matches; capped at 3)
+    - query suggestions (suggested search text from `user_search_logs.query_text` prefix matches; capped at 3)
     - favorites and recently viewed restaurants are _not separate sections_; they are injected/boosted into the same list when they match the typed prefix.
   - Icons/badges (recommended):
     - Left icon: dish vs restaurant vs query-text
@@ -211,7 +211,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
 
   - Start with text search results (current behavior).
   - Union-in any matching favorites (any entity type) and matching recently viewed restaurants (so they can appear even if they wouldn’t make the top-N text list).
-  - Add query suggestions (suggested search text) from `search_log.query_text` prefix matches (capped at 3).
+  - Add query suggestions (suggested search text) from `user_search_logs.query_text` prefix matches (capped at 3).
   - Deduplicate, then score and rank.
 
 - Scoring (initial, tunable defaults):
@@ -240,7 +240,7 @@ If none of these are needed soon, consider deleting `/search/events/click` (it�
     - `badges?: { favorite?: boolean; viewed?: boolean; recentQuery?: boolean }`
     - or `isFavorite?: boolean`, `isViewed?: boolean`, `querySuggestionSource?: 'personal'|'global'`
   - Populate:
-    - `favorite/viewed` for entity matches based on `user_favorites` + `restaurant_views` joins
+    - `favorite/viewed` for entity matches based on `user_favorites` + `user_restaurant_views` joins
     - `recentQuery` (clock) when `querySuggestionSource === 'personal'`
 
 ## Collection priority / on-demand (apps/api)
@@ -292,8 +292,8 @@ This keeps app interactions meaningful while still prioritizing entities with st
 
 ### Backfill (optional)
 
-- `searchRequestId` for existing `search_log` can remain null (analytics can treat null rows as legacy).
-- No backfill needed for `restaurant_views` initially.
+- `searchRequestId` for existing `user_search_logs` can remain null (analytics can treat null rows as legacy).
+- No backfill needed for `user_restaurant_views` initially.
 
 ## QA checklist (no tests)
 
@@ -312,7 +312,7 @@ This keeps app interactions meaningful while still prioritizing entities with st
 Resolved:
 
 - Count views when the overlay auto-opens from a single restaurant candidate search: **yes**.
-- Retention: store full history in `restaurant_views`, but only fetch/display the most recent **10**.
+- Retention: store full history in `user_restaurant_views`, but only fetch/display the most recent **10**.
 - Recent searches include searches that resolve to targets but return 0 results: **yes**.
 
 ## Post-implementation note (required)
@@ -322,7 +322,7 @@ Implemented defaults (all tunable via `apps/api/.env`):
 - Autocomplete scoring: `0.5*textConfidence + 0.35*globalPopularity + 0.1*userAffinity + favoriteBoost + viewAffinityBoost`
   - `AUTOCOMPLETE_BOOST_FAVORITE=0.05`
   - `AUTOCOMPLETE_WEIGHT_VIEW_AFFINITY=0.08`, where `viewAffinity = 0.7*exp(-days/30) + 0.3*min(log1p(viewCount)/log1p(10),1)`
-- Query-text suggestions (prefix matches from `search_log.query_text`):
+- Query-text suggestions (prefix matches from `user_search_logs.query_text`):
   - Max shown: `AUTOCOMPLETE_QUERY_SUGGESTION_MAX=3`
   - Thresholds: keep if `userCount>=1` or `globalCount>=3`
   - Personal boost: `AUTOCOMPLETE_QUERY_SUGGESTION_PERSONAL_BOOST=0.05`

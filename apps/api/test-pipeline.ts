@@ -99,6 +99,7 @@ import {
 } from '@nestjs/platform-fastify';
 import { getQueueToken } from '@nestjs/bull';
 import { Queue } from 'bull';
+import { Prisma } from '@prisma/client';
 import { AppModule } from './src/app.module';
 // Removed unused imports - now using production services directly
 import { CollectionJobSchedulerService } from './src/modules/content-processing/reddit-collector/chronological/collection-job-scheduler.service';
@@ -118,6 +119,47 @@ import { SmartLLMProcessor } from './src/modules/external-integrations/llm/rate-
 const logsDir = path.join(__dirname, 'logs');
 fsSync.mkdirSync(logsDir, { recursive: true });
 const logTimestamp = new Date().toISOString().replace(/[:.]/g, '-');
+
+const assertPrismaClientMatchesDatabase = async (
+  prisma: PrismaService,
+): Promise<void> => {
+  const entityModel = Prisma.dmmf.datamodel.models.find(
+    (model) => model.name === 'Entity',
+  );
+  const entityTable = entityModel?.dbName;
+  if (!entityTable) {
+    return;
+  }
+
+  const expectedRegclass = `public.${entityTable}`;
+  const regclassRows = (await prisma.$queryRaw`
+    SELECT to_regclass(${expectedRegclass})::text AS regclass
+  `) as Array<{ regclass: string | null }>;
+  const exists = Boolean(regclassRows?.[0]?.regclass);
+  if (exists) {
+    return;
+  }
+
+  const entityLikeRows = (await prisma.$queryRaw`
+    SELECT tablename
+    FROM pg_tables
+    WHERE schemaname = 'public'
+      AND tablename ILIKE '%entities%'
+    ORDER BY tablename
+    LIMIT 20
+  `) as Array<{ tablename: string }>;
+
+  const availableEntityLikeTables = entityLikeRows.map((row) => row.tablename);
+  const suffix = availableEntityLikeTables.length
+    ? ` Found in DB: ${availableEntityLikeTables.join(', ')}`
+    : ' No matching tables found in DB.';
+
+  throw new Error(
+    `Prisma Client/DB schema mismatch: Prisma expects table ${expectedRegclass} but it does not exist.${suffix}\n` +
+      'This usually means your generated Prisma Client is stale (after a schema change) or migrations were not applied.\n' +
+      'Fix: run `yarn workspace api db:generate` (or `yarn workspace api prisma:generate`) and ensure migrations are applied (`yarn workspace api db:migrate:deploy`).',
+  );
+};
 const runLogPath = path.join(logsDir, `test-pipeline-run-${logTimestamp}.log`);
 const runLogStream = fsSync.createWriteStream(runLogPath, { flags: 'a' });
 
@@ -299,6 +341,7 @@ async function testPipeline() {
       getQueueToken('archive-collection'),
     );
     const prisma = app.get(PrismaService);
+    await assertPrismaClientMatchesDatabase(prisma);
     // UnifiedProcessingService is in PHASE 4 - not active yet
     // const unifiedProcessingService = app.get(UnifiedProcessingService);
     // EntityResolutionService is in EntityResolverModule - not imported in PHASE 1
@@ -322,16 +365,16 @@ async function testPipeline() {
           [
             'TRUNCATE TABLE',
             [
-              'boosts',
-              'category_aggregates',
-              'connections',
-              'entities',
-              'on_demand',
-              'search_log',
-              'entity_priority',
-              'subscriptions',
+              'core_boosts',
+              'core_category_aggregates',
+              'core_connections',
+              'core_entities',
+              'collection_on_demand_requests',
+              'user_search_logs',
+              'collection_entity_priority_metrics',
+              'billing_subscriptions',
               'user_events',
-              'source',
+              'collection_sources',
               'poll_category_aggregates',
               'poll_metrics',
               'poll_options',
@@ -343,7 +386,7 @@ async function testPipeline() {
           ].join(' '),
         );
         await prisma.$executeRawUnsafe(
-          'UPDATE subreddits SET last_processed = NULL',
+          'UPDATE collection_subreddits SET last_processed = NULL',
         );
         await cleanQueue(chronologicalQueue, 'chronological collection');
         await cleanQueue(chronologicalBatchQueue, 'chronological batch');

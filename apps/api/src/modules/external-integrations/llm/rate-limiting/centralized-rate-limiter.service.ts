@@ -50,9 +50,9 @@ export class CentralizedRateLimiter {
   private logger!: LoggerService;
   private readonly keyPrefix = 'llm-bulletproof';
 
-  // Gemini Tier 1 limits
-  private readonly maxRPM = 1000;
-  private readonly maxTPM = 1000000;
+  // Configured limits (must match actual provider quotas to avoid 429s)
+  private readonly maxRPM: number;
+  private readonly maxTPM: number;
   private readonly headroom: number; // 0–1
   private readonly safeTPM: number;
 
@@ -79,6 +79,13 @@ export class CentralizedRateLimiter {
     this.logger = this.loggerService.setContext('CentralizedRateLimiter');
     this.redis = this.redisService.getOrThrow();
 
+    const envMaxRPM = parseInt(process.env.LLM_MAX_RPM || '', 10);
+    const envMaxTPM = parseInt(process.env.LLM_MAX_TPM || '', 10);
+    this.maxRPM =
+      Number.isFinite(envMaxRPM) && envMaxRPM > 0 ? envMaxRPM : 1000;
+    this.maxTPM =
+      Number.isFinite(envMaxTPM) && envMaxTPM > 0 ? envMaxTPM : 1000000;
+
     // Headroom (applies to both RPM and TPM). Defaults to 0.95.
     const envHeadroom = parseFloat(process.env.LLM_RATE_HEADROOM || '');
     this.headroom =
@@ -89,6 +96,17 @@ export class CentralizedRateLimiter {
     this.safeTPM = Math.floor(this.maxTPM * this.headroom);
     this.safeRequestsPerSecond = Math.max(1, Math.floor(this.safeRPM / 60));
     this.minSpacingMs = Math.ceil(1000 / this.safeRequestsPerSecond);
+
+    this.logger.info('Centralized LLM rate limiter configured', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      maxRPM: this.maxRPM,
+      maxTPM: this.maxTPM,
+      headroom: this.headroom,
+      safeRPM: this.safeRPM,
+      safeTPM: this.safeTPM,
+      safeRequestsPerSecond: this.safeRequestsPerSecond,
+      minSpacingMs: this.minSpacingMs,
+    });
   }
 
   /**

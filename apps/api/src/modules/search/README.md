@@ -93,13 +93,13 @@
 
 `sqlPreview` is returned when the request sets `includeSqlPreview: true` or the `SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW` environment flag is enabled. The preview mirrors the SQL executed by the service (includes `WITH filtered_restaurants` / `filtered_connections` CTEs, ORDER BY, LIMIT/OFFSET).
 
-When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest subreddit whose `center_latitude/center_longitude` (stored on the `subreddits` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
+When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest subreddit whose `center_latitude/center_longitude` (stored on the `collection_subreddits` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
 
 ## POST /search/events/click
 ```json
 { "entityId": "uuid-food", "entityType": "food" }
 ```
-Records a user selection so `entity_priority` can learn from demand signals.
+Records a user selection so `collection_entity_priority_metrics` can learn from demand signals.
 
 ## POST /search/plan
 

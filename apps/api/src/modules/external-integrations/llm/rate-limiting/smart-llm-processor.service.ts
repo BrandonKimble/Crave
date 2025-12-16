@@ -362,13 +362,26 @@ export class SmartLLMProcessor implements OnModuleInit {
         }
 
         if (error instanceof LLMRateLimitError) {
+          const resetTimeSecondsRaw: unknown = error.context?.resetTime;
+          const resetTimeSeconds =
+            typeof resetTimeSecondsRaw === 'number' &&
+            Number.isFinite(resetTimeSecondsRaw) &&
+            resetTimeSecondsRaw > 0
+              ? resetTimeSecondsRaw
+              : 60;
+          const jitterMs = Math.floor(Math.random() * 1500);
+          const sleepMs = resetTimeSeconds * 1000 + jitterMs;
+
           this.logger.warn(
             'Rate limit encountered; rescheduling via reservation system',
             {
               correlationId: CorrelationUtils.getCorrelationId(),
               workerId: effectiveWorkerId,
+              resetTimeSeconds,
+              sleepMs,
             },
           );
+          await this.sleep(sleepMs);
           continue; // reserve a new slot and retry
         }
 
