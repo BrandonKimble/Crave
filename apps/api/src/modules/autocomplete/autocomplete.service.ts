@@ -10,7 +10,10 @@ import {
 import { OnDemandRequestService } from '../search/on-demand-request.service';
 import { EntitySearchService } from './entity-search.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SearchQuerySuggestionService } from '../search/search-query-suggestion.service';
+import {
+  SearchQuerySuggestionService,
+  type QuerySuggestion,
+} from '../search/search-query-suggestion.service';
 import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
 
@@ -22,6 +25,17 @@ export class AutocompleteService {
   private readonly logger: LoggerService;
   private readonly cacheTtlMs = 4000;
   private readonly sessionCache = new Map<string, CacheEntry>();
+  private readonly weightConfidence: number;
+  private readonly weightGlobalPopularity: number;
+  private readonly weightUserAffinity: number;
+  private readonly favoriteBoost: number;
+  private readonly viewAffinityWeight: number;
+  private readonly viewRecencyDecayDays: number;
+  private readonly viewFrequencyCap: number;
+  private readonly querySuggestionMax: number;
+  private readonly querySuggestionPersonalBoost: number;
+  private readonly querySuggestionMinGlobalCount: number;
+  private readonly querySuggestionMinUserCount: number;
 
   constructor(
     loggerService: LoggerService,
@@ -34,6 +48,50 @@ export class AutocompleteService {
     private readonly searchPopularityService: SearchPopularityService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
+    this.weightConfidence = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_TEXT_CONFIDENCE',
+      0.5,
+    );
+    this.weightGlobalPopularity = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_GLOBAL_POPULARITY',
+      0.35,
+    );
+    this.weightUserAffinity = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_USER_AFFINITY',
+      0.1,
+    );
+    this.favoriteBoost = this.resolveEnvNumber(
+      'AUTOCOMPLETE_BOOST_FAVORITE',
+      0.05,
+    );
+    this.viewAffinityWeight = this.resolveEnvNumber(
+      'AUTOCOMPLETE_WEIGHT_VIEW_AFFINITY',
+      0.08,
+    );
+    this.viewRecencyDecayDays = this.resolveEnvNumber(
+      'AUTOCOMPLETE_VIEW_RECENCY_DECAY_DAYS',
+      30,
+    );
+    this.viewFrequencyCap = this.resolveEnvNumber(
+      'AUTOCOMPLETE_VIEW_FREQUENCY_CAP',
+      10,
+    );
+    this.querySuggestionMax = this.resolveEnvInt(
+      'AUTOCOMPLETE_QUERY_SUGGESTION_MAX',
+      3,
+    );
+    this.querySuggestionPersonalBoost = this.resolveEnvNumber(
+      'AUTOCOMPLETE_QUERY_SUGGESTION_PERSONAL_BOOST',
+      0.05,
+    );
+    this.querySuggestionMinGlobalCount = this.resolveEnvInt(
+      'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_GLOBAL_COUNT',
+      3,
+    );
+    this.querySuggestionMinUserCount = this.resolveEnvInt(
+      'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_USER_COUNT',
+      1,
+    );
   }
 
   async autocompleteEntities(
@@ -95,43 +153,28 @@ export class AutocompleteService {
 
     const hadEntityMatches = matches.length > 0;
 
-    if (matches.length) {
-      matches = await this.applyPopularityRanking(matches, user);
-    }
+    const injected = user
+      ? await this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user)
+      : { favorites: [], viewed: [] };
 
-    const suggestionTexts =
-      (await this.searchQuerySuggestionService.getSuggestions(
+    const candidateMatches = this.mergeEntityMatches(matches, [
+      ...injected.favorites,
+      ...injected.viewed,
+    ]);
+
+    const querySuggestions =
+      await this.searchQuerySuggestionService.getSuggestions(
         normalizedQuery,
-        Math.max(3, limit - matches.length),
+        Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
         user?.userId,
-      )) ?? [];
+      );
 
-    const existingNames = new Set(
-      matches.map((match) => match.name.toLowerCase()),
-    );
-    const querySuggestionMatches: AutocompleteMatchDto[] = [];
-    for (const suggestion of suggestionTexts) {
-      const trimmed = suggestion.trim();
-      if (!trimmed) {
-        continue;
-      }
-      if (existingNames.has(trimmed.toLowerCase())) {
-        continue;
-      }
-      querySuggestionMatches.push({
-        entityId: `query:${trimmed.toLowerCase()}`,
-        entityType: 'query',
-        name: trimmed,
-        aliases: [],
-        confidence: 1,
-        matchType: 'query',
-      });
-    }
-
-    const limitedMatches = [...matches, ...querySuggestionMatches].slice(
-      0,
+    const ranked = await this.rankCandidates({
+      entityMatches: candidateMatches,
+      querySuggestions,
+      user,
       limit,
-    );
+    });
 
     let onDemandQueued = false;
     if (dto.enableOnDemand && !hadEntityMatches) {
@@ -154,12 +197,12 @@ export class AutocompleteService {
     }
 
     const response: AutocompleteResponseDto = {
-      matches: limitedMatches,
+      matches: ranked.matches,
       query: dto.query,
       normalizedQuery,
       onDemandQueued,
       onDemandReason: onDemandQueued ? OnDemandReason.unresolved : undefined,
-      querySuggestions: suggestionTexts,
+      querySuggestions: ranked.querySuggestionTexts,
     };
 
     this.sessionCache.set(cacheKey, {
@@ -175,6 +218,277 @@ export class AutocompleteService {
     }
 
     return response;
+  }
+
+  private mergeEntityMatches(
+    base: AutocompleteMatchDto[],
+    injected: AutocompleteMatchDto[],
+  ): AutocompleteMatchDto[] {
+    const results: AutocompleteMatchDto[] = [];
+    const seen = new Set<string>();
+
+    for (const match of [...base, ...injected]) {
+      if (!match.entityId || seen.has(match.entityId)) {
+        continue;
+      }
+      seen.add(match.entityId);
+      results.push(match);
+    }
+
+    return results;
+  }
+
+  private async fetchInjectedUserMatches(
+    normalizedQuery: string,
+    entityTypes: EntityType[],
+    user: User,
+  ): Promise<{
+    favorites: AutocompleteMatchDto[];
+    viewed: AutocompleteMatchDto[];
+  }> {
+    const tasks: Array<Promise<unknown>> = [];
+
+    const favoritesTask = this.prisma.userFavorite.findMany({
+      where: {
+        userId: user.userId,
+        entityType: { in: entityTypes },
+        entity: {
+          is: {
+            name: { startsWith: normalizedQuery, mode: 'insensitive' },
+          },
+        },
+      },
+      select: {
+        entityId: true,
+        entityType: true,
+        entity: { select: { name: true, aliases: true } },
+      },
+      take: 20,
+    });
+    tasks.push(favoritesTask);
+
+    const includeRestaurants = entityTypes.includes(EntityType.restaurant);
+    const viewedTask = includeRestaurants
+      ? this.prisma.restaurantView.findMany({
+          where: {
+            userId: user.userId,
+            restaurant: {
+              is: {
+                name: { startsWith: normalizedQuery, mode: 'insensitive' },
+              },
+            },
+          },
+          select: {
+            restaurantId: true,
+            restaurant: { select: { name: true, aliases: true } },
+          },
+          orderBy: { lastViewedAt: 'desc' },
+          take: 20,
+        })
+      : Promise.resolve(
+          [] as Array<{
+            restaurantId: string;
+            restaurant: { name: string; aliases: string[] };
+          }>,
+        );
+    tasks.push(viewedTask);
+
+    const [favoriteRows, viewedRows] = (await Promise.all(tasks)) as [
+      Array<{
+        entityId: string;
+        entityType: EntityType;
+        entity: { name: string; aliases: string[] };
+      }>,
+      Array<{
+        restaurantId: string;
+        restaurant: { name: string; aliases: string[] };
+      }>,
+    ];
+
+    const favorites: AutocompleteMatchDto[] = favoriteRows.map((row) => ({
+      entityId: row.entityId,
+      entityType: row.entityType,
+      name: row.entity.name,
+      confidence: 0.65,
+      aliases: row.entity.aliases ?? [],
+      matchType: 'entity',
+      badges: { favorite: true },
+    }));
+
+    const viewed: AutocompleteMatchDto[] = viewedRows.map((row) => ({
+      entityId: row.restaurantId,
+      entityType: EntityType.restaurant,
+      name: row.restaurant.name,
+      confidence: 0.65,
+      aliases: row.restaurant.aliases ?? [],
+      matchType: 'entity',
+      badges: { viewed: true },
+    }));
+
+    return { favorites, viewed };
+  }
+
+  private async rankCandidates(params: {
+    entityMatches: AutocompleteMatchDto[];
+    querySuggestions: QuerySuggestion[];
+    user?: User;
+    limit: number;
+  }): Promise<{
+    matches: AutocompleteMatchDto[];
+    querySuggestionTexts: string[];
+  }> {
+    const { entityMatches, querySuggestions, user, limit } = params;
+
+    const entityIds = Array.from(
+      new Set(entityMatches.map((match) => match.entityId)),
+    );
+
+    const restaurantIds = entityMatches
+      .filter((match) => match.entityType === EntityType.restaurant)
+      .map((match) => match.entityId);
+
+    const [globalScores, affinityScores, favorites, views] = await Promise.all([
+      entityIds.length
+        ? this.searchPopularityService.getEntityPopularityScores(entityIds)
+        : Promise.resolve(new Map<string, number>()),
+      user?.userId && entityIds.length
+        ? this.searchPopularityService.getUserEntityAffinity(
+            user.userId,
+            entityIds,
+          )
+        : Promise.resolve(new Map<string, number>()),
+      user?.userId && entityIds.length
+        ? this.prisma.userFavorite.findMany({
+            where: { userId: user.userId, entityId: { in: entityIds } },
+            select: { entityId: true },
+          })
+        : Promise.resolve([] as { entityId: string }[]),
+      user?.userId && restaurantIds.length
+        ? this.prisma.restaurantView.findMany({
+            where: {
+              userId: user.userId,
+              restaurantId: { in: restaurantIds },
+            },
+            select: { restaurantId: true, lastViewedAt: true, viewCount: true },
+          })
+        : Promise.resolve(
+            [] as Array<{
+              restaurantId: string;
+              lastViewedAt: Date;
+              viewCount: number;
+            }>,
+          ),
+    ]);
+
+    const favoriteSet = new Set(favorites.map((fav) => fav.entityId));
+    const viewByRestaurantId = new Map(
+      views.map((row) => [
+        row.restaurantId,
+        { lastViewedAt: row.lastViewedAt, viewCount: row.viewCount },
+      ]),
+    );
+
+    const scoredEntities = entityMatches.map((match) => {
+      const popularity = globalScores.get(match.entityId) ?? 0;
+      const affinity = affinityScores.get(match.entityId) ?? 0;
+      const isFavorite = favoriteSet.has(match.entityId);
+      const view = viewByRestaurantId.get(match.entityId) ?? null;
+      const isViewed = Boolean(view);
+      const viewAffinity = view
+        ? this.calculateViewAffinity(view.lastViewedAt, view.viewCount)
+        : 0;
+      const score =
+        match.confidence * this.weightConfidence +
+        this.normalizePopularity(popularity) * this.weightGlobalPopularity +
+        this.normalizePopularity(affinity) * this.weightUserAffinity +
+        (isFavorite ? this.favoriteBoost : 0) +
+        (isViewed ? this.viewAffinityWeight * viewAffinity : 0);
+
+      return {
+        match: {
+          ...match,
+          badges: {
+            ...match.badges,
+            favorite: isFavorite || match.badges?.favorite,
+            viewed: isViewed || match.badges?.viewed,
+          },
+        },
+        score,
+      };
+    });
+
+    const existingNames = new Set(
+      scoredEntities.map(({ match }) => match.name.toLowerCase()),
+    );
+
+    const queryCandidates = querySuggestions
+      .filter((suggestion) => {
+        const text = suggestion.text.trim();
+        if (!text) return false;
+        if (existingNames.has(text.toLowerCase())) return false;
+        if (suggestion.userCount >= this.querySuggestionMinUserCount)
+          return true;
+        return suggestion.globalCount >= this.querySuggestionMinGlobalCount;
+      })
+      .slice(0, Math.max(1, this.querySuggestionMax))
+      .map((suggestion) => {
+        const score =
+          this.weightConfidence +
+          this.normalizePopularity(suggestion.globalCount) *
+            this.weightGlobalPopularity +
+          this.normalizePopularity(suggestion.userCount) *
+            this.weightUserAffinity +
+          (suggestion.source === 'personal'
+            ? this.querySuggestionPersonalBoost
+            : 0);
+
+        const text = suggestion.text.trim();
+        const match: AutocompleteMatchDto = {
+          entityId: `query:${text.toLowerCase()}`,
+          entityType: 'query',
+          name: text,
+          aliases: [],
+          confidence: 1,
+          matchType: 'query',
+          querySuggestionSource: suggestion.source,
+          badges:
+            suggestion.source === 'personal'
+              ? { recentQuery: true }
+              : undefined,
+        };
+
+        return { match, score };
+      });
+
+    const scored = [...scoredEntities, ...queryCandidates]
+      .sort((a, b) => b.score - a.score)
+      .map(({ match }) => match);
+
+    const finalMatches: AutocompleteMatchDto[] = [];
+    const queryMatchIds = new Set<string>();
+    for (const match of scored) {
+      if (match.matchType === 'query') {
+        queryMatchIds.add(match.entityId);
+      }
+      finalMatches.push(match);
+      if (finalMatches.length >= limit) break;
+    }
+
+    const querySuggestionTexts = queryCandidates.map(
+      (candidate) => candidate.match.name,
+    );
+
+    return { matches: finalMatches, querySuggestionTexts };
+  }
+
+  private calculateViewAffinity(lastViewedAt: Date, viewCount: number): number {
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysSince = (Date.now() - lastViewedAt.getTime()) / msPerDay;
+    const decayDays = Math.max(1, this.viewRecencyDecayDays);
+    const viewRecency = Math.exp(-daysSince / decayDays);
+    const cap = Math.max(1, this.viewFrequencyCap);
+    const viewFrequency = Math.min(Math.log1p(viewCount) / Math.log1p(cap), 1);
+    return viewRecency * 0.7 + viewFrequency * 0.3;
   }
 
   private resolveEntityTypes(dto: AutocompleteRequestDto): EntityType[] {
@@ -300,6 +614,30 @@ export class AutocompleteService {
       return 0;
     }
     return Math.min(value, 50) / 50;
+  }
+
+  private resolveEnvNumber(key: string, fallback: number): number {
+    const raw = process.env[key];
+    if (raw === undefined) {
+      return fallback;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return value;
+  }
+
+  private resolveEnvInt(key: string, fallback: number): number {
+    const raw = process.env[key];
+    if (raw === undefined) {
+      return fallback;
+    }
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return value;
   }
 
   private buildCacheKey(

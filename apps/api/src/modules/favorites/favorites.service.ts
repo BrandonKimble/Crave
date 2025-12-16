@@ -50,6 +50,16 @@ export class FavoritesService {
       throw new BadRequestException('Entity type mismatch for favorite');
     }
 
+    const existing = await this.prisma.userFavorite.findUnique({
+      where: {
+        userId_entityId: {
+          userId,
+          entityId: entity.entityId,
+        },
+      },
+      select: { favoriteId: true },
+    });
+
     const favorite = await this.prisma.userFavorite.upsert({
       where: {
         userId_entityId: {
@@ -77,6 +87,21 @@ export class FavoritesService {
       },
     });
 
+    if (!existing) {
+      await this.prisma.entityPriorityMetric.upsert({
+        where: { entityId: entity.entityId },
+        create: {
+          entity: { connect: { entityId: entity.entityId } },
+          entityType: entity.type,
+          favoriteCount: 1,
+        },
+        update: {
+          entityType: entity.type,
+          favoriteCount: { increment: 1 },
+        },
+      });
+    }
+
     this.logger.debug('Added user favorite', {
       userId,
       entityId: favorite.entityId,
@@ -86,6 +111,11 @@ export class FavoritesService {
   }
 
   async removeFavorite(userId: string, favoriteId: string): Promise<void> {
+    const existing = await this.prisma.userFavorite.findFirst({
+      where: { favoriteId, userId },
+      select: { entityId: true, entityType: true },
+    });
+
     const result = await this.prisma.userFavorite.deleteMany({
       where: { favoriteId, userId },
     });
@@ -93,6 +123,21 @@ export class FavoritesService {
     if (result.count === 0) {
       this.logger.debug('Favorite already removed', { userId, favoriteId });
       return;
+    }
+
+    if (existing?.entityId) {
+      await this.prisma.entityPriorityMetric.upsert({
+        where: { entityId: existing.entityId },
+        create: {
+          entity: { connect: { entityId: existing.entityId } },
+          entityType: existing.entityType,
+          favoriteCount: 0,
+        },
+        update: {
+          entityType: existing.entityType,
+          favoriteCount: { decrement: 1 },
+        },
+      });
     }
 
     this.logger.debug('Removed user favorite', {
@@ -105,6 +150,11 @@ export class FavoritesService {
     userId: string,
     entityId: string,
   ): Promise<void> {
+    const existing = await this.prisma.userFavorite.findFirst({
+      where: { userId, entityId },
+      select: { entityId: true, entityType: true },
+    });
+
     const result = await this.prisma.userFavorite.deleteMany({
       where: { userId, entityId },
     });
@@ -112,6 +162,21 @@ export class FavoritesService {
     if (result.count === 0) {
       this.logger.debug('Favorite already removed', { userId, entityId });
       return;
+    }
+
+    if (existing?.entityId) {
+      await this.prisma.entityPriorityMetric.upsert({
+        where: { entityId: existing.entityId },
+        create: {
+          entity: { connect: { entityId: existing.entityId } },
+          entityType: existing.entityType,
+          favoriteCount: 0,
+        },
+        update: {
+          entityType: existing.entityType,
+          favoriteCount: { decrement: 1 },
+        },
+      });
     }
 
     this.logger.debug('Removed user favorite', {

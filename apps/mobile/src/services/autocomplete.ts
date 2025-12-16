@@ -7,6 +7,12 @@ export type AutocompleteMatch = {
   aliases: string[];
   confidence: number;
   matchType?: 'entity' | 'query';
+  badges?: {
+    favorite?: boolean;
+    viewed?: boolean;
+    recentQuery?: boolean;
+  };
+  querySuggestionSource?: 'personal' | 'global';
 };
 
 export type AutocompleteResponse = {

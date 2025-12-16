@@ -23,6 +23,15 @@ export interface StructuredSearchRequest {
   minimumVotes?: number;
 }
 
+export type RecentlyViewedRestaurant = {
+  restaurantId: string;
+  restaurantName: string;
+  city?: string | null;
+  region?: string | null;
+  lastViewedAt: string;
+  viewCount: number;
+};
+
 type RequestOptions = {
   signal?: AbortSignal;
 };
@@ -51,6 +60,19 @@ export const searchService = {
       params: { limit },
     });
     return data;
+  },
+  recentlyViewedRestaurants: async (limit = 10): Promise<RecentlyViewedRestaurant[]> => {
+    const { data } = await api.get<RecentlyViewedRestaurant[]>('/history/restaurants/viewed', {
+      params: { limit },
+    });
+    return data;
+  },
+  recordRestaurantView: async (payload: {
+    restaurantId: string;
+    searchRequestId?: string;
+    source?: 'search_suggestion' | 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete';
+  }): Promise<void> => {
+    await api.post('/history/restaurants/viewed', payload);
   },
 };
 

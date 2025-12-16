@@ -62,8 +62,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
       <Reanimated.View
         style={[
           styles.promptCard,
-          containerAnimatedStyle,
           surfaceVariant === 'transparent' ? styles.promptCardTransparent : null,
+          containerAnimatedStyle,
         ]}
       >
         <Pressable style={styles.promptRow} onPress={onPress ?? onFocus}>

@@ -48,6 +48,12 @@ export class AutocompleteMatchDto {
   confidence!: number;
   aliases!: string[];
   matchType?: 'entity' | 'query';
+  badges?: {
+    favorite?: boolean;
+    viewed?: boolean;
+    recentQuery?: boolean;
+  };
+  querySuggestionSource?: 'personal' | 'global';
 }
 
 export class AutocompleteResponseDto {

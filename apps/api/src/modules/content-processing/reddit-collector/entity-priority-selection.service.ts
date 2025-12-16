@@ -47,7 +47,69 @@ export class EntityPrioritySelectionService {
     private readonly connectionRepository: ConnectionRepository,
     private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
     private readonly logger: LoggerService,
-  ) {}
+  ) {
+    this.connectionDemandWeight = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_DEMAND_CONNECTION_WEIGHT',
+      0.6,
+    );
+    this.appDemandWeight = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_DEMAND_APP_WEIGHT',
+      0.4,
+    );
+    this.appWeightQueryImpressions = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_APP_WEIGHT_QUERY_IMPRESSIONS',
+      0.55,
+    );
+    this.appWeightAutocompleteSelections = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_APP_WEIGHT_AUTOCOMPLETE_SELECTIONS',
+      0.15,
+    );
+    this.appWeightViewImpressions = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_APP_WEIGHT_VIEW_IMPRESSIONS',
+      0.2,
+    );
+    this.appWeightFavoriteCount = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_APP_WEIGHT_FAVORITE_COUNT',
+      0.1,
+    );
+    this.appQueryImpressionCap = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_QUERY_IMPRESSIONS_CAP',
+      200,
+    );
+    this.appAutocompleteSelectionCap = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_AUTOCOMPLETE_SELECTIONS_CAP',
+      50,
+    );
+    this.appViewImpressionCap = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_VIEW_IMPRESSIONS_CAP',
+      100,
+    );
+    this.appFavoriteCap = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_FAVORITE_COUNT_CAP',
+      50,
+    );
+    this.appQueryRecencyDecayDays = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_QUERY_RECENCY_DECAY_DAYS',
+      30,
+    );
+    this.appViewRecencyDecayDays = this.resolveEnvNumber(
+      'ENTITY_PRIORITY_VIEW_RECENCY_DECAY_DAYS',
+      30,
+    );
+  }
+
+  private readonly connectionDemandWeight: number;
+  private readonly appDemandWeight: number;
+  private readonly appWeightQueryImpressions: number;
+  private readonly appWeightAutocompleteSelections: number;
+  private readonly appWeightViewImpressions: number;
+  private readonly appWeightFavoriteCount: number;
+  private readonly appQueryImpressionCap: number;
+  private readonly appAutocompleteSelectionCap: number;
+  private readonly appViewImpressionCap: number;
+  private readonly appFavoriteCap: number;
+  private readonly appQueryRecencyDecayDays: number;
+  private readonly appViewRecencyDecayDays: number;
 
   /**
    * Default configuration per PRD requirements
@@ -515,9 +577,7 @@ export class EntityPrioritySelectionService {
     entityType: EntityType,
   ): Promise<number> {
     try {
-      // For MVP: Use recent activity and connection metrics as proxy for user demand
-      // Future enhancement: integrate with query analytics and user interaction data
-
+      // Connection activity remains the primary cross-entity proxy for demand.
       const connections = await this.connectionRepository.findMany({
         where:
           entityType === 'restaurant'
@@ -532,7 +592,16 @@ export class EntityPrioritySelectionService {
       });
 
       if (connections.length === 0) {
-        return 0.1; // Minimal demand score
+        // Let app-demand (if present) lift entities with real user behavior even when
+        // connection data is sparse (e.g., new entities).
+        const appDemand = await this.calculateAppDemandScore(
+          entityId,
+          entityType,
+        );
+        return Math.min(
+          1,
+          this.connectionDemandWeight * 0.1 + this.appDemandWeight * appDemand,
+        );
       }
 
       // Calculate demand indicators
@@ -557,10 +626,20 @@ export class EntityPrioritySelectionService {
       const normalizedRecentMentions = Math.min(1.0, totalRecentMentions / 20); // 20+ recent mentions = high demand
       const normalizedActiveConnections = Math.min(1.0, activeConnections / 3); // 3+ active connections = high demand
 
-      return (
+      const connectionDemand =
         normalizedRecentActivity * 0.4 +
         normalizedRecentMentions * 0.4 +
-        normalizedActiveConnections * 0.2
+        normalizedActiveConnections * 0.2;
+
+      const appDemand = await this.calculateAppDemandScore(
+        entityId,
+        entityType,
+      );
+
+      return Math.min(
+        1,
+        connectionDemand * this.connectionDemandWeight +
+          appDemand * this.appDemandWeight,
       );
     } catch (error: unknown) {
       this.logger.warn('Failed to calculate user demand score', {
@@ -573,6 +652,91 @@ export class EntityPrioritySelectionService {
       });
       return 0.3; // Default moderate score for error cases
     }
+  }
+
+  private async calculateAppDemandScore(
+    entityId: string,
+    entityType: EntityType,
+  ): Promise<number> {
+    const metrics =
+      await this.entityPriorityMetricsRepository.findById(entityId);
+    if (!metrics) {
+      return 0;
+    }
+
+    const queryImpressions = metrics.queryImpressions ?? 0;
+    const autocompleteSelections = metrics.autocompleteSelections ?? 0;
+    const viewImpressions = metrics.viewImpressions ?? 0;
+    const favoriteCount = metrics.favoriteCount ?? 0;
+
+    const querySignal = this.applyRecency(
+      this.normalizeLog(queryImpressions, this.appQueryImpressionCap),
+      metrics.lastQueryAt ?? null,
+      this.appQueryRecencyDecayDays,
+    );
+    const autocompleteSignal = this.normalizeLog(
+      autocompleteSelections,
+      this.appAutocompleteSelectionCap,
+    );
+    const favoriteSignal = this.normalizeLog(
+      favoriteCount,
+      this.appFavoriteCap,
+    );
+
+    const viewSignal =
+      entityType === 'restaurant'
+        ? this.applyRecency(
+            this.normalizeLog(viewImpressions, this.appViewImpressionCap),
+            metrics.lastViewAt ?? null,
+            this.appViewRecencyDecayDays,
+          )
+        : 0;
+
+    const appDemand =
+      querySignal * this.appWeightQueryImpressions +
+      autocompleteSignal * this.appWeightAutocompleteSelections +
+      viewSignal * this.appWeightViewImpressions +
+      favoriteSignal * this.appWeightFavoriteCount;
+
+    return Math.max(0, Math.min(1, appDemand));
+  }
+
+  private normalizeLog(value: number, cap: number): number {
+    if (!Number.isFinite(value) || value <= 0) {
+      return 0;
+    }
+    const safeCap = Math.max(1, cap);
+    return Math.min(Math.log1p(value) / Math.log1p(safeCap), 1);
+  }
+
+  private applyRecency(
+    signal: number,
+    lastAt: Date | null,
+    decayDays: number,
+  ): number {
+    if (!signal) {
+      return 0;
+    }
+    if (!lastAt) {
+      return signal;
+    }
+    const msPerDay = 1000 * 60 * 60 * 24;
+    const daysSince = (Date.now() - lastAt.getTime()) / msPerDay;
+    const safeDecayDays = Math.max(1, decayDays);
+    const recency = Math.exp(-daysSince / safeDecayDays);
+    return signal * (0.7 + 0.3 * recency);
+  }
+
+  private resolveEnvNumber(key: string, fallback: number): number {
+    const raw = process.env[key];
+    if (raw === undefined) {
+      return fallback;
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    return value;
   }
 
   /**

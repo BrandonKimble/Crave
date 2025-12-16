@@ -34,7 +34,8 @@ export class SearchPopularityService {
         SELECT entity_id AS "entityId",
                COUNT(*)::float AS score
         FROM search_log
-        WHERE entity_id = ANY(${entityIdArray})
+        WHERE source = 'search'
+          AND entity_id = ANY(${entityIdArray})
         GROUP BY entity_id
       `);
       return new Map(rows.map((row) => [row.entityId, Number(row.score || 0)]));
@@ -73,6 +74,7 @@ export class SearchPopularityService {
                COUNT(*)::float AS score
         FROM search_log
         WHERE user_id = ${userUuid}
+          AND source = 'search'
           AND entity_id = ANY(${entityIdArray})
         GROUP BY entity_id
       `);

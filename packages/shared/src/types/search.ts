@@ -130,6 +130,7 @@ export interface SearchResponseMetadata {
     terms: string[];
   }>;
   sourceQuery?: string;
+  searchRequestId?: string;
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
 }
@@ -160,6 +161,9 @@ export interface Pagination {
 
 export interface NaturalSearchRequest {
   query: string;
+  searchRequestId?: string;
+  submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
+  submissionContext?: Record<string, unknown>;
   bounds?: MapBounds;
   openNow?: boolean;
   priceLevels?: number[];

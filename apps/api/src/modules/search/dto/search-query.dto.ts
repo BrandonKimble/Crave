@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsIn,
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
@@ -27,6 +28,25 @@ import type {
   SearchResponse as SharedSearchResponse,
   SearchResponseMetadata as SharedSearchResponseMetadata,
 } from '@crave-search/shared';
+
+export class SearchSubmissionContextDto {
+  @IsOptional()
+  @IsString()
+  typedPrefix?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['entity', 'query'])
+  matchType?: 'entity' | 'query';
+
+  @IsOptional()
+  @IsUUID()
+  selectedEntityId?: string;
+
+  @IsOptional()
+  @IsEnum(EntityType)
+  selectedEntityType?: EntityType;
+}
 
 export class QueryEntityDto {
   @IsString()
@@ -147,6 +167,20 @@ export class SearchQueryRequestDto {
   @IsOptional()
   @IsString()
   sourceQuery?: string;
+
+  @IsOptional()
+  @IsUUID()
+  searchRequestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['manual', 'recent', 'autocomplete', 'shortcut'])
+  submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SearchSubmissionContextDto)
+  submissionContext?: SearchSubmissionContextDto;
 }
 
 export const EntityScope = {
@@ -226,6 +260,20 @@ export class NaturalSearchRequestDto {
   @IsOptional()
   @IsString()
   sourceQuery?: string;
+
+  @IsOptional()
+  @IsUUID()
+  searchRequestId?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['manual', 'recent', 'autocomplete', 'shortcut'])
+  submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => SearchSubmissionContextDto)
+  submissionContext?: SearchSubmissionContextDto;
 }
 
 export class SearchResultClickDto {

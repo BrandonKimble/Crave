@@ -45,6 +45,7 @@ model Entity {
   pollTopicRestaurantTargets PollTopic[]           @relation("PollTopicTargetRestaurant")
   searchLogs                 SearchLog[]
   userFavorites              UserFavorite[]
+  restaurantViews            RestaurantView[]
   locations                  RestaurantLocation[]  @relation("RestaurantLocations")
   primaryLocation            RestaurantLocation?   @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
 
@@ -211,6 +212,10 @@ model EntityPriorityMetric {
   lastSelectedAt   DateTime?  @map("last_selected_at")
   queryImpressions Int        @default(0) @map("query_impressions")
   lastQueryAt      DateTime?  @map("last_query_at")
+  viewImpressions  Int        @default(0) @map("view_impressions")
+  lastViewAt       DateTime?  @map("last_view_at")
+  favoriteCount    Int        @default(0) @map("favorite_count")
+  autocompleteSelections Int  @default(0) @map("autocomplete_selections")
   entity           Entity     @relation(fields: [entityId], references: [entityId], onDelete: Cascade)
 
   @@index([entityType], map: "idx_entity_priority_type")
@@ -380,6 +385,12 @@ model SearchLog {
   userId      String?         @map("user_id") @db.Uuid
   locationKey String?         @map("location_key") @db.VarChar(255)
   queryText   String?         @map("query_text") @db.VarChar(500)
+  searchRequestId        String? @map("search_request_id") @db.Uuid
+  totalResults           Int?    @map("total_results")
+  totalFoodResults       Int?    @map("total_food_results")
+  totalRestaurantResults Int?    @map("total_restaurant_results")
+  queryExecutionTimeMs   Int?    @map("query_execution_time_ms")
+  coverageStatus         String? @map("coverage_status") @db.VarChar(32)
   source      SearchLogSource @default(search)
   metadata    Json?           @default("{}")
   loggedAt    DateTime        @default(now()) @map("logged_at")
@@ -391,7 +402,26 @@ model SearchLog {
   @@index([loggedAt(sort: Desc)], map: "idx_search_log_logged_at")
   @@index([entityId, locationKey, loggedAt], map: "idx_search_log_entity_location_time")
   @@index([userId], map: "idx_search_log_user_id")
+  @@index([userId, searchRequestId], map: "idx_search_log_user_request")
+  @@index([userId, queryText], map: "idx_search_log_user_query")
+  @@index([queryText], map: "idx_search_log_query_text")
+  @@unique([searchRequestId, entityId], map: "uq_search_log_request_entity")
   @@map("search_log")
+}
+
+model RestaurantView {
+  userId       String   @map("user_id") @db.Uuid
+  restaurantId String   @map("restaurant_id") @db.Uuid
+  lastViewedAt DateTime @default(now()) @map("last_viewed_at")
+  viewCount    Int      @default(1) @map("view_count")
+  metadata     Json?    @default("{}")
+  user         User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  restaurant   Entity   @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
+
+  @@id([userId, restaurantId])
+  @@index([userId, lastViewedAt(sort: Desc)], map: "idx_restaurant_views_user_time")
+  @@index([restaurantId], map: "idx_restaurant_views_restaurant")
+  @@map("restaurant_views")
 }
 
 model UserFavorite {
@@ -431,6 +461,7 @@ model User {
   events              UserEvent[]
   favorites           UserFavorite[]
   searchLogs          SearchLog[]
+  restaurantViews     RestaurantView[]
   referrer            User?              @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals           User[]             @relation("UserReferrals")
 

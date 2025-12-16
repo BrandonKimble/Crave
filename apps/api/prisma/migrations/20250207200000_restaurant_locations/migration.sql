@@ -65,7 +65,7 @@ SELECT
   e.price_level_updated_at,
   e.restaurant_metadata,
   TRUE,
-  e.last_polled_at,
+  NULL,
   e.created_at,
   CURRENT_TIMESTAMP
 FROM "entities" e

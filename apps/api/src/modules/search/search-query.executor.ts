@@ -755,7 +755,7 @@ export class SearchQueryExecutor {
                 : this.toNumber(restaurantQualityScore),
             mentionCount:
               totalMentions === undefined || totalMentions === null
-                ? null
+                ? undefined
                 : this.toNumber(totalMentions),
             totalUpvotes: totalUpvotes,
             latitude:

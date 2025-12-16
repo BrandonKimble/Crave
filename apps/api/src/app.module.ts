@@ -20,6 +20,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { ModerationModule } from './modules/moderation/moderation.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
+import { HistoryModule } from './modules/history/history.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { FavoritesModule } from './modules/favorites/favorites.module';
     ModerationModule,
     PollsModule,
     FavoritesModule,
+    HistoryModule,
   ],
   controllers: [AppController],
   providers: [],

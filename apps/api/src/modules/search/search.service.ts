@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType, OnDemandReason, SearchLogSource } from '@prisma/client';
+import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { EntityPriorityMetricsRepository } from '../../repositories/entity-priority-metrics.repository';
@@ -142,6 +143,8 @@ export class SearchService {
 
   async runQuery(request: SearchQueryRequestDto): Promise<SearchResponseDto> {
     const start = Date.now();
+    const searchRequestId = request.searchRequestId ?? randomUUID();
+    request.searchRequestId = searchRequestId;
     let plan: QueryPlan | undefined;
 
     try {
@@ -166,6 +169,7 @@ export class SearchService {
           ? execution.totalRestaurantCount
           : execution.restaurantResults.length;
       const totalFoodResults = execution.totalFoodCount;
+      const totalResults = totalFoodResults + totalRestaurantResults;
       const primaryFoodTermRaw =
         request.entities.food?.[0]?.originalText ??
         request.entities.food?.[0]?.normalizedName ??
@@ -192,6 +196,7 @@ export class SearchService {
         totalFoodResults: execution.totalFoodCount,
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
+        searchRequestId,
         boundsApplied: execution.metadata.boundsApplied,
         openNowApplied: execution.metadata.openNowApplied,
         openNowSupportedRestaurants:
@@ -219,15 +224,24 @@ export class SearchService {
         );
       }
 
-      try {
-        await this.recordQueryImpressions(request);
-      } catch (error) {
-        this.logger.warn('Failed to record search query impressions', {
-          error: {
-            message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined,
-          },
-        });
+      if (pagination.page === 1) {
+        try {
+          await this.recordQueryImpressions(request, {
+            searchRequestId,
+            totalResults,
+            totalFoodResults,
+            totalRestaurantResults,
+            queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+            coverageStatus,
+          });
+        } catch (error) {
+          this.logger.warn('Failed to record search query impressions', {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+              stack: error instanceof Error ? error.stack : undefined,
+            },
+          });
+        }
       }
 
       this.logger.debug('Search query executed', {
@@ -503,6 +517,14 @@ export class SearchService {
 
   private async recordQueryImpressions(
     request: SearchQueryRequestDto,
+    context: {
+      searchRequestId: string;
+      totalResults: number;
+      totalFoodResults: number;
+      totalRestaurantResults: number;
+      queryExecutionTimeMs: number;
+      coverageStatus: 'full' | 'partial' | 'unresolved';
+    },
   ): Promise<void> {
     const targets = this.gatherEntityImpressionTargets(request);
     if (!targets.length) {
@@ -530,7 +552,40 @@ export class SearchService {
       ),
     );
 
-    await this.recordSearchLogEntries(request, targets, now, request.userId);
+    const selected = request.submissionContext?.selectedEntityId
+      ? {
+          entityId: request.submissionContext.selectedEntityId,
+          entityType: request.submissionContext.selectedEntityType ?? null,
+        }
+      : null;
+
+    if (
+      request.submissionSource === 'autocomplete' &&
+      selected?.entityId &&
+      selected.entityType &&
+      selected.entityType !== 'restaurant'
+    ) {
+      await this.entityPriorityMetricsRepository.upsertMetrics(
+        { entityId: selected.entityId },
+        {
+          entity: { connect: { entityId: selected.entityId } },
+          entityType: selected.entityType,
+          autocompleteSelections: 1,
+        },
+        {
+          entityType: selected.entityType,
+          autocompleteSelections: { increment: 1 },
+        },
+      );
+    }
+
+    await this.recordSearchLogEntries(
+      request,
+      targets,
+      now,
+      request.userId,
+      context,
+    );
   }
 
   private normalizePriceLevels(levels?: number[]): number[] {
@@ -584,25 +639,68 @@ export class SearchService {
     targets: { entityId: string; entityType: EntityType }[],
     loggedAt: Date,
     userId?: string,
+    context?: {
+      searchRequestId: string;
+      totalResults: number;
+      totalFoodResults: number;
+      totalRestaurantResults: number;
+      queryExecutionTimeMs: number;
+      coverageStatus: 'full' | 'partial' | 'unresolved';
+    },
   ): Promise<void> {
-    if (!this.searchLogEnabled || !targets.length) {
+    if (
+      !this.searchLogEnabled ||
+      !targets.length ||
+      !context?.searchRequestId
+    ) {
       return;
     }
 
     try {
       const locationKey = await this.resolveLocationKey(request);
+      const filtersApplied = {
+        openNow: Boolean(request.openNow),
+        priceLevels: this.normalizePriceLevels(request.priceLevels),
+        minimumVotes:
+          typeof request.minimumVotes === 'number'
+            ? request.minimumVotes
+            : null,
+      };
+      const submissionContext = request.submissionContext
+        ? {
+            typedPrefix: request.submissionContext.typedPrefix ?? null,
+            matchType: request.submissionContext.matchType ?? null,
+            selectedEntityId:
+              request.submissionContext.selectedEntityId ?? null,
+            selectedEntityType:
+              request.submissionContext.selectedEntityType ?? null,
+          }
+        : null;
+      const metadata = {
+        filtersApplied,
+        submissionSource: request.submissionSource ?? null,
+        submissionContext,
+      };
       const rows = targets.map(({ entityId, entityType }) => ({
         entityId,
         entityType,
         locationKey,
         queryText: request.sourceQuery ?? null,
+        searchRequestId: context.searchRequestId,
+        totalResults: context.totalResults,
+        totalFoodResults: context.totalFoodResults,
+        totalRestaurantResults: context.totalRestaurantResults,
+        queryExecutionTimeMs: context.queryExecutionTimeMs,
+        coverageStatus: context.coverageStatus,
         source: SearchLogSource.search,
+        metadata,
         loggedAt,
         userId: userId ?? null,
       }));
 
       await this.prisma.searchLog.createMany({
         data: rows,
+        skipDuplicates: true,
       });
     } catch (error) {
       this.logger.warn('Failed to log search impressions', {
@@ -656,6 +754,7 @@ export class SearchService {
       by: ['queryText'],
       where: {
         userId,
+        source: SearchLogSource.search,
         queryText: { not: null },
       },
       _max: {
