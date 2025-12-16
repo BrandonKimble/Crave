@@ -129,8 +129,8 @@ const PRICE_SLIDER_MAX: PriceSliderValue = PRICE_SLIDER_VALUES[PRICE_SLIDER_VALU
 const PRICE_SLIDER_TRACK_WIDTH_ESTIMATE = Math.max(
   0,
   SCREEN_WIDTH -
-  (OVERLAY_HORIZONTAL_PADDING + PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING) * 2 -
-  PRICE_THUMB_SIZE
+    (OVERLAY_HORIZONTAL_PADDING + PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING) * 2 -
+    PRICE_THUMB_SIZE
 );
 const META_FONT_SIZE = 12;
 const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
@@ -1569,8 +1569,8 @@ const SearchScreen: React.FC = () => {
       status?.isOpen && typeof status.closesInMinutes === 'number'
         ? status.closesInMinutes
         : status?.isOpen
-          ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
-          : null;
+        ? minutesUntilCloseFromDisplay(status?.closesAtDisplay)
+        : null;
     const isClosingSoon =
       status?.isOpen &&
       typeof effectiveMinutesUntilClose === 'number' &&
@@ -1724,9 +1724,9 @@ const SearchScreen: React.FC = () => {
     return Math.max(
       0,
       suggestionScrollMaxHeight -
-      (SEARCH_SUGGESTION_PANEL_PADDING_TOP +
-        SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM +
-        suggestionPanelOverlap)
+        (SEARCH_SUGGESTION_PANEL_PADDING_TOP +
+          SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM +
+          suggestionPanelOverlap)
     );
   }, [suggestionPanelOverlap, suggestionScrollMaxHeight]);
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
@@ -2182,17 +2182,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-            ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-              ? [
-                {
-                  locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                  latitude: restaurant.latitude,
-                  longitude: restaurant.longitude,
-                  isPrimary: true,
-                },
-              ]
-              : [];
+          ? [restaurant.displayLocation]
+          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+          ? [
+              {
+                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                latitude: restaurant.latitude,
+                longitude: restaurant.longitude,
+                isPrimary: true,
+              },
+            ]
+          : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
@@ -2590,8 +2590,8 @@ const SearchScreen: React.FC = () => {
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-            ? MINIMUM_VOTES_FILTER
-            : null;
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       try {
         if (append) {
@@ -3410,7 +3410,7 @@ const SearchScreen: React.FC = () => {
     const topFoodAverage =
       topFoodItems.length > 0
         ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) /
-        topFoodItems.length
+          topFoodItems.length
         : null;
     const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
     const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
@@ -3421,15 +3421,15 @@ const SearchScreen: React.FC = () => {
     const visibleTopFoodCount =
       maxTopFoodToRender > 0
         ? Math.max(
-          1,
-          calculateTopFoodVisibleCount(
-            topFoodItems,
-            maxTopFoodToRender,
-            topFoodInlineWidth,
-            topFoodItemWidthMap,
-            topFoodMoreWidthMap
+            1,
+            calculateTopFoodVisibleCount(
+              topFoodItems,
+              maxTopFoodToRender,
+              topFoodInlineWidth,
+              topFoodItemWidthMap,
+              topFoodMoreWidthMap
+            )
           )
-        )
         : 0;
     const inlineTopFoods = topFoodItems.slice(
       0,
@@ -3510,7 +3510,7 @@ const SearchScreen: React.FC = () => {
               ) : null}
               <View style={[styles.resultContent, styles.resultContentStack]}>
                 {restaurant.restaurantQualityScore !== null &&
-                  restaurant.restaurantQualityScore !== undefined ? (
+                restaurant.restaurantQualityScore !== undefined ? (
                   <View style={styles.metricBlock}>
                     <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                       <View style={styles.restaurantMetricLeft}>
@@ -4092,12 +4092,12 @@ const SearchScreen: React.FC = () => {
                 styles.searchSurfaceScroll,
                 isSuggestionScreenActive
                   ? [
-                    styles.searchSuggestionScrollSurface,
-                    {
-                      marginTop: suggestionPanelTopMargin,
-                      maxHeight: suggestionScrollMaxHeight,
-                    },
-                  ]
+                      styles.searchSuggestionScrollSurface,
+                      {
+                        marginTop: suggestionPanelTopMargin,
+                        maxHeight: suggestionScrollMaxHeight,
+                      },
+                    ]
                   : null,
               ]}
             >

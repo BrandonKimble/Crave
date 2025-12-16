@@ -13,19 +13,18 @@
 ## POST /search/run
 
 ### Request Body
+
 ```json
 {
   "entities": {
-    "food": [
-      { "normalizedName": "ramen", "entityIds": ["uuid-food"] }
-    ],
+    "food": [{ "normalizedName": "ramen", "entityIds": ["uuid-food"] }],
     "restaurantAttributes": [
       { "normalizedName": "patio", "entityIds": ["uuid-rest-attr"] }
     ]
   },
   "bounds": {
-    "northEast": { "lat": 30.35, "lng": -97.70 },
-    "southWest": { "lat": 30.20, "lng": -97.80 }
+    "northEast": { "lat": 30.35, "lng": -97.7 },
+    "southWest": { "lat": 30.2, "lng": -97.8 }
   },
   "openNow": true,
   "pagination": { "page": 1, "pageSize": 25 },
@@ -34,6 +33,7 @@
 ```
 
 ### Response Shape
+
 ```json
 {
   "format": "dual_list",
@@ -96,9 +96,11 @@
 When a query supplies food entities/attributes but returns fewer than `SEARCH_ON_DEMAND_MIN_RESULTS` restaurants, the API automatically enqueues keyword search cycles—first choosing the closest subreddit whose `center_latitude/center_longitude` (stored on the `collection_subreddits` table) matches the request’s bounds/results, then falling back to every active subreddit—so Section 5/7 on-demand enrichment stays fed by real query traffic.
 
 ## POST /search/events/click
+
 ```json
 { "entityId": "uuid-food", "entityType": "food" }
 ```
+
 Records a user selection so `collection_entity_priority_metrics` can learn from demand signals.
 
 ## POST /search/plan
