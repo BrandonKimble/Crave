@@ -35,10 +35,7 @@ import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/Re
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import { logger } from '../../utils';
-import {
-  searchService,
-  type RecentlyViewedRestaurant,
-} from '../../services/search';
+import { searchService, type RecentlyViewedRestaurant } from '../../services/search';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
 import type {
@@ -118,10 +115,7 @@ import {
 import { getQualityColor } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
-import {
-  hasBoundsMovedSignificantly,
-  mapStateBoundsToMapBounds,
-} from './utils/geo';
+import { hasBoundsMovedSignificantly, mapStateBoundsToMapBounds } from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
 
@@ -1153,48 +1147,50 @@ const SearchScreen: React.FC = () => {
     }
   }, []);
 
-  const { submitSearch, runBestHere, loadMoreResults, cancelActiveSearchRequest } = useSearchSubmit({
-    query,
-    isLoading,
-    setIsLoading,
-    isLoadingMore,
-    setIsLoadingMore,
-    results,
-    setResults,
-    submittedQuery,
-    setSubmittedQuery,
-    activeTab,
-    setActiveTab,
-    setHasMoreFood,
-    setHasMoreRestaurants,
-    currentPage,
-    setCurrentPage,
-    isPaginationExhausted,
-    setIsPaginationExhausted,
-    canLoadMore,
-    setError,
-    setIsSearchSessionActive,
-    setSearchMode,
-    setIsAutocompleteSuppressed,
-    setShowSuggestions,
-    showPanel,
-    resetSheetToHidden,
-    scrollResultsToTop,
-    lastSearchRequestIdRef,
-    lastAutoOpenKeyRef,
-    openNow,
-    priceLevels,
-    votes100Plus,
-    runSearch,
-    cancelSearch,
-    mapRef,
-    latestBoundsRef,
-    ensureUserLocation,
-    userLocationRef,
-    resetMapMoveFlag,
-    loadRecentHistory,
-    updateLocalRecentSearches,
-  });
+  const { submitSearch, runBestHere, loadMoreResults, cancelActiveSearchRequest } = useSearchSubmit(
+    {
+      query,
+      isLoading,
+      setIsLoading,
+      isLoadingMore,
+      setIsLoadingMore,
+      results,
+      setResults,
+      submittedQuery,
+      setSubmittedQuery,
+      activeTab,
+      setActiveTab,
+      setHasMoreFood,
+      setHasMoreRestaurants,
+      currentPage,
+      setCurrentPage,
+      isPaginationExhausted,
+      setIsPaginationExhausted,
+      canLoadMore,
+      setError,
+      setIsSearchSessionActive,
+      setSearchMode,
+      setIsAutocompleteSuppressed,
+      setShowSuggestions,
+      showPanel,
+      resetSheetToHidden,
+      scrollResultsToTop,
+      lastSearchRequestIdRef,
+      lastAutoOpenKeyRef,
+      openNow,
+      priceLevels,
+      votes100Plus,
+      runSearch,
+      cancelSearch,
+      mapRef,
+      latestBoundsRef,
+      ensureUserLocation,
+      userLocationRef,
+      resetMapMoveFlag,
+      loadRecentHistory,
+      updateLocalRecentSearches,
+    }
+  );
 
   const toggleVotesFilter = React.useCallback(() => {
     const nextValue = !votes100Plus;
@@ -1330,7 +1326,9 @@ const SearchScreen: React.FC = () => {
   );
 
   const handleClear = React.useCallback(() => {
-    clearSearchState({ shouldRefocusInput: !isSearchSessionActive && !isLoading && !isLoadingMore });
+    clearSearchState({
+      shouldRefocusInput: !isSearchSessionActive && !isLoading && !isLoadingMore,
+    });
   }, [clearSearchState, isLoading, isLoadingMore, isSearchSessionActive]);
 
   const handleCloseResults = React.useCallback(() => {
@@ -1732,9 +1730,7 @@ const SearchScreen: React.FC = () => {
         style={styles.resultsListHeader}
         onLayout={(event: LayoutChangeEvent) => {
           const nextHeight = event.nativeEvent.layout.height;
-          setFiltersHeaderHeight((prev) =>
-            Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight
-          );
+          setFiltersHeaderHeight((prev) => (Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight));
         }}
       >
         {filtersHeader}

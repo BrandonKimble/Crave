@@ -26,12 +26,8 @@ const buildSquirclePath = (size: number, exponent = 3.6, points = 96) => {
     const theta = (2 * Math.PI * i) / points;
     const cos = Math.cos(theta);
     const sin = Math.sin(theta);
-    const x =
-      center +
-      radius * Math.sign(cos) * Math.pow(Math.abs(cos), 2 / exponent);
-    const y =
-      center +
-      radius * Math.sign(sin) * Math.pow(Math.abs(sin), 2 / exponent);
+    const x = center + radius * Math.sign(cos) * Math.pow(Math.abs(cos), 2 / exponent);
+    const y = center + radius * Math.sign(sin) * Math.pow(Math.abs(sin), 2 / exponent);
     coords.push({ x, y });
   }
 

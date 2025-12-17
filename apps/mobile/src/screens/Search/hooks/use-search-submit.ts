@@ -311,7 +311,15 @@ const useSearchSubmit = ({
 
       return payload;
     },
-    [ensureUserLocation, latestBoundsRef, mapRef, openNow, priceLevels, userLocationRef, votes100Plus]
+    [
+      ensureUserLocation,
+      latestBoundsRef,
+      mapRef,
+      openNow,
+      priceLevels,
+      userLocationRef,
+      votes100Plus,
+    ]
   );
 
   const submitSearch = React.useCallback(

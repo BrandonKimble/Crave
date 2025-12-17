@@ -57,6 +57,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   isSearchSessionActive = false,
   surfaceVariant = 'solid',
 }) => {
+  const clearIconSize = 24;
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
       <Reanimated.View
@@ -132,9 +133,9 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   hitSlop={10}
                 >
                   {isSearchSessionActive ? (
-                    <LucideX size={20} color={accentColor} strokeWidth={2} />
+                    <LucideX size={clearIconSize} color={accentColor} strokeWidth={2} />
                   ) : (
-                    <XCircleIcon size={20} color={accentColor} />
+                    <XCircleIcon size={clearIconSize} color={accentColor} />
                   )}
                 </Pressable>
               ) : (
@@ -223,8 +224,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   trailingPlaceholder: {
-    width: 22,
-    height: 22,
+    width: 24,
+    height: 24,
   },
 });
 
