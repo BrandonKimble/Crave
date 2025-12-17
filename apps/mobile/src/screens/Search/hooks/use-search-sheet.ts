@@ -3,14 +3,12 @@ import { Animated } from 'react-native';
 
 import {
   Extrapolation,
-  Easing,
   interpolate,
   runOnJS,
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';

@@ -4,10 +4,18 @@ import { View } from 'react-native';
 import { Text } from '../../../components';
 import styles from '../styles';
 
-const EmptyState: React.FC<{ message: string }> = ({ message }) => (
+type EmptyStateProps = {
+  title: string;
+  subtitle: string;
+};
+
+const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle }) => (
   <View style={styles.emptyState}>
-    <Text variant="caption" style={styles.textSlate500}>
-      {message}
+    <Text variant="caption" style={styles.textSlate900}>
+      {title}
+    </Text>
+    <Text variant="caption" style={styles.textSlate900}>
+      {subtitle}
     </Text>
   </View>
 );

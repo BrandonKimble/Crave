@@ -4,21 +4,19 @@ import {
   Animated,
   Keyboard,
   Pressable,
-  StyleSheet,
   TouchableOpacity,
   View,
+  StyleSheet,
   Easing as RNEasing,
 } from 'react-native';
-import type { LayoutRectangle, TextInput } from 'react-native';
+import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Reanimated, {
   Extrapolation,
   Easing,
   interpolate,
-  runOnJS,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
@@ -36,11 +34,9 @@ import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/o
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
-import { SHEET_SPRING_CONFIG, type SheetPosition } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import {
   searchService,
-  type StructuredSearchRequest,
   type RecentlyViewedRestaurant,
 } from '../../services/search';
 import type { AutocompleteMatch } from '../../services/autocomplete';
@@ -51,12 +47,10 @@ import type {
   RestaurantResult,
   MapBounds,
   Coordinate,
-  NaturalSearchRequest,
 } from '../../types';
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
-import type { SnapPoints } from '../../overlays/BottomSheetWithFlashList';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import type { RootStackParamList } from '../../types/navigation';
@@ -64,6 +58,7 @@ import { FrostedGlassBackground } from '../../components/FrostedGlassBackground'
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
 import { useFavorites } from '../../hooks/use-favorites';
+import SquircleSpinner from '../../components/SquircleSpinner';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
 import SearchFilters from './components/SearchFilters';
@@ -79,6 +74,7 @@ import SearchMap, {
 import SearchResultsSheet from './components/search-results-sheet';
 import useSearchHistory from './hooks/use-search-history';
 import useSearchSheet from './hooks/use-search-sheet';
+import useSearchSubmit from './hooks/use-search-submit';
 import styles from './styles';
 import {
   ACTIVE_TAB_COLOR,
@@ -86,15 +82,17 @@ import {
   AUTOCOMPLETE_MIN_CHARS,
   CAMERA_STORAGE_KEY,
   CONTENT_HORIZONTAL_PADDING,
-  DEFAULT_PAGE_SIZE,
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
   LABEL_TRANSLATE_Y,
   MINIMUM_VOTES_FILTER,
   NAV_BOTTOM_PADDING,
+  RESULTS_BOTTOM_PADDING,
   SCORE_INFO_MAX_HEIGHT,
   SCREEN_HEIGHT,
   SEARCH_CONTAINER_PADDING_TOP,
+  SEARCH_BAR_HOLE_PADDING,
+  SEARCH_BAR_HOLE_RADIUS,
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
   SEARCH_SUGGESTION_HEADER_PANEL_GAP,
@@ -114,33 +112,16 @@ import {
   formatPriceRangeSummary,
   getRangeFromLevels,
   isFullPriceRange,
-  normalizePriceFilter,
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import { mergeSearchResponses } from './utils/merge';
 import { getQualityColor } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
 import {
-  boundsFromPairs,
   hasBoundsMovedSignificantly,
-  isLngLatTuple,
   mapStateBoundsToMapBounds,
 } from './utils/geo';
-
-type SubmitSearchOptions = {
-  openNow?: boolean;
-  priceLevels?: number[] | null;
-  minimumVotes?: number | null;
-  page?: number;
-  append?: boolean;
-  preserveSheetState?: boolean;
-  submission?: {
-    source: NaturalSearchRequest['submissionSource'];
-    context?: NaturalSearchRequest['submissionContext'];
-  };
-};
 
 MapboxGL.setTelemetryEnabled(false);
 
@@ -193,10 +174,6 @@ const SearchScreen: React.FC = () => {
       }
     })();
   }, []);
-
-  React.useEffect(() => {
-    void ensureUserLocation();
-  }, [ensureUserLocation]);
 
   React.useEffect(() => {
     if (!userLocation) {
@@ -400,8 +377,6 @@ const SearchScreen: React.FC = () => {
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const hasCenteredOnLocationRef = React.useRef(false);
   const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchRequestSeqRef = React.useRef(0);
-  const activeSearchRequestRef = React.useRef(0);
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
   const overlayParams = useOverlayStore((state) => state.overlayParams);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
@@ -413,17 +388,13 @@ const SearchScreen: React.FC = () => {
   const pollOverlayParams = overlayParams.polls;
   const {
     panelVisible,
-    setPanelVisible,
     sheetState,
-    setSheetState,
     snapPoints,
     shouldRenderSheet,
     sheetTranslateY,
-    sheetStateShared,
     resetSheetToHidden,
     animateSheetTo,
     showPanel,
-    hideSheet,
     handleSheetSnapChange,
     searchBarInputAnimatedStyle,
     searchBarSheetAnimatedStyle,
@@ -447,6 +418,8 @@ const SearchScreen: React.FC = () => {
     polls: number | null | undefined;
   } | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
+  const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
+  const [filtersHeaderHeight, setFiltersHeaderHeight] = React.useState(0);
   const openScoreInfo = React.useCallback(
     (payload: {
       type: 'dish' | 'restaurant';
@@ -915,6 +888,9 @@ const SearchScreen: React.FC = () => {
     }
   }, []);
   React.useEffect(() => {
+    void ensureUserLocation();
+  }, [ensureUserLocation]);
+  React.useEffect(() => {
     return () => {
       if (locationWatchRef.current) {
         locationWatchRef.current.remove();
@@ -922,197 +898,6 @@ const SearchScreen: React.FC = () => {
       }
     };
   }, []);
-
-  const handleSearchResponse = React.useCallback(
-    (
-      response: SearchResponse,
-      options: {
-        append: boolean;
-        targetPage: number;
-        submittedLabel?: string;
-        pushToHistory?: boolean;
-      }
-    ) => {
-      const { append, targetPage, submittedLabel, pushToHistory } = options;
-
-      let previousFoodCountSnapshot = 0;
-      let previousRestaurantCountSnapshot = 0;
-      let mergedFoodCount = response.food?.length ?? 0;
-      let mergedRestaurantCount = response.restaurants?.length ?? 0;
-
-      setResults((prev) => {
-        const base = append ? prev : null;
-        previousFoodCountSnapshot = base?.food?.length ?? 0;
-        previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
-        const merged = mergeSearchResponses(base, response, append);
-        mergedFoodCount = merged.food?.length ?? 0;
-        mergedRestaurantCount = merged.restaurants?.length ?? 0;
-        return merged;
-      });
-
-      const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
-
-      if (!singleRestaurantCandidate) {
-        const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
-        const totalRestaurantAvailable =
-          response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
-
-        const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-        const nextHasMoreRestaurants =
-          response.format === 'dual_list'
-            ? mergedRestaurantCount < totalRestaurantAvailable
-            : false;
-
-        setHasMoreFood(nextHasMoreFood);
-        setHasMoreRestaurants(nextHasMoreRestaurants);
-        setCurrentPage(targetPage);
-
-        if (
-          append &&
-          (!(
-            mergedFoodCount > previousFoodCountSnapshot ||
-            mergedRestaurantCount > previousRestaurantCountSnapshot
-          ) ||
-            (!nextHasMoreFood && !nextHasMoreRestaurants))
-        ) {
-          setIsPaginationExhausted(true);
-        }
-      }
-
-      if (!append) {
-        lastSearchRequestIdRef.current = response.metadata.searchRequestId ?? null;
-        if (submittedLabel) {
-          setSubmittedQuery(submittedLabel);
-        } else {
-          setSubmittedQuery('');
-        }
-
-        const singleRestaurant = resolveSingleRestaurantCandidate(response);
-
-        if (!singleRestaurant) {
-          const hasFoodResults = response?.food?.length > 0;
-          const hasRestaurantsResults =
-            (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
-
-          setActiveTab((prevTab) => {
-            if (prevTab === 'dishes' && hasFoodResults) {
-              return 'dishes';
-            }
-            if (prevTab === 'restaurants' && hasRestaurantsResults) {
-              return 'restaurants';
-            }
-            return hasFoodResults ? 'dishes' : 'restaurants';
-          });
-        }
-
-        if (submittedLabel && pushToHistory) {
-          const hasEntityTargets = [
-            ...(response.plan?.restaurantFilters ?? []),
-            ...(response.plan?.connectionFilters ?? []),
-          ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
-
-          if (hasEntityTargets) {
-            updateLocalRecentSearches(submittedLabel);
-          }
-
-          void loadRecentHistory();
-        }
-
-        Keyboard.dismiss();
-        setIsPaginationExhausted(false);
-        scrollResultsToTop();
-
-        if (singleRestaurant) {
-          setPanelVisible(false);
-          setSheetState('hidden');
-          sheetStateShared.value = 'hidden';
-        } else {
-          showPanel();
-        }
-      }
-    },
-    [
-      setResults,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setCurrentPage,
-      setSubmittedQuery,
-      setActiveTab,
-      updateLocalRecentSearches,
-      loadRecentHistory,
-      scrollResultsToTop,
-      setPanelVisible,
-      setSheetState,
-      sheetStateShared,
-      showPanel,
-    ]
-  );
-
-  const buildStructuredSearchPayload = React.useCallback(
-    async (page: number): Promise<StructuredSearchRequest> => {
-      const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
-      const payload: StructuredSearchRequest = {
-        entities: {},
-        pagination,
-      };
-
-      const effectiveOpenNow = openNow;
-      const normalizedPriceLevels = normalizePriceFilter(priceLevels);
-      const effectiveMinimumVotes = votes100Plus ? MINIMUM_VOTES_FILTER : null;
-
-      if (effectiveOpenNow) {
-        payload.openNow = true;
-      }
-
-      if (normalizedPriceLevels.length > 0) {
-        payload.priceLevels = normalizedPriceLevels;
-      }
-
-      if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
-        payload.minimumVotes = effectiveMinimumVotes;
-      }
-
-      const shouldCaptureBounds = page === 1 && mapRef.current?.getVisibleBounds;
-      if (shouldCaptureBounds) {
-        try {
-          const visibleBounds = await mapRef.current!.getVisibleBounds();
-          if (
-            Array.isArray(visibleBounds) &&
-            visibleBounds.length >= 2 &&
-            isLngLatTuple(visibleBounds[0]) &&
-            isLngLatTuple(visibleBounds[1])
-          ) {
-            payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-            latestBoundsRef.current = payload.bounds;
-          }
-        } catch (boundsError) {
-          logger.warn('Unable to determine map bounds before submitting structured search', {
-            message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-          });
-        }
-      }
-
-      if (!payload.bounds && latestBoundsRef.current) {
-        payload.bounds = latestBoundsRef.current;
-      }
-
-      const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
-      if (resolvedLocation) {
-        payload.userLocation = resolvedLocation;
-      }
-
-      return payload;
-    },
-    [
-      openNow,
-      priceLevels,
-      votes100Plus,
-      ensureUserLocation,
-      mapRef,
-      latestBoundsRef,
-      userLocationRef,
-    ]
-  );
 
   const handleQueryChange = React.useCallback((value: string) => {
     setIsAutocompleteSuppressed(false);
@@ -1328,95 +1113,11 @@ const SearchScreen: React.FC = () => {
   }, [dismissTransientOverlays, isSuggestionScreenActive]);
 
   React.useEffect(() => {
-    sheetStateShared.value = sheetState;
-  }, [sheetState, sheetStateShared]);
-
-  React.useEffect(() => {
     if (!results) {
       resetMapMoveFlag();
     }
   }, [resetMapMoveFlag, results]);
 
-  React.useEffect(() => {
-    if (!panelVisible) {
-      sheetTranslateY.value = snapPoints.hidden;
-    }
-  }, [panelVisible, sheetTranslateY, snapPoints.hidden]);
-  const animateSheetTo = React.useCallback(
-    (position: SheetPosition, velocity = 0) => {
-      const target = snapPoints[position];
-      setSheetState(position);
-      sheetStateShared.value = position;
-      if (position !== 'hidden') {
-        setPanelVisible(true);
-      }
-      sheetTranslateY.value = withSpring(
-        target,
-        {
-          ...SHEET_SPRING_CONFIG,
-          velocity,
-        },
-        (finished) => {
-          if (finished && position === 'hidden') {
-            runOnJS(setPanelVisible)(false);
-          }
-        }
-      );
-    },
-    [snapPoints, setPanelVisible, sheetStateShared, sheetTranslateY]
-  );
-
-  const searchBarInputAnimatedStyle = useAnimatedStyle(() => {
-    const visibility = interpolate(
-      sheetTranslateY.value,
-      [snapPointExpanded.value, snapPointMiddle.value],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    return { opacity: visibility };
-  });
-  const searchBarSheetAnimatedStyle = useAnimatedStyle(() => {
-    const progress = interpolate(
-      sheetTranslateY.value,
-      [snapPointExpanded.value, snapPointMiddle.value],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    // Keep the bar solid briefly, then fade quickly so it's gone before overlap.
-    const opacity = interpolate(
-      progress,
-      [0, 0.3, 0.5, 0.7, 1],
-      [0, 0, 0.15, 0.9, 1],
-      Extrapolation.CLAMP
-    );
-    const borderAlpha = interpolate(
-      progress,
-      [0, 0.3, 0.6, 0.85, 1],
-      [0.1, 0.25, 0.5, 0.75, 0.95],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(progress, [0, 1], [0.96, 1], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      backgroundColor: '#ffffff',
-      borderColor: `rgba(229, 231, 235, ${borderAlpha})`,
-      transform: [{ scale }],
-      display: opacity < 0.02 ? 'none' : 'flex',
-    };
-  });
-  const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetTranslateY.value }],
-  }));
-  const handleSheetSnapChange = React.useCallback(
-    (nextSnap: SheetPosition | 'hidden') => {
-      const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
-      setSheetState(nextState);
-      sheetStateShared.value = nextState;
-      setPanelVisible(nextSnap !== 'hidden');
-    },
-    [setPanelVisible, sheetStateShared]
-  );
   React.useEffect(() => {
     if (!panelVisible && isPriceSelectorVisible) {
       setIsPriceSelectorVisible(false);
@@ -1428,15 +1129,6 @@ const SearchScreen: React.FC = () => {
       setPendingPriceRange(getRangeFromLevels(priceLevels));
     }
   }, [isPriceSelectorVisible, priceLevels]);
-
-  const showPanel = React.useCallback(() => {
-    if (!panelVisible) {
-      setPanelVisible(true);
-    }
-    requestAnimationFrame(() => {
-      animateSheetTo('middle');
-    });
-  }, [panelVisible, animateSheetTo]);
 
   const hidePanel = React.useCallback(() => {
     if (!panelVisible) {
@@ -1455,6 +1147,55 @@ const SearchScreen: React.FC = () => {
     setIsPriceSelectorVisible(true);
   }, [isPriceSelectorVisible, commitPriceSelection, priceLevels]);
 
+  const scrollResultsToTop = React.useCallback(() => {
+    if (resultsScrollRef.current?.scrollToOffset) {
+      resultsScrollRef.current.scrollToOffset({ offset: 0, animated: false });
+    }
+  }, []);
+
+  const { submitSearch, runBestHere, loadMoreResults, cancelActiveSearchRequest } = useSearchSubmit({
+    query,
+    isLoading,
+    setIsLoading,
+    isLoadingMore,
+    setIsLoadingMore,
+    results,
+    setResults,
+    submittedQuery,
+    setSubmittedQuery,
+    activeTab,
+    setActiveTab,
+    setHasMoreFood,
+    setHasMoreRestaurants,
+    currentPage,
+    setCurrentPage,
+    isPaginationExhausted,
+    setIsPaginationExhausted,
+    canLoadMore,
+    setError,
+    setIsSearchSessionActive,
+    setSearchMode,
+    setIsAutocompleteSuppressed,
+    setShowSuggestions,
+    showPanel,
+    resetSheetToHidden,
+    scrollResultsToTop,
+    lastSearchRequestIdRef,
+    lastAutoOpenKeyRef,
+    openNow,
+    priceLevels,
+    votes100Plus,
+    runSearch,
+    cancelSearch,
+    mapRef,
+    latestBoundsRef,
+    ensureUserLocation,
+    userLocationRef,
+    resetMapMoveFlag,
+    loadRecentHistory,
+    updateLocalRecentSearches,
+  });
+
   const toggleVotesFilter = React.useCallback(() => {
     const nextValue = !votes100Plus;
     setVotes100Plus(nextValue);
@@ -1470,199 +1211,7 @@ const SearchScreen: React.FC = () => {
         });
       }, 150);
     }
-  }, [votes100Plus, setVotes100Plus, query, submitSearch]);
-
-  const scrollResultsToTop = React.useCallback(() => {
-    if (resultsScrollRef.current?.scrollToOffset) {
-      resultsScrollRef.current.scrollToOffset({ offset: 0, animated: false });
-    }
-  }, []);
-
-  const submitSearch = React.useCallback(
-    async (options?: SubmitSearchOptions, overrideQuery?: string) => {
-      const append = Boolean(options?.append);
-      if (!append && isLoading) {
-        return;
-      }
-      if (append && (isLoading || isLoadingMore)) {
-        return;
-      }
-      if (!append) {
-        resetMapMoveFlag();
-      }
-
-      const targetPage = options?.page && options.page > 0 ? options.page : 1;
-      const baseQuery = overrideQuery ?? query;
-      const trimmed = baseQuery.trim();
-      if (!trimmed) {
-        if (!append) {
-          setResults(null);
-          setSubmittedQuery('');
-          setError(null);
-          setHasMoreFood(false);
-          setHasMoreRestaurants(false);
-          setCurrentPage(1);
-        }
-        return;
-      }
-      const requestId = ++searchRequestSeqRef.current;
-      activeSearchRequestRef.current = requestId;
-
-      if (!append) {
-        const preserveSheetState = Boolean(options?.preserveSheetState);
-        if (!preserveSheetState) {
-          setPanelVisible(false);
-          setSheetState('hidden');
-          sheetStateShared.value = 'hidden';
-          sheetTranslateY.value = snapPoints.hidden;
-        }
-        setSearchMode('natural');
-        setIsSearchSessionActive(true);
-        setIsAutocompleteSuppressed(true);
-        setShowSuggestions(false);
-        setHasMoreFood(false);
-        setHasMoreRestaurants(false);
-        setCurrentPage(targetPage);
-        lastAutoOpenKeyRef.current = null;
-      }
-
-      const effectiveOpenNow = options?.openNow ?? openNow;
-      const effectivePriceLevels =
-        options?.priceLevels !== undefined ? options.priceLevels : priceLevels;
-      const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
-      const effectiveMinimumVotes =
-        options?.minimumVotes !== undefined
-          ? options.minimumVotes
-          : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
-
-      try {
-        if (append) {
-          setIsLoadingMore(true);
-        } else {
-          setIsLoading(true);
-          setError(null);
-        }
-
-        const payload: NaturalSearchRequest = {
-          query: trimmed,
-          pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
-        };
-
-        if (!append) {
-          payload.submissionSource = options?.submission?.source ?? 'manual';
-          if (options?.submission?.context) {
-            payload.submissionContext = options.submission.context;
-          }
-        }
-
-        if (effectiveOpenNow) {
-          payload.openNow = true;
-        }
-
-        if (normalizedPriceLevels.length > 0) {
-          payload.priceLevels = normalizedPriceLevels;
-        }
-
-        if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
-          payload.minimumVotes = effectiveMinimumVotes;
-        }
-
-        const shouldCaptureBounds = !append && mapRef.current?.getVisibleBounds;
-        if (shouldCaptureBounds) {
-          try {
-            const visibleBounds = await mapRef.current!.getVisibleBounds();
-            if (
-              Array.isArray(visibleBounds) &&
-              visibleBounds.length >= 2 &&
-              isLngLatTuple(visibleBounds[0]) &&
-              isLngLatTuple(visibleBounds[1])
-            ) {
-              payload.bounds = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
-              latestBoundsRef.current = payload.bounds;
-            }
-          } catch (boundsError) {
-            logger.warn('Unable to determine map bounds before submitting search', {
-              message: boundsError instanceof Error ? boundsError.message : 'unknown error',
-            });
-          }
-        }
-
-        if (!payload.bounds && latestBoundsRef.current) {
-          payload.bounds = latestBoundsRef.current;
-        }
-
-        const resolvedLocation = userLocationRef.current ?? (await ensureUserLocation());
-        if (resolvedLocation) {
-          payload.userLocation = resolvedLocation;
-        }
-
-        const response = await runSearch({ kind: 'natural', payload });
-        if (response && requestId === activeSearchRequestRef.current) {
-          logger.info('Search response payload', response);
-
-          handleSearchResponse(response, {
-            append,
-            targetPage,
-            submittedLabel: trimmed,
-            pushToHistory: !append,
-          });
-        }
-      } catch (err) {
-        logger.error('Search request failed', { message: (err as Error).message });
-        if (requestId === activeSearchRequestRef.current) {
-          if (!append) {
-            showPanel();
-          }
-          setError(
-            append
-              ? 'Unable to load more results. Please try again.'
-              : 'Unable to fetch results. Please try again.'
-          );
-        }
-      } finally {
-        if (requestId === activeSearchRequestRef.current) {
-          if (append) {
-            setIsLoadingMore(false);
-          } else {
-            setIsLoading(false);
-          }
-        }
-      }
-    },
-    [
-      isLoading,
-      isLoadingMore,
-      query,
-      openNow,
-      priceLevels,
-      votes100Plus,
-      showPanel,
-      loadRecentHistory,
-      updateLocalRecentSearches,
-      setIsSearchSessionActive,
-      setIsAutocompleteSuppressed,
-      setShowSuggestions,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setCurrentPage,
-      setSubmittedQuery,
-      setActiveTab,
-      runSearch,
-      canLoadMore,
-      scrollResultsToTop,
-      handleSearchResponse,
-      ensureUserLocation,
-      snapPoints.hidden,
-      sheetStateShared,
-      sheetTranslateY,
-      setPanelVisible,
-      setSheetState,
-      setSearchMode,
-      resetMapMoveFlag,
-    ]
-  );
+  }, [query, setVotes100Plus, submitSearch, votes100Plus]);
 
   const handleSubmit = React.useCallback(() => {
     setIsSearchFocused(false);
@@ -1670,87 +1219,6 @@ const SearchScreen: React.FC = () => {
     Keyboard.dismiss();
     void submitSearch();
   }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
-
-  const runBestHere = React.useCallback(
-    async (
-      targetTab: SegmentValue,
-      submittedLabel: string,
-      options?: { preserveSheetState?: boolean }
-    ) => {
-      if (isLoading || isLoadingMore) {
-        return;
-      }
-
-      resetMapMoveFlag();
-      const preserveSheetState = Boolean(options?.preserveSheetState);
-      setSearchMode('shortcut');
-      setIsSearchSessionActive(true);
-      setActiveTab(targetTab);
-      setError(null);
-      if (!preserveSheetState) {
-        setPanelVisible(false);
-        setSheetState('hidden');
-        sheetStateShared.value = 'hidden';
-        sheetTranslateY.value = snapPoints.hidden;
-      }
-      setHasMoreFood(false);
-      setHasMoreRestaurants(false);
-      setIsPaginationExhausted(false);
-      setCurrentPage(1);
-      lastAutoOpenKeyRef.current = null;
-      setIsAutocompleteSuppressed(true);
-      setShowSuggestions(false);
-      Keyboard.dismiss();
-
-      try {
-        setIsLoading(true);
-        const payload = await buildStructuredSearchPayload(1);
-        const response = await runSearch({ kind: 'structured', payload });
-        if (response) {
-          logger.info('Structured search response payload', response);
-          handleSearchResponse(response, {
-            append: false,
-            targetPage: 1,
-            submittedLabel,
-            pushToHistory: false,
-          });
-        }
-      } catch (err) {
-        logger.error('Best here request failed', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-        setError('Unable to fetch results. Please try again.');
-        showPanel();
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [
-      isLoading,
-      isLoadingMore,
-      setIsSearchSessionActive,
-      setActiveTab,
-      setError,
-      setPanelVisible,
-      setSheetState,
-      sheetStateShared,
-      sheetTranslateY,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      setIsPaginationExhausted,
-      setCurrentPage,
-      setIsAutocompleteSuppressed,
-      setShowSuggestions,
-      buildStructuredSearchPayload,
-      handleSearchResponse,
-      showPanel,
-      snapPoints.hidden,
-      lastAutoOpenKeyRef,
-      setSearchMode,
-      runSearch,
-      resetMapMoveFlag,
-    ]
-  );
 
   const handleBestDishesHere = React.useCallback(() => {
     setQuery('Best dishes');
@@ -1815,7 +1283,7 @@ const SearchScreen: React.FC = () => {
 
   const clearSearchState = React.useCallback(
     ({ shouldRefocusInput = false }: { shouldRefocusInput?: boolean } = {}) => {
-      cancelSearch();
+      cancelActiveSearchRequest();
       cancelAutocomplete();
       if (filterDebounceRef.current) {
         clearTimeout(filterDebounceRef.current);
@@ -1850,8 +1318,8 @@ const SearchScreen: React.FC = () => {
       }
     },
     [
+      cancelActiveSearchRequest,
       cancelAutocomplete,
-      cancelSearch,
       hidePanel,
       resetFilters,
       resetMapMoveFlag,
@@ -1862,8 +1330,8 @@ const SearchScreen: React.FC = () => {
   );
 
   const handleClear = React.useCallback(() => {
-    clearSearchState({ shouldRefocusInput: true });
-  }, [clearSearchState]);
+    clearSearchState({ shouldRefocusInput: !isSearchSessionActive && !isLoading && !isLoadingMore });
+  }, [clearSearchState, isLoading, isLoadingMore, isSearchSessionActive]);
 
   const handleCloseResults = React.useCallback(() => {
     clearSearchState();
@@ -1970,80 +1438,6 @@ const SearchScreen: React.FC = () => {
       sheetState,
     ]
   );
-  const loadMoreShortcutResults = React.useCallback(() => {
-    if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
-      return;
-    }
-
-    const nextPage = currentPage + 1;
-
-    const run = async () => {
-      try {
-        setIsLoadingMore(true);
-        const payload = await buildStructuredSearchPayload(nextPage);
-        const response = await runSearch({ kind: 'structured', payload });
-        if (response) {
-          logger.info('Structured search pagination payload', response);
-          handleSearchResponse(response, {
-            append: true,
-            targetPage: nextPage,
-            submittedLabel: submittedQuery || 'Best dishes here',
-            pushToHistory: false,
-          });
-        }
-      } catch (err) {
-        logger.error('Best dishes here pagination failed', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-        setError('Unable to load more results. Please try again.');
-      } finally {
-        setIsLoadingMore(false);
-      }
-    };
-
-    void run();
-  }, [
-    isLoading,
-    isLoadingMore,
-    results,
-    canLoadMore,
-    isPaginationExhausted,
-    currentPage,
-    buildStructuredSearchPayload,
-    handleSearchResponse,
-    submittedQuery,
-    setIsLoadingMore,
-    setError,
-    runSearch,
-  ]);
-
-  const loadMoreResults = React.useCallback(() => {
-    if (isLoading || isLoadingMore || !results || !canLoadMore || isPaginationExhausted) {
-      return;
-    }
-    if (searchMode === 'shortcut') {
-      loadMoreShortcutResults();
-      return;
-    }
-    const nextPage = currentPage + 1;
-    const activeQuery = submittedQuery || query;
-    if (!activeQuery.trim()) {
-      return;
-    }
-    void submitSearch({ page: nextPage, append: true }, activeQuery);
-  }, [
-    isLoading,
-    isLoadingMore,
-    results,
-    canLoadMore,
-    isPaginationExhausted,
-    searchMode,
-    loadMoreShortcutResults,
-    currentPage,
-    submittedQuery,
-    query,
-    submitSearch,
-  ]);
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
@@ -2333,7 +1727,19 @@ const SearchScreen: React.FC = () => {
     [activeTab, isDishesTab, renderDishCard, renderRestaurantCard]
   );
   const listHeader = React.useMemo(
-    () => <View style={styles.resultsListHeader}>{filtersHeader}</View>,
+    () => (
+      <View
+        style={styles.resultsListHeader}
+        onLayout={(event: LayoutChangeEvent) => {
+          const nextHeight = event.nativeEvent.layout.height;
+          setFiltersHeaderHeight((prev) =>
+            Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight
+          );
+        }}
+      >
+        {filtersHeader}
+      </View>
+    ),
     [filtersHeader]
   );
 
@@ -2349,40 +1755,67 @@ const SearchScreen: React.FC = () => {
   );
 
   const resultsListEmptyComponent = React.useMemo(() => {
+    const visibleSheetHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle);
+    const emptyAreaMinHeight = Math.max(
+      0,
+      visibleSheetHeight - resultsSheetHeaderHeight - filtersHeaderHeight
+    );
+    const emptyAreaStyle = { minHeight: emptyAreaMinHeight };
+    const emptyYOffset = -Math.min(24, Math.max(12, emptyAreaMinHeight * 0.12));
+    const emptyContentOffsetStyle = { transform: [{ translateY: emptyYOffset }] };
+
     if (error) {
       return (
-        <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-          <Text variant="caption" style={styles.textRed600}>
-            {error}
-          </Text>
+        <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
+          <View style={emptyContentOffsetStyle}>
+            <View style={[styles.resultsCard, styles.resultsCardSurface]}>
+              <Text variant="caption" style={styles.textRed600}>
+                {error}
+              </Text>
+            </View>
+          </View>
         </View>
       );
     }
     if (isLoading && !results) {
       return (
-        <View style={[styles.resultsCard, styles.resultsCardSurface, styles.resultsCardCentered]}>
-          <ActivityIndicator size="large" color="#FB923C" />
-          <Text variant="body" style={[styles.textSlate600, styles.loadingText]}>
-            Looking for the best matches...
-          </Text>
+        <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
+          <View style={emptyContentOffsetStyle}>
+            <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
+          </View>
         </View>
       );
     }
     return (
-      <EmptyState
-        message={
-          activeTab === 'dishes'
-            ? 'No dishes found. Try adjusting your search.'
-            : 'No restaurants found. Try adjusting your search.'
-        }
-      />
+      <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
+        <View style={emptyContentOffsetStyle}>
+          <EmptyState
+            title={activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.'}
+            subtitle="Try moving the map or adjusting your search."
+          />
+        </View>
+      </View>
     );
-  }, [activeTab, error, isLoading, results]);
+  }, [
+    activeTab,
+    error,
+    filtersHeaderHeight,
+    isLoading,
+    results,
+    resultsSheetHeaderHeight,
+    snapPoints.middle,
+  ]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
   const resultsHeaderComponent = (
     <Reanimated.View
       style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
-      onLayout={resultsHeaderCutout.onHeaderLayout}
+      onLayout={(event: LayoutChangeEvent) => {
+        resultsHeaderCutout.onHeaderLayout(event);
+        const nextHeight = event.nativeEvent.layout.height;
+        setResultsSheetHeaderHeight((prev) =>
+          Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight
+        );
+      }}
     >
       {resultsHeaderCutout.background}
       <View style={overlaySheetStyles.grabHandleWrapper}>
@@ -2551,7 +1984,6 @@ const SearchScreen: React.FC = () => {
             <SearchHeader
               value={query}
               placeholder="What are you craving?"
-              loading={isLoading}
               onChangeText={handleQueryChange}
               onSubmit={handleSubmit}
               onFocus={handleSearchFocus}
@@ -2690,23 +2122,22 @@ const SearchScreen: React.FC = () => {
             onScrollOffsetChange={onResultsScroll}
             onScrollBeginDrag={handleResultsScrollBeginDrag}
             onScrollEndDrag={handleResultsScrollEndDrag}
-            onEndReached={canLoadMore ? loadMoreResults : undefined}
+            onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
             extraData={flatListDebugData}
             data={safeResultsData}
             renderItem={renderSafeItem}
             keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
             estimatedItemSize={240}
+            contentContainerStyle={{
+              paddingBottom: safeResultsData.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
+            }}
             ListHeaderComponent={listHeader}
             ListFooterComponent={resultsListFooterComponent}
             ListEmptyComponent={resultsListEmptyComponent}
             headerComponent={resultsHeaderComponent}
             listRef={resultsScrollRef}
             resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
-            onHidden={() => {
-              setPanelVisible(false);
-              setSheetState('hidden');
-              sheetStateShared.value = 'hidden';
-            }}
+            onHidden={resetSheetToHidden}
             onSnapChange={handleSheetSnapChange}
           />
         </SafeAreaView>

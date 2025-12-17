@@ -194,7 +194,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   }, [holes]);
   const overscrollMargin = inset;
   const maskWidth = Math.max(viewportWidth, maxHoleExtent + overscrollMargin * 2);
-  const maskHeight = rowHeight > 0 ? rowHeight + 2 : 0;
+  const maskHeight = rowHeight > 0 ? rowHeight + TOGGLE_STACK_GAP + 1 : 0;
   const maskTopOffset = rowHeight > 0 ? -1 : 0;
 
   const holesTranslateProps = useAnimatedProps(() => ({

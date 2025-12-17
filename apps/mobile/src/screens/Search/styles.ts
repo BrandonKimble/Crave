@@ -498,6 +498,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  resultsEmptyArea: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 0,
+  },
   submittedQueryLabel: {
     flexShrink: 1,
     marginRight: 12,
@@ -889,9 +895,10 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
   },
   emptyState: {
-    paddingVertical: 32,
+    paddingVertical: 0,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
   },
   textSlate900: {
     color: themeColors.textPrimary,
