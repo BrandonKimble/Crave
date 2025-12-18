@@ -565,8 +565,7 @@ const SearchScreen: React.FC = () => {
     isSearchFocused &&
     !isAutocompleteSuppressed &&
     trimmedQuery.length >= AUTOCOMPLETE_MIN_CHARS;
-  const shouldRenderSuggestionPanel =
-    shouldRenderAutocompleteSection || shouldRenderRecentSection;
+  const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldRenderRecentSection;
   const isSuggestionScreenActive = isSearchOverlay && isSearchFocused;
   React.useEffect(() => {
     const target = isSuggestionScreenActive ? 1 : 0;
