@@ -19,10 +19,12 @@ import { API_BASE_URL } from '../services/api';
 import { logger } from '../utils';
 import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
 import { useCityStore } from '../store/cityStore';
+import { useSystemStatusStore } from '../store/systemStatusStore';
 import { colors as themeColors } from '../constants/theme';
 import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 
@@ -61,6 +63,9 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   const socketRef = useRef<Socket | null>(null);
   const pendingPollIdRef = useRef<string | null>(null);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const isOffline = useSystemStatusStore((state) => state.isOffline);
+  const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
+  const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const headerPaddingTop = 0;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
@@ -107,6 +112,9 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
     if (!visible) {
       return;
     }
+    if (isSystemUnavailable) {
+      return;
+    }
     const exists = polls.some((poll) => poll.pollId === routePollId);
     if (exists) {
       setSelectedPollId(routePollId);
@@ -114,7 +122,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
       return;
     }
     void loadPolls({ focusPollId: routePollId });
-  }, [loadPolls, polls, routePollId, visible]);
+  }, [isSystemUnavailable, loadPolls, polls, routePollId, visible]);
 
   const loadPolls = useCallback(
     async (options?: { focusPollId?: string | null; skipSpinner?: boolean }) => {
@@ -161,7 +169,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
         }
       } catch (error) {
         logger.error('Failed to load polls', error);
-        setPolls([]);
       } finally {
         if (!skipSpinner) {
           setLoading(false);
@@ -172,11 +179,11 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
   );
 
   useEffect(() => {
-    if (!visible) {
+    if (!visible || isSystemUnavailable) {
       return;
     }
     void loadPolls();
-  }, [loadPolls, visible]);
+  }, [isSystemUnavailable, loadPolls, visible]);
 
   useEffect(() => {
     setRestaurantQuery('');
@@ -505,16 +512,24 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
           <Text style={styles.refreshText}>Refresh</Text>
         </TouchableOpacity>
       </View>
-      {loading ? <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} /> : null}
+      {loading || (isSystemUnavailable && polls.length === 0) ? (
+        <View style={styles.loader}>
+          <SquircleSpinner size={22} color="#A78BFA" />
+        </View>
+      ) : null}
     </View>
   );
 
   const listEmptyComponent = React.useCallback(() => {
-    if (loading) {
-      return <ActivityIndicator size="large" color="#A78BFA" style={styles.loader} />;
+    if (loading || (isSystemUnavailable && polls.length === 0)) {
+      return (
+        <View style={styles.loader}>
+          <SquircleSpinner size={22} color="#A78BFA" />
+        </View>
+      );
     }
     return <Text style={styles.emptyState}>No polls available yet.</Text>;
-  }, [loading]);
+  }, [isSystemUnavailable, loading, polls.length]);
 
   const listFooterComponent = activePoll ? (
     <View style={styles.detailCard}>

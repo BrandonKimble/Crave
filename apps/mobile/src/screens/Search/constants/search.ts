@@ -99,8 +99,6 @@ export const CARD_VERTICAL_PADDING = 12;
 export const CARD_VERTICAL_PADDING_BALANCE = 2;
 export const CAMERA_STORAGE_KEY = 'search:lastCamera';
 export const SCORE_INFO_MAX_HEIGHT = SCREEN_HEIGHT * 0.25;
-export const RECENT_HISTORY_LIMIT = 8;
-
 export const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
   { label: 'Dishes', value: 'dishes' as const },

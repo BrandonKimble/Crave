@@ -2,12 +2,12 @@ import React from 'react';
 
 import { logger } from '../../../utils';
 import { searchService, type RecentlyViewedRestaurant } from '../../../services/search';
-import { RECENT_HISTORY_LIMIT } from '../constants/search';
-
-const RECENTLY_VIEWED_LIMIT = 10;
+import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../../../constants/searchHistory';
+import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
 type UseSearchHistoryOptions = {
   isSignedIn: boolean;
+  autoLoad?: boolean;
 };
 
 type UseSearchHistoryResult = {
@@ -15,31 +15,60 @@ type UseSearchHistoryResult = {
   isRecentLoading: boolean;
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   isRecentlyViewedLoading: boolean;
-  loadRecentHistory: () => Promise<void>;
-  loadRecentlyViewedRestaurants: () => Promise<void>;
+  loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
+  loadRecentlyViewedRestaurants: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string) => void;
   trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
 };
 
-const useSearchHistory = ({ isSignedIn }: UseSearchHistoryOptions): UseSearchHistoryResult => {
-  const [recentSearches, setRecentSearches] = React.useState<string[]>([]);
-  const [isRecentLoading, setIsRecentLoading] = React.useState(false);
-  const [recentlyViewedRestaurants, setRecentlyViewedRestaurants] = React.useState<
-    RecentlyViewedRestaurant[]
-  >([]);
-  const [isRecentlyViewedLoading, setIsRecentlyViewedLoading] = React.useState(false);
-  const recentHistoryRequest = React.useRef<Promise<void> | null>(null);
-  const recentlyViewedRequest = React.useRef<Promise<void> | null>(null);
+let recentHistoryRequest: Promise<void> | null = null;
+let recentlyViewedRequest: Promise<void> | null = null;
+let hasLoadedRecent = false;
+let hasLoadedRecentlyViewed = false;
 
-  const loadRecentHistory = React.useCallback(async () => {
+const useSearchHistory = ({
+  isSignedIn,
+  autoLoad = true,
+}: UseSearchHistoryOptions): UseSearchHistoryResult => {
+  const recentSearches = useSearchHistoryStore((state) => state.recentSearches);
+  const isRecentLoading = useSearchHistoryStore((state) => state.isRecentLoading);
+  const recentlyViewedRestaurants = useSearchHistoryStore(
+    (state) => state.recentlyViewedRestaurants
+  );
+  const isRecentlyViewedLoading = useSearchHistoryStore(
+    (state) => state.isRecentlyViewedLoading
+  );
+  const setRecentSearches = useSearchHistoryStore((state) => state.setRecentSearches);
+  const setIsRecentLoading = useSearchHistoryStore((state) => state.setIsRecentLoading);
+  const setRecentlyViewedRestaurants = useSearchHistoryStore(
+    (state) => state.setRecentlyViewedRestaurants
+  );
+  const setIsRecentlyViewedLoading = useSearchHistoryStore(
+    (state) => state.setIsRecentlyViewedLoading
+  );
+  const updateLocalRecentSearches = useSearchHistoryStore(
+    (state) => state.updateLocalRecentSearches
+  );
+  const trackRecentlyViewedRestaurant = useSearchHistoryStore(
+    (state) => state.trackRecentlyViewedRestaurant
+  );
+  const resetHistory = useSearchHistoryStore((state) => state.resetHistory);
+  const autoLoadTriggeredRef = React.useRef(false);
+
+  const loadRecentHistory = React.useCallback(async ({ force = false } = {}) => {
     if (!isSignedIn) {
       setIsRecentLoading(false);
       setRecentSearches([]);
+      hasLoadedRecent = false;
       return;
     }
 
-    if (recentHistoryRequest.current) {
-      return recentHistoryRequest.current;
+    if (!force && hasLoadedRecent) {
+      return;
+    }
+
+    if (recentHistoryRequest) {
+      return recentHistoryRequest;
     }
 
     const request = (async () => {
@@ -47,29 +76,35 @@ const useSearchHistory = ({ isSignedIn }: UseSearchHistoryOptions): UseSearchHis
       try {
         const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
         setRecentSearches(history);
+        hasLoadedRecent = true;
       } catch (err) {
         logger.warn('Unable to load recent searches', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
       } finally {
         setIsRecentLoading(false);
-        recentHistoryRequest.current = null;
+        recentHistoryRequest = null;
       }
     })();
 
-    recentHistoryRequest.current = request;
+    recentHistoryRequest = request;
     return request;
-  }, [isSignedIn]);
+  }, [isSignedIn, setIsRecentLoading, setRecentSearches]);
 
-  const loadRecentlyViewedRestaurants = React.useCallback(async () => {
+  const loadRecentlyViewedRestaurants = React.useCallback(async ({ force = false } = {}) => {
     if (!isSignedIn) {
       setIsRecentlyViewedLoading(false);
       setRecentlyViewedRestaurants([]);
+      hasLoadedRecentlyViewed = false;
       return;
     }
 
-    if (recentlyViewedRequest.current) {
-      return recentlyViewedRequest.current;
+    if (!force && hasLoadedRecentlyViewed) {
+      return;
+    }
+
+    if (recentlyViewedRequest) {
+      return recentlyViewedRequest;
     }
 
     const request = (async () => {
@@ -77,50 +112,41 @@ const useSearchHistory = ({ isSignedIn }: UseSearchHistoryOptions): UseSearchHis
       try {
         const items = await searchService.recentlyViewedRestaurants(RECENTLY_VIEWED_LIMIT);
         setRecentlyViewedRestaurants(items);
+        hasLoadedRecentlyViewed = true;
       } catch (err) {
         logger.warn('Unable to load recently viewed restaurants', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
       } finally {
         setIsRecentlyViewedLoading(false);
-        recentlyViewedRequest.current = null;
+        recentlyViewedRequest = null;
       }
     })();
 
-    recentlyViewedRequest.current = request;
+    recentlyViewedRequest = request;
     return request;
-  }, [isSignedIn]);
+  }, [isSignedIn, setIsRecentlyViewedLoading, setRecentlyViewedRestaurants]);
 
-  const updateLocalRecentSearches = React.useCallback((value: string) => {
-    const trimmedValue = value.trim();
-    if (!trimmedValue) {
+  React.useEffect(() => {
+    if (isSignedIn) {
       return;
     }
-    const normalized = trimmedValue.toLowerCase();
-    setRecentSearches((prev) => {
-      const withoutMatch = prev.filter((entry) => entry.toLowerCase() !== normalized);
-      return [trimmedValue, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT);
-    });
-  }, []);
+    resetHistory();
+    recentHistoryRequest = null;
+    recentlyViewedRequest = null;
+    hasLoadedRecent = false;
+    hasLoadedRecentlyViewed = false;
+    autoLoadTriggeredRef.current = false;
+  }, [isSignedIn, resetHistory]);
 
-  const trackRecentlyViewedRestaurant = React.useCallback(
-    (restaurantId: string, restaurantName: string) => {
-      setRecentlyViewedRestaurants((prev) => {
-        const existing = prev.find((item) => item.restaurantId === restaurantId);
-        const next: RecentlyViewedRestaurant = {
-          restaurantId,
-          restaurantName,
-          city: existing?.city ?? null,
-          region: existing?.region ?? null,
-          lastViewedAt: new Date().toISOString(),
-          viewCount: existing ? existing.viewCount + 1 : 1,
-        };
-        const withoutMatch = prev.filter((item) => item.restaurantId !== restaurantId);
-        return [next, ...withoutMatch].slice(0, RECENTLY_VIEWED_LIMIT);
-      });
-    },
-    []
-  );
+  React.useEffect(() => {
+    if (!autoLoad || !isSignedIn || autoLoadTriggeredRef.current) {
+      return;
+    }
+    autoLoadTriggeredRef.current = true;
+    void loadRecentHistory();
+    void loadRecentlyViewedRestaurants();
+  }, [autoLoad, isSignedIn, loadRecentHistory, loadRecentlyViewedRestaurants]);
 
   return {
     recentSearches,

@@ -1,0 +1,73 @@
+import { create } from 'zustand';
+
+import type { RecentlyViewedRestaurant } from '../services/search';
+import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../constants/searchHistory';
+
+type SearchHistoryState = {
+  recentSearches: string[];
+  isRecentLoading: boolean;
+  recentlyViewedRestaurants: RecentlyViewedRestaurant[];
+  isRecentlyViewedLoading: boolean;
+  setRecentSearches: (value: string[]) => void;
+  setIsRecentLoading: (value: boolean) => void;
+  setRecentlyViewedRestaurants: (value: RecentlyViewedRestaurant[]) => void;
+  setIsRecentlyViewedLoading: (value: boolean) => void;
+  updateLocalRecentSearches: (value: string) => void;
+  trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
+  resetHistory: () => void;
+};
+
+const defaultState = {
+  recentSearches: [] as string[],
+  isRecentLoading: false,
+  recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+  isRecentlyViewedLoading: false,
+} as const;
+
+export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
+  ...defaultState,
+  setRecentSearches: (recentSearches) => set({ recentSearches }),
+  setIsRecentLoading: (isRecentLoading) => set({ isRecentLoading }),
+  setRecentlyViewedRestaurants: (recentlyViewedRestaurants) =>
+    set({
+      recentlyViewedRestaurants,
+    }),
+  setIsRecentlyViewedLoading: (isRecentlyViewedLoading) => set({ isRecentlyViewedLoading }),
+  updateLocalRecentSearches: (value) =>
+    set((state) => {
+      const trimmedValue = value.trim();
+      if (!trimmedValue) {
+        return state;
+      }
+      const normalized = trimmedValue.toLowerCase();
+      const withoutMatch = state.recentSearches.filter(
+        (entry) => entry.toLowerCase() !== normalized
+      );
+      return {
+        ...state,
+        recentSearches: [trimmedValue, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT),
+      };
+    }),
+  trackRecentlyViewedRestaurant: (restaurantId, restaurantName) =>
+    set((state) => {
+      const existing = state.recentlyViewedRestaurants.find(
+        (item) => item.restaurantId === restaurantId
+      );
+      const next: RecentlyViewedRestaurant = {
+        restaurantId,
+        restaurantName,
+        city: existing?.city ?? null,
+        region: existing?.region ?? null,
+        lastViewedAt: new Date().toISOString(),
+        viewCount: existing ? existing.viewCount + 1 : 1,
+      };
+      const withoutMatch = state.recentlyViewedRestaurants.filter(
+        (item) => item.restaurantId !== restaurantId
+      );
+      return {
+        ...state,
+        recentlyViewedRestaurants: [next, ...withoutMatch].slice(0, RECENTLY_VIEWED_LIMIT),
+      };
+    }),
+  resetHistory: () => set({ ...defaultState }),
+}));

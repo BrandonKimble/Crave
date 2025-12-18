@@ -11,6 +11,7 @@ import { useOnboardingStore } from '../store/onboardingStore';
 import { useNotificationStore } from '../store/notificationStore';
 import { navigationRef } from '../navigation/navigationRef';
 import PollNotificationListener from './PollNotificationListener';
+import SearchHistoryPreload from './SearchHistoryPreload';
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
@@ -229,6 +230,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       <ClerkSessionBridge />
       <PushNotificationRegistrar />
       <AuthStateMonitor />
+      <SearchHistoryPreload />
       <PollNotificationListener />
       {children}
     </ClerkProvider>

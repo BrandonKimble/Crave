@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Dimensions,
-  Pressable,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { Dimensions, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../components';
@@ -15,6 +8,8 @@ import { favoritesService, type Favorite } from '../services/favorites';
 import { logger } from '../utils';
 import { colors as themeColors } from '../constants/theme';
 import { useOverlayStore } from '../store/overlayStore';
+import { useSystemStatusStore } from '../store/systemStatusStore';
+import SquircleSpinner from '../components/SquircleSpinner';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
@@ -30,9 +25,11 @@ type BookmarksOverlayProps = {
 const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   const [favorites, setFavorites] = React.useState<Favorite[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const isOffline = useSystemStatusStore((state) => state.isOffline);
+  const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
+  const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const headerPaddingTop = 0;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
@@ -54,21 +51,19 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
     try {
       const data = await favoritesService.list();
       setFavorites(data);
-      setError(null);
     } catch (fetchError) {
       logger.error('Failed to load favorites', fetchError);
-      setError('Unable to load favorites. Pull to refresh.');
     } finally {
       setLoading(false);
     }
   }, []);
 
   React.useEffect(() => {
-    if (!visible) {
+    if (!visible || isSystemUnavailable) {
       return;
     }
     void loadFavorites();
-  }, [loadFavorites, visible]);
+  }, [isSystemUnavailable, loadFavorites, visible]);
 
   const handleRemoveFavorite = React.useCallback(async (favorite: Favorite) => {
     setFavorites((prev) => prev.filter((item) => item.favoriteId !== favorite.favoriteId));
@@ -166,13 +161,11 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   );
 
   const ListEmptyComponent = React.useCallback(() => {
-    if (loading) {
+    if (loading || (isSystemUnavailable && favorites.length === 0)) {
       return (
-        <ActivityIndicator
-          size="large"
-          color={themeColors.primary}
-          style={styles.loadingIndicator}
-        />
+        <View style={styles.loadingIndicator}>
+          <SquircleSpinner size={22} color={themeColors.primary} />
+        </View>
       );
     }
     return (
@@ -180,14 +173,9 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
         <Text variant="body" style={styles.emptyText}>
           No bookmarks yet
         </Text>
-        {error ? (
-          <Text variant="caption" style={styles.errorText}>
-            {error}
-          </Text>
-        ) : null}
       </View>
     );
-  }, [error, loading]);
+  }, [favorites.length, isSystemUnavailable, loading]);
 
   return (
     <BottomSheetWithFlashList
@@ -230,6 +218,7 @@ const styles = StyleSheet.create({
   },
   loadingIndicator: {
     marginTop: 24,
+    alignItems: 'center',
   },
   emptyState: {
     alignItems: 'center',
@@ -238,10 +227,6 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: themeColors.muted,
-  },
-  errorText: {
-    color: themeColors.primaryDark,
-    marginTop: 8,
   },
   card: {
     flexDirection: 'row',

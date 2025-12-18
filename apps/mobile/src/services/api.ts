@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { logger } from '../utils';
+import { useSystemStatusStore } from '../store/systemStatusStore';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000/api';
 export const API_BASE_URL = API_URL;
@@ -44,8 +45,41 @@ api.interceptors.request.use(
 );
 
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const systemStatus = useSystemStatusStore.getState();
+    systemStatus.clearServiceIssue('global');
+    return response;
+  },
   (error) => {
+    if (axios.isCancel(error) || error?.code === 'ERR_CANCELED') {
+      return Promise.reject(error);
+    }
+
+    const systemStatus = useSystemStatusStore.getState();
+    const status: number | undefined =
+      typeof error?.response?.status === 'number' ? error.response.status : undefined;
+    const responseData: unknown = error?.response?.data;
+    const responseRecord: Record<string, unknown> | null =
+      responseData && typeof responseData === 'object' && !Array.isArray(responseData)
+        ? (responseData as Record<string, unknown>)
+        : null;
+    const errorCode =
+      responseRecord && typeof responseRecord.errorCode === 'string'
+        ? responseRecord.errorCode
+        : undefined;
+    const responseMessage =
+      responseRecord && typeof responseRecord.message === 'string'
+        ? responseRecord.message
+        : undefined;
+
+    if (typeof status === 'number' && status >= 500 && !systemStatus.isOffline) {
+      const scope = errorCode === 'LLM_UNAVAILABLE' ? 'search' : 'global';
+      systemStatus.reportServiceIssue({
+        scope,
+        message: responseMessage || 'Service temporarily unavailable.',
+      });
+    }
+
     logger.error('API request failed', {
       message: error.message,
       url: error.config?.url,

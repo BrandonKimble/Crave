@@ -5,6 +5,7 @@ import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import { logger } from '../../../utils';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { StructuredSearchRequest } from '../../../services/search';
+import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import type { SegmentValue } from '../constants/search';
 import { DEFAULT_PAGE_SIZE, MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
@@ -67,7 +68,7 @@ type UseSearchSubmitOptions = {
   ensureUserLocation: () => Promise<Coordinate | null>;
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   resetMapMoveFlag: () => void;
-  loadRecentHistory: () => Promise<void>;
+  loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string) => void;
 };
 
@@ -225,7 +226,7 @@ const useSearchSubmit = ({
             updateLocalRecentSearches(submittedLabel);
           }
 
-          void loadRecentHistory();
+          void loadRecentHistory({ force: true });
         }
 
         Keyboard.dismiss();
@@ -443,6 +444,7 @@ const useSearchSubmit = ({
 
         const response = await runSearch({ kind: 'natural', payload });
         if (response && requestId === activeSearchRequestRef.current) {
+          useSystemStatusStore.getState().clearServiceIssue('search');
           logger.info('Search response payload', response);
           const submittedLabel = append ? undefined : trimmed;
           handleSearchResponse(response, {

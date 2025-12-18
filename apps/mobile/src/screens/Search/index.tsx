@@ -37,6 +37,7 @@ import { logger } from '../../utils';
 import { searchService, type RecentlyViewedRestaurant } from '../../services/search';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
+import { useSystemStatusStore } from '../../store/systemStatusStore';
 import type {
   SearchResponse,
   FoodResult,
@@ -251,7 +252,7 @@ const SearchScreen: React.FC = () => {
   const [isSearchSessionActive, setIsSearchSessionActive] = React.useState(false);
   const [searchMode, setSearchMode] = React.useState<'natural' | 'shortcut' | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [, setError] = React.useState<string | null>(null);
   const [suggestions, setSuggestions] = React.useState<AutocompleteMatch[]>([]);
   const [, setShowSuggestions] = React.useState(false);
   const [isAutocompleteSuppressed, setIsAutocompleteSuppressed] = React.useState(false);
@@ -277,7 +278,6 @@ const SearchScreen: React.FC = () => {
     recentlyViewedRestaurants,
     isRecentlyViewedLoading,
     loadRecentHistory,
-    loadRecentlyViewedRestaurants,
     updateLocalRecentSearches,
     trackRecentlyViewedRestaurant,
   } = useSearchHistory({ isSignedIn: !!isSignedIn });
@@ -532,6 +532,10 @@ const SearchScreen: React.FC = () => {
   const votes100Plus = useSearchStore((state) => state.votes100Plus);
   const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
   const resetFilters = useSearchStore((state) => state.resetFilters);
+  const isOffline = useSystemStatusStore((state) => state.isOffline);
+  const hasSystemStatusBanner = useSystemStatusStore(
+    (state) => state.isOffline || Boolean(state.serviceIssue),
+  );
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
     getRangeFromLevels(priceLevels)
   );
@@ -551,15 +555,13 @@ const SearchScreen: React.FC = () => {
     () => `${priceSheetSummary} per person`,
     [priceSheetSummary]
   );
+  const hasRecentSearches = recentSearches.length > 0;
+  const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const trimmedQuery = query.trim();
   const hasTypedQuery = trimmedQuery.length > 0;
   const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
   const shouldRenderRecentSection =
-    shouldShowRecentSection &&
-    (isRecentLoading ||
-      isRecentlyViewedLoading ||
-      hasRecentSearches ||
-      hasRecentlyViewedRestaurants);
+    shouldShowRecentSection && (hasRecentSearches || hasRecentlyViewedRestaurants);
   const shouldRenderAutocompleteSection =
     isSearchOverlay &&
     isSearchFocused &&
@@ -684,8 +686,6 @@ const SearchScreen: React.FC = () => {
   const suggestionMaskAnimatedStyle = useAnimatedStyle(() => ({
     opacity: suggestionTransition.value,
   }));
-  const hasRecentSearches = recentSearches.length > 0;
-  const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
   const votesFilterActive = votes100Plus;
   const canLoadMore =
@@ -1195,6 +1195,47 @@ const SearchScreen: React.FC = () => {
     }
   );
 
+  const shouldRetrySearchOnReconnectRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!isOffline) {
+      return;
+    }
+    if (!isSearchSessionActive || results || isLoading || isLoadingMore) {
+      return;
+    }
+    shouldRetrySearchOnReconnectRef.current = true;
+  }, [isOffline, isLoading, isLoadingMore, isSearchSessionActive, results]);
+
+  React.useEffect(() => {
+    if (isOffline) {
+      return;
+    }
+    if (!shouldRetrySearchOnReconnectRef.current) {
+      return;
+    }
+    if (!isSearchSessionActive || results || isLoading || isLoadingMore) {
+      return;
+    }
+
+    const retryQuery = (submittedQuery || query).trim();
+    if (!retryQuery) {
+      shouldRetrySearchOnReconnectRef.current = false;
+      return;
+    }
+
+    shouldRetrySearchOnReconnectRef.current = false;
+    void submitSearch({ preserveSheetState: true }, retryQuery);
+  }, [
+    isOffline,
+    isLoading,
+    isLoadingMore,
+    isSearchSessionActive,
+    query,
+    results,
+    submitSearch,
+    submittedQuery,
+  ]);
+
   const toggleVotesFilter = React.useCallback(() => {
     const nextValue = !votes100Plus;
     setVotes100Plus(nextValue);
@@ -1342,9 +1383,7 @@ const SearchScreen: React.FC = () => {
     dismissTransientOverlays();
     setIsSearchFocused(true);
     setIsAutocompleteSuppressed(false);
-    void loadRecentHistory();
-    void loadRecentlyViewedRestaurants();
-  }, [dismissTransientOverlays, loadRecentHistory, loadRecentlyViewedRestaurants]);
+  }, [dismissTransientOverlays]);
 
   const handleSearchBlur = React.useCallback(() => {
     setIsSearchFocused(false);
@@ -1753,6 +1792,7 @@ const SearchScreen: React.FC = () => {
     [canLoadMore, isLoadingMore]
   );
 
+  const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const resultsListEmptyComponent = React.useMemo(() => {
     const visibleSheetHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle);
     const emptyAreaMinHeight = Math.max(
@@ -1763,20 +1803,10 @@ const SearchScreen: React.FC = () => {
     const emptyYOffset = -Math.min(24, Math.max(12, emptyAreaMinHeight * 0.12));
     const emptyContentOffsetStyle = { transform: [{ translateY: emptyYOffset }] };
 
-    if (error) {
-      return (
-        <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
-          <View style={emptyContentOffsetStyle}>
-            <View style={[styles.resultsCard, styles.resultsCardSurface]}>
-              <Text variant="caption" style={styles.textRed600}>
-                {error}
-              </Text>
-            </View>
-          </View>
-        </View>
-      );
-    }
-    if (isLoading && !results) {
+    if (
+      (isLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect) &&
+      !results
+    ) {
       return (
         <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
           <View style={emptyContentOffsetStyle}>
@@ -1797,11 +1827,12 @@ const SearchScreen: React.FC = () => {
     );
   }, [
     activeTab,
-    error,
     filtersHeaderHeight,
+    hasSystemStatusBanner,
     isLoading,
     results,
     resultsSheetHeaderHeight,
+    shouldRetrySearchOnReconnect,
     snapPoints.middle,
   ]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
