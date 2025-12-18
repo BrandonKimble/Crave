@@ -1,6 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { MetricsService } from '../../metrics/metrics.service';
 import {
   ExternalApiService,
   RateLimitConfig,
@@ -8,6 +9,7 @@ import {
   RateLimitResponse,
   RateLimitStatus,
 } from './external-integrations.types';
+import { Counter, Gauge } from 'prom-client';
 
 /**
  * Rate Limiting Coordinator
@@ -21,10 +23,16 @@ export class RateLimitCoordinatorService implements OnModuleInit {
   private readonly rateLimitConfigs: Map<string, RateLimitConfig> = new Map();
   private readonly requestCounts: Map<string, Map<string, number>> = new Map();
   private readonly resetTimes: Map<string, Map<string, Date>> = new Map();
+  private requestCounter!: Counter<string>;
+  private rateLimitHitCounter!: Counter<string>;
+  private usageGauge!: Gauge<string>;
+  private limitGauge!: Gauge<string>;
+  private utilizationGauge!: Gauge<string>;
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   private getScopeKey(service: ExternalApiService, operation?: string): string {
@@ -63,7 +71,87 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     this.logger = this.loggerService.setContext('RateLimitCoordinator');
     this.logger.info('Initializing Rate Limit Coordinator');
     this.initializeRateLimitConfigs();
+    this.initializeMetrics();
     this.logger.info('Rate Limit Coordinator initialized successfully');
+  }
+
+  private initializeMetrics(): void {
+    this.requestCounter = this.metricsService.getCounter({
+      name: 'external_api_rate_limit_requests_total',
+      help: 'Total external API requests checked by the rate limit coordinator',
+      labelNames: ['service', 'operation', 'decision'],
+    });
+    this.rateLimitHitCounter = this.metricsService.getCounter({
+      name: 'external_api_rate_limit_hits_total',
+      help: 'Total external API rate limit hits (coordinator blocks and upstream 429s)',
+      labelNames: ['service', 'operation', 'source'],
+    });
+    this.usageGauge = this.metricsService.getGauge({
+      name: 'external_api_rate_limit_usage',
+      help: 'Current external API rate limit usage per window',
+      labelNames: ['service', 'operation', 'window'],
+    });
+    this.limitGauge = this.metricsService.getGauge({
+      name: 'external_api_rate_limit_limit',
+      help: 'Configured external API rate limit per window',
+      labelNames: ['service', 'operation', 'window'],
+    });
+    this.utilizationGauge = this.metricsService.getGauge({
+      name: 'external_api_rate_limit_utilization_percent',
+      help: 'External API rate limit utilization percent per window',
+      labelNames: ['service', 'operation', 'window'],
+    });
+  }
+
+  private recordLimitSnapshot(options: {
+    service: ExternalApiService;
+    operation: string;
+    config: RateLimitConfig;
+    scopeKey: string;
+    now: Date;
+    minuteUsage?: number;
+  }): void {
+    const { service, operation, config, scopeKey, now } = options;
+
+    const minuteUsage =
+      typeof options.minuteUsage === 'number'
+        ? options.minuteUsage
+        : this.getCurrentUsage(scopeKey, 'minute', now);
+    const hourUsage = this.getCurrentUsage(scopeKey, 'hour', now);
+    const dayUsage = this.getCurrentUsage(scopeKey, 'day', now);
+
+    const snapshots = [
+      {
+        window: 'minute',
+        usage: minuteUsage,
+        limit: config.requestsPerMinute,
+      },
+      {
+        window: 'hour',
+        usage: hourUsage,
+        limit: config.requestsPerHour,
+      },
+      {
+        window: 'day',
+        usage: dayUsage,
+        limit: config.requestsPerDay,
+      },
+    ] as const;
+
+    snapshots.forEach((snapshot) => {
+      this.usageGauge.set(
+        { service, operation, window: snapshot.window },
+        snapshot.usage,
+      );
+      this.limitGauge.set(
+        { service, operation, window: snapshot.window },
+        snapshot.limit,
+      );
+      this.utilizationGauge.set(
+        { service, operation, window: snapshot.window },
+        snapshot.limit > 0 ? (snapshot.usage / snapshot.limit) * 100 : 0,
+      );
+    });
   }
 
   /**
@@ -76,6 +164,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       request.service,
       request.operation,
     );
+    const operationLabel = scopeKey.includes(':') ? request.operation : 'all';
 
     if (!config) {
       this.logger.warn(
@@ -101,6 +190,24 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     // Check if we're at the rate limit
     if (limit > 0 && currentUsage >= limit) {
       const retryAfter = this.getRetryAfter(scopeKey, 'minute', now);
+      this.requestCounter.inc({
+        service: request.service,
+        operation: operationLabel,
+        decision: 'blocked',
+      });
+      this.rateLimitHitCounter.inc({
+        service: request.service,
+        operation: operationLabel,
+        source: 'coordinator',
+      });
+      this.recordLimitSnapshot({
+        service: request.service,
+        operation: operationLabel,
+        config,
+        scopeKey,
+        now,
+        minuteUsage: currentUsage,
+      });
 
       this.logger.warn(`Rate limit exceeded for ${request.service}`, {
         service: request.service,
@@ -126,6 +233,19 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
     // Only log when approaching limits (80%+) to reduce noise
     const updatedUsage = currentUsage + 1;
+    this.requestCounter.inc({
+      service: request.service,
+      operation: operationLabel,
+      decision: 'allowed',
+    });
+    this.recordLimitSnapshot({
+      service: request.service,
+      operation: operationLabel,
+      config,
+      scopeKey,
+      now,
+      minuteUsage: updatedUsage,
+    });
     if (limit > 0 && updatedUsage / limit >= 0.8) {
       this.logger.info(`Approaching rate limit for ${request.service}`, {
         service: request.service,
@@ -155,6 +275,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     operation?: string,
   ): void {
     const correlationId = CorrelationUtils.getCorrelationId();
+    const resolvedOperation = operation ?? 'unknown';
 
     this.logger.warn(`Rate limit hit reported for ${service}`, {
       service,
@@ -167,8 +288,21 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     const now = new Date();
     const { config, scopeKey } = this.resolveScope(service, operation);
     if (config) {
+      const operationLabel = scopeKey.includes(':') ? resolvedOperation : 'all';
+      this.rateLimitHitCounter.inc({
+        service,
+        operation: operationLabel,
+        source: 'upstream',
+      });
       // Set usage to limit to prevent further requests
       this.setUsageToLimit(scopeKey, now, config.requestsPerMinute);
+      this.recordLimitSnapshot({
+        service,
+        operation: operationLabel,
+        config,
+        scopeKey,
+        now,
+      });
     }
   }
 
@@ -371,10 +505,34 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     // Clean up old windows first
     this.cleanupOldWindows(scopeKey, now);
 
-    // Increment current minute
-    const minuteKey = this.getWindowKey('minute', now);
-    serviceMap.set(minuteKey, (serviceMap.get(minuteKey) || 0) + 1);
-    resetMap.set(minuteKey, new Date(now.getTime() + 60000));
+    (['minute', 'hour', 'day'] as const).forEach((window) => {
+      const windowKey = this.getWindowKey(window, now);
+      serviceMap.set(windowKey, (serviceMap.get(windowKey) || 0) + 1);
+      resetMap.set(windowKey, this.getWindowResetTime(window, now));
+    });
+  }
+
+  private getWindowResetTime(
+    window: 'minute' | 'hour' | 'day',
+    now: Date,
+  ): Date {
+    switch (window) {
+      case 'minute': {
+        const ms = now.getTime();
+        return new Date(Math.ceil(ms / 60000) * 60000);
+      }
+      case 'hour': {
+        const ms = now.getTime();
+        return new Date(Math.ceil(ms / 3600000) * 3600000);
+      }
+      case 'day': {
+        const reset = new Date(now);
+        reset.setHours(24, 0, 0, 0);
+        return reset;
+      }
+      default:
+        return new Date(now.getTime() + 60000);
+    }
   }
 
   /**

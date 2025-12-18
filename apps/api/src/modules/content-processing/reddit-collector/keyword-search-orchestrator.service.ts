@@ -1049,7 +1049,17 @@ export class KeywordSearchOrchestratorService
   }
 
   private keywordSchedulerConfigEnabled(): boolean {
-    return this.keywordScheduler.isEnabled();
+    return this.keywordScheduler.isEnabled() && this.backgroundJobsEnabled();
+  }
+
+  private backgroundJobsEnabled(): boolean {
+    const raw =
+      this.configService.get<string>('TEST_COLLECTION_JOBS_ENABLED') ??
+      process.env.TEST_COLLECTION_JOBS_ENABLED;
+    if (typeof raw !== 'string') {
+      return true;
+    }
+    return raw.toLowerCase() === 'true';
   }
 
   private resolveAutoInterval(): number {

@@ -6,11 +6,10 @@ import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EntityRepository } from '../../repositories/entity.repository';
 import {
-  GooglePlaceDetailsResponse,
-  GooglePlaceDetailsResult,
   GooglePlacesService,
-  GooglePlacePrediction,
-  GoogleFindPlaceCandidate,
+  GooglePlacesV1AutocompleteSuggestion,
+  GooglePlacesV1Place,
+  GooglePlacesV1PlaceDetailsResponse,
 } from '../external-integrations/google-places';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
@@ -30,6 +29,190 @@ const GOOGLE_DAY_NAMES = [
 ] as const;
 
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
+
+type GoogleRestaurantAttributeDefinition = {
+  canonicalName: string;
+  aliases: string[];
+  isEnabled: (place: GooglePlacesV1Place) => boolean;
+};
+
+const GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS: GoogleRestaurantAttributeDefinition[] =
+  [
+    {
+      canonicalName: 'allows dogs',
+      aliases: [
+        'dog friendly',
+        'dog-friendly',
+        'dogs allowed',
+        'dogs welcome',
+        'dogs ok',
+        'pet friendly',
+        'pet-friendly',
+        'pets allowed',
+        'pets welcome',
+        'pets ok',
+      ],
+      isEnabled: (place) => place.allowsDogs === true,
+    },
+    {
+      canonicalName: 'delivery',
+      aliases: ['delivers', 'delivery available'],
+      isEnabled: (place) => place.delivery === true,
+    },
+    {
+      canonicalName: 'takeout',
+      aliases: ['take out', 'pickup', 'pick up'],
+      isEnabled: (place) => place.takeout === true,
+    },
+    {
+      canonicalName: 'dine in',
+      aliases: ['dine-in', 'dinein', 'dining in', 'dine inside'],
+      isEnabled: (place) => place.dineIn === true,
+    },
+    {
+      canonicalName: 'curbside pickup',
+      aliases: ['curbside', 'curbside-pickup', 'curbside pick up'],
+      isEnabled: (place) => place.curbsidePickup === true,
+    },
+    {
+      canonicalName: 'good for children',
+      aliases: [
+        'child friendly',
+        'child-friendly',
+        'kid friendly',
+        'kid-friendly',
+        'kids welcome',
+        'kids',
+        'family-friendly',
+        'family friendly',
+        'good for kids',
+      ],
+      isEnabled: (place) => place.goodForChildren === true,
+    },
+    {
+      canonicalName: 'good for groups',
+      aliases: [
+        'good for large groups',
+        'large groups',
+        'groups welcome',
+        'large party',
+        'large parties',
+        'group friendly',
+        'group-friendly',
+        'good for groups of people',
+      ],
+      isEnabled: (place) => place.goodForGroups === true,
+    },
+    {
+      canonicalName: 'good for watching sports',
+      aliases: [
+        'watch sports',
+        'watch the game',
+        'sports on tv',
+        'games on tv',
+        'sports tv',
+        'sports viewing',
+        'sports bar',
+      ],
+      isEnabled: (place) => place.goodForWatchingSports === true,
+    },
+    {
+      canonicalName: 'live music',
+      aliases: [
+        'music',
+        'live entertainment',
+        'live performances',
+        'live-music',
+        'music venue',
+      ],
+      isEnabled: (place) => place.liveMusic === true,
+    },
+    {
+      canonicalName: 'outdoor seating',
+      aliases: [
+        'patio',
+        'patio seating',
+        'outside seating',
+        'al fresco',
+        'alfresco',
+        'outdoor dining',
+        'outdoor-seating',
+      ],
+      isEnabled: (place) => place.outdoorSeating === true,
+    },
+    {
+      canonicalName: 'serves beer',
+      aliases: ['beer'],
+      isEnabled: (place) => place.servesBeer === true,
+    },
+    {
+      canonicalName: 'serves breakfast',
+      aliases: ['breakfast'],
+      isEnabled: (place) => place.servesBreakfast === true,
+    },
+    {
+      canonicalName: 'serves brunch',
+      aliases: ['brunch'],
+      isEnabled: (place) => place.servesBrunch === true,
+    },
+    {
+      canonicalName: 'serves cocktails',
+      aliases: ['cocktails', 'mixed drinks', 'cocktail', 'cocktail bar'],
+      isEnabled: (place) => place.servesCocktails === true,
+    },
+    {
+      canonicalName: 'serves coffee',
+      aliases: [
+        'coffee',
+        'coffee bar',
+        'espresso',
+        'espresso bar',
+        'cafe',
+        'café',
+      ],
+      isEnabled: (place) => place.servesCoffee === true,
+    },
+    {
+      canonicalName: 'serves dinner',
+      aliases: ['dinner'],
+      isEnabled: (place) => place.servesDinner === true,
+    },
+    {
+      canonicalName: 'serves dessert',
+      aliases: [
+        'dessert',
+        'desserts',
+        'dessert menu',
+        'sweet treats',
+        'sweets',
+        'sweet',
+      ],
+      isEnabled: (place) => place.servesDessert === true,
+    },
+    {
+      canonicalName: 'serves lunch',
+      aliases: ['lunch'],
+      isEnabled: (place) => place.servesLunch === true,
+    },
+    {
+      canonicalName: 'serves vegetarian food',
+      aliases: ['vegetarian', 'vegetarian friendly', 'vegetarian options'],
+      isEnabled: (place) => place.servesVegetarianFood === true,
+    },
+    {
+      canonicalName: 'serves wine',
+      aliases: ['wine'],
+      isEnabled: (place) => place.servesWine === true,
+    },
+  ];
+
+const GOOGLE_RESTAURANT_ATTRIBUTE_CANONICAL_NAMES = Array.from(
+  new Set(
+    GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.map((definition) =>
+      definition.canonicalName.trim().toLowerCase(),
+    ).filter((name) => name.length > 0),
+  ),
+);
 
 interface NormalizedOpeningHours {
   hours?: Partial<Record<GoogleDayName, string | string[]>>;
@@ -94,8 +277,17 @@ interface EnrichmentSearchContext {
   locationBias?: { lat: number; lng: number };
 }
 
-type RankedPrediction = {
-  prediction: GooglePlacePrediction;
+interface PlaceCandidate {
+  placeId: string;
+  description: string;
+  mainText?: string;
+  secondaryText?: string;
+  types?: string[];
+  distanceMeters?: number;
+}
+
+type RankedCandidate = {
+  candidate: PlaceCandidate;
   score: number;
 };
 
@@ -209,12 +401,13 @@ export class RestaurantLocationEnrichmentService {
       };
     }
 
-    let latestDetails: GooglePlaceDetailsResponse | null = null;
+    let latestDetails: GooglePlacesV1PlaceDetailsResponse | null = null;
     let latestMatchMetadata: MatchMetadata | null = null;
     let combinedUpdateData: Prisma.EntityUpdateInput | null = null;
     let combinedUpdatedFields: string[] = [];
     let targetNameForUpdate: string | null = null;
     let enrichmentScore = 0;
+    let googleRestaurantAttributeIds: string[] = [];
 
     const hasPlaceId =
       Boolean(entity.googlePlaceId) ||
@@ -263,11 +456,11 @@ export class RestaurantLocationEnrichmentService {
         },
       );
 
-      let ranked = this.rankPredictions(
-        autocomplete.predictions,
-        entity,
-        searchContext,
+      const candidates = this.extractAutocompleteCandidates(
+        autocomplete.suggestions,
       );
+
+      let ranked = this.rankCandidates(candidates, entity, searchContext);
 
       let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
       let fallbackAttempted = false;
@@ -313,7 +506,7 @@ export class RestaurantLocationEnrichmentService {
         }
       }
 
-      const best = this.selectQualifiedPrediction(ranked);
+      const best = this.selectQualifiedCandidate(ranked);
 
       if (!best) {
         const noMatchMetadata = this.buildNoMatchMetadata(
@@ -337,12 +530,12 @@ export class RestaurantLocationEnrichmentService {
       }
 
       const details = await this.googlePlacesService.getPlaceDetails(
-        best.prediction.place_id,
+        best.candidate.placeId,
         { includeRaw: true },
       );
       latestDetails = details;
 
-      if (!details.result) {
+      if (!details.place) {
         const noMatchMetadata = this.buildNoMatchMetadata(
           ranked,
           searchContext,
@@ -359,16 +552,19 @@ export class RestaurantLocationEnrichmentService {
         };
       }
 
-      const placeDetails = details.result;
+      const placeDetails = details.place;
+      if (typeof placeDetails.id !== 'string' || !placeDetails.id.trim()) {
+        placeDetails.id = best.candidate.placeId;
+      }
       enrichmentScore = best.score;
 
       const matchMetadata: MatchMetadata = {
         query: searchContext.query ?? '',
         score: best.score,
-        predictionDescription: best.prediction.description,
-        mainText: best.prediction.structured_formatting?.main_text,
-        secondaryText: best.prediction.structured_formatting?.secondary_text,
-        candidateTypes: best.prediction.types,
+        predictionDescription: best.candidate.description,
+        mainText: best.candidate.mainText,
+        secondaryText: best.candidate.secondaryText,
+        candidateTypes: best.candidate.types,
         predictionsConsidered: ranked.length,
         timestamp: new Date().toISOString(),
         source: matchSource,
@@ -378,11 +574,14 @@ export class RestaurantLocationEnrichmentService {
       const { updateData, updatedFields } = this.buildEntityUpdate(
         entity,
         placeDetails,
-        details.metadata.fields,
+        details.metadata.fieldMask,
         matchMetadata,
       );
       const { updateData: aliasUpdate, updatedFields: aliasFields } =
-        this.computeNameAndAliasUpdate(entity, placeDetails.name);
+        this.computeNameAndAliasUpdate(
+          entity,
+          this.getPlaceDisplayName(placeDetails),
+        );
       combinedUpdateData = this.mergeEntityUpdates(updateData, aliasUpdate);
       combinedUpdatedFields = this.mergeUpdatedFieldLists(
         updatedFields,
@@ -390,11 +589,11 @@ export class RestaurantLocationEnrichmentService {
       );
       targetNameForUpdate = this.extractTargetNameFromUpdate(
         combinedUpdateData,
-        placeDetails.name,
+        this.getPlaceDisplayName(placeDetails),
       );
       const targetLocation =
         entity.locations?.find(
-          (location) => location.googlePlaceId === placeDetails.place_id,
+          (location) => location.googlePlaceId === placeDetails.id,
         ) ??
         entity.primaryLocation ??
         entity.locations?.[0] ??
@@ -409,23 +608,46 @@ export class RestaurantLocationEnrichmentService {
       if (options.dryRun) {
         this.logger.info('Dry-run enrichment preview', {
           entityId: entity.entityId,
-          placeId: placeDetails.place_id,
+          placeId: placeDetails.id,
           updatedFields: combinedUpdatedFields,
         });
         return {
           entityId: entity.entityId,
           status: 'skipped',
           reason: 'dry_run',
-          placeId: placeDetails.place_id,
+          placeId: placeDetails.id,
           score: best.score,
           updatedFields: combinedUpdatedFields,
         };
       }
 
+      const googleAttributeDefinitions =
+        this.extractGoogleRestaurantAttributeDefinitions(placeDetails);
+      googleRestaurantAttributeIds =
+        await this.resolveRestaurantAttributeIdsForDefinitions(
+          googleAttributeDefinitions,
+        );
+      const mergedRestaurantAttributes = this.unionStringArrays(
+        entity.restaurantAttributes,
+        googleRestaurantAttributeIds,
+      );
+      if (
+        !this.setsEqual(
+          new Set(entity.restaurantAttributes),
+          new Set(mergedRestaurantAttributes),
+        )
+      ) {
+        combinedUpdateData.restaurantAttributes = mergedRestaurantAttributes;
+        combinedUpdatedFields = this.mergeUpdatedFieldLists(
+          combinedUpdatedFields,
+          ['restaurantAttributes'],
+        );
+      }
+
       try {
         await this.prisma.$transaction(async (tx) => {
           const location = await tx.restaurantLocation.upsert({
-            where: { googlePlaceId: placeDetails.place_id },
+            where: { googlePlaceId: placeDetails.id },
             update: {
               ...locationUpsert.update,
               restaurantId: entity.entityId,
@@ -462,6 +684,7 @@ export class RestaurantLocationEnrichmentService {
             details,
             matchMetadata,
             score: best.score,
+            googleRestaurantAttributeIds,
           });
         }
         if (this.isEntityNameConflict(error) && combinedUpdateData) {
@@ -471,6 +694,7 @@ export class RestaurantLocationEnrichmentService {
             details,
             matchMetadata,
             score: best.score,
+            googleRestaurantAttributeIds,
           });
         }
         throw error;
@@ -478,7 +702,7 @@ export class RestaurantLocationEnrichmentService {
 
       this.logger.info('Restaurant enriched with Google Places', {
         entityId: entity.entityId,
-        placeId: placeDetails.place_id,
+        placeId: placeDetails.id,
         score: best.score,
         updatedFields: combinedUpdatedFields,
       });
@@ -486,7 +710,7 @@ export class RestaurantLocationEnrichmentService {
       return {
         entityId: entity.entityId,
         status: 'updated',
-        placeId: placeDetails.place_id,
+        placeId: placeDetails.id,
         score: best.score,
         updatedFields: combinedUpdatedFields,
       };
@@ -498,7 +722,7 @@ export class RestaurantLocationEnrichmentService {
       });
 
       await this.recordEnrichmentFailure(entity, message, {
-        placeId: latestDetails?.result?.place_id,
+        placeId: latestDetails?.place?.id,
         targetName: targetNameForUpdate ?? undefined,
         score: enrichmentScore || undefined,
         matchMetadata: latestMatchMetadata ?? undefined,
@@ -701,19 +925,22 @@ export class RestaurantLocationEnrichmentService {
 
   private async handleGooglePlaceCollision(params: {
     entity: RestaurantEntity;
-    details: GooglePlaceDetailsResponse;
+    details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
     score: number;
+    googleRestaurantAttributeIds?: string[];
   }): Promise<RestaurantEnrichmentResult> {
-    const { entity, details, matchMetadata, score } = params;
-    const placeId = details.result?.place_id;
+    const {
+      entity,
+      details,
+      matchMetadata,
+      score,
+      googleRestaurantAttributeIds,
+    } = params;
+    const placeId = details.place?.id;
 
     if (!placeId) {
-      throw new Error('Google Place details missing place_id');
-    }
-
-    if (!details.result) {
-      throw new Error('Google Place details missing result payload');
+      throw new Error('Google Place details missing id');
     }
 
     const canonicalLocation = await this.prisma.restaurantLocation.findUnique({
@@ -747,12 +974,12 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Canonical entity not found for Google Place ID');
     }
 
-    const placeDetails = details.result;
+    const placeDetails = details.place;
 
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
       placeDetails,
-      details.metadata?.fields ?? [],
+      details.metadata?.fieldMask ?? '',
       matchMetadata,
     );
     const locationUpsert = this.buildLocationUpsertData(
@@ -764,13 +991,14 @@ export class RestaurantLocationEnrichmentService {
 
     const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
       canonical,
-      placeDetails?.name,
+      this.getPlaceDisplayName(placeDetails),
       this.collectAliasCandidates(entity),
     );
 
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
       entity,
+      googleRestaurantAttributeIds,
     );
 
     const mergedUpdate = this.mergeEntityUpdates(
@@ -828,25 +1056,34 @@ export class RestaurantLocationEnrichmentService {
   private async handleEntityNameConflict(params: {
     entity: RestaurantEntity;
     canonicalName: string | null;
-    details: GooglePlaceDetailsResponse;
+    details: GooglePlacesV1PlaceDetailsResponse;
     matchMetadata: MatchMetadata;
     score: number;
+    googleRestaurantAttributeIds?: string[];
   }): Promise<RestaurantEnrichmentResult> {
-    const { entity, canonicalName, details, matchMetadata, score } = params;
+    const {
+      entity,
+      canonicalName,
+      details,
+      matchMetadata,
+      score,
+      googleRestaurantAttributeIds,
+    } = params;
 
     const resolvedName = canonicalName?.trim().length
       ? canonicalName.trim()
       : null;
 
-    if (!details.result) {
+    if (!details.place) {
       throw new Error('Google Place details missing for name conflict');
     }
 
-    const placeDetails = details.result;
+    const placeDetails = details.place;
     const canonical = await this.prisma.entity.findFirst({
       where: {
         type: EntityType.restaurant,
-        name: resolvedName ?? placeDetails.name ?? undefined,
+        name:
+          resolvedName ?? this.getPlaceDisplayName(placeDetails) ?? undefined,
       },
       include: { primaryLocation: true, locations: true },
     });
@@ -856,7 +1093,7 @@ export class RestaurantLocationEnrichmentService {
         'Name conflict encountered but canonical restaurant missing',
         {
           entityId: entity.entityId,
-          targetName: resolvedName ?? placeDetails.name,
+          targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
         },
       );
       throw new Error('Canonical restaurant not found for name conflict');
@@ -865,12 +1102,12 @@ export class RestaurantLocationEnrichmentService {
     const canonicalUpdate = this.buildEntityUpdate(
       canonical,
       placeDetails,
-      details.metadata?.fields ?? [],
+      details.metadata?.fieldMask ?? '',
       matchMetadata,
     );
     const targetLocation =
       canonical.locations?.find(
-        (location) => location.googlePlaceId === placeDetails.place_id,
+        (location) => location.googlePlaceId === placeDetails.id,
       ) ??
       canonical.primaryLocation ??
       canonical.locations?.[0] ??
@@ -883,12 +1120,13 @@ export class RestaurantLocationEnrichmentService {
     );
     const canonicalAliasUpdate = this.computeNameAndAliasUpdate(
       canonical,
-      placeDetails?.name,
+      this.getPlaceDisplayName(placeDetails),
       this.collectAliasCandidates(entity),
     );
     const mergeAugmentations = this.buildCanonicalMergeAugmentations(
       canonical,
       entity,
+      googleRestaurantAttributeIds,
     );
 
     const mergedUpdate = this.mergeEntityUpdates(
@@ -904,7 +1142,7 @@ export class RestaurantLocationEnrichmentService {
 
     const updatedCanonical = await this.prisma.$transaction(async (tx) => {
       const location = await tx.restaurantLocation.upsert({
-        where: { googlePlaceId: placeDetails.place_id },
+        where: { googlePlaceId: placeDetails.id },
         update: {
           ...locationUpsert.update,
           restaurantId: canonical.entityId,
@@ -934,14 +1172,14 @@ export class RestaurantLocationEnrichmentService {
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
       canonicalId: updatedCanonical.entityId,
-      targetName: resolvedName ?? placeDetails.name,
+      targetName: resolvedName ?? this.getPlaceDisplayName(placeDetails),
     });
 
     return {
       entityId: entity.entityId,
       mergedInto: updatedCanonical.entityId,
       status: 'updated',
-      placeId: placeDetails?.place_id,
+      placeId: placeDetails?.id,
       score,
       updatedFields: mergedFields,
     };
@@ -950,6 +1188,7 @@ export class RestaurantLocationEnrichmentService {
   private buildCanonicalMergeAugmentations(
     canonical: RestaurantEntity,
     duplicate: RestaurantEntity,
+    additionalRestaurantAttributes?: string[],
   ): {
     updateData: Prisma.EntityUpdateInput;
     updatedFields: string[];
@@ -959,6 +1198,7 @@ export class RestaurantLocationEnrichmentService {
     const mergedAttributes = this.unionStringArrays(
       canonical.restaurantAttributes,
       duplicate.restaurantAttributes,
+      additionalRestaurantAttributes,
     );
 
     if (
@@ -1167,45 +1407,201 @@ export class RestaurantLocationEnrichmentService {
     return undefined;
   }
 
-  private rankPredictions(
-    predictions: GooglePlacePrediction[],
+  private getPlaceDisplayName(
+    place: GooglePlacesV1Place | null | undefined,
+  ): string | null {
+    const name = place?.displayName?.text;
+    if (typeof name !== 'string') {
+      return null;
+    }
+    const trimmed = name.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private mapGooglePriceLevel(raw: unknown): number | null {
+    if (typeof raw !== 'string') {
+      return null;
+    }
+    switch (raw) {
+      case 'PRICE_LEVEL_FREE':
+        return 0;
+      case 'PRICE_LEVEL_INEXPENSIVE':
+        return 1;
+      case 'PRICE_LEVEL_MODERATE':
+        return 2;
+      case 'PRICE_LEVEL_EXPENSIVE':
+        return 3;
+      case 'PRICE_LEVEL_VERY_EXPENSIVE':
+        return 4;
+      default:
+        return null;
+    }
+  }
+
+  private extractGoogleRestaurantAttributeDefinitions(
+    place: GooglePlacesV1Place,
+  ): GoogleRestaurantAttributeDefinition[] {
+    return GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.filter((definition) =>
+      definition.isEnabled(place),
+    );
+  }
+
+  private normalizeRestaurantAttributeName(value: string): string {
+    return value.trim().toLowerCase();
+  }
+
+  private googleRestaurantAttributeIdsByNamePromise: Promise<
+    Map<string, string>
+  > | null = null;
+
+  private async getGoogleRestaurantAttributeIdsByName(): Promise<
+    Map<string, string>
+  > {
+    if (this.googleRestaurantAttributeIdsByNamePromise) {
+      return this.googleRestaurantAttributeIdsByNamePromise;
+    }
+
+    this.googleRestaurantAttributeIdsByNamePromise = this.prisma.entity
+      .findMany({
+        where: {
+          type: EntityType.restaurant_attribute,
+          name: { in: GOOGLE_RESTAURANT_ATTRIBUTE_CANONICAL_NAMES },
+        },
+        select: { entityId: true, name: true },
+      })
+      .then((rows) => {
+        const map = new Map<string, string>();
+        for (const row of rows) {
+          map.set(
+            this.normalizeRestaurantAttributeName(row.name),
+            row.entityId,
+          );
+        }
+        return map;
+      })
+      .catch((error) => {
+        this.googleRestaurantAttributeIdsByNamePromise = null;
+        throw error;
+      });
+
+    return this.googleRestaurantAttributeIdsByNamePromise;
+  }
+
+  private async resolveRestaurantAttributeIdsForDefinitions(
+    definitions: GoogleRestaurantAttributeDefinition[],
+  ): Promise<string[]> {
+    if (definitions.length === 0) {
+      return [];
+    }
+
+    const idsByName = await this.getGoogleRestaurantAttributeIdsByName();
+    const ids: string[] = [];
+
+    for (const definition of definitions) {
+      const canonicalName = this.normalizeRestaurantAttributeName(
+        definition.canonicalName,
+      );
+      const entityId = idsByName.get(canonicalName);
+      if (!entityId) {
+        this.logger.warn('Missing seeded restaurant_attribute entity', {
+          canonicalName,
+          type: EntityType.restaurant_attribute,
+        });
+        continue;
+      }
+      ids.push(entityId);
+    }
+
+    return Array.from(new Set(ids));
+  }
+
+  private extractAutocompleteCandidates(
+    suggestions: GooglePlacesV1AutocompleteSuggestion[],
+  ): PlaceCandidate[] {
+    const candidates: PlaceCandidate[] = [];
+
+    for (const suggestion of suggestions) {
+      const prediction = suggestion?.placePrediction;
+      const placeId =
+        typeof prediction?.placeId === 'string'
+          ? prediction.placeId.trim()
+          : '';
+      if (!placeId) {
+        continue;
+      }
+
+      const mainText = prediction?.structuredFormat?.mainText?.text;
+      const secondaryText = prediction?.structuredFormat?.secondaryText?.text;
+      const description =
+        typeof mainText === 'string' && mainText.trim().length
+          ? typeof secondaryText === 'string' && secondaryText.trim().length
+            ? `${mainText.trim()}, ${secondaryText.trim()}`
+            : mainText.trim()
+          : placeId;
+
+      const candidate: PlaceCandidate = {
+        placeId,
+        description,
+      };
+
+      if (typeof mainText === 'string' && mainText.trim().length) {
+        candidate.mainText = mainText.trim();
+      }
+      if (typeof secondaryText === 'string' && secondaryText.trim().length) {
+        candidate.secondaryText = secondaryText.trim();
+      }
+      if (Array.isArray(prediction?.types) && prediction.types.length > 0) {
+        candidate.types = prediction.types.filter(
+          (value): value is string => typeof value === 'string',
+        );
+      }
+      if (typeof prediction?.distanceMeters === 'number') {
+        candidate.distanceMeters = prediction.distanceMeters;
+      }
+
+      candidates.push(candidate);
+    }
+
+    return candidates;
+  }
+
+  private rankCandidates(
+    candidates: PlaceCandidate[],
     entity: RestaurantEntity,
     context: EnrichmentSearchContext,
-  ): RankedPrediction[] {
-    return predictions
-      .map((prediction) => ({
-        prediction,
-        score: this.scorePrediction(prediction, entity, context),
+  ): RankedCandidate[] {
+    return candidates
+      .map((candidate) => ({
+        candidate,
+        score: this.scoreCandidate(candidate, entity, context),
       }))
       .sort((a, b) => b.score - a.score);
   }
 
-  private selectQualifiedPrediction(
-    ranked: RankedPrediction[],
-  ): RankedPrediction | undefined {
-    for (const candidate of ranked) {
-      const types = candidate.prediction.types;
+  private selectQualifiedCandidate(
+    ranked: RankedCandidate[],
+  ): RankedCandidate | undefined {
+    for (const entry of ranked) {
+      const types = entry.candidate.types;
       if (
         Array.isArray(types) &&
         types.some((type) => PREFERRED_PLACE_TYPES.has(type.toLowerCase())) &&
-        candidate.score >= this.minScoreThreshold
+        entry.score >= this.minScoreThreshold
       ) {
-        return candidate;
+        return entry;
       }
     }
     return undefined;
   }
 
-  private scorePrediction(
-    prediction: GooglePlacePrediction,
+  private scoreCandidate(
+    candidate: PlaceCandidate,
     entity: RestaurantEntity,
     context: EnrichmentSearchContext,
   ): number {
     const normalizedEntityName = entity.name.toLowerCase().trim();
     const candidateName =
-      prediction.structured_formatting?.main_text ||
-      prediction.description?.split(',')[0] ||
-      '';
+      candidate.mainText || candidate.description?.split(',')[0] || '';
 
     let score = stringSimilarity.compareTwoStrings(
       normalizedEntityName,
@@ -1214,7 +1610,7 @@ export class RestaurantLocationEnrichmentService {
 
     if (context.city) {
       if (
-        prediction.description
+        candidate.description
           ?.toLowerCase()
           .includes(context.city.toLowerCase())
       ) {
@@ -1224,7 +1620,7 @@ export class RestaurantLocationEnrichmentService {
 
     if (context.region) {
       if (
-        prediction.description
+        candidate.description
           ?.toLowerCase()
           .includes(context.region.toLowerCase())
       ) {
@@ -1232,8 +1628,8 @@ export class RestaurantLocationEnrichmentService {
       }
     }
 
-    if (typeof prediction.distance_meters === 'number') {
-      const dist = Math.max(0, prediction.distance_meters);
+    if (typeof candidate.distanceMeters === 'number') {
+      const dist = Math.max(0, candidate.distanceMeters);
       const maxBoostDistance = 10000; // 10km
       const proximityBoost =
         dist <= maxBoostDistance ? 0.05 * (1 - dist / maxBoostDistance) : 0;
@@ -1245,8 +1641,8 @@ export class RestaurantLocationEnrichmentService {
 
   private buildEntityUpdate(
     entity: RestaurantEntity,
-    details: GooglePlaceDetailsResult,
-    _requestedFields: string[],
+    details: GooglePlacesV1Place,
+    _requestedFieldMask: string,
     matchMetadata: MatchMetadata,
   ): {
     updateData: Prisma.EntityUpdateInput;
@@ -1266,25 +1662,28 @@ export class RestaurantLocationEnrichmentService {
     );
 
     const updateData: Prisma.EntityUpdateInput = {
-      googlePlaceId: details.place_id,
+      googlePlaceId: details.id ?? null,
       lastUpdated: new Date(),
       restaurantMetadata: metadata,
     };
 
     const updatedFields: string[] = ['googlePlaceId', 'restaurantMetadata'];
 
-    if (details.geometry?.location?.lat !== undefined) {
-      updateData.latitude = details.geometry.location.lat;
+    if (typeof details.location?.latitude === 'number') {
+      updateData.latitude = details.location.latitude;
       updatedFields.push('latitude');
     }
 
-    if (details.geometry?.location?.lng !== undefined) {
-      updateData.longitude = details.geometry.location.lng;
+    if (typeof details.location?.longitude === 'number') {
+      updateData.longitude = details.location.longitude;
       updatedFields.push('longitude');
     }
 
-    if (details.formatted_address) {
-      updateData.address = details.formatted_address;
+    if (
+      typeof details.formattedAddress === 'string' &&
+      details.formattedAddress
+    ) {
+      updateData.address = details.formattedAddress;
       updatedFields.push('address');
     }
 
@@ -1313,19 +1712,13 @@ export class RestaurantLocationEnrichmentService {
       updatedFields.push('postalCode');
     }
 
-    if (
-      typeof details.price_level === 'number' &&
-      Number.isFinite(details.price_level)
-    ) {
-      const normalizedPrice = Math.max(
-        0,
-        Math.min(4, Math.round(details.price_level)),
-      );
-      updateData.priceLevel = normalizedPrice;
+    const mappedPriceLevel = this.mapGooglePriceLevel(details.priceLevel);
+    if (mappedPriceLevel !== null) {
+      updateData.priceLevel = mappedPriceLevel;
       updateData.priceLevelUpdatedAt = new Date();
       updatedFields.push('priceLevel', 'priceLevelUpdatedAt');
     } else {
-      const priceRange = this.normalizeGooglePriceRange(details.price_range);
+      const priceRange = this.normalizeGooglePriceRange(details.priceRange);
       const derivedLevel = this.mapPriceRangeToLevel(priceRange);
       if (derivedLevel !== null) {
         updateData.priceLevel = derivedLevel;
@@ -1340,7 +1733,7 @@ export class RestaurantLocationEnrichmentService {
   private buildLocationUpsertData(
     restaurantId: string,
     current: RestaurantLocation | null | undefined,
-    details: GooglePlaceDetailsResult,
+    details: GooglePlacesV1Place,
     matchMetadata: MatchMetadata,
   ): {
     create: Prisma.RestaurantLocationUncheckedCreateInput;
@@ -1362,10 +1755,19 @@ export class RestaurantLocationEnrichmentService {
 
     const baseData = {
       restaurantId,
-      googlePlaceId: details.place_id,
-      latitude: details.geometry?.location?.lat ?? null,
-      longitude: details.geometry?.location?.lng ?? null,
-      address: details.formatted_address ?? null,
+      googlePlaceId: details.id ?? null,
+      latitude:
+        typeof details.location?.latitude === 'number'
+          ? details.location.latitude
+          : null,
+      longitude:
+        typeof details.location?.longitude === 'number'
+          ? details.location.longitude
+          : null,
+      address:
+        typeof details.formattedAddress === 'string'
+          ? details.formattedAddress
+          : null,
       city: addressParts.city ?? null,
       region: addressParts.region ?? null,
       country: addressParts.country
@@ -1378,14 +1780,12 @@ export class RestaurantLocationEnrichmentService {
 
     let priceLevel: number | null = null;
     let priceLevelUpdatedAt: Date | null = null;
-    if (
-      typeof details.price_level === 'number' &&
-      Number.isFinite(details.price_level)
-    ) {
-      priceLevel = Math.max(0, Math.min(4, Math.round(details.price_level)));
+    const mappedPriceLevel = this.mapGooglePriceLevel(details.priceLevel);
+    if (mappedPriceLevel !== null) {
+      priceLevel = mappedPriceLevel;
       priceLevelUpdatedAt = new Date();
     } else {
-      const priceRange = this.normalizeGooglePriceRange(details.price_range);
+      const priceRange = this.normalizeGooglePriceRange(details.priceRange);
       const derivedLevel = this.mapPriceRangeToLevel(priceRange);
       if (derivedLevel !== null) {
         priceLevel = derivedLevel;
@@ -1470,51 +1870,46 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildGooglePlacesMetadata(
-    details: GooglePlaceDetailsResult,
+    details: GooglePlacesV1Place,
     matchMetadata: MatchMetadata,
   ): Record<string, unknown> {
     const metadata: Record<string, unknown> = {
-      placeId: details.place_id,
+      placeId: details.id,
       fetchedAt: new Date().toISOString(),
     };
 
-    if (details.name) {
-      metadata.name = details.name;
+    const displayName = this.getPlaceDisplayName(details);
+    if (displayName) {
+      metadata.name = displayName;
     }
 
-    if (details.formatted_address) {
-      metadata.formattedAddress = details.formatted_address;
+    if (details.formattedAddress) {
+      metadata.formattedAddress = details.formattedAddress;
     }
 
-    if (details.business_status) {
-      metadata.businessStatus = details.business_status;
+    if (details.businessStatus) {
+      metadata.businessStatus = details.businessStatus;
     }
 
-    if (details.formatted_phone_number) {
-      metadata.formattedPhoneNumber = details.formatted_phone_number;
+    if (details.nationalPhoneNumber) {
+      metadata.formattedPhoneNumber = details.nationalPhoneNumber;
     }
 
-    if (details.international_phone_number) {
-      metadata.internationalPhoneNumber = details.international_phone_number;
+    if (details.internationalPhoneNumber) {
+      metadata.internationalPhoneNumber = details.internationalPhoneNumber;
     }
 
-    if (details.website) {
-      metadata.website = details.website;
+    if (details.websiteUri) {
+      metadata.website = details.websiteUri;
     }
 
-    if (
-      typeof details.price_level === 'number' &&
-      Number.isFinite(details.price_level)
-    ) {
-      const normalizedPrice = Math.max(
-        0,
-        Math.min(4, Math.round(details.price_level)),
-      );
-      metadata.priceLevel = normalizedPrice;
+    const mappedPriceLevel = this.mapGooglePriceLevel(details.priceLevel);
+    if (mappedPriceLevel !== null) {
+      metadata.priceLevel = mappedPriceLevel;
       metadata.priceLevelUpdatedAt = new Date().toISOString();
     }
 
-    const priceRange = this.normalizeGooglePriceRange(details.price_range);
+    const priceRange = this.normalizeGooglePriceRange(details.priceRange);
     if (priceRange) {
       metadata.priceRange = priceRange;
       const derivedLevel = this.mapPriceRangeToLevel(priceRange);
@@ -1564,7 +1959,7 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private buildNoMatchMetadata(
-    ranked: RankedPrediction[],
+    ranked: RankedCandidate[],
     context: EnrichmentSearchContext,
     extras: Record<string, unknown> = {},
   ): Record<string, unknown> {
@@ -1572,35 +1967,33 @@ export class RestaurantLocationEnrichmentService {
       context.country ?? null,
     );
 
-    const candidates = ranked.slice(0, 5).map(({ prediction, score }) => {
-      const candidate: Record<string, unknown> = {
-        placeId: prediction.place_id,
+    const candidates = ranked.slice(0, 5).map(({ candidate, score }) => {
+      const candidateRecord: Record<string, unknown> = {
+        placeId: candidate.placeId,
         score,
       };
 
-      if (prediction.description) {
-        candidate.description = prediction.description;
+      if (candidate.description) {
+        candidateRecord.description = candidate.description;
       }
 
-      const mainText = prediction.structured_formatting?.main_text;
-      if (mainText) {
-        candidate.mainText = mainText;
+      if (candidate.mainText) {
+        candidateRecord.mainText = candidate.mainText;
       }
 
-      const secondaryText = prediction.structured_formatting?.secondary_text;
-      if (secondaryText) {
-        candidate.secondaryText = secondaryText;
+      if (candidate.secondaryText) {
+        candidateRecord.secondaryText = candidate.secondaryText;
       }
 
-      if (Array.isArray(prediction.types) && prediction.types.length > 0) {
-        candidate.types = prediction.types;
+      if (Array.isArray(candidate.types) && candidate.types.length > 0) {
+        candidateRecord.types = candidate.types;
       }
 
-      if (typeof prediction.distance_meters === 'number') {
-        candidate.distanceMeters = prediction.distance_meters;
+      if (typeof candidate.distanceMeters === 'number') {
+        candidateRecord.distanceMeters = candidate.distanceMeters;
       }
 
-      return candidate;
+      return candidateRecord;
     });
 
     return {
@@ -1621,7 +2014,7 @@ export class RestaurantLocationEnrichmentService {
     entity: RestaurantEntity,
     context: EnrichmentSearchContext,
     options: RestaurantEnrichmentOptions,
-  ): Promise<{ status: string; ranked: RankedPrediction[] } | null> {
+  ): Promise<{ status: string; ranked: RankedCandidate[] } | null> {
     if (!context.query) {
       return null;
     }
@@ -1634,11 +2027,11 @@ export class RestaurantLocationEnrichmentService {
           sessionToken: options.sessionToken,
           includeRaw: false,
           fields: [
-            'place_id',
-            'name',
-            'formatted_address',
+            'id',
+            'displayName',
+            'formattedAddress',
             'types',
-            'geometry/location',
+            'location',
           ],
           locationBias: context.locationBias
             ? {
@@ -1649,27 +2042,20 @@ export class RestaurantLocationEnrichmentService {
         },
       );
 
-      const predictions = response.candidates
-        .map((candidate) =>
-          this.mapFindPlaceCandidateToPrediction(candidate, context),
-        )
-        .filter(
-          (prediction): prediction is GooglePlacePrediction =>
-            prediction !== null,
-        );
-
-      const ranked = this.rankPredictions(predictions, entity, context);
+      const candidates = response.places
+        .map((place) => this.mapTextSearchPlaceToCandidate(place, context))
+        .filter((candidate): candidate is PlaceCandidate => candidate !== null);
+      const ranked = this.rankCandidates(candidates, entity, context);
 
       this.logger.debug('Find place fallback attempt completed', {
         entityId: entity.entityId,
         query: context.query,
-        status: response.status,
-        candidateCount: response.candidates.length,
+        placeCount: response.places.length,
         rankedCount: ranked.length,
       });
 
       return {
-        status: response.status,
+        status: response.places.length > 0 ? 'OK' : 'ZERO_RESULTS',
         ranked,
       };
     } catch (error) {
@@ -1687,64 +2073,60 @@ export class RestaurantLocationEnrichmentService {
     }
   }
 
-  private mapFindPlaceCandidateToPrediction(
-    candidate: GoogleFindPlaceCandidate,
+  private mapTextSearchPlaceToCandidate(
+    place: GooglePlacesV1Place,
     context: EnrichmentSearchContext,
-  ): GooglePlacePrediction | null {
-    if (
-      !candidate ||
-      typeof candidate.place_id !== 'string' ||
-      !candidate.place_id.trim()
-    ) {
+  ): PlaceCandidate | null {
+    const placeId = typeof place.id === 'string' ? place.id.trim() : '';
+    if (!placeId) {
       return null;
     }
 
+    const name = this.getPlaceDisplayName(place);
+    const formattedAddress =
+      typeof place.formattedAddress === 'string'
+        ? place.formattedAddress
+        : null;
+
     const descriptionParts: string[] = [];
-    if (typeof candidate.name === 'string' && candidate.name.trim().length) {
-      descriptionParts.push(candidate.name.trim());
+    if (name) {
+      descriptionParts.push(name);
     }
-    if (
-      typeof candidate.formatted_address === 'string' &&
-      candidate.formatted_address.trim().length
-    ) {
-      descriptionParts.push(candidate.formatted_address.trim());
+    if (formattedAddress) {
+      descriptionParts.push(formattedAddress);
     }
 
-    const prediction: GooglePlacePrediction = {
-      place_id: candidate.place_id,
-      description: descriptionParts.join(', ') || candidate.place_id,
-      types: Array.isArray(candidate.types)
-        ? candidate.types.filter(
-            (value): value is string => typeof value === 'string',
-          )
-        : undefined,
-      structured_formatting: {
-        main_text:
-          typeof candidate.name === 'string' && candidate.name.trim().length
-            ? candidate.name.trim()
-            : undefined,
-        secondary_text:
-          typeof candidate.formatted_address === 'string' &&
-          candidate.formatted_address.trim().length
-            ? candidate.formatted_address.trim()
-            : undefined,
-      },
+    const candidate: PlaceCandidate = {
+      placeId,
+      description: descriptionParts.join(', ') || placeId,
     };
 
-    const distance = this.calculateCandidateDistanceMeters(candidate, context);
-    if (distance !== undefined) {
-      prediction.distance_meters = distance;
+    if (name) {
+      candidate.mainText = name;
+    }
+    if (formattedAddress) {
+      candidate.secondaryText = formattedAddress;
+    }
+    if (Array.isArray(place.types) && place.types.length > 0) {
+      candidate.types = place.types.filter(
+        (value): value is string => typeof value === 'string',
+      );
     }
 
-    return prediction;
+    const distance = this.calculatePlaceDistanceMeters(place, context);
+    if (distance !== undefined) {
+      candidate.distanceMeters = distance;
+    }
+
+    return candidate;
   }
 
-  private calculateCandidateDistanceMeters(
-    candidate: GoogleFindPlaceCandidate,
+  private calculatePlaceDistanceMeters(
+    place: GooglePlacesV1Place,
     context: EnrichmentSearchContext,
   ): number | undefined {
     const origin = context.locationBias;
-    const destination = candidate.geometry?.location;
+    const destination = place.location;
 
     if (
       !origin ||
@@ -1756,15 +2138,15 @@ export class RestaurantLocationEnrichmentService {
 
     if (
       !destination ||
-      typeof destination.lat !== 'number' ||
-      typeof destination.lng !== 'number'
+      typeof destination.latitude !== 'number' ||
+      typeof destination.longitude !== 'number'
     ) {
       return undefined;
     }
 
     return this.calculateDistanceMeters(
       { lat: origin.lat, lng: origin.lng },
-      { lat: destination.lat, lng: destination.lng },
+      { lat: destination.latitude, lng: destination.longitude },
     );
   }
 
@@ -1900,18 +2282,18 @@ export class RestaurantLocationEnrichmentService {
   }
 
   private normalizeGoogleOpeningHours(
-    details: GooglePlaceDetailsResult,
+    details: GooglePlacesV1Place,
   ): NormalizedOpeningHours {
     const normalized: NormalizedOpeningHours = {};
     const source =
-      details.current_opening_hours ?? details.opening_hours ?? null;
+      details.currentOpeningHours ?? details.regularOpeningHours ?? null;
     const sourceRecord = this.toRecord(source);
     const hoursByDay: Partial<Record<GoogleDayName, string[]>> = {};
 
     const periods = Array.isArray(sourceRecord.periods)
       ? (sourceRecord.periods as Array<{
-          open?: { day?: number; time?: string };
-          close?: { day?: number; time?: string };
+          open?: { day?: number; hour?: number; minute?: number };
+          close?: { day?: number; hour?: number; minute?: number };
         }>)
       : [];
 
@@ -1921,9 +2303,13 @@ export class RestaurantLocationEnrichmentService {
       }
 
       const dayKey = this.normalizeDayKeyFromIndex(period.open.day);
-      const openTime = this.formatGoogleTime(period.open.time);
-      const closeTime = this.formatGoogleTime(
-        period.close?.time ?? period.open.time,
+      const openTime = this.formatV1HourMinute(
+        period.open.hour,
+        period.open.minute,
+      );
+      const closeTime = this.formatV1HourMinute(
+        period.close?.hour ?? period.open.hour,
+        period.close?.minute ?? period.open.minute,
       );
 
       if (!dayKey || !openTime || !closeTime) {
@@ -1938,8 +2324,8 @@ export class RestaurantLocationEnrichmentService {
     }
 
     if (Object.keys(hoursByDay).length === 0) {
-      const weekdayText = Array.isArray(sourceRecord.weekday_text)
-        ? (sourceRecord.weekday_text as string[])
+      const weekdayText = Array.isArray(sourceRecord.weekdayDescriptions)
+        ? (sourceRecord.weekdayDescriptions as string[])
         : [];
       if (weekdayText.length > 0) {
         this.populateHoursFromWeekdayText(weekdayText, hoursByDay);
@@ -1950,15 +2336,15 @@ export class RestaurantLocationEnrichmentService {
       normalized.hours = this.collapseHours(hoursByDay);
     }
 
-    if (typeof details.utc_offset_minutes === 'number') {
-      normalized.utcOffsetMinutes = details.utc_offset_minutes;
-    } else if (typeof sourceRecord.utc_offset_minutes === 'number') {
-      normalized.utcOffsetMinutes = Number(sourceRecord.utc_offset_minutes);
+    if (typeof details.utcOffsetMinutes === 'number') {
+      normalized.utcOffsetMinutes = details.utcOffsetMinutes;
+    } else if (typeof sourceRecord.utcOffsetMinutes === 'number') {
+      normalized.utcOffsetMinutes = Number(sourceRecord.utcOffsetMinutes);
     }
 
     const timezoneCandidate =
-      typeof sourceRecord.time_zone === 'string'
-        ? sourceRecord.time_zone
+      typeof sourceRecord.timeZone === 'string'
+        ? sourceRecord.timeZone
         : typeof sourceRecord.timezone === 'string'
           ? sourceRecord.timezone
           : undefined;
@@ -2084,6 +2470,28 @@ export class RestaurantLocationEnrichmentService {
     return GOOGLE_DAY_NAMES[index];
   }
 
+  private formatV1HourMinute(
+    hour: number | undefined,
+    minute: number | undefined,
+  ): string | null {
+    if (typeof hour !== 'number' || !Number.isFinite(hour)) {
+      return null;
+    }
+    if (hour < 0 || hour > 23) {
+      return null;
+    }
+
+    const normalizedMinute =
+      typeof minute === 'number' && Number.isFinite(minute) ? minute : 0;
+    if (normalizedMinute < 0 || normalizedMinute > 59) {
+      return null;
+    }
+
+    return `${hour.toString().padStart(2, '0')}:${normalizedMinute
+      .toString()
+      .padStart(2, '0')}`;
+  }
+
   private formatGoogleTime(value: string | undefined): string | null {
     if (!value || typeof value !== 'string') {
       return null;
@@ -2140,13 +2548,13 @@ export class RestaurantLocationEnrichmentService {
     return { ...(value as Record<string, unknown>) };
   }
 
-  private extractAddressParts(details: GooglePlaceDetailsResult): {
+  private extractAddressParts(details: GooglePlacesV1Place): {
     city?: string;
     region?: string;
     country?: string;
     postalCode?: string;
   } {
-    const components = details.address_components || [];
+    const components = details.addressComponents || [];
 
     const cityComponent = components.find((component) =>
       component.types?.some((type) =>
@@ -2172,10 +2580,10 @@ export class RestaurantLocationEnrichmentService {
     );
 
     return {
-      city: cityComponent?.long_name,
-      region: regionComponent?.short_name || regionComponent?.long_name,
-      country: countryComponent?.short_name?.toUpperCase(),
-      postalCode: postalCodeComponent?.long_name,
+      city: cityComponent?.longText,
+      region: regionComponent?.shortText || regionComponent?.longText,
+      country: countryComponent?.shortText?.toUpperCase(),
+      postalCode: postalCodeComponent?.longText,
     };
   }
 

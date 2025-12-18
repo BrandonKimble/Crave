@@ -684,9 +684,17 @@ export class CollectionJobSchedulerService implements OnModuleInit {
         ? enabledRaw.toLowerCase() === 'true'
         : true;
 
+    const testJobsEnabledRaw =
+      this.configService.get<string>('TEST_COLLECTION_JOBS_ENABLED') ??
+      process.env.TEST_COLLECTION_JOBS_ENABLED;
+    const testJobsEnabled =
+      typeof testJobsEnabledRaw === 'string'
+        ? testJobsEnabledRaw.toLowerCase() === 'true'
+        : true;
+
     return {
       ...this.DEFAULT_CONFIG,
-      enabled,
+      enabled: enabled && testJobsEnabled,
     };
   }
 }

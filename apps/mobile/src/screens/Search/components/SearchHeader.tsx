@@ -58,6 +58,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   surfaceVariant = 'solid',
 }) => {
   const clearIconSize = 24;
+  const leadingIconSize = 24;
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
       <Reanimated.View
@@ -79,35 +80,44 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 inputAnimatedStyle,
               ]}
             >
-              {showBack ? (
-                <Pressable
-                  style={styles.searchIconBack}
-                  onPress={(event) => {
-                    event.stopPropagation?.();
-                    if (onBackPress) {
-                      onBackPress();
-                      return;
-                    }
-                    (onPress ?? onFocus)?.();
-                  }}
-                  hitSlop={12}
-                  accessibilityRole="button"
-                  accessibilityLabel="Exit search"
-                >
-                  <ChevronLeft size={20} color="#6b7280" strokeWidth={2} />
-                </Pressable>
-              ) : showInactiveSearchIcon ? (
-                <View style={styles.searchIconInactive}>
-                  <Search size={20} color="#9ca3af" strokeWidth={2} />
-                </View>
-              ) : null}
+              <View style={styles.leadingSlot}>
+                {showBack ? (
+                  <Pressable
+                    style={styles.leadingButton}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      if (onBackPress) {
+                        onBackPress();
+                        return;
+                      }
+                      (onPress ?? onFocus)?.();
+                    }}
+                    hitSlop={12}
+                    accessibilityRole="button"
+                    accessibilityLabel="Exit search"
+                  >
+                    <ChevronLeft
+                      size={leadingIconSize}
+                      color="#6b7280"
+                      strokeWidth={2}
+                      style={styles.chevronIcon}
+                    />
+                  </Pressable>
+                ) : showInactiveSearchIcon ? (
+                  <View style={styles.leadingButton}>
+                    <Search size={leadingIconSize} color="#9ca3af" strokeWidth={2} />
+                  </View>
+                ) : (
+                  <View style={styles.leadingPlaceholder} />
+                )}
+              </View>
               <TextInput
                 ref={inputRef}
                 value={value}
                 onChangeText={onChangeText}
                 placeholder={placeholder}
                 placeholderTextColor={themeColors.textBody}
-                style={[styles.promptInput, !showBack && styles.promptInputPadded]}
+                style={styles.promptInput}
                 returnKeyType="search"
                 onSubmitEditing={onSubmit}
                 onFocus={onFocus}
@@ -156,9 +166,10 @@ const styles = StyleSheet.create({
   promptCard: {
     borderRadius: 14,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 0,
     backgroundColor: '#ffffff',
     minHeight: 44,
+    height: 44,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -176,7 +187,7 @@ const styles = StyleSheet.create({
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 40,
+    height: 44,
     flex: 1,
     width: '100%',
   },
@@ -185,19 +196,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 0,
-    paddingVertical: 2,
+    paddingVertical: 0,
+    height: 44,
     gap: 8,
   },
-  searchIconBack: {
+  leadingSlot: {
+    width: 36,
+    height: 44,
     marginRight: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  searchIconInactive: {
-    marginRight: 0,
-    paddingLeft: 6,
-    paddingRight: 2,
-    paddingVertical: 6,
+  leadingButton: {
+    width: 36,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leadingPlaceholder: {
+    width: 36,
+    height: 44,
   },
   promptInput: {
     flex: 1,
@@ -205,16 +223,16 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlign: 'left',
     paddingVertical: 0,
-    height: '100%',
-  },
-  promptInputPadded: {
-    paddingLeft: 8,
+    paddingHorizontal: 0,
+    height: 44,
+    lineHeight: 18,
   },
   trailingContainer: {
     marginLeft: 'auto',
-    minWidth: 32,
+    minWidth: 36,
     alignItems: 'flex-end',
     justifyContent: 'center',
+    height: 44,
   },
   trailingButton: {
     paddingHorizontal: 4,

@@ -22,6 +22,10 @@
   - Prisma health: p95 query latency, error rate, and in-flight query counts
   - Error breakdown by `error` label to spot recurring failure signatures
   - Recent logs filtered by `service` / `context` (Loki variables) for quick drill-down
+- **Crave Integrations & Queues** (provisioned automatically) tracks:
+  - LLM limiter utilization (RPM/TPM), reservation wait p95, and rate limit error rate
+  - Bull queue backlog/active jobs, job throughput, and p95 wait/processing times by queue/job name
+  - External API coordinator utilization (minute/day) and rate limit hits (coordinator blocks vs upstream 429s)
 - Prisma ORM instrumentation surfaces:
   - `prisma_query_duration_seconds` for slow queries by model/action
   - `prisma_query_errors_total` spikes when database exceptions occur

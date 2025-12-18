@@ -3,6 +3,7 @@ import { EntityType, OnDemandReason } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
 import { LLMService } from '../external-integrations/llm/llm.service';
 import { LLMSearchQueryAnalysis } from '../external-integrations/llm/llm.types';
+import { LLMUnavailableError } from '../external-integrations/llm/llm.exceptions';
 import { EntityResolutionService } from '../content-processing/entity-resolver/entity-resolution.service';
 import {
   EntityResolutionInput,
@@ -45,7 +46,26 @@ export class SearchQueryInterpretationService {
   async interpret(
     request: NaturalSearchRequestDto,
   ): Promise<InterpretationResult> {
-    const analysis = await this.llmService.analyzeSearchQuery(request.query);
+    let analysis: LLMSearchQueryAnalysis;
+    try {
+      analysis = await this.llmService.analyzeSearchQuery(request.query);
+    } catch (error) {
+      const originalMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.warn('Search query interpretation failed', {
+        query: request.query,
+        error: {
+          message: originalMessage,
+          stack: error instanceof Error ? error.stack : undefined,
+          name: error instanceof Error ? error.name : undefined,
+        },
+      });
+
+      throw new LLMUnavailableError(
+        'Search is temporarily unavailable. Please try again.',
+        originalMessage,
+      );
+    }
 
     const analysisCounts = this.getAnalysisEntityCounts(analysis);
     this.logger.info('Search query LLM analysis summary', {

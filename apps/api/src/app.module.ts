@@ -40,6 +40,7 @@ import { HistoryModule } from './modules/history/history.module';
           host: configService.get('redis.host'),
           port: configService.get('redis.port'),
         },
+        prefix: configService.get('bull.prefix'),
       }),
     }),
     PrismaModule,

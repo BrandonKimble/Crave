@@ -30,6 +30,7 @@ import { ArchiveCollectionWorker } from './archive/archive-collection.worker';
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
+import { BullQueueMetricsService } from './bull-queue-metrics.service';
 
 /**
  * Reddit Collector Module
@@ -121,6 +122,7 @@ import { AnalyticsModule } from '../../analytics/analytics.module';
     ArchiveBatchProcessingWorker,
     ArchiveCollectionWorker,
     KeywordSearchMetricsService,
+    BullQueueMetricsService,
     // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
     ContentRetrievalMonitoringService,
     // Scheduled Collection Jobs components (PRD Section 5.1.2)

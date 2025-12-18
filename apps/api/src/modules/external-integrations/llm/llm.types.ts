@@ -7,6 +7,7 @@ export interface LLMConfig {
   apiKey: string;
   model: string;
   queryModel?: string | null;
+  queryTimeout?: number;
   baseUrl?: string;
   timeout?: number;
   maxTokens?: number;

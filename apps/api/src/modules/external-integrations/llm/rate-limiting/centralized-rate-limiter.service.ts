@@ -30,6 +30,60 @@ export interface ReservationResult {
   reservationMember: string;
 }
 
+export type CentralizedRateLimiterMetricsSnapshot = {
+  rpm: {
+    current: number;
+    max: number;
+    safe: number;
+    utilizationPercent: number;
+    actualUtilizationPercent: number;
+    availableCapacity: number;
+    safetyMargin: number;
+    burstCapacity: number;
+  };
+  tpm: {
+    current: number;
+    max: number;
+    safe: number;
+    utilizationPercent: number;
+    projectedTPM: number;
+    avgTokensPerRequest: number;
+    bottleneckType: 'rpm' | 'tpm' | 'none';
+    reserved: number;
+    windowTokens: number;
+  };
+  active: {
+    current: number;
+    maxConcurrent: number;
+    recommendedWorkers: number;
+  };
+  reservations: {
+    total: number;
+    confirmed: number;
+    confirmationRate: number;
+    avgAccuracyMs: number;
+  };
+  optimization: {
+    currentBottleneck: 'rpm' | 'tpm' | 'none';
+    utilizationRoom: number;
+    canIncreaseWorkers: boolean;
+    shouldReduceWorkers: boolean;
+  };
+  health: {
+    status: 'healthy' | 'busy';
+    canAcceptMore: boolean;
+  };
+  timestamp: number;
+};
+
+export type CentralizedRateLimiterMetricsUnavailable = {
+  error: 'metrics_unavailable';
+};
+
+export type CentralizedRateLimiterMetricsResponse =
+  | CentralizedRateLimiterMetricsSnapshot
+  | CentralizedRateLimiterMetricsUnavailable;
+
 /**
  * Centralized Redis-based Rate Limiter with Reservation System (Bulletproof Edition)
  *
@@ -48,7 +102,7 @@ export interface ReservationResult {
 @Injectable()
 export class CentralizedRateLimiter {
   private logger!: LoggerService;
-  private readonly keyPrefix = 'llm-bulletproof';
+  private readonly keyPrefix: string;
 
   // Configured limits (must match actual provider quotas to avoid 429s)
   private readonly maxRPM: number;
@@ -63,12 +117,12 @@ export class CentralizedRateLimiter {
   private readonly workerTimeSlotMs = 30; // Reduced since burst isn't an issue
 
   // Redis keys
-  private readonly reservationsKey = `${this.keyPrefix}:reservations`;
-  private readonly activeRequestsKey = `${this.keyPrefix}:active`;
-  private readonly tpmKey = `${this.keyPrefix}:tpm`;
-  private readonly tpmReservationsKey = `${this.keyPrefix}:tpm_reservations`;
-  private readonly metricsKey = `${this.keyPrefix}:metrics`;
-  private readonly workerQueueKey = `${this.keyPrefix}:worker-queue`;
+  private readonly reservationsKey: string;
+  private readonly activeRequestsKey: string;
+  private readonly tpmKey: string;
+  private readonly tpmReservationsKey: string;
+  private readonly metricsKey: string;
+  private readonly workerQueueKey: string;
 
   private readonly redis: Redis;
 
@@ -78,6 +132,27 @@ export class CentralizedRateLimiter {
   ) {
     this.logger = this.loggerService.setContext('CentralizedRateLimiter');
     this.redis = this.redisService.getOrThrow();
+
+    const appEnv = (() => {
+      const raw = process.env.APP_ENV || process.env.CRAVE_ENV;
+      if (raw && raw.trim()) {
+        return raw.trim();
+      }
+      const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+      return nodeEnv === 'production' ? 'prod' : 'dev';
+    })();
+    const defaultKeyPrefix = `crave:${appEnv}:llm-rate-limiter`;
+    const explicitKeyPrefix = process.env.LLM_RATE_LIMIT_PREFIX;
+    this.keyPrefix =
+      typeof explicitKeyPrefix === 'string' && explicitKeyPrefix.trim()
+        ? explicitKeyPrefix.trim()
+        : defaultKeyPrefix;
+    this.reservationsKey = `${this.keyPrefix}:reservations`;
+    this.activeRequestsKey = `${this.keyPrefix}:active`;
+    this.tpmKey = `${this.keyPrefix}:tpm`;
+    this.tpmReservationsKey = `${this.keyPrefix}:tpm_reservations`;
+    this.metricsKey = `${this.keyPrefix}:metrics`;
+    this.workerQueueKey = `${this.keyPrefix}:worker-queue`;
 
     const envMaxRPM = parseInt(process.env.LLM_MAX_RPM || '', 10);
     const envMaxTPM = parseInt(process.env.LLM_MAX_TPM || '', 10);
@@ -99,6 +174,8 @@ export class CentralizedRateLimiter {
 
     this.logger.info('Centralized LLM rate limiter configured', {
       correlationId: CorrelationUtils.getCorrelationId(),
+      keyPrefix: this.keyPrefix,
+      appEnv,
       maxRPM: this.maxRPM,
       maxTPM: this.maxTPM,
       headroom: this.headroom,
@@ -605,7 +682,7 @@ export class CentralizedRateLimiter {
   /**
    * Get comprehensive metrics
    */
-  async getMetrics(): Promise<any> {
+  async getMetrics(): Promise<CentralizedRateLimiterMetricsResponse> {
     try {
       const now = Date.now();
       const oneMinuteAgo = now - 60000;
@@ -644,6 +721,7 @@ export class CentralizedRateLimiter {
         tpm: {
           current: tpmAnalysis.currentTPM,
           max: this.maxTPM,
+          safe: this.safeTPM,
           utilizationPercent: tpmAnalysis.utilizationPercent,
           projectedTPM: tpmAnalysis.projectedTPM,
           avgTokensPerRequest: tpmAnalysis.avgTokensPerRequest,

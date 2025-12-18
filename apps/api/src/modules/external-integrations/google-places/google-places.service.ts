@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   ServiceUnavailableException,
   HttpException,
   HttpStatus,
@@ -14,35 +15,67 @@ import { LoggerService } from '../../../shared';
 import { RateLimitCoordinatorService } from '../shared/rate-limit-coordinator.service';
 import { ExternalApiService } from '../shared/external-integrations.types';
 
-const DEFAULT_DETAIL_FIELDS = [
-  'place_id',
-  'name',
-  'formatted_address',
-  'address_component',
-  'geometry/location',
-  'international_phone_number',
-  'opening_hours',
-  'current_opening_hours',
-  'utc_offset',
-  'business_status',
+const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'addressComponents',
+  'location',
+  'internationalPhoneNumber',
+  'regularOpeningHours',
+  'currentOpeningHours',
+  'utcOffsetMinutes',
+  'businessStatus',
   'types',
-  'website',
-  'formatted_phone_number',
-  'price_level',
-  'curbside_pickup',
+  'websiteUri',
+  'nationalPhoneNumber',
+  'priceLevel',
+  'priceRange',
+  'allowsDogs',
+  'curbsidePickup',
   'delivery',
-  'dine_in',
-  'editorial_summary',
-  'reservable',
-  'serves_beer',
-  'serves_breakfast',
-  'serves_brunch',
-  'serves_dinner',
-  'serves_lunch',
-  'serves_vegetarian_food',
-  'serves_wine',
+  'dineIn',
+  'goodForChildren',
+  'goodForGroups',
+  'goodForWatchingSports',
+  'liveMusic',
+  'outdoorSeating',
+  'servesBeer',
+  'servesBreakfast',
+  'servesBrunch',
+  'servesCocktails',
+  'servesCoffee',
+  'servesDinner',
+  'servesDessert',
+  'servesLunch',
+  'servesVegetarianFood',
+  'servesWine',
   'takeout',
 ];
+
+const DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS = [
+  'id',
+  'displayName',
+  'formattedAddress',
+  'location',
+  'types',
+];
+
+const AUTOCOMPLETE_FIELD_MASK =
+  'suggestions.placePrediction.placeId,' +
+  'suggestions.placePrediction.structuredFormat.mainText.text,' +
+  'suggestions.placePrediction.structuredFormat.secondaryText.text,' +
+  'suggestions.placePrediction.types,' +
+  'suggestions.placePrediction.distanceMeters';
+
+type PlacesNewErrorResponse = {
+  error?: {
+    code?: number;
+    message?: string;
+    status?: string;
+    details?: unknown[];
+  };
+};
 
 export interface GooglePlaceDetailsOptions {
   fields?: string[];
@@ -52,90 +85,85 @@ export interface GooglePlaceDetailsOptions {
   includeRaw?: boolean;
 }
 
-export interface GooglePlaceDetailsApiResponse {
-  status: string;
-  result?: GooglePlaceDetailsResult;
-  error_message?: string;
-  html_attributions?: string[];
+export interface GooglePlacesV1AddressComponent {
+  longText?: string;
+  shortText?: string;
+  types?: string[];
 }
 
-export interface GooglePlaceDetailsResult {
-  place_id: string;
-  name?: string;
-  formatted_address?: string;
-  address_components?: Array<{
-    long_name?: string;
-    short_name?: string;
-    types?: string[];
-  }>;
-  geometry?: {
-    location?: {
-      lat?: number;
-      lng?: number;
-    };
-  };
+export interface GooglePlacesV1Place {
+  id?: string;
+  displayName?: { text?: string; languageCode?: string };
+  formattedAddress?: string;
+  addressComponents?: GooglePlacesV1AddressComponent[];
+  location?: { latitude?: number; longitude?: number };
   types?: string[];
-  website?: string;
-  international_phone_number?: string;
-  formatted_phone_number?: string;
-  opening_hours?: Record<string, unknown>;
-  current_opening_hours?: Record<string, unknown>;
-  curbside_pickup?: boolean;
+  businessStatus?: string;
+  websiteUri?: string;
+  internationalPhoneNumber?: string;
+  nationalPhoneNumber?: string;
+  priceLevel?: string;
+  priceRange?: unknown;
+  utcOffsetMinutes?: number;
+  regularOpeningHours?: Record<string, unknown>;
+  currentOpeningHours?: Record<string, unknown>;
+  allowsDogs?: boolean;
+  curbsidePickup?: boolean;
   delivery?: boolean;
-  dine_in?: boolean;
-  editorial_summary?: Record<string, unknown>;
-  reservable?: boolean;
-  serves_beer?: boolean;
-  serves_breakfast?: boolean;
-  serves_brunch?: boolean;
-  serves_dinner?: boolean;
-  serves_lunch?: boolean;
-  serves_vegetarian_food?: boolean;
-  serves_wine?: boolean;
+  dineIn?: boolean;
+  goodForChildren?: boolean;
+  goodForGroups?: boolean;
+  goodForWatchingSports?: boolean;
+  liveMusic?: boolean;
+  outdoorSeating?: boolean;
   takeout?: boolean;
-  utc_offset?: number;
-  utc_offset_minutes?: number;
-  business_status?: string;
-  price_level?: number;
-  price_range?: unknown;
+  servesBeer?: boolean;
+  servesBreakfast?: boolean;
+  servesBrunch?: boolean;
+  servesCocktails?: boolean;
+  servesCoffee?: boolean;
+  servesDinner?: boolean;
+  servesDessert?: boolean;
+  servesLunch?: boolean;
+  servesVegetarianFood?: boolean;
+  servesWine?: boolean;
   [key: string]: unknown;
 }
 
-export interface GooglePlaceDetailsResponse {
-  status: string;
-  result?: GooglePlaceDetailsResult;
-  errorMessage?: string;
-  raw?: GooglePlaceDetailsApiResponse;
+export interface GooglePlacesV1PlaceDetailsResponse {
+  place: GooglePlacesV1Place;
+  raw?: unknown;
   metadata: {
-    fields: string[];
+    fieldMask: string;
     requestDurationMs: number;
   };
 }
 
-export interface GooglePlacePrediction {
-  description: string;
-  place_id: string;
-  reference?: string;
-  distance_meters?: number;
-  types?: string[];
-  matched_substrings?: Array<{ length: number; offset: number }>;
-  structured_formatting?: {
-    main_text?: string;
-    main_text_matched_substrings?: Array<{ length: number; offset: number }>;
-    secondary_text?: string;
-    secondary_text_matched_substrings?: Array<{
-      length: number;
-      offset: number;
-    }>;
+export interface GooglePlacesV1PlacePrediction {
+  placeId?: string;
+  structuredFormat?: {
+    mainText?: { text?: string };
+    secondaryText?: { text?: string };
   };
-  terms?: Array<{ offset: number; value: string }>;
+  types?: string[];
+  distanceMeters?: number;
+  [key: string]: unknown;
 }
 
-export interface GooglePlaceAutocompleteApiResponse {
-  status: string;
-  predictions: GooglePlacePrediction[];
-  error_message?: string;
-  info_messages?: string[];
+export interface GooglePlacesV1AutocompleteSuggestion {
+  placePrediction?: GooglePlacesV1PlacePrediction;
+  [key: string]: unknown;
+}
+
+export interface GooglePlacesV1AutocompleteResponse {
+  suggestions: GooglePlacesV1AutocompleteSuggestion[];
+  raw?: unknown;
+  metadata: {
+    fieldMask: string;
+    requestDurationMs: number;
+    locationBiasApplied: boolean;
+    suggestionCount: number;
+  };
 }
 
 export interface GooglePlaceAutocompleteOptions {
@@ -153,18 +181,6 @@ export interface GooglePlaceAutocompleteOptions {
   includeRaw?: boolean;
 }
 
-export interface GooglePlaceAutocompleteResponse {
-  status: string;
-  predictions: GooglePlacePrediction[];
-  errorMessage?: string;
-  raw?: GooglePlaceAutocompleteApiResponse;
-  metadata: {
-    requestDurationMs: number;
-    locationBiasApplied: boolean;
-    predictionCount: number;
-  };
-}
-
 export interface GoogleFindPlaceOptions {
   fields?: string[];
   language?: string;
@@ -177,42 +193,24 @@ export interface GoogleFindPlaceOptions {
   };
 }
 
-export interface GoogleFindPlaceCandidate {
-  place_id: string;
-  name?: string;
-  formatted_address?: string;
-  geometry?: {
-    location?: {
-      lat?: number;
-      lng?: number;
-    };
-  };
-  types?: string[];
-}
-
-export interface GoogleFindPlaceApiResponse {
-  status: string;
-  candidates: GoogleFindPlaceCandidate[];
-  error_message?: string;
-}
-
-export interface GoogleFindPlaceResponse {
-  status: string;
-  candidates: GoogleFindPlaceCandidate[];
-  errorMessage?: string;
-  raw?: GoogleFindPlaceApiResponse;
+export interface GooglePlacesV1TextSearchResponse {
+  places: GooglePlacesV1Place[];
+  nextPageToken?: string;
+  raw?: unknown;
   metadata: {
+    fieldMask: string;
     requestDurationMs: number;
     locationBiasApplied: boolean;
-    candidateCount: number;
+    placeCount: number;
   };
 }
 
 @Injectable()
 export class GooglePlacesService {
   private readonly logger: LoggerService;
-  private readonly baseUrl = 'https://maps.googleapis.com/maps/api/place';
+  private readonly baseUrl = 'https://places.googleapis.com/v1';
   private readonly requestTimeout: number;
+  private readonly defaultRadiusMeters: number;
 
   constructor(
     loggerService: LoggerService,
@@ -222,14 +220,21 @@ export class GooglePlacesService {
   ) {
     this.logger = loggerService.setContext('GooglePlacesService');
     this.requestTimeout =
-      Number(this.configService.get('GOOGLE_PLACES_TIMEOUT')) || 10000;
+      Number(this.configService.get('googlePlaces.timeout')) || 10000;
+    this.defaultRadiusMeters = Math.max(
+      1,
+      Math.min(
+        Number(this.configService.get('googlePlaces.defaultRadius')) || 5000,
+        50000,
+      ),
+    );
   }
 
   async getPlaceDetails(
     placeId: string,
     options: GooglePlaceDetailsOptions = {},
-  ): Promise<GooglePlaceDetailsResponse> {
-    const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+  ): Promise<GooglePlacesV1PlaceDetailsResponse> {
+    const apiKey = this.configService.get<string>('googlePlaces.apiKey');
     if (!apiKey) {
       throw new ServiceUnavailableException(
         'Google Places API key is not configured',
@@ -240,7 +245,10 @@ export class GooglePlacesService {
       throw new BadRequestException('placeId is required');
     }
 
-    const fields = this.normalizeFields(options.fields);
+    const fieldMaskFields = this.resolvePlaceDetailsFieldMaskFields(
+      options.fields,
+    );
+    const fieldMask = fieldMaskFields.join(',');
 
     const rateLimit = this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
@@ -253,107 +261,72 @@ export class GooglePlacesService {
       );
     }
 
-    const params: Record<string, string> = {
-      place_id: placeId,
-      key: apiKey,
-      fields: fields.join(','),
-      language: options.language || 'en',
-    };
-
-    if (options.region) {
-      params.region = options.region;
+    const params: Record<string, string> = {};
+    if (options.language) {
+      params.languageCode = options.language;
     }
-
+    if (options.region) {
+      params.regionCode = options.region;
+    }
     if (options.sessionToken) {
-      params.sessiontoken = options.sessionToken;
+      params.sessionToken = options.sessionToken;
     }
 
     const requestStart = Date.now();
 
     try {
       const response = await firstValueFrom(
-        this.httpService.get<GooglePlaceDetailsApiResponse>(
-          `${this.baseUrl}/details/json`,
+        this.httpService.get<Record<string, unknown>>(
+          `${this.baseUrl}/places/${encodeURIComponent(placeId)}`,
           {
             params,
             timeout: this.requestTimeout,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': apiKey,
+              'X-Goog-FieldMask': fieldMask,
+            },
           },
         ),
       );
 
       const duration = Date.now() - requestStart;
-      const data = response.data;
+      const place = response.data;
 
-      if (!data) {
+      if (!place || typeof place !== 'object') {
         throw new InternalServerErrorException(
-          'Google Places response did not contain data',
+          'Google Places response invalid',
         );
       }
 
-      if (data.status === 'OK') {
-        this.logger.debug('Retrieved Google Place details', {
-          placeId,
-          duration,
-        });
-        const normalizedResult = this.normalizeDetailResult(data.result);
-
-        return {
-          status: data.status,
-          result: normalizedResult,
-          raw: options.includeRaw ? data : undefined,
-          metadata: {
-            fields,
-            requestDurationMs: duration,
-          },
-        };
-      }
-
-      if (data.status === 'OVER_QUERY_LIMIT') {
-        this.rateLimitCoordinator.reportRateLimitHit(
-          ExternalApiService.GOOGLE_PLACES,
-          60,
-          'placeDetails',
-        );
-        throw this.buildTooManyRequestsError(
-          'Google Places rate limit exceeded',
-        );
-      }
-
-      if (data.status === 'INVALID_REQUEST') {
-        throw new BadRequestException(
-          data.error_message || 'Invalid Google Places request',
-        );
-      }
-
-      if (data.status === 'NOT_FOUND') {
-        return {
-          status: data.status,
-          errorMessage: data.error_message || 'Place not found',
-          metadata: {
-            fields,
-            requestDurationMs: duration,
-          },
-        };
-      }
-
-      throw new ServiceUnavailableException(
-        data.error_message || `Google Places error: ${data.status}`,
-      );
+      this.logger.debug('Retrieved Google Place details (New)', {
+        placeId,
+        duration,
+      });
+      return {
+        place: place as GooglePlacesV1Place,
+        raw: options.includeRaw ? place : undefined,
+        metadata: {
+          fieldMask,
+          requestDurationMs: duration,
+        },
+      };
     } catch (error) {
       const duration = Date.now() - requestStart;
-      const axiosError = error as AxiosError<GooglePlaceDetailsApiResponse>;
-      const status = axiosError.response?.data?.status;
+      const axiosError = error as AxiosError<PlacesNewErrorResponse>;
       const message =
-        axiosError.response?.data?.error_message || axiosError.message;
+        axiosError.response?.data?.error?.message || axiosError.message;
 
       this.logger.error('Failed to retrieve Google Place details', {
         placeId,
-        status,
         message,
         duration,
       });
 
-      if (axiosError.response?.status === 429) {
+      if (
+        axiosError.response?.status === 429 ||
+        axiosError.response?.data?.error?.code === 429
+      ) {
         this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
@@ -369,7 +342,7 @@ export class GooglePlacesService {
       }
 
       if (axiosError.response?.status === 404) {
-        throw new ServiceUnavailableException('Place not found');
+        throw new NotFoundException(message || 'Place not found');
       }
 
       if (error instanceof BadRequestException) {
@@ -383,8 +356,8 @@ export class GooglePlacesService {
   async autocompletePlace(
     input: string,
     options: GooglePlaceAutocompleteOptions = {},
-  ): Promise<GooglePlaceAutocompleteResponse> {
-    const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+  ): Promise<GooglePlacesV1AutocompleteResponse> {
+    const apiKey = this.configService.get<string>('googlePlaces.apiKey');
     if (!apiKey) {
       throw new ServiceUnavailableException(
         'Google Places API key is not configured',
@@ -407,19 +380,34 @@ export class GooglePlacesService {
       );
     }
 
-    const params: Record<string, string> = {
+    const payload: Record<string, unknown> = {
       input: trimmedInput,
-      key: apiKey,
-      types: options.types || 'establishment',
-      language: options.language || 'en',
+      languageCode: options.language || 'en',
     };
 
     if (options.sessionToken) {
-      params.sessiontoken = options.sessionToken;
+      payload.sessionToken = options.sessionToken;
     }
 
     if (options.components?.country) {
-      params.components = `country:${options.components.country}`;
+      const code = options.components.country.trim().toUpperCase();
+      if (code) {
+        payload.includedRegionCodes = [code];
+        payload.regionCode = code;
+      }
+    }
+
+    if (options.types) {
+      const raw = options.types.trim();
+      if (raw) {
+        const types = raw
+          .split(',')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0);
+        if (types.length > 0) {
+          payload.includedPrimaryTypes = types;
+        }
+      }
     }
 
     if (options.locationBias) {
@@ -430,12 +418,17 @@ export class GooglePlacesService {
         typeof lng === 'number' &&
         Number.isFinite(lng)
       ) {
-        if (typeof radiusMeters === 'number' && Number.isFinite(radiusMeters)) {
-          const radius = Math.max(1, Math.min(Math.trunc(radiusMeters), 50000));
-          params.locationbias = `circle:${radius}@${lat},${lng}`;
-        } else {
-          params.locationbias = `point:${lat},${lng}`;
-        }
+        const radius =
+          typeof radiusMeters === 'number' && Number.isFinite(radiusMeters)
+            ? Math.max(1, Math.min(Math.trunc(radiusMeters), 50000))
+            : this.defaultRadiusMeters;
+        payload.locationBias = {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius,
+          },
+        };
+        payload.origin = { latitude: lat, longitude: lng };
       }
     }
 
@@ -443,82 +436,61 @@ export class GooglePlacesService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.get<GooglePlaceAutocompleteApiResponse>(
-          `${this.baseUrl}/autocomplete/json`,
+        this.httpService.post<Record<string, unknown>>(
+          `${this.baseUrl}/places:autocomplete`,
+          payload,
           {
-            params,
             timeout: this.requestTimeout,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': apiKey,
+              'X-Goog-FieldMask': AUTOCOMPLETE_FIELD_MASK,
+            },
           },
         ),
       );
 
       const duration = Date.now() - requestStart;
-      const data = response.data;
+      const data = response.data as {
+        suggestions?: GooglePlacesV1AutocompleteSuggestion[];
+      };
+      const suggestions = Array.isArray(data?.suggestions)
+        ? data.suggestions
+        : [];
 
-      if (!data) {
-        throw new InternalServerErrorException(
-          'Google Places autocomplete response missing data',
-        );
-      }
+      this.logger.debug('Retrieved Google Places autocomplete results (New)', {
+        input: trimmedInput,
+        suggestionCount: suggestions.length,
+        duration,
+      });
 
-      if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
-        this.logger.debug('Retrieved Google Places autocomplete results', {
-          input: trimmedInput,
-          predictionCount: data.predictions.length,
-          duration,
-        });
-
-        return {
-          status: data.status,
-          predictions: data.predictions,
-          raw: options.includeRaw ? data : undefined,
-          metadata: {
-            requestDurationMs: duration,
-            locationBiasApplied: Boolean(params.locationbias),
-            predictionCount: data.predictions.length,
-          },
-        };
-      }
-
-      if (data.status === 'OVER_QUERY_LIMIT') {
-        this.rateLimitCoordinator.reportRateLimitHit(
-          ExternalApiService.GOOGLE_PLACES,
-          60,
-          'placeAutocomplete',
-        );
-        throw this.buildTooManyRequestsError(
-          'Google Places rate limit exceeded',
-        );
-      }
-
-      if (
-        data.status === 'INVALID_REQUEST' ||
-        data.status === 'REQUEST_DENIED'
-      ) {
-        throw new BadRequestException(
-          data.error_message || 'Invalid autocomplete request',
-        );
-      }
-
-      throw new ServiceUnavailableException(
-        data.error_message || `Google Places error: ${data.status}`,
-      );
+      return {
+        suggestions,
+        raw: options.includeRaw ? data : undefined,
+        metadata: {
+          fieldMask: AUTOCOMPLETE_FIELD_MASK,
+          requestDurationMs: duration,
+          locationBiasApplied: Boolean(payload.locationBias),
+          suggestionCount: suggestions.length,
+        },
+      };
     } catch (error) {
       const duration = Date.now() - requestStart;
-      const axiosError =
-        error as AxiosError<GooglePlaceAutocompleteApiResponse>;
-      const status = axiosError.response?.data?.status;
       const message =
-        axiosError.response?.data?.error_message || axiosError.message;
+        (error as AxiosError<PlacesNewErrorResponse>)?.response?.data?.error
+          ?.message || (error as AxiosError).message;
 
       this.logger.error('Failed to fetch autocomplete predictions', {
         input: trimmedInput,
-        status,
         message,
         duration,
       });
 
-      if (axiosError.response?.status === 429) {
+      const axiosError = error as AxiosError<PlacesNewErrorResponse>;
+      if (
+        axiosError.response?.status === 429 ||
+        axiosError.response?.data?.error?.code === 429
+      ) {
         this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
@@ -543,32 +515,11 @@ export class GooglePlacesService {
     }
   }
 
-  private normalizeDetailResult(
-    result?: GooglePlaceDetailsResult,
-  ): GooglePlaceDetailsResult | undefined {
-    if (!result) {
-      return result;
-    }
-
-    const needsUtcOffsetMinutes =
-      typeof result.utc_offset_minutes !== 'number' &&
-      typeof result.utc_offset === 'number';
-
-    if (needsUtcOffsetMinutes) {
-      return {
-        ...result,
-        utc_offset_minutes: result.utc_offset,
-      };
-    }
-
-    return result;
-  }
-
   async findPlaceFromText(
     input: string,
     options: GoogleFindPlaceOptions = {},
-  ): Promise<GoogleFindPlaceResponse> {
-    const apiKey = this.configService.get<string>('GOOGLE_PLACES_API_KEY');
+  ): Promise<GooglePlacesV1TextSearchResponse> {
+    const apiKey = this.configService.get<string>('googlePlaces.apiKey');
     if (!apiKey) {
       throw new ServiceUnavailableException(
         'Google Places API key is not configured',
@@ -591,18 +542,21 @@ export class GooglePlacesService {
       );
     }
 
-    const fields = this.normalizeFields(options.fields);
+    const fieldMaskFields = this.resolveTextSearchFieldMaskFields(
+      options.fields,
+    );
+    const fieldMask = [
+      ...fieldMaskFields.map((field) => `places.${field}`),
+      'nextPageToken',
+    ].join(',');
 
-    const params: Record<string, string> = {
-      input: trimmedInput,
-      inputtype: 'textquery',
-      key: apiKey,
-      fields: fields.join(','),
-      language: options.language || 'en',
+    const payload: Record<string, unknown> = {
+      textQuery: trimmedInput,
+      languageCode: options.language || 'en',
     };
 
     if (options.sessionToken) {
-      params.sessiontoken = options.sessionToken;
+      payload.sessionToken = options.sessionToken;
     }
 
     if (options.locationBias) {
@@ -613,12 +567,16 @@ export class GooglePlacesService {
         typeof lng === 'number' &&
         Number.isFinite(lng)
       ) {
-        if (typeof radiusMeters === 'number' && Number.isFinite(radiusMeters)) {
-          const radius = Math.max(1, Math.min(Math.trunc(radiusMeters), 50000));
-          params.locationbias = `circle:${radius}@${lat},${lng}`;
-        } else {
-          params.locationbias = `point:${lat},${lng}`;
-        }
+        const radius =
+          typeof radiusMeters === 'number' && Number.isFinite(radiusMeters)
+            ? Math.max(1, Math.min(Math.trunc(radiusMeters), 50000))
+            : this.defaultRadiusMeters;
+        payload.locationBias = {
+          circle: {
+            center: { latitude: lat, longitude: lng },
+            radius,
+          },
+        };
       }
     }
 
@@ -626,86 +584,63 @@ export class GooglePlacesService {
 
     try {
       const response = await firstValueFrom(
-        this.httpService.get<GoogleFindPlaceApiResponse>(
-          `${this.baseUrl}/findplacefromtext/json`,
+        this.httpService.post<Record<string, unknown>>(
+          `${this.baseUrl}/places:searchText`,
+          payload,
           {
-            params,
             timeout: this.requestTimeout,
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Goog-Api-Key': apiKey,
+              'X-Goog-FieldMask': fieldMask,
+            },
           },
         ),
       );
 
       const duration = Date.now() - requestStart;
-      const data = response.data;
+      const data = response.data as {
+        places?: GooglePlacesV1Place[];
+        nextPageToken?: string;
+      };
+      const places = Array.isArray(data?.places) ? data.places : [];
 
-      if (!data) {
-        throw new InternalServerErrorException(
-          'Google Places find place response missing data',
-        );
-      }
+      this.logger.debug('Retrieved Google Places text search results (New)', {
+        input: trimmedInput,
+        placeCount: places.length,
+        duration,
+      });
 
-      if (data.status === 'OK' || data.status === 'ZERO_RESULTS') {
-        const candidates = Array.isArray(data.candidates)
-          ? data.candidates
-          : [];
-
-        this.logger.debug('Retrieved Google Places find place results', {
-          input: trimmedInput,
-          candidateCount: candidates.length,
-          duration,
-          status: data.status,
-        });
-
-        return {
-          status: data.status,
-          candidates,
-          raw: options.includeRaw ? data : undefined,
-          metadata: {
-            requestDurationMs: duration,
-            locationBiasApplied: Boolean(params.locationbias),
-            candidateCount: candidates.length,
-          },
-        };
-      }
-
-      if (data.status === 'OVER_QUERY_LIMIT') {
-        this.rateLimitCoordinator.reportRateLimitHit(
-          ExternalApiService.GOOGLE_PLACES,
-          60,
-          'findPlaceFromText',
-        );
-        throw this.buildTooManyRequestsError(
-          'Google Places rate limit exceeded',
-        );
-      }
-
-      if (
-        data.status === 'INVALID_REQUEST' ||
-        data.status === 'REQUEST_DENIED'
-      ) {
-        throw new BadRequestException(
-          data.error_message || 'Invalid find place request',
-        );
-      }
-
-      throw new ServiceUnavailableException(
-        data.error_message || `Google Places error: ${data.status}`,
-      );
+      return {
+        places,
+        nextPageToken:
+          typeof data.nextPageToken === 'string'
+            ? data.nextPageToken
+            : undefined,
+        raw: options.includeRaw ? data : undefined,
+        metadata: {
+          fieldMask,
+          requestDurationMs: duration,
+          locationBiasApplied: Boolean(payload.locationBias),
+          placeCount: places.length,
+        },
+      };
     } catch (error) {
       const duration = Date.now() - requestStart;
-      const axiosError = error as AxiosError<GoogleFindPlaceApiResponse>;
-      const status = axiosError.response?.data?.status;
+      const axiosError = error as AxiosError<PlacesNewErrorResponse>;
       const message =
-        axiosError.response?.data?.error_message || axiosError.message;
+        axiosError.response?.data?.error?.message || axiosError.message;
 
       this.logger.error('Failed to fetch Google find place results', {
         input: trimmedInput,
-        status,
         message,
         duration,
       });
 
-      if (axiosError.response?.status === 429) {
+      if (
+        axiosError.response?.status === 429 ||
+        axiosError.response?.data?.error?.code === 429
+      ) {
         this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
@@ -730,16 +665,38 @@ export class GooglePlacesService {
     }
   }
 
-  private normalizeFields(fields?: string[]): string[] {
+  private normalizeRequestedFields(fields?: string[]): string[] {
     if (!fields || fields.length === 0) {
-      return DEFAULT_DETAIL_FIELDS;
+      return [];
     }
 
     const normalized = fields
       .map((field) => field.trim())
       .filter((field) => field.length > 0);
 
-    return normalized.length > 0 ? normalized : DEFAULT_DETAIL_FIELDS;
+    return Array.from(new Set(normalized));
+  }
+
+  private resolvePlaceDetailsFieldMaskFields(fields?: string[]): string[] {
+    const requested = this.normalizeRequestedFields(fields);
+    const unique =
+      requested.length > 0
+        ? requested
+        : DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS;
+    if (!unique.includes('id')) {
+      unique.unshift('id');
+    }
+    return Array.from(new Set(unique));
+  }
+
+  private resolveTextSearchFieldMaskFields(fields?: string[]): string[] {
+    const requested = this.normalizeRequestedFields(fields);
+    const unique =
+      requested.length > 0 ? requested : DEFAULT_TEXT_SEARCH_FIELD_MASK_FIELDS;
+    if (!unique.includes('id')) {
+      unique.unshift('id');
+    }
+    return Array.from(new Set(unique));
   }
 
   private buildTooManyRequestsError(message: string): HttpException {

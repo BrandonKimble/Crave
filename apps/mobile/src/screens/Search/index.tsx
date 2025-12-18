@@ -6,7 +6,6 @@ import {
   Pressable,
   TouchableOpacity,
   View,
-  StyleSheet,
   Easing as RNEasing,
 } from 'react-native';
 import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native';
@@ -668,13 +667,11 @@ const SearchScreen: React.FC = () => {
     const progress = suggestionTransition.value;
     const backgroundAlpha = 1 - progress;
     const shadowOpacity = 0.2 * backgroundAlpha;
-    const borderAlpha = 0.35 * backgroundAlpha;
     return {
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
       shadowOpacity,
       shadowRadius: 2 + 2 * shadowOpacity,
-      borderColor: `rgba(226, 232, 240, ${borderAlpha})`,
-      borderWidth: backgroundAlpha > 0 ? StyleSheet.hairlineWidth : 0,
+      borderWidth: 0,
       elevation: backgroundAlpha > 0 ? 1 : 0,
     };
   });
@@ -1992,7 +1989,7 @@ const SearchScreen: React.FC = () => {
               inputRef={inputRef}
               inputAnimatedStyle={searchBarInputAnimatedStyle}
               containerAnimatedStyle={[
-                isSuggestionScreenActive ? null : searchBarSheetAnimatedStyle,
+                searchBarSheetAnimatedStyle,
                 searchBarAnimatedStyle,
                 searchBarTransparencyAnimatedStyle,
               ]}

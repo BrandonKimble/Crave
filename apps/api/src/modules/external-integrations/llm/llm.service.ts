@@ -70,6 +70,10 @@ type GeminiGenerationConfig = Record<string, unknown> & {
   responseSchema?: Record<string, unknown>;
   cachedContent?: string;
   systemInstruction?: string;
+  httpOptions?: {
+    timeout?: number;
+  };
+  abortSignal?: AbortSignal;
   thinkingConfig?: {
     thinkingBudget: number;
   };
@@ -80,6 +84,8 @@ interface LLMGenerationOptions {
   cacheName?: string | null;
   systemInstruction?: string | null;
   model?: string | null;
+  timeoutMs?: number;
+  maxRetries?: number;
 }
 
 type CacheRefreshReason =
@@ -129,6 +135,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       model:
         this.configService.get<string>('llm.model') ||
         'gemini-2.5-flash-preview-09-2025',
+      queryTimeout: this.configService.get<number>('llm.queryTimeout') || 0,
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
@@ -749,6 +756,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       cacheName: this.queryInstructionCache?.name ?? null,
       systemInstruction: this.queryPrompt,
       model: this.queryModel,
+      timeoutMs:
+        typeof this.llmConfig.queryTimeout === 'number' &&
+        Number.isFinite(this.llmConfig.queryTimeout) &&
+        this.llmConfig.queryTimeout > 0
+          ? this.llmConfig.queryTimeout
+          : undefined,
+      maxRetries: 0,
     });
     const content = this.extractTextContent(response, 'analyze_search_query');
     const analysis = this.parseSearchQueryResponse(content);
@@ -1089,9 +1103,282 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     options: LLMGenerationOptions = {},
   ): Promise<LLMApiResponse> {
     const targetModel = options.model ?? this.llmConfig.model;
-    const maxRetries = this.llmConfig.retryOptions?.maxRetries ?? 3;
+    const maxRetries =
+      typeof options.maxRetries === 'number' && options.maxRetries >= 0
+        ? options.maxRetries
+        : (this.llmConfig.retryOptions?.maxRetries ?? 3);
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
+
+    type RateLimitKind = 'rpm' | 'tpm' | 'daily_quota' | 'unknown';
+    type RateLimitClassification = {
+      kind: RateLimitKind;
+      resetTimeSeconds: number;
+      providerStatusCode?: number;
+      providerStatus?: string;
+      providerMessage?: string;
+      quotaMetric?: string;
+    };
+
+    const extractJsonObjectFromString = (
+      text: string,
+      startIndex: number,
+    ): string | null => {
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+
+      for (let i = startIndex; i < text.length; i++) {
+        const ch = text[i] ?? '';
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (ch === '\\\\') {
+            escaped = true;
+          } else if (ch === '"') {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+
+        if (ch === '{') {
+          depth++;
+          continue;
+        }
+
+        if (ch === '}') {
+          depth--;
+          if (depth === 0) {
+            return text.slice(startIndex, i + 1);
+          }
+        }
+      }
+
+      return null;
+    };
+
+    const extractGoogleErrorEnvelope = (
+      message: string,
+    ): {
+      error?: {
+        code?: number;
+        status?: string;
+        message?: string;
+        details?: unknown[];
+      };
+    } | null => {
+      const startIndex = message.indexOf('{"error"');
+      if (startIndex < 0) {
+        return null;
+      }
+      const json = extractJsonObjectFromString(message, startIndex);
+      if (!json) {
+        return null;
+      }
+
+      try {
+        return JSON.parse(json) as {
+          error?: {
+            code?: number;
+            status?: string;
+            message?: string;
+            details?: unknown[];
+          };
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const parseRetryDelaySeconds = (value: unknown): number | undefined => {
+      if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d+(?:\.\d+)?)s$/i);
+        if (!match) {
+          return undefined;
+        }
+        const seconds = Number.parseFloat(match[1] ?? '');
+        return Number.isFinite(seconds) ? seconds : undefined;
+      }
+
+      if (value && typeof value === 'object') {
+        const record = value as Record<string, unknown>;
+        const secondsRaw = record.seconds;
+        const nanosRaw = record.nanos;
+        const seconds =
+          typeof secondsRaw === 'number'
+            ? secondsRaw
+            : typeof secondsRaw === 'string'
+              ? Number.parseFloat(secondsRaw)
+              : undefined;
+        const nanos =
+          typeof nanosRaw === 'number'
+            ? nanosRaw
+            : typeof nanosRaw === 'string'
+              ? Number.parseFloat(nanosRaw)
+              : undefined;
+        if (
+          !Number.isFinite(seconds ?? NaN) &&
+          !Number.isFinite(nanos ?? NaN)
+        ) {
+          return undefined;
+        }
+        return Math.max(
+          0,
+          (Number.isFinite(seconds ?? NaN) ? (seconds as number) : 0) +
+            (Number.isFinite(nanos ?? NaN) ? (nanos as number) : 0) / 1e9,
+        );
+      }
+
+      return undefined;
+    };
+
+    const classifyRateLimit = (
+      err: unknown,
+    ): RateLimitClassification | null => {
+      const providerMessage =
+        err instanceof Error ? err.message : typeof err === 'string' ? err : '';
+      const lowerMessage = providerMessage.toLowerCase();
+      const providerStatusCode =
+        err && typeof err === 'object'
+          ? (() => {
+              const raw = (err as Record<string, unknown>).status;
+              return typeof raw === 'number' ? raw : undefined;
+            })()
+          : undefined;
+
+      const envelope = extractGoogleErrorEnvelope(providerMessage);
+      const envelopeCode = envelope?.error?.code;
+      const envelopeStatus = envelope?.error?.status
+        ? String(envelope.error.status)
+        : undefined;
+      const envelopeMessage = envelope?.error?.message
+        ? String(envelope.error.message)
+        : undefined;
+      const details = Array.isArray(envelope?.error?.details)
+        ? envelope.error.details
+        : [];
+
+      const isRateLimit =
+        providerStatusCode === 429 ||
+        envelopeCode === 429 ||
+        envelopeStatus?.toLowerCase() === 'resource_exhausted' ||
+        lowerMessage.includes('rate limit') ||
+        lowerMessage.includes('quota') ||
+        lowerMessage.includes('429');
+      if (!isRateLimit) {
+        return null;
+      }
+
+      let retryAfterSeconds: number | undefined;
+      let quotaMetric: string | undefined;
+      for (const detail of details) {
+        if (!detail || typeof detail !== 'object') {
+          continue;
+        }
+        const record = detail as Record<string, unknown>;
+        const type = typeof record['@type'] === 'string' ? record['@type'] : '';
+        if (
+          type.endsWith('google.rpc.RetryInfo') ||
+          type.endsWith('/google.rpc.RetryInfo')
+        ) {
+          const parsed = parseRetryDelaySeconds(record.retryDelay);
+          if (typeof parsed === 'number' && parsed > 0) {
+            retryAfterSeconds = parsed;
+          }
+        }
+        if (
+          type.endsWith('google.rpc.ErrorInfo') ||
+          type.endsWith('/google.rpc.ErrorInfo')
+        ) {
+          const metadata = record.metadata;
+          if (metadata && typeof metadata === 'object') {
+            const metricRaw = (metadata as Record<string, unknown>)
+              .quota_metric;
+            if (typeof metricRaw === 'string' && metricRaw.trim()) {
+              quotaMetric = metricRaw.trim();
+            }
+          }
+        }
+        if (
+          type.endsWith('google.rpc.QuotaFailure') ||
+          type.endsWith('/google.rpc.QuotaFailure')
+        ) {
+          const violations = record.violations;
+          if (Array.isArray(violations)) {
+            for (const violation of violations) {
+              if (!violation || typeof violation !== 'object') {
+                continue;
+              }
+              const subject = (violation as Record<string, unknown>).subject;
+              if (typeof subject === 'string' && subject.trim()) {
+                quotaMetric = quotaMetric ?? subject.trim();
+              }
+            }
+          }
+        }
+      }
+
+      const classifyFromMetricOrMessage = (): RateLimitKind => {
+        const text = (
+          quotaMetric ??
+          envelopeMessage ??
+          providerMessage
+        ).toLowerCase();
+        if (
+          text.includes('token') ||
+          text.includes('tpm') ||
+          text.includes('tokens_per_minute')
+        ) {
+          return 'tpm';
+        }
+        if (
+          text.includes('per_day') ||
+          text.includes('perday') ||
+          text.includes('daily') ||
+          text.includes('requests_per_day')
+        ) {
+          return 'daily_quota';
+        }
+        if (
+          text.includes('request') ||
+          text.includes('rpm') ||
+          text.includes('per minute') ||
+          text.includes('requests_per_minute')
+        ) {
+          return 'rpm';
+        }
+        return 'unknown';
+      };
+
+      const kind = classifyFromMetricOrMessage();
+      const resetTimeSeconds = (() => {
+        if (
+          typeof retryAfterSeconds === 'number' &&
+          Number.isFinite(retryAfterSeconds) &&
+          retryAfterSeconds > 0
+        ) {
+          return Math.min(Math.ceil(retryAfterSeconds), 86_400);
+        }
+        if (kind === 'daily_quota') {
+          return 3600;
+        }
+        return 60;
+      })();
+
+      return {
+        kind,
+        resetTimeSeconds,
+        providerStatusCode: providerStatusCode ?? envelopeCode,
+        providerStatus: envelopeStatus,
+        providerMessage: envelopeMessage ?? providerMessage,
+        quotaMetric,
+      };
+    };
 
     const defaultGenerationConfig: GeminiGenerationConfig = {
       temperature: this.llmConfig.temperature,
@@ -1220,23 +1507,20 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         err instanceof Error ? err.message : typeof err === 'string' ? err : '';
       const lowerMessage = message.toLowerCase();
 
-      let code = 0;
-      let status = '';
-      const jsonMatch = message.match(/\{"error":{[^}]*}}/);
-      if (jsonMatch) {
-        try {
-          const parsed = JSON.parse(jsonMatch[0]) as {
-            error?: { code?: number; status?: string };
-          };
-          code = parsed.error?.code ?? 0;
-          status = String(parsed.error?.status ?? '').toLowerCase();
-        } catch {
-          // ignore JSON parse failures
-        }
-      }
+      const envelope = extractGoogleErrorEnvelope(message);
+      const code = envelope?.error?.code ?? 0;
+      const status = String(envelope?.error?.status ?? '').toLowerCase();
+      const statusCode =
+        err && typeof err === 'object'
+          ? (() => {
+              const raw = (err as Record<string, unknown>).status;
+              return typeof raw === 'number' ? raw : 0;
+            })()
+          : 0;
 
       if (
         code === 503 ||
+        statusCode === 503 ||
         status === 'unavailable' ||
         lowerMessage.includes('service is currently unavailable') ||
         lowerMessage.includes('model is overloaded') ||
@@ -1248,7 +1532,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       }
       if (
         lowerMessage.includes('timeout') ||
-        lowerMessage.includes('timed out')
+        lowerMessage.includes('timed out') ||
+        lowerMessage.includes('abort') ||
+        (err instanceof Error && err.name === 'AbortError')
       ) {
         return { retry: true, reason: 'timeout' };
       }
@@ -1258,11 +1544,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       ) {
         return { retry: true, reason: 'network' };
       }
-      if (
-        lowerMessage.includes('rate limit') ||
-        lowerMessage.includes('quota') ||
-        lowerMessage.includes('429')
-      ) {
+      if (classifyRateLimit(err)) {
         return { retry: true, reason: 'rate_limit' };
       }
 
@@ -1300,11 +1582,64 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               systemInstruction,
             };
 
-        const response = await this.genAI.models.generateContent({
-          model: targetModel,
-          contents: [{ parts: [{ text: prompt }] }],
-          config: requestConfig,
-        });
+        const resolvedTimeoutMs = (() => {
+          const raw = options.timeoutMs;
+          if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+            return Math.floor(raw);
+          }
+          const configTimeout = requestConfig.httpOptions?.timeout;
+          if (
+            typeof configTimeout === 'number' &&
+            Number.isFinite(configTimeout) &&
+            configTimeout > 0
+          ) {
+            return Math.floor(configTimeout);
+          }
+          const defaultTimeout = this.llmConfig.timeout;
+          if (
+            typeof defaultTimeout === 'number' &&
+            Number.isFinite(defaultTimeout) &&
+            defaultTimeout > 0
+          ) {
+            return Math.floor(defaultTimeout);
+          }
+          return 0;
+        })();
+
+        const abortController =
+          resolvedTimeoutMs > 0 ? new AbortController() : null;
+        let timeoutHandle: NodeJS.Timeout | null = null;
+        const requestConfigWithTimeout: GeminiGenerationConfig =
+          abortController && resolvedTimeoutMs > 0
+            ? {
+                ...requestConfig,
+                abortSignal: abortController.signal,
+                httpOptions: {
+                  ...(requestConfig.httpOptions ?? {}),
+                  timeout: resolvedTimeoutMs,
+                },
+              }
+            : requestConfig;
+
+        if (abortController && resolvedTimeoutMs > 0) {
+          timeoutHandle = setTimeout(() => {
+            abortController.abort();
+          }, resolvedTimeoutMs);
+        }
+
+        const response = await (async () => {
+          try {
+            return await this.genAI.models.generateContent({
+              model: targetModel,
+              contents: [{ parts: [{ text: prompt }] }],
+              config: requestConfigWithTimeout,
+            });
+          } finally {
+            if (timeoutHandle) {
+              clearTimeout(timeoutHandle);
+            }
+          }
+        })();
 
         const finishReason = response.candidates?.[0]?.finishReason;
         const tokensUsed = response.usageMetadata?.totalTokenCount || 0;
@@ -1533,14 +1868,22 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         const { retry, reason } = isRetryable(error);
         if (retry && attempt < maxRetries) {
           if (reason === 'rate_limit') {
+            const classification = classifyRateLimit(error);
+            const resetTimeSeconds = classification?.resetTimeSeconds ?? 60;
             this.logger.warn(
               'Transient Gemini rate limit; handing back to processor for rescheduling',
               {
                 correlationId: CorrelationUtils.getCorrelationId(),
                 attempt: attempt + 1,
+                rateLimitKind: classification?.kind ?? 'unknown',
+                resetTimeSeconds,
+                quotaMetric: classification?.quotaMetric,
               },
             );
-            throw new LLMRateLimitError(60);
+            throw new LLMRateLimitError(
+              resetTimeSeconds,
+              classification ?? undefined,
+            );
           }
 
           // Exponential backoff with jitter for other transient errors
@@ -1572,19 +1915,23 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               error.message,
             );
           } else if (
-            errorMessage.includes('quota') ||
-            errorMessage.includes('rate limit') ||
-            errorMessage.includes('429')
-          ) {
-            throw new LLMRateLimitError(60);
-          } else if (
             errorMessage.includes('network') ||
             errorMessage.includes('connection') ||
-            errorMessage.includes('timeout')
+            errorMessage.includes('timeout') ||
+            errorMessage.includes('abort') ||
+            error.name === 'AbortError'
           ) {
             throw new LLMNetworkError(
               'Network error during Gemini API request',
               error,
+            );
+          }
+
+          const classification = classifyRateLimit(error);
+          if (classification) {
+            throw new LLMRateLimitError(
+              classification.resetTimeSeconds,
+              classification,
             );
           } else {
             throw new LLMApiError(
@@ -1594,6 +1941,13 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
             );
           }
         } else {
+          const classification = classifyRateLimit(error);
+          if (classification) {
+            throw new LLMRateLimitError(
+              classification.resetTimeSeconds,
+              classification,
+            );
+          }
           throw new LLMApiError(
             `LLM request failed: ${String(error)}`,
             undefined,

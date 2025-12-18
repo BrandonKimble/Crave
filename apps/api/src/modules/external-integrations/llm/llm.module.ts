@@ -7,6 +7,7 @@ import { LLMChunkingService } from './llm-chunking.service';
 import { LLMConcurrentProcessingService } from './llm-concurrent-processing.service';
 import { SmartLLMProcessor } from './rate-limiting/smart-llm-processor.service';
 import { CentralizedRateLimiter } from './rate-limiting/centralized-rate-limiter.service';
+import { LlmRateLimiterMetricsService } from './rate-limiting/llm-rate-limiter-metrics.service';
 import { SharedModule } from '../../../shared/shared.module';
 
 @Module({
@@ -32,6 +33,7 @@ import { SharedModule } from '../../../shared/shared.module';
     LLMConcurrentProcessingService,
     CentralizedRateLimiter,
     SmartLLMProcessor,
+    LlmRateLimiterMetricsService,
   ],
   exports: [
     LLMService,
@@ -39,6 +41,7 @@ import { SharedModule } from '../../../shared/shared.module';
     LLMConcurrentProcessingService,
     CentralizedRateLimiter,
     SmartLLMProcessor,
+    LlmRateLimiterMetricsService,
   ],
 })
 export class LLMModule {}

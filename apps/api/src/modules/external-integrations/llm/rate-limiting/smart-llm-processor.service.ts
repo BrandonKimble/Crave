@@ -1,12 +1,13 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { LLMService } from '../llm.service';
-import { LLMRateLimitError } from '../llm.exceptions';
+import { LLMRateLimitAbortError, LLMRateLimitError } from '../llm.exceptions';
 import {
   CentralizedRateLimiter,
   ReservationMetrics,
   ReservationResult,
 } from './centralized-rate-limiter.service';
+import { LlmRateLimiterMetricsService } from './llm-rate-limiter-metrics.service';
 import { RateLimitMetrics, TokenUsage } from './rate-limiting.types';
 import {
   LLMInputStructure,
@@ -32,6 +33,7 @@ import {
 export class SmartLLMProcessor implements OnModuleInit {
   private logger!: LoggerService;
   private rateLimiter!: CentralizedRateLimiter;
+  private readonly maxConsecutiveRateLimitErrors: number | null;
 
   // Performance tracking
   private processedRequests: number = 0;
@@ -75,7 +77,26 @@ export class SmartLLMProcessor implements OnModuleInit {
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     @Inject(CentralizedRateLimiter)
     private readonly centralizedRateLimiter: CentralizedRateLimiter,
+    private readonly llmRateLimiterMetrics: LlmRateLimiterMetricsService,
   ) {
+    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
+    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+    const isProd =
+      appEnv.toLowerCase() === 'prod' || nodeEnv.toLowerCase() === 'production';
+
+    if (isProd) {
+      this.maxConsecutiveRateLimitErrors = null;
+    } else {
+      const envMaxConsecutive = Number.parseInt(
+        process.env.LLM_MAX_CONSECUTIVE_RATE_LIMITS || '',
+        10,
+      );
+      this.maxConsecutiveRateLimitErrors =
+        Number.isFinite(envMaxConsecutive) && envMaxConsecutive > 0
+          ? envMaxConsecutive
+          : null;
+    }
+
     const envMaxTokens = parseInt(
       process.env.LLM_MAX_REQUEST_TOKENS || '60000',
       10,
@@ -101,6 +122,7 @@ export class SmartLLMProcessor implements OnModuleInit {
         guaranteedCompliance: true,
         workers: 16,
         headroom: '95%',
+        maxConsecutiveRateLimitErrors: this.maxConsecutiveRateLimitErrors,
       },
     );
   }
@@ -119,6 +141,7 @@ export class SmartLLMProcessor implements OnModuleInit {
     const startTime = Date.now();
     const effectiveWorkerId =
       workerId || `worker-${Math.floor(Math.random() * 16)}`;
+    let consecutiveRateLimitErrors = 0;
 
     while (true) {
       let reservation: ReservationResult | null = null;
@@ -132,6 +155,7 @@ export class SmartLLMProcessor implements OnModuleInit {
           effectiveWorkerId,
           estimatedTokens,
         );
+        this.llmRateLimiterMetrics.recordReservation(reservation);
         const reservationMetrics = this.getReservationMetrics(reservation);
 
         // 3. Wait until the reserved time if necessary
@@ -345,6 +369,11 @@ export class SmartLLMProcessor implements OnModuleInit {
           ...result,
           rateLimitInfo,
         };
+        consecutiveRateLimitErrors = 0;
+        this.llmRateLimiterMetrics.recordRequestOutcome(
+          'success',
+          Date.now() - startTime,
+        );
         return enrichedResult;
       } catch (error) {
         if (reservation) {
@@ -362,6 +391,11 @@ export class SmartLLMProcessor implements OnModuleInit {
         }
 
         if (error instanceof LLMRateLimitError) {
+          consecutiveRateLimitErrors++;
+          this.llmRateLimiterMetrics.recordRequestOutcome(
+            'rate_limit_error',
+            Date.now() - startTime,
+          );
           const resetTimeSecondsRaw: unknown = error.context?.resetTime;
           const resetTimeSeconds =
             typeof resetTimeSecondsRaw === 'number' &&
@@ -369,6 +403,32 @@ export class SmartLLMProcessor implements OnModuleInit {
             resetTimeSecondsRaw > 0
               ? resetTimeSecondsRaw
               : 60;
+
+          if (
+            this.maxConsecutiveRateLimitErrors !== null &&
+            consecutiveRateLimitErrors >= this.maxConsecutiveRateLimitErrors
+          ) {
+            this.logger.error(
+              'Aborting after repeated LLM rate limits (dev/test fail-fast)',
+              {
+                correlationId: CorrelationUtils.getCorrelationId(),
+                workerId: effectiveWorkerId,
+                consecutiveRateLimitErrors,
+                maxConsecutiveRateLimitErrors:
+                  this.maxConsecutiveRateLimitErrors,
+                resetTimeSeconds,
+              },
+            );
+            this.llmRateLimiterMetrics.recordRequestOutcome(
+              'rate_limit_abort',
+              Date.now() - startTime,
+            );
+            throw new LLMRateLimitAbortError(
+              `Aborting after ${consecutiveRateLimitErrors} consecutive LLM rate limits`,
+              resetTimeSeconds,
+            );
+          }
+
           const jitterMs = Math.floor(Math.random() * 1500);
           const sleepMs = resetTimeSeconds * 1000 + jitterMs;
 
@@ -395,6 +455,10 @@ export class SmartLLMProcessor implements OnModuleInit {
           },
         });
 
+        this.llmRateLimiterMetrics.recordRequestOutcome(
+          'error',
+          Date.now() - startTime,
+        );
         throw error;
       }
     }

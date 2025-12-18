@@ -2027,6 +2027,21 @@ export class RedditService implements OnModuleInit {
   ): Promise<BatchKeywordSearchResponse> {
     const startTime = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
+    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
+    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+    const isProd =
+      appEnv.toLowerCase() === 'prod' || nodeEnv.toLowerCase() === 'production';
+    const maxConsecutiveRateLimitErrors = (() => {
+      if (isProd) {
+        return null;
+      }
+      const parsed = Number.parseInt(
+        process.env.REDDIT_MAX_CONSECUTIVE_RATE_LIMITS || '',
+        10,
+      );
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    })();
+    let consecutiveRateLimitErrors = 0;
 
     this.logger.info('Starting batch keyword entity search', {
       correlationId,
@@ -2034,6 +2049,7 @@ export class RedditService implements OnModuleInit {
       subreddit,
       entityCount: entityNames.length,
       searchOptions,
+      maxConsecutiveRateLimitErrors,
     });
 
     const results: Record<string, KeywordSearchResponse> = {};
@@ -2063,6 +2079,7 @@ export class RedditService implements OnModuleInit {
 
           results[entityName] = searchResult;
           successfulSearches++;
+          consecutiveRateLimitErrors = 0;
 
           // Add delay between searches to respect rate limits (default 1 second)
           if (i < entityNames.length - 1) {
@@ -2090,6 +2107,26 @@ export class RedditService implements OnModuleInit {
 
           // For rate limit errors, wait longer before continuing
           if (entityError instanceof RedditRateLimitError) {
+            consecutiveRateLimitErrors++;
+            if (
+              maxConsecutiveRateLimitErrors !== null &&
+              consecutiveRateLimitErrors >= maxConsecutiveRateLimitErrors
+            ) {
+              this.logger.error(
+                'Aborting batch keyword entity search after repeated rate limits (dev/test fail-fast)',
+                {
+                  correlationId,
+                  subreddit,
+                  consecutiveRateLimitErrors,
+                  maxConsecutiveRateLimitErrors,
+                },
+              );
+              throw new RedditRateLimitError(
+                `Aborting after ${consecutiveRateLimitErrors} consecutive Reddit rate limits`,
+                entityError.retryAfter,
+              );
+            }
+
             this.logger.info(
               'Rate limit hit, waiting before continuing batch',
               {
@@ -2097,8 +2134,14 @@ export class RedditService implements OnModuleInit {
                 retryAfter: entityError.retryAfter,
               },
             );
+            const retryAfterSeconds =
+              typeof entityError.retryAfter === 'number' &&
+              Number.isFinite(entityError.retryAfter) &&
+              entityError.retryAfter > 0
+                ? entityError.retryAfter
+                : 60;
             await new Promise((resolve) =>
-              setTimeout(resolve, entityError.retryAfter),
+              setTimeout(resolve, retryAfterSeconds * 1000),
             );
           }
         }

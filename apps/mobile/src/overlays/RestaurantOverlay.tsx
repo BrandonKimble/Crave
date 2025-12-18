@@ -64,7 +64,31 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
     restaurant.priceText ??
     restaurant.priceSymbol ??
     null;
+
+  const getWebsiteUrl = (): string | null => {
+    const metadata = restaurant.displayLocation?.metadata as unknown as
+      | { googlePlaces?: { website?: unknown } }
+      | null
+      | undefined;
+    const website = metadata?.googlePlaces?.website;
+    if (typeof website !== 'string') {
+      return null;
+    }
+    const trimmed = website.trim();
+    if (!trimmed) {
+      return null;
+    }
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://')
+      ? trimmed
+      : `https://${trimmed}`;
+  };
+
   const handleWebsitePress = () => {
+    const websiteUrl = getWebsiteUrl();
+    if (websiteUrl) {
+      void Linking.openURL(websiteUrl);
+      return;
+    }
     const query = `${restaurant.restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
   };
