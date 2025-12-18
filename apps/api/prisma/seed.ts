@@ -116,7 +116,14 @@ const RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'serves coffee',
-    aliases: ['coffee', 'coffee bar', 'espresso', 'espresso bar', 'cafe', 'café'],
+    aliases: [
+      'coffee',
+      'coffee bar',
+      'espresso',
+      'espresso bar',
+      'cafe',
+      'café',
+    ],
   },
   {
     canonicalName: 'serves dinner',
@@ -124,7 +131,14 @@ const RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'serves dessert',
-    aliases: ['dessert', 'desserts', 'dessert menu', 'sweet treats', 'sweets', 'sweet'],
+    aliases: [
+      'dessert',
+      'desserts',
+      'dessert menu',
+      'sweet treats',
+      'sweets',
+      'sweet',
+    ],
   },
   {
     canonicalName: 'serves lunch',
@@ -153,9 +167,9 @@ async function seedRestaurantAttributes(): Promise<void> {
   }))
     .map((seed) => ({
       canonicalName: seed.canonicalName,
-      aliases: Array.from(new Set([seed.canonicalName, ...seed.aliases])).filter(
-        (alias) => alias.length > 0,
-      ),
+      aliases: Array.from(
+        new Set([seed.canonicalName, ...seed.aliases]),
+      ).filter((alias) => alias.length > 0),
     }))
     .filter((seed) => seed.canonicalName.length > 0);
 
