@@ -554,12 +554,19 @@ const SearchScreen: React.FC = () => {
   const trimmedQuery = query.trim();
   const hasTypedQuery = trimmedQuery.length > 0;
   const shouldShowRecentSection = isSearchOverlay && isSearchFocused && !hasTypedQuery;
+  const shouldRenderRecentSection =
+    shouldShowRecentSection &&
+    (isRecentLoading ||
+      isRecentlyViewedLoading ||
+      hasRecentSearches ||
+      hasRecentlyViewedRestaurants);
   const shouldRenderAutocompleteSection =
     isSearchOverlay &&
     isSearchFocused &&
     !isAutocompleteSuppressed &&
     trimmedQuery.length >= AUTOCOMPLETE_MIN_CHARS;
-  const shouldRenderSuggestionPanel = shouldRenderAutocompleteSection || shouldShowRecentSection;
+  const shouldRenderSuggestionPanel =
+    shouldRenderAutocompleteSection || shouldRenderRecentSection;
   const isSuggestionScreenActive = isSearchOverlay && isSearchFocused;
   React.useEffect(() => {
     const target = isSuggestionScreenActive ? 1 : 0;
@@ -1929,7 +1936,7 @@ const SearchScreen: React.FC = () => {
                     <SearchSuggestions
                       visible={shouldRenderSuggestionPanel}
                       showAutocomplete={shouldRenderAutocompleteSection}
-                      showRecent={shouldShowRecentSection}
+                      showRecent={shouldRenderRecentSection}
                       suggestions={suggestions}
                       recentSearches={recentSearches}
                       recentlyViewedRestaurants={recentlyViewedRestaurants}

@@ -55,6 +55,13 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     return null;
   }
 
+  const shouldRenderRecentSection =
+    showRecent &&
+    (isRecentLoading ||
+      isRecentlyViewedLoading ||
+      hasRecentSearches ||
+      hasRecentlyViewedRestaurants);
+
   const containerStyles = [styles.container, style];
   const recentScrollStyles: ViewStyle[] = [styles.recentScroll as ViewStyle];
   if (typeof panelMaxHeight === 'number' && panelMaxHeight > 0) {
@@ -92,7 +99,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   onPress={() => onSelectSuggestion(match)}
                   style={[
                     styles.autocompleteItemRow,
-                    index === suggestions.length - 1 && !showRecent
+                    index === suggestions.length - 1 && !shouldRenderRecentSection
                       ? styles.autocompleteItemLast
                       : null,
                   ]}
@@ -119,7 +126,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
         </View>
       ) : null}
 
-      {showRecent ? (
+      {shouldRenderRecentSection ? (
         <ScrollView
           style={recentScrollStyles}
           contentContainerStyle={[
@@ -129,13 +136,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           showsVerticalScrollIndicator={false}
           nestedScrollEnabled
         >
-          {!isRecentLoading &&
-          !isRecentlyViewedLoading &&
-          !hasRecentSearches &&
-          !hasRecentlyViewedRestaurants ? (
-            <Text style={styles.autocompleteEmptyText}>Start exploring to build your history</Text>
-          ) : null}
-
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recent searches</Text>
             {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
