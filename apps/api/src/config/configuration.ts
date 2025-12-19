@@ -203,7 +203,8 @@ export default () => {
       }),
       model: process.env.LLM_MODEL || 'gemini-2.5-flash-preview-09-2025',
       queryModel: process.env.LLM_QUERY_MODEL || 'gemini-2.5-flash',
-      queryTimeout: parseInt(process.env.LLM_QUERY_TIMEOUT || '4500', 10),
+      queryTimeout: parseInt(process.env.LLM_QUERY_TIMEOUT || '0', 10),
+      queryLogOutputs: process.env.LLM_QUERY_LOG_OUTPUTS === 'true',
       baseUrl:
         process.env.LLM_BASE_URL ||
         'https://generativelanguage.googleapis.com/v1beta',

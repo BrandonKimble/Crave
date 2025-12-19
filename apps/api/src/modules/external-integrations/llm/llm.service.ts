@@ -141,6 +141,8 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         this.configService.get<string>('llm.model') ||
         'gemini-2.5-flash-preview-09-2025',
       queryTimeout: this.configService.get<number>('llm.queryTimeout') || 0,
+      queryLogOutputs:
+        this.configService.get<boolean>('llm.queryLogOutputs') === true,
       baseUrl:
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
@@ -807,6 +809,15 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       maxRetries: 0,
     });
     const content = this.extractTextContent(response, 'analyze_search_query');
+    if (this.llmConfig.queryLogOutputs) {
+      this.logger.info('Search query LLM raw output', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'analyze_search_query',
+        query,
+        outputLength: content.length,
+        output: content,
+      });
+    }
     const analysis = this.parseSearchQueryResponse(content);
 
     const totalInterpretedEntities =
