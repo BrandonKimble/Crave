@@ -159,9 +159,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         enabled:
           this.configService.get<boolean>('llm.thinking.enabled') === true,
         budget: this.configService.get<number>('llm.thinking.budget') || 0,
-        level: this.configService.get<string>('llm.thinking.level') || undefined,
+        level:
+          this.configService.get<string>('llm.thinking.level') || undefined,
         queryLevel:
-          this.configService.get<string>('llm.thinking.queryLevel') || undefined,
+          this.configService.get<string>('llm.thinking.queryLevel') ||
+          undefined,
         includeThoughts:
           this.configService.get<boolean>('llm.thinking.includeThoughts') ===
           true,
@@ -783,7 +785,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         additionalProperties: false,
       },
     };
-    const queryThinkingConfig = this.getThinkingConfig(this.queryModel, 'query');
+    const queryThinkingConfig = this.getThinkingConfig(
+      this.queryModel,
+      'query',
+    );
     if (queryThinkingConfig) {
       queryGenerationConfig.thinkingConfig = queryThinkingConfig;
     }
@@ -2207,7 +2212,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     };
   }
 
-  private normalizeThinkingLevel(level: string | undefined): string | undefined {
+  private normalizeThinkingLevel(
+    level: string | undefined,
+  ): string | undefined {
     if (!level) {
       return undefined;
     }
@@ -2251,7 +2258,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     if (this.isGemini3Model(model)) {
       const configuredLevel =
         context === 'query'
-          ? this.llmConfig.thinking?.queryLevel || this.llmConfig.thinking?.level
+          ? this.llmConfig.thinking?.queryLevel ||
+            this.llmConfig.thinking?.level
           : this.llmConfig.thinking?.level;
       const normalizedLevel = this.normalizeThinkingLevel(configuredLevel);
 
