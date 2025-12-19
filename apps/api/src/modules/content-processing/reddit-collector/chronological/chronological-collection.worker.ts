@@ -478,7 +478,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       .trim()
       .toLowerCase();
     const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
-    if (appEnv === 'prod' || appEnv === 'production' || nodeEnv === 'production') {
+    if (
+      appEnv === 'prod' ||
+      appEnv === 'production' ||
+      nodeEnv === 'production'
+    ) {
       return 1000;
     }
 

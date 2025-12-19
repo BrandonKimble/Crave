@@ -158,9 +158,7 @@ function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-async function seedRestaurantAttributes(
-  prisma: PrismaClient,
-): Promise<void> {
+async function seedRestaurantAttributes(prisma: PrismaClient): Promise<void> {
   const seeds = RESTAURANT_ATTRIBUTE_SEEDS.map((seed) => ({
     canonicalName: normalize(seed.canonicalName),
     aliases: seed.aliases.map(normalize),

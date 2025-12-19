@@ -341,7 +341,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
     const restaurantLabel =
       pollType === 'best_dish'
-        ? (restaurantSelection?.name ?? restaurantQuery.trim())
+        ? restaurantSelection?.name ?? restaurantQuery.trim()
         : activePoll.question;
 
     const dishLabel = dishSelection?.name ?? dishQuery.trim();

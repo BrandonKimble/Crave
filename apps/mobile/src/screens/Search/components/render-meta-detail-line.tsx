@@ -73,11 +73,7 @@ export const renderMetaDetailLine = (
         );
       }
       segments.push(
-        <Text
-          key="distance"
-          variant="body"
-          style={styles.resultMetaDistance}
-        >
+        <Text key="distance" variant="body" style={styles.resultMetaDistance}>
           {distanceLabel}
         </Text>
       );
@@ -147,10 +143,7 @@ export const renderMetaDetailLine = (
     <Text
       variant="body"
       weight="regular"
-      style={[
-        styles.resultMetaText,
-        align === 'right' && styles.resultMetaTextRight,
-      ]}
+      style={[styles.resultMetaText, align === 'right' && styles.resultMetaTextRight]}
       numberOfLines={1}
       ellipsizeMode="tail"
     >

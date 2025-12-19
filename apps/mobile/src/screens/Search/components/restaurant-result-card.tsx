@@ -246,11 +246,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           <Text variant="body" weight="regular" style={styles.topFoodLabel}>
                             Average{' '}
                           </Text>
-                          <Text
-                            variant="body"
-                            weight="semibold"
-                            style={styles.topFoodLabelStrong}
-                          >
+                          <Text variant="body" weight="semibold" style={styles.topFoodLabelStrong}>
                             {topFoodPrimaryLabel}
                           </Text>
                           <Text variant="body" weight="regular" style={styles.topFoodLabel}>
@@ -281,11 +277,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           style={styles.topFoodInlineText}
                           numberOfLines={1}
                         >
-                          <Text
-                            variant="body"
-                            weight="semibold"
-                            style={styles.topFoodRankInline}
-                          >
+                          <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
                           </Text>
                           <Text
@@ -330,11 +322,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           }}
                           numberOfLines={1}
                         >
-                          <Text
-                            variant="body"
-                            weight="semibold"
-                            style={styles.topFoodRankInline}
-                          >
+                          <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
                           </Text>
                           <Text variant="body" weight="regular" style={styles.topFoodNameInline}>

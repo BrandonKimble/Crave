@@ -1014,17 +1014,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-            ? [restaurant.displayLocation]
-            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-              ? [
-                  {
-                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                    latitude: restaurant.latitude,
-                    longitude: restaurant.longitude,
-                    isPrimary: true,
-                  },
-                ]
-              : [];
+          ? [restaurant.displayLocation]
+          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+          ? [
+              {
+                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                latitude: restaurant.latitude,
+                longitude: restaurant.longitude,
+                isPrimary: true,
+              },
+            ]
+          : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
