@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI, FinishReason } from '@google/genai';
+import { Agent, setGlobalDispatcher, type Dispatcher } from 'undici';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
 import { readFileSync } from 'fs';
@@ -75,7 +76,9 @@ type GeminiGenerationConfig = Record<string, unknown> & {
   };
   abortSignal?: AbortSignal;
   thinkingConfig?: {
-    thinkingBudget: number;
+    thinkingBudget?: number;
+    thinkingLevel?: string;
+    includeThoughts?: boolean;
   };
 };
 
@@ -96,6 +99,8 @@ type CacheRefreshReason =
 
 @Injectable()
 export class LLMService implements OnModuleInit, OnModuleDestroy {
+  private static fetchDiagnosticsAttached = false;
+  private static dispatcherConfigured = false;
   private logger!: LoggerService;
   private llmConfig!: LLMConfig;
   private systemPrompt!: string;
@@ -140,6 +145,11 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         this.configService.get<string>('llm.baseUrl') ||
         'https://generativelanguage.googleapis.com/v1beta',
       timeout: this.configService.get<number>('llm.timeout') || 0,
+      headersTimeoutMs:
+        this.configService.get<number>('llm.headersTimeoutMs') || 0,
+      bodyTimeoutMs: this.configService.get<number>('llm.bodyTimeoutMs') || 0,
+      connectTimeoutMs:
+        this.configService.get<number>('llm.connectTimeoutMs') || 0,
       maxTokens: this.configService.get<number>('llm.maxTokens') || 65536, // Gemini 2.5 Flash supports up to 65,536 output tokens
       temperature: this.configService.get<number>('llm.temperature') || 0.1,
       topP: this.configService.get<number>('llm.topP') || 0.95,
@@ -149,6 +159,12 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         enabled:
           this.configService.get<boolean>('llm.thinking.enabled') === true,
         budget: this.configService.get<number>('llm.thinking.budget') || 0,
+        level: this.configService.get<string>('llm.thinking.level') || undefined,
+        queryLevel:
+          this.configService.get<string>('llm.thinking.queryLevel') || undefined,
+        includeThoughts:
+          this.configService.get<boolean>('llm.thinking.includeThoughts') ===
+          true,
       },
       retryOptions: {
         maxRetries:
@@ -199,7 +215,13 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       maxTokens: this.llmConfig.maxTokens,
       thinkingEnabled: this.llmConfig.thinking?.enabled,
       thinkingBudget: this.llmConfig.thinking?.budget,
+      thinkingLevel: this.llmConfig.thinking?.level,
+      thinkingQueryLevel: this.llmConfig.thinking?.queryLevel,
+      thinkingIncludeThoughts: this.llmConfig.thinking?.includeThoughts,
     });
+
+    this.configureGeminiHttpClient();
+    this.attachFetchDiagnostics();
 
     this.initializeSystemCacheConfig();
     // Initialize explicit cache for system instructions (async, non-blocking)
@@ -761,7 +783,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         additionalProperties: false,
       },
     };
-    const queryThinkingConfig = this.getThinkingConfig();
+    const queryThinkingConfig = this.getThinkingConfig(this.queryModel, 'query');
     if (queryThinkingConfig) {
       queryGenerationConfig.thinkingConfig = queryThinkingConfig;
     }
@@ -929,15 +951,31 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
 
-    const content = candidate.content.parts[0].text;
-    if (!content) {
+    const textParts = candidate.content.parts.filter(
+      (part) => typeof part.text === 'string' && part.thought !== true,
+    );
+    const content = textParts.map((part) => part.text).join('');
+    if (content) {
+      return content;
+    }
+
+    const fallbackContent = candidate.content.parts
+      .filter((part) => typeof part.text === 'string')
+      .map((part) => part.text)
+      .join('');
+    if (!fallbackContent) {
       throw new LLMResponseParsingError(
         `Empty text content in Gemini response for ${operation}`,
         JSON.stringify(response),
       );
     }
 
-    return content;
+    this.logger.warn('Gemini response only contained thought text parts', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation,
+    });
+
+    return fallbackContent;
   }
 
   private sanitizeJsonContent(content: string): string {
@@ -1492,7 +1530,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         propertyOrdering: ['mentions'],
       },
     };
-    const baseThinkingConfig = this.getThinkingConfig();
+    const baseThinkingConfig = this.getThinkingConfig(targetModel, 'content');
     if (baseThinkingConfig) {
       defaultGenerationConfig.thinkingConfig = baseThinkingConfig;
     }
@@ -1732,6 +1770,12 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
             const contentParts =
               candidate?.content?.parts?.map((part) => ({
                 text: typeof part?.text === 'string' ? part.text : '',
+                thought:
+                  typeof part?.thought === 'boolean' ? part.thought : undefined,
+                thoughtSignature:
+                  typeof part?.thoughtSignature === 'string'
+                    ? part.thoughtSignature
+                    : undefined,
               })) ?? [];
 
             return {
@@ -1816,12 +1860,23 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           library: '@google/genai',
           errorType: typeof error,
           errorConstructor,
+          errorName: error instanceof Error ? error.name : undefined,
           errorMessage,
+          errorStack: error instanceof Error ? error.stack : undefined,
+          errorCause:
+            error instanceof Error
+              ? this.summarizeErrorCause(error.cause)
+              : undefined,
+          proxyEnv: this.describeProxyEnv(),
           attempt: attempt + 1,
           maxRetries,
         };
 
-        this.logger.error('Detailed @google/genai API error', errorDetails);
+        this.logger.error(
+          'Detailed @google/genai API error',
+          error,
+          errorDetails,
+        );
 
         if (cacheName && this.isCachedContentModelMismatchError(error)) {
           try {
@@ -1984,25 +2039,287 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private getThinkingConfig():
+  private attachFetchDiagnostics(): void {
+    if (LLMService.fetchDiagnosticsAttached || typeof fetch !== 'function') {
+      return;
+    }
+
+    const originalFetch = fetch;
+    const logger = this.logger;
+    const baseUrl =
+      this.llmConfig?.baseUrl || 'https://generativelanguage.googleapis.com';
+
+    const redactUrl = (rawUrl: string): string => {
+      try {
+        const parsed = new URL(rawUrl);
+        const scrub = ['key', 'api_key', 'apiKey'];
+        scrub.forEach((param) => parsed.searchParams.delete(param));
+        return parsed.toString();
+      } catch {
+        return rawUrl.replace(/key=([^&]+)/gi, 'key=[REDACTED]');
+      }
+    };
+
+    globalThis.fetch = async (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : (input?.url ?? '');
+      try {
+        return await originalFetch(input as RequestInfo, init);
+      } catch (error) {
+        if (
+          url.includes('generativelanguage.googleapis.com') ||
+          (baseUrl && url.includes(baseUrl))
+        ) {
+          logger.error('Gemini fetch failed', error, {
+            operation: 'gemini_fetch',
+            url: redactUrl(url),
+            method: init?.method ?? 'GET',
+            errorCause: this.summarizeErrorCause(
+              error instanceof Error ? error.cause : undefined,
+            ),
+          });
+        }
+        throw error;
+      }
+    };
+
+    LLMService.fetchDiagnosticsAttached = true;
+  }
+
+  private configureGeminiHttpClient(): void {
+    if (LLMService.dispatcherConfigured) {
+      return;
+    }
+
+    const normalizeTimeout = (value: number | undefined, fallback: number) => {
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        return Math.floor(value);
+      }
+      return fallback;
+    };
+
+    const headersTimeoutMs = normalizeTimeout(
+      this.llmConfig.headersTimeoutMs,
+      120_000,
+    );
+    const bodyTimeoutMs = normalizeTimeout(
+      this.llmConfig.bodyTimeoutMs,
+      300_000,
+    );
+    const connectTimeoutMs = normalizeTimeout(
+      this.llmConfig.connectTimeoutMs,
+      30_000,
+    );
+
+    const dispatcher: Dispatcher = new Agent({
+      headersTimeout: headersTimeoutMs,
+      bodyTimeout: bodyTimeoutMs,
+      connectTimeout: connectTimeoutMs,
+    });
+    const setDispatcher = setGlobalDispatcher as (
+      dispatcherInstance: Dispatcher,
+    ) => void;
+    setDispatcher(dispatcher);
+
+    LLMService.dispatcherConfigured = true;
+    this.logger.info('Configured global fetch timeouts for Gemini', {
+      operation: 'configure_gemini_http',
+      headersTimeoutMs,
+      bodyTimeoutMs,
+      connectTimeoutMs,
+    });
+  }
+
+  private describeProxyEnv(): {
+    httpProxy: boolean;
+    httpsProxy: boolean;
+    noProxy: boolean;
+    extraCaCerts: boolean;
+  } {
+    return {
+      httpProxy: Boolean(process.env.HTTP_PROXY || process.env.http_proxy),
+      httpsProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy),
+      noProxy: Boolean(process.env.NO_PROXY || process.env.no_proxy),
+      extraCaCerts: Boolean(process.env.NODE_EXTRA_CA_CERTS),
+    };
+  }
+
+  private summarizeErrorCause(
+    cause: unknown,
+  ): Record<string, unknown> | undefined {
+    if (!cause) {
+      return undefined;
+    }
+    if (cause instanceof Error) {
+      const nodeCause = cause as NodeJS.ErrnoException;
+      return {
+        name: cause.name,
+        message: cause.message,
+        code: nodeCause.code,
+        errno: nodeCause.errno,
+        syscall: nodeCause.syscall,
+        address: (nodeCause as { address?: string }).address,
+        port: (nodeCause as { port?: number }).port,
+        stack: cause.stack,
+      };
+    }
+    if (typeof cause === 'object') {
+      const nodeCause = cause as {
+        name?: unknown;
+        message?: unknown;
+        code?: unknown;
+        errno?: unknown;
+        syscall?: unknown;
+        address?: unknown;
+        port?: unknown;
+      };
+      return {
+        name: typeof nodeCause.name === 'string' ? nodeCause.name : undefined,
+        message:
+          typeof nodeCause.message === 'string' ? nodeCause.message : undefined,
+        code:
+          typeof nodeCause.code === 'string' ||
+          typeof nodeCause.code === 'number'
+            ? nodeCause.code
+            : undefined,
+        errno:
+          typeof nodeCause.errno === 'string' ||
+          typeof nodeCause.errno === 'number'
+            ? nodeCause.errno
+            : undefined,
+        syscall:
+          typeof nodeCause.syscall === 'string' ? nodeCause.syscall : undefined,
+        address:
+          typeof nodeCause.address === 'string' ? nodeCause.address : undefined,
+        port: typeof nodeCause.port === 'number' ? nodeCause.port : undefined,
+      };
+    }
+    return {
+      valueType: typeof cause,
+      valueTag: Object.prototype.toString.call(cause),
+    };
+  }
+
+  private normalizeThinkingLevel(level: string | undefined): string | undefined {
+    if (!level) {
+      return undefined;
+    }
+    const normalized = level.trim().toUpperCase();
+    const cleaned = normalized
+      .replace(/^THINKING_LEVEL[._]/u, '')
+      .replace(/^THINKINGLEVEL[._]/u, '');
+    if (
+      cleaned === 'MINIMAL' ||
+      cleaned === 'LOW' ||
+      cleaned === 'MEDIUM' ||
+      cleaned === 'HIGH'
+    ) {
+      return cleaned;
+    }
+    return undefined;
+  }
+
+  private isGemini3Model(model: string): boolean {
+    return /gemini-3/i.test(model);
+  }
+
+  private getThinkingConfig(
+    model: string,
+    context: 'content' | 'query' = 'content',
+  ):
     | {
-        thinkingBudget: number;
+        thinkingBudget?: number;
+        thinkingLevel?: string;
+        includeThoughts?: boolean;
       }
     | undefined {
     const enabled = this.llmConfig.thinking?.enabled === true;
     if (!enabled) {
       return undefined;
     }
+
+    const includeThoughts = this.llmConfig.thinking?.includeThoughts === true;
+    const maxTokens = this.llmConfig.maxTokens || 65536;
+
+    if (this.isGemini3Model(model)) {
+      const configuredLevel =
+        context === 'query'
+          ? this.llmConfig.thinking?.queryLevel || this.llmConfig.thinking?.level
+          : this.llmConfig.thinking?.level;
+      const normalizedLevel = this.normalizeThinkingLevel(configuredLevel);
+
+      if (!normalizedLevel) {
+        if (configuredLevel) {
+          this.logger.warn('Invalid Gemini thinking level; defaulting', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'thinking_config',
+            model,
+            context,
+            configuredLevel,
+            fallbackLevel: 'MINIMAL',
+          });
+        }
+        if (
+          typeof this.llmConfig.thinking?.budget === 'number' &&
+          this.llmConfig.thinking?.budget > 0
+        ) {
+          this.logger.warn(
+            'Ignoring thinking budget for Gemini 3 model; use thinking level instead',
+            {
+              correlationId: CorrelationUtils.getCorrelationId(),
+              operation: 'thinking_config',
+              model,
+              context,
+              configuredBudget: this.llmConfig.thinking?.budget,
+            },
+          );
+        }
+        return {
+          thinkingLevel: 'MINIMAL',
+          ...(includeThoughts ? { includeThoughts } : {}),
+        };
+      }
+
+      return {
+        thinkingLevel: normalizedLevel,
+        ...(includeThoughts ? { includeThoughts } : {}),
+      };
+    }
+
+    if (this.llmConfig.thinking?.level) {
+      this.logger.warn(
+        'Ignoring thinking level for non-Gemini 3 model; use thinking budget instead',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'thinking_config',
+          model,
+          context,
+          configuredLevel: this.llmConfig.thinking?.level,
+        },
+      );
+    }
+
     const configuredBudget = this.llmConfig.thinking?.budget ?? 0;
     if (!Number.isFinite(configuredBudget) || configuredBudget <= 0) {
-      return undefined;
+      return includeThoughts ? { includeThoughts } : undefined;
     }
-    const maxTokens = this.llmConfig.maxTokens || 65536;
+
     const safeBudget = Math.min(configuredBudget, maxTokens);
     if (safeBudget <= 0) {
-      return undefined;
+      return includeThoughts ? { includeThoughts } : undefined;
     }
-    return { thinkingBudget: safeBudget };
+
+    return {
+      thinkingBudget: safeBudget,
+      ...(includeThoughts ? { includeThoughts } : {}),
+    };
   }
 
   /**

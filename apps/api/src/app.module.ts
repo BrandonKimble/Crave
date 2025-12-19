@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { join } from 'path';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
@@ -26,6 +27,7 @@ import { HistoryModule } from './modules/history/history.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [join(__dirname, '..', '.env'), join(process.cwd(), '.env')],
       load: [configuration],
     }),
     ScheduleModule.forRoot(),

@@ -85,6 +85,7 @@ export class PrismaService
   async onModuleInit() {
     // Initialize logger and configuration
     this.logger = this.loggerService.setContext('PrismaService');
+    this.logPrismaClientMetadata();
 
     // Validate configuration after dependencies are ready
     if (this.validationService) {
@@ -110,6 +111,8 @@ export class PrismaService
     // Connect to database directly (retry logic temporarily disabled)
     await this.$connect();
 
+    await this.logTableProbe();
+
     // this.startHealthChecks();
     this.logger.info('Database connection established');
   }
@@ -119,6 +122,52 @@ export class PrismaService
     // this.stopHealthChecks();
     await this.$disconnect();
     this.logger.info('Database connections closed gracefully');
+  }
+
+  private logPrismaClientMetadata(): void {
+    const entityModel = Prisma.dmmf.datamodel.models.find(
+      (model) => model.name === 'Entity',
+    );
+    this.logger.info('Prisma client metadata', {
+      operation: 'prisma_client_metadata',
+      entityTable: entityModel?.dbName ?? 'unknown',
+      processCwd: process.cwd(),
+      nodeVersion: process.version,
+    });
+  }
+
+  private async logTableProbe(): Promise<void> {
+    try {
+      const rows = await this.$queryRaw<
+        Array<{
+          db: string;
+          schema: string;
+          entities: string | null;
+          core_entities: string | null;
+        }>
+      >`
+        SELECT
+          current_database() AS db,
+          current_schema() AS schema,
+          to_regclass('public.entities')::text AS entities,
+          to_regclass('public.core_entities')::text AS core_entities
+      `;
+      const row = rows[0];
+      this.logger.info('Database table probe', {
+        operation: 'prisma_table_probe',
+        db: row?.db,
+        schema: row?.schema,
+        entities: row?.entities,
+        coreEntities: row?.core_entities,
+      });
+    } catch (error) {
+      this.logger.warn('Database table probe failed', {
+        operation: 'prisma_table_probe',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   }
 
   /**

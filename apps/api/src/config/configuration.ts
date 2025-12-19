@@ -208,6 +208,15 @@ export default () => {
         process.env.LLM_BASE_URL ||
         'https://generativelanguage.googleapis.com/v1beta',
       timeout: parseInt(process.env.LLM_TIMEOUT || '30000', 10),
+      headersTimeoutMs: parseInt(
+        process.env.LLM_HEADERS_TIMEOUT_MS || '120000',
+        10,
+      ),
+      bodyTimeoutMs: parseInt(process.env.LLM_BODY_TIMEOUT_MS || '300000', 10),
+      connectTimeoutMs: parseInt(
+        process.env.LLM_CONNECT_TIMEOUT_MS || '30000',
+        10,
+      ),
       maxTokens: process.env.LLM_MAX_TOKENS
         ? parseInt(process.env.LLM_MAX_TOKENS, 10)
         : 0, // 0 = Use Gemini 2.5 Flash default 65,536 tokens maximum
@@ -218,6 +227,9 @@ export default () => {
       thinking: {
         enabled: process.env.LLM_THINKING_ENABLED === 'true',
         budget: parseInt(process.env.LLM_THINKING_BUDGET || '0', 10),
+        level: process.env.LLM_THINKING_LEVEL || undefined,
+        queryLevel: process.env.LLM_QUERY_THINKING_LEVEL || undefined,
+        includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',
       },
       cache: {
         systemTtlSeconds: parseInt(

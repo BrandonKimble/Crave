@@ -10,6 +10,9 @@ export interface LLMConfig {
   queryTimeout?: number;
   baseUrl?: string;
   timeout?: number;
+  headersTimeoutMs?: number;
+  bodyTimeoutMs?: number;
+  connectTimeoutMs?: number;
   maxTokens?: number;
   temperature?: number;
   topP?: number;
@@ -17,7 +20,10 @@ export interface LLMConfig {
   candidateCount?: number;
   thinking?: {
     enabled: boolean;
-    budget: number;
+    budget?: number;
+    level?: string;
+    queryLevel?: string;
+    includeThoughts?: boolean;
   };
   retryOptions: RetryOptions;
   cache?: {
@@ -143,6 +149,8 @@ export interface LLMApiResponse {
     content: {
       parts: Array<{
         text: string;
+        thought?: boolean;
+        thoughtSignature?: string;
       }>;
       role?: string;
     };
@@ -192,6 +200,8 @@ export interface GeminiApiRequest {
     responseSchema?: object;
     thinkingConfig?: {
       thinkingBudget?: number;
+      thinkingLevel?: string;
+      includeThoughts?: boolean;
     };
   };
   safetySettings?: Array<{
