@@ -25,8 +25,22 @@ import * as path from 'path';
 import * as fsSync from 'fs';
 import { format } from 'util';
 
-// Load .env file which has all the necessary configuration
-dotenv.config({ path: path.join(__dirname, '.env') });
+// Load repo root .env first, then allow apps/api/.env to override.
+const envPaths = [
+  path.resolve(__dirname, '..', '.env'),
+  path.resolve(__dirname, '.env'),
+];
+envPaths.forEach((envPath) => {
+  if (fsSync.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+  }
+});
+
+const testBullPrefix =
+  process.env.TEST_BULL_PREFIX ?? process.env.TEST_BULL_QUEUE_PREFIX;
+if (typeof testBullPrefix === 'string' && testBullPrefix.trim()) {
+  process.env.BULL_PREFIX = testBullPrefix.trim();
+}
 
 // Ensure winston rotating files land inside apps/api/logs rather than repo root
 const apiRootDir = path.resolve(__dirname);
@@ -111,6 +125,7 @@ import { PrismaService } from './src/prisma/prisma.service';
 import { CentralizedRateLimiter } from './src/modules/external-integrations/llm/rate-limiting/centralized-rate-limiter.service';
 import { LLMService } from './src/modules/external-integrations/llm/llm.service';
 import { SmartLLMProcessor } from './src/modules/external-integrations/llm/rate-limiting/smart-llm-processor.service';
+import { runSeed } from './prisma/seed';
 // Enhanced services are accessed via DI container - no direct imports needed for production simulation
 
 /**
@@ -388,6 +403,9 @@ async function testPipeline() {
         await prisma.$executeRawUnsafe(
           'UPDATE collection_subreddits SET last_processed = NULL',
         );
+        console.log('🌱 Seeding base data...');
+        await runSeed();
+        console.log('✅ Seed completed');
         await cleanQueue(chronologicalQueue, 'chronological collection');
         await cleanQueue(chronologicalBatchQueue, 'chronological batch');
         await cleanQueue(archiveBatchQueue, 'archive batch');

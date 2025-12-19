@@ -188,11 +188,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         strokeWidth={2}
                         style={[styles.metricIcon, styles.restaurantScoreIcon]}
                       />
-                      <Text variant="caption" weight="semibold" style={styles.metricValue}>
+                      <Text variant="body" weight="semibold" style={styles.metricValue}>
                         {restaurant.restaurantQualityScore.toFixed(1)}
                       </Text>
                       <Text
-                        variant="caption"
+                        variant="body"
                         weight="regular"
                         style={[styles.metricSupportLabel, styles.restaurantMetricLabel]}
                         numberOfLines={1}
@@ -215,10 +215,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                     </View>
                     {priceRangeLabel ? (
                       <View style={styles.restaurantMetricRight}>
-                        <Text variant="caption" style={styles.metricDot}>
+                        <Text variant="body" style={styles.metricDot}>
                           {'·'}
                         </Text>
-                        <Text variant="caption" style={styles.resultMetaPrice} numberOfLines={1}>
+                        <Text variant="body" style={styles.resultMetaPrice} numberOfLines={1}>
                           {priceRangeLabel}
                         </Text>
                       </View>
@@ -237,29 +237,29 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         style={styles.metricIcon}
                       />
                       {topFoodAverage !== null ? (
-                        <Text variant="caption" weight="medium" style={styles.topFoodScorePrimary}>
+                        <Text variant="body" weight="medium" style={styles.topFoodScorePrimary}>
                           {topFoodAverage.toFixed(1)}
                         </Text>
                       ) : null}
                       {topFoodPrimaryLabel ? (
-                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
-                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                        <Text variant="body" weight="regular" style={styles.topFoodLabel}>
+                          <Text variant="body" weight="regular" style={styles.topFoodLabel}>
                             Average{' '}
                           </Text>
                           <Text
-                            variant="caption"
+                            variant="body"
                             weight="semibold"
                             style={styles.topFoodLabelStrong}
                           >
                             {topFoodPrimaryLabel}
                           </Text>
-                          <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                          <Text variant="body" weight="regular" style={styles.topFoodLabel}>
                             {' '}
                             score
                           </Text>
                         </Text>
                       ) : (
-                        <Text variant="caption" weight="regular" style={styles.topFoodLabel}>
+                        <Text variant="body" weight="regular" style={styles.topFoodLabel}>
                           {topFoodAvgLabel}
                         </Text>
                       )}
@@ -282,14 +282,14 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           numberOfLines={1}
                         >
                           <Text
-                            variant="caption"
+                            variant="body"
                             weight="semibold"
                             style={styles.topFoodRankInline}
                           >
                             {idx + 1}.
                           </Text>
                           <Text
-                            variant="caption"
+                            variant="body"
                             weight="regular"
                             style={styles.topFoodNameInline}
                             numberOfLines={1}
@@ -301,7 +301,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         </Text>
                       ))}
                       {hiddenTopFoodCount > 0 ? (
-                        <Text variant="caption" weight="semibold" style={styles.topFoodMore}>
+                        <Text variant="body" weight="semibold" style={styles.topFoodMore}>
                           +{hiddenTopFoodCount} more
                         </Text>
                       ) : null}
@@ -315,7 +315,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       {topFoodItems.slice(0, maxTopFoodToRender).map((food, idx) => (
                         <Text
                           key={`${food.connectionId}-measure`}
-                          variant="caption"
+                          variant="body"
                           weight="regular"
                           style={styles.topFoodMeasureText}
                           onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
@@ -331,13 +331,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           numberOfLines={1}
                         >
                           <Text
-                            variant="caption"
+                            variant="body"
                             weight="semibold"
                             style={styles.topFoodRankInline}
                           >
                             {idx + 1}.
                           </Text>
-                          <Text variant="caption" weight="regular" style={styles.topFoodNameInline}>
+                          <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
                             {' '}
                             {food.foodName}
                           </Text>
@@ -346,7 +346,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       {potentialHiddenCounts.map((hidden) => (
                         <Text
                           key={`${restaurant.restaurantId}-more-${hidden}`}
-                          variant="caption"
+                          variant="body"
                           weight="semibold"
                           style={styles.topFoodMeasureText}
                           onTextLayout={({ nativeEvent }: TextLayoutEvent) => {

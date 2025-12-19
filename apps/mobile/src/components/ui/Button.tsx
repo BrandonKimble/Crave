@@ -11,6 +11,7 @@ import {
   ViewStyle,
 } from 'react-native';
 import { colors as themeColors } from '../../constants/theme';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost';
 
@@ -34,7 +35,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   label: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
   },
   primary: {

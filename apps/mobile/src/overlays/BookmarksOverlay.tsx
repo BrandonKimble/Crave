@@ -93,7 +93,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
           <Text variant="body" weight="bold" style={styles.cardTitle}>
             {item.entity?.name ?? 'Saved experience'}
           </Text>
-          <Text variant="caption" style={styles.cardMeta}>
+          <Text variant="body" style={styles.cardMeta}>
             {item.entityType}
             {item.entity?.city ? ` • ${item.entity.city}` : ''}
           </Text>
@@ -139,7 +139,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
           <Text variant="body" weight="semibold" style={styles.headerTitle}>
             Bookmarks
           </Text>
-          <Text variant="caption" style={styles.headerSubtitle}>
+          <Text variant="body" style={styles.headerSubtitle}>
             Your saved favorites
           </Text>
         </View>

@@ -11,10 +11,10 @@ type EmptyStateProps = {
 
 const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle }) => (
   <View style={styles.emptyState}>
-    <Text variant="caption" style={styles.textSlate900}>
+    <Text variant="body" style={styles.textSlate900}>
       {title}
     </Text>
-    <Text variant="caption" style={styles.textSlate900}>
+    <Text variant="body" style={styles.textSlate900}>
       {subtitle}
     </Text>
   </View>

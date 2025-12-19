@@ -21,6 +21,7 @@ import { autocompleteService, type AutocompleteMatch } from '../services/autocom
 import { useCityStore } from '../store/cityStore';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { colors as themeColors } from '../constants/theme';
+import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { useOverlayStore } from '../store/overlayStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
@@ -340,7 +341,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
     const restaurantLabel =
       pollType === 'best_dish'
-        ? restaurantSelection?.name ?? restaurantQuery.trim()
+        ? (restaurantSelection?.name ?? restaurantQuery.trim())
         : activePoll.question;
 
     const dishLabel = dishSelection?.name ?? dishQuery.trim();
@@ -664,7 +665,8 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({ visible, params }) => {
 
 const styles = StyleSheet.create({
   sheetTitle: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: ACCENT_DARK,
     flex: 1,
@@ -681,7 +683,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
   },
   cityLabel: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: ACCENT,
   },
@@ -692,6 +695,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     backgroundColor: SURFACE,
   },
   refreshButton: {
@@ -701,7 +706,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   refreshText: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: ACCENT_DARK,
   },
@@ -721,13 +727,15 @@ const styles = StyleSheet.create({
     borderColor: ACCENT,
   },
   pollQuestion: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '700',
     color: ACCENT_DARK,
   },
   pollMeta: {
     marginTop: 6,
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: ACCENT,
   },
   detailCard: {
@@ -741,7 +749,8 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   detailQuestion: {
-    fontSize: 18,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     fontWeight: '700',
     color: ACCENT_DARK,
     marginBottom: 12,
@@ -773,12 +782,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   optionLabelText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: '#1f2937',
   },
   optionVoteCount: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: ACCENT_DARK,
     fontWeight: '600',
   },
@@ -806,12 +817,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     backgroundColor: SURFACE,
   },
   fieldLabel: {
     marginTop: 12,
     marginBottom: 6,
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: ACCENT,
   },
@@ -825,7 +839,8 @@ const styles = StyleSheet.create({
   submitButtonText: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
   },
   autocompleteBox: {
     marginTop: 8,
@@ -847,13 +862,15 @@ const styles = StyleSheet.create({
   },
   autocompleteLoadingText: {
     color: '#475569',
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
   },
   autocompleteEmptyText: {
     paddingHorizontal: 12,
     paddingVertical: 10,
     color: '#94a3b8',
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
   },
   autocompleteItem: {
     paddingHorizontal: 12,
@@ -862,25 +879,30 @@ const styles = StyleSheet.create({
     borderBottomColor: BORDER,
   },
   autocompletePrimary: {
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#111827',
   },
   autocompleteSecondary: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#64748b',
     marginTop: 2,
     textTransform: 'capitalize',
   },
   topicNote: {
     marginTop: 12,
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: ACCENT,
   },
   emptyState: {
     textAlign: 'center',
     marginTop: 32,
     color: ACCENT,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
   },
 });
 

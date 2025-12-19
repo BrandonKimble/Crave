@@ -154,13 +154,13 @@ const RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
 ];
 
-const prisma = new PrismaClient();
-
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
 
-async function seedRestaurantAttributes(): Promise<void> {
+async function seedRestaurantAttributes(
+  prisma: PrismaClient,
+): Promise<void> {
   const seeds = RESTAURANT_ATTRIBUTE_SEEDS.map((seed) => ({
     canonicalName: normalize(seed.canonicalName),
     aliases: seed.aliases.map(normalize),
@@ -198,15 +198,22 @@ async function seedRestaurantAttributes(): Promise<void> {
   console.log('✅ Restaurant attributes seeded');
 }
 
-async function main(): Promise<void> {
-  await seedRestaurantAttributes();
+export async function runSeed(): Promise<void> {
+  const prisma = new PrismaClient();
+  try {
+    await seedRestaurantAttributes(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main()
-  .catch((error) => {
+async function main(): Promise<void> {
+  await runSeed();
+}
+
+if (require.main === module) {
+  main().catch((error) => {
     console.error('❌ Seeding failed:', error);
     process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });
+}

@@ -7,12 +7,9 @@ import {
   StyleSheet,
 } from 'react-native';
 
-const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = {
-  title: { fontSize: 20, lineHeight: 26 },
-  subtitle: { fontSize: 16, lineHeight: 24, includeFontPadding: false },
-  body: { fontSize: 16, lineHeight: 22 },
-  caption: { fontSize: 12, lineHeight: 15 },
-};
+import { TYPE_SCALE } from '../../constants/typography';
+
+const typeScale: Record<'title' | 'subtitle' | 'body' | 'caption', TextStyle> = TYPE_SCALE;
 
 // Standardize to two weights; legacy values map to the closest allowed option.
 const WEIGHT_MAP: Record<'regular' | 'medium' | 'semibold' | 'bold', 'regular' | 'semibold'> = {

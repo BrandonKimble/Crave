@@ -535,6 +535,21 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async initializeQueryInstructionCache(): Promise<void> {
+    const minCachedTokenCount = 1024;
+    const estimatedTokens = Math.ceil(this.queryPrompt.length / 4);
+    if (estimatedTokens < minCachedTokenCount) {
+      this.logger.info('Skipping query instruction cache (prompt too small)', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'init_query_cache',
+        model: this.queryModel,
+        promptLength: this.queryPrompt.length,
+        estimatedTokens,
+        minCachedTokenCount,
+      });
+      this.queryInstructionCache = null;
+      return;
+    }
+
     try {
       this.logger.info('Creating explicit cache for query instructions', {
         correlationId: CorrelationUtils.getCorrelationId(),

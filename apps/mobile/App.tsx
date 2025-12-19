@@ -44,7 +44,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 export default function App() {
   const [appIsReady, setAppIsReady] = React.useState(false);
   const isBannerVisible = useSystemStatusStore(
-    (state) => state.isOffline || Boolean(state.serviceIssue),
+    (state) => state.isOffline || Boolean(state.serviceIssue)
   );
   const bannerProgress = useSharedValue(0);
 

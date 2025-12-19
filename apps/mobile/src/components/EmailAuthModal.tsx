@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { Text } from './ui/Text';
+import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { logger } from '../utils';
 
 type EmailAuthModalProps = {
@@ -283,7 +284,8 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: '#0f172a',
     backgroundColor: '#fff',
   },

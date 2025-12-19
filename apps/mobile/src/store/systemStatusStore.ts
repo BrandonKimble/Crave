@@ -19,8 +19,7 @@ interface SystemStatusState {
 export const useSystemStatusStore = create<SystemStatusState>()((set) => ({
   isOffline: false,
   serviceIssue: null,
-  setOffline: (isOffline) =>
-    set((state) => (state.isOffline === isOffline ? {} : { isOffline })),
+  setOffline: (isOffline) => set((state) => (state.isOffline === isOffline ? {} : { isOffline })),
   reportServiceIssue: (issue) =>
     set(() => ({
       serviceIssue: {
@@ -40,4 +39,3 @@ export const useSystemStatusStore = create<SystemStatusState>()((set) => ({
       return { serviceIssue: null };
     }),
 }));
-

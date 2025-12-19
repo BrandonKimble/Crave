@@ -380,6 +380,8 @@ PODS:
   - React-jsinspector (0.72.10)
   - React-logger (0.72.10):
     - glog
+  - react-native-netinfo (11.4.1):
+    - React-Core
   - react-native-safe-area-context (4.6.3):
     - RCT-Folly
     - RCTRequired
@@ -606,6 +608,7 @@ DEPENDENCIES:
   - React-jsiexecutor (from `../../../node_modules/react-native/ReactCommon/jsiexecutor`)
   - React-jsinspector (from `../../../node_modules/react-native/ReactCommon/jsinspector`)
   - React-logger (from `../../../node_modules/react-native/ReactCommon/logger`)
+  - "react-native-netinfo (from `../../../node_modules/@react-native-community/netinfo`)"
   - react-native-safe-area-context (from `../../../node_modules/react-native-safe-area-context`)
   - "react-native-skia (from `../../../node_modules/@shopify/react-native-skia`)"
   - React-NativeModulesApple (from `../../../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
@@ -734,6 +737,8 @@ EXTERNAL SOURCES:
     :path: "../../../node_modules/react-native/ReactCommon/jsinspector"
   React-logger:
     :path: "../../../node_modules/react-native/ReactCommon/logger"
+  react-native-netinfo:
+    :path: "../../../node_modules/@react-native-community/netinfo"
   react-native-safe-area-context:
     :path: "../../../node_modules/react-native-safe-area-context"
   react-native-skia:
@@ -842,6 +847,7 @@ SPEC CHECKSUMS:
   React-jsiexecutor: 82f0f431eb415ab249d892dba44b43751aa13abf
   React-jsinspector: de0198127395fec3058140a20c045167f761bb16
   React-logger: 13a8b7094f27626adf648a8458e842e27fa70e13
+  react-native-netinfo: cec9c4e86083cb5b6aba0e0711f563e2fbbff187
   react-native-safe-area-context: f998d7c030d9c89b0a745f8466f1f988478d822e
   react-native-skia: d800bbeff882f9c5fdb5fdf1e7a67e1f3c73221e
   React-NativeModulesApple: cb6d3c0f057dbd98545ddf1ec047f225d1dd9bf9

@@ -13,6 +13,7 @@ import { Text } from './ui/Text';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { OVERLAY_CORNER_RADIUS } from '../overlays/overlaySheetStyles';
 import MaskedHoleOverlay from './MaskedHoleOverlay';
+import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 
 const CONTENT_HEIGHT = 32;
 
@@ -132,7 +133,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   messageText: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#f8fafc',
   },
 });

@@ -223,6 +223,16 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const jobId = this.generateJobId('chronological-delayed', [subreddit]);
 
+    if (!this.isAutoSchedulingEnabled()) {
+      this.logger.warn('Skipping delayed collection scheduling (disabled)', {
+        correlationId,
+        operation: 'schedule_delayed_collection',
+        subreddit,
+        delayMs,
+      });
+      return;
+    }
+
     // Get fresh data when the job actually runs
     const jobData: ChronologicalCollectionJobData = {
       subreddit,
@@ -330,6 +340,15 @@ export class CollectionJobSchedulerService implements OnModuleInit {
    */
   async scheduleNextCollection(subreddit: string): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
+
+    if (!this.isAutoSchedulingEnabled()) {
+      this.logger.warn('Skipping next collection scheduling (disabled)', {
+        correlationId,
+        operation: 'schedule_next_collection',
+        subreddit,
+      });
+      return;
+    }
 
     this.logger.info('Scheduling next collection after job completion', {
       correlationId,
@@ -696,5 +715,18 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       ...this.DEFAULT_CONFIG,
       enabled: enabled && testJobsEnabled,
     };
+  }
+
+  private isAutoSchedulingEnabled(): boolean {
+    if (!this.scheduleConfig.enabled) {
+      return false;
+    }
+    const raw =
+      this.configService.get<string>('TEST_COLLECTION_JOBS_ENABLED') ??
+      process.env.TEST_COLLECTION_JOBS_ENABLED;
+    if (typeof raw !== 'string') {
+      return true;
+    }
+    return raw.toLowerCase() === 'true';
   }
 }

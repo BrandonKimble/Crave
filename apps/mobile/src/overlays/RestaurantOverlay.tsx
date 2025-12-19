@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../components';
 import type { FoodResult, RestaurantResult } from '../types';
+import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { getPriceRangeLabel } from '../constants/pricing';
@@ -273,12 +274,14 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   restaurantName: {
-    fontSize: 20,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     fontWeight: '700',
     color: '#0f172a',
   },
   restaurantAddress: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
     marginTop: 4,
   },
@@ -305,11 +308,13 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(15, 23, 42, 0.08)',
   },
   metricLabel: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
   },
   metricValue: {
-    fontSize: 24,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     fontWeight: '700',
     color: '#0f172a',
     marginTop: 4,
@@ -321,12 +326,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   detailText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: '#0f172a',
   },
   detailValue: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
   },
   actionsRow: {
@@ -346,7 +353,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0f2fe',
   },
   primaryActionText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#0f172a',
   },
@@ -355,12 +363,14 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '700',
     color: '#0f172a',
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
     marginTop: 2,
   },
@@ -369,7 +379,8 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   emptyStateText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#94a3b8',
     textAlign: 'center',
   },
@@ -397,16 +408,19 @@ const styles = StyleSheet.create({
     color: '#b45309',
   },
   dishName: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#0f172a',
   },
   dishMeta: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
   },
   dishActivity: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
     color: '#94a3b8',
     textTransform: 'capitalize',
   },
@@ -419,11 +433,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   dishStatLabel: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
     color: '#94a3b8',
   },
   dishStatValue: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#0f172a',
   },

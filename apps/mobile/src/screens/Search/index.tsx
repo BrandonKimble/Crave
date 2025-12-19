@@ -534,7 +534,7 @@ const SearchScreen: React.FC = () => {
   const resetFilters = useSearchStore((state) => state.resetFilters);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const hasSystemStatusBanner = useSystemStatusStore(
-    (state) => state.isOffline || Boolean(state.serviceIssue),
+    (state) => state.isOffline || Boolean(state.serviceIssue)
   );
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
     getRangeFromLevels(priceLevels)
@@ -1014,17 +1014,17 @@ const SearchScreen: React.FC = () => {
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
           : restaurant.displayLocation
-          ? [restaurant.displayLocation]
-          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-          ? [
-              {
-                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                latitude: restaurant.latitude,
-                longitude: restaurant.longitude,
-                isPrimary: true,
-              },
-            ]
-          : [];
+            ? [restaurant.displayLocation]
+            : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+              ? [
+                  {
+                    locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+                    latitude: restaurant.latitude,
+                    longitude: restaurant.longitude,
+                    isPrimary: true,
+                  },
+                ]
+              : [];
 
       locationCandidates.forEach((location, locationIndex) => {
         if (
@@ -1803,10 +1803,7 @@ const SearchScreen: React.FC = () => {
     const emptyYOffset = -Math.min(24, Math.max(12, emptyAreaMinHeight * 0.12));
     const emptyContentOffsetStyle = { transform: [{ translateY: emptyYOffset }] };
 
-    if (
-      (isLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect) &&
-      !results
-    ) {
+    if ((isLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect) && !results) {
       return (
         <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
           <View style={emptyContentOffsetStyle}>
@@ -2286,10 +2283,10 @@ const SearchScreen: React.FC = () => {
                     strokeWidth={2}
                   />
                 )}
-                <Text variant="caption" weight="semibold" style={styles.scoreInfoTitle}>
+                <Text variant="body" weight="semibold" style={styles.scoreInfoTitle}>
                   {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
                 </Text>
-                <Text variant="caption" weight="semibold" style={styles.scoreInfoValue}>
+                <Text variant="body" weight="semibold" style={styles.scoreInfoValue}>
                   {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
                 </Text>
               </View>
@@ -2303,31 +2300,31 @@ const SearchScreen: React.FC = () => {
                 <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
               </TouchableOpacity>
             </View>
-            <Text variant="caption" style={styles.scoreInfoSubtitle} numberOfLines={1}>
+            <Text variant="body" style={styles.scoreInfoSubtitle} numberOfLines={1}>
               {scoreInfo.title}
             </Text>
             <View style={styles.scoreInfoMetricsRow}>
               <View style={styles.scoreInfoMetricItem}>
                 <VoteIcon color={themeColors.textPrimary} size={14} />
-                <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
                   {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
                 </Text>
-                <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                <Text variant="body" style={styles.scoreInfoMetricLabel}>
                   Votes
                 </Text>
               </View>
               <View style={styles.scoreInfoMetricItem}>
                 <PollIcon color={themeColors.textPrimary} size={14} />
-                <Text variant="caption" weight="medium" style={styles.scoreInfoMetricText}>
+                <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
                   {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
                 </Text>
-                <Text variant="caption" style={styles.scoreInfoMetricLabel}>
+                <Text variant="body" style={styles.scoreInfoMetricLabel}>
                   Polls
                 </Text>
               </View>
             </View>
             <View style={styles.scoreInfoDivider} />
-            <Text variant="caption" style={styles.scoreInfoDescription}>
+            <Text variant="body" style={styles.scoreInfoDescription}>
               {scoreInfo.type === 'dish'
                 ? "Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant's overall quality, scaled 0–100."
                 : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}

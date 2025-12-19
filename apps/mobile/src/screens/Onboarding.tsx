@@ -24,6 +24,7 @@ import { useAuth, useOAuth } from '@clerk/clerk-expo';
 import { Text, Button } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
+import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import {
   onboardingSteps,
   getSingleChoiceLabel,
@@ -2238,8 +2239,8 @@ const styles = StyleSheet.create({
   },
   backButtonIcon: {
     color: MUTED_TEXT,
-    fontSize: 20,
-    lineHeight: 30,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     textAlign: 'center',
     textAlignVertical: 'center',
     fontWeight: '400',
@@ -2254,7 +2255,8 @@ const styles = StyleSheet.create({
   },
   betaChipText: {
     color: CRAVE_ACCENT_DARK,
-    fontSize: 10,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   progressArea: {
     flex: 1,
@@ -2322,13 +2324,14 @@ const styles = StyleSheet.create({
   },
   screenshotBadgeText: {
     color: '#92400e',
-    fontSize: 10,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   heroTitle: {
     textAlign: 'left',
     color: '#0f172a',
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
   },
   heroDescription: {
     textAlign: 'left',
@@ -2337,8 +2340,8 @@ const styles = StyleSheet.create({
   questionTitle: {
     color: '#0f172a',
     marginBottom: 8,
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
   },
   helperText: {
     color: '#64748b',
@@ -2460,7 +2463,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: '#0f172a',
   },
   locationDivider: {
@@ -2491,7 +2495,7 @@ const styles = StyleSheet.create({
   },
   waitlistMessageText: {
     color: '#1e3a8a',
-    lineHeight: 20,
+    lineHeight: LINE_HEIGHTS.body,
   },
   waitlistPreferenceChips: {
     flexDirection: 'row',
@@ -2504,7 +2508,8 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#bfdbfe',
     color: '#1e3a8a',
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
   },
   waitlistBenefits: {
     gap: 6,
@@ -2516,7 +2521,7 @@ const styles = StyleSheet.create({
   },
   waitlistBenefitText: {
     color: '#1e3a8a',
-    lineHeight: 18,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   comparisonRow: {
     flexDirection: 'row',
@@ -2542,7 +2547,7 @@ const styles = StyleSheet.create({
   },
   comparisonRowText: {
     color: '#475569',
-    lineHeight: 20,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   comparisonBodyText: {
     color: '#0f172a',
@@ -2560,7 +2565,8 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   ratingStarText: {
-    fontSize: 32,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     color: '#e2e8f0',
   },
   ratingStarFilled: {
@@ -2606,7 +2612,8 @@ const styles = StyleSheet.create({
   },
   processingBadgeText: {
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
   },
   processingBadgeTextComplete: {
     color: '#15803d',
@@ -2699,7 +2706,7 @@ const styles = StyleSheet.create({
   disclaimerText: {
     color: '#94a3b8',
     textAlign: 'left',
-    lineHeight: 18,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   disclaimerLink: {
     color: CRAVE_ACCENT,
@@ -2781,22 +2788,23 @@ const styles = StyleSheet.create({
     color: '#334155',
     textAlign: 'center',
     marginTop: 8,
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     maxWidth: '100%',
     alignSelf: 'center',
   },
   graphTitle: {
     color: '#0f172a',
     textAlign: 'left',
-    fontSize: 26,
-    lineHeight: 34,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     paddingHorizontal: 4,
     marginBottom: 0,
   },
   graphBody: {
     color: '#0f172a',
     textAlign: 'left',
-    lineHeight: 22,
+    lineHeight: LINE_HEIGHTS.body,
   },
   graphBodyCentered: {
     textAlign: 'center',
@@ -2815,7 +2823,8 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     textAlign: 'left',
     marginBottom: 16,
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
   },
   calendarComparisonRow: {
     flexDirection: 'row',
@@ -2880,7 +2889,8 @@ const styles = StyleSheet.create({
   },
   notificationFeatureBullet: {
     color: CRAVE_ACCENT,
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: 'bold',
   },
   notificationFeatureText: {
@@ -2906,7 +2916,8 @@ const styles = StyleSheet.create({
   },
   recommendedBadgeText: {
     color: '#15803d',
-    fontSize: 10,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   carouselContainer: {
     gap: 24,
@@ -2929,17 +2940,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   carouselIcon: {
-    fontSize: 32,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
   },
   carouselScenario: {
     color: PRIMARY_TEXT,
     textAlign: 'center',
-    fontSize: 18,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
   },
   carouselCopy: {
     color: SECONDARY_TEXT,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: LINE_HEIGHTS.body,
   },
   carouselControls: {
     flexDirection: 'row',
@@ -2964,7 +2977,8 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   carouselArrowText: {
-    fontSize: 18,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
     color: CRAVE_ACCENT,
   },
   carouselDots: {

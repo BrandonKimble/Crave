@@ -107,10 +107,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={styles.titleRow}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text variant="caption" style={styles.rankBadgeText}>
-                  {index + 1}
-                </Text>
-              </View>
+                  <Text variant="caption" style={styles.rankBadgeText}>
+                    {index + 1}
+                  </Text>
+                </View>
               <Text
                 variant="subtitle"
                 weight="semibold"
@@ -129,10 +129,10 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                     strokeWidth={2}
                     style={styles.metricIcon}
                   />
-                  <Text variant="caption" weight="semibold" style={styles.metricValue}>
+                  <Text variant="body" weight="semibold" style={styles.metricValue}>
                     {item.qualityScore.toFixed(1)}
                   </Text>
-                  <Text variant="caption" weight="regular" style={styles.metricLabel}>
+                  <Text variant="body" weight="regular" style={styles.metricLabel}>
                     Dish score
                   </Text>
                   <TouchableOpacity

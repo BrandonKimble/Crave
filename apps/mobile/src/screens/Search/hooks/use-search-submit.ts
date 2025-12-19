@@ -373,8 +373,8 @@ const useSearchSubmit = ({
         options?.minimumVotes !== undefined
           ? options.minimumVotes
           : votes100Plus
-          ? MINIMUM_VOTES_FILTER
-          : null;
+            ? MINIMUM_VOTES_FILTER
+            : null;
 
       try {
         if (append) {

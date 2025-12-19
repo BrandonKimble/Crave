@@ -171,7 +171,7 @@ const SignInScreen: React.FC = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="eyebrow" style={styles.eyebrow}>
+        <Text variant="caption" style={styles.eyebrow}>
           Welcome back
         </Text>
         <Text variant="title" weight="bold" style={styles.title}>
@@ -276,7 +276,6 @@ const styles = StyleSheet.create({
   disclaimer: {
     marginTop: 32,
     color: '#94a3b8',
-    lineHeight: 18,
   },
   link: {
     color: CTA_COLOR,

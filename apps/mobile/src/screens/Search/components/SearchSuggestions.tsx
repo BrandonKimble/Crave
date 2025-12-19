@@ -11,6 +11,7 @@ import {
 import { Clock, Eye, HandPlatter, Heart, Search as SearchIcon, Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { RecentlyViewedRestaurant } from '../../../services/search';
 
@@ -207,14 +208,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f1f5f9',
   },
   autocompleteLoadingText: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
     marginLeft: 8,
   },
   autocompleteEmptyText: {
     paddingHorizontal: 0,
     paddingVertical: 10,
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#94a3b8',
   },
   autocompleteItemRow: {
@@ -234,7 +237,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   autocompletePrimaryText: {
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#111827',
     flex: 1,
@@ -262,7 +266,8 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   recentHeaderText: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: '#0f172a',
     letterSpacing: 0.4,
@@ -270,7 +275,8 @@ const styles = StyleSheet.create({
   },
   recentEmptyText: {
     paddingVertical: 6,
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#94a3b8',
   },
   recentRow: {
@@ -289,7 +295,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   recentText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#1f2937',
     flex: 1,
   },

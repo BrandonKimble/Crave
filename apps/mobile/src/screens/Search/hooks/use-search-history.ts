@@ -35,9 +35,7 @@ const useSearchHistory = ({
   const recentlyViewedRestaurants = useSearchHistoryStore(
     (state) => state.recentlyViewedRestaurants
   );
-  const isRecentlyViewedLoading = useSearchHistoryStore(
-    (state) => state.isRecentlyViewedLoading
-  );
+  const isRecentlyViewedLoading = useSearchHistoryStore((state) => state.isRecentlyViewedLoading);
   const setRecentSearches = useSearchHistoryStore((state) => state.setRecentSearches);
   const setIsRecentLoading = useSearchHistoryStore((state) => state.setIsRecentLoading);
   const setRecentlyViewedRestaurants = useSearchHistoryStore(
@@ -55,77 +53,83 @@ const useSearchHistory = ({
   const resetHistory = useSearchHistoryStore((state) => state.resetHistory);
   const autoLoadTriggeredRef = React.useRef(false);
 
-  const loadRecentHistory = React.useCallback(async ({ force = false } = {}) => {
-    if (!isSignedIn) {
-      setIsRecentLoading(false);
-      setRecentSearches([]);
-      hasLoadedRecent = false;
-      return;
-    }
-
-    if (!force && hasLoadedRecent) {
-      return;
-    }
-
-    if (recentHistoryRequest) {
-      return recentHistoryRequest;
-    }
-
-    const request = (async () => {
-      setIsRecentLoading(true);
-      try {
-        const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
-        setRecentSearches(history);
-        hasLoadedRecent = true;
-      } catch (err) {
-        logger.warn('Unable to load recent searches', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-      } finally {
+  const loadRecentHistory = React.useCallback(
+    async ({ force = false } = {}) => {
+      if (!isSignedIn) {
         setIsRecentLoading(false);
-        recentHistoryRequest = null;
+        setRecentSearches([]);
+        hasLoadedRecent = false;
+        return;
       }
-    })();
 
-    recentHistoryRequest = request;
-    return request;
-  }, [isSignedIn, setIsRecentLoading, setRecentSearches]);
+      if (!force && hasLoadedRecent) {
+        return;
+      }
 
-  const loadRecentlyViewedRestaurants = React.useCallback(async ({ force = false } = {}) => {
-    if (!isSignedIn) {
-      setIsRecentlyViewedLoading(false);
-      setRecentlyViewedRestaurants([]);
-      hasLoadedRecentlyViewed = false;
-      return;
-    }
+      if (recentHistoryRequest) {
+        return recentHistoryRequest;
+      }
 
-    if (!force && hasLoadedRecentlyViewed) {
-      return;
-    }
+      const request = (async () => {
+        setIsRecentLoading(true);
+        try {
+          const history = await searchService.recentHistory(RECENT_HISTORY_LIMIT);
+          setRecentSearches(history);
+          hasLoadedRecent = true;
+        } catch (err) {
+          logger.warn('Unable to load recent searches', {
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+        } finally {
+          setIsRecentLoading(false);
+          recentHistoryRequest = null;
+        }
+      })();
 
-    if (recentlyViewedRequest) {
-      return recentlyViewedRequest;
-    }
+      recentHistoryRequest = request;
+      return request;
+    },
+    [isSignedIn, setIsRecentLoading, setRecentSearches]
+  );
 
-    const request = (async () => {
-      setIsRecentlyViewedLoading(true);
-      try {
-        const items = await searchService.recentlyViewedRestaurants(RECENTLY_VIEWED_LIMIT);
-        setRecentlyViewedRestaurants(items);
-        hasLoadedRecentlyViewed = true;
-      } catch (err) {
-        logger.warn('Unable to load recently viewed restaurants', {
-          message: err instanceof Error ? err.message : 'unknown error',
-        });
-      } finally {
+  const loadRecentlyViewedRestaurants = React.useCallback(
+    async ({ force = false } = {}) => {
+      if (!isSignedIn) {
         setIsRecentlyViewedLoading(false);
-        recentlyViewedRequest = null;
+        setRecentlyViewedRestaurants([]);
+        hasLoadedRecentlyViewed = false;
+        return;
       }
-    })();
 
-    recentlyViewedRequest = request;
-    return request;
-  }, [isSignedIn, setIsRecentlyViewedLoading, setRecentlyViewedRestaurants]);
+      if (!force && hasLoadedRecentlyViewed) {
+        return;
+      }
+
+      if (recentlyViewedRequest) {
+        return recentlyViewedRequest;
+      }
+
+      const request = (async () => {
+        setIsRecentlyViewedLoading(true);
+        try {
+          const items = await searchService.recentlyViewedRestaurants(RECENTLY_VIEWED_LIMIT);
+          setRecentlyViewedRestaurants(items);
+          hasLoadedRecentlyViewed = true;
+        } catch (err) {
+          logger.warn('Unable to load recently viewed restaurants', {
+            message: err instanceof Error ? err.message : 'unknown error',
+          });
+        } finally {
+          setIsRecentlyViewedLoading(false);
+          recentlyViewedRequest = null;
+        }
+      })();
+
+      recentlyViewedRequest = request;
+      return request;
+    },
+    [isSignedIn, setIsRecentlyViewedLoading, setRecentlyViewedRestaurants]
+  );
 
   React.useEffect(() => {
     if (isSignedIn) {

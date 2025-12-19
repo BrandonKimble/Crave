@@ -11,6 +11,7 @@ import Reanimated from 'react-native-reanimated';
 import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
 import { colors as themeColors } from '../../../constants/theme';
 import { XCircleIcon } from '../../../components/icons/HeroIcons';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
@@ -219,13 +220,14 @@ const styles = StyleSheet.create({
   },
   promptInput: {
     flex: 1,
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
     color: '#111827',
     textAlign: 'left',
     paddingVertical: 0,
     paddingHorizontal: 0,
     height: 44,
-    lineHeight: 18,
+    lineHeight: LINE_HEIGHTS.subtitle,
+    includeFontPadding: false,
   },
   trailingContainer: {
     marginLeft: 'auto',

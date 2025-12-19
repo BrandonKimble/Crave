@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 
+import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import {
   OVERLAY_CORNER_RADIUS,
@@ -7,14 +8,12 @@ import {
 } from '../../overlays/overlaySheetStyles';
 import {
   ACTIVE_TAB_COLOR,
-  CAPTION_LINE_HEIGHT,
   CARD_LINE_GAP,
   CARD_VERTICAL_PADDING,
   CARD_VERTICAL_PADDING_BALANCE,
   CONTENT_HORIZONTAL_PADDING,
   FIRST_RESULT_TOP_PADDING_EXTRA,
   MARKER_SHADOW_STYLE,
-  META_FONT_SIZE,
   NAV_TOP_PADDING,
   PIN_BASE_HEIGHT,
   PIN_BASE_SCALE,
@@ -89,7 +88,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pinRank: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
     fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
@@ -257,14 +257,16 @@ const styles = StyleSheet.create({
     borderBottomColor: '#f1f5f9',
   },
   autocompleteLoadingText: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#475569',
     marginLeft: 8,
   },
   autocompleteEmptyText: {
     paddingHorizontal: 0,
     paddingVertical: 10,
-    fontSize: 13,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: '#94a3b8',
   },
   autocompleteItem: {
@@ -277,12 +279,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
   },
   autocompletePrimaryText: {
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#111827',
   },
   autocompleteSecondaryText: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: themeColors.textBody,
     textTransform: 'capitalize',
   },
@@ -293,7 +297,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   recentHeaderText: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     fontWeight: '600',
     color: '#0f172a',
     letterSpacing: 0.4,
@@ -313,7 +318,8 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   recentText: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     color: themeColors.textPrimary,
     flex: 1,
   },
@@ -322,7 +328,8 @@ const styles = StyleSheet.create({
   },
   promptInput: {
     flex: 1,
-    fontSize: 16,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: themeColors.textPrimary,
     textAlign: 'left',
     paddingVertical: 0,
@@ -456,7 +463,7 @@ const styles = StyleSheet.create({
   },
   scoreInfoDescription: {
     color: themeColors.textBody,
-    lineHeight: 18,
+    lineHeight: LINE_HEIGHTS.body,
   },
   pollsIcon: {
     transform: [{ rotate: '90deg' }, { scaleX: -1 }],
@@ -677,9 +684,6 @@ const styles = StyleSheet.create({
   rankBadgeText: {
     color: '#ffffff',
     fontWeight: '700',
-    fontSize: 14,
-    lineHeight: 24,
-    height: 24,
     textAlign: 'center',
     textAlignVertical: 'center',
     includeFontPadding: false,
@@ -714,8 +718,8 @@ const styles = StyleSheet.create({
   },
   metricDot: {
     color: themeColors.textBody,
-    fontSize: META_FONT_SIZE,
-    lineHeight: CAPTION_LINE_HEIGHT,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     marginHorizontal: SPACING_SM,
   },
   metricLabel: {
@@ -916,7 +920,8 @@ const styles = StyleSheet.create({
     color: '#dc2626',
   },
   dishTitle: {
-    fontSize: 17,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     flexShrink: 1,
     minWidth: 0,
   },
@@ -930,11 +935,13 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   dishSubtitle: {
-    fontSize: 14,
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
     marginTop: 4,
   },
   dishSubtitleSmall: {
-    fontSize: 12,
+    fontSize: FONT_SIZES.caption,
+    lineHeight: LINE_HEIGHTS.caption,
   },
   topFoodSection: {
     marginTop: 0,
@@ -1021,7 +1028,8 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 16,
-    fontSize: 15,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     textAlign: 'center',
   },
   glassHighlightSmall: {

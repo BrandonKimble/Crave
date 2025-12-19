@@ -3,7 +3,6 @@ import React from 'react';
 import type { OperatingStatus } from '@crave-search/shared';
 
 import { Text } from '../../../components';
-import { META_FONT_SIZE } from '../constants/search';
 import styles from '../styles';
 import { formatDistanceMiles, minutesUntilCloseFromDisplay } from '../utils/format';
 
@@ -20,7 +19,7 @@ export const renderMetaDetailLine = (
     segments.push(
       <Text
         key="meta-prefix"
-        variant="caption"
+        variant="body"
         weight="regular"
         style={[styles.resultMetaText, styles.resultMetaPrefix]}
         numberOfLines={1}
@@ -48,15 +47,15 @@ export const renderMetaDetailLine = (
         segments.push(
           <Text
             key={`separator-${segments.length}`}
-            variant="caption"
-            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            variant="body"
+            style={styles.resultMetaSeparator}
           >
             {' · '}
           </Text>
         );
       }
       segments.push(
-        <Text key="price" variant="caption" style={styles.resultMetaPrice}>
+        <Text key="price" variant="body" style={styles.resultMetaPrice}>
           {normalizedPriceLabel}
         </Text>
       );
@@ -66,8 +65,8 @@ export const renderMetaDetailLine = (
         segments.push(
           <Text
             key={`separator-${segments.length}`}
-            variant="caption"
-            style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+            variant="body"
+            style={styles.resultMetaSeparator}
           >
             {' · '}
           </Text>
@@ -76,8 +75,8 @@ export const renderMetaDetailLine = (
       segments.push(
         <Text
           key="distance"
-          variant="caption"
-          style={[styles.resultMetaDistance, { fontSize: META_FONT_SIZE }]}
+          variant="body"
+          style={styles.resultMetaDistance}
         >
           {distanceLabel}
         </Text>
@@ -90,8 +89,8 @@ export const renderMetaDetailLine = (
       segments.push(
         <Text
           key={`separator-${segments.length}`}
-          variant="caption"
-          style={[styles.resultMetaSeparator, { fontSize: META_FONT_SIZE }]}
+          variant="body"
+          style={styles.resultMetaSeparator}
         >
           {' · '}
         </Text>
@@ -99,13 +98,13 @@ export const renderMetaDetailLine = (
     }
     if (isClosingSoon) {
       segments.push(
-        <Text key="status-closing-soon" variant="caption" weight="semibold">
-          <Text variant="caption" weight="semibold" style={styles.resultMetaClosingSoon}>
+        <Text key="status-closing-soon" variant="body" weight="semibold">
+          <Text variant="body" weight="semibold" style={styles.resultMetaClosingSoon}>
             Closes
           </Text>
           {status.closesAtDisplay ? (
             <Text
-              variant="caption"
+              variant="body"
               style={styles.resultMetaSuffix}
             >{` at ${status.closesAtDisplay}`}</Text>
           ) : null}
@@ -113,13 +112,13 @@ export const renderMetaDetailLine = (
       );
     } else if (status.isOpen) {
       segments.push(
-        <Text key="status-open" variant="caption" weight="semibold">
-          <Text variant="caption" weight="semibold" style={styles.resultMetaOpen}>
+        <Text key="status-open" variant="body" weight="semibold">
+          <Text variant="body" weight="semibold" style={styles.resultMetaOpen}>
             Open
           </Text>
           {status.closesAtDisplay ? (
             <Text
-              variant="caption"
+              variant="body"
               style={styles.resultMetaSuffix}
             >{` until ${status.closesAtDisplay}`}</Text>
           ) : null}
@@ -127,13 +126,13 @@ export const renderMetaDetailLine = (
       );
     } else if (status.isOpen === false) {
       segments.push(
-        <Text key="status-closed" variant="caption" weight="semibold">
-          <Text variant="caption" weight="semibold" style={styles.resultMetaClosed}>
+        <Text key="status-closed" variant="body" weight="semibold">
+          <Text variant="body" weight="semibold" style={styles.resultMetaClosed}>
             Closed
           </Text>
           {status.nextOpenDisplay ? (
             <Text
-              variant="caption"
+              variant="body"
               style={styles.resultMetaSuffix}
             >{` until ${status.nextOpenDisplay}`}</Text>
           ) : null}
@@ -146,11 +145,10 @@ export const renderMetaDetailLine = (
   }
   return (
     <Text
-      variant="caption"
+      variant="body"
       weight="regular"
       style={[
         styles.resultMetaText,
-        { fontSize: META_FONT_SIZE },
         align === 'right' && styles.resultMetaTextRight,
       ]}
       numberOfLines={1}

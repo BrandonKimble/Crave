@@ -174,13 +174,13 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         ).toISOString()} (for next cycle)`,
       );
 
-      // ALWAYS request maximum posts (1000) regardless of what's in options
-      // We want to ensure we never miss any posts between collection cycles
-      // The PRD safety buffer (750) is for scheduling frequency, not collection limit
+      // Default to Reddit's maximum (1000) to avoid missing posts between cycles.
+      // Allow an explicit test override to reduce fetch volume in dev/test runs.
+      const fetchLimit = this.resolveTestFetchLimit();
       const postsResult = await this.redditService.getChronologicalPosts(
         subreddit,
         effectiveLastProcessed,
-        1000, // Always request Reddit's maximum to never miss posts
+        fetchLimit,
       );
 
       const allPosts: RedditPostDataCandidate[] = Array.isArray(
@@ -461,6 +461,28 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       postsCollected,
       timeSpanSeconds,
     });
+  }
+
+  private resolveTestFetchLimit(): number {
+    const raw = process.env.TEST_REDDIT_FETCH_LIMIT;
+    if (typeof raw !== 'string' || !raw.trim()) {
+      return 1000;
+    }
+
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      return 1000;
+    }
+
+    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '')
+      .trim()
+      .toLowerCase();
+    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+    if (appEnv === 'prod' || appEnv === 'production' || nodeEnv === 'production') {
+      return 1000;
+    }
+
+    return Math.min(1000, parsed);
   }
 
   /**

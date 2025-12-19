@@ -22,8 +22,6 @@ export const RESULTS_BOTTOM_PADDING = 375;
 export const PRICE_THUMB_SIZE = 20;
 export const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 4;
 
-export const META_FONT_SIZE = 12;
-export const CAPTION_LINE_HEIGHT = META_FONT_SIZE + 3;
 export const DISTANCE_MIN_DECIMALS = 1;
 export const DISTANCE_MAX_DECIMALS = 0;
 
