@@ -5,9 +5,39 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$REPO_ROOT/apps/mobile"
 
-PORT="${EXPO_METRO_PORT:-8107}"
+PORT="${EXPO_METRO_PORT:-${EXPO_DEV_SERVER_PORT:-${RCT_METRO_PORT:-8081}}}"
 IOS_DEVICE_UDID="${IOS_DEVICE_UDID:-${IOS_SIMULATOR_UDID:-}}"
 IOS_DEVICE_NAME="${IOS_DEVICE_NAME:-${IOS_SIMULATOR_NAME:-}}"
+FOLLOW_METRO_LOGS="${FOLLOW_METRO_LOGS:-1}"
+METRO_LOG="/tmp/expo-metro.log"
+
+wait_for_metro() {
+  if command -v curl >/dev/null 2>&1; then
+    deadline=$((SECONDS + 30))
+    until curl -fs "http://localhost:${PORT}/status" >/dev/null 2>&1; do
+      if [[ $SECONDS -ge $deadline ]]; then
+        echo "Metro did not start on port ${PORT}."
+        return 1
+      fi
+      sleep 1
+    done
+  else
+    sleep 5
+  fi
+}
+
+run_ios() {
+  if [[ -n "$IOS_DEVICE_UDID" ]]; then
+    EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+      npx expo run:ios --device "$IOS_DEVICE_UDID" --port "$PORT"
+  elif [[ -n "$IOS_DEVICE_NAME" ]]; then
+    EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+      npx expo run:ios --device "$IOS_DEVICE_NAME" --port "$PORT"
+  else
+    EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+      npx expo run:ios --port "$PORT"
+  fi
+}
 
 if command -v lsof >/dev/null 2>&1; then
   existing="$(lsof -ti tcp:"$PORT" || true)"
@@ -17,9 +47,6 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 
 cd "$APP_DIR"
-nohup npx expo start --clear --reset-cache --port "$PORT" >/tmp/expo-metro.log 2>&1 &
-
-sleep 5
 
 if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
   if command -v python3 >/dev/null 2>&1; then
@@ -105,10 +132,24 @@ PY
   fi
 fi
 
-if [[ -n "$IOS_DEVICE_UDID" ]]; then
-  npx expo run:ios --device "$IOS_DEVICE_UDID" --port "$PORT"
-elif [[ -n "$IOS_DEVICE_NAME" ]]; then
-  npx expo run:ios --device "$IOS_DEVICE_NAME" --port "$PORT"
-else
-  npx expo run:ios --port "$PORT"
+if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
+  (
+    wait_for_metro || true
+    run_ios
+  ) &
+  EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+    npx expo start --dev-client --clear --reset-cache --port "$PORT"
+  exit 0
+fi
+
+EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
+  nohup npx expo start --dev-client --clear --reset-cache --port "$PORT" \
+  >"$METRO_LOG" 2>&1 &
+
+wait_for_metro || true
+run_ios
+
+if [[ "$FOLLOW_METRO_LOGS" != "0" ]]; then
+  echo "Tailing Metro logs from ${METRO_LOG} (Ctrl+C to stop)."
+  tail -n 200 -f "$METRO_LOG"
 fi
