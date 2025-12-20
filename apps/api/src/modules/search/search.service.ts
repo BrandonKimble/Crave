@@ -348,7 +348,7 @@ export class SearchService {
         plan,
         food: execution.foodResults,
         restaurants: execution.restaurantResults,
-        sqlPreview: includeSqlPreview ? execution.sqlPreview ?? null : null,
+        sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
         metadata,
       };
     } catch (error) {
