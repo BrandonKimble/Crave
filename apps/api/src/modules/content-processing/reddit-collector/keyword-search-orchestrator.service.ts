@@ -1040,15 +1040,18 @@ export class KeywordSearchOrchestratorService
             ? schedules.reduce((sum, s) => sum + s.entities.length, 0) /
               schedules.length
             : 0,
-        schedulesBySubreddit: schedules.reduce((acc, s) => {
-          acc[s.subreddit] = {
-            status: s.status,
-            nextRun: s.nextRun,
-            lastRun: s.lastRun,
-            entityCount: s.entities.length,
-          };
-          return acc;
-        }, {} as Record<string, any>),
+        schedulesBySubreddit: schedules.reduce(
+          (acc, s) => {
+            acc[s.subreddit] = {
+              status: s.status,
+              nextRun: s.nextRun,
+              lastRun: s.lastRun,
+              entityCount: s.entities.length,
+            };
+            return acc;
+          },
+          {} as Record<string, any>,
+        ),
       };
 
       return metrics;
