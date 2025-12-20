@@ -1802,6 +1802,8 @@ const SearchScreen: React.FC = () => {
     const emptyAreaStyle = { minHeight: emptyAreaMinHeight };
     const emptyYOffset = -Math.min(24, Math.max(12, emptyAreaMinHeight * 0.12));
     const emptyContentOffsetStyle = { transform: [{ translateY: emptyYOffset }] };
+    const emptySubtitle =
+      results?.metadata?.emptyQueryMessage ?? 'Try moving the map or adjusting your search.';
 
     if ((isLoading || hasSystemStatusBanner || shouldRetrySearchOnReconnect) && !results) {
       return (
@@ -1817,7 +1819,7 @@ const SearchScreen: React.FC = () => {
         <View style={emptyContentOffsetStyle}>
           <EmptyState
             title={activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.'}
-            subtitle="Try moving the map or adjusting your search."
+            subtitle={emptySubtitle}
           />
         </View>
       </View>

@@ -60,6 +60,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
 }) => {
   const clearIconSize = 24;
   const leadingIconSize = 24;
+  const hasLeadingIcon = showBack || showInactiveSearchIcon;
   return (
     <View style={styles.wrapper} pointerEvents="box-none">
       <Reanimated.View
@@ -81,7 +82,9 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 inputAnimatedStyle,
               ]}
             >
-              <View style={styles.leadingSlot}>
+              <View
+                style={[styles.leadingSlot, hasLeadingIcon ? null : styles.leadingSlotCollapsed]}
+              >
                 {showBack ? (
                   <Pressable
                     style={styles.leadingButton}
@@ -108,9 +111,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   <View style={styles.leadingButton}>
                     <Search size={leadingIconSize} color="#9ca3af" strokeWidth={2} />
                   </View>
-                ) : (
-                  <View style={styles.leadingPlaceholder} />
-                )}
+                ) : null}
               </View>
               <TextInput
                 ref={inputRef}
@@ -208,15 +209,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  leadingSlotCollapsed: {
+    width: 0,
+    marginRight: 0,
+  },
   leadingButton: {
     width: 36,
     height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  leadingPlaceholder: {
-    width: 36,
-    height: 44,
   },
   promptInput: {
     flex: 1,

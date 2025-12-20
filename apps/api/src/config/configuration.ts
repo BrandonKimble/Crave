@@ -232,6 +232,26 @@ export default () => {
         queryLevel: process.env.LLM_QUERY_THINKING_LEVEL || undefined,
         includeThoughts: process.env.LLM_THINKING_INCLUDE_THOUGHTS === 'true',
       },
+      thoughtDebug: {
+        enabled: process.env.LLM_DEBUG_THOUGHTS_ONCE === 'true',
+        query: process.env.LLM_DEBUG_THOUGHTS_QUERY !== 'false',
+        content: process.env.LLM_DEBUG_THOUGHTS_CONTENT !== 'false',
+        maxChars: parseInt(process.env.LLM_DEBUG_THOUGHTS_MAX_CHARS || '0', 10),
+        maxQueryEntries: parseInt(
+          process.env.LLM_DEBUG_THOUGHTS_MAX_QUERIES || '0',
+          10,
+        ),
+        maxContentEntries: parseInt(
+          process.env.LLM_DEBUG_THOUGHTS_MAX_CONTENT_CHUNKS || '0',
+          10,
+        ),
+        writeToFile: process.env.LLM_DEBUG_THOUGHTS_WRITE_FILE === 'true',
+        filePath: process.env.LLM_DEBUG_THOUGHTS_FILE_PATH || undefined,
+        filePathQuery:
+          process.env.LLM_DEBUG_THOUGHTS_FILE_PATH_QUERY || undefined,
+        filePathContent:
+          process.env.LLM_DEBUG_THOUGHTS_FILE_PATH_CONTENT || undefined,
+      },
       cache: {
         systemTtlSeconds: parseInt(
           process.env.LLM_SYSTEM_CACHE_TTL_SECONDS || '10800',
@@ -371,6 +391,9 @@ export default () => {
         .split(',')
         .map((value) => value.trim().toLowerCase())
         .filter((value) => value.length > 0),
+    },
+    unifiedProcessing: {
+      dryRun: process.env.UNIFIED_PROCESSING_DRY_RUN === 'true',
     },
     pushshift: {
       baseDirectory:

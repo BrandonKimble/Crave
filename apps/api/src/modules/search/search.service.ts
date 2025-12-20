@@ -141,6 +141,56 @@ export class SearchService {
     return { plan, sqlPreview: preview };
   }
 
+  buildEmptyResponse(
+    request: SearchQueryRequestDto,
+    options: { emptyQueryMessage?: string } = {},
+  ): SearchResponseDto {
+    const start = Date.now();
+    const searchRequestId = request.searchRequestId ?? randomUUID();
+    request.searchRequestId = searchRequestId;
+
+    const { plan, sqlPreview } = this.buildPlanResponse(request);
+    const pagination = this.resolvePagination(request.pagination);
+    const perRestaurantLimit =
+      plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
+
+    const primaryFoodTermRaw =
+      request.entities.food?.[0]?.originalText ??
+      request.entities.food?.[0]?.normalizedName ??
+      null;
+    const primaryFoodTerm = primaryFoodTermRaw
+      ? primaryFoodTermRaw.trim()
+      : null;
+
+    return {
+      format: plan.format,
+      plan,
+      food: [],
+      restaurants: [],
+      sqlPreview,
+      metadata: {
+        totalFoodResults: 0,
+        totalRestaurantResults: 0,
+        queryExecutionTimeMs: Date.now() - start,
+        searchRequestId,
+        boundsApplied: false,
+        openNowApplied: false,
+        openNowSupportedRestaurants: 0,
+        openNowUnsupportedRestaurants: 0,
+        openNowFilteredOut: 0,
+        priceFilterApplied: Boolean(request.priceLevels?.length),
+        minimumVotesApplied:
+          typeof request.minimumVotes === 'number' && request.minimumVotes > 0,
+        page: pagination.page,
+        pageSize: pagination.pageSize,
+        perRestaurantLimit,
+        coverageStatus: 'unresolved',
+        primaryFoodTerm: primaryFoodTerm || undefined,
+        emptyQueryMessage: options.emptyQueryMessage,
+      },
+    };
+  }
+
   async runQuery(request: SearchQueryRequestDto): Promise<SearchResponseDto> {
     const start = Date.now();
     const searchRequestId = request.searchRequestId ?? randomUUID();
@@ -298,7 +348,7 @@ export class SearchService {
         plan,
         food: execution.foodResults,
         restaurants: execution.restaurantResults,
-        sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
+        sqlPreview: includeSqlPreview ? execution.sqlPreview ?? null : null,
         metadata,
       };
     } catch (error) {

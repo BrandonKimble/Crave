@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Reanimated, {
   Easing,
   useAnimatedStyle,
@@ -11,18 +11,16 @@ import { WifiOff, TriangleAlert } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from './ui/Text';
 import { useSystemStatusStore } from '../store/systemStatusStore';
-import { OVERLAY_CORNER_RADIUS } from '../overlays/overlaySheetStyles';
-import MaskedHoleOverlay from './MaskedHoleOverlay';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 
 const CONTENT_HEIGHT = 32;
 
 const DEFAULT_SERVICE_MESSAGE = 'Service temporarily unavailable.';
+const OFFLINE_MESSAGE = "You're offline.";
 const BANNER_BACKGROUND = '#0b0b0f';
 
 const SystemStatusBanner: React.FC = () => {
   const insets = useSafeAreaInsets();
-  const { width: windowWidth } = useWindowDimensions();
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
 
@@ -30,13 +28,13 @@ const SystemStatusBanner: React.FC = () => {
     if (isOffline) {
       return {
         kind: 'offline' as const,
-        message: 'Your device is offline.',
+        message: OFFLINE_MESSAGE,
       };
     }
     if (serviceIssue) {
       return {
         kind: 'service' as const,
-        message: serviceIssue.message || DEFAULT_SERVICE_MESSAGE,
+        message: DEFAULT_SERVICE_MESSAGE,
       };
     }
     return null;
@@ -58,19 +56,6 @@ const SystemStatusBanner: React.FC = () => {
     opacity: progress.value,
   }));
 
-  const cornerHoles = React.useMemo(() => {
-    if (!isVisible || windowWidth <= 0) {
-      return [];
-    }
-    const radius = OVERLAY_CORNER_RADIUS;
-    const size = radius * 2;
-    const y = fullHeight - radius;
-    return [
-      { x: -radius, y, width: size, height: size, borderRadius: radius },
-      { x: windowWidth - radius, y, width: size, height: size, borderRadius: radius },
-    ];
-  }, [fullHeight, isVisible, windowWidth]);
-
   const icon =
     banner?.kind === 'offline' ? (
       <WifiOff size={16} color="#ef4444" strokeWidth={2.2} />
@@ -83,11 +68,7 @@ const SystemStatusBanner: React.FC = () => {
       pointerEvents={isVisible ? 'auto' : 'none'}
       style={[styles.container, containerAnimatedStyle]}
     >
-      {cornerHoles.length ? (
-        <MaskedHoleOverlay holes={cornerHoles} backgroundColor={BANNER_BACKGROUND} />
-      ) : (
-        <View style={styles.backgroundFill} />
-      )}
+      <View style={styles.backgroundFill} />
       <View style={[styles.safeAreaSpacer, { height: insets.top }]} />
       {banner ? (
         <View style={styles.contentRow}>

@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EntityType, Entity } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../../prisma/prisma.service';
@@ -27,15 +28,19 @@ import {
 @Injectable()
 export class EntityResolutionService implements OnModuleInit {
   private logger!: LoggerService;
+  private dryRunEnabled = false;
   constructor(
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
     private readonly aliasManagementService: AliasManagementService,
+    private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('EntityResolutionService');
+    this.dryRunEnabled =
+      this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
   }
 
   private readonly restaurantNonDistinctTokens = new Set<string>([
@@ -220,21 +225,29 @@ export class EntityResolutionService implements OnModuleInit {
         aliasUpdates.get(result.entityId)!.add(originalText);
       }
 
-      for (const [entityId, aliases] of aliasUpdates.entries()) {
-        for (const alias of aliases) {
-          try {
-            await this.addAliasToEntity(entityId, alias);
-          } catch (aliasError) {
-            this.logger.warn('Alias enrichment failed', {
-              entityId,
-              alias,
-              error: {
-                message:
-                  aliasError instanceof Error
-                    ? aliasError.message
-                    : String(aliasError),
-              },
-            });
+      if (this.dryRunEnabled) {
+        if (aliasUpdates.size > 0) {
+          this.logger.info('Skipping alias enrichment (dry run enabled)', {
+            aliasUpdates: aliasUpdates.size,
+          });
+        }
+      } else {
+        for (const [entityId, aliases] of aliasUpdates.entries()) {
+          for (const alias of aliases) {
+            try {
+              await this.addAliasToEntity(entityId, alias);
+            } catch (aliasError) {
+              this.logger.warn('Alias enrichment failed', {
+                entityId,
+                alias,
+                error: {
+                  message:
+                    aliasError instanceof Error
+                      ? aliasError.message
+                      : String(aliasError),
+                },
+              });
+            }
           }
         }
       }

@@ -26,6 +26,18 @@ export interface LLMConfig {
     queryLevel?: string;
     includeThoughts?: boolean;
   };
+  thoughtDebug?: {
+    enabled: boolean;
+    query: boolean;
+    content: boolean;
+    maxChars: number;
+    maxQueryEntries?: number;
+    maxContentEntries?: number;
+    writeToFile?: boolean;
+    filePath?: string;
+    filePathQuery?: string;
+    filePathContent?: string;
+  };
   retryOptions: RetryOptions;
   cache?: {
     systemTtlSeconds: number;
@@ -199,6 +211,7 @@ export interface GeminiApiRequest {
     stopSequences?: string[];
     responseMimeType?: string;
     responseSchema?: object;
+    responseJsonSchema?: unknown;
     thinkingConfig?: {
       thinkingBudget?: number;
       thinkingLevel?: string;

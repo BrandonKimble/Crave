@@ -3,7 +3,7 @@
 import './src/polyfills/react-native-codegen';
 import 'react-native-gesture-handler';
 import React from 'react';
-import { View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,9 +23,12 @@ import NetworkStatusListener from './src/providers/NetworkStatusListener';
 import { navigationRef } from './src/navigation/navigationRef';
 import SystemStatusBanner from './src/components/SystemStatusBanner';
 import { useSystemStatusStore } from './src/store/systemStatusStore';
+import { OVERLAY_CORNER_RADIUS } from './src/overlays/overlaySheetStyles';
+import { colors } from './src/constants/theme';
 
 const queryClient = new QueryClient();
 const SYSTEM_BANNER_PUSH_HEIGHT = 32;
+const BANNER_BACKGROUND = '#0b0b0f';
 
 enableScreens();
 
@@ -57,6 +60,8 @@ export default function App() {
 
   const contentAnimatedStyle = useAnimatedStyle(() => ({
     paddingTop: SYSTEM_BANNER_PUSH_HEIGHT * bannerProgress.value,
+    borderTopLeftRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
+    borderTopRightRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
   }));
 
   React.useEffect(() => {
@@ -83,12 +88,15 @@ export default function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
+      <View
+        style={[styles.appRoot, isBannerVisible ? styles.appRootBannerVisible : null]}
+        onLayout={onLayoutRootView}
+      >
         <SafeAreaProvider>
           <NetworkStatusListener />
           <AuthProvider>
             <SystemStatusBanner />
-            <Reanimated.View style={[{ flex: 1 }, contentAnimatedStyle]}>
+            <Reanimated.View style={[styles.contentSurface, contentAnimatedStyle]}>
               <NavigationContainer ref={navigationRef}>
                 <RootNavigator />
               </NavigationContainer>
@@ -100,3 +108,18 @@ export default function App() {
     </QueryClientProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  appRoot: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  appRootBannerVisible: {
+    backgroundColor: BANNER_BACKGROUND,
+  },
+  contentSurface: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+});

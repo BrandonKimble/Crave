@@ -9,8 +9,8 @@ import { GoogleGenAI, FinishReason } from '@google/genai';
 import { Agent, setGlobalDispatcher, type Dispatcher } from 'undici';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { dirname, isAbsolute, join, resolve } from 'path';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
@@ -52,23 +52,16 @@ interface LightweightPost {
 }
 
 interface SearchQueryRawResponse {
-  restaurants?: unknown;
-  restaurantNames?: unknown;
-  restaurant_names?: unknown;
-  foods?: unknown;
-  dishes?: unknown;
-  food_items?: unknown;
-  foodAttributes?: unknown;
-  food_attributes?: unknown;
-  foodTraits?: unknown;
-  restaurantAttributes?: unknown;
-  restaurant_attributes?: unknown;
-  venueAttributes?: unknown;
+  restaurants: unknown;
+  foods: unknown;
+  foodAttributes: unknown;
+  restaurantAttributes: unknown;
 }
 
 type GeminiGenerationConfig = Record<string, unknown> & {
   responseMimeType?: string;
   responseSchema?: Record<string, unknown>;
+  responseJsonSchema?: Record<string, unknown>;
   cachedContent?: string;
   systemInstruction?: string;
   httpOptions?: {
@@ -89,6 +82,10 @@ interface LLMGenerationOptions {
   model?: string | null;
   timeoutMs?: number;
   maxRetries?: number;
+  thinkingOverride?: {
+    includeThoughts?: boolean;
+  };
+  thinkingContext?: 'content' | 'query';
 }
 
 type CacheRefreshReason =
@@ -126,6 +123,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private queryPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
+  private thoughtDebugEntries: {
+    query: Record<string, unknown>[];
+    content: Record<string, unknown>[];
+  } = {
+    query: [],
+    content: [],
+  };
+  private thoughtDebugLoaded = {
+    query: false,
+    content: false,
+  };
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
@@ -169,6 +177,35 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         includeThoughts:
           this.configService.get<boolean>('llm.thinking.includeThoughts') ===
           true,
+      },
+      thoughtDebug: {
+        enabled:
+          this.configService.get<boolean>('llm.thoughtDebug.enabled') === true,
+        query:
+          this.configService.get<boolean>('llm.thoughtDebug.query') !== false,
+        content:
+          this.configService.get<boolean>('llm.thoughtDebug.content') !== false,
+        maxChars:
+          this.configService.get<number>('llm.thoughtDebug.maxChars') || 0,
+        maxQueryEntries:
+          this.configService.get<number>('llm.thoughtDebug.maxQueryEntries') ||
+          0,
+        maxContentEntries:
+          this.configService.get<number>(
+            'llm.thoughtDebug.maxContentEntries',
+          ) || 0,
+        writeToFile:
+          this.configService.get<boolean>('llm.thoughtDebug.writeToFile') ===
+          true,
+        filePath:
+          this.configService.get<string>('llm.thoughtDebug.filePath') ||
+          undefined,
+        filePathQuery:
+          this.configService.get<string>('llm.thoughtDebug.filePathQuery') ||
+          undefined,
+        filePathContent:
+          this.configService.get<string>('llm.thoughtDebug.filePathContent') ||
+          undefined,
       },
       retryOptions: {
         maxRetries:
@@ -222,6 +259,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
       thinkingLevel: this.llmConfig.thinking?.level,
       thinkingQueryLevel: this.llmConfig.thinking?.queryLevel,
       thinkingIncludeThoughts: this.llmConfig.thinking?.includeThoughts,
+      thoughtDebug: this.llmConfig.thoughtDebug,
     });
 
     this.configureGeminiHttpClient();
@@ -704,9 +742,20 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
     try {
       const prompt = this.buildProcessingPrompt(input);
-      const response = await this.callLLMApi(prompt);
+      const shouldLogThoughts = this.shouldLogThoughts('content');
+      const response = await this.callLLMApi(prompt, {
+        thinkingOverride: shouldLogThoughts
+          ? { includeThoughts: true }
+          : undefined,
+      });
       const parsed = this.parseResponse(response);
       parsed.usageMetadata = response.usageMetadata ?? null;
+      if (shouldLogThoughts) {
+        this.logThoughtDebug('content', response, {
+          postCount: input.posts.length,
+          postIds: input.posts.map((post) => post.id),
+        });
+      }
 
       const responseTime = Date.now() - startTime;
       this.recordSuccessMetrics(
@@ -750,6 +799,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     });
 
     const prompt = this.buildSearchQueryPrompt(query);
+    const shouldLogThoughts = this.shouldLogThoughts('query');
     const queryGenerationConfig: GeminiGenerationConfig = {
       temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
       topP: this.llmConfig.topP,
@@ -757,7 +807,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       candidateCount: 1,
       maxOutputTokens: Math.min(this.llmConfig.maxTokens || 2048, 2048),
       responseMimeType: 'application/json',
-      responseSchema: {
+      responseJsonSchema: {
         type: 'object',
         description: 'Structured representation of the search request',
         properties: {
@@ -784,12 +834,21 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
               'Restaurant-level attributes such as ambiance or amenities',
           },
         },
+        required: [
+          'restaurants',
+          'foods',
+          'foodAttributes',
+          'restaurantAttributes',
+        ],
         additionalProperties: false,
       },
     };
     const queryThinkingConfig = this.getThinkingConfig(
       this.queryModel,
       'query',
+      {
+        includeThoughts: shouldLogThoughts,
+      },
     );
     if (queryThinkingConfig) {
       queryGenerationConfig.thinkingConfig = queryThinkingConfig;
@@ -807,6 +866,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           ? this.llmConfig.queryTimeout
           : undefined,
       maxRetries: 0,
+      thinkingContext: 'query',
     });
     const content = this.extractTextContent(response, 'analyze_search_query');
     if (this.llmConfig.queryLogOutputs) {
@@ -817,6 +877,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         outputLength: content.length,
         output: content,
       });
+    }
+    if (shouldLogThoughts) {
+      this.logThoughtDebug('query', response, { query });
     }
     const analysis = this.parseSearchQueryResponse(content);
 
@@ -1036,8 +1099,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-          ? error
-          : '';
+        ? error
+        : '';
     if (!message) {
       return false;
     }
@@ -1083,8 +1146,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-          ? error
-          : '';
+        ? error
+        : '';
     if (!message) {
       return false;
     }
@@ -1116,19 +1179,11 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       );
     }
 
-    const restaurants = this.coerceStringArray(
-      parsed.restaurants ?? parsed.restaurantNames ?? parsed.restaurant_names,
-    );
-    const foods = this.coerceStringArray(
-      parsed.foods ?? parsed.dishes ?? parsed.food_items,
-    );
-    const foodAttributes = this.coerceStringArray(
-      parsed.foodAttributes ?? parsed.food_attributes ?? parsed.foodTraits,
-    );
+    const restaurants = this.coerceStringArray(parsed.restaurants);
+    const foods = this.coerceStringArray(parsed.foods);
+    const foodAttributes = this.coerceStringArray(parsed.foodAttributes);
     const restaurantAttributes = this.coerceStringArray(
-      parsed.restaurantAttributes ??
-        parsed.restaurant_attributes ??
-        parsed.venueAttributes,
+      parsed.restaurantAttributes,
     );
 
     return {
@@ -1161,7 +1216,23 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   private isSearchQueryResponse(
     value: unknown,
   ): value is SearchQueryRawResponse {
-    return typeof value === 'object' && value !== null;
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const record = value as Record<string, unknown>;
+    return (
+      this.isStringArray(record.restaurants) &&
+      this.isStringArray(record.foods) &&
+      this.isStringArray(record.foodAttributes) &&
+      this.isStringArray(record.restaurantAttributes)
+    );
+  }
+
+  private isStringArray(value: unknown): value is string[] {
+    return (
+      Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+    );
   }
 
   /**
@@ -1175,7 +1246,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     const maxRetries =
       typeof options.maxRetries === 'number' && options.maxRetries >= 0
         ? options.maxRetries
-        : (this.llmConfig.retryOptions?.maxRetries ?? 3);
+        : this.llmConfig.retryOptions?.maxRetries ?? 3;
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
 
@@ -1282,14 +1353,14 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           typeof secondsRaw === 'number'
             ? secondsRaw
             : typeof secondsRaw === 'string'
-              ? Number.parseFloat(secondsRaw)
-              : undefined;
+            ? Number.parseFloat(secondsRaw)
+            : undefined;
         const nanos =
           typeof nanosRaw === 'number'
             ? nanosRaw
             : typeof nanosRaw === 'string'
-              ? Number.parseFloat(nanosRaw)
-              : undefined;
+            ? Number.parseFloat(nanosRaw)
+            : undefined;
         if (
           !Number.isFinite(seconds ?? NaN) &&
           !Number.isFinite(nanos ?? NaN)
@@ -1449,6 +1520,16 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       };
     };
 
+    const nullableStringSchema = {
+      anyOf: [{ type: 'string' }, { type: 'null' }],
+    };
+    const nullableBooleanSchema = {
+      anyOf: [{ type: 'boolean' }, { type: 'null' }],
+    };
+    const nullableStringArraySchema = {
+      anyOf: [{ type: 'array', items: { type: 'string' } }, { type: 'null' }],
+    };
+
     const defaultGenerationConfig: GeminiGenerationConfig = {
       temperature: this.llmConfig.temperature,
       topP: this.llmConfig.topP,
@@ -1456,7 +1537,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       candidateCount: this.llmConfig.candidateCount,
       maxOutputTokens: this.llmConfig.maxTokens || 65536,
       responseMimeType: 'application/json',
-      responseSchema: {
+      responseJsonSchema: {
         type: 'object',
         description:
           'Restaurant and food mentions extracted from Reddit content',
@@ -1480,37 +1561,29 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
                     'Canonical restaurant name: lowercase, no articles (the/a/an), standardized spacing',
                 },
                 restaurant_attributes: {
-                  type: 'array',
                   description:
                     'Restaurant-scoped attributes: ambiance, features, service model, cuisine when applied to restaurant',
-                  items: { type: 'string' },
-                  nullable: true,
+                  ...nullableStringArraySchema,
                 },
                 food: {
-                  type: 'string',
                   description:
                     'Complete compound food term as primary name, singular form, excluding attributes',
-                  nullable: true,
+                  ...nullableStringSchema,
                 },
                 food_categories: {
-                  type: 'array',
                   description:
                     'Hierarchical decomposition: parent categories, ingredient categories, related food terms',
-                  items: { type: 'string' },
-                  nullable: true,
+                  ...nullableStringArraySchema,
                 },
                 food_attributes: {
-                  type: 'array',
                   description:
                     'Food attributes: dietary filters, preparation styles, textures, flavors, or other descriptors applied to the dish',
-                  items: { type: 'string' },
-                  nullable: true,
+                  ...nullableStringArraySchema,
                 },
                 is_menu_item: {
-                  type: 'boolean',
                   description:
                     'True if specific menu item, false if general food type',
-                  nullable: true,
+                  ...nullableBooleanSchema,
                 },
                 general_praise: {
                   type: 'boolean',
@@ -1546,7 +1619,12 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         propertyOrdering: ['mentions'],
       },
     };
-    const baseThinkingConfig = this.getThinkingConfig(targetModel, 'content');
+    const thinkingContext = options.thinkingContext ?? 'content';
+    const baseThinkingConfig = this.getThinkingConfig(
+      targetModel,
+      thinkingContext,
+      options.thinkingOverride,
+    );
     if (baseThinkingConfig) {
       defaultGenerationConfig.thinkingConfig = baseThinkingConfig;
     }
@@ -1561,12 +1639,16 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     const hasResponseSchema =
       typeof generationConfig.responseSchema === 'object' &&
       generationConfig.responseSchema !== null;
+    const hasResponseJsonSchema =
+      typeof generationConfig.responseJsonSchema === 'object' &&
+      generationConfig.responseJsonSchema !== null;
 
     this.logger.debug('Generation config with @google/genai', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'call_llm_api',
       hasResponseMimeType,
       hasResponseSchema,
+      hasResponseJsonSchema,
       configKeys: Object.keys(generationConfig),
     });
 
@@ -1625,7 +1707,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         options.cacheName ??
         (options.systemInstruction
           ? null
-          : (this.systemInstructionCache?.name ?? null));
+          : this.systemInstructionCache?.name ?? null);
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -2084,8 +2166,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         typeof input === 'string'
           ? input
           : input instanceof URL
-            ? input.toString()
-            : (input?.url ?? '');
+          ? input.toString()
+          : input?.url ?? '';
       try {
         return await originalFetch(input as RequestInfo, init);
       } catch (error) {
@@ -2251,6 +2333,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
   private getThinkingConfig(
     model: string,
     context: 'content' | 'query' = 'content',
+    overrides?: {
+      includeThoughts?: boolean;
+    },
   ):
     | {
         thinkingBudget?: number;
@@ -2263,7 +2348,9 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       return undefined;
     }
 
-    const includeThoughts = this.llmConfig.thinking?.includeThoughts === true;
+    const includeThoughts =
+      overrides?.includeThoughts ??
+      this.llmConfig.thinking?.includeThoughts === true;
     const maxTokens = this.llmConfig.maxTokens || 65536;
 
     if (this.isGemini3Model(model)) {
@@ -2339,6 +2426,206 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       thinkingBudget: safeBudget,
       ...(includeThoughts ? { includeThoughts } : {}),
     };
+  }
+
+  private getThoughtDebugMaxEntries(scope: 'query' | 'content'): number {
+    const debug = this.llmConfig.thoughtDebug;
+    if (!debug?.enabled) {
+      return 0;
+    }
+    const raw =
+      scope === 'query' ? debug.maxQueryEntries : debug.maxContentEntries;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+      return Math.floor(raw);
+    }
+    return 1;
+  }
+
+  private ensureThoughtDebugLoaded(
+    scope: 'query' | 'content',
+    filePath: string | null,
+  ): void {
+    if (this.thoughtDebugLoaded[scope]) {
+      return;
+    }
+    this.thoughtDebugLoaded[scope] = true;
+    if (!filePath || !existsSync(filePath)) {
+      return;
+    }
+    try {
+      const raw = readFileSync(filePath, 'utf8').trim();
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        this.thoughtDebugEntries[scope] = parsed.filter(
+          (entry) => entry && typeof entry === 'object',
+        ) as Record<string, unknown>[];
+        return;
+      }
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        Array.isArray((parsed as { entries?: unknown }).entries)
+      ) {
+        this.thoughtDebugEntries[scope] = (
+          (parsed as { entries?: unknown[] }).entries ?? []
+        ).filter((entry) => entry && typeof entry === 'object') as Record<
+          string,
+          unknown
+        >[];
+      }
+    } catch (error) {
+      this.logger.warn('Failed to read LLM thought debug file', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'llm_thought_debug',
+        scope,
+        filePath,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private shouldLogThoughts(scope: 'query' | 'content'): boolean {
+    const debug = this.llmConfig.thoughtDebug;
+    if (!debug?.enabled) {
+      return false;
+    }
+    if (scope === 'query' && !debug.query) {
+      return false;
+    }
+    if (scope === 'content' && !debug.content) {
+      return false;
+    }
+    const filePath = this.resolveThoughtDebugFilePath(scope);
+    this.ensureThoughtDebugLoaded(scope, filePath);
+    const maxEntries = this.getThoughtDebugMaxEntries(scope);
+    if (maxEntries <= 0) {
+      return false;
+    }
+    return this.thoughtDebugEntries[scope].length < maxEntries;
+  }
+
+  private resolveThoughtDebugFilePath(
+    scope: 'query' | 'content',
+  ): string | null {
+    const debug = this.llmConfig.thoughtDebug;
+    if (!debug?.writeToFile) {
+      return null;
+    }
+    const rawPath =
+      (scope === 'query' ? debug.filePathQuery : debug.filePathContent) ||
+      debug.filePath ||
+      (scope === 'query'
+        ? 'logs/llm-thought-debug-query.json'
+        : 'logs/llm-thought-debug-content.json');
+    const normalizedPath = rawPath.trim();
+    if (!normalizedPath) {
+      return null;
+    }
+    if (isAbsolute(normalizedPath)) {
+      return normalizedPath;
+    }
+    const apiRoot = resolve(__dirname, '../../../../..');
+    let normalized = normalizedPath;
+    if (normalized.startsWith('apps/api/')) {
+      normalized = normalized.slice('apps/api/'.length);
+    } else if (normalized.startsWith('apps\\api\\')) {
+      normalized = normalized.slice('apps\\api\\'.length);
+    }
+    return join(apiRoot, normalized);
+  }
+
+  private logThoughtDebug(
+    scope: 'query' | 'content',
+    response: LLMApiResponse,
+    details: Record<string, unknown>,
+  ): void {
+    const correlationId = CorrelationUtils.getCorrelationId();
+    const usage = response.usageMetadata;
+    const thoughtParts =
+      response.candidates?.[0]?.content?.parts?.filter(
+        (part) => part.thought === true,
+      ) ?? [];
+    const thoughtText = thoughtParts.map((part) => part.text).join('');
+    const signatures = thoughtParts
+      .map((part) => part.thoughtSignature)
+      .filter(
+        (signature): signature is string => typeof signature === 'string',
+      );
+    const maxChars = this.llmConfig.thoughtDebug?.maxChars ?? 0;
+    let output = thoughtText;
+    let truncated = false;
+    if (maxChars > 0 && output.length > maxChars) {
+      output = output.slice(0, maxChars);
+      truncated = true;
+    }
+
+    const basePayload = {
+      correlationId,
+      operation: 'llm_thought_debug',
+      scope,
+      thoughtTokens: usage?.thoughtsTokenCount,
+      promptTokens: usage?.promptTokenCount,
+      outputTokens: usage?.candidatesTokenCount,
+      totalTokens: usage?.totalTokenCount,
+      thoughtParts: thoughtParts.length,
+      thoughtSignatures: signatures,
+      thoughtLength: thoughtText.length,
+      truncated,
+    };
+
+    this.logger.info('LLM thought debug', {
+      ...basePayload,
+      ...details,
+      thought: output,
+    });
+
+    const filePath = this.resolveThoughtDebugFilePath(scope);
+    if (!filePath) {
+      return;
+    }
+
+    const maxEntries = this.getThoughtDebugMaxEntries(scope);
+    this.ensureThoughtDebugLoaded(scope, filePath);
+    if (
+      maxEntries > 0 &&
+      this.thoughtDebugEntries[scope].length >= maxEntries
+    ) {
+      return;
+    }
+    const entry = {
+      ...basePayload,
+      ...details,
+      thought: output,
+      capturedAt: new Date().toISOString(),
+    };
+
+    this.thoughtDebugEntries[scope].push(entry);
+    const snapshot = {
+      scope,
+      maxEntries,
+      entries: this.thoughtDebugEntries[scope],
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      mkdirSync(dirname(filePath), { recursive: true });
+      writeFileSync(filePath, JSON.stringify(snapshot, null, 2), 'utf8');
+    } catch (error) {
+      this.logger.warn('Failed to write LLM thought debug file', {
+        correlationId,
+        operation: 'llm_thought_debug',
+        scope,
+        filePath,
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
   }
 
   /**

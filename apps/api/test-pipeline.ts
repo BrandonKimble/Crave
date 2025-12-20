@@ -36,6 +36,11 @@ envPaths.forEach((envPath) => {
   }
 });
 
+const shouldDryRun = process.env.TEST_DRY_RUN === 'true';
+if (shouldDryRun) {
+  process.env.UNIFIED_PROCESSING_DRY_RUN = 'true';
+}
+
 const testBullPrefix =
   process.env.TEST_BULL_PREFIX ?? process.env.TEST_BULL_QUEUE_PREFIX;
 if (typeof testBullPrefix === 'string' && testBullPrefix.trim()) {
@@ -85,6 +90,8 @@ let TEST_MODE = (
 ) as 'bull' | 'observe';
 
 const SHOULD_RESET_DB = process.env.TEST_RESET_DB === 'true';
+const SHOULD_DRY_RUN =
+  process.env.UNIFIED_PROCESSING_DRY_RUN === 'true' || shouldDryRun;
 
 const CHRONO_SUBREDDIT = process.env.TEST_CHRONO_SUBREDDIT ?? 'foodnyc';
 const ARCHIVE_SUBREDDIT = process.env.TEST_ARCHIVE_SUBREDDIT ?? 'austinfood';
@@ -263,6 +270,7 @@ async function testPipeline() {
     console.log(`- Reddit API limit: 1000 posts`);
   }
   console.log(`- Reset DB before run: ${SHOULD_RESET_DB ? 'yes' : 'no'}`);
+  console.log(`- DB write dry run: ${SHOULD_DRY_RUN ? 'yes' : 'no'}`);
   if (LLM_POST_SAMPLE_COUNT > 0) {
     console.log(
       `- LLM post sample: ${LLM_POST_SAMPLE_COUNT} posts (comment preview: ${LLM_POST_SAMPLE_COMMENT_LIMIT})`,

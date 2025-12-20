@@ -24,6 +24,34 @@ export class SearchOrchestrationService {
     interpretation.structuredRequest.submissionContext =
       request.submissionContext;
     interpretation.structuredRequest.userId = request.userId;
+
+    const hasInterpretationTargets =
+      interpretation.analysis.restaurants.length +
+        interpretation.analysis.foods.length +
+        interpretation.analysis.foodAttributes.length +
+        interpretation.analysis.restaurantAttributes.length >
+      0;
+    if (!hasInterpretationTargets) {
+      const response = this.searchService.buildEmptyResponse(
+        interpretation.structuredRequest,
+        {
+          emptyQueryMessage:
+            'Adjust your search. Try adding a dish, restaurant, or attribute (e.g., "ceaser salad", "spicy", "patio seating").',
+        },
+      );
+
+      response.metadata.unresolvedEntities = interpretation.unresolved.map(
+        (group) => ({
+          type: group.type,
+          terms: group.terms,
+        }),
+      );
+      response.metadata.sourceQuery = request.query;
+      response.metadata.analysisMetadata = interpretation.analysisMetadata;
+
+      return response;
+    }
+
     const response = await this.searchService.runQuery(
       interpretation.structuredRequest,
     );

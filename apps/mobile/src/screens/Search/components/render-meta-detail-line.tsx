@@ -12,11 +12,27 @@ export const renderMetaDetailLine = (
   distanceMiles?: number | null,
   align: 'left' | 'right' = 'left',
   prefix?: React.ReactNode,
-  showLocationDetails = true
+  showLocationDetails = true,
+  statusFirst = false
 ): React.ReactNode => {
   const segments: React.ReactNode[] = [];
+  const pushSegment = (node: React.ReactNode) => {
+    if (segments.length) {
+      segments.push(
+        <Text
+          key={`separator-${segments.length}`}
+          variant="body"
+          style={styles.resultMetaSeparator}
+        >
+          {' · '}
+        </Text>
+      );
+    }
+    segments.push(node);
+  };
+
   if (prefix) {
-    segments.push(
+    pushSegment(
       <Text
         key="meta-prefix"
         variant="body"
@@ -41,59 +57,12 @@ export const renderMetaDetailLine = (
     typeof effectiveMinutesUntilClose === 'number' &&
     effectiveMinutesUntilClose <= 45;
 
-  if (showLocationDetails) {
-    if (normalizedPriceLabel) {
-      if (segments.length) {
-        segments.push(
-          <Text
-            key={`separator-${segments.length}`}
-            variant="body"
-            style={styles.resultMetaSeparator}
-          >
-            {' · '}
-          </Text>
-        );
-      }
-      segments.push(
-        <Text key="price" variant="body" style={styles.resultMetaPrice}>
-          {normalizedPriceLabel}
-        </Text>
-      );
-    }
-    if (distanceLabel) {
-      if (segments.length) {
-        segments.push(
-          <Text
-            key={`separator-${segments.length}`}
-            variant="body"
-            style={styles.resultMetaSeparator}
-          >
-            {' · '}
-          </Text>
-        );
-      }
-      segments.push(
-        <Text key="distance" variant="body" style={styles.resultMetaDistance}>
-          {distanceLabel}
-        </Text>
-      );
-    }
-  }
-
-  if (status) {
-    if (segments.length) {
-      segments.push(
-        <Text
-          key={`separator-${segments.length}`}
-          variant="body"
-          style={styles.resultMetaSeparator}
-        >
-          {' · '}
-        </Text>
-      );
+  const statusNode = (() => {
+    if (!status) {
+      return null;
     }
     if (isClosingSoon) {
-      segments.push(
+      return (
         <Text key="status-closing-soon" variant="body" weight="semibold">
           <Text variant="body" weight="semibold" style={styles.resultMetaClosingSoon}>
             Closes
@@ -106,8 +75,9 @@ export const renderMetaDetailLine = (
           ) : null}
         </Text>
       );
-    } else if (status.isOpen) {
-      segments.push(
+    }
+    if (status.isOpen) {
+      return (
         <Text key="status-open" variant="body" weight="semibold">
           <Text variant="body" weight="semibold" style={styles.resultMetaOpen}>
             Open
@@ -120,8 +90,9 @@ export const renderMetaDetailLine = (
           ) : null}
         </Text>
       );
-    } else if (status.isOpen === false) {
-      segments.push(
+    }
+    if (status.isOpen === false) {
+      return (
         <Text key="status-closed" variant="body" weight="semibold">
           <Text variant="body" weight="semibold" style={styles.resultMetaClosed}>
             Closed
@@ -135,6 +106,32 @@ export const renderMetaDetailLine = (
         </Text>
       );
     }
+    return null;
+  })();
+
+  if (statusFirst && statusNode) {
+    pushSegment(statusNode);
+  }
+
+  if (showLocationDetails) {
+    if (normalizedPriceLabel) {
+      pushSegment(
+        <Text key="price" variant="body" style={styles.resultMetaPrice}>
+          {normalizedPriceLabel}
+        </Text>
+      );
+    }
+    if (distanceLabel) {
+      pushSegment(
+        <Text key="distance" variant="body" style={styles.resultMetaDistance}>
+          {distanceLabel}
+        </Text>
+      );
+    }
+  }
+
+  if (!statusFirst && statusNode) {
+    pushSegment(statusNode);
   }
   if (!segments.length) {
     return null;

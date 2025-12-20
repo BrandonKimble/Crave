@@ -103,19 +103,12 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     }
   }
   const restaurantMetaLine = renderMetaDetailLine(
-    null,
+    restaurant.operatingStatus,
     null,
     restaurant.distanceMiles,
     'left',
     undefined,
-    true
-  );
-  const restaurantStatusLine = renderMetaDetailLine(
-    restaurant.operatingStatus,
-    null,
-    null,
-    'left',
-    undefined,
+    true,
     true
   );
 
@@ -350,11 +343,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       ))}
                     </View>
                   </View>
-                </View>
-              ) : null}
-              {restaurantStatusLine ? (
-                <View style={[styles.resultMetaLine, styles.resultContentStatusLine]}>
-                  {restaurantStatusLine}
                 </View>
               ) : null}
             </View>

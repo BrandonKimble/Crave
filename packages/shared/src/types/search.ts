@@ -133,6 +133,7 @@ export interface SearchResponseMetadata {
   searchRequestId?: string;
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
+  emptyQueryMessage?: string;
 }
 
 export interface SearchResponse {

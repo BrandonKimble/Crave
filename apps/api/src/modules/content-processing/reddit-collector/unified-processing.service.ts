@@ -200,6 +200,7 @@ export class UnifiedProcessingService implements OnModuleInit {
   };
   private readonly defaultBatchSize: number;
   private readonly entityResolutionBatchSize: number;
+  private readonly dryRunEnabled: boolean;
   private readonly subredditLocationCache = new Map<
     string,
     { latitude: number; longitude: number }
@@ -221,6 +222,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       'ENTITY_RESOLUTION_BATCH_SIZE',
       DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE,
     );
+    this.dryRunEnabled =
+      this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
   }
 
   onModuleInit(): void {
@@ -406,6 +409,38 @@ export class UnifiedProcessingService implements OnModuleInit {
         collectionType: sourceMetadata.collectionType,
         subreddit: sourceMetadata.subreddit,
       });
+
+      if (this.dryRunEnabled) {
+        const entityResolutionInput = this.extractEntitiesFromLLMOutput({
+          mentions: filteredMentions,
+        });
+        const resolutionResult =
+          await this.entityResolutionService.resolveBatch(
+            entityResolutionInput,
+            {
+              batchSize: this.entityResolutionBatchSize,
+              enableFuzzyMatching: true,
+            },
+          );
+
+        this.logger.info('Unified processing dry run enabled', {
+          batchId,
+          mentionsCount: filteredMentions.length,
+          collectionType: sourceMetadata.collectionType,
+          subreddit: sourceMetadata.subreddit,
+          entitiesResolved: resolutionResult.resolutionResults.length,
+          newEntitiesPotential: resolutionResult.newEntitiesCreated,
+        });
+
+        return {
+          entitiesCreated: resolutionResult.newEntitiesCreated,
+          connectionsCreated: 0,
+          affectedConnectionIds: [],
+          createdEntityIds: [],
+          createdEntitySummaries: [],
+          reusedEntitySummaries: [],
+        };
+      }
 
       // Create LLM output structure for existing pipeline
       const llmOutput: LLMOutputStructure = { mentions: filteredMentions };
@@ -943,8 +978,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       typeof value === 'string'
         ? value
         : typeof value === 'number' || typeof value === 'boolean'
-          ? String(value)
-          : '';
+        ? String(value)
+        : '';
 
     if (!stringValue) {
       return '';
@@ -3044,7 +3079,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       const subredditValue =
         mentionSubreddit.length > 0
           ? mentionSubreddit
-          : (defaultSubreddit ?? null);
+          : defaultSubreddit ?? null;
 
       newRecordsBySourceId.set(rawSourceId, {
         pipeline: normalizedPipeline,

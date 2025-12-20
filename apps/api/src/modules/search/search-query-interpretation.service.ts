@@ -311,6 +311,7 @@ export class SearchQueryInterpretationService {
     return {
       entities: resolvedEntities,
       bounds: request.bounds,
+      userLocation: request.userLocation,
       openNow: request.openNow,
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,

@@ -52,8 +52,14 @@ export const formatDistanceMiles = (distance?: number | null): string | null => 
   if (typeof distance !== 'number' || !Number.isFinite(distance) || distance < 0) {
     return null;
   }
-  const decimals = distance >= 10 ? DISTANCE_MAX_DECIMALS : DISTANCE_MIN_DECIMALS;
-  return `${distance.toFixed(decimals)} mi`;
+  if (distance >= 10) {
+    return `${distance.toFixed(DISTANCE_MAX_DECIMALS)} mi`;
+  }
+  const rounded = Number(distance.toFixed(DISTANCE_MIN_DECIMALS));
+  if (rounded >= 10) {
+    return `${rounded.toFixed(DISTANCE_MAX_DECIMALS)} mi`;
+  }
+  return `${rounded.toFixed(DISTANCE_MIN_DECIMALS)} mi`;
 };
 
 export const formatCompactCount = (value?: number | null): string => {
