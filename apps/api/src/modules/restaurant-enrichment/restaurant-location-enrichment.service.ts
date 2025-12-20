@@ -1152,7 +1152,7 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Google Place details missing for name conflict');
     }
 
-    const placeDetails = details.place as GooglePlacesV1Place;
+    const placeDetails = details.place;
     const locationKey = entity.locationKey as string;
     const canonical = (await this.prisma.entity.findFirst({
       where: {
