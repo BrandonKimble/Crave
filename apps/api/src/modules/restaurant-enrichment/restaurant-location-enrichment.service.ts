@@ -17,7 +17,72 @@ import { RestaurantEntityMergeService } from './restaurant-entity-merge.service'
 
 const DEFAULT_COUNTRY = 'US';
 const DEFAULT_MIN_SCORE_THRESHOLD = 0.1;
-const PREFERRED_PLACE_TYPES = new Set(['food', 'restaurant', 'cafe', 'bar']);
+const PREFERRED_PLACE_TYPES = new Set([
+  'acai_shop',
+  'afghani_restaurant',
+  'african_restaurant',
+  'american_restaurant',
+  'asian_restaurant',
+  'bagel_shop',
+  'bakery',
+  'bar',
+  'bar_and_grill',
+  'barbecue_restaurant',
+  'brazilian_restaurant',
+  'breakfast_restaurant',
+  'brunch_restaurant',
+  'buffet_restaurant',
+  'cafe',
+  'cafeteria',
+  'candy_store',
+  'cat_cafe',
+  'chinese_restaurant',
+  'chocolate_factory',
+  'chocolate_shop',
+  'coffee_shop',
+  'confectionery',
+  'deli',
+  'dessert_restaurant',
+  'dessert_shop',
+  'diner',
+  'dog_cafe',
+  'donut_shop',
+  'fast_food_restaurant',
+  'fine_dining_restaurant',
+  'food_court',
+  'french_restaurant',
+  'greek_restaurant',
+  'hamburger_restaurant',
+  'ice_cream_shop',
+  'indian_restaurant',
+  'indonesian_restaurant',
+  'italian_restaurant',
+  'japanese_restaurant',
+  'juice_shop',
+  'korean_restaurant',
+  'lebanese_restaurant',
+  'meal_delivery',
+  'meal_takeaway',
+  'mediterranean_restaurant',
+  'mexican_restaurant',
+  'middle_eastern_restaurant',
+  'pizza_restaurant',
+  'pub',
+  'ramen_restaurant',
+  'restaurant',
+  'sandwich_shop',
+  'seafood_restaurant',
+  'spanish_restaurant',
+  'steak_house',
+  'sushi_restaurant',
+  'tea_house',
+  'thai_restaurant',
+  'turkish_restaurant',
+  'vegan_restaurant',
+  'vegetarian_restaurant',
+  'vietnamese_restaurant',
+  'wine_bar',
+]);
 const GOOGLE_DAY_NAMES = [
   'sunday',
   'monday',
@@ -238,6 +303,11 @@ export interface RestaurantEnrichmentOptions {
   sessionToken?: string;
   overrideQuery?: string;
   countryFallback?: string;
+  locationBias?: {
+    lat: number;
+    lng: number;
+    radiusMeters?: number;
+  };
 }
 
 export interface RestaurantEnrichmentResult {
@@ -268,6 +338,10 @@ type RestaurantEntity = Entity & {
   primaryLocation?: RestaurantLocation | null;
   locations?: RestaurantLocation[];
 };
+
+type RestaurantEntityWithLocations = Prisma.EntityGetPayload<{
+  include: { primaryLocation: true; locations: true };
+}>;
 
 interface EnrichmentSearchContext {
   query: string | null;
@@ -1078,15 +1152,17 @@ export class RestaurantLocationEnrichmentService {
       throw new Error('Google Place details missing for name conflict');
     }
 
-    const placeDetails = details.place;
-    const canonical = await this.prisma.entity.findFirst({
+    const placeDetails = details.place as GooglePlacesV1Place;
+    const locationKey = entity.locationKey as string;
+    const canonical = (await this.prisma.entity.findFirst({
       where: {
         type: EntityType.restaurant,
         name:
           resolvedName ?? this.getPlaceDisplayName(placeDetails) ?? undefined,
+        locationKey,
       },
       include: { primaryLocation: true, locations: true },
-    });
+    })) as RestaurantEntityWithLocations | null;
 
     if (!canonical) {
       this.logger.error(
@@ -1105,12 +1181,13 @@ export class RestaurantLocationEnrichmentService {
       details.metadata?.fieldMask ?? '',
       matchMetadata,
     );
+    const canonicalLocations = canonical.locations ?? [];
     const targetLocation =
-      canonical.locations?.find(
+      canonicalLocations.find(
         (location) => location.googlePlaceId === placeDetails.id,
       ) ??
       canonical.primaryLocation ??
-      canonical.locations?.[0] ??
+      canonicalLocations[0] ??
       null;
     const locationUpsert = this.buildLocationUpsertData(
       canonical.entityId,
@@ -1348,7 +1425,7 @@ export class RestaurantLocationEnrichmentService {
         city: entity.city ?? undefined,
         region: entity.region ?? undefined,
         country: normalizedCountry,
-        locationBias: this.buildLocationBias(entity),
+        locationBias: options.locationBias ?? this.buildLocationBias(entity),
       };
     }
 
@@ -1383,7 +1460,7 @@ export class RestaurantLocationEnrichmentService {
       city: city ?? undefined,
       region: region ?? undefined,
       country: normalizedCountry,
-      locationBias: this.buildLocationBias(entity),
+      locationBias: options.locationBias ?? this.buildLocationBias(entity),
     };
   }
 
@@ -1901,6 +1978,14 @@ export class RestaurantLocationEnrichmentService {
 
     if (details.websiteUri) {
       metadata.website = details.websiteUri;
+    }
+
+    if (details.primaryType) {
+      metadata.primaryType = details.primaryType;
+    }
+
+    if (details.primaryTypeDisplayName?.text) {
+      metadata.primaryTypeDisplayName = details.primaryTypeDisplayName.text;
     }
 
     const mappedPriceLevel = this.mapGooglePriceLevel(details.priceLevel);

@@ -176,9 +176,10 @@ async function seedRestaurantAttributes(prisma: PrismaClient): Promise<void> {
   for (const seed of seeds) {
     await prisma.entity.upsert({
       where: {
-        name_type: {
+        name_type_locationKey: {
           name: seed.canonicalName,
           type: EntityType.restaurant_attribute,
+          locationKey: 'global',
         },
       },
       update: {
@@ -187,6 +188,7 @@ async function seedRestaurantAttributes(prisma: PrismaClient): Promise<void> {
       create: {
         name: seed.canonicalName,
         type: EntityType.restaurant_attribute,
+        locationKey: 'global',
         aliases: seed.aliases,
       },
       select: { entityId: true },

@@ -1876,7 +1876,6 @@ export class RedditService implements OnModuleInit {
 
       const searchData = response.data?.data?.children || [];
       const posts: RedditPost[] = [];
-      const postIds: string[] = [];
 
       // Process search results
       for (const child of searchData) {
@@ -1896,45 +1895,10 @@ export class RedditService implements OnModuleInit {
           };
 
           posts.push(post);
-          postIds.push(postData.id);
         }
       }
-
-      // Fetch comments for found posts (limit to top posts for performance)
-      const topPostIds = postIds.slice(0, Math.min(50, postIds.length)); // Limit comment fetching
-      let comments: RedditComment[] = [];
-      let commentUrls: string[] = [];
-
-      if (topPostIds.length > 0) {
-        try {
-          // TODO: Implement comment fetching for posts
-          const commentResult = {
-            posts: [],
-            comments: [],
-            attribution: { commentUrls: [] },
-          };
-          comments = commentResult.comments;
-          commentUrls = commentResult.attribution.commentUrls;
-        } catch (commentError: unknown) {
-          this.logger.warn(
-            'Failed to fetch comments for keyword search posts',
-            {
-              correlationId,
-              error: {
-                message:
-                  commentError instanceof Error
-                    ? commentError.message
-                    : String(commentError),
-                stack:
-                  commentError instanceof Error
-                    ? commentError.stack
-                    : undefined,
-              },
-              postCount: topPostIds.length,
-            },
-          );
-        }
-      }
+      const comments: RedditComment[] = [];
+      const commentUrls: string[] = [];
 
       const duration = Date.now() - startTime;
       const totalItems = posts.length + comments.length;
@@ -1972,7 +1936,7 @@ export class RedditService implements OnModuleInit {
         },
         performance: {
           searchDuration: duration,
-          apiCallsUsed: 1 + (topPostIds.length > 0 ? 1 : 0), // Search + optional comment fetch
+          apiCallsUsed: 1,
           rateLimitStatus: this.getRateLimitStatus(),
         },
         attribution: {

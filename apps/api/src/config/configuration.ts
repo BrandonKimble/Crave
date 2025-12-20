@@ -344,6 +344,10 @@ export default () => {
           '5',
         10,
       ),
+      estimatedJobMinutes: parseInt(
+        process.env.SEARCH_ON_DEMAND_ESTIMATED_JOB_MINUTES || '120',
+        10,
+      ),
       maxImmediateWaiting: parseInt(
         process.env.SEARCH_ON_DEMAND_MAX_INSTANT_WAITING ||
           process.env.SEARCH_INTEREST_MAX_INSTANT_WAITING ||

@@ -1,6 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EntityType, Entity } from '@prisma/client';
+import { EntityType, Entity, Prisma } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
@@ -316,8 +316,50 @@ export class EntityResolutionService implements OnModuleInit {
     config: EntityResolutionConfig,
     globalNewEntityMap: Map<string, EntityResolutionResult>,
   ): Promise<EntityResolutionResult[]> {
+    if (entityType !== 'restaurant') {
+      return this.resolveEntitiesByTypeForLocation(
+        entities,
+        entityType,
+        config,
+        globalNewEntityMap,
+        null,
+      );
+    }
+
+    const entitiesByLocation = new Map<string, EntityResolutionInput[]>();
+    for (const entity of entities) {
+      const locationKey = this.normalizeLocationKey(entity.locationKey);
+      if (!entitiesByLocation.has(locationKey)) {
+        entitiesByLocation.set(locationKey, []);
+      }
+      entitiesByLocation.get(locationKey)!.push(entity);
+    }
+
+    const results: EntityResolutionResult[] = [];
+    for (const [locationKey, group] of entitiesByLocation.entries()) {
+      const resolved = await this.resolveEntitiesByTypeForLocation(
+        group,
+        entityType,
+        config,
+        globalNewEntityMap,
+        locationKey,
+      );
+      results.push(...resolved);
+    }
+
+    return results;
+  }
+
+  private async resolveEntitiesByTypeForLocation(
+    entities: EntityResolutionInput[],
+    entityType: EntityType,
+    config: EntityResolutionConfig,
+    globalNewEntityMap: Map<string, EntityResolutionResult>,
+    locationKey: string | null,
+  ): Promise<EntityResolutionResult[]> {
     this.logger.debug('Resolving entities by type', {
       entityType,
+      locationKey: locationKey ?? undefined,
       count: entities.length,
     });
 
@@ -325,6 +367,7 @@ export class EntityResolutionService implements OnModuleInit {
     const exactMatchResults = await this.performExactMatches(
       entities,
       entityType,
+      locationKey,
     );
     const unmatchedAfterExact = entities.filter(
       (entity) =>
@@ -335,6 +378,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Exact match results', {
       entityType,
+      locationKey: locationKey ?? undefined,
       matched: exactMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterExact.length,
     });
@@ -343,6 +387,7 @@ export class EntityResolutionService implements OnModuleInit {
     const aliasMatchResults = await this.performAliasMatches(
       unmatchedAfterExact,
       entityType,
+      locationKey,
     );
     const unmatchedAfterAlias = unmatchedAfterExact.filter(
       (entity) =>
@@ -353,13 +398,19 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Alias match results', {
       entityType,
+      locationKey: locationKey ?? undefined,
       matched: aliasMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterAlias.length,
     });
 
     // Tier 3: Fuzzy matching (optimized individual queries) - only for unmatched entities
     const fuzzyMatchResults = config.enableFuzzyMatching
-      ? await this.performFuzzyMatches(unmatchedAfterAlias, entityType, config)
+      ? await this.performFuzzyMatches(
+          unmatchedAfterAlias,
+          entityType,
+          config,
+          locationKey,
+        )
       : [];
 
     const unmatchedAfterFuzzy = unmatchedAfterAlias.filter(
@@ -371,6 +422,7 @@ export class EntityResolutionService implements OnModuleInit {
 
     this.logger.debug('Fuzzy match results', {
       entityType,
+      locationKey: locationKey ?? undefined,
       matched: fuzzyMatchResults.filter((r) => r.entityId).length,
       unmatched: unmatchedAfterFuzzy.length,
     });
@@ -432,6 +484,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performExactMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
+    locationKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -441,14 +494,20 @@ export class EntityResolutionService implements OnModuleInit {
 
     try {
       // Optimized bulk query for exact matches
-      const matchedEntities = await this.prisma.entity.findMany({
-        where: {
-          type: entityType,
-          name: {
-            in: normalizedNames,
-            mode: 'insensitive',
-          },
+      const whereClause: Prisma.EntityWhereInput = {
+        type: entityType,
+        name: {
+          in: normalizedNames,
+          mode: 'insensitive',
         },
+      };
+
+      if (entityType === 'restaurant') {
+        whereClause.locationKey = this.normalizeLocationKey(locationKey);
+      }
+
+      const matchedEntities = await this.prisma.entity.findMany({
+        where: whereClause,
         select: {
           entityId: true,
           name: true,
@@ -480,6 +539,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Exact match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
+        locationKey: locationKey ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -493,6 +553,7 @@ export class EntityResolutionService implements OnModuleInit {
   private async performAliasMatches(
     entities: EntityResolutionInput[],
     entityType: EntityType,
+    locationKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
@@ -517,13 +578,19 @@ export class EntityResolutionService implements OnModuleInit {
 
     try {
       // Optimized alias matching query
-      const matchedEntities = await this.prisma.entity.findMany({
-        where: {
-          type: entityType,
-          aliases: {
-            hasSome: allAliases,
-          },
+      const whereClause: Prisma.EntityWhereInput = {
+        type: entityType,
+        aliases: {
+          hasSome: allAliases,
         },
+      };
+
+      if (entityType === 'restaurant') {
+        whereClause.locationKey = this.normalizeLocationKey(locationKey);
+      }
+
+      const matchedEntities = await this.prisma.entity.findMany({
+        where: whereClause,
         select: {
           entityId: true,
           name: true,
@@ -561,6 +628,7 @@ export class EntityResolutionService implements OnModuleInit {
       this.logger.error('Alias match query failed', {
         error: error instanceof Error ? error.message : String(error),
         entityType,
+        locationKey: locationKey ?? undefined,
         count: entities.length,
       });
       throw error;
@@ -575,14 +643,21 @@ export class EntityResolutionService implements OnModuleInit {
     entities: EntityResolutionInput[],
     entityType: EntityType,
     config: EntityResolutionConfig,
+    locationKey: string | null,
   ): Promise<EntityResolutionResult[]> {
     if (entities.length === 0) return [];
 
     const results: EntityResolutionResult[] = [];
 
     // Get all entities of this type for fuzzy comparison
+    const whereClause: Prisma.EntityWhereInput = { type: entityType };
+
+    if (entityType === 'restaurant') {
+      whereClause.locationKey = this.normalizeLocationKey(locationKey);
+    }
+
     const allEntitiesOfType = await this.prisma.entity.findMany({
-      where: { type: entityType },
+      where: whereClause,
       select: {
         entityId: true,
         name: true,
@@ -759,9 +834,13 @@ export class EntityResolutionService implements OnModuleInit {
           });
         }
 
-        const normalizedKey = `${entityType}:${entity.normalizedName
-          .toLowerCase()
-          .trim()}`;
+        const normalizedName = entity.normalizedName.toLowerCase().trim();
+        const normalizedKey =
+          entityType === 'restaurant'
+            ? `${entityType}:${this.normalizeLocationKey(
+                entity.locationKey,
+              )}:${normalizedName}`
+            : `${entityType}:${normalizedName}`;
         const existingPrimary = primaryNewEntityMap.get(normalizedKey);
 
         if (existingPrimary) {
@@ -784,6 +863,10 @@ export class EntityResolutionService implements OnModuleInit {
           this.logger.debug('Resolver reused primary new entity within batch', {
             entityType,
             normalizedName: entity.normalizedName,
+            locationKey:
+              entityType === 'restaurant'
+                ? this.normalizeLocationKey(entity.locationKey)
+                : undefined,
             primaryTempId: existingPrimary.tempId,
             duplicateTempId: entity.tempId,
           });
@@ -825,6 +908,10 @@ export class EntityResolutionService implements OnModuleInit {
             {
               entityType,
               normalizedName: entity.normalizedName,
+              locationKey:
+                entityType === 'restaurant'
+                  ? this.normalizeLocationKey(entity.locationKey)
+                  : undefined,
               primaryTempId: similarPrimary.tempId,
               duplicateTempId: entity.tempId,
               similaritySource: 'levenshtein-threshold',
@@ -871,6 +958,10 @@ export class EntityResolutionService implements OnModuleInit {
         this.logger.warn('Resolver created new entity', {
           entityType,
           normalizedName: entity.normalizedName,
+          locationKey:
+            entityType === 'restaurant'
+              ? this.normalizeLocationKey(entity.locationKey)
+              : undefined,
           originalText: entity.originalText,
           aliases: entity.aliases,
           searchTerms: [
@@ -982,6 +1073,12 @@ export class EntityResolutionService implements OnModuleInit {
     }
 
     return grouped;
+  }
+
+  private normalizeLocationKey(locationKey?: string | null): string {
+    const normalized =
+      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
+    return normalized.length ? normalized : 'global';
   }
 
   /**
@@ -1215,6 +1312,15 @@ export class EntityResolutionService implements OnModuleInit {
     for (const candidate of primaryNewEntityMap.values()) {
       if (!candidate.normalizedName || candidate.entityType !== entityType) {
         continue;
+      }
+      if (entityType === 'restaurant') {
+        const candidateLocationKey = this.normalizeLocationKey(
+          candidate.originalInput.locationKey,
+        );
+        const inputLocationKey = this.normalizeLocationKey(entity.locationKey);
+        if (candidateLocationKey !== inputLocationKey) {
+          continue;
+        }
       }
 
       const normalizedCandidate = candidate.normalizedName.toLowerCase().trim();

@@ -1,4 +1,5 @@
 import api from './api';
+import type { Coordinate, MapBounds } from '../types';
 
 export type AutocompleteMatch = {
   entityId: string;
@@ -25,19 +26,26 @@ export type AutocompleteResponse = {
 
 type RequestOptions = {
   signal?: AbortSignal;
+  bounds?: MapBounds | null;
+  userLocation?: Coordinate | null;
 };
 
 export const autocompleteService = {
   async fetchEntities(query: string, options: RequestOptions = {}): Promise<AutocompleteResponse> {
-    const { data } = await api.post<AutocompleteResponse>(
-      '/autocomplete/entities',
-      {
-        query,
-        limit: 6,
-        enableOnDemand: false,
-      },
-      { signal: options.signal }
-    );
+    const payload: Record<string, unknown> = {
+      query,
+      limit: 6,
+      enableOnDemand: false,
+    };
+    if (options.bounds) {
+      payload.bounds = options.bounds;
+    }
+    if (options.userLocation) {
+      payload.userLocation = options.userLocation;
+    }
+    const { data } = await api.post<AutocompleteResponse>('/autocomplete/entities', payload, {
+      signal: options.signal,
+    });
     return data;
   },
 };

@@ -15,9 +15,17 @@ import {
   QueryEntityDto,
   QueryEntityGroupDto,
   SearchQueryRequestDto,
+  MapBoundsDto,
 } from './dto/search-query.dto';
 import { OnDemandRequestService } from './on-demand-request.service';
 import { OnDemandProcessingService } from './on-demand-processing.service';
+import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
+
+const METERS_PER_MILE = 1609.34;
+const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
+const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
+const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
+  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
 
 interface InterpretationResult {
   structuredRequest: SearchQueryRequestDto;
@@ -27,6 +35,8 @@ interface InterpretationResult {
     terms: string[];
   }>;
   analysisMetadata?: Record<string, unknown>;
+  onDemandQueued?: boolean;
+  onDemandEtaMs?: number;
 }
 
 @Injectable()
@@ -38,6 +48,7 @@ export class SearchQueryInterpretationService {
     private readonly entityResolutionService: EntityResolutionService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly onDemandProcessingService: OnDemandProcessingService,
+    private readonly subredditResolver: SearchSubredditResolverService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
@@ -82,7 +93,8 @@ export class SearchQueryInterpretationService {
       foods: analysis.foods,
     });
 
-    const resolutionInputs = this.buildResolutionInputs(analysis);
+    const locationKey = await this.resolveLocationKey(request);
+    const resolutionInputs = this.buildResolutionInputs(analysis, locationKey);
     const resolutionResults = resolutionInputs.length
       ? await this.entityResolutionService.resolveBatch(resolutionInputs, {
           enableFuzzyMatching: true,
@@ -132,12 +144,22 @@ export class SearchQueryInterpretationService {
       unresolved,
     });
 
+    let onDemandQueued = false;
+    let onDemandEtaMs: number | undefined;
     if (unresolved.length) {
+      const viewportEligible = this.isViewportEligibleForOnDemand(
+        request.bounds,
+      );
+      const onDemandLocationKey = request.bounds ? locationKey : null;
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
       };
       if (request.bounds) {
         onDemandContext.bounds = request.bounds;
+      }
+      const locationBias = this.buildLocationBias(request);
+      if (locationBias) {
+        onDemandContext.locationBias = locationBias;
       }
 
       const reason: OnDemandReason = 'unresolved';
@@ -146,22 +168,36 @@ export class SearchQueryInterpretationService {
           term,
           entityType: group.type,
           reason,
+          locationKey: onDemandLocationKey ?? 'global',
           metadata: { source: 'natural_query', unresolvedType: group.type },
         })),
       );
 
-      const recordedRequests = await this.onDemandRequestService.recordRequests(
-        unresolvedRequests,
-        onDemandContext,
-      );
+      if (viewportEligible && onDemandLocationKey) {
+        const recordedRequests =
+          await this.onDemandRequestService.recordRequests(
+            unresolvedRequests,
+            onDemandContext,
+          );
 
-      void this.onDemandProcessingService
-        .enqueueRequests(recordedRequests)
-        .catch((error) => {
-          this.logger.error('Failed to enqueue recorded on-demand requests', {
-            error: error instanceof Error ? error.message : String(error),
-          });
-        });
+        const enqueueResults =
+          await this.onDemandProcessingService.enqueueRequests(
+            recordedRequests,
+          );
+        onDemandQueued = enqueueResults.some((result) => result.queued);
+        onDemandEtaMs = enqueueResults.find((result) => result.etaMs)?.etaMs;
+
+        if (onDemandQueued && !onDemandEtaMs) {
+          onDemandEtaMs =
+            (await this.onDemandProcessingService.estimateQueueDelayMs()) ??
+            undefined;
+        }
+      } else if (!onDemandLocationKey) {
+        await this.onDemandRequestService.recordRequests(
+          unresolvedRequests,
+          onDemandContext,
+        );
+      }
     }
 
     return {
@@ -169,14 +205,19 @@ export class SearchQueryInterpretationService {
       analysis,
       unresolved,
       analysisMetadata: analysis.metadata,
+      onDemandQueued: onDemandQueued || undefined,
+      onDemandEtaMs,
     };
   }
 
   private buildResolutionInputs(
     analysis: LLMSearchQueryAnalysis,
+    locationKey: string | null,
   ): EntityResolutionInput[] {
     const inputs: EntityResolutionInput[] = [];
 
+    const normalizedLocationKey =
+      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : null;
     const addEntries = (names: string[], entityType: EntityType) => {
       const seen = new Set<string>();
       for (const name of names) {
@@ -195,6 +236,8 @@ export class SearchQueryInterpretationService {
           originalText: normalized,
           entityType,
           aliases: [normalized],
+          locationKey:
+            entityType === 'restaurant' ? normalizedLocationKey : null,
         });
       }
     };
@@ -295,6 +338,181 @@ export class SearchQueryInterpretationService {
       type,
       terms: Array.from(terms.values()),
     }));
+  }
+
+  private async resolveLocationKey(
+    request: NaturalSearchRequestDto,
+  ): Promise<string | null> {
+    try {
+      const fallbackLocation = this.resolveFallbackLocation(request);
+      const match = await this.subredditResolver.resolvePrimary({
+        bounds: request.bounds ?? null,
+        fallbackLocation: fallbackLocation ?? null,
+        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+      });
+      return match ? match.toLowerCase() : null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve search location key', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return null;
+    }
+  }
+
+  private resolveFallbackLocation(
+    request: NaturalSearchRequestDto,
+  ): { latitude: number; longitude: number } | undefined {
+    if (
+      typeof request.userLocation?.lat === 'number' &&
+      typeof request.userLocation?.lng === 'number'
+    ) {
+      return {
+        latitude: request.userLocation.lat,
+        longitude: request.userLocation.lng,
+      };
+    }
+
+    const bounds = request.bounds;
+    if (!bounds) {
+      return undefined;
+    }
+
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return undefined;
+    }
+
+    return {
+      latitude: (northEast.lat + southWest.lat) / 2,
+      longitude: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
+  private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
+    const widthMiles = this.calculateBoundsWidthMiles(bounds);
+    if (!widthMiles) {
+      return false;
+    }
+    return widthMiles >= ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES;
+  }
+
+  private buildLocationBias(request: NaturalSearchRequestDto):
+    | {
+        lat: number;
+        lng: number;
+        radiusMeters?: number;
+      }
+    | undefined {
+    const bounds = request.bounds;
+    const center = this.resolveBoundsCenter(bounds);
+    if (center) {
+      const widthMiles = this.calculateBoundsWidthMiles(bounds);
+      const heightMiles = this.calculateBoundsHeightMiles(bounds);
+      const maxMiles = Math.max(widthMiles ?? 0, heightMiles ?? 0);
+      const radiusMeters =
+        Number.isFinite(maxMiles) && maxMiles > 0
+          ? (maxMiles / 2) * METERS_PER_MILE
+          : undefined;
+      return {
+        lat: center.lat,
+        lng: center.lng,
+        radiusMeters,
+      };
+    }
+
+    const fallbackLocation = this.resolveFallbackLocation(request);
+    if (fallbackLocation) {
+      return {
+        lat: fallbackLocation.latitude,
+        lng: fallbackLocation.longitude,
+      };
+    }
+
+    return undefined;
+  }
+
+  private resolveBoundsCenter(
+    bounds?: MapBoundsDto,
+  ): { lat: number; lng: number } | null {
+    if (!bounds) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      lat: (northEast.lat + southWest.lat) / 2,
+      lng: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
+  private calculateBoundsWidthMiles(bounds?: MapBoundsDto): number | null {
+    if (!bounds) {
+      return null;
+    }
+    const center = this.resolveBoundsCenter(bounds);
+    if (!center) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    return this.haversineDistanceMiles(
+      center.lat,
+      southWest.lng,
+      center.lat,
+      northEast.lng,
+    );
+  }
+
+  private calculateBoundsHeightMiles(bounds?: MapBoundsDto): number | null {
+    if (!bounds) {
+      return null;
+    }
+    const center = this.resolveBoundsCenter(bounds);
+    if (!center) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    return this.haversineDistanceMiles(
+      southWest.lat,
+      center.lng,
+      northEast.lat,
+      center.lng,
+    );
+  }
+
+  private haversineDistanceMiles(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const earthRadiusMiles = 3958.8;
+    return earthRadiusMiles * c;
   }
 
   private buildSearchRequest(

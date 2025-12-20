@@ -31,7 +31,7 @@
     "test/**/*",
     "scripts/**/*",
     "../../packages/shared/src/**/*",
-    "calculate-volumes.ts"
+    "onboard-subreddit.ts"
   ],
   "exclude": ["dist/**/*", "node_modules/**/*", "../../scripts/**/*"]
 }

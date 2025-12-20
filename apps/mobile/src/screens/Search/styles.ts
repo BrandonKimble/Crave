@@ -511,6 +511,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 0,
   },
+  onDemandNotice: {
+    alignSelf: 'stretch',
+    marginHorizontal: CONTENT_HORIZONTAL_PADDING,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: themeColors.background,
+  },
+  onDemandNoticeText: {
+    color: themeColors.textBody,
+    textAlign: 'center',
+  },
   submittedQueryLabel: {
     flexShrink: 1,
     marginRight: 12,
@@ -522,9 +537,15 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   loadMoreSpacer: {
-    height: 120,
+    minHeight: 120,
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    paddingBottom: 20,
+  },
+  loadMoreSpinner: {
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 8,
   },
   resultFiltersWrapper: {
     marginTop: -3,

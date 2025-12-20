@@ -22,7 +22,19 @@ import { ConfigService } from '@nestjs/config';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { ProcessingResult } from './unified-processing.types';
 
-type KeywordSearchSort = 'relevance' | 'new' | 'hot' | 'top' | 'comments';
+export type KeywordSearchSort =
+  | 'relevance'
+  | 'new'
+  | 'hot'
+  | 'top'
+  | 'comments';
+
+export interface KeywordSearchSortPlan {
+  sort: KeywordSearchSort;
+  timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+  fallbackTimeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
+  minResultsForFallback?: number;
+}
 
 /**
  * Keyword Search Orchestrator Service
@@ -78,6 +90,7 @@ export class KeywordSearchOrchestratorService
   async executeKeywordSearchCycle(
     subreddit: string,
     entities: EntityPriorityScore[],
+    options: { sortPlan?: KeywordSearchSortPlan[] } = {},
   ): Promise<KeywordSearchExecutionResult> {
     const startTime = Date.now();
     const correlationId = CorrelationUtils.getCorrelationId();
@@ -125,10 +138,15 @@ export class KeywordSearchOrchestratorService
     try {
       // Extract entity names for batch search
       const entityNames = entities.map((entity) => entity.entityName);
-      const sortsToExecute =
+      const configuredSorts =
         this.keywordSearchSorts.length > 0
           ? this.keywordSearchSorts
           : (['relevance'] as KeywordSearchSort[]);
+      const sortPlanEntries: KeywordSearchSortPlan[] =
+        options.sortPlan && options.sortPlan.length
+          ? options.sortPlan
+          : configuredSorts.map((sort) => ({ sort }));
+      const sortsToExecute = sortPlanEntries.map((entry) => entry.sort);
 
       this.logger.debug('Executing batch keyword searches', {
         correlationId,
@@ -146,13 +164,16 @@ export class KeywordSearchOrchestratorService
 
       const searchStartTime = Date.now();
 
-      for (const sort of sortsToExecute) {
+      for (const planEntry of sortPlanEntries) {
+        const { sort, timeFilter, fallbackTimeFilter, minResultsForFallback } =
+          planEntry;
         const batchSearchResult =
           await this.redditService.batchEntityKeywordSearch(
             subreddit,
             entityNames,
             {
               sort,
+              timeFilter,
               limit: this.keywordSearchLimit,
               batchDelay: 1200, // 1.2 seconds between searches for rate limiting
             },
@@ -165,6 +186,7 @@ export class KeywordSearchOrchestratorService
 
         sortSummaries.push({
           sort,
+          timeFilter,
           totalPosts: batchSearchResult.metadata.totalPosts,
           totalComments: batchSearchResult.metadata.totalComments,
           successfulSearches: batchSearchResult.metadata.successfulSearches,
@@ -178,6 +200,46 @@ export class KeywordSearchOrchestratorService
           batchSearchResult,
           sort,
         );
+
+        const totalItems =
+          batchSearchResult.metadata.totalPosts +
+          batchSearchResult.metadata.totalComments;
+        if (
+          fallbackTimeFilter &&
+          typeof minResultsForFallback === 'number' &&
+          totalItems < minResultsForFallback
+        ) {
+          const fallbackResult =
+            await this.redditService.batchEntityKeywordSearch(
+              subreddit,
+              entityNames,
+              {
+                sort,
+                timeFilter: fallbackTimeFilter,
+                limit: this.keywordSearchLimit,
+                batchDelay: 1200,
+              },
+            );
+
+          cumulativeSuccessfulSearches +=
+            fallbackResult.metadata.successfulSearches;
+          cumulativeFailedSearches += fallbackResult.metadata.failedSearches;
+          cumulativeApiCalls += fallbackResult.performance.totalApiCalls;
+
+          sortSummaries.push({
+            sort,
+            timeFilter: fallbackTimeFilter,
+            fallbackUsed: true,
+            totalPosts: fallbackResult.metadata.totalPosts,
+            totalComments: fallbackResult.metadata.totalComments,
+            successfulSearches: fallbackResult.metadata.successfulSearches,
+            failedSearches: fallbackResult.metadata.failedSearches,
+            apiCalls: fallbackResult.performance.totalApiCalls,
+            durationMs: fallbackResult.performance.batchDuration,
+          });
+
+          this.mergeBatchKeywordResults(aggregateResults, fallbackResult, sort);
+        }
       }
 
       const {
@@ -1102,6 +1164,13 @@ export class KeywordSearchOrchestratorService
     return Math.min(Math.floor(parsed), 1000);
   }
 
+  getConfiguredSorts(): KeywordSearchSort[] {
+    if (this.keywordSearchSorts.length > 0) {
+      return [...this.keywordSearchSorts];
+    }
+    return ['relevance'];
+  }
+
   async getQueueDepth(): Promise<KeywordQueueDepth> {
     const [execution, processing] = await Promise.all([
       this.keywordSearchQueue.getJobCounts(),
@@ -1164,6 +1233,8 @@ interface AggregatedKeywordEntity {
 
 interface SortSummary {
   sort: KeywordSearchSort;
+  timeFilter?: KeywordSearchSortPlan['timeFilter'];
+  fallbackUsed?: boolean;
   totalPosts: number;
   totalComments: number;
   successfulSearches: number;

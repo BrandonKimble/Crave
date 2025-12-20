@@ -16,9 +16,15 @@ import {
 } from '../search/search-query-suggestion.service';
 import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
+import { SearchSubredditResolverService } from '../search/search-subreddit-resolver.service';
+import { MapBoundsDto } from '../search/dto/search-query.dto';
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 2;
+const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
+const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
+const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
+  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
 
 @Injectable()
 export class AutocompleteService {
@@ -46,6 +52,7 @@ export class AutocompleteService {
     private readonly prisma: PrismaService,
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
+    private readonly subredditResolver: SearchSubredditResolverService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
     this.weightConfidence = this.resolveEnvNumber(
@@ -104,6 +111,7 @@ export class AutocompleteService {
     const limit = dto.limit ?? DEFAULT_LIMIT;
     const entityTypes = this.resolveEntityTypes(dto);
     const primaryEntityType = entityTypes[0] ?? EntityType.food;
+    const locationKey = await this.resolveLocationKey(dto);
 
     if (normalizedQuery.length < MIN_QUERY_LENGTH) {
       return {
@@ -119,6 +127,7 @@ export class AutocompleteService {
       user?.userId ?? null,
       entityTypes,
       normalizedQuery,
+      locationKey,
     );
     const cached = this.getFromCache(cacheKey, normalizedQuery);
     if (cached) {
@@ -129,6 +138,7 @@ export class AutocompleteService {
       normalizedQuery,
       entityTypes,
       Math.min(limit * entityTypes.length, limit * 3),
+      { locationKey },
     );
 
     let matches: AutocompleteMatchDto[] = searchResults
@@ -148,6 +158,7 @@ export class AutocompleteService {
         normalizedQuery,
         primaryEntityType,
         limit,
+        locationKey,
       );
     }
 
@@ -178,22 +189,37 @@ export class AutocompleteService {
 
     let onDemandQueued = false;
     if (dto.enableOnDemand && !hadEntityMatches) {
-      await this.onDemandRequestService.recordRequests(
-        [
-          {
-            term: normalizedQuery,
-            entityType: primaryEntityType,
-            reason: OnDemandReason.unresolved,
-            metadata: { source: 'autocomplete' },
-          },
-        ],
-        { source: 'autocomplete' },
-      );
-      onDemandQueued = true;
-      this.logger.debug('Queued on-demand request from autocomplete', {
-        normalizedQuery,
-        entityType: primaryEntityType,
-      });
+      const viewportEligible = this.isViewportEligibleForOnDemand(dto.bounds);
+      const onDemandLocationKey = dto.bounds ? locationKey : null;
+      const requests = [
+        {
+          term: normalizedQuery,
+          entityType: primaryEntityType,
+          reason: OnDemandReason.unresolved,
+          locationKey: onDemandLocationKey ?? 'global',
+          metadata: { source: 'autocomplete' },
+        },
+      ];
+
+      if (viewportEligible && onDemandLocationKey) {
+        await this.onDemandRequestService.recordRequests(requests, {
+          source: 'autocomplete',
+        });
+        onDemandQueued = true;
+      } else if (!onDemandLocationKey) {
+        await this.onDemandRequestService.recordRequests(requests, {
+          source: 'autocomplete',
+        });
+        onDemandQueued = true;
+      }
+
+      if (onDemandQueued) {
+        this.logger.debug('Queued on-demand request from autocomplete', {
+          normalizedQuery,
+          entityType: primaryEntityType,
+          locationKey: onDemandLocationKey ?? 'global',
+        });
+      }
     }
 
     const response: AutocompleteResponseDto = {
@@ -501,11 +527,136 @@ export class AutocompleteService {
     return [EntityType.food, EntityType.restaurant];
   }
 
+  private async resolveLocationKey(
+    dto: AutocompleteRequestDto,
+  ): Promise<string | null> {
+    try {
+      const fallbackLocation = this.resolveFallbackLocation(dto);
+      const match = await this.subredditResolver.resolvePrimary({
+        bounds: dto.bounds ?? null,
+        fallbackLocation: fallbackLocation ?? null,
+        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+      });
+
+      return match ? match.toLowerCase() : null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve autocomplete location key', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return null;
+    }
+  }
+
+  private resolveFallbackLocation(
+    dto: AutocompleteRequestDto,
+  ): { latitude: number; longitude: number } | undefined {
+    if (
+      typeof dto.userLocation?.lat === 'number' &&
+      typeof dto.userLocation?.lng === 'number'
+    ) {
+      return {
+        latitude: dto.userLocation.lat,
+        longitude: dto.userLocation.lng,
+      };
+    }
+
+    const bounds = dto.bounds;
+    if (!bounds) {
+      return undefined;
+    }
+
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return undefined;
+    }
+
+    return {
+      latitude: (northEast.lat + southWest.lat) / 2,
+      longitude: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
+  private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
+    const widthMiles = this.calculateBoundsWidthMiles(bounds);
+    if (!widthMiles) {
+      return false;
+    }
+    return widthMiles >= ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES;
+  }
+
+  private resolveBoundsCenter(
+    bounds?: MapBoundsDto,
+  ): { lat: number; lng: number } | null {
+    if (!bounds) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      lat: (northEast.lat + southWest.lat) / 2,
+      lng: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
+  private calculateBoundsWidthMiles(bounds?: MapBoundsDto): number | null {
+    if (!bounds) {
+      return null;
+    }
+    const center = this.resolveBoundsCenter(bounds);
+    if (!center) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    return this.haversineDistanceMiles(
+      center.lat,
+      southWest.lng,
+      center.lat,
+      northEast.lng,
+    );
+  }
+
+  private haversineDistanceMiles(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const earthRadiusMiles = 3958.8;
+    return earthRadiusMiles * c;
+  }
+
   private async resolveViaEntityResolver(
     dto: AutocompleteRequestDto,
     normalizedQuery: string,
     entityType: EntityType,
     limit: number,
+    locationKey: string | null,
   ): Promise<AutocompleteMatchDto[]> {
     const resolution = await this.entityResolutionService.resolveBatch(
       [
@@ -514,6 +665,7 @@ export class AutocompleteService {
           normalizedName: normalizedQuery,
           originalText: dto.query,
           entityType,
+          locationKey: entityType === 'restaurant' ? locationKey : null,
         },
       ],
       {
@@ -644,9 +796,12 @@ export class AutocompleteService {
     userId: string | null,
     entityTypes: EntityType[],
     normalizedQuery: string,
+    locationKey: string | null,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
-    return `${userId ?? 'anon'}|${scopeKey}|${normalizedQuery}`;
+    return `${userId ?? 'anon'}|${scopeKey}|${normalizedQuery}|${
+      locationKey ?? 'global'
+    }`;
   }
 
   private getFromCache(

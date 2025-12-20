@@ -902,6 +902,45 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? [];
   const dishes = results?.food ?? [];
+  const formatOnDemandEta = React.useCallback((etaMs?: number): string | null => {
+    if (!etaMs || !Number.isFinite(etaMs) || etaMs <= 0) {
+      return null;
+    }
+    const totalMinutes = Math.round(etaMs / 60000);
+    if (totalMinutes < 60) {
+      return `${totalMinutes} min`;
+    }
+    const hours = Math.ceil(totalMinutes / 60);
+    return hours === 1 ? 'about 1 hour' : `about ${hours} hours`;
+  }, []);
+  const onDemandMessage = React.useMemo(() => {
+    if (!results?.metadata?.onDemandQueued) {
+      return null;
+    }
+    const term = submittedQuery?.trim() || results?.metadata?.sourceQuery?.trim() || '';
+    const etaText = formatOnDemandEta(results?.metadata?.onDemandEtaMs);
+    const prefix = term ? `We're expanding results for ${term}.` : `We're expanding results.`;
+    const suffix = etaText ? ` Check back in ${etaText}.` : ' Check back soon.';
+    return `${prefix}${suffix}`;
+  }, [
+    formatOnDemandEta,
+    results?.metadata?.onDemandEtaMs,
+    results?.metadata?.onDemandQueued,
+    results?.metadata?.sourceQuery,
+    submittedQuery,
+  ]);
+  const onDemandNotice = React.useMemo(() => {
+    if (!onDemandMessage) {
+      return null;
+    }
+    return (
+      <View style={styles.onDemandNotice}>
+        <Text variant="body" style={styles.onDemandNoticeText}>
+          {onDemandMessage}
+        </Text>
+      </View>
+    );
+  }, [onDemandMessage]);
 
   const restaurantsById = React.useMemo(() => {
     const map = new Map<string, RestaurantResult>();
@@ -962,7 +1001,11 @@ const SearchScreen: React.FC = () => {
     }
 
     let isActive = true;
-    runAutocomplete(trimmed, { debounceMs: 250 })
+    runAutocomplete(trimmed, {
+      debounceMs: 250,
+      bounds: latestBoundsRef.current,
+      userLocation: userLocationRef.current,
+    })
       .then((matches) => {
         if (!isActive) {
           return;
@@ -1781,16 +1824,19 @@ const SearchScreen: React.FC = () => {
     [filtersHeader]
   );
 
-  const resultsListFooterComponent = React.useMemo(
-    () => (
+  const resultsListFooterComponent = React.useMemo(() => {
+    const shouldShowNotice = Boolean(onDemandNotice && safeResultsData.length > 0);
+    return (
       <View style={styles.loadMoreSpacer}>
+        {shouldShowNotice ? onDemandNotice : null}
         {isLoadingMore && canLoadMore ? (
-          <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+          <View style={styles.loadMoreSpinner}>
+            <ActivityIndicator size="small" color={ACTIVE_TAB_COLOR} />
+          </View>
         ) : null}
       </View>
-    ),
-    [canLoadMore, isLoadingMore]
-  );
+    );
+  }, [canLoadMore, isLoadingMore, onDemandNotice, safeResultsData.length]);
 
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const resultsListEmptyComponent = React.useMemo(() => {
@@ -1817,6 +1863,7 @@ const SearchScreen: React.FC = () => {
     return (
       <View style={[styles.resultsEmptyArea, emptyAreaStyle]}>
         <View style={emptyContentOffsetStyle}>
+          {onDemandNotice}
           <EmptyState
             title={activeTab === 'dishes' ? 'No dishes found.' : 'No restaurants found.'}
             subtitle={emptySubtitle}
@@ -1829,6 +1876,7 @@ const SearchScreen: React.FC = () => {
     filtersHeaderHeight,
     hasSystemStatusBanner,
     isLoading,
+    onDemandNotice,
     results,
     resultsSheetHeaderHeight,
     shouldRetrySearchOnReconnect,

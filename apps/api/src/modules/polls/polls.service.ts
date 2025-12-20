@@ -413,6 +413,7 @@ export class PollsService {
             entityType: EntityType.food,
             reason: OnDemandReason.unresolved,
             entityId: null,
+            locationKey: 'global',
             metadata: {
               source: 'poll_option',
               pollId,

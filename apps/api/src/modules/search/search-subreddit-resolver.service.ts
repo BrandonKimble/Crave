@@ -20,6 +20,20 @@ export class SearchSubredditResolverService {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(options: ResolveOptions = {}): Promise<string[]> {
+    return this.resolveInternal(options, { fallbackToAll: true });
+  }
+
+  async resolvePrimary(options: ResolveOptions = {}): Promise<string | null> {
+    const matches = await this.resolveInternal(options, {
+      fallbackToAll: false,
+    });
+    return matches[0] ?? null;
+  }
+
+  private async resolveInternal(
+    options: ResolveOptions,
+    settings: { fallbackToAll: boolean },
+  ): Promise<string[]> {
     const subreddits = await this.prisma.subreddit.findMany({
       where: { isActive: true },
       select: {
@@ -39,7 +53,7 @@ export class SearchSubredditResolverService {
       options.referenceLocations,
     );
     if (!center) {
-      return subreddits.map((row) => row.name);
+      return settings.fallbackToAll ? subreddits.map((row) => row.name) : [];
     }
 
     const candidates = subreddits
@@ -57,7 +71,7 @@ export class SearchSubredditResolverService {
       );
 
     if (!candidates.length) {
-      return subreddits.map((row) => row.name);
+      return settings.fallbackToAll ? subreddits.map((row) => row.name) : [];
     }
 
     const nearest = candidates.reduce<null | {
@@ -76,7 +90,10 @@ export class SearchSubredditResolverService {
       return best;
     }, null);
 
-    return nearest ? [nearest.name] : subreddits.map((row) => row.name);
+    if (nearest) {
+      return [nearest.name];
+    }
+    return settings.fallbackToAll ? subreddits.map((row) => row.name) : [];
   }
 
   private resolveCenter(

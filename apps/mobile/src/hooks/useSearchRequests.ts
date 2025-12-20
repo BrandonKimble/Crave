@@ -7,9 +7,12 @@ import {
   type StructuredSearchRequest,
 } from '../services/search';
 import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
+import type { Coordinate, MapBounds } from '../types';
 
 type RunAutocompleteOptions = {
   debounceMs?: number;
+  bounds?: MapBounds | null;
+  userLocation?: Coordinate | null;
 };
 
 type RunSearchParams =
@@ -63,6 +66,8 @@ export const useSearchRequests = () => {
           try {
             const response = await autocompleteService.fetchEntities(query, {
               signal: controller.signal,
+              bounds: options.bounds,
+              userLocation: options.userLocation,
             });
 
             if (!controller.signal.aborted) {

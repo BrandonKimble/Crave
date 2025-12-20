@@ -9,17 +9,15 @@ import {
 import { RedditBatchProcessingService } from './reddit-batch-processing.service';
 
 /**
- * Keyword Batch Processing Worker (Stub)
+ * Keyword Batch Processing Worker
  *
- * Extensible worker for processing keyword-search collection batches.
- * Pseudocode only for now – wired for future implementation.
+ * Processes keyword-search collection batches via the shared batch processor.
  *
  * TODO: REFACTOR OPPORTUNITY - Common LLM Processing Pipeline
- * Once implemented, this worker will likely share steps 2-5 with other collection
- * workers (filter/transform, chunk, LLM processing, UnifiedProcessingService).
- * The key difference: Keyword workers will get posts via keyword search APIs,
- * then feed into the same LLM pipeline as chronological workers.
- * Consider extracting shared processing method once all workers are complete.
+ * This worker should eventually share steps 2-5 with other collection workers
+ * (filter/transform, chunk, LLM processing, UnifiedProcessingService).
+ * The key difference: Keyword workers get posts via keyword search APIs and
+ * feed into the same LLM pipeline as chronological workers.
  */
 @Processor('keyword-batch-processing-queue')
 @Injectable()

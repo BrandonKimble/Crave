@@ -36,6 +36,7 @@ export class EntitySearchService {
     term: string,
     entityTypes: EntityType[],
     limit: number,
+    options: { locationKey?: string | null } = {},
   ): Promise<EntitySearchResult[]> {
     const normalizedTerm = term.trim().toLowerCase();
     if (!normalizedTerm || entityTypes.length === 0) {
@@ -47,10 +48,18 @@ export class EntitySearchService {
     const phoneticTerm = normalizedTerm.replace(/[^a-z0-9 ]+/g, ' ');
     const similarityThreshold = this.resolveSimilarityThreshold(normalizedTerm);
 
+    const normalizedLocationKey =
+      typeof options.locationKey === 'string'
+        ? options.locationKey.trim().toLowerCase()
+        : null;
+
     try {
       const entityTypeArray = Prisma.sql`ARRAY[${Prisma.join(
         entityTypes.map((type) => Prisma.sql`${type}::entity_type`),
       )}]`;
+      const locationFilter = normalizedLocationKey
+        ? Prisma.sql`AND (e.type != 'restaurant' OR e.location_key = ${normalizedLocationKey})`
+        : Prisma.empty;
 
       const rows = await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
         SELECT
@@ -68,6 +77,7 @@ export class EntitySearchService {
           e.general_praise_upvotes AS "generalPraiseUpvotes"
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
+          ${locationFilter}
           AND (
             lower(e.name) LIKE ${containsPattern}
             OR EXISTS (

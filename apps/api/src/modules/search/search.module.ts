@@ -52,6 +52,7 @@ import { SearchPopularityService } from './search-popularity.service';
     SearchOrchestrationService,
     OnDemandRequestService,
     OnDemandProcessingService,
+    SearchSubredditResolverService,
     SearchQuerySuggestionService,
     SearchPopularityService,
   ],

@@ -14,6 +14,7 @@ import {
   PaginationDto,
   SearchResultClickDto,
   SearchPlanResponseDto,
+  MapBoundsDto,
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
@@ -28,6 +29,11 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 100;
+const METERS_PER_MILE = 1609.34;
+const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
+const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
+const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
+  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
 interface PaginationState {
   page: number;
   pageSize: number;
@@ -228,18 +234,89 @@ export class SearchService {
         ? primaryFoodTermRaw.trim()
         : null;
 
-      const triggeredOnDemand = this.shouldTriggerOnDemand(
+      const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
         request,
         plan.format,
         execution.restaurantResults.length,
         execution.totalFoodCount,
       );
 
+      const onDemandLocationKey = request.bounds
+        ? await this.resolveLocationKey(request)
+        : null;
+      const viewportEligible = this.isViewportEligibleForOnDemand(
+        request.bounds,
+      );
+      let onDemandQueued = false;
+      let onDemandEtaMs: number | undefined;
+
+      if (shouldTriggerOnDemand) {
+        try {
+          const lowResultRequests = this.buildLowResultRequests(
+            request,
+            onDemandLocationKey,
+          );
+          if (lowResultRequests.length) {
+            const context: Record<string, unknown> = {
+              source: 'low_result',
+              restaurantCount: execution.restaurantResults.length,
+              foodCount: execution.foodResults.length,
+              planFormat: plan.format,
+              bounds: request.bounds,
+              openNow: request.openNow,
+            };
+            const fallbackLocation = this.resolveFallbackLocation(request);
+            if (fallbackLocation) {
+              context.location = fallbackLocation;
+            }
+            const locationBias = this.buildLocationBias(request);
+            if (locationBias) {
+              context.locationBias = locationBias;
+            }
+
+            if (viewportEligible && onDemandLocationKey) {
+              const recorded = await this.onDemandRequestService.recordRequests(
+                lowResultRequests,
+                context,
+              );
+
+              if (recorded.length) {
+                const enqueueResults =
+                  await this.onDemandProcessingService.enqueueRequests(
+                    recorded,
+                  );
+                onDemandQueued = enqueueResults.some((result) => result.queued);
+                onDemandEtaMs = enqueueResults.find(
+                  (result) => result.etaMs,
+                )?.etaMs;
+
+                if (onDemandQueued && !onDemandEtaMs) {
+                  onDemandEtaMs =
+                    (await this.onDemandProcessingService.estimateQueueDelayMs()) ??
+                    undefined;
+                }
+              }
+            } else if (!onDemandLocationKey) {
+              await this.onDemandRequestService.recordRequests(
+                lowResultRequests,
+                context,
+              );
+            }
+          }
+        } catch (error) {
+          this.logger.warn('Failed to handle low-result on-demand requests', {
+            error: {
+              message: error instanceof Error ? error.message : String(error),
+            },
+          });
+        }
+      }
+
       const coverageStatus = this.calculateCoverageStatus({
         request,
         totalFoodResults,
         totalRestaurantResults,
-        triggeredOnDemand,
+        triggeredOnDemand: onDemandQueued,
       });
 
       const metadata = {
@@ -263,6 +340,8 @@ export class SearchService {
         perRestaurantLimit,
         coverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
+        onDemandQueued: onDemandQueued || undefined,
+        onDemandEtaMs,
       };
 
       if (request.openNow && !execution.metadata.openNowApplied) {
@@ -307,41 +386,6 @@ export class SearchService {
         totalFoodResults: execution.totalFoodCount,
         openNowFilteredOut: execution.metadata.openNowFilteredOut ?? 0,
       });
-
-      if (triggeredOnDemand) {
-        try {
-          const lowResultRequests = this.buildLowResultRequests(request);
-          if (lowResultRequests.length) {
-            const context: Record<string, unknown> = {
-              source: 'low_result',
-              restaurantCount: execution.restaurantResults.length,
-              foodCount: execution.foodResults.length,
-              planFormat: plan.format,
-              bounds: request.bounds,
-              openNow: request.openNow,
-            };
-            const fallbackLocation = this.resolveFallbackLocation(request);
-            if (fallbackLocation) {
-              context.location = fallbackLocation;
-            }
-
-            const recorded = await this.onDemandRequestService.recordRequests(
-              lowResultRequests,
-              context,
-            );
-
-            if (recorded.length) {
-              await this.onDemandProcessingService.enqueueRequests(recorded);
-            }
-          }
-        } catch (error) {
-          this.logger.warn('Failed to enqueue low-result on-demand requests', {
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-            },
-          });
-        }
-      }
 
       return {
         format: plan.format,
@@ -767,16 +811,13 @@ export class SearchService {
   ): Promise<string | null> {
     try {
       const fallbackLocation = this.resolveFallbackLocation(request);
-      const matches = await this.subredditResolver.resolve({
+      const match = await this.subredditResolver.resolvePrimary({
         bounds: request.bounds ?? null,
         fallbackLocation: fallbackLocation ?? null,
         referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
       });
 
-      if (!matches.length) {
-        return null;
-      }
-      return matches[0]?.toLowerCase() ?? null;
+      return match ? match.toLowerCase() : null;
     } catch (error) {
       this.logger.debug('Unable to resolve search location key', {
         error:
@@ -888,12 +929,133 @@ export class SearchService {
     };
   }
 
+  private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
+    const widthMiles = this.calculateBoundsWidthMiles(bounds);
+    if (!widthMiles) {
+      return false;
+    }
+    return widthMiles >= ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES;
+  }
+
+  private buildLocationBias(request: SearchQueryRequestDto):
+    | {
+        lat: number;
+        lng: number;
+        radiusMeters?: number;
+      }
+    | undefined {
+    const bounds = request.bounds;
+    const center = this.resolveBoundsCenter(bounds);
+    if (center) {
+      const widthMiles = this.calculateBoundsWidthMiles(bounds);
+      const heightMiles = this.calculateBoundsHeightMiles(bounds);
+      const maxMiles = Math.max(widthMiles ?? 0, heightMiles ?? 0);
+      const radiusMeters =
+        Number.isFinite(maxMiles) && maxMiles > 0
+          ? (maxMiles / 2) * METERS_PER_MILE
+          : undefined;
+      return {
+        lat: center.lat,
+        lng: center.lng,
+        radiusMeters,
+      };
+    }
+
+    const fallbackLocation = this.resolveFallbackLocation(request);
+    if (fallbackLocation) {
+      return {
+        lat: fallbackLocation.latitude,
+        lng: fallbackLocation.longitude,
+      };
+    }
+
+    return undefined;
+  }
+
+  private resolveBoundsCenter(
+    bounds?: MapBoundsDto,
+  ): { lat: number; lng: number } | null {
+    if (!bounds) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    if (
+      typeof northEast?.lat !== 'number' ||
+      typeof northEast?.lng !== 'number' ||
+      typeof southWest?.lat !== 'number' ||
+      typeof southWest?.lng !== 'number'
+    ) {
+      return null;
+    }
+
+    return {
+      lat: (northEast.lat + southWest.lat) / 2,
+      lng: (northEast.lng + southWest.lng) / 2,
+    };
+  }
+
+  private calculateBoundsWidthMiles(bounds?: MapBoundsDto): number | null {
+    if (!bounds) {
+      return null;
+    }
+    const center = this.resolveBoundsCenter(bounds);
+    if (!center) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    return this.haversineDistanceMiles(
+      center.lat,
+      southWest.lng,
+      center.lat,
+      northEast.lng,
+    );
+  }
+
+  private calculateBoundsHeightMiles(bounds?: MapBoundsDto): number | null {
+    if (!bounds) {
+      return null;
+    }
+    const center = this.resolveBoundsCenter(bounds);
+    if (!center) {
+      return null;
+    }
+    const { northEast, southWest } = bounds;
+    return this.haversineDistanceMiles(
+      southWest.lat,
+      center.lng,
+      northEast.lat,
+      center.lng,
+    );
+  }
+
+  private haversineDistanceMiles(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number,
+  ): number {
+    const toRad = (value: number) => (value * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const earthRadiusMiles = 3958.8;
+    return earthRadiusMiles * c;
+  }
+
   private buildLowResultRequests(
     request: SearchQueryRequestDto,
+    locationKey: string | null,
   ): OnDemandRequestInput[] {
     const results: OnDemandRequestInput[] = [];
     const seen = new Set<string>();
     const reason: OnDemandReason = 'low_result';
+    const resolvedLocationKey = locationKey ?? 'global';
 
     const pushEntities = (
       entities: QueryEntityDto[] | undefined,
@@ -922,6 +1084,7 @@ export class SearchService {
           entityType,
           reason,
           entityId,
+          locationKey: resolvedLocationKey,
           metadata: entity.originalText
             ? { originalText: entity.originalText }
             : undefined,

@@ -14,6 +14,7 @@ model Entity {
   entityId                   String                @id @default(dbgenerated("gen_random_uuid()")) @map("entity_id") @db.Uuid
   name                       String                @db.VarChar(255)
   type                       EntityType
+  locationKey                String                @default("global") @map("location_key") @db.VarChar(255)
   aliases                    String[]              @default([])
   restaurantAttributes       String[]              @default([]) @map("restaurant_attributes") @db.Uuid
   restaurantQualityScore     Decimal?              @default(0) @map("restaurant_quality_score") @db.Decimal(10, 4)
@@ -49,10 +50,11 @@ model Entity {
   locations                  RestaurantLocation[]  @relation("RestaurantLocations")
   primaryLocation            RestaurantLocation?   @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
 
-  @@unique([name, type])
+  @@unique([name, type, locationKey])
   @@index([type], map: "idx_entities_type")
   @@index([type, restaurantQualityScore(sort: Desc)], map: "idx_entities_type_score")
   @@index([name], map: "idx_entities_name")
+  @@index([locationKey], map: "idx_entities_location_key")
   @@index([aliases], map: "idx_entities_aliases")
   @@index([restaurantAttributes], map: "idx_entities_restaurant_attributes")
   @@index([longitude, latitude], map: "idx_entities_location")
@@ -610,6 +612,10 @@ model Subreddit {
   safeIntervalDays Float     @map("safe_interval_days")
   centerLatitude   Decimal?  @map("center_latitude") @db.Decimal(11, 8)
   centerLongitude  Decimal?  @map("center_longitude") @db.Decimal(11, 8)
+  viewportNeLat    Decimal?  @map("viewport_ne_latitude") @db.Decimal(11, 8)
+  viewportNeLng    Decimal?  @map("viewport_ne_longitude") @db.Decimal(11, 8)
+  viewportSwLat    Decimal?  @map("viewport_sw_latitude") @db.Decimal(11, 8)
+  viewportSwLng    Decimal?  @map("viewport_sw_longitude") @db.Decimal(11, 8)
 
   @@index([name])
   @@index([isActive])
@@ -622,6 +628,7 @@ model OnDemandRequest {
   requestId             String           @id @default(dbgenerated("gen_random_uuid()")) @map("request_id") @db.Uuid
   term                  String           @db.VarChar(255)
   entityType            EntityType       @map("entity_type")
+  locationKey           String           @default("global") @map("location_key") @db.VarChar(255)
   occurrenceCount       Int              @default(1) @map("occurrence_count")
   lastSeenAt            DateTime         @default(now()) @map("last_seen_at")
   metadata              Json?            @default("{}")
@@ -640,7 +647,7 @@ model OnDemandRequest {
   lastCompletedAt       DateTime?        @map("last_completed_at")
   entity                Entity?          @relation(fields: [entityId], references: [entityId])
 
-  @@unique([term, entityType, reason])
+  @@unique([term, entityType, reason, locationKey])
   @@map("collection_on_demand_requests")
 }
 

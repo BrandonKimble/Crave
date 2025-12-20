@@ -134,6 +134,8 @@ export interface SearchResponseMetadata {
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
   emptyQueryMessage?: string;
+  onDemandQueued?: boolean;
+  onDemandEtaMs?: number;
 }
 
 export interface SearchResponse {

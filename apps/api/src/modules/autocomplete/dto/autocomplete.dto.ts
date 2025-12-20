@@ -9,9 +9,11 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  ValidateNested,
   MaxLength,
   Min,
 } from 'class-validator';
+import { CoordinateDto, MapBoundsDto } from '../../search/dto/search-query.dto';
 
 export class AutocompleteRequestDto {
   @IsString()
@@ -39,6 +41,16 @@ export class AutocompleteRequestDto {
   @IsOptional()
   @IsBoolean()
   enableOnDemand?: boolean;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => MapBoundsDto)
+  bounds?: MapBoundsDto;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CoordinateDto)
+  userLocation?: CoordinateDto;
 }
 
 export class AutocompleteMatchDto {

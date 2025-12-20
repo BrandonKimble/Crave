@@ -18,6 +18,8 @@ import { ExternalApiService } from '../shared/external-integrations.types';
 const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'id',
   'displayName',
+  'primaryType',
+  'primaryTypeDisplayName',
   'formattedAddress',
   'addressComponents',
   'location',
@@ -94,9 +96,15 @@ export interface GooglePlacesV1AddressComponent {
 export interface GooglePlacesV1Place {
   id?: string;
   displayName?: { text?: string; languageCode?: string };
+  primaryType?: string;
+  primaryTypeDisplayName?: { text?: string; languageCode?: string };
   formattedAddress?: string;
   addressComponents?: GooglePlacesV1AddressComponent[];
   location?: { latitude?: number; longitude?: number };
+  viewport?: {
+    low?: { latitude?: number; longitude?: number };
+    high?: { latitude?: number; longitude?: number };
+  };
   types?: string[];
   businessStatus?: string;
   websiteUri?: string;
@@ -104,6 +112,7 @@ export interface GooglePlacesV1Place {
   nationalPhoneNumber?: string;
   priceLevel?: string;
   priceRange?: unknown;
+  timeZone?: string;
   utcOffsetMinutes?: number;
   regularOpeningHours?: Record<string, unknown>;
   currentOpeningHours?: Record<string, unknown>;

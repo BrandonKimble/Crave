@@ -64,6 +64,12 @@ export class SearchOrchestrationService {
     );
     response.metadata.sourceQuery = request.query;
     response.metadata.analysisMetadata = interpretation.analysisMetadata;
+    if (interpretation.onDemandQueued && !response.metadata.onDemandQueued) {
+      response.metadata.onDemandQueued = true;
+    }
+    if (!response.metadata.onDemandEtaMs && interpretation.onDemandEtaMs) {
+      response.metadata.onDemandEtaMs = interpretation.onDemandEtaMs;
+    }
 
     const totalResults =
       (response.food?.length ?? 0) + (response.restaurants?.length ?? 0);

@@ -13,6 +13,7 @@ export interface OnDemandRequestInput {
   entityType: EntityType;
   reason: OnDemandReason;
   entityId?: string | null;
+  locationKey?: string | null;
   metadata?: Record<string, unknown>;
 }
 
@@ -41,11 +42,13 @@ export class OnDemandRequestService {
         context.restaurantCount,
       );
       const resultFoodCount = this.extractInteger(context.foodCount);
+      const locationKey = this.normalizeLocationKey(request.locationKey);
 
       const createData: Prisma.OnDemandRequestCreateInput = {
         term: request.term,
         entityType: request.entityType,
         reason: request.reason,
+        locationKey,
         metadata: this.buildMetadata(request.metadata, context),
         attemptedSubreddits: [],
         deferredAttempts: 0,
@@ -67,6 +70,7 @@ export class OnDemandRequestService {
       const updateData: Prisma.OnDemandRequestUpdateInput = {
         occurrenceCount: { increment: 1 },
         lastSeenAt: new Date(),
+        locationKey,
         metadata: this.buildMetadata(request.metadata, context),
       };
 
@@ -84,10 +88,11 @@ export class OnDemandRequestService {
 
       return this.prisma.onDemandRequest.upsert({
         where: {
-          term_entityType_reason: {
+          term_entityType_reason_locationKey: {
             term: request.term,
             entityType: request.entityType,
             reason: request.reason,
+            locationKey,
           },
         },
         create: createData,
@@ -118,20 +123,31 @@ export class OnDemandRequestService {
       if (!sanitizedTerm) {
         continue;
       }
-      const key = `${request.reason}:${request.entityType}:${sanitizedTerm.toLowerCase()}`;
-      if (seen.has(key)) {
+      const locationKey = this.normalizeLocationKey(request.locationKey);
+      const key = `${request.reason}:${
+        request.entityType
+      }:${sanitizedTerm.toLowerCase()}`;
+      const scopedKey = `${key}:${locationKey}`;
+      if (seen.has(scopedKey)) {
         continue;
       }
-      seen.add(key);
+      seen.add(scopedKey);
       result.push({
         term: sanitizedTerm,
         entityType: request.entityType,
         reason: request.reason,
         entityId: request.entityId,
+        locationKey,
         metadata: request.metadata,
       });
     }
     return result;
+  }
+
+  private normalizeLocationKey(locationKey?: string | null): string {
+    const normalized =
+      typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
+    return normalized.length ? normalized : 'global';
   }
 
   private sanitizeTerm(term: string): string {

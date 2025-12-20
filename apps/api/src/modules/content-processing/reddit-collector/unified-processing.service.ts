@@ -411,9 +411,10 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       if (this.dryRunEnabled) {
-        const entityResolutionInput = this.extractEntitiesFromLLMOutput({
-          mentions: filteredMentions,
-        });
+        const entityResolutionInput = this.extractEntitiesFromLLMOutput(
+          { mentions: filteredMentions },
+          { locationKey: sourceMetadata.subreddit ?? null },
+        );
         const resolutionResult =
           await this.entityResolutionService.resolveBatch(
             entityResolutionInput,
@@ -686,7 +687,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     startTime: number,
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
-    const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput);
+    const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
+      locationKey: sourceMetadata.subreddit ?? null,
+    });
     const resolutionResult = await this.entityResolutionService.resolveBatch(
       entityResolutionInput,
       {
@@ -757,8 +760,13 @@ export class UnifiedProcessingService implements OnModuleInit {
    */
   private extractEntitiesFromLLMOutput(
     llmOutput: LLMOutputStructure,
+    options: { locationKey?: string | null } = {},
   ): EntityResolutionInput[] {
     const entities: EntityResolutionInput[] = [];
+    const normalizedLocationKey =
+      typeof options.locationKey === 'string'
+        ? options.locationKey.trim().toLowerCase()
+        : null;
 
     const getSurfaceString = (surface: unknown, fallback: unknown): string => {
       if (typeof surface === 'string' && surface.length > 0) {
@@ -816,6 +824,7 @@ export class UnifiedProcessingService implements OnModuleInit {
             originalText: restaurantSurface,
             entityType: 'restaurant' as const,
             tempId: restaurantTempId,
+            locationKey: normalizedLocationKey,
             aliases:
               restaurantSurface && restaurantSurface !== mention.restaurant
                 ? [restaurantSurface]
@@ -1216,9 +1225,12 @@ export class UnifiedProcessingService implements OnModuleInit {
           originalText?: string;
           canonicalName?: string;
         }[] = [];
+        const normalizedSubreddit = sourceMetadata.subreddit
+          ? sourceMetadata.subreddit.trim().toLowerCase()
+          : null;
         const subredditLocation = await this.resolveSubredditLocation(
           tx,
-          sourceMetadata.subreddit,
+          normalizedSubreddit,
         );
         for (const resolution of resolutionResult.resolutionResults) {
           if (!resolution.isNewEntity) {
@@ -1285,12 +1297,17 @@ export class UnifiedProcessingService implements OnModuleInit {
             entityType,
           );
           resolution.normalizedName = canonicalName;
+          const entityLocationKey =
+            entityType === 'restaurant'
+              ? (normalizedSubreddit ?? 'global')
+              : 'global';
 
           const existing = await tx.entity.findUnique({
             where: {
-              name_type: {
+              name_type_locationKey: {
                 name: canonicalName,
                 type: entityType,
+                locationKey: entityLocationKey,
               },
             },
             select: {
@@ -1373,6 +1390,7 @@ export class UnifiedProcessingService implements OnModuleInit {
                 entityType,
               ),
               type: entityType,
+              locationKey: entityLocationKey,
               aliases: Array.from(new Set(aliasSet.filter(Boolean))),
               createdAt: new Date(),
               lastUpdated: new Date(),
