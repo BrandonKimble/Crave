@@ -45,6 +45,9 @@ export interface FoodResult {
   restaurantAliases: string[];
   restaurantLocationId?: string;
   qualityScore: number;
+  displayScore?: number | null;
+  displayPercentile?: number | null;
+  coverageKey?: string;
   activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
@@ -63,6 +66,8 @@ export interface RestaurantFoodSnippet {
   foodId: string;
   foodName: string;
   qualityScore: number;
+  displayScore?: number | null;
+  displayPercentile?: number | null;
   activityLevel: ActivityLevel;
 }
 
@@ -76,9 +81,12 @@ export interface RestaurantLocationResult {
   region?: string | null;
   country?: string | null;
   postalCode?: string | null;
-  priceLevel?: number | null;
-  priceLevelUpdatedAt?: string | null;
-  metadata?: Record<string, unknown> | null;
+  phoneNumber?: string | null;
+  websiteUrl?: string | null;
+  hours?: Record<string, unknown> | null;
+  utcOffsetMinutes?: number | null;
+  timeZone?: string | null;
+  operatingStatus?: OperatingStatus | null;
   isPrimary: boolean;
   lastPolledAt?: string | null;
   createdAt?: string | null;
@@ -91,6 +99,9 @@ export interface RestaurantResult {
   restaurantAliases: string[];
   contextualScore: number;
   restaurantQualityScore?: number | null;
+  displayScore?: number | null;
+  displayPercentile?: number | null;
+  coverageKey?: string;
   mentionCount?: number;
   totalUpvotes?: number;
   latitude?: number | null;
@@ -133,6 +144,7 @@ export interface SearchResponseMetadata {
   searchRequestId?: string;
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
+  coverageKey?: string | null;
   emptyQueryMessage?: string;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;

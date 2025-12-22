@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, OnDemandReason } from '@prisma/client';
+import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { EntityResolutionService } from '../content-processing/entity-resolver/entity-resolution.service';
 import {
@@ -222,8 +222,9 @@ export class AutocompleteService {
       }
     }
 
+    const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
     const response: AutocompleteResponseDto = {
-      matches: ranked.matches,
+      matches: matchesWithCounts,
       query: dto.query,
       normalizedQuery,
       onDemandQueued,
@@ -262,6 +263,50 @@ export class AutocompleteService {
     }
 
     return results;
+  }
+
+  private async attachLocationCounts(
+    matches: AutocompleteMatchDto[],
+  ): Promise<AutocompleteMatchDto[]> {
+    const restaurantIds = Array.from(
+      new Set(
+        matches
+          .filter((match) => match.entityType === EntityType.restaurant)
+          .map((match) => match.entityId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (restaurantIds.length === 0) {
+      return matches;
+    }
+
+    const rows = await this.prisma.$queryRaw<
+      Array<{ restaurant_id: string; location_count: number }>
+    >(Prisma.sql`
+      SELECT
+        restaurant_id,
+        COUNT(*)::int AS location_count
+      FROM core_restaurant_locations
+      WHERE restaurant_id IN (${Prisma.join(restaurantIds)})
+        AND google_place_id IS NOT NULL
+        AND address IS NOT NULL
+        AND latitude IS NOT NULL
+        AND longitude IS NOT NULL
+      GROUP BY restaurant_id
+    `);
+
+    const counts = new Map(
+      rows.map((row) => [row.restaurant_id, Number(row.location_count)]),
+    );
+
+    return matches.map((match) => {
+      if (match.entityType !== EntityType.restaurant) {
+        return match;
+      }
+      const locationCount = counts.get(match.entityId) ?? 0;
+      return { ...match, locationCount };
+    });
   }
 
   private async fetchInjectedUserMatches(

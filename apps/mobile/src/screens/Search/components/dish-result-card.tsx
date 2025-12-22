@@ -14,6 +14,7 @@ import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
+import { formatCoverageLabel } from '../utils/format';
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
@@ -27,6 +28,8 @@ type DishResultCardProps = {
   item: FoodResult;
   index: number;
   dishesCount: number;
+  primaryCoverageKey?: string | null;
+  showCoverageLabel?: boolean;
   favoriteMap: Map<string, unknown>;
   restaurantsById: Map<string, RestaurantResult>;
   toggleFavorite: (entityId: string, entityType: FavoriteEntityType) => Promise<void>;
@@ -42,6 +45,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   item,
   index,
   dishesCount,
+  primaryCoverageKey = null,
+  showCoverageLabel = false,
   favoriteMap,
   restaurantsById,
   toggleFavorite,
@@ -49,7 +54,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openScoreInfo,
 }) => {
   const isLiked = favoriteMap.has(item.foodId);
-  const qualityColor = getQualityColor(index, dishesCount);
+  const qualityColor = getQualityColor(index, dishesCount, item.displayPercentile ?? null);
   const restaurantForDish = restaurantsById.get(item.restaurantId);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const dishMetaPrimaryLine = renderMetaDetailLine(
@@ -68,6 +73,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     undefined,
     false
   );
+  const displayScoreValue = item.displayScore ?? item.qualityScore;
+  const coverageLabel =
+    showCoverageLabel && item.coverageKey && item.coverageKey !== primaryCoverageKey
+      ? formatCoverageLabel(item.coverageKey)
+      : null;
 
   const handleShare = React.useCallback(() => {
     void Share.share({
@@ -85,11 +95,17 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     openScoreInfo({
       type: 'dish',
       title: item.foodName,
-      score: item.qualityScore,
+      score: displayScoreValue,
       votes: item.totalUpvotes,
       polls: item.mentionCount,
     });
-  }, [item.foodName, item.mentionCount, item.qualityScore, item.totalUpvotes, openScoreInfo]);
+  }, [
+    item.foodName,
+    item.mentionCount,
+    item.totalUpvotes,
+    displayScoreValue,
+    openScoreInfo,
+  ]);
 
   return (
     <View
@@ -130,7 +146,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
                     style={styles.metricIcon}
                   />
                   <Text variant="body" weight="semibold" style={styles.metricValue}>
-                    {item.qualityScore.toFixed(1)}
+                    {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
                   </Text>
                   <Text variant="body" weight="regular" style={styles.metricLabel}>
                     Dish score
@@ -156,6 +172,13 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               {dishStatusLine ? (
                 <View style={[styles.resultMetaLine, styles.dishMetaLineFirst]}>
                   {dishStatusLine}
+                </View>
+              ) : null}
+              {coverageLabel ? (
+                <View style={styles.coverageBadge}>
+                  <Text variant="caption" style={styles.coverageBadgeText}>
+                    {coverageLabel}
+                  </Text>
                 </View>
               ) : null}
             </View>

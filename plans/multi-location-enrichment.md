@@ -118,23 +118,24 @@ wine_bar
 
 ## Action items
 
-[ ] Specify the minimal location schema (place ID, address, lat/lng, phone, website, hours, utcOffsetMinutes/timezone) and drop price fields from `core_restaurant_locations` (update Prisma + migrations).
-[ ] Define and store city coverage rectangles (new bounds columns on `collection_subreddits`) populated via Google Place Details `viewport` for the city.
-[ ] Expand preferred place type filtering for primary-place selection (autocomplete and fallback) to include all Table A Food and Drink types (embedded above); keep a curated list in code and add tests around candidate selection.
-[ ] Extend Google Places integration with a multi-location search helper using `locationRestriction` (rectangle) + `includedType`/`strictTypeFiltering` derived from the primary place `primaryType`, plus a reduced field mask (location, address, website, phones, hours, utcOffsetMinutes/timeZone) and a post-filter for exact/brand-level name matches (canonical only, delimiter-aware).
-[ ] Add post-primary enrichment step to fetch additional locations (paginate up to 60), upsert them (dedupe by placeId, skip primary placeId), and convert the existing placeholder location row into the real Google location when present (no leftover placeholders).
-[ ] Update Google Place Details to request `primaryType` and `viewport` and persist both in restaurant metadata / subreddit onboarding.
-[ ] Replace `calculate-volumes.ts` with an onboarding script that:
-[ ] - takes a subreddit name (and optional center lat/lng),
-[ ] - creates/updates the `collection_subreddits` row,
-[ ] - runs the volume calculation job,
-[ ] - calls Google Place Details to store the city viewport bounds.
-[ ] Audit `normalizeGoogleOpeningHours` and align secondary-location hours storage to the same normalized JSON shape used by restaurant metadata.
-[ ] Update search SQL selection to compute a representative location per restaurant (closest to search center) and exclude placeholder locations from `locations_json`.
-[ ] Update search result mapping to carry the full location list for pins and the computed representative location for ranking/card summaries.
-[ ] Add autocomplete row UX: show “<N> locations” under restaurant name and recenter map to all locations on selection, then open profile sheet.
-[ ] Update results-list UX: selecting multi-location restaurant temporarily zooms to its locations behind the profile sheet; exiting restores the prior viewpoint and results pins.
-[ ] Update restaurant profile UI to render a locations section with expandable rows (street label + open status summary; on expand show full address, hours, phone, and website if unique per location).
+[x] Specify the minimal location schema (place ID, address, lat/lng, phone, website, hours, utcOffsetMinutes/timezone) and drop price fields from `core_restaurant_locations` (update Prisma + migrations).
+[x] Define and store city coverage rectangles (new bounds columns on `collection_subreddits`) populated via Google Place Details `viewport` for the city.
+[x] Store a canonical `location_name` on `collection_subreddits` to drive the Google Place Details query (separate from subreddit name).
+[x] Expand preferred place type filtering for primary-place selection (autocomplete and fallback) to include all Table A Food and Drink types (embedded above); keep a curated list in code and add tests around candidate selection.
+[x] Extend Google Places integration with a multi-location search helper using `locationRestriction` (rectangle) + `includedType`/`strictTypeFiltering` derived from the primary place `primaryType`, plus a reduced field mask (location, address, website, phones, hours, utcOffsetMinutes/timeZone) and a post-filter for exact/brand-level name matches (canonical only, delimiter-aware).
+[x] Add post-primary enrichment step to fetch additional locations (paginate up to 60), upsert them (dedupe by placeId, skip primary placeId), and convert the existing placeholder location row into the real Google location when present (no leftover placeholders).
+[x] Update Google Place Details to request `primaryType` and `viewport` and persist both in restaurant metadata / subreddit onboarding.
+[x] Replace `calculate-volumes.ts` with an onboarding script that:
+[x] - takes a subreddit name (and optional center lat/lng),
+[x] - creates/updates the `collection_subreddits` row,
+[x] - runs the volume calculation job,
+[x] - calls Google Place Details to store the city viewport bounds.
+[x] Audit `normalizeGoogleOpeningHours` and align secondary-location hours storage to the same normalized JSON shape used by restaurant metadata.
+[x] Update search SQL selection to compute a representative location per restaurant (closest to search center) and exclude placeholder locations from `locations_json`.
+[x] Update search result mapping to carry the full location list for pins and the computed representative location for ranking/card summaries.
+[x] Add autocomplete row UX: show “<N> locations” under restaurant name and recenter map to all locations on selection, then open profile sheet.
+[x] Update results-list UX: selecting multi-location restaurant temporarily zooms to its locations behind the profile sheet; exiting restores the prior viewpoint and results pins.
+[x] Update restaurant profile UI to render a locations section with expandable rows (street label + open status summary; on expand show full address, hours, phone, and website if unique per location).
 
 ## Testing and validation
 
@@ -156,3 +157,54 @@ wine_bar
 - Where should hours live: structured columns vs a constrained JSON field?
 - How do we source the rectangle bounds for `locationRestriction` (manual map bounds vs a stored city viewport from an external dataset)?
 - Which primary place type should be used for `includedType` if multiple types are present?
+
+## Coverage Key Consolidation (New)
+
+Goal: avoid duplicate entities across overlapping subreddits while aggregating votes/mentions in a single canonical entity per restaurant/food/attribute.
+
+### Data model changes
+
+- Add `coverage_key` (string) to `collection_subreddits`. This groups multiple subreddits into a shared geographic coverage (e.g., `los_angeles`).
+- Use `coverage_key` instead of subreddit name for entity `location_key` during collection, enrichment, on-demand, and search logging.
+- Keep viewport bounds on `collection_subreddits` and treat them as the coverage rectangle for that `coverage_key`.
+
+### Resolver updates
+
+- Update `SearchSubredditResolverService` to return a `coverage_key` (not subreddit name):
+  - If bounds/user location fall inside multiple coverage rectangles, pick the smallest-area rectangle (most specific) as primary.
+  - If multiple rectangles are similar size, pick the closest center as tie-breaker.
+  - If no rectangle contains the point, fall back to nearest center (current behavior).
+- Add a resolver method to return all subreddits for a `coverage_key` (for on-demand ingestion).
+
+### Collection / ingestion
+
+- When resolving entities, pass `coverage_key` as `location_key` (no per-subreddit entity namespace).
+- Update the onboarding script to require `coverage_key` (or default it from subreddit name, normalized) and store it on the row.
+- During keyword/on-demand collection, if a request targets a `coverage_key`, execute the collection across all subreddits with that key.
+- Ensure Google enrichment uses `location_key` = `coverage_key` so location restriction uses the shared viewport.
+
+### Search + logging
+
+- Search request `location_key` uses `coverage_key` (the matched coverage rectangle), not subreddit name.
+- Search logs store `coverage_key` for aggregation, not the specific subreddit.
+
+### Migration steps (for fresh rebuild)
+
+- Add `coverage_key` column and indexes on `collection_subreddits`.
+- Update code paths to prefer `coverage_key`; for a full reset, no backfill required.
+
+### Coverage key implementation status
+
+[x] Add `coverage_key` column + index on `collection_subreddits`.
+[x] Resolve `coverage_key` using viewport rectangles (smallest area, nearest center tie-break).
+[x] Use `coverage_key` for entity `location_key` during ingestion and keyword demand.
+[x] On-demand processing fans out to all subreddits in the same `coverage_key` and uses min safe interval.
+[x] Location restriction uses `coverage_key` (union viewports) with name fallback.
+[x] Onboarding script persists `coverage_key` (defaulted from subreddit, optional override).
+
+### Coverage key automation (pending)
+
+- When onboarding a new subreddit, auto-derive `coverage_key` with this order:
+  - Reuse existing `coverage_key` if the new subreddit’s center falls within an existing coverage rectangle (smallest-area match, nearest-center tie-break).
+  - Otherwise roll up to a locality-based key derived from Google Place Details (format: `locality_region_country`, e.g., `new_york_ny_us`).
+  - Fallback to the subreddit name if locality data is missing.

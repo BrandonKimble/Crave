@@ -73,6 +73,13 @@ interface QueryResultRow {
   restaurant_name: string;
   restaurant_aliases: string[];
   restaurant_quality_score?: Prisma.Decimal | number | string | null;
+  restaurant_location_key?: string | null;
+  restaurant_display_score?: Prisma.Decimal | number | string | null;
+  restaurant_display_percentile?: Prisma.Decimal | number | string | null;
+  connection_display_score?: Prisma.Decimal | number | string | null;
+  connection_display_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_price_level?: Prisma.Decimal | number | string | null;
+  restaurant_price_level_updated_at?: Date | null;
   location_id: string;
   google_place_id?: string | null;
   latitude?: Prisma.Decimal | number | string | null;
@@ -82,9 +89,11 @@ interface QueryResultRow {
   region?: string | null;
   country?: string | null;
   postal_code?: string | null;
-  price_level?: Prisma.Decimal | number | string | null;
-  price_level_updated_at?: Date | null;
-  location_metadata?: Prisma.JsonValue | null;
+  phone_number?: string | null;
+  website_url?: string | null;
+  hours?: Prisma.JsonValue | null;
+  utc_offset_minutes?: Prisma.Decimal | number | string | null;
+  time_zone?: string | null;
   location_is_primary?: boolean;
   location_last_polled_at?: Date | null;
   location_created_at?: Date | null;
@@ -111,7 +120,6 @@ interface RestaurantContext {
   priceLevel: number | null;
   priceSymbol: string | null;
   distanceMiles: number | null;
-  metadata: Prisma.JsonValue | null;
 }
 
 interface ExecuteParams {
@@ -170,6 +178,7 @@ export class SearchQueryExecutor {
     const query = this.queryBuilder.build({
       plan,
       pagination: effectivePagination,
+      searchCenter: this.resolveSearchCenter(request),
     });
 
     const referenceDate = new Date();
@@ -295,6 +304,83 @@ export class SearchQueryExecutor {
     return { lat, lng };
   }
 
+  private resolveSearchCenter(
+    request: SearchQueryRequestDto,
+  ): UserLocationInput | null {
+    const bounds = request.bounds;
+    if (
+      bounds &&
+      Number.isFinite(bounds.northEast?.lat) &&
+      Number.isFinite(bounds.northEast?.lng) &&
+      Number.isFinite(bounds.southWest?.lat) &&
+      Number.isFinite(bounds.southWest?.lng)
+    ) {
+      return {
+        lat: (bounds.northEast.lat + bounds.southWest.lat) / 2,
+        lng: (bounds.northEast.lng + bounds.southWest.lng) / 2,
+      };
+    }
+    return this.normalizeUserLocation(request.userLocation);
+  }
+
+  private buildOperatingMetadata(
+    connection: QueryResultRow,
+  ): RestaurantMetadata | null {
+    const hours = this.coerceRecord(connection.hours);
+    const timeZone =
+      typeof connection.time_zone === 'string' && connection.time_zone.trim()
+        ? connection.time_zone.trim()
+        : null;
+    const utcOffsetMinutes = this.toOptionalNumber(
+      connection.utc_offset_minutes,
+    );
+
+    if (!hours && !timeZone && utcOffsetMinutes === null) {
+      return null;
+    }
+
+    const metadata: RestaurantMetadata = {};
+    if (hours) {
+      metadata.hours = hours;
+    }
+    if (timeZone) {
+      metadata.timezone = timeZone;
+    }
+    if (utcOffsetMinutes !== null) {
+      metadata.utc_offset_minutes = utcOffsetMinutes;
+    }
+    return metadata;
+  }
+
+  private buildOperatingMetadataFromLocation(
+    hoursValue: unknown,
+    utcOffsetMinutesValue: Prisma.Decimal | number | string | null | undefined,
+    timeZoneValue: string | null | undefined,
+  ): RestaurantMetadata | null {
+    const hours = this.coerceRecord(hoursValue);
+    const timeZone =
+      typeof timeZoneValue === 'string' && timeZoneValue.trim()
+        ? timeZoneValue.trim()
+        : null;
+    const utcOffsetMinutes = this.toOptionalNumber(utcOffsetMinutesValue);
+
+    if (!hours && !timeZone && utcOffsetMinutes === null) {
+      return null;
+    }
+
+    const metadata: RestaurantMetadata = {};
+    if (hours) {
+      metadata.hours = hours;
+    }
+    if (timeZone) {
+      metadata.timezone = timeZone;
+    }
+    if (utcOffsetMinutes !== null) {
+      metadata.utc_offset_minutes = utcOffsetMinutes;
+    }
+    return metadata;
+  }
+
   private buildRestaurantContexts(
     connections: QueryResultRow[],
     referenceDate: Date,
@@ -312,14 +398,14 @@ export class SearchQueryExecutor {
       const locationId = connection.location_id;
       const latitude = this.toOptionalNumber(connection.latitude);
       const longitude = this.toOptionalNumber(connection.longitude);
-      const parsedPrice = this.toOptionalNumber(connection.price_level);
+      const parsedPrice = this.toOptionalNumber(
+        connection.restaurant_price_level,
+      );
       const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingMetadata = this.buildOperatingMetadata(connection);
       const operatingStatus =
         existing?.operatingStatus ??
-        this.evaluateOperatingStatus(
-          connection.location_metadata,
-          referenceDate,
-        ) ??
+        this.evaluateOperatingStatus(operatingMetadata, referenceDate) ??
         null;
       const distanceMiles =
         latitude !== null &&
@@ -343,9 +429,6 @@ export class SearchQueryExecutor {
         if (existing.distanceMiles === null && distanceMiles !== null) {
           existing.distanceMiles = distanceMiles;
         }
-        if (!existing.metadata && connection.location_metadata) {
-          existing.metadata = connection.location_metadata;
-        }
         continue;
       }
 
@@ -355,7 +438,6 @@ export class SearchQueryExecutor {
         priceLevel: parsedPrice ?? null,
         priceSymbol: priceDetails.symbol ?? null,
         distanceMiles: distanceMiles ?? null,
-        metadata: connection.location_metadata ?? null,
       });
     }
 
@@ -483,14 +565,18 @@ export class SearchQueryExecutor {
       );
       const parsedPrice =
         restaurantContext?.priceLevel ??
-        this.toOptionalNumber(connection.price_level);
+        this.toOptionalNumber(connection.restaurant_price_level);
       const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingMetadata = this.buildOperatingMetadata(connection);
       const operatingStatus =
         restaurantContext?.operatingStatus ??
-        this.evaluateOperatingStatus(
-          connection.location_metadata,
-          referenceDate,
-        );
+        this.evaluateOperatingStatus(operatingMetadata, referenceDate);
+      const displayScore = this.toOptionalNumber(
+        connection.connection_display_score,
+      );
+      const displayPercentile = this.toOptionalNumber(
+        connection.connection_display_percentile,
+      );
 
       results.push({
         connectionId: connection.connection_id,
@@ -501,6 +587,9 @@ export class SearchQueryExecutor {
         restaurantName: connection.restaurant_name,
         restaurantAliases: connection.restaurant_aliases || [],
         qualityScore: this.toNumber(connection.food_quality_score),
+        displayScore,
+        displayPercentile,
+        coverageKey: connection.restaurant_location_key ?? undefined,
         activityLevel: connection.activity_level,
         mentionCount: connection.mention_count,
         totalUpvotes: connection.total_upvotes,
@@ -536,6 +625,9 @@ export class SearchQueryExecutor {
         name: string;
         aliases: string[];
         restaurantQualityScore?: Prisma.Decimal | number | string | null;
+        restaurantDisplayScore?: number | null;
+        restaurantDisplayPercentile?: number | null;
+        coverageKey?: string | null;
         latitude?: Prisma.Decimal | number | string | null;
         longitude?: Prisma.Decimal | number | string | null;
         address?: string | null;
@@ -550,7 +642,11 @@ export class SearchQueryExecutor {
         priceText?: string | null;
         locationId: string;
         locationIsPrimary?: boolean | null;
-        locationMetadata?: Prisma.JsonValue | null;
+        locationPhoneNumber?: string | null;
+        locationWebsiteUrl?: string | null;
+        locationHours?: Prisma.JsonValue | null;
+        locationUtcOffsetMinutes?: Prisma.Decimal | number | string | null;
+        locationTimeZone?: string | null;
         locationLastPolledAt?: Date | null;
         locationCreatedAt?: Date | null;
         locationUpdatedAt?: Date | null;
@@ -570,6 +666,12 @@ export class SearchQueryExecutor {
         foodId: connection.food_id,
         foodName: connection.food_name,
         qualityScore: this.toNumber(connection.food_quality_score),
+        displayScore: this.toOptionalNumber(
+          connection.connection_display_score,
+        ),
+        displayPercentile: this.toOptionalNumber(
+          connection.connection_display_percentile,
+        ),
         activityLevel: connection.activity_level,
       };
 
@@ -588,9 +690,11 @@ export class SearchQueryExecutor {
         existing.totalMentions = restaurantTotalMentions;
         if (
           (existing.priceLevel === null || existing.priceLevel === undefined) &&
-          connection.price_level != null
+          connection.restaurant_price_level != null
         ) {
-          const parsedPrice = this.toOptionalNumber(connection.price_level);
+          const parsedPrice = this.toOptionalNumber(
+            connection.restaurant_price_level,
+          );
           const priceDetails = this.describePriceLevel(parsedPrice);
           existing.priceLevel = parsedPrice;
           existing.priceSymbol = priceDetails.symbol;
@@ -598,12 +702,33 @@ export class SearchQueryExecutor {
         }
         if (
           !existing.priceLevelUpdatedAt &&
-          connection.price_level_updated_at
+          connection.restaurant_price_level_updated_at
         ) {
-          existing.priceLevelUpdatedAt = connection.price_level_updated_at;
+          existing.priceLevelUpdatedAt =
+            connection.restaurant_price_level_updated_at;
         }
         if (!existing.googlePlaceId && connection.google_place_id) {
           existing.googlePlaceId = connection.google_place_id;
+        }
+        if (!existing.locationPhoneNumber && connection.phone_number) {
+          existing.locationPhoneNumber = connection.phone_number;
+        }
+        if (!existing.locationWebsiteUrl && connection.website_url) {
+          existing.locationWebsiteUrl = connection.website_url;
+        }
+        if (!existing.locationHours && connection.hours) {
+          existing.locationHours = connection.hours;
+        }
+        if (
+          (existing.locationUtcOffsetMinutes === null ||
+            existing.locationUtcOffsetMinutes === undefined) &&
+          connection.utc_offset_minutes !== null &&
+          connection.utc_offset_minutes !== undefined
+        ) {
+          existing.locationUtcOffsetMinutes = connection.utc_offset_minutes;
+        }
+        if (!existing.locationTimeZone && connection.time_zone) {
+          existing.locationTimeZone = connection.time_zone;
         }
         if (!existing.locationsJson && connection.locations_json) {
           existing.locationsJson = connection.locations_json;
@@ -616,14 +741,42 @@ export class SearchQueryExecutor {
         ) {
           existing.locationCount = connection.location_count;
         }
+        if (
+          existing.restaurantDisplayScore === null ||
+          existing.restaurantDisplayScore === undefined
+        ) {
+          existing.restaurantDisplayScore = this.toOptionalNumber(
+            connection.restaurant_display_score,
+          );
+        }
+        if (
+          existing.restaurantDisplayPercentile === null ||
+          existing.restaurantDisplayPercentile === undefined
+        ) {
+          existing.restaurantDisplayPercentile = this.toOptionalNumber(
+            connection.restaurant_display_percentile,
+          );
+        }
+        if (!existing.coverageKey && connection.restaurant_location_key) {
+          existing.coverageKey = connection.restaurant_location_key;
+        }
       } else {
-        const parsedPrice = this.toOptionalNumber(connection.price_level);
+        const parsedPrice = this.toOptionalNumber(
+          connection.restaurant_price_level,
+        );
         const priceDetails = this.describePriceLevel(parsedPrice);
         grouped.set(connection.restaurant_id, {
           restaurantId: connection.restaurant_id,
           name: connection.restaurant_name,
           aliases: connection.restaurant_aliases || [],
           restaurantQualityScore: connection.restaurant_quality_score,
+          restaurantDisplayScore: this.toOptionalNumber(
+            connection.restaurant_display_score,
+          ),
+          restaurantDisplayPercentile: this.toOptionalNumber(
+            connection.restaurant_display_percentile,
+          ),
+          coverageKey: connection.restaurant_location_key ?? null,
           latitude: connection.latitude,
           longitude: connection.longitude,
           address: connection.address,
@@ -635,10 +788,15 @@ export class SearchQueryExecutor {
           priceLevel: parsedPrice,
           priceSymbol: priceDetails.symbol,
           priceText: priceDetails.text,
-          priceLevelUpdatedAt: connection.price_level_updated_at || null,
+          priceLevelUpdatedAt:
+            connection.restaurant_price_level_updated_at || null,
           locationId: connection.location_id,
           locationIsPrimary: connection.location_is_primary ?? null,
-          locationMetadata: connection.location_metadata ?? null,
+          locationPhoneNumber: connection.phone_number ?? null,
+          locationWebsiteUrl: connection.website_url ?? null,
+          locationHours: connection.hours ?? null,
+          locationUtcOffsetMinutes: connection.utc_offset_minutes ?? null,
+          locationTimeZone: connection.time_zone ?? null,
           locationLastPolledAt: connection.location_last_polled_at || null,
           locationCreatedAt: connection.location_created_at || null,
           locationUpdatedAt: connection.location_updated_at || null,
@@ -664,6 +822,9 @@ export class SearchQueryExecutor {
           name,
           aliases,
           restaurantQualityScore,
+          restaurantDisplayScore,
+          restaurantDisplayPercentile,
+          coverageKey,
           latitude,
           longitude,
           address,
@@ -678,7 +839,11 @@ export class SearchQueryExecutor {
           priceLevelUpdatedAt,
           locationId,
           locationIsPrimary,
-          locationMetadata,
+          locationPhoneNumber,
+          locationWebsiteUrl,
+          locationHours,
+          locationUtcOffsetMinutes,
+          locationTimeZone,
           locationLastPolledAt,
           locationCreatedAt,
           locationUpdatedAt,
@@ -695,15 +860,22 @@ export class SearchQueryExecutor {
             restaurantContext?.priceLevel ?? groupedPriceLevel ?? null;
           const resolvedPriceSymbol =
             restaurantContext?.priceSymbol ?? priceSymbol ?? null;
+          const displayOperatingMetadata =
+            this.buildOperatingMetadataFromLocation(
+              locationHours,
+              locationUtcOffsetMinutes,
+              locationTimeZone,
+            );
           const operatingStatus =
             restaurantContext?.operatingStatus ??
-            (locationMetadata
-              ? this.evaluateOperatingStatus(locationMetadata, referenceDate)
+            (displayOperatingMetadata
+              ? this.evaluateOperatingStatus(
+                  displayOperatingMetadata,
+                  referenceDate,
+                )
               : null);
           const distanceMiles = restaurantContext?.distanceMiles ?? null;
-          const locationMetadataRecord = this.coerceRecord(locationMetadata);
-          const resolvedPriceText =
-            this.extractPriceRangeText(locationMetadataRecord) ?? priceText;
+          const resolvedPriceText = priceText ?? null;
           const displayLocation = {
             locationId,
             googlePlaceId: googlePlaceId ?? null,
@@ -720,11 +892,13 @@ export class SearchQueryExecutor {
             region: region ?? null,
             country: country ?? null,
             postalCode: postalCode ?? null,
-            priceLevel: resolvedPriceLevel,
-            priceLevelUpdatedAt: priceLevelUpdatedAt
-              ? priceLevelUpdatedAt.toISOString()
-              : null,
-            metadata: locationMetadataRecord,
+            phoneNumber: locationPhoneNumber ?? null,
+            websiteUrl: locationWebsiteUrl ?? null,
+            hours: this.coerceRecord(locationHours),
+            utcOffsetMinutes:
+              this.toOptionalNumber(locationUtcOffsetMinutes) ?? null,
+            timeZone: locationTimeZone ?? null,
+            operatingStatus,
             isPrimary: Boolean(locationIsPrimary),
             lastPolledAt: locationLastPolledAt
               ? locationLastPolledAt.toISOString()
@@ -736,7 +910,10 @@ export class SearchQueryExecutor {
               ? locationUpdatedAt.toISOString()
               : null,
           };
-          const locations = this.parseLocationsJson(locationsJson);
+          const locations = this.parseLocationsJson(
+            locationsJson,
+            referenceDate,
+          );
           if (!locations.length) {
             locations.push(displayLocation);
           }
@@ -753,6 +930,9 @@ export class SearchQueryExecutor {
               restaurantQualityScore === undefined
                 ? null
                 : this.toNumber(restaurantQualityScore),
+            displayScore: restaurantDisplayScore ?? null,
+            displayPercentile: restaurantDisplayPercentile ?? null,
+            coverageKey: coverageKey ?? undefined,
             mentionCount:
               totalMentions === undefined || totalMentions === null
                 ? undefined
@@ -780,7 +960,11 @@ export class SearchQueryExecutor {
             locations,
             locationCount: resolvedLocationCount,
             topFood: snippets
-              .sort((a, b) => b.qualityScore - a.qualityScore)
+              .sort((a, b) => {
+                const scoreA = a.displayScore ?? a.qualityScore;
+                const scoreB = b.displayScore ?? b.qualityScore;
+                return scoreB - scoreA;
+              })
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
           };
         },
@@ -801,7 +985,7 @@ export class SearchQueryExecutor {
   }
 
   private isRestaurantOpenNow(
-    metadataValue: Prisma.JsonValue | null | undefined,
+    metadataValue: unknown,
     referenceDate: Date,
   ): boolean | null {
     const status = this.evaluateOperatingStatus(metadataValue, referenceDate);
@@ -812,7 +996,7 @@ export class SearchQueryExecutor {
   }
 
   private evaluateOperatingStatus(
-    metadataValue: Prisma.JsonValue | null | undefined,
+    metadataValue: unknown,
     referenceDate: Date,
   ): {
     isOpen: boolean;
@@ -1116,6 +1300,7 @@ export class SearchQueryExecutor {
 
   private parseLocationsJson(
     value: Prisma.JsonValue | null | undefined,
+    referenceDate: Date,
   ): Array<{
     locationId: string;
     googlePlaceId?: string | null;
@@ -1126,9 +1311,17 @@ export class SearchQueryExecutor {
     region?: string | null;
     country?: string | null;
     postalCode?: string | null;
-    priceLevel?: number | null;
-    priceLevelUpdatedAt?: string | null;
-    metadata?: Record<string, unknown> | null;
+    phoneNumber?: string | null;
+    websiteUrl?: string | null;
+    hours?: Record<string, unknown> | null;
+    utcOffsetMinutes?: number | null;
+    timeZone?: string | null;
+    operatingStatus?: {
+      isOpen: boolean;
+      closesAtDisplay?: string | null;
+      closesInMinutes?: number | null;
+      nextOpenDisplay?: string | null;
+    } | null;
     isPrimary: boolean;
     lastPolledAt?: string | null;
     createdAt?: string | null;
@@ -1148,9 +1341,17 @@ export class SearchQueryExecutor {
       region?: string | null;
       country?: string | null;
       postalCode?: string | null;
-      priceLevel?: number | null;
-      priceLevelUpdatedAt?: string | null;
-      metadata?: Record<string, unknown> | null;
+      phoneNumber?: string | null;
+      websiteUrl?: string | null;
+      hours?: Record<string, unknown> | null;
+      utcOffsetMinutes?: number | null;
+      timeZone?: string | null;
+      operatingStatus?: {
+        isOpen: boolean;
+        closesAtDisplay?: string | null;
+        closesInMinutes?: number | null;
+        nextOpenDisplay?: string | null;
+      } | null;
       isPrimary: boolean;
       lastPolledAt?: string | null;
       createdAt?: string | null;
@@ -1168,14 +1369,29 @@ export class SearchQueryExecutor {
       const longitude = this.toOptionalNumber(
         record.longitude as Prisma.Decimal | number | string | null | undefined,
       );
-      const priceLevel = this.toOptionalNumber(
-        record.priceLevel as
+      const hours = this.coerceRecord(record.hours ?? record.hours_json);
+      const utcOffsetMinutes = this.toOptionalNumber(
+        record.utcOffsetMinutes as
           | Prisma.Decimal
           | number
           | string
           | null
           | undefined,
       );
+      const timeZone =
+        typeof record.timeZone === 'string'
+          ? record.timeZone
+          : typeof record.time_zone === 'string'
+            ? record.time_zone
+            : null;
+      const operatingMetadata = this.buildOperatingMetadataFromLocation(
+        hours,
+        utcOffsetMinutes,
+        timeZone,
+      );
+      const operatingStatus = operatingMetadata
+        ? this.evaluateOperatingStatus(operatingMetadata, referenceDate)
+        : null;
       const locationIdValue =
         (record.locationId as string | null) ??
         (record.location_id as string | null) ??
@@ -1195,10 +1411,18 @@ export class SearchQueryExecutor {
         region: (record.region as string | null) ?? null,
         country: (record.country as string | null) ?? null,
         postalCode: (record.postalCode as string | null) ?? null,
-        priceLevel,
-        priceLevelUpdatedAt:
-          (record.priceLevelUpdatedAt as string | null) ?? null,
-        metadata: this.coerceRecord(record.metadata),
+        phoneNumber:
+          (record.phoneNumber as string | null) ??
+          (record.phone_number as string | null) ??
+          null,
+        websiteUrl:
+          (record.websiteUrl as string | null) ??
+          (record.website_url as string | null) ??
+          null,
+        hours,
+        utcOffsetMinutes: utcOffsetMinutes ?? null,
+        timeZone,
+        operatingStatus,
         isPrimary: Boolean(record.isPrimary ?? record.is_primary),
         lastPolledAt: (record.lastPolledAt as string | null) ?? null,
         createdAt: (record.createdAt as string | null) ?? null,

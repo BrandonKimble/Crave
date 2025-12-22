@@ -115,7 +115,12 @@ import {
 import { getQualityColor } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
-import { hasBoundsMovedSignificantly, mapStateBoundsToMapBounds } from './utils/geo';
+import {
+  boundsFromPairs,
+  hasBoundsMovedSignificantly,
+  isLngLatTuple,
+  mapStateBoundsToMapBounds,
+} from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
 
@@ -133,6 +138,15 @@ const SearchScreen: React.FC = () => {
   const [mapCenter, setMapCenter] = React.useState<[number, number]>(USA_FALLBACK_CENTER);
   const [mapZoom, setMapZoom] = React.useState<number>(USA_FALLBACK_ZOOM);
   const [isFollowingUser, setIsFollowingUser] = React.useState(true);
+  const [focusedRestaurantId, setFocusedRestaurantId] = React.useState<string | null>(null);
+  const previousMapBoundsRef = React.useRef<MapBounds | null>(null);
+  const shouldRestoreBoundsRef = React.useRef(false);
+  const suppressMapMovedRef = React.useRef(false);
+  const suppressMapMovedTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingRestaurantSelectionRef = React.useRef<{
+    restaurantId: string;
+    preserveBounds: boolean;
+  } | null>(null);
 
   React.useEffect(() => {
     if (accessToken) {
@@ -143,6 +157,24 @@ const SearchScreen: React.FC = () => {
   React.useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
+
+  const suppressMapMoved = React.useCallback((duration = 800) => {
+    suppressMapMovedRef.current = true;
+    if (suppressMapMovedTimeoutRef.current) {
+      clearTimeout(suppressMapMovedTimeoutRef.current);
+    }
+    suppressMapMovedTimeoutRef.current = setTimeout(() => {
+      suppressMapMovedRef.current = false;
+    }, duration);
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      if (suppressMapMovedTimeoutRef.current) {
+        clearTimeout(suppressMapMovedTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Hydrate last camera position to avoid globe spin before we get user location
   React.useEffect(() => {
@@ -359,6 +391,29 @@ const SearchScreen: React.FC = () => {
       }
     }, 450);
   }, []);
+
+  const resolveCurrentMapBounds = React.useCallback(async (): Promise<MapBounds | null> => {
+    if (latestBoundsRef.current) {
+      return latestBoundsRef.current;
+    }
+    const rawBounds = await mapRef.current?.getVisibleBounds?.();
+    if (!rawBounds || rawBounds.length < 2) {
+      return null;
+    }
+    const first = rawBounds[0] as unknown;
+    const second = rawBounds[1] as unknown;
+    if (!isLngLatTuple(first) || !isLngLatTuple(second)) {
+      return null;
+    }
+    return boundsFromPairs(first, second);
+  }, []);
+
+  const resetFocusedMapState = React.useCallback(() => {
+    setFocusedRestaurantId(null);
+    previousMapBoundsRef.current = null;
+    shouldRestoreBoundsRef.current = false;
+    pendingRestaurantSelectionRef.current = null;
+  }, []);
   const lastSearchRequestIdRef = React.useRef<string | null>(null);
   const searchSurfaceAnim = useSharedValue(0);
   const suggestionTransition = useSharedValue(0);
@@ -413,6 +468,12 @@ const SearchScreen: React.FC = () => {
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
   const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
   const [filtersHeaderHeight, setFiltersHeaderHeight] = React.useState(0);
+  const focusPadding = React.useMemo(() => {
+    const topPadding = Math.max(searchLayout.top + searchLayout.height + 16, insets.top + 16);
+    const visibleSheetHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle);
+    const bottomPadding = Math.max(visibleSheetHeight + 24, insets.bottom + 140);
+    return [topPadding, 64, bottomPadding, 64] as const;
+  }, [insets.bottom, insets.top, searchLayout.height, searchLayout.top, snapPoints.middle]);
   const openScoreInfo = React.useCallback(
     (payload: {
       type: 'dish' | 'restaurant';
@@ -1040,50 +1101,93 @@ const SearchScreen: React.FC = () => {
     runAutocomplete,
   ]);
 
-  const restaurantFeatures = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties>
-  >(() => {
-    const features: Feature<Point, RestaurantFeatureProperties>[] = [];
+  const getLocationCount = React.useCallback((restaurant: RestaurantResult): number => {
+    if (typeof restaurant.locationCount === 'number' && Number.isFinite(restaurant.locationCount)) {
+      return restaurant.locationCount;
+    }
+    if (Array.isArray(restaurant.locations)) {
+      return restaurant.locations.length;
+    }
+    return 0;
+  }, []);
 
-    restaurants.forEach((restaurant, restaurantIndex) => {
-      const rank = restaurantIndex + 1;
-      const pinColor = getQualityColor(restaurantIndex, restaurants.length);
-      const locationCandidates: Array<{
-        locationId?: string | null;
-        latitude?: number | null;
-        longitude?: number | null;
-        isPrimary?: boolean | null;
-      }> =
+  const resolveRestaurantMapLocations = React.useCallback(
+    (restaurant: RestaurantResult, includeAllLocations: boolean) => {
+      const fallbackLocation =
+        typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
+          ? {
+              locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
+              latitude: restaurant.latitude,
+              longitude: restaurant.longitude,
+            }
+          : null;
+      const displayLocation = restaurant.displayLocation ?? null;
+      const fullLocations =
         Array.isArray(restaurant.locations) && restaurant.locations.length > 0
           ? restaurant.locations
-          : restaurant.displayLocation
-          ? [restaurant.displayLocation]
-          : typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-          ? [
-              {
-                locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-                latitude: restaurant.latitude,
-                longitude: restaurant.longitude,
-                isPrimary: true,
-              },
-            ]
+          : displayLocation
+          ? [displayLocation]
+          : fallbackLocation
+          ? [fallbackLocation]
           : [];
-
-      locationCandidates.forEach((location, locationIndex) => {
+      const singleLocation = displayLocation
+        ? [displayLocation]
+        : fallbackLocation
+        ? [fallbackLocation]
+        : [];
+      const source = includeAllLocations ? fullLocations : singleLocation;
+      const seen = new Set<string>();
+      return source.flatMap((location, locationIndex) => {
         if (
           typeof location?.latitude !== 'number' ||
           !Number.isFinite(location.latitude) ||
           typeof location?.longitude !== 'number' ||
           !Number.isFinite(location.longitude)
         ) {
-          return;
+          return [];
         }
-
         const locationId =
           (location as { locationId?: string }).locationId ??
           `${restaurant.restaurantId}-loc-${locationIndex}`;
+        if (seen.has(locationId)) {
+          return [];
+        }
+        seen.add(locationId);
+        return [
+          {
+            locationId,
+            latitude: location.latitude,
+            longitude: location.longitude,
+          },
+        ];
+      });
+    },
+    []
+  );
 
-        const featureId = `${restaurant.restaurantId}-${locationId}`;
+  const restaurantFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties>
+  >(() => {
+    const features: Feature<Point, RestaurantFeatureProperties>[] = [];
+    const focusedRestaurant = focusedRestaurantId
+      ? restaurants.find((restaurant) => restaurant.restaurantId === focusedRestaurantId)
+      : null;
+
+    const addFeatures = (
+      restaurant: RestaurantResult,
+      restaurantIndex: number,
+      includeAllLocations: boolean
+    ) => {
+      const rank = restaurantIndex + 1;
+      const pinColor = getQualityColor(
+        restaurantIndex,
+        restaurants.length,
+        restaurant.displayPercentile ?? null
+      );
+      const locationCandidates = resolveRestaurantMapLocations(restaurant, includeAllLocations);
+
+      locationCandidates.forEach((location) => {
+        const featureId = `${restaurant.restaurantId}-${location.locationId}`;
         features.push({
           type: 'Feature',
           id: featureId,
@@ -1100,13 +1204,27 @@ const SearchScreen: React.FC = () => {
           },
         });
       });
-    });
+    };
+
+    if (focusedRestaurant) {
+      const index = Math.max(
+        0,
+        restaurants.findIndex(
+          (restaurant) => restaurant.restaurantId === focusedRestaurant.restaurantId
+        )
+      );
+      addFeatures(focusedRestaurant, index, true);
+    } else {
+      restaurants.forEach((restaurant, restaurantIndex) => {
+        addFeatures(restaurant, restaurantIndex, false);
+      });
+    }
 
     return {
       type: 'FeatureCollection',
       features,
     };
-  }, [restaurants]);
+  }, [focusedRestaurantId, resolveRestaurantMapLocations, restaurants]);
 
   const buildMarkerKey = React.useCallback(
     (feature: Feature<Point, RestaurantFeatureProperties>) =>
@@ -1135,6 +1253,20 @@ const SearchScreen: React.FC = () => {
         .join('|'),
     [restaurantFeatures.features]
   );
+
+  React.useEffect(() => {
+    if (!focusedRestaurantId) {
+      return;
+    }
+    const hasMatch = restaurants.some(
+      (restaurant) => restaurant.restaurantId === focusedRestaurantId
+    );
+    if (!hasMatch) {
+      setFocusedRestaurantId(null);
+      shouldRestoreBoundsRef.current = false;
+      previousMapBoundsRef.current = null;
+    }
+  }, [focusedRestaurantId, restaurants]);
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
@@ -1300,23 +1432,27 @@ const SearchScreen: React.FC = () => {
     setIsSearchFocused(false);
     setIsAutocompleteSuppressed(true);
     Keyboard.dismiss();
+    resetFocusedMapState();
     void submitSearch();
-  }, [setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
+  }, [resetFocusedMapState, setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
 
   const handleBestDishesHere = React.useCallback(() => {
     setQuery('Best dishes');
+    resetFocusedMapState();
     void runBestHere('dishes', 'Best dishes');
-  }, [runBestHere, setQuery]);
+  }, [resetFocusedMapState, runBestHere, setQuery]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
     setQuery('Best restaurants');
+    resetFocusedMapState();
     void runBestHere('restaurants', 'Best restaurants');
-  }, [runBestHere, setQuery]);
+  }, [resetFocusedMapState, runBestHere, setQuery]);
 
   const handleSearchThisArea = React.useCallback(() => {
     if (isLoading || isLoadingMore || !results) {
       return;
     }
+    resetFocusedMapState();
 
     if (searchMode === 'shortcut') {
       const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
@@ -1331,6 +1467,7 @@ const SearchScreen: React.FC = () => {
     isLoading,
     isLoadingMore,
     results,
+    resetFocusedMapState,
     runBestHere,
     searchMode,
     submitSearch,
@@ -1355,6 +1492,14 @@ const SearchScreen: React.FC = () => {
       if (matchType === 'entity' && match.entityId && match.entityType) {
         submissionContext.selectedEntityId = match.entityId;
         submissionContext.selectedEntityType = match.entityType;
+      }
+      if (match.entityType === 'restaurant' && match.entityId) {
+        pendingRestaurantSelectionRef.current = {
+          restaurantId: match.entityId,
+          preserveBounds: false,
+        };
+      } else {
+        pendingRestaurantSelectionRef.current = null;
       }
       void submitSearch(
         { submission: { source: 'autocomplete', context: submissionContext } },
@@ -1391,6 +1536,7 @@ const SearchScreen: React.FC = () => {
       setIsLoadingMore(false);
       setIsPaginationExhausted(false);
       lastAutoOpenKeyRef.current = null;
+      resetFocusedMapState();
       Keyboard.dismiss();
       inputRef.current?.blur();
       scrollResultsToTop();
@@ -1405,6 +1551,7 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete,
       hidePanel,
       resetFilters,
+      resetFocusedMapState,
       resetMapMoveFlag,
       setIsSearchSessionActive,
       setSearchMode,
@@ -1445,9 +1592,16 @@ const SearchScreen: React.FC = () => {
       updateLocalRecentSearches(trimmedValue);
       setIsAutocompleteSuppressed(true);
       setIsSearchFocused(false);
+      resetFocusedMapState();
       void submitSearch({ submission: { source: 'recent' } }, trimmedValue);
     },
-    [submitSearch, updateLocalRecentSearches, setIsAutocompleteSuppressed, setIsSearchFocused]
+    [
+      resetFocusedMapState,
+      submitSearch,
+      updateLocalRecentSearches,
+      setIsAutocompleteSuppressed,
+      setIsSearchFocused,
+    ]
   );
 
   const handleRecentlyViewedRestaurantPress = React.useCallback(
@@ -1462,9 +1616,16 @@ const SearchScreen: React.FC = () => {
       updateLocalRecentSearches(trimmedValue);
       setIsAutocompleteSuppressed(true);
       setIsSearchFocused(false);
+      resetFocusedMapState();
       void submitSearch({ submission: { source: 'recent' } }, trimmedValue);
     },
-    [submitSearch, updateLocalRecentSearches, setIsAutocompleteSuppressed, setIsSearchFocused]
+    [
+      resetFocusedMapState,
+      submitSearch,
+      updateLocalRecentSearches,
+      setIsAutocompleteSuppressed,
+      setIsSearchFocused,
+    ]
   );
 
   const handleMapPress = React.useCallback(() => {
@@ -1494,6 +1655,11 @@ const SearchScreen: React.FC = () => {
 
       const isGestureActive = Boolean(state?.gestures?.isGestureActive);
       mapGestureActiveRef.current = isGestureActive;
+
+      if (suppressMapMovedRef.current && !isGestureActive) {
+        latestBoundsRef.current = bounds;
+        return;
+      }
 
       if (isGestureActive) {
         if (sheetState !== 'hidden' && sheetState !== 'collapsed' && !isLoading && !isLoadingMore) {
@@ -1600,6 +1766,78 @@ const SearchScreen: React.FC = () => {
     [isSignedIn]
   );
 
+  const focusRestaurantLocations = React.useCallback(
+    async (restaurant: RestaurantResult, options: { preserveBounds: boolean }) => {
+      const locations = resolveRestaurantMapLocations(restaurant, true);
+      if (locations.length < 2) {
+        setFocusedRestaurantId(null);
+        shouldRestoreBoundsRef.current = false;
+        previousMapBoundsRef.current = null;
+        return;
+      }
+
+      if (options.preserveBounds) {
+        if (!shouldRestoreBoundsRef.current) {
+          const currentBounds = await resolveCurrentMapBounds();
+          if (currentBounds) {
+            previousMapBoundsRef.current = currentBounds;
+            shouldRestoreBoundsRef.current = true;
+          }
+        }
+      } else {
+        previousMapBoundsRef.current = null;
+        shouldRestoreBoundsRef.current = false;
+      }
+
+      const lats = locations.map((location) => location.latitude);
+      const lngs = locations.map((location) => location.longitude);
+      const bounds = {
+        northEast: {
+          lat: Math.max(...lats),
+          lng: Math.max(...lngs),
+        },
+        southWest: {
+          lat: Math.min(...lats),
+          lng: Math.min(...lngs),
+        },
+      };
+
+      setFocusedRestaurantId(restaurant.restaurantId);
+      setIsFollowingUser(false);
+      if (cameraRef.current?.fitBounds) {
+        suppressMapMoved();
+        cameraRef.current.fitBounds(
+          [bounds.northEast.lng, bounds.northEast.lat],
+          [bounds.southWest.lng, bounds.southWest.lat],
+          focusPadding,
+          500
+        );
+      }
+    },
+    [focusPadding, resolveCurrentMapBounds, resolveRestaurantMapLocations, suppressMapMoved]
+  );
+
+  const restoreFocusedMapView = React.useCallback(() => {
+    setFocusedRestaurantId(null);
+    if (
+      shouldRestoreBoundsRef.current &&
+      previousMapBoundsRef.current &&
+      cameraRef.current?.fitBounds
+    ) {
+      setIsFollowingUser(false);
+      suppressMapMoved();
+      const bounds = previousMapBoundsRef.current;
+      cameraRef.current.fitBounds(
+        [bounds.northEast.lng, bounds.northEast.lat],
+        [bounds.southWest.lng, bounds.southWest.lat],
+        focusPadding,
+        500
+      );
+    }
+    shouldRestoreBoundsRef.current = false;
+    previousMapBoundsRef.current = null;
+  }, [focusPadding, suppressMapMoved]);
+
   const openRestaurantProfile = React.useCallback(
     (
       restaurant: RestaurantResult,
@@ -1609,7 +1847,11 @@ const SearchScreen: React.FC = () => {
       const sourceDishes = foodResultsOverride ?? dishes;
       const restaurantDishes = sourceDishes
         .filter((dish) => dish.restaurantId === restaurant.restaurantId)
-        .sort((a, b) => b.qualityScore - a.qualityScore);
+        .sort((a, b) => {
+          const scoreA = a.displayScore ?? a.qualityScore;
+          const scoreB = b.displayScore ?? b.qualityScore;
+          return scoreB - scoreA;
+        });
       const label = (submittedQuery || trimmedQuery || 'Search').trim();
       setRestaurantProfile({
         restaurant,
@@ -1632,8 +1874,56 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
+  const openRestaurantProfileFromResults = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      foodResultsOverride?: FoodResult[],
+      _source?: 'results_sheet' | 'auto_open_single_candidate'
+    ) => {
+      const locationCount = getLocationCount(restaurant);
+      if (locationCount > 1) {
+        void focusRestaurantLocations(restaurant, { preserveBounds: true });
+      } else {
+        setFocusedRestaurantId(null);
+        shouldRestoreBoundsRef.current = false;
+        previousMapBoundsRef.current = null;
+      }
+      openRestaurantProfile(restaurant, foodResultsOverride, 'results_sheet');
+    },
+    [focusRestaurantLocations, getLocationCount, openRestaurantProfile]
+  );
+
   React.useEffect(() => {
     if (!results) {
+      return;
+    }
+    const pendingSelection = pendingRestaurantSelectionRef.current;
+    if (pendingSelection) {
+      const targetRestaurant = results.restaurants?.find(
+        (restaurant) => restaurant.restaurantId === pendingSelection.restaurantId
+      );
+      if (!targetRestaurant) {
+        pendingRestaurantSelectionRef.current = null;
+        return;
+      }
+      pendingRestaurantSelectionRef.current = null;
+      const locationCount = getLocationCount(targetRestaurant);
+      if (locationCount > 1) {
+        void focusRestaurantLocations(targetRestaurant, {
+          preserveBounds: pendingSelection.preserveBounds,
+        });
+      } else {
+        setFocusedRestaurantId(null);
+        shouldRestoreBoundsRef.current = false;
+        previousMapBoundsRef.current = null;
+      }
+      openRestaurantProfile(targetRestaurant, results.food ?? [], 'results_sheet');
+      const queryKey = (submittedQuery || trimmedQuery).trim();
+      if (queryKey) {
+        lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${
+          targetRestaurant.restaurantId
+        }`;
+      }
       return;
     }
     const targetRestaurant = resolveSingleRestaurantCandidate(results);
@@ -1650,7 +1940,14 @@ const SearchScreen: React.FC = () => {
     }
     openRestaurantProfile(targetRestaurant, results.food ?? [], 'auto_open_single_candidate');
     lastAutoOpenKeyRef.current = autoOpenKey;
-  }, [openRestaurantProfile, results, submittedQuery, trimmedQuery]);
+  }, [
+    focusRestaurantLocations,
+    getLocationCount,
+    openRestaurantProfile,
+    results,
+    submittedQuery,
+    trimmedQuery,
+  ]);
 
   React.useEffect(() => {
     if (!restaurantProfile) {
@@ -1676,9 +1973,25 @@ const SearchScreen: React.FC = () => {
   const handleRestaurantOverlayDismissed = React.useCallback(() => {
     setRestaurantProfile(null);
     setRestaurantOverlayVisible(false);
-  }, []);
+    restoreFocusedMapView();
+  }, [restoreFocusedMapView]);
   const dishesCount = dishes.length;
   const restaurantsCount = restaurants.length;
+  const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
+  const hasCrossCoverage = React.useMemo(() => {
+    const coverageKeys = new Set<string>();
+    dishes.forEach((dish) => {
+      if (dish.coverageKey) {
+        coverageKeys.add(dish.coverageKey);
+      }
+    });
+    restaurants.forEach((restaurant) => {
+      if (restaurant.coverageKey) {
+        coverageKeys.add(restaurant.coverageKey);
+      }
+    });
+    return coverageKeys.size > 1;
+  }, [dishes, restaurants]);
 
   const renderDishCard = React.useCallback(
     (item: FoodResult, index: number) => (
@@ -1686,18 +1999,22 @@ const SearchScreen: React.FC = () => {
         item={item}
         index={index}
         dishesCount={dishesCount}
+        primaryCoverageKey={primaryCoverageKey}
+        showCoverageLabel={hasCrossCoverage}
         favoriteMap={favoriteMap}
         restaurantsById={restaurantsById}
         toggleFavorite={toggleFavorite}
-        openRestaurantProfile={openRestaurantProfile}
+        openRestaurantProfile={openRestaurantProfileFromResults}
         openScoreInfo={openScoreInfo}
       />
     ),
     [
       dishesCount,
       favoriteMap,
-      openRestaurantProfile,
+      hasCrossCoverage,
+      openRestaurantProfileFromResults,
       openScoreInfo,
+      primaryCoverageKey,
       restaurantsById,
       toggleFavorite,
     ]
@@ -1709,9 +2026,11 @@ const SearchScreen: React.FC = () => {
         restaurant={restaurant}
         index={index}
         restaurantsCount={restaurantsCount}
+        primaryCoverageKey={primaryCoverageKey}
+        showCoverageLabel={hasCrossCoverage}
         favoriteMap={favoriteMap}
         toggleFavorite={toggleFavorite}
-        openRestaurantProfile={openRestaurantProfile}
+        openRestaurantProfile={openRestaurantProfileFromResults}
         openScoreInfo={openScoreInfo}
         primaryFoodTerm={primaryFoodTerm}
         topFoodInlineWidths={topFoodInlineWidths}
@@ -1724,9 +2043,11 @@ const SearchScreen: React.FC = () => {
     ),
     [
       favoriteMap,
-      openRestaurantProfile,
+      hasCrossCoverage,
+      openRestaurantProfileFromResults,
       openScoreInfo,
       primaryFoodTerm,
+      primaryCoverageKey,
       restaurantsCount,
       toggleFavorite,
       topFoodInlineWidths,
@@ -2376,8 +2697,8 @@ const SearchScreen: React.FC = () => {
             <View style={styles.scoreInfoDivider} />
             <Text variant="body" style={styles.scoreInfoDescription}>
               {scoreInfo.type === 'dish'
-                ? "Dish score blends recent mentions and upvotes (time-decayed) with a small boost from the restaurant's overall quality, scaled 0–100."
-                : 'Restaurant score weights its best dishes most, adds overall menu consistency, and factors in general praise upvotes with time decay, scaled 0–100.'}
+                ? 'Dish score is a rank-based 0–100 index within this city. It reflects mention and upvote signals (time-decayed) plus restaurant context. 100 is the top dish in this coverage area.'
+                : 'Restaurant score is a rank-based 0–100 index within this city. It reflects the strength of its best dishes, overall menu consistency, and general praise. 100 is the top restaurant in this coverage area.'}
             </Text>
           </View>
         ) : null}

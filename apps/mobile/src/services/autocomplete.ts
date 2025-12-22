@@ -14,6 +14,7 @@ export type AutocompleteMatch = {
     recentQuery?: boolean;
   };
   querySuggestionSource?: 'personal' | 'global';
+  locationCount?: number;
 };
 
 export type AutocompleteResponse = {

@@ -20,6 +20,7 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import { QualityScoreService } from '../quality-score/quality-score.service';
+import { RankScoreService } from '../rank-score/rank-score.service';
 import {
   ProcessingResult,
   UnifiedProcessingConfig,
@@ -65,6 +66,11 @@ type SourceBreakdown = {
   reddit_api_keyword_search: number;
   reddit_api_on_demand: number;
 };
+
+type CoverageKeyRecord = {
+  coverageKey: string | null;
+  name: string;
+} | null;
 
 interface SourceMetadata {
   batchId: string;
@@ -205,11 +211,13 @@ export class UnifiedProcessingService implements OnModuleInit {
     string,
     { latitude: number; longitude: number }
   >();
+  private readonly subredditCoverageCache = new Map<string, string>();
 
   constructor(
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly qualityScoreService: QualityScoreService,
+    private readonly rankScoreService: RankScoreService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -411,9 +419,12 @@ export class UnifiedProcessingService implements OnModuleInit {
       });
 
       if (this.dryRunEnabled) {
+        const locationKey = await this.resolveCoverageKey(
+          sourceMetadata.subreddit ?? null,
+        );
         const entityResolutionInput = this.extractEntitiesFromLLMOutput(
           { mentions: filteredMentions },
-          { locationKey: sourceMetadata.subreddit ?? null },
+          { locationKey },
         );
         const resolutionResult =
           await this.entityResolutionService.resolveBatch(
@@ -687,8 +698,20 @@ export class UnifiedProcessingService implements OnModuleInit {
     startTime: number,
   ): Promise<ProcessingResult> {
     // Step 4a: Entity Resolution (cached for retries)
+    const locationKey = await this.resolveCoverageKey(
+      sourceMetadata.subreddit ?? null,
+    );
+    if (!locationKey || locationKey === 'global') {
+      this.logger.warn('Coverage key missing; defaulting to global', {
+        batchId,
+        collectionType: sourceMetadata.collectionType,
+        subreddit: sourceMetadata.subreddit,
+        searchEntity: sourceMetadata.searchEntity,
+        sourceBreakdown: sourceMetadata.sourceBreakdown,
+      });
+    }
     const entityResolutionInput = this.extractEntitiesFromLLMOutput(llmOutput, {
-      locationKey: sourceMetadata.subreddit ?? null,
+      locationKey,
     });
     const resolutionResult = await this.entityResolutionService.resolveBatch(
       entityResolutionInput,
@@ -1143,6 +1166,9 @@ export class UnifiedProcessingService implements OnModuleInit {
     affectedConnectionIds: string[];
   }> {
     const startTime = Date.now();
+    const resolvedLocationKey = await this.resolveCoverageKey(
+      sourceMetadata.subreddit ?? null,
+    );
 
     try {
       this.logger.debug('Starting consolidated processing phase', {
@@ -1299,7 +1325,7 @@ export class UnifiedProcessingService implements OnModuleInit {
           resolution.normalizedName = canonicalName;
           const entityLocationKey =
             entityType === 'restaurant'
-              ? (normalizedSubreddit ?? 'global')
+              ? (resolvedLocationKey ?? 'global')
               : 'global';
 
           const existing = await tx.entity.findUnique({
@@ -1431,7 +1457,6 @@ export class UnifiedProcessingService implements OnModuleInit {
                     ? new Prisma.Decimal(subredditLocation.longitude.toFixed(8))
                     : null,
                   isPrimary: true,
-                  metadata: Prisma.DbNull,
                 },
               });
 
@@ -2929,6 +2954,16 @@ export class UnifiedProcessingService implements OnModuleInit {
           errors: updateResult.errors.slice(0, 5), // Log first 5 errors
         });
       }
+      try {
+        await this.rankScoreService.refreshRankScoresForConnections(
+          affectedConnectionIds,
+        );
+      } catch (error) {
+        this.logger.error('Rank score refresh failed', {
+          error: error instanceof Error ? error.message : String(error),
+          affectedConnectionIds: affectedConnectionIds.length,
+        });
+      }
     } catch (error) {
       // Non-critical error - log and continue
       this.logger.error('Quality score update batch failed', {
@@ -3206,6 +3241,40 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     return null;
+  }
+
+  private async resolveCoverageKey(
+    subreddit?: string | null,
+  ): Promise<string | null> {
+    if (!subreddit || !subreddit.trim()) {
+      return null;
+    }
+
+    const cacheKey = subreddit.trim().toLowerCase();
+    const cached = this.subredditCoverageCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const record = (await this.prismaService.subreddit.findFirst({
+      where: {
+        name: {
+          equals: subreddit,
+          mode: 'insensitive',
+        },
+      },
+      select: { coverageKey: true, name: true },
+    })) as CoverageKeyRecord;
+
+    const resolved =
+      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
+        ? record.coverageKey.trim().toLowerCase()
+        : record?.name
+          ? record.name.trim().toLowerCase()
+          : cacheKey;
+
+    this.subredditCoverageCache.set(cacheKey, resolved);
+    return resolved;
   }
 
   private toNumeric(

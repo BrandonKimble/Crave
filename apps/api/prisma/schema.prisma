@@ -82,9 +82,11 @@ model RestaurantLocation {
   region              String?   @db.VarChar(255)
   country             String?   @db.VarChar(2)
   postalCode          String?   @map("postal_code") @db.VarChar(32)
-  priceLevel          Int?      @map("price_level")
-  priceLevelUpdatedAt DateTime? @map("price_level_updated_at")
-  metadata            Json?     @map("metadata")
+  phoneNumber         String?   @map("phone_number") @db.VarChar(64)
+  websiteUrl          String?   @map("website_url") @db.VarChar(2048)
+  hours               Json?     @map("hours")
+  utcOffsetMinutes    Int?      @map("utc_offset_minutes")
+  timeZone            String?   @map("time_zone") @db.VarChar(64)
   isPrimary           Boolean   @default(false) @map("is_primary")
   lastPolledAt        DateTime? @map("last_polled_at")
   createdAt           DateTime  @default(now()) @map("created_at")
@@ -139,6 +141,21 @@ model Connection {
   @@index([createdAt(sort: Desc)], map: "idx_connections_created_at")
   @@index([recentMentionCount(sort: Desc)], map: "idx_connections_recent_mentions")
   @@map("core_connections")
+}
+
+model DisplayRankScore {
+  locationKey      String                 @map("location_key") @db.VarChar(255)
+  subjectType      DisplayRankSubjectType @map("subject_type")
+  subjectId        String                 @map("subject_id") @db.Uuid
+  rankScoreRaw     Decimal                @map("rank_score_raw") @db.Decimal(9, 4)
+  rankScoreDisplay Decimal                @map("rank_score_display") @db.Decimal(5, 1)
+  rankPercentile   Decimal                @map("rank_percentile") @db.Decimal(6, 5)
+  computedAt       DateTime               @default(now()) @map("computed_at")
+
+  @@id([locationKey, subjectType, subjectId])
+  @@index([locationKey, subjectType], map: "idx_display_rank_location_type")
+  @@index([subjectType, subjectId], map: "idx_display_rank_subject")
+  @@map("core_display_rank_scores")
 }
 
 model Boost {
@@ -603,13 +620,15 @@ model UserEvent {
 
 model Subreddit {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String    @unique @db.VarChar(100)
-  avgPostsPerDay   Float     @map("avg_posts_per_day")
-  lastCalculated   DateTime  @map("last_calculated") @db.Timestamptz(6)
+  name             String    @unique @db.Citext
+  locationName     String?   @map("location_name") @db.Citext
+  coverageKey      String?   @map("coverage_key") @db.VarChar(100)
+  avgPostsPerDay   Float?    @map("avg_posts_per_day")
+  lastCalculated   DateTime? @map("last_calculated") @db.Timestamptz(6)
   lastProcessed    DateTime? @map("last_processed") @db.Timestamptz(6)
   isActive         Boolean   @default(true) @map("is_active")
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
-  safeIntervalDays Float     @map("safe_interval_days")
+  safeIntervalDays Float?    @map("safe_interval_days")
   centerLatitude   Decimal?  @map("center_latitude") @db.Decimal(11, 8)
   centerLongitude  Decimal?  @map("center_longitude") @db.Decimal(11, 8)
   viewportNeLat    Decimal?  @map("viewport_ne_latitude") @db.Decimal(11, 8)
@@ -618,6 +637,7 @@ model Subreddit {
   viewportSwLng    Decimal?  @map("viewport_sw_longitude") @db.Decimal(11, 8)
 
   @@index([name])
+  @@index([coverageKey], map: "idx_collection_subreddits_coverage_key")
   @@index([isActive])
   @@index([lastProcessed])
   @@index([safeIntervalDays])
@@ -678,6 +698,13 @@ enum EntityType {
   restaurant_attribute
 
   @@map("entity_type")
+}
+
+enum DisplayRankSubjectType {
+  restaurant
+  connection
+
+  @@map("display_rank_subject_type")
 }
 
 enum PollTopicStatus {

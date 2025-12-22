@@ -713,6 +713,19 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: CARD_LINE_GAP,
   },
+  coverageBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: themeColors.border,
+    backgroundColor: '#eef2f6',
+  },
+  coverageBadgeText: {
+    color: themeColors.textBody,
+    letterSpacing: 0.2,
+  },
   resultMetaLine: {
     marginTop: 0,
   },

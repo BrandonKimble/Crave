@@ -5,6 +5,7 @@ import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
 interface BuildQueryOptions {
   plan: QueryPlan;
   pagination: { skip: number; take: number };
+  searchCenter?: { lat: number; lng: number } | null;
 }
 
 interface BuildQueryResult {
@@ -34,7 +35,7 @@ interface MinimumVotesPayload extends Record<string, unknown> {
 @Injectable()
 export class SearchQueryBuilder {
   build(options: BuildQueryOptions): BuildQueryResult {
-    const { plan, pagination } = options;
+    const { plan, pagination, searchCenter } = options;
 
     const restaurantIds = this.collectEntityIds(
       plan.restaurantFilters,
@@ -61,6 +62,7 @@ export class SearchQueryBuilder {
       Prisma.sql`r.type = 'restaurant'`,
     ];
     const restaurantConditionPreview: string[] = [`r.type = 'restaurant'`];
+    let priceFilterApplied = false;
 
     if (restaurantIds.length) {
       restaurantConditions.push(
@@ -85,8 +87,17 @@ export class SearchQueryBuilder {
       );
     }
 
+    if (priceLevels.length) {
+      restaurantConditions.push(
+        this.buildNumberInClause('r.price_level', priceLevels),
+      );
+      restaurantConditionPreview.push(
+        `r.price_level = ANY(${this.formatNumberArray(priceLevels)})`,
+      );
+      priceFilterApplied = true;
+    }
+
     let boundsApplied = false;
-    let priceFilterApplied = false;
     const locationConditions: Prisma.Sql[] = [];
     const locationConditionPreview: string[] = [];
 
@@ -104,16 +115,6 @@ export class SearchQueryBuilder {
         `rl.longitude BETWEEN ${boundsPayload.southWest.lng} AND ${boundsPayload.northEast.lng}`,
       );
       boundsApplied = true;
-    }
-
-    if (priceLevels.length) {
-      locationConditions.push(
-        this.buildNumberInClause('rl.price_level', priceLevels),
-      );
-      locationConditionPreview.push(
-        `rl.price_level = ANY(${this.formatNumberArray(priceLevels)})`,
-      );
-      priceFilterApplied = true;
     }
 
     const connectionConditions: Prisma.Sql[] = [];
@@ -177,15 +178,18 @@ filtered_restaurants AS (
     r.entity_id,
     r.name,
     r.aliases,
+    r.location_key,
     r.restaurant_quality_score,
-    r.restaurant_attributes
+    r.restaurant_attributes,
+    r.price_level,
+    r.price_level_updated_at
   FROM core_entities r
   WHERE ${restaurantWhereSql}
 )`;
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.restaurant_quality_score, r.restaurant_attributes
+  SELECT r.entity_id, r.name, r.aliases, r.location_key, r.restaurant_quality_score, r.restaurant_attributes, r.price_level, r.price_level_updated_at
   FROM core_entities r
   WHERE ${restaurantWherePreview}
 )`.trim();
@@ -203,9 +207,11 @@ filtered_locations AS (
     rl.region,
     rl.country,
     rl.postal_code,
-    rl.price_level,
-    rl.price_level_updated_at,
-    rl.metadata,
+    rl.phone_number,
+    rl.website_url,
+    rl.hours,
+    rl.utc_offset_minutes,
+    rl.time_zone,
     rl.is_primary,
     rl.last_polled_at,
     rl.created_at,
@@ -215,29 +221,46 @@ filtered_locations AS (
   WHERE ${locationWhereSql}
     AND rl.latitude IS NOT NULL
     AND rl.longitude IS NOT NULL
+    AND rl.google_place_id IS NOT NULL
+    AND rl.address IS NOT NULL
 )`;
 
     const filteredLocationsPreview = `
 filtered_locations AS (
-  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.price_level, rl.price_level_updated_at, rl.metadata, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
+  SELECT rl.location_id, rl.restaurant_id, rl.google_place_id, rl.latitude, rl.longitude, rl.address, rl.city, rl.region, rl.country, rl.postal_code, rl.phone_number, rl.website_url, rl.hours, rl.utc_offset_minutes, rl.time_zone, rl.is_primary, rl.last_polled_at, rl.created_at, rl.updated_at
   FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
-  WHERE ${locationWherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL
+  WHERE ${locationWherePreview} AND rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
 )`.trim();
+
+    const distanceOrderSql =
+      searchCenter &&
+      Number.isFinite(searchCenter.lat) &&
+      Number.isFinite(searchCenter.lng)
+        ? Prisma.sql`(POWER(fl.latitude - ${searchCenter.lat}, 2) + POWER(fl.longitude - ${searchCenter.lng}, 2))`
+        : null;
+    const selectedOrderSql = distanceOrderSql
+      ? Prisma.sql`fl.restaurant_id, ${distanceOrderSql} ASC, fl.updated_at DESC`
+      : Prisma.sql`fl.restaurant_id, fl.updated_at DESC`;
+    const distanceOrderPreview = distanceOrderSql
+      ? `(POWER(fl.latitude - ${searchCenter?.lat ?? 0}, 2) + POWER(fl.longitude - ${
+          searchCenter?.lng ?? 0
+        }, 2))`
+      : null;
 
     const selectedLocationsCte = Prisma.sql`
 selected_locations AS (
   SELECT DISTINCT ON (fl.restaurant_id)
     fl.*
   FROM filtered_locations fl
-  ORDER BY fl.restaurant_id, fl.is_primary DESC, fl.updated_at DESC
+  ORDER BY ${selectedOrderSql}
 )`;
 
     const selectedLocationsPreview = `
 selected_locations AS (
   SELECT DISTINCT ON (fl.restaurant_id) fl.*
   FROM filtered_locations fl
-  ORDER BY fl.restaurant_id, fl.is_primary DESC, fl.updated_at DESC
+  ORDER BY fl.restaurant_id${distanceOrderPreview ? `, ${distanceOrderPreview} ASC` : ''}, fl.updated_at DESC
 )`.trim();
 
     const locationAggregatesCte = Prisma.sql`
@@ -256,18 +279,24 @@ location_aggregates AS (
         'region', rl.region,
         'country', rl.country,
         'postalCode', rl.postal_code,
-        'priceLevel', rl.price_level,
-        'priceLevelUpdatedAt', rl.price_level_updated_at,
-        'metadata', rl.metadata,
+        'phoneNumber', rl.phone_number,
+        'websiteUrl', rl.website_url,
+        'hours', rl.hours,
+        'utcOffsetMinutes', rl.utc_offset_minutes,
+        'timeZone', rl.time_zone,
         'isPrimary', rl.is_primary,
         'lastPolledAt', rl.last_polled_at,
         'createdAt', rl.created_at,
         'updatedAt', rl.updated_at
       )
-      ORDER BY rl.is_primary DESC, rl.updated_at DESC
+      ORDER BY rl.updated_at DESC
     ) AS locations_json
   FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  WHERE rl.latitude IS NOT NULL
+    AND rl.longitude IS NOT NULL
+    AND rl.google_place_id IS NOT NULL
+    AND rl.address IS NOT NULL
   GROUP BY rl.restaurant_id
 )`;
 
@@ -287,18 +316,21 @@ location_aggregates AS (
         'region', rl.region,
         'country', rl.country,
         'postalCode', rl.postal_code,
-        'priceLevel', rl.price_level,
-        'priceLevelUpdatedAt', rl.price_level_updated_at,
-        'metadata', rl.metadata,
+        'phoneNumber', rl.phone_number,
+        'websiteUrl', rl.website_url,
+        'hours', rl.hours,
+        'utcOffsetMinutes', rl.utc_offset_minutes,
+        'timeZone', rl.time_zone,
         'isPrimary', rl.is_primary,
         'lastPolledAt', rl.last_polled_at,
         'createdAt', rl.created_at,
         'updatedAt', rl.updated_at
       )
-      ORDER BY rl.is_primary DESC, rl.updated_at DESC
+      ORDER BY rl.updated_at DESC
     ) AS locations_json
   FROM core_restaurant_locations rl
   JOIN filtered_restaurants fr ON fr.entity_id = rl.restaurant_id
+  WHERE rl.latitude IS NOT NULL AND rl.longitude IS NOT NULL AND rl.google_place_id IS NOT NULL AND rl.address IS NOT NULL
   GROUP BY rl.restaurant_id
 )`.trim();
 
@@ -340,6 +372,13 @@ filtered_connections AS (
     fr.name AS restaurant_name,
     fr.aliases AS restaurant_aliases,
     fr.restaurant_quality_score,
+    fr.location_key AS restaurant_location_key,
+    drr.rank_score_display AS restaurant_display_score,
+    drr.rank_percentile AS restaurant_display_percentile,
+    drc.rank_score_display AS connection_display_score,
+    drc.rank_percentile AS connection_display_percentile,
+    fr.price_level AS restaurant_price_level,
+    fr.price_level_updated_at AS restaurant_price_level_updated_at,
     sl.location_id,
     sl.google_place_id,
     sl.latitude,
@@ -349,9 +388,11 @@ filtered_connections AS (
     sl.region,
     sl.country,
     sl.postal_code,
-    sl.price_level,
-    sl.price_level_updated_at,
-    sl.metadata AS location_metadata,
+    sl.phone_number,
+    sl.website_url,
+    sl.hours,
+    sl.utc_offset_minutes,
+    sl.time_zone,
     sl.is_primary AS location_is_primary,
     sl.last_polled_at AS location_last_polled_at,
     sl.created_at AS location_created_at,
@@ -364,6 +405,14 @@ filtered_connections AS (
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN core_display_rank_scores drr
+    ON drr.subject_type = 'restaurant'
+    AND drr.subject_id = fr.entity_id
+    AND drr.location_key = fr.location_key
+  LEFT JOIN core_display_rank_scores drc
+    ON drc.subject_type = 'connection'
+    AND drc.subject_id = c.connection_id
+    AND drc.location_key = fr.location_key
   LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
   JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${connectionWhereSql}
@@ -373,12 +422,17 @@ filtered_connections AS (
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
          rvt.total_upvotes AS restaurant_total_upvotes, rvt.total_mentions AS restaurant_total_mentions,
-         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.price_level, sl.price_level_updated_at, sl.metadata AS location_metadata, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,
+         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.location_key AS restaurant_location_key,
+         drr.rank_score_display AS restaurant_display_score, drr.rank_percentile AS restaurant_display_percentile,
+         drc.rank_score_display AS connection_display_score, drc.rank_percentile AS connection_display_percentile,
+         fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,
          f.name AS food_name, f.aliases AS food_aliases
   FROM core_connections c
   JOIN filtered_restaurants fr ON fr.entity_id = c.restaurant_id
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
+  LEFT JOIN core_display_rank_scores drr ON drr.subject_type = 'restaurant' AND drr.subject_id = fr.entity_id AND drr.location_key = fr.location_key
+  LEFT JOIN core_display_rank_scores drc ON drc.subject_type = 'connection' AND drc.subject_id = c.connection_id AND drc.location_key = fr.location_key
   LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
   JOIN core_entities f ON f.entity_id = c.food_id
   WHERE ${connectionWherePreview}

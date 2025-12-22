@@ -3,6 +3,21 @@ import { DISTANCE_MAX_DECIMALS, DISTANCE_MIN_DECIMALS } from '../constants/searc
 export const capitalizeFirst = (value: string): string =>
   value.length ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
+export const formatCoverageLabel = (value?: string | null): string | null => {
+  if (!value || typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.replace(/[_-]+/g, ' ').trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => capitalizeFirst(word))
+    .join(' ');
+};
+
 const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
   if (!value || typeof value !== 'string') {
     return null;

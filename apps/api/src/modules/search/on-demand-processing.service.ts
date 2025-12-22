@@ -270,7 +270,7 @@ export class OnDemandProcessingService {
     }
 
     const metadata = this.parseMetadata(record.metadata);
-    const { safeIntervalMs, subredditName } = await this.resolveSubredditInfo(
+    const { safeIntervalMs, subredditNames } = await this.resolveSubredditInfo(
       normalizedLocationKey,
     );
     const decision = await this.shouldRunImmediately(
@@ -359,7 +359,7 @@ export class OnDemandProcessingService {
       };
     }
 
-    const subreddits = subredditName ? [subredditName] : [];
+    const subreddits = subredditNames;
 
     if (!subreddits.length) {
       const updatedMetadata: OnDemandMetadata = {
@@ -789,28 +789,51 @@ export class OnDemandProcessingService {
 
   private async resolveSubredditInfo(locationKey: string): Promise<{
     safeIntervalMs: number;
-    subredditName: string | null;
+    subredditNames: string[];
   }> {
-    const subreddit = await this.prisma.subreddit.findFirst({
+    const coverageMatches = await this.prisma.subreddit.findMany({
       where: {
-        name: {
+        isActive: true,
+        coverageKey: {
           equals: locationKey,
           mode: 'insensitive',
         },
-        isActive: true,
       },
       select: { name: true, safeIntervalDays: true },
     });
 
-    const safeIntervalDays =
-      typeof subreddit?.safeIntervalDays === 'number' &&
-      Number.isFinite(subreddit.safeIntervalDays) &&
-      subreddit.safeIntervalDays > 0
-        ? subreddit.safeIntervalDays
-        : 1;
+    const rows =
+      coverageMatches.length > 0
+        ? coverageMatches
+        : await this.prisma.subreddit.findMany({
+            where: {
+              isActive: true,
+              name: {
+                equals: locationKey,
+                mode: 'insensitive',
+              },
+            },
+            select: { name: true, safeIntervalDays: true },
+          });
+
+    const subredditNames = Array.from(new Set(rows.map((row) => row.name)));
+
+    const safeIntervalDays = rows.reduce<number | null>((minValue, row) => {
+      if (
+        typeof row.safeIntervalDays === 'number' &&
+        Number.isFinite(row.safeIntervalDays) &&
+        row.safeIntervalDays > 0
+      ) {
+        if (minValue === null || row.safeIntervalDays < minValue) {
+          return row.safeIntervalDays;
+        }
+      }
+      return minValue;
+    }, null);
+
     return {
-      safeIntervalMs: safeIntervalDays * MS_PER_DAY,
-      subredditName: subreddit?.name ?? null,
+      safeIntervalMs: (safeIntervalDays ?? 1) * MS_PER_DAY,
+      subredditNames,
     };
   }
 
@@ -1030,7 +1053,10 @@ export class OnDemandProcessingService {
       return position * this.estimatedJobMs;
     } catch (error) {
       this.logger.debug('Unable to estimate on-demand queue delay', {
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
       });
       return this.estimatedJobMs;
     }

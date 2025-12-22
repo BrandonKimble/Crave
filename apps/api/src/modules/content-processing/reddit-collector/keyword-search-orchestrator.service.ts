@@ -167,13 +167,16 @@ export class KeywordSearchOrchestratorService
       for (const planEntry of sortPlanEntries) {
         const { sort, timeFilter, fallbackTimeFilter, minResultsForFallback } =
           planEntry;
+        const resolvedTimeFilter = this.normalizeTimeFilter(timeFilter);
+        const resolvedFallbackTimeFilter =
+          this.normalizeTimeFilter(fallbackTimeFilter);
         const batchSearchResult =
           await this.redditService.batchEntityKeywordSearch(
             subreddit,
             entityNames,
             {
               sort,
-              timeFilter,
+              timeFilter: resolvedTimeFilter,
               limit: this.keywordSearchLimit,
               batchDelay: 1200, // 1.2 seconds between searches for rate limiting
             },
@@ -186,7 +189,7 @@ export class KeywordSearchOrchestratorService
 
         sortSummaries.push({
           sort,
-          timeFilter,
+          timeFilter: resolvedTimeFilter,
           totalPosts: batchSearchResult.metadata.totalPosts,
           totalComments: batchSearchResult.metadata.totalComments,
           successfulSearches: batchSearchResult.metadata.successfulSearches,
@@ -205,7 +208,7 @@ export class KeywordSearchOrchestratorService
           batchSearchResult.metadata.totalPosts +
           batchSearchResult.metadata.totalComments;
         if (
-          fallbackTimeFilter &&
+          resolvedFallbackTimeFilter &&
           typeof minResultsForFallback === 'number' &&
           totalItems < minResultsForFallback
         ) {
@@ -215,7 +218,7 @@ export class KeywordSearchOrchestratorService
               entityNames,
               {
                 sort,
-                timeFilter: fallbackTimeFilter,
+                timeFilter: resolvedFallbackTimeFilter,
                 limit: this.keywordSearchLimit,
                 batchDelay: 1200,
               },
@@ -228,7 +231,7 @@ export class KeywordSearchOrchestratorService
 
           sortSummaries.push({
             sort,
-            timeFilter: fallbackTimeFilter,
+            timeFilter: resolvedFallbackTimeFilter,
             fallbackUsed: true,
             totalPosts: fallbackResult.metadata.totalPosts,
             totalComments: fallbackResult.metadata.totalComments,
@@ -691,6 +694,28 @@ export class KeywordSearchOrchestratorService
     const unique = Array.from(new Set(parsed));
 
     return unique.length > 0 ? unique : defaultSorts;
+  }
+
+  private normalizeTimeFilter(
+    value: unknown,
+  ): KeywordSearchSortPlan['timeFilter'] | undefined {
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.trim().toLowerCase();
+    const allowed: KeywordSearchSortPlan['timeFilter'][] = [
+      'hour',
+      'day',
+      'week',
+      'month',
+      'year',
+      'all',
+    ];
+
+    return allowed.includes(normalized as KeywordSearchSortPlan['timeFilter'])
+      ? (normalized as KeywordSearchSortPlan['timeFilter'])
+      : undefined;
   }
 
   /**

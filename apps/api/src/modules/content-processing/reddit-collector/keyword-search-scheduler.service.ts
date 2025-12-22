@@ -36,6 +36,11 @@ const KEYWORD_ENTITY_TYPES: EntityType[] = [
   'restaurant_attribute',
 ];
 
+type CoverageKeyRecord = {
+  coverageKey: string | null;
+  name: string;
+} | null;
+
 /**
  * Keyword Search Scheduler Service
  *
@@ -60,6 +65,7 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
   private config!: KeywordSearchConfig;
   private schedules = new Map<string, KeywordSearchSchedule>();
+  private readonly coverageKeyCache = new Map<string, string>();
   // Default configuration following PRD requirements
   private readonly DEFAULT_CONFIG: KeywordSearchConfig = {
     enabled: true,
@@ -176,8 +182,9 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       const since = new Date(
         Date.now() - this.config.cityWindowDays * MS_PER_DAY,
       );
+      const locationKey = await this.resolveCoverageKey(subreddit);
       const demand = await this.demandService.getTopEntitiesForLocation({
-        locationKey: subreddit,
+        locationKey,
         since,
         entityTypes: KEYWORD_ENTITY_TYPES,
         minImpressions: this.config.cityMinImpressions,
@@ -225,6 +232,38 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       // In production, this might warrant alerting or alternative handling
       return [];
     }
+  }
+
+  private async resolveCoverageKey(subreddit: string): Promise<string> {
+    const normalized = subreddit.trim().toLowerCase();
+    if (!normalized) {
+      return subreddit;
+    }
+
+    const cached = this.coverageKeyCache.get(normalized);
+    if (cached) {
+      return cached;
+    }
+
+    const record = (await this.prisma.subreddit.findFirst({
+      where: {
+        name: {
+          equals: subreddit,
+          mode: 'insensitive',
+        },
+      },
+      select: { coverageKey: true, name: true },
+    })) as CoverageKeyRecord;
+
+    const resolved =
+      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
+        ? record.coverageKey.trim().toLowerCase()
+        : record?.name
+          ? record.name.trim().toLowerCase()
+          : normalized;
+
+    this.coverageKeyCache.set(normalized, resolved);
+    return resolved;
   }
 
   /**

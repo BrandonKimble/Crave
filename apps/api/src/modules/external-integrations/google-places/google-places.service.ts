@@ -200,6 +200,14 @@ export interface GoogleFindPlaceOptions {
     lng: number;
     radiusMeters?: number;
   };
+  locationRestriction?: {
+    northEast: { lat: number; lng: number };
+    southWest: { lat: number; lng: number };
+  };
+  includedType?: string;
+  strictTypeFiltering?: boolean;
+  pageToken?: string;
+  pageSize?: number;
 }
 
 export interface GooglePlacesV1TextSearchResponse {
@@ -211,6 +219,7 @@ export interface GooglePlacesV1TextSearchResponse {
     requestDurationMs: number;
     locationBiasApplied: boolean;
     placeCount: number;
+    locationRestrictionApplied?: boolean;
   };
 }
 
@@ -589,6 +598,45 @@ export class GooglePlacesService {
       }
     }
 
+    if (options.locationRestriction) {
+      const { northEast, southWest } = options.locationRestriction;
+      if (
+        typeof northEast?.lat === 'number' &&
+        typeof northEast?.lng === 'number' &&
+        typeof southWest?.lat === 'number' &&
+        typeof southWest?.lng === 'number'
+      ) {
+        payload.locationRestriction = {
+          rectangle: {
+            low: { latitude: southWest.lat, longitude: southWest.lng },
+            high: { latitude: northEast.lat, longitude: northEast.lng },
+          },
+        };
+      }
+    }
+
+    if (options.includedType) {
+      payload.includedType = options.includedType;
+    }
+
+    if (typeof options.strictTypeFiltering === 'boolean') {
+      payload.strictTypeFiltering = options.strictTypeFiltering;
+    }
+
+    if (options.pageToken) {
+      payload.pageToken = options.pageToken;
+    }
+
+    if (
+      typeof options.pageSize === 'number' &&
+      Number.isFinite(options.pageSize)
+    ) {
+      payload.pageSize = Math.max(
+        1,
+        Math.min(Math.trunc(options.pageSize), 20),
+      );
+    }
+
     const requestStart = Date.now();
 
     try {
@@ -632,6 +680,7 @@ export class GooglePlacesService {
           requestDurationMs: duration,
           locationBiasApplied: Boolean(payload.locationBias),
           placeCount: places.length,
+          locationRestrictionApplied: Boolean(payload.locationRestriction),
         },
       };
     } catch (error) {

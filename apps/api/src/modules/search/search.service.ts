@@ -241,9 +241,8 @@ export class SearchService {
         execution.totalFoodCount,
       );
 
-      const onDemandLocationKey = request.bounds
-        ? await this.resolveLocationKey(request)
-        : null;
+      const resolvedLocationKey = await this.resolveLocationKey(request);
+      const onDemandLocationKey = request.bounds ? resolvedLocationKey : null;
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -340,6 +339,7 @@ export class SearchService {
         perRestaurantLimit,
         coverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
+        coverageKey: resolvedLocationKey ?? null,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs,
       };

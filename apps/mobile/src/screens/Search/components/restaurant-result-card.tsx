@@ -12,7 +12,7 @@ import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
-import { capitalizeFirst } from '../utils/format';
+import { capitalizeFirst, formatCoverageLabel } from '../utils/format';
 import { getQualityColor } from '../utils/quality';
 import { calculateTopFoodVisibleCount } from '../utils/top-food';
 import { InfoCircleIcon } from './metric-icons';
@@ -30,6 +30,8 @@ type RestaurantResultCardProps = {
   restaurant: RestaurantResult;
   index: number;
   restaurantsCount: number;
+  primaryCoverageKey?: string | null;
+  showCoverageLabel?: boolean;
   favoriteMap: Map<string, unknown>;
   toggleFavorite: (entityId: string, entityType: FavoriteEntityType) => Promise<void>;
   openRestaurantProfile: (
@@ -51,6 +53,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   restaurant,
   index,
   restaurantsCount,
+  primaryCoverageKey = null,
+  showCoverageLabel = false,
   favoriteMap,
   toggleFavorite,
   openRestaurantProfile,
@@ -64,12 +68,24 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   updateTopFoodMoreWidth,
 }) => {
   const isLiked = favoriteMap.has(restaurant.restaurantId);
-  const qualityColor = getQualityColor(index, restaurantsCount);
+  const qualityColor = getQualityColor(
+    index,
+    restaurantsCount,
+    restaurant.displayPercentile ?? null
+  );
   const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
   const topFoodItems = restaurant.topFood ?? [];
+  const displayScoreValue = restaurant.displayScore ?? restaurant.restaurantQualityScore;
+  const coverageLabel =
+    showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
+      ? formatCoverageLabel(restaurant.coverageKey)
+      : null;
   const topFoodAverage =
     topFoodItems.length > 0
-      ? topFoodItems.reduce((sum, food) => sum + (food.qualityScore ?? 0), 0) / topFoodItems.length
+      ? topFoodItems.reduce((sum, food) => {
+          const score = food.displayScore ?? food.qualityScore ?? 0;
+          return sum + score;
+        }, 0) / topFoodItems.length
       : null;
   const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
   const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
@@ -122,7 +138,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     openScoreInfo({
       type: 'restaurant',
       title: restaurant.restaurantName,
-      score: restaurant.restaurantQualityScore,
+      score: displayScoreValue,
       votes: restaurant.totalUpvotes,
       polls: restaurant.mentionCount,
     });
@@ -130,8 +146,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     openScoreInfo,
     restaurant.mentionCount,
     restaurant.restaurantName,
-    restaurant.restaurantQualityScore,
     restaurant.totalUpvotes,
+    displayScoreValue,
   ]);
 
   return (
@@ -169,9 +185,15 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 {restaurantMetaLine}
               </View>
             ) : null}
+            {coverageLabel ? (
+              <View style={styles.coverageBadge}>
+                <Text variant="caption" style={styles.coverageBadgeText}>
+                  {coverageLabel}
+                </Text>
+              </View>
+            ) : null}
             <View style={[styles.resultContent, styles.resultContentStack]}>
-              {restaurant.restaurantQualityScore !== null &&
-              restaurant.restaurantQualityScore !== undefined ? (
+              {displayScoreValue !== null && displayScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
                   <View style={[styles.restaurantMetricRow, styles.metricSupportRow]}>
                     <View style={styles.restaurantMetricLeft}>
@@ -182,7 +204,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         style={[styles.metricIcon, styles.restaurantScoreIcon]}
                       />
                       <Text variant="body" weight="semibold" style={styles.metricValue}>
-                        {restaurant.restaurantQualityScore.toFixed(1)}
+                        {displayScoreValue != null ? displayScoreValue.toFixed(1) : '—'}
                       </Text>
                       <Text
                         variant="body"

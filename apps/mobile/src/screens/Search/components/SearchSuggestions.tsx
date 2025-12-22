@@ -87,6 +87,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 ? `${match.entityId}-${index}`
                 : `${match.name}-${index}`;
               const isQuery = match.matchType === 'query' || match.entityType === 'query';
+              const locationCount =
+                typeof match.locationCount === 'number' ? match.locationCount : null;
+              const shouldShowLocationCount =
+                match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
               const leadingIcon = isQuery ? (
                 <SearchIcon size={18} color="#6b7280" strokeWidth={2} />
               ) : match.entityType === 'restaurant' ? (
@@ -106,9 +110,16 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   ]}
                 >
                   <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
-                  <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
-                    {match.name}
-                  </Text>
+                  <View style={styles.autocompleteTextGroup}>
+                    <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
+                      {match.name}
+                    </Text>
+                    {shouldShowLocationCount ? (
+                      <Text style={styles.autocompleteSecondaryText} numberOfLines={1}>
+                        {`${locationCount} locations`}
+                      </Text>
+                    ) : null}
+                  </View>
                   <View style={styles.autocompleteBadges}>
                     {match.badges?.recentQuery ? (
                       <Clock size={16} color="#6b7280" strokeWidth={2} />
@@ -241,7 +252,16 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.subtitle,
     fontWeight: '600',
     color: '#111827',
+  },
+  autocompleteTextGroup: {
     flex: 1,
+    justifyContent: 'center',
+    gap: 2,
+  },
+  autocompleteSecondaryText: {
+    fontSize: FONT_SIZES.body,
+    lineHeight: LINE_HEIGHTS.body,
+    color: '#64748b',
   },
   autocompleteBadges: {
     flexDirection: 'row',

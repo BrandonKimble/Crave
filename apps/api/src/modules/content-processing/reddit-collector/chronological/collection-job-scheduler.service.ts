@@ -292,12 +292,19 @@ export class CollectionJobSchedulerService implements OnModuleInit {
 
     const now = Date.now();
     const dueSubreddits = allActiveSubreddits.filter((subreddit) => {
+      const safeIntervalDays = this.resolveSafeIntervalDays(
+        subreddit.safeIntervalDays,
+      );
+      if (!safeIntervalDays) {
+        return false;
+      }
+
       if (!subreddit.lastProcessed) {
         return true; // Never processed before, so it's due
       }
 
       const timeSinceLastProcessed = now - subreddit.lastProcessed.getTime();
-      const safeIntervalMs = subreddit.safeIntervalDays * 24 * 60 * 60 * 1000;
+      const safeIntervalMs = safeIntervalDays * 24 * 60 * 60 * 1000;
 
       return timeSinceLastProcessed >= safeIntervalMs;
     });
@@ -315,12 +322,18 @@ export class CollectionJobSchedulerService implements OnModuleInit {
 
       // Schedule each subreddit independently
       for (const subreddit of dueSubreddits) {
+        const safeIntervalDays = this.resolveSafeIntervalDays(
+          subreddit.safeIntervalDays,
+        );
+        if (!safeIntervalDays) {
+          continue;
+        }
+
         // Calculate lastProcessedTimestamp with fallback
         const lastProcessedTimestamp = subreddit.lastProcessed
           ? Math.floor(subreddit.lastProcessed.getTime() / 1000)
           : Math.floor(
-              (Date.now() - subreddit.safeIntervalDays * 24 * 60 * 60 * 1000) /
-                1000,
+              (Date.now() - safeIntervalDays * 24 * 60 * 60 * 1000) / 1000,
             );
 
         await this.scheduleChronologicalCollection(subreddit.name, {
@@ -374,9 +387,23 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       return;
     }
 
+    const safeIntervalDays = this.resolveSafeIntervalDays(
+      subredditData.safeIntervalDays,
+    );
+    if (!safeIntervalDays) {
+      this.logger.warn('Skipping next collection scheduling (no interval)', {
+        correlationId,
+        subreddit,
+      });
+      return;
+    }
+
     // Calculate next collection time
     const now = Date.now();
-    const nextDueTime = this.calculateNextDueTime(subredditData, now);
+    const nextDueTime = this.calculateNextDueTime(
+      { lastProcessed: subredditData.lastProcessed, safeIntervalDays },
+      now,
+    );
     const delayMs = nextDueTime - now;
 
     this.logger.info('Scheduling next delayed collection', {
@@ -658,6 +685,15 @@ export class CollectionJobSchedulerService implements OnModuleInit {
       throw new Error(`Subreddit ${subreddit} not found in database`);
     }
 
+    const safeIntervalDays = this.resolveSafeIntervalDays(
+      subredditData.safeIntervalDays,
+    );
+    if (!safeIntervalDays) {
+      throw new Error(
+        `Subreddit ${subreddit} is missing a valid safe interval`,
+      );
+    }
+
     const now = Date.now();
     let lastProcessedTimestamp: number;
 
@@ -668,18 +704,29 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     } else {
       // Use safe interval to calculate starting point for first collection
       lastProcessedTimestamp =
-        Math.floor(now / 1000) - subredditData.safeIntervalDays * 24 * 60 * 60;
+        Math.floor(now / 1000) - safeIntervalDays * 24 * 60 * 60;
     }
 
-    const nextDueTime = this.calculateNextDueTime(subredditData, now);
+    const nextDueTime = this.calculateNextDueTime(
+      { lastProcessed: subredditData.lastProcessed, safeIntervalDays },
+      now,
+    );
     const isDue = nextDueTime <= now;
 
     return {
       lastProcessedTimestamp,
-      safeIntervalDays: subredditData.safeIntervalDays,
+      safeIntervalDays,
       nextDueTime,
       isDue,
     };
+  }
+
+  private resolveSafeIntervalDays(
+    value: number | null | undefined,
+  ): number | null {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+      ? value
+      : null;
   }
 
   /**

@@ -5,6 +5,7 @@ import { SharedModule } from '../../../shared/shared.module';
 import { ExternalIntegrationsModule } from '../../external-integrations/external-integrations.module';
 import { EntityResolverModule } from '../entity-resolver/entity-resolver.module';
 import { QualityScoreModule } from '../quality-score/quality-score.module';
+import { RankScoreModule } from '../rank-score/rank-score.module';
 import { RepositoryModule } from '../../../repositories/repository.module';
 import { PrismaModule } from '../../../prisma/prisma.module';
 import { ArchiveStreamProcessorService } from './archive/archive-stream-processor.service';
@@ -82,6 +83,7 @@ import { BullQueueMetricsService } from './bull-queue-metrics.service';
     ExternalIntegrationsModule, // Provides LLMService for integration
     EntityResolverModule, // Provides EntityResolutionService for unified processing
     QualityScoreModule, // Provides QualityScoreService for PRD Section 5.3 compliance
+    RankScoreModule,
     RepositoryModule, // Provides repository services for database access
     BullModule.registerQueue({
       name: 'chronological-collection',

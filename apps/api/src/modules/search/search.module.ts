@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { SharedModule } from '../../shared/shared.module';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { RepositoryModule } from '../../repositories/repository.module';
+import { CoverageKeyModule } from '../coverage-key/coverage-key.module';
 import { RedditCollectorModule } from '../content-processing/reddit-collector/reddit-collector.module';
 import { EntityResolverModule } from '../content-processing/entity-resolver/entity-resolver.module';
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
@@ -26,6 +27,7 @@ import { SearchPopularityService } from './search-popularity.service';
     SharedModule,
     PrismaModule,
     RepositoryModule,
+    CoverageKeyModule,
     RedditCollectorModule,
     EntityResolverModule,
     ExternalIntegrationsModule,
