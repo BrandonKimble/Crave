@@ -290,7 +290,9 @@ const resolveExistingCoverageKey = async (
     },
   });
 
-  const resolveNumber = (value: Prisma.Decimal | number | null): number | null =>
+  const resolveNumber = (
+    value: Prisma.Decimal | number | null,
+  ): number | null =>
     value instanceof Prisma.Decimal ? value.toNumber() : value ?? null;
 
   const containing = candidates
@@ -475,12 +477,16 @@ async function onboardSubreddit() {
 
       for (const volume of volumes) {
         console.log(`\n📋 ${volume.name.toUpperCase()}`);
-        console.log(`   📈 Posts per day: ${formatNumber(volume.avgPostsPerDay)}`);
+        console.log(
+          `   📈 Posts per day: ${formatNumber(volume.avgPostsPerDay)}`,
+        );
         console.log(
           `   📊 Safe interval days: ${formatNumber(volume.safeIntervalDays)}`,
         );
         console.log(`   ✅ Active: ${volume.isActive}`);
-        console.log(`   🕐 Last calculated: ${formatDate(volume.lastCalculated)}`);
+        console.log(
+          `   🕐 Last calculated: ${formatDate(volume.lastCalculated)}`,
+        );
         console.log(
           `   🕐 Last processed: ${formatDate(volume.lastProcessed)}`,
         );
@@ -531,7 +537,9 @@ async function onboardSubreddit() {
       }
 
       const resolvedLocationName =
-        params.locationName?.trim() || existingRow?.locationName?.trim() || null;
+        params.locationName?.trim() ||
+        existingRow?.locationName?.trim() ||
+        null;
       const placeQuery =
         resolvedLocationName || buildCityQuery(params.subreddit);
 

@@ -243,9 +243,9 @@ filtered_locations AS (
       ? Prisma.sql`fl.restaurant_id, ${distanceOrderSql} ASC, fl.updated_at DESC`
       : Prisma.sql`fl.restaurant_id, fl.updated_at DESC`;
     const distanceOrderPreview = distanceOrderSql
-      ? `(POWER(fl.latitude - ${searchCenter?.lat ?? 0}, 2) + POWER(fl.longitude - ${
-          searchCenter?.lng ?? 0
-        }, 2))`
+      ? `(POWER(fl.latitude - ${
+          searchCenter?.lat ?? 0
+        }, 2) + POWER(fl.longitude - ${searchCenter?.lng ?? 0}, 2))`
       : null;
 
     const selectedLocationsCte = Prisma.sql`
@@ -260,7 +260,9 @@ selected_locations AS (
 selected_locations AS (
   SELECT DISTINCT ON (fl.restaurant_id) fl.*
   FROM filtered_locations fl
-  ORDER BY fl.restaurant_id${distanceOrderPreview ? `, ${distanceOrderPreview} ASC` : ''}, fl.updated_at DESC
+  ORDER BY fl.restaurant_id${
+    distanceOrderPreview ? `, ${distanceOrderPreview} ASC` : ''
+  }, fl.updated_at DESC
 )`.trim();
 
     const locationAggregatesCte = Prisma.sql`

@@ -1920,9 +1920,7 @@ const SearchScreen: React.FC = () => {
       openRestaurantProfile(targetRestaurant, results.food ?? [], 'results_sheet');
       const queryKey = (submittedQuery || trimmedQuery).trim();
       if (queryKey) {
-        lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${
-          targetRestaurant.restaurantId
-        }`;
+        lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
       }
       return;
     }

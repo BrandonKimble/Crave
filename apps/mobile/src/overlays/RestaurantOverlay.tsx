@@ -206,9 +206,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
   const hoursSummary =
     formatOperatingStatus(restaurant.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
-    locationCandidates.length === 1
-      ? '1 location'
-      : `${locationCandidates.length} locations`;
+    locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
 
   const headerComponent = (
     <View
@@ -402,8 +400,7 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
         <View style={{ flex: 1 }}>
           <Text style={styles.dishName}>{item.foodName}</Text>
           <Text style={styles.dishMeta}>
-            Dish score:{' '}
-            {(item.displayScore ?? item.qualityScore).toFixed(1)}
+            Dish score: {(item.displayScore ?? item.qualityScore).toFixed(1)}
           </Text>
         </View>
         <Text style={styles.dishActivity}>{item.activityLevel}</Text>

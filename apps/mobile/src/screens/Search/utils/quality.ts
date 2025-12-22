@@ -11,20 +11,16 @@ const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
 export const getQualityColor = (
   index: number,
   total: number,
-  percentile?: number | null,
+  percentile?: number | null
 ): string => {
   const normalizedPercentile =
     typeof percentile === 'number' && Number.isFinite(percentile)
       ? Math.max(0, Math.min(1, percentile))
       : null;
-  const tFromPercentile =
-    normalizedPercentile === null ? null : 1 - normalizedPercentile;
+  const tFromPercentile = normalizedPercentile === null ? null : 1 - normalizedPercentile;
   const t = Math.max(
     0,
-    Math.min(
-      1,
-      tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)),
-    ),
+    Math.min(1, tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)))
   );
   const next =
     QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= t) ??

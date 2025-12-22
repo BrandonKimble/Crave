@@ -99,13 +99,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       votes: item.totalUpvotes,
       polls: item.mentionCount,
     });
-  }, [
-    item.foodName,
-    item.mentionCount,
-    item.totalUpvotes,
-    displayScoreValue,
-    openScoreInfo,
-  ]);
+  }, [item.foodName, item.mentionCount, item.totalUpvotes, displayScoreValue, openScoreInfo]);
 
   return (
     <View
