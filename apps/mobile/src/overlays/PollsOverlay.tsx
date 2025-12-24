@@ -106,9 +106,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
     const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0
-        ? navBarOffset - headerHeight
-        : fallbackCollapsed;
+      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
     const collapsed = Math.max(navAlignedCollapsed, middle + 24);
     return {
       expanded,
@@ -130,37 +128,29 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     },
     [snapPoints]
   );
-  const headerBackgroundAnimatedStyle = useAnimatedStyle(
-    () => {
-      const progress = interpolate(
-        sheetY.value,
-        [snapPoints.middle, snapPoints.collapsed],
-        [1, 0],
-        Extrapolation.CLAMP
-      );
-      return { opacity: progress };
-    },
-    [snapPoints.collapsed, snapPoints.middle]
-  );
-  const headerDividerAnimatedStyle = useAnimatedStyle(
-    () => {
-      const progress = interpolate(
-        sheetY.value,
-        [snapPoints.middle, snapPoints.collapsed],
-        [1, 0],
-        Extrapolation.CLAMP
-      );
-      return { opacity: progress };
-    },
-    [snapPoints.collapsed, snapPoints.middle]
-  );
+  const headerBackgroundAnimatedStyle = useAnimatedStyle(() => {
+    const progress = interpolate(
+      sheetY.value,
+      [snapPoints.middle, snapPoints.collapsed],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    return { opacity: progress };
+  }, [snapPoints.collapsed, snapPoints.middle]);
+  const headerDividerAnimatedStyle = useAnimatedStyle(() => {
+    const progress = interpolate(
+      sheetY.value,
+      [snapPoints.middle, snapPoints.collapsed],
+      [1, 0],
+      Extrapolation.CLAMP
+    );
+    return { opacity: progress };
+  }, [snapPoints.collapsed, snapPoints.middle]);
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = (activePoll?.topic?.topicType ?? 'best_dish') as PollTopicType;
-  const totalVotes =
-    activePoll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0;
-  const coverageOverride =
-    mode === 'overlay' ? params?.coverageKey?.trim() || null : null;
+  const totalVotes = activePoll?.options.reduce((sum, option) => sum + option.voteCount, 0) ?? 0;
+  const coverageOverride = mode === 'overlay' ? params?.coverageKey?.trim() || null : null;
 
   const needsRestaurantInput =
     activePollType === 'best_dish' ||
@@ -191,8 +181,8 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       const payload = resolvedCoverageKey
         ? { coverageKey: resolvedCoverageKey }
         : bounds
-          ? { bounds }
-          : null;
+        ? { bounds }
+        : null;
 
       if (!payload) {
         if (!skipSpinner) {
@@ -204,15 +194,13 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       try {
         const response = await fetchPolls(payload);
         const normalizedPolls = response.polls ?? [];
-        const nextCoverageKey =
-          response.coverageKey ?? resolvedCoverageKey ?? coverageKey ?? null;
+        const nextCoverageKey = response.coverageKey ?? resolvedCoverageKey ?? coverageKey ?? null;
         const normalizedKey =
           typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
         if (normalizedKey) {
           lastResolvedCoverageKeyRef.current = normalizedKey;
         }
-        const nextCoverageName =
-          response.coverageName ?? normalizedPolls[0]?.coverageName ?? null;
+        const nextCoverageName = response.coverageName ?? normalizedPolls[0]?.coverageName ?? null;
 
         setPolls(normalizedPolls);
         setCoverageKey(nextCoverageKey);
@@ -227,8 +215,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         }
 
         const hasCurrentSelection =
-          selectedPollId &&
-          normalizedPolls.some((poll) => poll.pollId === selectedPollId);
+          selectedPollId && normalizedPolls.some((poll) => poll.pollId === selectedPollId);
         let nextSelection: string | null = null;
 
         if (focusPollId && normalizedPolls.some((poll) => poll.pollId === focusPollId)) {
@@ -260,13 +247,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         }
       }
     },
-    [
-      bounds,
-      coverageKey,
-      coverageOverride,
-      selectedPollId,
-      setPersistedCity,
-    ]
+    [bounds, coverageKey, coverageOverride, selectedPollId, setPersistedCity]
   );
 
   useEffect(() => {
@@ -662,11 +643,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
   const headerComponent = (
     <View
-      style={[
-        overlaySheetStyles.header,
-        overlaySheetStyles.headerTransparent,
-        { paddingTop: 0 },
-      ]}
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: 0 }]}
       onLayout={closeCutout.onHeaderLayout}
     >
       <Animated.View
@@ -675,12 +652,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       >
         {closeCutout.background}
       </Animated.View>
-      <View
-        style={[
-          overlaySheetStyles.grabHandleWrapper,
-          styles.transparentGrabHandleWrapper,
-        ]}
-      >
+      <View style={[overlaySheetStyles.grabHandleWrapper, styles.transparentGrabHandleWrapper]}>
         <Pressable
           onPress={handleClose}
           accessibilityRole="button"
@@ -716,9 +688,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           </View>
         </Pressable>
       </View>
-      <Animated.View
-        style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]}
-      />
+      <Animated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
     </View>
   );
 

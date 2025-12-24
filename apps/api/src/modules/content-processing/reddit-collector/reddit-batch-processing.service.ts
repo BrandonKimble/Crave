@@ -1306,8 +1306,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
       typeof record?.coverageKey === 'string' && record.coverageKey.trim()
         ? record.coverageKey.trim().toLowerCase()
         : record?.name
-          ? record.name.trim().toLowerCase()
-          : normalized;
+        ? record.name.trim().toLowerCase()
+        : normalized;
 
     this.coverageKeyCache.set(normalized, resolved);
     return resolved;

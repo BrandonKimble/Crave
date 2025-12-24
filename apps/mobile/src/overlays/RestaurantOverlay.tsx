@@ -71,9 +71,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 180;
     const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0
-        ? navBarOffset - headerHeight
-        : fallbackCollapsed;
+      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
     const collapsed = Math.max(navAlignedCollapsed, middle + 24);
     return {
       expanded,
@@ -464,10 +462,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   );
 };
 
-const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
-  data,
-  ...rest
-}) => {
+const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({ data, ...rest }) => {
   if (!data) {
     return null;
   }

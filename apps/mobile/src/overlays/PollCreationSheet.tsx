@@ -12,7 +12,12 @@ import { Feather } from '@expo/vector-icons';
 import { HandPlatter, Sparkles, Store, Utensils } from 'lucide-react-native';
 import { Text } from '../components';
 import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
-import { createPoll, type CreatePollPayload, type Poll, type PollTopicType } from '../services/polls';
+import {
+  createPoll,
+  type CreatePollPayload,
+  type Poll,
+  type PollTopicType,
+} from '../services/polls';
 import { colors as themeColors } from '../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import SecondaryBottomSheet from './SecondaryBottomSheet';
@@ -431,7 +436,11 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
             style={styles.input}
             autoCapitalize="none"
           />
-          {renderSuggestions(dishField, 'Keep typing to add a dish', handleSuggestionSelect(dishField))}
+          {renderSuggestions(
+            dishField,
+            'Keep typing to add a dish',
+            handleSuggestionSelect(dishField)
+          )}
         </View>
       ) : null}
 

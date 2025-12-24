@@ -44,9 +44,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop 
     const clampedMiddle = Math.min(middle, hidden - 120);
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
     const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0
-        ? navBarOffset - headerHeight
-        : fallbackCollapsed;
+      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
     const collapsed = Math.max(navAlignedCollapsed, clampedMiddle + 24);
     return {
       expanded,

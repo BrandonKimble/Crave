@@ -611,18 +611,15 @@ const SearchScreen: React.FC = () => {
     }),
     []
   );
-  const handleBottomNavLayout = React.useCallback(
-    ({ nativeEvent }: LayoutChangeEvent) => {
-      const { y, height } = nativeEvent.layout;
-      setBottomNavFrame((prev) => {
-        if (Math.abs(prev.top - y) < 0.5 && Math.abs(prev.height - height) < 0.5) {
-          return prev;
-        }
-        return { top: y, height };
-      });
-    },
-    []
-  );
+  const handleBottomNavLayout = React.useCallback(({ nativeEvent }: LayoutChangeEvent) => {
+    const { y, height } = nativeEvent.layout;
+    setBottomNavFrame((prev) => {
+      if (Math.abs(prev.top - y) < 0.5 && Math.abs(prev.height - height) < 0.5) {
+        return prev;
+      }
+      return { top: y, height };
+    });
+  }, []);
   const openNow = useSearchStore((state) => state.openNow);
   const setOpenNow = useSearchStore((state) => state.setOpenNow);
   const priceLevels = useSearchStore((state) => state.priceLevels);
