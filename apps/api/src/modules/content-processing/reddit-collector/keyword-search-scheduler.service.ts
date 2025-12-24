@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { EntityType } from '@prisma/client';
+import { CoverageSourceType, EntityType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { SearchDemandService } from '../../analytics/search-demand.service';
 import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
@@ -245,12 +245,13 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       return cached;
     }
 
-    const record = (await this.prisma.subreddit.findFirst({
+    const record = (await this.prisma.coverageArea.findFirst({
       where: {
         name: {
           equals: subreddit,
           mode: 'insensitive',
         },
+        sourceType: CoverageSourceType.all,
       },
       select: { coverageKey: true, name: true },
     })) as CoverageKeyRecord;
@@ -475,8 +476,8 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
   private async loadActiveSubreddits(): Promise<string[]> {
-    const records = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const records = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: { name: true },
       orderBy: { name: 'asc' },
     });

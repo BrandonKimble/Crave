@@ -1,10 +1,15 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '@liaoliaots/nestjs-redis';
 import { EntityType, Entity, Prisma } from '@prisma/client';
 import * as stringSimilarity from 'string-similarity';
+import { createHash } from 'crypto';
+import { Redis } from 'ioredis';
+import { Counter } from 'prom-client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { EntityRepository } from '../../../repositories/entity.repository';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { MetricsService } from '../../metrics/metrics.service';
 import { AliasManagementService } from './alias-management.service';
 import {
   EntityResolutionInput,
@@ -15,6 +20,37 @@ import {
   FuzzyMatchResult,
   ContextualAttributeInput,
 } from './entity-resolution.types';
+
+type EntityResolutionCacheLayer = 'memory' | 'redis';
+
+interface EntityResolutionCachePayload {
+  entityId: string | null;
+  confidence: number;
+  resolutionTier: 'exact' | 'alias' | 'fuzzy' | 'unmatched';
+  matchedName?: string;
+}
+
+interface EntityResolutionCacheEntry {
+  payload: EntityResolutionCachePayload;
+  cachedAt: string;
+  version: string;
+}
+
+interface EntityResolutionCacheStats {
+  total: number;
+  memoryHits: number;
+  redisHits: number;
+  misses: number;
+}
+
+interface EntityResolutionCacheConfig {
+  redisKey?: string;
+  ttlSeconds?: number;
+  negativeTtlSeconds?: number;
+  localTtlSeconds?: number;
+  localMaxEntries?: number;
+  version?: string;
+}
 
 /**
  * Three-tier entity resolution service
@@ -29,11 +65,26 @@ import {
 export class EntityResolutionService implements OnModuleInit {
   private logger!: LoggerService;
   private dryRunEnabled = false;
+  private redisClient: Redis | null = null;
+  private cacheRedisKey = 'entity-resolution';
+  private cacheVersion = 'v1';
+  private cacheTtlSeconds = 0;
+  private cacheNegativeTtlSeconds = 0;
+  private cacheLocalTtlMs = 0;
+  private cacheLocalMaxEntries = 0;
+  private memoryCache = new Map<
+    string,
+    { entry: EntityResolutionCacheEntry; expiresAt: number }
+  >();
+  private cacheLookupCounter?: Counter<string>;
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly entityRepository: EntityRepository,
     private readonly aliasManagementService: AliasManagementService,
     private readonly configService: ConfigService,
+    private readonly redisService: RedisService,
+    private readonly metricsService: MetricsService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
   ) {}
 
@@ -41,6 +92,51 @@ export class EntityResolutionService implements OnModuleInit {
     this.logger = this.loggerService.setContext('EntityResolutionService');
     this.dryRunEnabled =
       this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
+
+    const cacheConfig =
+      this.configService.get<EntityResolutionCacheConfig>(
+        'entityResolution.cache',
+      ) ?? {};
+    this.cacheRedisKey = cacheConfig?.redisKey ?? 'entity-resolution';
+    this.cacheVersion = cacheConfig?.version ?? 'v1';
+    const ttlSeconds =
+      typeof cacheConfig?.ttlSeconds === 'number' ? cacheConfig.ttlSeconds : 0;
+    const negativeTtlSeconds =
+      typeof cacheConfig?.negativeTtlSeconds === 'number'
+        ? cacheConfig.negativeTtlSeconds
+        : 0;
+    this.cacheTtlSeconds = Math.max(0, ttlSeconds);
+    this.cacheNegativeTtlSeconds = Math.max(0, negativeTtlSeconds);
+    if (this.cacheTtlSeconds <= 0) {
+      this.cacheNegativeTtlSeconds = 0;
+    } else if (this.cacheNegativeTtlSeconds > this.cacheTtlSeconds) {
+      this.cacheNegativeTtlSeconds = this.cacheTtlSeconds;
+    }
+
+    const localTtlSeconds =
+      typeof cacheConfig?.localTtlSeconds === 'number'
+        ? cacheConfig.localTtlSeconds
+        : 0;
+    const localMaxEntries =
+      typeof cacheConfig?.localMaxEntries === 'number'
+        ? cacheConfig.localMaxEntries
+        : 0;
+    if (this.cacheTtlSeconds > 0) {
+      const localTtlMs = Math.max(0, localTtlSeconds * 1000);
+      this.cacheLocalTtlMs =
+        localTtlMs > 0 ? Math.min(localTtlMs, this.cacheTtlSeconds * 1000) : 0;
+      this.cacheLocalMaxEntries = Math.max(0, localMaxEntries);
+    } else {
+      this.cacheLocalTtlMs = 0;
+      this.cacheLocalMaxEntries = 0;
+    }
+
+    this.redisClient = this.redisService.getOrThrow();
+    this.cacheLookupCounter = this.metricsService.getCounter({
+      name: 'entity_resolution_cache_lookups_total',
+      help: 'Entity resolution cache lookups',
+      labelNames: ['layer', 'result'],
+    });
   }
 
   private readonly restaurantNonDistinctTokens = new Set<string>([
@@ -158,9 +254,42 @@ export class EntityResolutionService implements OnModuleInit {
       const globalNewEntityMap = new Map<string, EntityResolutionResult>();
       let newEntitiesCreated = 0;
 
+      const cacheEnabled = this.shouldUseEntityResolutionCache(resolveConfig);
+      const cacheFallback: {
+        cachedResults: EntityResolutionResult[];
+        pendingEntities: EntityResolutionInput[];
+        cacheStats: EntityResolutionCacheStats | null;
+      } = {
+        cachedResults: [],
+        pendingEntities: entities,
+        cacheStats: null,
+      };
+      const { cachedResults, pendingEntities, cacheStats } = cacheEnabled
+        ? await this.resolveEntitiesFromCache(entities, resolveConfig)
+        : cacheFallback;
+
+      if (cacheStats) {
+        this.logger.debug('Entity resolution cache stats', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'resolve_batch',
+          ...cacheStats,
+        });
+      }
+
+      results.push(...cachedResults);
+      cachedResults.forEach((result) => {
+        if (result.entityId) {
+          tempIdToEntityIdMap.set(result.tempId, result.entityId);
+        }
+      });
+
       // Process entities in batches for optimal performance
-      for (let i = 0; i < entities.length; i += resolveConfig.batchSize) {
-        const batch = entities.slice(i, i + resolveConfig.batchSize);
+      for (
+        let i = 0;
+        i < pendingEntities.length;
+        i += resolveConfig.batchSize
+      ) {
+        const batch = pendingEntities.slice(i, i + resolveConfig.batchSize);
         const batchResults = await this.processBatch(
           batch,
           resolveConfig,
@@ -177,6 +306,14 @@ export class EntityResolutionService implements OnModuleInit {
         });
 
         newEntitiesCreated += batchResults.newEntitiesCreated;
+      }
+
+      if (cacheEnabled) {
+        await this.setCachedEntityResolutionResults(
+          results,
+          resolveConfig,
+          cachedResults.map((result) => result.tempId),
+        );
       }
 
       const processingTime = Date.now() - startTime;
@@ -1079,6 +1216,376 @@ export class EntityResolutionService implements OnModuleInit {
     const normalized =
       typeof locationKey === 'string' ? locationKey.trim().toLowerCase() : '';
     return normalized.length ? normalized : 'global';
+  }
+
+  private shouldUseEntityResolutionCache(
+    config: EntityResolutionConfig,
+  ): boolean {
+    if (config.allowEntityCreation) {
+      return false;
+    }
+    if (this.cacheTtlSeconds <= 0) {
+      return false;
+    }
+    const hasMemoryLayer =
+      this.cacheLocalMaxEntries > 0 && this.cacheLocalTtlMs > 0;
+    const hasCacheLayer = hasMemoryLayer || Boolean(this.redisClient);
+    return hasCacheLayer;
+  }
+
+  private async resolveEntitiesFromCache(
+    entities: EntityResolutionInput[],
+    config: EntityResolutionConfig,
+  ): Promise<{
+    cachedResults: EntityResolutionResult[];
+    pendingEntities: EntityResolutionInput[];
+    cacheStats: EntityResolutionCacheStats;
+  }> {
+    const cachedResults: EntityResolutionResult[] = [];
+    const pendingEntities: EntityResolutionInput[] = [];
+    const pendingRedis: Array<{
+      entity: EntityResolutionInput;
+      cacheKey: string;
+    }> = [];
+    const memoryEnabled =
+      this.cacheLocalMaxEntries > 0 && this.cacheLocalTtlMs > 0;
+    const redisEnabled = Boolean(this.redisClient);
+    let memoryHits = 0;
+
+    for (const entity of entities) {
+      const cacheKey = this.buildEntityResolutionCacheKey(entity, config);
+      if (!cacheKey) {
+        pendingEntities.push(entity);
+        continue;
+      }
+
+      if (memoryEnabled) {
+        const memoryHit = this.getMemoryCachedEntityResolution(cacheKey);
+        if (memoryHit) {
+          memoryHits += 1;
+          this.recordCacheLookup('memory', 'hit');
+          cachedResults.push(
+            this.buildResultFromCache(entity, memoryHit.payload),
+          );
+          continue;
+        }
+        this.recordCacheLookup('memory', 'miss');
+      }
+      pendingRedis.push({ entity, cacheKey });
+    }
+
+    let redisHits = 0;
+    if (pendingRedis.length > 0 && redisEnabled && this.redisClient) {
+      const keys = pendingRedis.map((item) => item.cacheKey);
+      const rawValues = await this.redisClient.mget(...keys);
+      for (let index = 0; index < pendingRedis.length; index += 1) {
+        const raw = rawValues[index];
+        const { entity, cacheKey } = pendingRedis[index];
+        if (!raw) {
+          this.recordCacheLookup('redis', 'miss');
+          pendingEntities.push(entity);
+          continue;
+        }
+
+        const parsed = this.parseEntityResolutionCacheEntry(raw);
+        if (!parsed) {
+          this.recordCacheLookup('redis', 'miss');
+          pendingEntities.push(entity);
+          continue;
+        }
+
+        this.recordCacheLookup('redis', 'hit');
+        redisHits += 1;
+        cachedResults.push(this.buildResultFromCache(entity, parsed.payload));
+        this.setMemoryCachedEntityResolution(cacheKey, parsed);
+      }
+    } else {
+      pendingEntities.push(...pendingRedis.map((item) => item.entity));
+    }
+
+    const total = entities.length;
+    const misses = total - memoryHits - redisHits;
+
+    return {
+      cachedResults,
+      pendingEntities,
+      cacheStats: {
+        total,
+        memoryHits,
+        redisHits,
+        misses,
+      },
+    };
+  }
+
+  private buildResultFromCache(
+    entity: EntityResolutionInput,
+    payload: EntityResolutionCachePayload,
+  ): EntityResolutionResult {
+    return {
+      tempId: entity.tempId,
+      entityId: payload.entityId,
+      confidence: payload.confidence,
+      resolutionTier: payload.resolutionTier,
+      matchedName: payload.matchedName,
+      originalInput: entity,
+    };
+  }
+
+  private buildEntityResolutionCacheKey(
+    entity: EntityResolutionInput,
+    config: EntityResolutionConfig,
+  ): string | null {
+    const normalizedName =
+      typeof entity.normalizedName === 'string'
+        ? entity.normalizedName.trim().toLowerCase()
+        : '';
+    if (!normalizedName) {
+      return null;
+    }
+
+    const tokens = this.buildEntityResolutionCacheTokens(entity);
+    const tokenSignature = this.hashString(tokens.join('|'));
+    const cacheSignature = JSON.stringify({
+      version: this.cacheVersion,
+      entityType: entity.entityType,
+      locationKey:
+        entity.entityType === 'restaurant'
+          ? this.normalizeLocationKey(entity.locationKey)
+          : 'global',
+      tokens: tokenSignature,
+      config: {
+        enableFuzzyMatching: config.enableFuzzyMatching,
+        fuzzyMatchThreshold: config.fuzzyMatchThreshold,
+        maxEditDistance: config.maxEditDistance,
+        allowEntityCreation: config.allowEntityCreation,
+        confidenceThresholds: config.confidenceThresholds,
+      },
+    });
+    const hash = this.hashString(cacheSignature);
+    return `${this.cacheRedisKey}:${hash}`;
+  }
+
+  private buildEntityResolutionCacheTokens(
+    entity: EntityResolutionInput,
+  ): string[] {
+    const rawTokens = [
+      entity.normalizedName,
+      entity.originalText,
+      ...(entity.aliases ?? []),
+    ];
+    const normalized = rawTokens
+      .map((value) => (typeof value === 'string' ? value.trim() : ''))
+      .filter((value) => value.length > 0)
+      .map((value) => value.toLowerCase());
+    return Array.from(new Set(normalized)).sort();
+  }
+
+  private parseEntityResolutionCacheEntry(
+    raw: string,
+  ): EntityResolutionCacheEntry | null {
+    try {
+      const parsed = JSON.parse(raw) as EntityResolutionCacheEntry;
+      if (!parsed || parsed.version !== this.cacheVersion) {
+        return null;
+      }
+      if (!parsed.payload) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  private getMemoryCachedEntityResolution(
+    key: string,
+  ): EntityResolutionCacheEntry | null {
+    if (this.cacheLocalMaxEntries <= 0 || this.cacheLocalTtlMs <= 0) {
+      return null;
+    }
+    const entry = this.memoryCache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.memoryCache.delete(key);
+      return null;
+    }
+    this.memoryCache.delete(key);
+    this.memoryCache.set(key, entry);
+    return entry.entry;
+  }
+
+  private setMemoryCachedEntityResolution(
+    key: string,
+    entry: EntityResolutionCacheEntry,
+  ): void {
+    if (this.cacheLocalMaxEntries <= 0 || this.cacheLocalTtlMs <= 0) {
+      return;
+    }
+    const ttlMs = this.resolveCacheTtlMs(entry.payload);
+    if (ttlMs <= 0) {
+      return;
+    }
+    this.memoryCache.set(key, {
+      entry,
+      expiresAt: Date.now() + ttlMs,
+    });
+    this.pruneMemoryCache();
+  }
+
+  private pruneMemoryCache(): void {
+    if (this.cacheLocalMaxEntries <= 0) {
+      this.memoryCache.clear();
+      return;
+    }
+    while (this.memoryCache.size > this.cacheLocalMaxEntries) {
+      const oldestKey = this.memoryCache.keys().next().value as
+        | string
+        | undefined;
+      if (!oldestKey) {
+        break;
+      }
+      this.memoryCache.delete(oldestKey);
+    }
+  }
+
+  private resolveCacheTtlMs(payload: EntityResolutionCachePayload): number {
+    const ttlSeconds = payload.entityId
+      ? this.cacheTtlSeconds
+      : this.cacheNegativeTtlSeconds;
+    if (ttlSeconds <= 0) {
+      return 0;
+    }
+    if (this.cacheLocalTtlMs <= 0) {
+      return 0;
+    }
+    return Math.min(this.cacheLocalTtlMs, ttlSeconds * 1000);
+  }
+
+  private resolveCacheTtlSeconds(
+    payload: EntityResolutionCachePayload,
+  ): number {
+    const ttlSeconds = payload.entityId
+      ? this.cacheTtlSeconds
+      : this.cacheNegativeTtlSeconds;
+    return Math.max(0, ttlSeconds);
+  }
+
+  private async setCachedEntityResolutionResults(
+    results: EntityResolutionResult[],
+    config: EntityResolutionConfig,
+    cachedTempIds: string[],
+  ): Promise<void> {
+    if (!this.shouldUseEntityResolutionCache(config)) {
+      return;
+    }
+
+    const cachedTempIdSet = new Set(cachedTempIds);
+    const cacheable = results.filter(
+      (
+        result,
+      ): result is EntityResolutionResult & {
+        resolutionTier: EntityResolutionCachePayload['resolutionTier'];
+      } => {
+        if (cachedTempIdSet.has(result.tempId)) {
+          return false;
+        }
+        if (
+          result.resolutionTier === 'new' ||
+          result.isNewEntity ||
+          result.primaryTempId
+        ) {
+          return false;
+        }
+        if (!result.originalInput) {
+          return false;
+        }
+        if (!this.isCacheableResolutionTier(result.resolutionTier)) {
+          return false;
+        }
+        return true;
+      },
+    );
+
+    if (cacheable.length === 0) {
+      return;
+    }
+
+    const pipeline = this.redisClient?.pipeline();
+
+    for (const result of cacheable) {
+      const cacheKey = this.buildEntityResolutionCacheKey(
+        result.originalInput,
+        config,
+      );
+      if (!cacheKey) {
+        continue;
+      }
+
+      const payload: EntityResolutionCachePayload = {
+        entityId: result.entityId,
+        confidence: result.confidence,
+        resolutionTier: result.resolutionTier,
+        matchedName: result.matchedName,
+      };
+      const ttlSeconds = this.resolveCacheTtlSeconds(payload);
+      if (ttlSeconds <= 0) {
+        continue;
+      }
+
+      const entry: EntityResolutionCacheEntry = {
+        payload,
+        cachedAt: new Date().toISOString(),
+        version: this.cacheVersion,
+      };
+
+      this.setMemoryCachedEntityResolution(cacheKey, entry);
+
+      if (pipeline) {
+        pipeline.set(cacheKey, JSON.stringify(entry), 'EX', ttlSeconds);
+      }
+    }
+
+    if (pipeline) {
+      try {
+        await pipeline.exec();
+      } catch (error) {
+        this.logger.warn('Failed to persist entity resolution cache', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'resolve_batch',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
+  }
+
+  private recordCacheLookup(
+    layer: EntityResolutionCacheLayer,
+    result: 'hit' | 'miss',
+  ): void {
+    if (!this.cacheLookupCounter) {
+      return;
+    }
+    this.cacheLookupCounter.inc({ layer, result }, 1);
+  }
+
+  private isCacheableResolutionTier(
+    tier: EntityResolutionResult['resolutionTier'],
+  ): tier is EntityResolutionCachePayload['resolutionTier'] {
+    return (
+      tier === 'exact' ||
+      tier === 'alias' ||
+      tier === 'fuzzy' ||
+      tier === 'unmatched'
+    );
+  }
+
+  private hashString(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 
   /**

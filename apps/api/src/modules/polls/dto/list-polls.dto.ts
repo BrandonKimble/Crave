@@ -9,6 +9,10 @@ export enum PollListState {
 export class ListPollsQueryDto {
   @IsOptional()
   @IsString()
+  coverageKey?: string;
+
+  @IsOptional()
+  @IsString()
   city?: string;
 
   @IsOptional()

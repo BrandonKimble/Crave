@@ -12,6 +12,8 @@ import { PollsService } from './polls.service';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
+import { QueryPollsDto } from './dto/query-polls.dto';
+import { CreatePollDto } from './dto/create-poll.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { OptionalClerkAuthGuard } from '../identity/auth/optional-clerk-auth.guard';
 import { CurrentUser } from '../../shared';
@@ -27,6 +29,18 @@ export class PollsController {
     @CurrentUser() user?: User | null,
   ) {
     return this.pollsService.listPolls(query, user ?? null);
+  }
+
+  @Post('query')
+  @UseGuards(OptionalClerkAuthGuard)
+  queryPolls(@Body() body: QueryPollsDto, @CurrentUser() user?: User | null) {
+    return this.pollsService.queryPolls(body, user ?? null);
+  }
+
+  @Post()
+  @UseGuards(ClerkAuthGuard)
+  createPoll(@Body() dto: CreatePollDto, @CurrentUser() user: User) {
+    return this.pollsService.createPoll(dto, user.userId);
   }
 
   @Get(':pollId')

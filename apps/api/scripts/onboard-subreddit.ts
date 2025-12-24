@@ -14,7 +14,7 @@ dotenv.config({ path: path.join(__dirname, '..', '.env') });
 import { NestFactory } from '@nestjs/core';
 import { getQueueToken } from '@nestjs/bull';
 import { Queue } from 'bull';
-import { Prisma } from '@prisma/client';
+import { CoverageSourceType, Prisma } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { GooglePlacesService } from '../src/modules/external-integrations/google-places';
@@ -39,7 +39,6 @@ type ParsedArgs = {
   subreddit: string | null;
   centerLat: number | null;
   centerLng: number | null;
-  coverageKey: string | null;
   locationName: string | null;
   overwrite: boolean;
   skipVolume: boolean;
@@ -49,10 +48,9 @@ type ParsedArgs = {
 const parseArgs = (): ParsedArgs => {
   const args = process.argv.slice(2);
   const usage =
-    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts [subreddit] [centerLat centerLng] [--location-name <name>] [--coverage-key <key>] [--overwrite] [--skip-volume] [--fill-missing] (omit subreddit to batch fill missing rows)';
+    'Usage: yarn ts-node apps/api/scripts/onboard-subreddit.ts [subreddit] [centerLat centerLng] [--location-name <name>] [--overwrite] [--skip-volume] [--fill-missing] (omit subreddit to batch fill missing rows)';
 
   const positionals: string[] = [];
-  let coverageKey: string | null = null;
   let locationName: string | null = null;
   let overwrite = false;
   let skipVolume = false;
@@ -87,26 +85,11 @@ const parseArgs = (): ParsedArgs => {
       }
       continue;
     }
-    if (arg === '--coverage-key' || arg.startsWith('--coverage-key=')) {
-      if (arg.includes('=')) {
-        coverageKey = arg.split('=').slice(1).join('=').trim();
-      } else {
-        coverageKey = args[index + 1]?.trim() ?? '';
-        index += 1;
-      }
-      if (!coverageKey) {
-        throw new Error('coverage-key must be a non-empty string.');
-      }
-      continue;
-    }
     positionals.push(arg);
   }
 
   const subreddit = positionals[0]?.trim() || null;
   if (!subreddit) {
-    if (coverageKey) {
-      throw new Error(`coverage-key requires a subreddit.\n${usage}`);
-    }
     if (locationName) {
       throw new Error(`location-name requires a subreddit.\n${usage}`);
     }
@@ -134,7 +117,6 @@ const parseArgs = (): ParsedArgs => {
     subreddit,
     centerLat,
     centerLng,
-    coverageKey,
     locationName,
     overwrite,
     skipVolume,
@@ -234,6 +216,41 @@ const buildLocalityCoverageKey = (
   return tokens.join('_');
 };
 
+const resolveLocalityDisplayName = (
+  addressComponents: Array<{
+    shortText?: string;
+    longText?: string;
+    types?: string[];
+  }> = [],
+  fallbackName?: string | null,
+): string | null => {
+  const lookup = (type: string): string | null => {
+    const component = addressComponents.find((entry) =>
+      entry.types?.includes(type),
+    );
+    if (!component) {
+      return null;
+    }
+    return component.shortText || component.longText || null;
+  };
+
+  const locality =
+    lookup('locality') ||
+    lookup('postal_town') ||
+    lookup('sublocality') ||
+    lookup('sublocality_level_1');
+  if (locality) {
+    return locality;
+  }
+
+  if (fallbackName) {
+    const [first] = fallbackName.split(',');
+    return first?.trim() || fallbackName.trim();
+  }
+
+  return null;
+};
+
 const buildCityQuery = (subreddit: string): string => {
   const normalized = subreddit.toLowerCase().replace(/[_-]+/g, ' ').trim();
   if (!normalized) {
@@ -273,7 +290,7 @@ const resolveExistingCoverageKey = async (
   center: { lat: number; lng: number },
   excludeName?: string,
 ): Promise<string | null> => {
-  const candidates = await prisma.subreddit.findMany({
+  const candidates = await prisma.coverageArea.findMany({
     where: {
       isActive: true,
       ...(excludeName ? { name: { not: excludeName } } : {}),
@@ -387,7 +404,6 @@ async function onboardSubreddit() {
       subreddit,
       centerLat,
       centerLng,
-      coverageKey,
       locationName,
       overwrite,
       skipVolume,
@@ -467,8 +483,8 @@ async function onboardSubreddit() {
         throw new Error('Volume calculation job did not complete in time');
       }
 
-      const volumes = await prisma.subreddit.findMany({
-        where: { isActive: true },
+      const volumes = await prisma.coverageArea.findMany({
+        where: { isActive: true, sourceType: CoverageSourceType.all },
         orderBy: { name: 'asc' },
       });
 
@@ -501,13 +517,12 @@ async function onboardSubreddit() {
       subreddit: string;
       centerLat: number | null;
       centerLng: number | null;
-      coverageKey: string | null;
       locationName: string | null;
       overwrite: boolean;
     }): Promise<void> => {
       const onlyMissing = !params.overwrite;
 
-      const existingRows = await prisma.subreddit.findMany({
+      const existingRows = await prisma.coverageArea.findMany({
         where: {
           name: {
             equals: params.subreddit,
@@ -524,6 +539,7 @@ async function onboardSubreddit() {
           viewportSwLng: true,
           coverageKey: true,
           locationName: true,
+          displayName: true,
         },
       });
       const exactMatch = existingRows.find(
@@ -668,13 +684,9 @@ async function onboardSubreddit() {
       const coverageCenter = derivedCenter;
 
       let resolvedCoverageKey =
-        params.coverageKey && params.coverageKey.trim()
-          ? normalizeCoverageKey(params.coverageKey)
+        existingRow?.coverageKey && onlyMissing
+          ? normalizeCoverageKey(existingRow.coverageKey)
           : null;
-
-      if (!resolvedCoverageKey && existingRow?.coverageKey && onlyMissing) {
-        resolvedCoverageKey = normalizeCoverageKey(existingRow.coverageKey);
-      }
 
       if (!resolvedCoverageKey && coverageCenter) {
         resolvedCoverageKey = await resolveExistingCoverageKey(
@@ -690,20 +702,26 @@ async function onboardSubreddit() {
           localityKey ?? normalizeCoverageKey(params.subreddit);
       }
 
-      if (!resolvedCoverageKey) {
-        resolvedCoverageKey = normalizeCoverageKey(params.subreddit);
-      }
+      const resolvedDisplayName = resolveLocalityDisplayName(
+        placeAddressComponents,
+        resolvedLocationName,
+      );
 
       console.log(`   Coverage key: ${resolvedCoverageKey}`);
 
-      const createData: Prisma.SubredditCreateInput = {
+      const createData: Prisma.CoverageAreaCreateInput = {
         name: params.subreddit,
         coverageKey: resolvedCoverageKey,
+        sourceType: CoverageSourceType.all,
         isActive: true,
       };
 
       if (params.locationName) {
         createData.locationName = params.locationName.trim();
+      }
+
+      if (resolvedDisplayName) {
+        createData.displayName = resolvedDisplayName;
       }
 
       if (derivedCenter) {
@@ -724,13 +742,20 @@ async function onboardSubreddit() {
         );
       }
 
-      const updateData: Prisma.SubredditUpdateInput = {};
+      const updateData: Prisma.CoverageAreaUpdateInput = {};
 
       if (
         params.locationName &&
         (!onlyMissing || !existingRow?.locationName?.trim())
       ) {
         updateData.locationName = params.locationName.trim();
+      }
+
+      if (
+        resolvedDisplayName &&
+        (!onlyMissing || !existingRow?.displayName?.trim())
+      ) {
+        updateData.displayName = resolvedDisplayName;
       }
 
       if (!onlyMissing || !existingRow?.coverageKey) {
@@ -765,7 +790,7 @@ async function onboardSubreddit() {
       console.log('\n🗃️  Saving subreddit record...');
       if (existingRow) {
         if (Object.keys(updateData).length > 0) {
-          await prisma.subreddit.update({
+          await prisma.coverageArea.update({
             where: { name: existingRow.name },
             data: updateData,
           });
@@ -773,7 +798,7 @@ async function onboardSubreddit() {
           console.log('   No updates needed (only-missing default).');
         }
       } else {
-        await prisma.subreddit.create({ data: createData });
+        await prisma.coverageArea.create({ data: createData });
       }
     };
 
@@ -786,11 +811,13 @@ async function onboardSubreddit() {
         );
       }
 
-      const rows = await prisma.subreddit.findMany({
+      const rows = await prisma.coverageArea.findMany({
+        where: { sourceType: CoverageSourceType.all },
         select: {
           name: true,
           locationName: true,
           coverageKey: true,
+          displayName: true,
           centerLatitude: true,
           centerLongitude: true,
           viewportNeLat: true,
@@ -844,7 +871,6 @@ async function onboardSubreddit() {
             subreddit: row.name,
             centerLat: null,
             centerLng: null,
-            coverageKey: null,
             locationName: row.locationName ?? null,
             overwrite,
           });
@@ -859,7 +885,6 @@ async function onboardSubreddit() {
         subreddit,
         centerLat,
         centerLng,
-        coverageKey,
         locationName,
         overwrite,
       });

@@ -97,8 +97,9 @@ NODE_ENV=development
 DATABASE_CONNECTION_POOL_MAX=10
 DATABASE_CONNECTION_POOL_MIN=2
 
-# Moderation
-GOOGLE_MODERATION_API_KEY=your_key
+# Moderation (selected by APP_ENV)
+GOOGLE_MODERATION_API_KEY_DEV=your_key
+GOOGLE_MODERATION_API_KEY_PROD=your_key
 # Optional override for the moderation endpoint
 # GOOGLE_MODERATION_ENDPOINT=https://contentmoderation.googleapis.com/v1beta/moderations:moderateText
 

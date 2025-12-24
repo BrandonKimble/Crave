@@ -6,7 +6,6 @@ import {
 import {
   PollState,
   EntityType,
-  OnDemandReason,
   PollOptionSource,
   PollOptionResolutionStatus,
   PollTopicStatus,
@@ -17,13 +16,17 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
-import { OnDemandRequestService } from '../search/on-demand-request.service';
 import { PollsGateway } from './polls.gateway';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
-import { CreateManualPollDto } from './dto/create-manual-poll.dto';
-import { NotificationsService } from '../notifications/notifications.service';
+import {
+  PollEntitySeedService,
+  type CoverageContext,
+} from './poll-entity-seed.service';
+import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
+import { QueryPollsDto } from './dto/query-polls.dto';
+import { CreatePollDto } from './dto/create-poll.dto';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -36,9 +39,9 @@ export class PollsService {
     loggerService: LoggerService,
     private readonly sanitizer: TextSanitizerService,
     private readonly moderation: ModerationService,
-    private readonly onDemandRequestService: OnDemandRequestService,
+    private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
-    private readonly notifications: NotificationsService,
+    private readonly coverageRegistry: CoverageRegistryService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -46,11 +49,12 @@ export class PollsService {
   async listPolls(query: ListPollsQueryDto, user?: User | null) {
     const targetState =
       (query.state as PollState | undefined) ?? PollState.active;
+    const targetCoverageKey = query.coverageKey ?? query.city;
 
     const polls = await this.prisma.poll.findMany({
       where: {
-        city: query.city
-          ? { equals: query.city, mode: 'insensitive' }
+        coverageKey: targetCoverageKey
+          ? { equals: targetCoverageKey, mode: 'insensitive' }
           : undefined,
         state: targetState,
       },
@@ -65,8 +69,11 @@ export class PollsService {
             topicType: true,
             targetDishId: true,
             targetRestaurantId: true,
-            city: true,
+            targetFoodAttributeId: true,
+            targetRestaurantAttributeId: true,
+            coverageKey: true,
             title: true,
+            description: true,
             metadata: true,
           },
         },
@@ -74,101 +81,156 @@ export class PollsService {
       take: 25,
     });
 
-    return this.attachCurrentUserVotes(polls, user?.userId);
+    const enriched = await this.attachCoverageLabels(polls, targetCoverageKey);
+    return this.attachCurrentUserVotes(enriched, user?.userId);
   }
 
-  async createManualPoll(dto: CreateManualPollDto, userId: string) {
-    const question = this.sanitizer.sanitizeOrThrow(dto.question, {
-      maxLength: 500,
-    });
-    const rawDescription = dto.description
-      ? this.sanitizer.sanitizeOrThrow(dto.description, {
-          maxLength: 500,
-          allowEmpty: true,
-        })
-      : '';
-    const description = rawDescription.trim().length
-      ? rawDescription.trim()
-      : null;
-    const rawCity = dto.city
-      ? this.sanitizer.sanitizeOrThrow(dto.city, {
-          maxLength: 255,
-          allowEmpty: true,
-        })
-      : '';
+  async queryPolls(query: QueryPollsDto, user?: User | null) {
+    let coverageKey = query.coverageKey ?? null;
+    if (!coverageKey && query.bounds) {
+      const resolved = await this.coverageRegistry.resolveOrCreateCoverage({
+        bounds: query.bounds,
+      });
+      coverageKey = resolved.coverageKey ?? null;
+    }
+    const polls = await this.listPolls(
+      {
+        coverageKey: coverageKey ?? undefined,
+        state: query.state,
+      },
+      user ?? null,
+    );
+    const coverageName =
+      polls[0]?.coverageName ??
+      (coverageKey ? await this.resolveCoverageName(coverageKey) : null);
 
-    let resolvedCity = rawCity.trim().length ? rawCity.trim() : null;
-    let resolvedRegion: string | null = null;
-    let resolvedCountry: string | null = null;
+    return {
+      coverageKey,
+      coverageName,
+      polls,
+    };
+  }
+
+  async createPoll(dto: CreatePollDto, userId: string) {
+    const rawDescription = this.sanitizer.sanitizeOrThrow(dto.description, {
+      maxLength: 500,
+      allowEmpty: false,
+    });
+    const description = rawDescription.trim();
+    if (!description.length) {
+      throw new BadRequestException('Poll description is required');
+    }
+
+    const moderationDecision = await this.moderation.moderateText(description);
+    if (!moderationDecision.allowed) {
+      throw new BadRequestException(
+        `Description rejected by moderation: ${moderationDecision.reason}`,
+      );
+    }
+
+    let coverageKey = dto.coverageKey?.trim() || null;
+    if (!coverageKey && dto.bounds) {
+      const resolved = await this.coverageRegistry.resolveOrCreateCoverage({
+        bounds: dto.bounds,
+        allowCreate: false,
+      });
+      coverageKey = resolved.coverageKey ?? null;
+    }
+    if (!coverageKey) {
+      throw new BadRequestException('Unable to resolve poll location');
+    }
+
+    const coverageContext =
+      (await this.resolveCoverageContext(coverageKey)) ??
+      ({
+        coverageKey,
+        center: undefined,
+        cityLabel: null,
+        countryCode: null,
+      } satisfies CoverageContext);
+
     let targetDishId: string | null = null;
     let targetRestaurantId: string | null = null;
+    let targetFoodAttributeId: string | null = null;
+    let targetRestaurantAttributeId: string | null = null;
+    let question = '';
 
-    if (dto.topicType === PollTopicType.best_dish) {
-      if (!dto.targetDishId) {
-        throw new BadRequestException('Select a dish for this poll');
+    switch (dto.topicType) {
+      case PollTopicType.best_dish: {
+        const dish = await this.pollEntitySeedService.resolveFood({
+          entityId: dto.targetDishId ?? null,
+          name: dto.targetDishName ?? null,
+        });
+        targetDishId = dish.entityId;
+        question = this.buildPollQuestion(dto.topicType, dish.name);
+        break;
       }
-      const dish = await this.prisma.entity.findUnique({
-        where: { entityId: dto.targetDishId },
-        select: {
-          entityId: true,
-          type: true,
-          city: true,
-          region: true,
-          country: true,
-        },
-      });
-      if (!dish || dish.type !== EntityType.food) {
-        throw new BadRequestException('Invalid dish reference');
+      case PollTopicType.what_to_order: {
+        const restaurant = await this.pollEntitySeedService.resolveRestaurant({
+          entityId: dto.targetRestaurantId ?? null,
+          name: dto.targetRestaurantName ?? null,
+          coverage: coverageContext,
+          sessionToken: dto.sessionToken,
+        });
+        targetRestaurantId = restaurant.entityId;
+        question = this.buildPollQuestion(dto.topicType, restaurant.name);
+        break;
       }
-      targetDishId = dish.entityId;
-      resolvedCity = resolvedCity ?? dish.city ?? null;
-      resolvedRegion = dish.region ?? null;
-      resolvedCountry = dish.country ?? null;
-    } else {
-      if (!dto.targetRestaurantId) {
-        throw new BadRequestException('Select a restaurant for this poll');
+      case PollTopicType.best_dish_attribute: {
+        const attribute = await this.pollEntitySeedService.resolveAttribute({
+          entityId: dto.targetFoodAttributeId ?? null,
+          name: dto.targetFoodAttributeName ?? null,
+          entityType: EntityType.food_attribute,
+        });
+        targetFoodAttributeId = attribute.entityId;
+        question = this.buildPollQuestion(dto.topicType, attribute.name);
+        break;
       }
-      const restaurant = await this.prisma.entity.findUnique({
-        where: { entityId: dto.targetRestaurantId },
-        select: {
-          entityId: true,
-          type: true,
-          city: true,
-          region: true,
-          country: true,
-        },
-      });
-      if (!restaurant || restaurant.type !== EntityType.restaurant) {
-        throw new BadRequestException('Invalid restaurant reference');
+      case PollTopicType.best_restaurant_attribute: {
+        const attribute = await this.pollEntitySeedService.resolveAttribute({
+          entityId: dto.targetRestaurantAttributeId ?? null,
+          name: dto.targetRestaurantAttributeName ?? null,
+          entityType: EntityType.restaurant_attribute,
+        });
+        targetRestaurantAttributeId = attribute.entityId;
+        question = this.buildPollQuestion(dto.topicType, attribute.name);
+        break;
       }
-      targetRestaurantId = restaurant.entityId;
-      resolvedCity = resolvedCity ?? restaurant.city ?? null;
-      resolvedRegion = restaurant.region ?? null;
-      resolvedCountry = restaurant.country ?? null;
+      default: {
+        throw new BadRequestException('Unsupported poll type');
+      }
+    }
+
+    const questionModeration = await this.moderation.moderateText(question);
+    if (!questionModeration.allowed) {
+      throw new BadRequestException(
+        `Poll title rejected by moderation: ${questionModeration.reason}`,
+      );
     }
 
     const now = new Date();
-    const allowUserAdditions =
-      dto.allowUserAdditions === undefined ? true : dto.allowUserAdditions;
-
     const poll = await this.prisma.$transaction(async (tx) => {
       const topic = await tx.pollTopic.create({
         data: {
           title: question,
           description,
-          city: resolvedCity,
-          region: resolvedRegion,
-          country: resolvedCountry,
+          coverageKey,
           topicType: dto.topicType,
           targetDishId,
           targetRestaurantId,
+          targetFoodAttributeId,
+          targetRestaurantAttributeId,
           status: PollTopicStatus.archived,
-          categoryEntityIds: targetDishId ? [targetDishId] : [],
+          categoryEntityIds: [
+            targetDishId,
+            targetFoodAttributeId,
+            targetRestaurantAttributeId,
+          ].filter((value): value is string => Boolean(value)),
           seedEntityIds: [targetDishId, targetRestaurantId].filter(
             (value): value is string => Boolean(value),
           ),
           metadata: {
-            source: 'manual_admin',
+            source: 'user',
             createdBy: userId,
           },
         },
@@ -178,12 +240,11 @@ export class PollsService {
         data: {
           topicId: topic.topicId,
           question,
-          city: resolvedCity,
-          region: resolvedRegion,
+          coverageKey,
           state: PollState.active,
           scheduledFor: now,
           launchedAt: now,
-          allowUserAdditions,
+          allowUserAdditions: true,
           metadata: topic.metadata ?? Prisma.JsonNull,
         },
         include: {
@@ -196,8 +257,11 @@ export class PollsService {
               topicType: true,
               targetDishId: true,
               targetRestaurantId: true,
-              city: true,
+              targetFoodAttributeId: true,
+              targetRestaurantAttributeId: true,
+              coverageKey: true,
               title: true,
+              description: true,
               metadata: true,
             },
           },
@@ -217,22 +281,9 @@ export class PollsService {
       return createdPoll;
     });
 
-    if (dto.notifySubscribers) {
-      await this.notifications.queuePollReleaseNotification({
-        city: resolvedCity ?? undefined,
-        pollIds: [poll.pollId],
-        scheduledFor: now,
-      });
-    }
-
     this.gateway.emitPollUpdate(poll.pollId);
-    this.logger.info('Created manual poll', {
-      pollId: poll.pollId,
-      userId,
-      city: resolvedCity,
-    });
-
-    return poll;
+    const [enriched] = await this.attachCoverageLabels([poll], coverageKey);
+    return enriched;
   }
 
   async getPoll(pollId: string, user?: User | null) {
@@ -248,8 +299,11 @@ export class PollsService {
             topicType: true,
             targetDishId: true,
             targetRestaurantId: true,
-            city: true,
+            targetFoodAttributeId: true,
+            targetRestaurantAttributeId: true,
+            coverageKey: true,
             title: true,
+            description: true,
             metadata: true,
           },
         },
@@ -261,7 +315,8 @@ export class PollsService {
     }
 
     const [hydrated] = await this.attachCurrentUserVotes([poll], user?.userId);
-    return hydrated;
+    const [enriched] = await this.attachCoverageLabels([hydrated]);
+    return enriched;
   }
 
   private async attachCurrentUserVotes<
@@ -326,6 +381,22 @@ export class PollsService {
     const sanitizedLabel = this.sanitizer.sanitizeOrThrow(dto.label, {
       maxLength: 140,
     });
+    const sanitizedRestaurantName = dto.restaurantName
+      ? this.sanitizer
+          .sanitizeOrThrow(dto.restaurantName, {
+            maxLength: 140,
+            allowEmpty: true,
+          })
+          .trim()
+      : '';
+    const sanitizedDishName = dto.dishName
+      ? this.sanitizer
+          .sanitizeOrThrow(dto.dishName, {
+            maxLength: 140,
+            allowEmpty: true,
+          })
+          .trim()
+      : '';
     const moderationDecision =
       await this.moderation.moderateText(sanitizedLabel);
     if (!moderationDecision.allowed) {
@@ -338,97 +409,104 @@ export class PollsService {
       throw new BadRequestException('Poll topic metadata missing');
     }
 
+    const coverageContext =
+      (await this.resolveCoverageContext(
+        poll.coverageKey ?? poll.topic.coverageKey ?? null,
+      )) ??
+      ({
+        coverageKey: 'global',
+        center: undefined,
+        cityLabel: null,
+        countryCode: null,
+      } satisfies CoverageContext);
+
     let foodId: string | null = null;
-    let restaurantId = dto.restaurantId ?? null;
-    let fallbackEntityId = dto.entityId ?? null;
+    let restaurantId: string | null = null;
     let categoryId: string | null = null;
-
-    if (dto.dishEntityId) {
-      const dish = await this.prisma.entity.findUnique({
-        where: { entityId: dto.dishEntityId },
-        select: { entityId: true, type: true },
-      });
-      if (!dish || dish.type !== EntityType.food) {
-        throw new BadRequestException('Invalid dish reference');
-      }
-      foodId = dish.entityId;
-    }
-
-    if (!foodId && fallbackEntityId) {
-      const fallbackEntity = await this.prisma.entity.findUnique({
-        where: { entityId: fallbackEntityId },
-        select: { entityId: true, type: true },
-      });
-      if (!fallbackEntity) {
-        throw new BadRequestException('Referenced entity does not exist');
-      }
-      if (fallbackEntity.type === EntityType.food) {
-        foodId = fallbackEntity.entityId;
-      } else if (
-        fallbackEntity.type === EntityType.restaurant &&
-        !restaurantId
-      ) {
-        restaurantId = fallbackEntity.entityId;
-      } else {
-        fallbackEntityId = fallbackEntity.entityId;
-      }
-    }
-
-    if (restaurantId) {
-      const restaurant = await this.prisma.entity.findUnique({
-        where: { entityId: restaurantId },
-        select: { entityId: true, type: true },
-      });
-      if (!restaurant || restaurant.type !== EntityType.restaurant) {
-        throw new BadRequestException('Invalid restaurant reference');
-      }
-      restaurantId = restaurant.entityId;
-    }
-
-    if (poll.topic.topicType === PollTopicType.what_to_order) {
-      if (!poll.topic.targetRestaurantId) {
-        throw new BadRequestException('Poll topic is misconfigured');
-      }
-      restaurantId = poll.topic.targetRestaurantId;
-
-      if (!foodId) {
-        throw new BadRequestException('Please select a dish for this poll');
-      }
-    } else {
-      categoryId = poll.topic.targetDishId ?? null;
-      if (!restaurantId) {
-        throw new BadRequestException(
-          'Please select a restaurant for this dish poll',
-        );
-      }
-    }
-
-    const storedEntityId = foodId ?? restaurantId ?? fallbackEntityId ?? null;
-
-    if (poll.topic.topicType === PollTopicType.best_dish && !foodId) {
-      await this.onDemandRequestService.recordRequests(
-        [
-          {
-            term: sanitizedLabel,
-            entityType: EntityType.food,
-            reason: OnDemandReason.unresolved,
-            entityId: null,
-            locationKey: 'global',
-            metadata: {
-              source: 'poll_option',
-              pollId,
-              restaurantId,
-              userId,
-            },
-          },
-        ],
-        { source: 'poll_option', pollId, userId },
-      );
-    }
-
     let connectionId: string | null = null;
-    if (restaurantId && foodId) {
-      connectionId = await this.ensureConnection(restaurantId, foodId);
+    let storedEntityId: string | null = null;
+
+    switch (poll.topic.topicType) {
+      case PollTopicType.best_dish: {
+        if (!poll.topic.targetDishId) {
+          throw new BadRequestException('Poll topic is misconfigured');
+        }
+        const restaurantResult =
+          await this.pollEntitySeedService.resolveRestaurant({
+            entityId: dto.restaurantId ?? null,
+            name: sanitizedRestaurantName || sanitizedLabel,
+            coverage: coverageContext,
+            sessionToken: dto.sessionToken,
+          });
+        restaurantId = restaurantResult.entityId;
+        categoryId = poll.topic.targetDishId;
+        storedEntityId = restaurantId;
+        break;
+      }
+      case PollTopicType.what_to_order: {
+        if (!poll.topic.targetRestaurantId) {
+          throw new BadRequestException('Poll topic is misconfigured');
+        }
+        restaurantId = poll.topic.targetRestaurantId;
+        const dishResult = await this.pollEntitySeedService.resolveFood({
+          entityId: dto.dishEntityId ?? null,
+          name: sanitizedDishName || sanitizedLabel,
+        });
+        foodId = dishResult.entityId;
+        storedEntityId = foodId;
+        connectionId = await this.pollEntitySeedService.ensureConnection({
+          restaurantId,
+          foodId,
+        });
+        break;
+      }
+      case PollTopicType.best_dish_attribute: {
+        if (!poll.topic.targetFoodAttributeId) {
+          throw new BadRequestException('Poll topic is misconfigured');
+        }
+        const dishResult = await this.pollEntitySeedService.resolveFood({
+          entityId: dto.dishEntityId ?? null,
+          name: sanitizedDishName || null,
+        });
+        const restaurantResult =
+          await this.pollEntitySeedService.resolveRestaurant({
+            entityId: dto.restaurantId ?? null,
+            name: sanitizedRestaurantName || null,
+            coverage: coverageContext,
+            sessionToken: dto.sessionToken,
+          });
+        foodId = dishResult.entityId;
+        restaurantId = restaurantResult.entityId;
+        storedEntityId = foodId;
+        connectionId = await this.pollEntitySeedService.ensureConnection({
+          restaurantId,
+          foodId,
+          attributeId: poll.topic.targetFoodAttributeId,
+        });
+        break;
+      }
+      case PollTopicType.best_restaurant_attribute: {
+        if (!poll.topic.targetRestaurantAttributeId) {
+          throw new BadRequestException('Poll topic is misconfigured');
+        }
+        const restaurantResult =
+          await this.pollEntitySeedService.resolveRestaurant({
+            entityId: dto.restaurantId ?? null,
+            name: sanitizedRestaurantName || sanitizedLabel,
+            coverage: coverageContext,
+            sessionToken: dto.sessionToken,
+          });
+        restaurantId = restaurantResult.entityId;
+        storedEntityId = restaurantId;
+        await this.pollEntitySeedService.ensureRestaurantAttribute({
+          restaurantId,
+          attributeId: poll.topic.targetRestaurantAttributeId,
+        });
+        break;
+      }
+      default: {
+        throw new BadRequestException('Unsupported poll type');
+      }
     }
 
     const duplicate = poll.options.find((option) => {
@@ -439,6 +517,13 @@ export class PollsService {
         !connectionId &&
         categoryId &&
         option.categoryId === categoryId &&
+        option.restaurantId === restaurantId
+      ) {
+        return true;
+      }
+      if (
+        poll.topic.topicType === PollTopicType.best_restaurant_attribute &&
+        restaurantId &&
         option.restaurantId === restaurantId
       ) {
         return true;
@@ -460,9 +545,7 @@ export class PollsService {
         categoryId,
         source: dto.entityId ? PollOptionSource.curator : PollOptionSource.user,
         addedByUserId: userId,
-        resolutionStatus: storedEntityId
-          ? PollOptionResolutionStatus.matched
-          : PollOptionResolutionStatus.pending,
+        resolutionStatus: PollOptionResolutionStatus.matched,
         metadata: {
           createdBy: userId,
         },
@@ -579,6 +662,223 @@ export class PollsService {
     });
   }
 
+  private async attachCoverageLabels<
+    T extends {
+      coverageKey?: string | null;
+      topic?: { coverageKey?: string | null } | null;
+    },
+  >(
+    polls: T[],
+    fallbackCoverageKey?: string | null,
+  ): Promise<Array<T & { coverageName?: string | null }>> {
+    const coverageKeys = new Set<string>();
+    for (const poll of polls) {
+      const rawKey =
+        poll.coverageKey ??
+        poll.topic?.coverageKey ??
+        fallbackCoverageKey ??
+        null;
+      if (typeof rawKey === 'string' && rawKey.trim()) {
+        coverageKeys.add(rawKey.trim().toLowerCase());
+      }
+    }
+
+    if (coverageKeys.size === 0) {
+      return polls;
+    }
+
+    const keys = Array.from(coverageKeys.values());
+    const rows = await this.prisma.coverageArea.findMany({
+      where: {
+        OR: [{ coverageKey: { in: keys } }, { name: { in: keys } }],
+      },
+      select: {
+        coverageKey: true,
+        name: true,
+        displayName: true,
+        locationName: true,
+      },
+    });
+
+    const labelByKey = new Map<string, string>();
+    for (const row of rows) {
+      const label = this.resolveCoverageLabel(row);
+      if (!label) {
+        continue;
+      }
+      if (row.coverageKey) {
+        labelByKey.set(row.coverageKey.toLowerCase(), label);
+      }
+      labelByKey.set(row.name.toLowerCase(), label);
+    }
+
+    return polls.map((poll) => {
+      const rawKey =
+        poll.coverageKey ??
+        poll.topic?.coverageKey ??
+        fallbackCoverageKey ??
+        null;
+      const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
+      const coverageName = key ? (labelByKey.get(key) ?? null) : null;
+      return {
+        ...poll,
+        coverageName,
+      };
+    });
+  }
+
+  private async resolveCoverageName(
+    coverageKey: string,
+  ): Promise<string | null> {
+    const normalized = coverageKey.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    const row = await this.prisma.coverageArea.findFirst({
+      where: {
+        OR: [
+          { coverageKey: { equals: normalized, mode: 'insensitive' } },
+          { name: { equals: normalized, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        coverageKey: true,
+        name: true,
+        displayName: true,
+        locationName: true,
+      },
+    });
+
+    return row ? this.resolveCoverageLabel(row) : null;
+  }
+
+  private resolveCoverageLabel(row: {
+    displayName: string | null;
+    locationName: string | null;
+    coverageKey: string | null;
+    name: string;
+  }): string | null {
+    if (row.displayName && row.displayName.trim()) {
+      return row.displayName.trim();
+    }
+    if (row.locationName && row.locationName.trim()) {
+      const [first] = row.locationName.split(',');
+      return first?.trim() || row.locationName.trim();
+    }
+    if (row.coverageKey && row.coverageKey.trim()) {
+      return row.coverageKey.trim();
+    }
+    return row.name?.trim() || null;
+  }
+
+  private buildPollQuestion(
+    topicType: PollTopicType,
+    targetName: string,
+  ): string {
+    switch (topicType) {
+      case PollTopicType.best_dish:
+        return `Best ${targetName}`;
+      case PollTopicType.what_to_order:
+        return `What to order at ${targetName}?`;
+      case PollTopicType.best_dish_attribute:
+        return `Best ${targetName} dish`;
+      case PollTopicType.best_restaurant_attribute:
+        return `Best ${targetName} restaurants`;
+      default:
+        return targetName;
+    }
+  }
+
+  private async resolveCoverageContext(
+    coverageKey: string | null,
+  ): Promise<CoverageContext | null> {
+    if (!coverageKey || !coverageKey.trim()) {
+      return null;
+    }
+
+    const normalized = coverageKey.trim().toLowerCase();
+    const record = await this.prisma.coverageArea.findFirst({
+      where: {
+        OR: [
+          { coverageKey: { equals: normalized, mode: 'insensitive' } },
+          { name: { equals: normalized, mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        coverageKey: true,
+        name: true,
+        displayName: true,
+        locationName: true,
+        centerLatitude: true,
+        centerLongitude: true,
+      },
+    });
+
+    if (!record) {
+      return {
+        coverageKey: normalized,
+      };
+    }
+
+    const centerLat = this.toNumber(record.centerLatitude);
+    const centerLng = this.toNumber(record.centerLongitude);
+    const center =
+      centerLat !== null && centerLng !== null
+        ? { lat: centerLat, lng: centerLng }
+        : undefined;
+
+    const cityLabel = this.resolveCoverageLabel({
+      displayName: record.displayName,
+      locationName: record.locationName,
+      coverageKey: record.coverageKey,
+      name: record.name,
+    });
+
+    const countryCode = this.extractCountryCode(record.locationName ?? null);
+
+    return {
+      coverageKey: (
+        record.coverageKey ??
+        record.name ??
+        normalized
+      ).toLowerCase(),
+      center,
+      cityLabel,
+      countryCode,
+    };
+  }
+
+  private extractCountryCode(value: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+    const parts = value.split(',').map((part) => part.trim());
+    const last = parts[parts.length - 1];
+    if (!last) {
+      return null;
+    }
+    if (last.length === 2) {
+      return last.toUpperCase();
+    }
+    if (last.toLowerCase() === 'usa' || last.toLowerCase() === 'us') {
+      return 'US';
+    }
+    return null;
+  }
+
+  private toNumber(value: Prisma.Decimal | number | null): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (value && typeof value === 'object' && 'toNumber' in value) {
+      const asDecimal = value;
+      const numeric = asDecimal.toNumber();
+      return Number.isFinite(numeric) ? numeric : null;
+    }
+    return null;
+  }
+
   private async updatePollMetrics(
     tx: Prisma.TransactionClient,
     pollId: string,
@@ -608,31 +908,5 @@ export class PollsService {
         closedAt: new Date(),
       },
     });
-  }
-
-  private async ensureConnection(
-    restaurantId: string,
-    foodId: string,
-  ): Promise<string> {
-    const existing = await this.prisma.connection.findFirst({
-      where: { restaurantId, foodId },
-      select: { connectionId: true },
-    });
-
-    if (existing) {
-      return existing.connectionId;
-    }
-
-    const created = await this.prisma.connection.create({
-      data: {
-        restaurantId,
-        foodId,
-        categories: [],
-        foodAttributes: [],
-      },
-      select: { connectionId: true },
-    });
-
-    return created.connectionId;
   }
 }

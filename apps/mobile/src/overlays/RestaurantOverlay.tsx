@@ -25,6 +25,16 @@ type RestaurantOverlayProps = {
   onDismiss: () => void;
   onRequestClose: () => void;
   onToggleFavorite: (id: string) => void;
+  navBarTop?: number;
+};
+
+type RestaurantOverlayContentProps = {
+  visible: boolean;
+  data: RestaurantOverlayData;
+  onDismiss: () => void;
+  onRequestClose: () => void;
+  onToggleFavorite: (id: string) => void;
+  navBarTop?: number;
 };
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -42,33 +52,37 @@ const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'saturday', label: 'Sat' },
 ];
 
-const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
+const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   visible,
   data,
   onDismiss,
   onRequestClose,
   onToggleFavorite,
+  navBarTop = 0,
 }) => {
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const closeCutout = useHeaderCloseCutout();
+  const headerHeight = closeCutout.headerHeight;
+  const navBarOffset = Math.max(navBarTop, 0);
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(insets.top, 0);
     const middle = Math.max(expanded + 180, SCREEN_HEIGHT * 0.6);
-    const collapsed = SCREEN_HEIGHT - 180;
     const hidden = SCREEN_HEIGHT + 80;
+    const fallbackCollapsed = SCREEN_HEIGHT - 180;
+    const navAlignedCollapsed =
+      navBarOffset > 0 && headerHeight > 0
+        ? navBarOffset - headerHeight
+        : fallbackCollapsed;
+    const collapsed = Math.max(navAlignedCollapsed, middle + 24);
     return {
       expanded,
       middle,
       collapsed,
       hidden,
     };
-  }, [insets.top]);
+  }, [headerHeight, insets.top, navBarOffset]);
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
-
-  if (!data) {
-    return null;
-  }
 
   const { restaurant, dishes, queryLabel, isFavorite } = data;
   const priceLabel =
@@ -222,7 +236,9 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
         onLayout={closeCutout.onHeaderRowLayout}
       >
         <View style={styles.headerTextGroup}>
-          <Text style={styles.restaurantName}>{restaurant.restaurantName}</Text>
+          <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
+            {restaurant.restaurantName}
+          </Text>
           <Text style={styles.restaurantAddress} numberOfLines={1}>
             {primaryAddress}
           </Text>
@@ -446,6 +462,17 @@ const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
       onHidden={onDismiss}
     />
   );
+};
+
+const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({
+  data,
+  ...rest
+}) => {
+  if (!data) {
+    return null;
+  }
+
+  return <RestaurantOverlayContent {...rest} data={data} />;
 };
 
 const styles = StyleSheet.create({

@@ -30,7 +30,7 @@ type CoverageCandidate = {
   area: number | null;
 };
 
-type SubredditLookupRow = {
+type CoverageAreaLookupRow = {
   name: string;
   coverageKey: string | null;
   centerLatitude: Prisma.Decimal | number | null;
@@ -62,7 +62,7 @@ export class CoverageKeyResolverService {
     options: CoverageResolveOptions,
     settings: { fallbackToAll: boolean },
   ): Promise<string[]> {
-    const subreddits = (await this.prisma.subreddit.findMany({
+    const coverageAreas = (await this.prisma.coverageArea.findMany({
       where: { isActive: true },
       select: {
         name: true,
@@ -74,9 +74,9 @@ export class CoverageKeyResolverService {
         viewportSwLat: true,
         viewportSwLng: true,
       },
-    })) as SubredditLookupRow[];
+    })) as CoverageAreaLookupRow[];
 
-    if (!subreddits.length) {
+    if (!coverageAreas.length) {
       return [];
     }
 
@@ -87,11 +87,11 @@ export class CoverageKeyResolverService {
     );
     if (!center) {
       return settings.fallbackToAll
-        ? this.buildLocationKeyList(subreddits)
+        ? this.buildLocationKeyList(coverageAreas)
         : [];
     }
 
-    const candidates = subreddits.map((row) => {
+    const candidates = coverageAreas.map((row) => {
       const centerLat = this.toNumeric(row.centerLatitude);
       const centerLng = this.toNumeric(row.centerLongitude);
       const viewport = this.resolveViewport(row);
@@ -111,7 +111,7 @@ export class CoverageKeyResolverService {
 
     if (!candidates.length) {
       return settings.fallbackToAll
-        ? this.buildLocationKeyList(subreddits)
+        ? this.buildLocationKeyList(coverageAreas)
         : [];
     }
 
@@ -132,7 +132,9 @@ export class CoverageKeyResolverService {
     if (nearest) {
       return [this.buildLocationKey(nearest)];
     }
-    return settings.fallbackToAll ? this.buildLocationKeyList(subreddits) : [];
+    return settings.fallbackToAll
+      ? this.buildLocationKeyList(coverageAreas)
+      : [];
   }
 
   private resolveCenter(

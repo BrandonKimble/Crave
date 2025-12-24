@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
@@ -44,8 +45,8 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
    * This method is designed to be called by Bull queue processor
    */
   async calculateAllActiveVolumes(sampleDays = 7): Promise<SubredditVolume[]> {
-    const activeSubreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const activeSubreddits = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: { name: true },
     });
     const subredditNames = activeSubreddits.map((s) => s.name);
@@ -232,8 +233,8 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
    * Get list of subreddits to track
    */
   private async getTrackedSubreddits(): Promise<string[]> {
-    const activeSubreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const activeSubreddits = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: { name: true },
     });
     return activeSubreddits.map((s) => s.name);
@@ -244,7 +245,9 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
    */
   private async loadVolumesFromDatabase(): Promise<void> {
     try {
-      const volumes = await this.prisma.subreddit.findMany();
+      const volumes = await this.prisma.coverageArea.findMany({
+        where: { sourceType: CoverageSourceType.all },
+      });
 
       // Database is now the single source of truth - no caching needed
 
@@ -266,7 +269,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
    */
   private async saveVolumeToDatabase(volume: SubredditVolume): Promise<void> {
     try {
-      await this.prisma.subreddit.upsert({
+      await this.prisma.coverageArea.upsert({
         where: { name: volume.name.toLowerCase() },
         update: {
           avgPostsPerDay: volume.avgPostsPerDay,
@@ -275,6 +278,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
           ),
           lastCalculated: volume.lastCalculated,
           isActive: volume.isActive,
+          sourceType: CoverageSourceType.all,
         },
         create: {
           name: volume.name.toLowerCase(),
@@ -285,6 +289,7 @@ export class SubredditVolumeTrackingService implements OnModuleInit {
           lastCalculated: volume.lastCalculated,
           lastProcessed: null, // Will be set by collection services
           isActive: volume.isActive,
+          sourceType: CoverageSourceType.all,
         },
       });
 

@@ -27,6 +27,7 @@ const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'regularOpeningHours',
   'currentOpeningHours',
   'utcOffsetMinutes',
+  'timeZone',
   'businessStatus',
   'types',
   'websiteUri',

@@ -22,6 +22,7 @@ type HeaderCloseCutoutResult = {
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onHeaderRowLayout: (event: LayoutChangeEvent) => void;
   onCloseLayout: (event: LayoutChangeEvent) => void;
+  headerHeight: number;
 };
 
 const DEFAULT_MASK_PADDING = 2;
@@ -150,6 +151,7 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     onHeaderLayout,
     onHeaderRowLayout,
     onCloseLayout,
+    headerHeight: headerLayout.height,
   };
 };
 

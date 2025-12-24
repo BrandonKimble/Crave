@@ -43,6 +43,12 @@ export interface LLMConfig {
     systemTtlSeconds: number;
     systemRefreshLeadSeconds: number;
     redisKey: string;
+    queryResultTtlSeconds?: number;
+    queryResultRedisKey?: string;
+    queryResultCacheVersion?: string;
+    queryResultLocalTtlSeconds?: number;
+    queryResultLocalMaxEntries?: number;
+    queryResultIncludeMetadata?: boolean;
   };
 }
 

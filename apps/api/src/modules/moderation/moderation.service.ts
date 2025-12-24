@@ -12,6 +12,7 @@ export interface ModerationDecision {
 export class ModerationService {
   private readonly logger: LoggerService;
   private readonly endpoint: string;
+  private readonly allowlistPhrases = ['bloody', 'killer', 'dirty fries'];
 
   constructor(
     private readonly configService: ConfigService,
@@ -19,15 +20,15 @@ export class ModerationService {
   ) {
     this.logger = loggerService.setContext('ModerationService');
     this.endpoint =
-      this.configService.get<string>('GOOGLE_MODERATION_ENDPOINT') ??
+      this.configService.get<string>('moderation.endpoint') ??
       'https://contentmoderation.googleapis.com/v1beta/moderations:moderateText';
   }
 
   async moderateText(text: string): Promise<ModerationDecision> {
-    const apiKey = this.configService.get<string>('GOOGLE_MODERATION_API_KEY');
+    const apiKey = this.configService.get<string>('moderation.apiKey');
     if (!apiKey) {
       this.logger.warn(
-        'GOOGLE_MODERATION_API_KEY not configured, allowing text by default',
+        'GOOGLE_MODERATION_API_KEY_DEV/PROD not configured, allowing text by default',
       );
       return { allowed: true, reason: 'missing_api_key' };
     }
@@ -65,6 +66,10 @@ export class ModerationService {
         ([, score]) => score >= 0.8,
       );
 
+      if (blocked && this.isAllowlisted(text)) {
+        return { allowed: true, categories, reason: 'allowlist_override' };
+      }
+
       return {
         allowed: !blocked,
         categories,
@@ -76,5 +81,10 @@ export class ModerationService {
       });
       return { allowed: true, reason: 'moderation_api_failure' };
     }
+  }
+
+  private isAllowlisted(text: string): boolean {
+    const normalized = text.toLowerCase();
+    return this.allowlistPhrases.some((phrase) => normalized.includes(phrase));
   }
 }

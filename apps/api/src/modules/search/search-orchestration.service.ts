@@ -1,17 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { SearchService } from './search.service';
 import {
   NaturalSearchRequestDto,
   SearchResponseDto,
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
+import { LoggerService } from '../../shared';
 
 @Injectable()
 export class SearchOrchestrationService {
+  private readonly includePhaseTimings: boolean;
+  private readonly logger: LoggerService;
+
   constructor(
     private readonly interpretationService: SearchQueryInterpretationService,
     private readonly searchService: SearchService,
-  ) {}
+    @Inject(LoggerService) loggerService: LoggerService,
+  ) {
+    this.logger = loggerService.setContext('SearchOrchestrationService');
+    this.includePhaseTimings =
+      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+  }
 
   async runNaturalQuery(
     request: NaturalSearchRequestDto,
@@ -47,7 +56,12 @@ export class SearchOrchestrationService {
         }),
       );
       response.metadata.sourceQuery = request.query;
-      response.metadata.analysisMetadata = interpretation.analysisMetadata;
+      response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
+        response.metadata.analysisMetadata,
+        interpretation.analysisMetadata,
+        interpretation.phaseTimings,
+      );
+      this.logPhaseTimings(response, request.query);
 
       return response;
     }
@@ -63,7 +77,12 @@ export class SearchOrchestrationService {
       }),
     );
     response.metadata.sourceQuery = request.query;
-    response.metadata.analysisMetadata = interpretation.analysisMetadata;
+    response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
+      response.metadata.analysisMetadata,
+      interpretation.analysisMetadata,
+      interpretation.phaseTimings,
+    );
+    this.logPhaseTimings(response, request.query);
     if (interpretation.onDemandQueued && !response.metadata.onDemandQueued) {
       response.metadata.onDemandQueued = true;
     }
@@ -92,5 +111,48 @@ export class SearchOrchestrationService {
     }
 
     return response;
+  }
+
+  private logPhaseTimings(response: SearchResponseDto, query: string): void {
+    if (!this.includePhaseTimings) {
+      return;
+    }
+    const phaseTimings =
+      response.metadata.analysisMetadata?.phaseTimings ?? null;
+    if (!phaseTimings || typeof phaseTimings !== 'object') {
+      return;
+    }
+
+    this.logger.info('Search phase timings', {
+      searchRequestId: response.metadata.searchRequestId,
+      query,
+      phaseTimings,
+    });
+  }
+
+  private mergeAnalysisMetadata(
+    responseMetadata: Record<string, unknown> | undefined,
+    interpretationMetadata: Record<string, unknown> | undefined,
+    phaseTimings?: Record<string, number>,
+  ): Record<string, unknown> | undefined {
+    const merged: Record<string, unknown> = {};
+
+    if (responseMetadata && typeof responseMetadata === 'object') {
+      Object.assign(merged, responseMetadata);
+    }
+
+    if (interpretationMetadata && typeof interpretationMetadata === 'object') {
+      Object.assign(merged, interpretationMetadata);
+    }
+
+    if (this.includePhaseTimings && phaseTimings) {
+      const existingTimings =
+        typeof merged.phaseTimings === 'object' && merged.phaseTimings !== null
+          ? (merged.phaseTimings as Record<string, number>)
+          : {};
+      merged.phaseTimings = { ...existingTimings, ...phaseTimings };
+    }
+
+    return Object.keys(merged).length > 0 ? merged : undefined;
   }
 }

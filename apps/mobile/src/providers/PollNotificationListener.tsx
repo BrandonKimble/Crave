@@ -1,8 +1,8 @@
 import React from 'react';
 import * as Notifications from 'expo-notifications';
 import { navigationRef } from '../navigation/navigationRef';
-import { useCityStore } from '../store/cityStore';
 import { useOverlayStore } from '../store/overlayStore';
+import { useCityStore } from '../store/cityStore';
 
 const isStringArray = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((item) => typeof item === 'string');
@@ -10,16 +10,16 @@ const isStringArray = (value: unknown): value is string[] =>
 const PollNotificationListener: React.FC = () => {
   const setCityPreference = useCityStore((state) => state.setSelectedCity);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
-  const pendingNavigation = React.useRef<{ city?: string; pollId?: string } | null>(null);
+  const pendingNavigation = React.useRef<{ coverageKey?: string; pollId?: string } | null>(null);
 
   const navigateToPolls = React.useCallback(
-    (city?: string, pollId?: string) => {
+    (coverageKey?: string, pollId?: string) => {
       if (!navigationRef.isReady()) {
-        pendingNavigation.current = { city, pollId };
+        pendingNavigation.current = { coverageKey, pollId };
         return;
       }
       navigationRef.navigate('Main');
-      setOverlay('polls', { city, pollId });
+      setOverlay('polls', { coverageKey, pollId });
       pendingNavigation.current = null;
     },
     [setOverlay]
@@ -72,7 +72,10 @@ const PollNotificationListener: React.FC = () => {
         const payload = pendingNavigation.current;
         pendingNavigation.current = null;
         navigationRef.navigate('Main');
-        setOverlay('polls', { city: payload?.city, pollId: payload?.pollId });
+        setOverlay('polls', {
+          coverageKey: payload?.coverageKey,
+          pollId: payload?.pollId,
+        });
       }
     }, 300);
 

@@ -176,6 +176,14 @@ const SearchScreen: React.FC = () => {
     };
   }, []);
 
+  React.useEffect(() => {
+    return () => {
+      if (pollBoundsTimeoutRef.current) {
+        clearTimeout(pollBoundsTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // Hydrate last camera position to avoid globe spin before we get user location
   React.useEffect(() => {
     void (async () => {
@@ -293,6 +301,7 @@ const SearchScreen: React.FC = () => {
   const lastAutocompleteTimestampRef = React.useRef<number>(0);
   const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
+  const [bottomNavFrame, setBottomNavFrame] = React.useState({ top: 0, height: 0 });
   const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
     null
   );
@@ -331,12 +340,15 @@ const SearchScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
+  const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const searchThisAreaVisibility = useSharedValue(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollBoundsRef = React.useRef<MapBounds | null>(null);
+  const pollBoundsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const updateTopFoodInlineWidth = React.useCallback((restaurantId: string, width: number) => {
     setTopFoodInlineWidths((prev) => {
       if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
@@ -390,6 +402,19 @@ const SearchScreen: React.FC = () => {
         setMapMovedSinceSearch(true);
       }
     }, 450);
+  }, []);
+
+  const schedulePollBoundsUpdate = React.useCallback((bounds: MapBounds) => {
+    if (pollBoundsRef.current && !hasBoundsMovedSignificantly(pollBoundsRef.current, bounds)) {
+      return;
+    }
+    if (pollBoundsTimeoutRef.current) {
+      clearTimeout(pollBoundsTimeoutRef.current);
+    }
+    pollBoundsTimeoutRef.current = setTimeout(() => {
+      pollBoundsRef.current = bounds;
+      setPollBounds(bounds);
+    }, 500);
   }, []);
 
   const resolveCurrentMapBounds = React.useCallback(async (): Promise<MapBounds | null> => {
@@ -513,8 +538,8 @@ const SearchScreen: React.FC = () => {
     () =>
       [
         { key: 'search' as OverlayKey, label: 'Search' },
-        { key: 'bookmarks' as OverlayKey, label: 'Saves' },
         { key: 'polls' as OverlayKey, label: 'Polls' },
+        { key: 'bookmarks' as OverlayKey, label: 'Saves' },
         { key: 'profile' as OverlayKey, label: 'Profile' },
       ] as const,
     []
@@ -584,6 +609,18 @@ const SearchScreen: React.FC = () => {
         );
       },
     }),
+    []
+  );
+  const handleBottomNavLayout = React.useCallback(
+    ({ nativeEvent }: LayoutChangeEvent) => {
+      const { y, height } = nativeEvent.layout;
+      setBottomNavFrame((prev) => {
+        if (Math.abs(prev.top - y) < 0.5 && Math.abs(prev.height - height) < 0.5) {
+          return prev;
+        }
+        return { top: y, height };
+      });
+    },
     []
   );
   const openNow = useSearchStore((state) => state.openNow);
@@ -833,6 +870,29 @@ const SearchScreen: React.FC = () => {
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
   const shouldHideBottomNav =
     isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
+  const showDockedPolls =
+    isSearchOverlay && !isSearchFocused && !isSearchSessionActive && !isLoading;
+  const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
+  const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
+  const pollsOverlaySnapPoint = showPollsOverlay ? 'middle' : 'collapsed';
+
+  React.useEffect(() => {
+    if (!shouldShowPollsSheet) {
+      return;
+    }
+    if (latestBoundsRef.current) {
+      pollBoundsRef.current = latestBoundsRef.current;
+      setPollBounds(latestBoundsRef.current);
+      return;
+    }
+    void resolveCurrentMapBounds().then((bounds) => {
+      if (!bounds) {
+        return;
+      }
+      pollBoundsRef.current = bounds;
+      setPollBounds(bounds);
+    });
+  }, [resolveCurrentMapBounds, shouldShowPollsSheet]);
   const showCachedSuggestionsIfFresh = React.useCallback(
     (trimmed: string) => {
       const now = Date.now();
@@ -1640,10 +1700,6 @@ const SearchScreen: React.FC = () => {
   }, [cancelAutocomplete]);
   const handleCameraChanged = React.useCallback(
     (state: MapboxMapState) => {
-      if (!isSearchOverlay || !results || !isSearchSessionActive) {
-        return;
-      }
-
       const bounds = mapStateBoundsToMapBounds(state);
       if (!bounds) {
         return;
@@ -1653,8 +1709,16 @@ const SearchScreen: React.FC = () => {
         latestBoundsRef.current = bounds;
       }
 
+      if (shouldShowPollsSheet) {
+        schedulePollBoundsUpdate(bounds);
+      }
+
       const isGestureActive = Boolean(state?.gestures?.isGestureActive);
       mapGestureActiveRef.current = isGestureActive;
+
+      if (!isSearchOverlay || !results || !isSearchSessionActive) {
+        return;
+      }
 
       if (suppressMapMovedRef.current && !isGestureActive) {
         latestBoundsRef.current = bounds;
@@ -1683,8 +1747,10 @@ const SearchScreen: React.FC = () => {
       isSearchSessionActive,
       markMapMoved,
       results,
+      schedulePollBoundsUpdate,
       scheduleMapIdleReveal,
       sheetState,
+      shouldShowPollsSheet,
     ]
   );
 
@@ -2223,7 +2289,13 @@ const SearchScreen: React.FC = () => {
         onLayout={resultsHeaderCutout.onHeaderRowLayout}
         style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
       >
-        <Text variant="title" weight="semibold" style={styles.submittedQueryLabel}>
+        <Text
+          variant="title"
+          weight="semibold"
+          style={styles.submittedQueryLabel}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
           {submittedQuery || 'Results'}
         </Text>
         <Pressable
@@ -2540,7 +2612,10 @@ const SearchScreen: React.FC = () => {
       )}
       {!shouldHideBottomNav && (
         <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-          <View style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}>
+          <View
+            style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
+            onLayout={handleBottomNavLayout}
+          >
             {navItems.map((item) => {
               const active = activeOverlay === item.key;
               const iconColor = active ? ACTIVE_TAB_COLOR : '#94a3b8';
@@ -2583,14 +2658,22 @@ const SearchScreen: React.FC = () => {
           </View>
         </View>
       )}
-      <BookmarksOverlay visible={showBookmarksOverlay} />
-      <PollsOverlay visible={showPollsOverlay} params={pollOverlayParams} />
+      <BookmarksOverlay visible={showBookmarksOverlay} navBarTop={bottomNavFrame.top} />
+      <PollsOverlay
+        visible={shouldShowPollsSheet}
+        bounds={pollBounds}
+        params={pollOverlayParams}
+        initialSnapPoint={pollsOverlaySnapPoint}
+        mode={pollsOverlayMode}
+        navBarTop={bottomNavFrame.top}
+      />
       <RestaurantOverlay
         visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}
         data={restaurantProfile}
         onRequestClose={closeRestaurantProfile}
         onDismiss={handleRestaurantOverlayDismissed}
         onToggleFavorite={handleRestaurantFavoriteToggle}
+        navBarTop={bottomNavFrame.top}
       />
       <SecondaryBottomSheet
         visible={isPriceSelectorVisible}

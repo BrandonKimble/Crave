@@ -1,4 +1,5 @@
 import api from './api';
+import type { MapBounds } from '../types';
 
 export interface PollOption {
   optionId: string;
@@ -8,39 +9,64 @@ export interface PollOption {
   currentUserVoted?: boolean;
 }
 
-export type PollTopicType = 'best_dish' | 'what_to_order';
+export type PollTopicType =
+  | 'best_dish'
+  | 'what_to_order'
+  | 'best_dish_attribute'
+  | 'best_restaurant_attribute';
 
 export interface PollTopic {
   topicType: PollTopicType;
   targetDishId?: string | null;
   targetRestaurantId?: string | null;
+  targetFoodAttributeId?: string | null;
+  targetRestaurantAttributeId?: string | null;
   title?: string | null;
-  city?: string | null;
+  description?: string | null;
+  coverageKey?: string | null;
 }
 
 export interface Poll {
   pollId: string;
   question: string;
   state: string;
-  city?: string | null;
+  coverageKey?: string | null;
+  coverageName?: string | null;
   options: PollOption[];
   topic?: PollTopic | null;
 }
 
-export interface ManualPollPayload {
-  question: string;
+export type PollQueryResponse = {
+  coverageKey?: string | null;
+  coverageName?: string | null;
+  polls: Poll[];
+};
+
+export type PollQueryPayload = {
+  coverageKey?: string;
+  bounds?: MapBounds | null;
+  state?: string;
+};
+
+export type CreatePollPayload = {
   topicType: PollTopicType;
-  city?: string;
-  description?: string;
-  allowUserAdditions?: boolean;
-  notifySubscribers?: boolean;
+  description: string;
+  coverageKey?: string;
+  bounds?: MapBounds | null;
   targetDishId?: string;
   targetRestaurantId?: string;
-}
+  targetFoodAttributeId?: string;
+  targetRestaurantAttributeId?: string;
+  targetDishName?: string;
+  targetRestaurantName?: string;
+  targetFoodAttributeName?: string;
+  targetRestaurantAttributeName?: string;
+  sessionToken?: string;
+};
 
 const normalizePollList = (payload: unknown): Poll[] => {
   if (Array.isArray(payload)) {
-    return payload;
+    return payload as Poll[];
   }
   if (payload && typeof payload === 'object') {
     const anyPayload = payload as Record<string, unknown>;
@@ -61,6 +87,28 @@ const normalizePollList = (payload: unknown): Poll[] => {
   return [];
 };
 
+const normalizePollQueryResponse = (payload: unknown): PollQueryResponse => {
+  if (payload && typeof payload === 'object') {
+    const anyPayload = payload as Record<string, unknown>;
+    if (anyPayload.data) {
+      return normalizePollQueryResponse(anyPayload.data);
+    }
+    if (Array.isArray(anyPayload.polls)) {
+      return {
+        coverageKey: typeof anyPayload.coverageKey === 'string' ? anyPayload.coverageKey : null,
+        coverageName: typeof anyPayload.coverageName === 'string' ? anyPayload.coverageName : null,
+        polls: normalizePollList(anyPayload.polls),
+      };
+    }
+  }
+
+  return {
+    coverageKey: null,
+    coverageName: null,
+    polls: normalizePollList(payload),
+  };
+};
+
 const normalizePoll = (payload: unknown): Poll | null => {
   if (payload && typeof payload === 'object') {
     if ('pollId' in payload) {
@@ -77,11 +125,9 @@ const normalizePoll = (payload: unknown): Poll | null => {
   return null;
 };
 
-export const fetchPolls = async (city?: string): Promise<Poll[]> => {
-  const response = await api.get('/polls', {
-    params: city ? { city } : undefined,
-  });
-  return normalizePollList(response.data);
+export const fetchPolls = async (payload: PollQueryPayload): Promise<PollQueryResponse> => {
+  const response = await api.post('/polls/query', payload);
+  return normalizePollQueryResponse(response.data);
 };
 
 export const fetchPoll = async (pollId: string): Promise<Poll> => {
@@ -93,9 +139,22 @@ export const fetchPoll = async (pollId: string): Promise<Poll> => {
   throw new Error('Invalid poll response');
 };
 
+export const createPoll = async (body: CreatePollPayload): Promise<Poll> => {
+  const response = await api.post('/polls', body);
+  const normalized = normalizePoll(response.data);
+  return normalized ?? response.data;
+};
+
 export const addPollOption = async (
   pollId: string,
-  body: { label: string; restaurantId?: string; dishEntityId?: string }
+  body: {
+    label: string;
+    restaurantId?: string;
+    dishEntityId?: string;
+    restaurantName?: string;
+    dishName?: string;
+    sessionToken?: string;
+  }
 ) => {
   const response = await api.post(`/polls/${pollId}/options`, body);
   return response.data;
@@ -104,10 +163,4 @@ export const addPollOption = async (
 export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
   const response = await api.post(`/polls/${pollId}/votes`, body);
   return response.data;
-};
-
-export const createManualPoll = async (body: ManualPollPayload) => {
-  const response = await api.post('/polls/admin/manual', body);
-  const normalized = normalizePoll(response.data);
-  return normalized ?? response.data;
 };

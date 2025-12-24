@@ -5,7 +5,7 @@ export type OverlayKey = 'search' | 'bookmarks' | 'polls';
 type OverlayParamsMap = {
   search?: undefined;
   bookmarks?: undefined;
-  polls?: { city?: string | null; pollId?: string | null };
+  polls?: { coverageKey?: string | null; pollId?: string | null };
 };
 
 type DismissHandler = () => void;

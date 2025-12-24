@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { CoverageSourceType } from '@prisma/client';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { RedditService } from '../../external-integrations/reddit/reddit.service';
 import { filterAndTransformToLLM } from '../../external-integrations/reddit/reddit-data-filter';
@@ -14,6 +15,7 @@ import {
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { RankScoreService } from '../rank-score/rank-score.service';
 import {
   BatchJob,
   BatchProcessingResult,
@@ -28,6 +30,7 @@ import {
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
+  private readonly coverageKeyCache = new Map<string, string>();
   private keywordGateConfig!: {
     lookbackMs: number;
     commentSampleLimit: number;
@@ -47,6 +50,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly unifiedProcessingService: UnifiedProcessingService,
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
+    private readonly rankScoreService: RankScoreService,
   ) {}
 
   onModuleInit(): void {
@@ -328,6 +332,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
           connectionsCreated: dbResult.connectionsCreated,
         },
       );
+      await this.refreshRankScoresIfFinalBatch(job, correlationId);
       return result;
     } catch (error) {
       this.logStage(
@@ -1260,5 +1265,95 @@ export class RedditBatchProcessingService implements OnModuleInit {
       subreddit: job.subreddit,
       ...metadata,
     });
+  }
+
+  private shouldRefreshRankScores(job: BatchJob): boolean {
+    if (!job.totalBatches || job.batchNumber !== job.totalBatches) {
+      return false;
+    }
+    return (
+      job.collectionType === 'chronological' ||
+      job.collectionType === 'keyword' ||
+      job.collectionType === 'archive'
+    );
+  }
+
+  private async resolveCoverageKeyForSubreddit(
+    subreddit: string,
+  ): Promise<string | null> {
+    const normalized = subreddit?.trim().toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    const cached = this.coverageKeyCache.get(normalized);
+    if (cached) {
+      return cached;
+    }
+
+    const record = (await this.prismaService.coverageArea.findFirst({
+      where: {
+        name: {
+          equals: subreddit,
+          mode: 'insensitive',
+        },
+        sourceType: CoverageSourceType.all,
+      },
+      select: { coverageKey: true, name: true },
+    })) as { coverageKey: string | null; name: string } | null;
+
+    const resolved =
+      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
+        ? record.coverageKey.trim().toLowerCase()
+        : record?.name
+          ? record.name.trim().toLowerCase()
+          : normalized;
+
+    this.coverageKeyCache.set(normalized, resolved);
+    return resolved;
+  }
+
+  private async refreshRankScoresIfFinalBatch(
+    job: BatchJob,
+    correlationId: string,
+  ): Promise<void> {
+    if (!this.shouldRefreshRankScores(job)) {
+      return;
+    }
+
+    const coverageKey = await this.resolveCoverageKeyForSubreddit(
+      job.subreddit,
+    );
+    if (!coverageKey) {
+      this.logger.warn('Rank refresh skipped (missing coverage key)', {
+        correlationId,
+        batchId: job.batchId,
+        parentJobId: job.parentJobId,
+        collectionType: job.collectionType,
+        subreddit: job.subreddit,
+      });
+      return;
+    }
+
+    try {
+      await this.rankScoreService.refreshRankScoresForLocations([coverageKey]);
+      this.logger.info('Rank scores refreshed after collection completion', {
+        correlationId,
+        parentJobId: job.parentJobId,
+        collectionType: job.collectionType,
+        coverageKey,
+      });
+    } catch (error) {
+      this.logger.error(
+        'Rank score refresh failed after collection completion',
+        {
+          correlationId,
+          parentJobId: job.parentJobId,
+          collectionType: job.collectionType,
+          coverageKey,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+    }
   }
 }

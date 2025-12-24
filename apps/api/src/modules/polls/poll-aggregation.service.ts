@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
-import { PollState, Prisma } from '@prisma/client';
+import { PollState, PollTopicType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { PollScoreRefreshService } from './poll-score-refresh.service';
 
 interface PseudoSignals {
   mentions: number;
@@ -18,6 +19,7 @@ export class PollAggregationService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly pollScoreRefresh: PollScoreRefreshService,
   ) {
     this.logger = loggerService.setContext('PollAggregationService');
     this.pseudoMentionCap = this.resolveNumberEnv(
@@ -49,6 +51,22 @@ export class PollAggregationService {
   }
 
   async aggregatePoll(pollId: string): Promise<void> {
+    const poll = await this.prisma.poll.findUnique({
+      where: { pollId },
+      select: {
+        pollId: true,
+        topic: {
+          select: {
+            topicType: true,
+            targetRestaurantAttributeId: true,
+          },
+        },
+      },
+    });
+    if (!poll || !poll.topic) {
+      return;
+    }
+
     const options = await this.prisma.pollOption.findMany({
       where: { pollId },
     });
@@ -69,6 +87,9 @@ export class PollAggregationService {
       (sum, group) => sum + (group._sum.weight ?? 0),
       0,
     );
+
+    const connectionIdsToRefresh = new Set<string>();
+    const restaurantIdsToRefresh = new Set<string>();
 
     for (const group of voteGroups) {
       const option = optionMap.get(group.optionId);
@@ -109,6 +130,7 @@ export class PollAggregationService {
           },
           pseudo,
         );
+        connectionIdsToRefresh.add(option.connectionId);
       } else if (option.restaurantId && option.categoryId) {
         await this.upsertCategoryAggregate(
           {
@@ -118,6 +140,21 @@ export class PollAggregationService {
           pseudo,
           deltaVotes,
         );
+      } else if (
+        poll.topic.topicType === PollTopicType.best_restaurant_attribute &&
+        option.restaurantId
+      ) {
+        const praiseBoost = Math.max(0, Math.round(pseudo.upvotes));
+        if (praiseBoost > 0) {
+          await this.prisma.entity.update({
+            where: { entityId: option.restaurantId },
+            data: {
+              generalPraiseUpvotes: { increment: praiseBoost },
+              lastPolledAt: new Date(),
+            },
+          });
+          restaurantIdsToRefresh.add(option.restaurantId);
+        }
       }
     }
 
@@ -141,6 +178,17 @@ export class PollAggregationService {
     });
 
     this.logger.debug('Aggregated poll', { pollId, totalVotes });
+
+    if (connectionIdsToRefresh.size > 0) {
+      await this.pollScoreRefresh.refreshForConnections(
+        Array.from(connectionIdsToRefresh.values()),
+      );
+    }
+    if (restaurantIdsToRefresh.size > 0) {
+      await this.pollScoreRefresh.refreshForRestaurants(
+        Array.from(restaurantIdsToRefresh.values()),
+      );
+    }
   }
 
   private calculatePseudoSignals(

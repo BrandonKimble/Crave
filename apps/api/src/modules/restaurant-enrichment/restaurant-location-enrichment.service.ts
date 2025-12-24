@@ -467,6 +467,176 @@ export class RestaurantLocationEnrichmentService {
     return this.enrichRestaurant(entity, options);
   }
 
+  async resolvePlaceForInput(params: {
+    name: string;
+    city?: string;
+    region?: string;
+    country?: string;
+    locationBias?: { lat: number; lng: number };
+    sessionToken?: string;
+  }): Promise<{
+    place: GooglePlacesV1Place;
+    matchMetadata: MatchMetadata;
+    score: number;
+  } | null> {
+    const entity = {
+      name: params.name,
+      city: params.city ?? null,
+      region: params.region ?? null,
+      country: params.country ?? null,
+      restaurantMetadata: null,
+    } as RestaurantEntity;
+
+    const searchContext = this.buildSearchContext(entity, {
+      locationBias: params.locationBias,
+      countryFallback: params.country,
+      sessionToken: params.sessionToken,
+    });
+
+    if (!searchContext.query) {
+      return null;
+    }
+
+    const autocomplete = await this.googlePlacesService.autocompletePlace(
+      searchContext.query,
+      {
+        language: 'en',
+        components: searchContext.country
+          ? { country: searchContext.country }
+          : undefined,
+        sessionToken: params.sessionToken,
+        locationBias: searchContext.locationBias,
+        includeRaw: false,
+      },
+    );
+
+    const candidates = this.extractAutocompleteCandidates(
+      autocomplete.suggestions,
+    );
+    let ranked = this.rankCandidates(candidates, entity, searchContext);
+    let matchSource: 'autocomplete' | 'find_place' = 'autocomplete';
+    let fallbackStatus: string | undefined;
+
+    if (ranked.length === 0) {
+      const fallbackResult = await this.tryFindPlaceFallback(
+        entity,
+        searchContext,
+        {
+          locationBias: searchContext.locationBias,
+          countryFallback: params.country,
+          sessionToken: params.sessionToken,
+        },
+      );
+
+      if (fallbackResult) {
+        fallbackStatus = fallbackResult.status;
+        ranked = fallbackResult.ranked;
+        if (ranked.length > 0) {
+          matchSource = 'find_place';
+        }
+      } else {
+        fallbackStatus = 'error';
+      }
+    }
+
+    const best = this.selectQualifiedCandidate(ranked);
+    if (!best) {
+      if (fallbackStatus) {
+        this.logger.debug('Place match failed after fallback', {
+          name: params.name,
+          fallbackStatus,
+        });
+      }
+      return null;
+    }
+
+    const details = await this.googlePlacesService.getPlaceDetails(
+      best.candidate.placeId,
+      { includeRaw: true },
+    );
+
+    if (!details.place) {
+      return null;
+    }
+
+    const placeDetails = details.place;
+    if (typeof placeDetails.id !== 'string' || !placeDetails.id.trim()) {
+      placeDetails.id = best.candidate.placeId;
+    }
+
+    const matchMetadata: MatchMetadata = {
+      query: searchContext.query ?? '',
+      score: best.score,
+      predictionDescription: best.candidate.description,
+      mainText: best.candidate.mainText,
+      secondaryText: best.candidate.secondaryText,
+      candidateTypes: best.candidate.types,
+      predictionsConsidered: ranked.length,
+      timestamp: new Date().toISOString(),
+      source: matchSource,
+    };
+
+    return {
+      place: placeDetails,
+      matchMetadata,
+      score: best.score,
+    };
+  }
+
+  async buildRestaurantCreateInput(params: {
+    name: string;
+    coverageKey: string;
+    place: GooglePlacesV1Place;
+    matchMetadata: MatchMetadata;
+    alias?: string | null;
+  }): Promise<Prisma.EntityCreateInput> {
+    const baseEntity = {
+      name: params.name,
+      restaurantMetadata: null,
+    } as RestaurantEntity;
+
+    const displayName = this.getPlaceDisplayName(params.place) || params.name;
+    const alias =
+      params.alias &&
+      params.alias.trim().length &&
+      params.alias.trim().toLowerCase() !== displayName.toLowerCase()
+        ? [params.alias.trim()]
+        : [];
+
+    const { updateData } = this.buildEntityUpdate(
+      baseEntity,
+      params.place,
+      '',
+      params.matchMetadata,
+    );
+    const createUpdateData = this.coerceEntityUpdateToCreateInput(updateData);
+
+    const googleAttributeDefinitions =
+      this.extractGoogleRestaurantAttributeDefinitions(params.place);
+    const googleRestaurantAttributeIds =
+      await this.resolveRestaurantAttributeIdsForDefinitions(
+        googleAttributeDefinitions,
+      );
+
+    return {
+      ...createUpdateData,
+      name: displayName,
+      type: EntityType.restaurant,
+      locationKey: params.coverageKey,
+      aliases: alias,
+      restaurantAttributes: googleRestaurantAttributeIds,
+      restaurantQualityScore: 0,
+      generalPraiseUpvotes: 0,
+    };
+  }
+
+  buildLocationCreateInput(
+    restaurantId: string,
+    place: GooglePlacesV1Place,
+  ): Prisma.RestaurantLocationUncheckedCreateInput {
+    return this.buildLocationUpsertData(restaurantId, null, place).create;
+  }
+
   private async enrichRestaurant(
     entity: RestaurantEntity,
     options: RestaurantEnrichmentOptions,
@@ -1728,7 +1898,7 @@ export class RestaurantLocationEnrichmentService {
       return null;
     }
 
-    const coverageMatches = await this.prisma.subreddit.findMany({
+    const coverageMatches = await this.prisma.coverageArea.findMany({
       where: {
         isActive: true,
         coverageKey: {
@@ -1747,7 +1917,7 @@ export class RestaurantLocationEnrichmentService {
     const rows =
       coverageMatches.length > 0
         ? coverageMatches
-        : await this.prisma.subreddit.findMany({
+        : await this.prisma.coverageArea.findMany({
             where: {
               isActive: true,
               name: {
@@ -2319,6 +2489,94 @@ export class RestaurantLocationEnrichmentService {
     }
 
     return { updateData, updatedFields };
+  }
+
+  private coerceEntityUpdateToCreateInput(
+    updateData: Prisma.EntityUpdateInput,
+  ): Partial<Prisma.EntityCreateInput> {
+    const createData: Partial<Prisma.EntityCreateInput> = {};
+
+    const googlePlaceId = this.unwrapUpdateValue(updateData.googlePlaceId);
+    if (googlePlaceId !== undefined) {
+      createData.googlePlaceId = googlePlaceId;
+    }
+
+    const lastUpdated = this.unwrapUpdateValue(updateData.lastUpdated);
+    if (lastUpdated !== undefined && lastUpdated !== null) {
+      createData.lastUpdated = lastUpdated;
+    }
+
+    const restaurantMetadata = this.unwrapUpdateValue(
+      updateData.restaurantMetadata,
+    );
+    if (restaurantMetadata !== undefined && restaurantMetadata !== null) {
+      createData.restaurantMetadata =
+        restaurantMetadata as Prisma.InputJsonValue;
+    }
+
+    const latitude = this.unwrapUpdateValue(updateData.latitude);
+    if (latitude !== undefined) {
+      createData.latitude = latitude;
+    }
+
+    const longitude = this.unwrapUpdateValue(updateData.longitude);
+    if (longitude !== undefined) {
+      createData.longitude = longitude;
+    }
+
+    const address = this.unwrapUpdateValue(updateData.address);
+    if (address !== undefined) {
+      createData.address = address;
+    }
+
+    const city = this.unwrapUpdateValue(updateData.city);
+    if (city !== undefined) {
+      createData.city = city;
+    }
+
+    const region = this.unwrapUpdateValue(updateData.region);
+    if (region !== undefined) {
+      createData.region = region;
+    }
+
+    const country = this.unwrapUpdateValue(updateData.country);
+    if (country !== undefined) {
+      createData.country = country;
+    }
+
+    const postalCode = this.unwrapUpdateValue(updateData.postalCode);
+    if (postalCode !== undefined) {
+      createData.postalCode = postalCode;
+    }
+
+    const priceLevel = this.unwrapUpdateValue(updateData.priceLevel);
+    if (priceLevel !== undefined) {
+      createData.priceLevel = priceLevel;
+    }
+
+    const priceLevelUpdatedAt = this.unwrapUpdateValue(
+      updateData.priceLevelUpdatedAt,
+    );
+    if (priceLevelUpdatedAt !== undefined) {
+      createData.priceLevelUpdatedAt = priceLevelUpdatedAt;
+    }
+
+    return createData;
+  }
+
+  private unwrapUpdateValue<T>(
+    value: T | { set?: T } | null | undefined,
+  ): T | null | undefined {
+    if (value === undefined || value === null) {
+      return value;
+    }
+    if (typeof value === 'object' && 'set' in value) {
+      const keys = Object.keys(value as Record<string, unknown>);
+      if (keys.length === 1 && keys[0] === 'set') {
+        return (value as { set?: T }).set;
+      }
+    }
+    return value as T;
   }
 
   private buildLocationUpsertData(
@@ -2980,11 +3238,13 @@ export class RestaurantLocationEnrichmentService {
     }
 
     const timezoneCandidate =
-      typeof sourceRecord.timeZone === 'string'
-        ? sourceRecord.timeZone
-        : typeof sourceRecord.timezone === 'string'
-          ? sourceRecord.timezone
-          : undefined;
+      typeof details.timeZone === 'string'
+        ? details.timeZone
+        : typeof sourceRecord.timeZone === 'string'
+          ? sourceRecord.timeZone
+          : typeof sourceRecord.timezone === 'string'
+            ? sourceRecord.timezone
+            : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;

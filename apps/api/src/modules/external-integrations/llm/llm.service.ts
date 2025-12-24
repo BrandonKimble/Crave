@@ -9,11 +9,14 @@ import { GoogleGenAI, FinishReason } from '@google/genai';
 import { Agent, setGlobalDispatcher, type Dispatcher } from 'undici';
 import { validate } from 'class-validator';
 import { plainToClass } from 'class-transformer';
+import { createHash } from 'crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { dirname, isAbsolute, join, resolve } from 'path';
 import { RedisService } from '@liaoliaots/nestjs-redis';
 import { Redis } from 'ioredis';
+import { Counter } from 'prom-client';
 import { LoggerService, CorrelationUtils } from '../../../shared';
+import { MetricsService } from '../../metrics/metrics.service';
 import {
   LLMConfig,
   LLMInputStructure,
@@ -36,6 +39,8 @@ import {
 interface GeminiCacheEntry {
   name: string;
 }
+
+type SearchQueryCacheLayer = 'memory' | 'redis';
 
 interface LightweightComment {
   id: string;
@@ -120,6 +125,17 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   private systemCacheTtlMs = 0;
   private systemCacheRefreshLeadMs = 0;
   private systemCacheRedisKey = 'llm:system-instruction-cache';
+  private queryResultCacheTtlSeconds = 0;
+  private queryResultCacheRedisKey = 'llm:query-analysis';
+  private queryResultCacheVersion = 'v1';
+  private queryResultCacheLocalTtlMs = 0;
+  private queryResultCacheLocalMaxEntries = 0;
+  private queryResultCacheIncludeMetadata = false;
+  private queryResultMemoryCache = new Map<
+    string,
+    { analysis: LLMSearchQueryAnalysis; cachedAt: string; expiresAt: number }
+  >();
+  private queryCacheLookupCounter?: Counter<string>;
   private queryPrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
@@ -139,6 +155,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly redisService: RedisService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   onModuleInit(): void {
@@ -227,11 +244,61 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
         redisKey:
           this.configService.get<string>('llm.cache.redisKey') ??
           'llm:system-instruction-cache',
+        queryResultTtlSeconds:
+          this.configService.get<number>('llm.cache.queryResultTtlSeconds') ??
+          0,
+        queryResultRedisKey:
+          this.configService.get<string>('llm.cache.queryResultRedisKey') ??
+          'llm:query-analysis',
+        queryResultCacheVersion:
+          this.configService.get<string>('llm.cache.queryResultCacheVersion') ??
+          'v1',
+        queryResultLocalTtlSeconds:
+          this.configService.get<number>(
+            'llm.cache.queryResultLocalTtlSeconds',
+          ) ?? 0,
+        queryResultLocalMaxEntries:
+          this.configService.get<number>(
+            'llm.cache.queryResultLocalMaxEntries',
+          ) ?? 0,
+        queryResultIncludeMetadata:
+          this.configService.get<boolean>(
+            'llm.cache.queryResultIncludeMetadata',
+          ) === true,
       },
     };
     this.queryModel =
       this.configService.get<string>('llm.queryModel') || this.llmConfig.model;
     this.llmConfig.queryModel = this.queryModel;
+    this.queryResultCacheTtlSeconds =
+      this.llmConfig.cache?.queryResultTtlSeconds ?? 0;
+    this.queryResultCacheRedisKey =
+      this.llmConfig.cache?.queryResultRedisKey ?? 'llm:query-analysis';
+    this.queryResultCacheVersion =
+      this.llmConfig.cache?.queryResultCacheVersion ?? 'v1';
+    this.queryResultCacheIncludeMetadata =
+      this.llmConfig.cache?.queryResultIncludeMetadata === true;
+    const localTtlSeconds =
+      this.llmConfig.cache?.queryResultLocalTtlSeconds ?? 0;
+    const localMaxEntries =
+      this.llmConfig.cache?.queryResultLocalMaxEntries ?? 0;
+    if (this.queryResultCacheTtlSeconds > 0) {
+      const localTtlMs = Math.max(0, localTtlSeconds * 1000);
+      this.queryResultCacheLocalTtlMs =
+        localTtlMs > 0
+          ? Math.min(localTtlMs, this.queryResultCacheTtlSeconds * 1000)
+          : 0;
+      this.queryResultCacheLocalMaxEntries = Math.max(0, localMaxEntries);
+    } else {
+      this.queryResultCacheLocalTtlMs = 0;
+      this.queryResultCacheLocalMaxEntries = 0;
+    }
+
+    this.queryCacheLookupCounter = this.metricsService.getCounter({
+      name: 'llm_search_query_cache_lookups_total',
+      help: 'LLM search query cache lookups',
+      labelNames: ['layer', 'result'],
+    });
 
     // Initialize GoogleGenAI client
     this.genAI = new GoogleGenAI({ apiKey: this.llmConfig.apiKey });
@@ -854,6 +921,56 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       queryGenerationConfig.thinkingConfig = queryThinkingConfig;
     }
 
+    const cacheKeyResult = this.buildSearchQueryCacheKey(
+      query,
+      queryGenerationConfig,
+    );
+    if (cacheKeyResult) {
+      const memoryHit = this.getMemoryCachedSearchQueryAnalysis(
+        cacheKeyResult.key,
+      );
+      if (memoryHit) {
+        this.recordQueryCacheLookup('memory', 'hit');
+        this.logger.debug('Search query analysis memory cache hit', {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'analyze_search_query',
+          cacheKey: cacheKeyResult.key,
+          cachedAt: memoryHit.cachedAt,
+        });
+        return this.decorateSearchQueryAnalysis(
+          memoryHit.analysis,
+          true,
+          'memory',
+        );
+      }
+      this.recordQueryCacheLookup('memory', 'miss');
+
+      if (this.redisClient) {
+        const cached = await this.getCachedSearchQueryAnalysis(
+          cacheKeyResult.key,
+        );
+        if (cached) {
+          this.recordQueryCacheLookup('redis', 'hit');
+          this.logger.debug('Search query analysis cache hit', {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'analyze_search_query',
+            cacheKey: cacheKeyResult.key,
+            cachedAt: cached.cachedAt,
+          });
+          this.setMemoryCachedSearchQueryAnalysis(
+            cacheKeyResult.key,
+            cached.analysis,
+          );
+          return this.decorateSearchQueryAnalysis(
+            cached.analysis,
+            true,
+            'redis',
+          );
+        }
+        this.recordQueryCacheLookup('redis', 'miss');
+      }
+    }
+
     const response = await this.callLLMApi(prompt, {
       generationConfig: queryGenerationConfig,
       cacheName: this.queryInstructionCache?.name ?? null,
@@ -906,7 +1023,12 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       restaurantAttributes: analysis.restaurantAttributes.length,
     });
 
-    return analysis;
+    if (cacheKeyResult) {
+      this.setMemoryCachedSearchQueryAnalysis(cacheKeyResult.key, analysis);
+      await this.setCachedSearchQueryAnalysis(cacheKeyResult, analysis);
+    }
+
+    return this.decorateSearchQueryAnalysis(analysis, false, null);
   }
 
   /**
@@ -1005,6 +1127,224 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
   private buildSearchQueryPrompt(query: string): string {
     return JSON.stringify({ query });
+  }
+
+  private normalizeSearchQueryForCache(query: string): string {
+    return query.trim().toLowerCase().replace(/\s+/g, ' ');
+  }
+
+  private buildSearchQueryCacheKey(
+    query: string,
+    generationConfig: GeminiGenerationConfig,
+  ): { key: string; promptHash: string } | null {
+    if (this.queryResultCacheTtlSeconds <= 0) {
+      return null;
+    }
+    const hasCacheLayer =
+      this.queryResultCacheLocalMaxEntries > 0 || Boolean(this.redisClient);
+    if (!hasCacheLayer) {
+      return null;
+    }
+
+    const normalizedQuery = this.normalizeSearchQueryForCache(query);
+    if (!normalizedQuery) {
+      return null;
+    }
+
+    const promptSignature = JSON.stringify({
+      version: this.queryResultCacheVersion,
+      model: this.queryModel,
+      prompt: this.queryPrompt,
+      responseMimeType: generationConfig.responseMimeType ?? null,
+      responseSchema: generationConfig.responseJsonSchema ?? null,
+      responseSchemaLegacy: generationConfig.responseSchema ?? null,
+      thinkingConfig: generationConfig.thinkingConfig ?? null,
+      temperature: generationConfig.temperature ?? null,
+      topP: generationConfig.topP ?? null,
+      topK: generationConfig.topK ?? null,
+      maxOutputTokens: generationConfig.maxOutputTokens ?? null,
+      candidateCount: generationConfig.candidateCount ?? null,
+    });
+    const promptHash = this.hashString(promptSignature);
+    const queryHash = this.hashString(normalizedQuery);
+    const key = `${this.queryResultCacheRedisKey}:${promptHash}:${queryHash}`;
+
+    return { key, promptHash };
+  }
+
+  private async getCachedSearchQueryAnalysis(key: string): Promise<{
+    analysis: LLMSearchQueryAnalysis;
+    cachedAt: string;
+  } | null> {
+    if (!this.redisClient || this.queryResultCacheTtlSeconds <= 0) {
+      return null;
+    }
+
+    try {
+      const raw = await this.redisClient.get(key);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw) as {
+        analysis?: LLMSearchQueryAnalysis;
+        cachedAt?: string;
+      };
+      if (!parsed?.analysis) {
+        return null;
+      }
+      return {
+        analysis: parsed.analysis,
+        cachedAt: parsed.cachedAt ?? new Date(0).toISOString(),
+      };
+    } catch (error) {
+      this.logger.warn('Failed to load search query analysis cache', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'analyze_search_query',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return null;
+    }
+  }
+
+  private async setCachedSearchQueryAnalysis(
+    cacheKey: { key: string; promptHash: string },
+    analysis: LLMSearchQueryAnalysis,
+  ): Promise<void> {
+    if (!this.redisClient || this.queryResultCacheTtlSeconds <= 0) {
+      return;
+    }
+
+    const analysisPayload: LLMSearchQueryAnalysis = {
+      restaurants: analysis.restaurants,
+      foods: analysis.foods,
+      foodAttributes: analysis.foodAttributes,
+      restaurantAttributes: analysis.restaurantAttributes,
+    };
+    const payload = {
+      analysis: analysisPayload,
+      cachedAt: new Date().toISOString(),
+      promptHash: cacheKey.promptHash,
+      version: this.queryResultCacheVersion,
+      model: this.queryModel,
+    };
+
+    try {
+      await this.redisClient.set(
+        cacheKey.key,
+        JSON.stringify(payload),
+        'EX',
+        Math.max(1, this.queryResultCacheTtlSeconds),
+      );
+    } catch (error) {
+      this.logger.warn('Failed to persist search query analysis cache', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'analyze_search_query',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
+
+  private getMemoryCachedSearchQueryAnalysis(
+    key: string,
+  ): { analysis: LLMSearchQueryAnalysis; cachedAt: string } | null {
+    if (
+      this.queryResultCacheLocalMaxEntries <= 0 ||
+      this.queryResultCacheLocalTtlMs <= 0
+    ) {
+      return null;
+    }
+    const entry = this.queryResultMemoryCache.get(key);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.queryResultMemoryCache.delete(key);
+      return null;
+    }
+    this.queryResultMemoryCache.delete(key);
+    this.queryResultMemoryCache.set(key, entry);
+    return { analysis: entry.analysis, cachedAt: entry.cachedAt };
+  }
+
+  private setMemoryCachedSearchQueryAnalysis(
+    key: string,
+    analysis: LLMSearchQueryAnalysis,
+  ): void {
+    if (
+      this.queryResultCacheLocalMaxEntries <= 0 ||
+      this.queryResultCacheLocalTtlMs <= 0
+    ) {
+      return;
+    }
+    const analysisPayload: LLMSearchQueryAnalysis = {
+      restaurants: analysis.restaurants,
+      foods: analysis.foods,
+      foodAttributes: analysis.foodAttributes,
+      restaurantAttributes: analysis.restaurantAttributes,
+    };
+    const entry = {
+      analysis: analysisPayload,
+      cachedAt: new Date().toISOString(),
+      expiresAt: Date.now() + this.queryResultCacheLocalTtlMs,
+    };
+    if (this.queryResultMemoryCache.has(key)) {
+      this.queryResultMemoryCache.delete(key);
+    }
+    this.queryResultMemoryCache.set(key, entry);
+    this.pruneMemorySearchQueryCache();
+  }
+
+  private pruneMemorySearchQueryCache(): void {
+    if (this.queryResultCacheLocalMaxEntries <= 0) {
+      this.queryResultMemoryCache.clear();
+      return;
+    }
+    while (
+      this.queryResultMemoryCache.size > this.queryResultCacheLocalMaxEntries
+    ) {
+      const oldestKey = this.queryResultMemoryCache.keys().next().value as
+        | string
+        | undefined;
+      if (!oldestKey) {
+        break;
+      }
+      this.queryResultMemoryCache.delete(oldestKey);
+    }
+  }
+
+  private recordQueryCacheLookup(
+    layer: SearchQueryCacheLayer,
+    result: 'hit' | 'miss',
+  ): void {
+    if (!this.queryCacheLookupCounter) {
+      return;
+    }
+    this.queryCacheLookupCounter.inc({ layer, result }, 1);
+  }
+
+  private decorateSearchQueryAnalysis(
+    analysis: LLMSearchQueryAnalysis,
+    cacheHit: boolean,
+    cacheLayer: SearchQueryCacheLayer | null,
+  ): LLMSearchQueryAnalysis {
+    if (!this.queryResultCacheIncludeMetadata) {
+      return analysis;
+    }
+
+    const metadata = {
+      ...(analysis.metadata ?? {}),
+      cacheHit,
+      cacheLayer,
+    };
+    return { ...analysis, metadata };
+  }
+
+  private hashString(value: string): string {
+    return createHash('sha256').update(value).digest('hex');
   }
 
   private extractTextContent(

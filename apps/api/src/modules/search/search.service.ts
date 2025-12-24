@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { performance } from 'perf_hooks';
 import { EntityType, OnDemandReason, SearchLogSource } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,6 +12,7 @@ import {
   QueryPlan,
   SearchQueryRequestDto,
   SearchResponseDto,
+  SearchResponseMetadataDto,
   PaginationDto,
   SearchResultClickDto,
   SearchPlanResponseDto,
@@ -25,6 +27,7 @@ import {
 import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
+import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -59,6 +62,7 @@ export class SearchService {
   private readonly onDemandMinResults: number;
   private readonly openNowFetchMultiplier: number;
   private readonly searchLogEnabled: boolean;
+  private readonly includePhaseTimings: boolean;
 
   constructor(
     loggerService: LoggerService,
@@ -71,6 +75,7 @@ export class SearchService {
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
     private readonly subredditResolver: SearchSubredditResolverService,
+    private readonly coverageRegistry: CoverageRegistryService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -81,6 +86,7 @@ export class SearchService {
     this.onDemandMinResults = this.resolveOnDemandMinResults();
     this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
     this.searchLogEnabled = this.resolveSearchLogEnabled();
+    this.includePhaseTimings = this.resolveIncludePhaseTimings();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
@@ -202,15 +208,19 @@ export class SearchService {
     const searchRequestId = request.searchRequestId ?? randomUUID();
     request.searchRequestId = searchRequestId;
     let plan: QueryPlan | undefined;
+    const phaseTimings: Record<string, number> = {};
 
     try {
+      const planStart = performance.now();
       plan = this.buildQueryPlan(request);
+      phaseTimings.queryPlanMs = Math.round(performance.now() - planStart);
       const pagination = this.resolvePagination(request.pagination);
       const includeSqlPreview = this.shouldIncludeSqlPreview(request);
       const dbPagination = this.resolveDbPagination(pagination, request);
       const perRestaurantLimit =
         plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
 
+      const executeStart = performance.now();
       const execution = await this.queryExecutor.execute({
         plan,
         request,
@@ -219,6 +229,12 @@ export class SearchService {
         perRestaurantLimit,
         includeSqlPreview,
       });
+      phaseTimings.queryExecuteMs = Math.round(
+        performance.now() - executeStart,
+      );
+      if (execution.timings) {
+        Object.assign(phaseTimings, execution.timings);
+      }
 
       const totalRestaurantResults =
         plan.format === 'dual_list'
@@ -318,7 +334,7 @@ export class SearchService {
         triggeredOnDemand: onDemandQueued,
       });
 
-      const metadata = {
+      const metadata: SearchResponseMetadataDto = {
         totalFoodResults: execution.totalFoodCount,
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
@@ -343,6 +359,23 @@ export class SearchService {
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs,
       };
+
+      if (this.includePhaseTimings && Object.keys(phaseTimings).length > 0) {
+        const existing =
+          metadata.analysisMetadata &&
+          typeof metadata.analysisMetadata === 'object'
+            ? metadata.analysisMetadata
+            : {};
+        const existingPhaseTimings =
+          typeof existing.phaseTimings === 'object' &&
+          existing.phaseTimings !== null
+            ? (existing.phaseTimings as Record<string, number>)
+            : {};
+        metadata.analysisMetadata = {
+          ...existing,
+          phaseTimings: { ...existingPhaseTimings, ...phaseTimings },
+        };
+      }
 
       if (request.openNow && !execution.metadata.openNowApplied) {
         this.logger.warn(
@@ -817,7 +850,19 @@ export class SearchService {
         referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
       });
 
-      return match ? match.toLowerCase() : null;
+      if (match) {
+        return match.toLowerCase();
+      }
+
+      if (request.bounds) {
+        const created = await this.coverageRegistry.resolveOrCreateCoverage({
+          bounds: request.bounds,
+          fallbackLocation: fallbackLocation ?? null,
+        });
+        return created.coverageKey ?? null;
+      }
+
+      return null;
     } catch (error) {
       this.logger.debug('Unable to resolve search location key', {
         error:
@@ -1172,6 +1217,14 @@ export class SearchService {
       return raw.toLowerCase() === 'true';
     }
     return true;
+  }
+
+  private resolveIncludePhaseTimings(): boolean {
+    const raw = process.env.SEARCH_INCLUDE_PHASE_TIMINGS;
+    if (typeof raw === 'string' && raw.length > 0) {
+      return raw.toLowerCase() === 'true';
+    }
+    return false;
   }
 
   private resolveOnDemandMinResults(): number {

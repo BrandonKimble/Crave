@@ -200,11 +200,9 @@ export class PollSchedulerService {
 
     await this.prisma.pollTopic.create({
       data: {
-        title: this.buildDishQuestion(entity.name, locationKey),
-        description: `Which spot has the best ${
-          entity.name
-        } in ${this.formatLocation(locationKey)}?`,
-        city: locationKey,
+        title: this.buildDishQuestion(entity.name),
+        description: `Which spot has the best ${entity.name}?`,
+        coverageKey: locationKey,
         region: entity.region,
         country: entity.country,
         topicType: PollTopicType.best_dish,
@@ -261,7 +259,7 @@ export class PollSchedulerService {
       data: {
         title: this.buildRestaurantQuestion(entity.name),
         description: `Help everyone decide what to order at ${entity.name}.`,
-        city: locationKey,
+        coverageKey: locationKey,
         region: entity.region,
         country: entity.country,
         topicType: PollTopicType.what_to_order,
@@ -316,7 +314,7 @@ export class PollSchedulerService {
     const where: Prisma.PollTopicWhereInput = {
       topicType,
       status: { in: [PollTopicStatus.draft, PollTopicStatus.ready] },
-      city: locationKey,
+      coverageKey: locationKey,
     };
 
     if (topicType === PollTopicType.best_dish) {
@@ -361,7 +359,7 @@ export class PollSchedulerService {
     let published = 0;
 
     for (const topic of topics) {
-      const cityKey = topic.city?.toLowerCase() ?? 'global';
+      const cityKey = topic.coverageKey?.toLowerCase() ?? 'global';
       const currentCount = cityCounts.get(cityKey) ?? 0;
       if (currentCount >= this.config.maxPollsPerCity) {
         continue;
@@ -371,7 +369,7 @@ export class PollSchedulerService {
         data: {
           topicId: topic.topicId,
           question: topic.title,
-          city: topic.city,
+          coverageKey: topic.coverageKey,
           region: topic.region,
           state: PollState.active,
           scheduledFor: now,
@@ -433,21 +431,11 @@ export class PollSchedulerService {
     return { start, end };
   }
 
-  private buildDishQuestion(dishName: string, locationKey: string): string {
-    return `What\\'s the best ${dishName} in ${this.formatLocation(
-      locationKey,
-    )} right now?`;
+  private buildDishQuestion(dishName: string): string {
+    return `What\\'s the best ${dishName} right now?`;
   }
 
   private buildRestaurantQuestion(restaurantName: string): string {
     return `What should we order at ${restaurantName}?`;
-  }
-
-  private formatLocation(locationKey: string): string {
-    if (!locationKey || locationKey === 'global') {
-      return 'your city';
-    }
-    const cleaned = locationKey.replace(/[_-]+/g, ' ');
-    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
 }

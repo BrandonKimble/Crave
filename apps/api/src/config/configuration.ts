@@ -267,6 +267,28 @@ export default () => {
             prod: process.env.LLM_SYSTEM_CACHE_REDIS_KEY_PROD,
             fallback: process.env.LLM_SYSTEM_CACHE_REDIS_KEY,
           }) || `crave:${appEnv}:llm:system-instruction-cache`,
+        queryResultTtlSeconds: parseInt(
+          process.env.LLM_QUERY_RESULT_CACHE_TTL_SECONDS || '0',
+          10,
+        ),
+        queryResultRedisKey:
+          resolveScopedEnv(appEnv, {
+            dev: process.env.LLM_QUERY_RESULT_CACHE_REDIS_KEY_DEV,
+            prod: process.env.LLM_QUERY_RESULT_CACHE_REDIS_KEY_PROD,
+            fallback: process.env.LLM_QUERY_RESULT_CACHE_REDIS_KEY,
+          }) || `crave:${appEnv}:llm:query-analysis`,
+        queryResultCacheVersion:
+          process.env.LLM_QUERY_RESULT_CACHE_VERSION || 'v1',
+        queryResultLocalTtlSeconds: parseInt(
+          process.env.LLM_QUERY_RESULT_CACHE_LOCAL_TTL_SECONDS || '0',
+          10,
+        ),
+        queryResultLocalMaxEntries: parseInt(
+          process.env.LLM_QUERY_RESULT_CACHE_LOCAL_MAX_ENTRIES || '0',
+          10,
+        ),
+        queryResultIncludeMetadata:
+          process.env.LLM_QUERY_RESULT_CACHE_INCLUDE_METADATA === 'true',
       },
     },
     googlePlaces: {
@@ -333,6 +355,15 @@ export default () => {
         ),
       },
     },
+    moderation: {
+      apiKey: resolveScopedEnv(appEnv, {
+        dev: process.env.GOOGLE_MODERATION_API_KEY_DEV,
+        prod: process.env.GOOGLE_MODERATION_API_KEY_PROD,
+      }),
+      endpoint:
+        process.env.GOOGLE_MODERATION_ENDPOINT ||
+        'https://contentmoderation.googleapis.com/v1beta/moderations:moderateText',
+    },
     jwt: {
       secret: process.env.JWT_SECRET,
       expiresIn: process.env.JWT_EXPIRATION || '7d',
@@ -372,6 +403,33 @@ export default () => {
           '300000',
         10,
       ),
+    },
+    entityResolution: {
+      cache: {
+        redisKey:
+          resolveScopedEnv(appEnv, {
+            dev: process.env.ENTITY_RESOLUTION_CACHE_REDIS_KEY_DEV,
+            prod: process.env.ENTITY_RESOLUTION_CACHE_REDIS_KEY_PROD,
+            fallback: process.env.ENTITY_RESOLUTION_CACHE_REDIS_KEY,
+          }) || `crave:${appEnv}:entity-resolution`,
+        ttlSeconds: parseInt(
+          process.env.ENTITY_RESOLUTION_CACHE_TTL_SECONDS || '0',
+          10,
+        ),
+        negativeTtlSeconds: parseInt(
+          process.env.ENTITY_RESOLUTION_CACHE_NEGATIVE_TTL_SECONDS || '0',
+          10,
+        ),
+        localTtlSeconds: parseInt(
+          process.env.ENTITY_RESOLUTION_CACHE_LOCAL_TTL_SECONDS || '0',
+          10,
+        ),
+        localMaxEntries: parseInt(
+          process.env.ENTITY_RESOLUTION_CACHE_LOCAL_MAX_ENTRIES || '0',
+          10,
+        ),
+        version: process.env.ENTITY_RESOLUTION_CACHE_VERSION || 'v1',
+      },
     },
     restaurantEnrichment: {
       minScoreThreshold: parseFloat(

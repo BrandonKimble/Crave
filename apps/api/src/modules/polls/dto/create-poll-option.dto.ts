@@ -27,6 +27,20 @@ export class CreatePollOptionDto {
   dishEntityId?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(140)
+  restaurantName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(140)
+  dishName?: string;
+
+  @IsOptional()
+  @IsString()
+  sessionToken?: string;
+
+  @IsOptional()
   @IsEnum(EntityType)
   entityType?: EntityType;
 }

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { performance } from 'perf_hooks';
 import { ActivityLevel, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
@@ -78,6 +79,7 @@ interface QueryResultRow {
   restaurant_display_percentile?: Prisma.Decimal | number | string | null;
   connection_display_score?: Prisma.Decimal | number | string | null;
   connection_display_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_metadata?: Prisma.JsonValue | null;
   restaurant_price_level?: Prisma.Decimal | number | string | null;
   restaurant_price_level_updated_at?: Date | null;
   location_id: string;
@@ -147,12 +149,14 @@ interface ExecuteResult {
     minimumVotesApplied: boolean;
   };
   sqlPreview?: string | null;
+  timings?: Record<string, number>;
 }
 
 @Injectable()
 export class SearchQueryExecutor {
   private readonly logger: LoggerService;
   private readonly diagnosticLogging: boolean;
+  private readonly includePhaseTimings: boolean;
 
   constructor(
     loggerService: LoggerService,
@@ -162,6 +166,8 @@ export class SearchQueryExecutor {
     this.logger = loggerService.setContext('SearchQueryExecutor');
     this.diagnosticLogging =
       (process.env.SEARCH_VERBOSE_DIAGNOSTICS || '').toLowerCase() === 'true';
+    this.includePhaseTimings =
+      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
   }
 
   async execute(params: ExecuteParams): Promise<ExecuteResult> {
@@ -174,22 +180,28 @@ export class SearchQueryExecutor {
       dbPagination,
     } = params;
 
+    const executeStart = performance.now();
     const effectivePagination = dbPagination ?? pagination;
+    const buildStart = performance.now();
     const query = this.queryBuilder.build({
       plan,
       pagination: effectivePagination,
       searchCenter: this.resolveSearchCenter(request),
     });
+    const buildSqlMs = performance.now() - buildStart;
 
     const referenceDate = new Date();
     const userLocation = this.normalizeUserLocation(request.userLocation);
+    const dbStart = performance.now();
     const [connections, totalResult] = await Promise.all([
       this.prisma.$queryRaw<QueryResultRow[]>(query.dataSql),
       this.prisma.$queryRaw<
         Array<{ total_connections: bigint; total_restaurants: bigint }>
       >(query.countSql),
     ]);
+    const dbQueryMs = performance.now() - dbStart;
 
+    const postProcessStart = performance.now();
     const totalBeforeFiltering = Number(totalResult[0]?.total_connections ?? 0);
     const restaurantContexts = this.buildRestaurantContexts(
       connections,
@@ -201,8 +213,17 @@ export class SearchQueryExecutor {
     );
     const needsOpenFilter = Boolean(request.openNow);
 
+    let openNowFilterMs = 0;
     const openFilter = needsOpenFilter
-      ? this.filterByOpenNow(connections, restaurantContexts)
+      ? (() => {
+          const openFilterStart = performance.now();
+          const filtered = this.filterByOpenNow(
+            connections,
+            restaurantContexts,
+          );
+          openNowFilterMs = performance.now() - openFilterStart;
+          return filtered;
+        })()
       : {
           connections,
           applied: false,
@@ -232,15 +253,18 @@ export class SearchQueryExecutor {
     const minimumVotes =
       typeof request.minimumVotes === 'number' ? request.minimumVotes : null;
 
+    const mapFoodStart = performance.now();
     const foodResults = this.mapFoodResults(
       limitedConnections,
       restaurantContexts,
       referenceDate,
       minimumVotes,
     );
+    const mapFoodMs = performance.now() - mapFoodStart;
     const totalRestaurantCount = needsOpenFilter
       ? this.countDistinctRestaurants(filteredConnections)
       : totalRestaurantCountDb;
+    const mapRestaurantStart = performance.now();
     const restaurantResults = this.mapRestaurantResults(
       limitedConnections,
       plan.ranking.restaurantOrder,
@@ -248,6 +272,22 @@ export class SearchQueryExecutor {
       restaurantContexts,
       referenceDate,
     );
+    const mapRestaurantMs = performance.now() - mapRestaurantStart;
+    const postProcessMs = performance.now() - postProcessStart;
+    const executeMs = performance.now() - executeStart;
+    const timings = {
+      buildSqlMs: Math.round(buildSqlMs),
+      dbQueryMs: Math.round(dbQueryMs),
+      openNowFilterMs: Math.round(openNowFilterMs),
+      mapFoodMs: Math.round(mapFoodMs),
+      mapRestaurantMs: Math.round(mapRestaurantMs),
+      postProcessMs: Math.round(postProcessMs),
+      executeMs: Math.round(executeMs),
+    };
+
+    if (this.includePhaseTimings) {
+      this.logger.debug('Search executor timings', { timings });
+    }
 
     if (this.diagnosticLogging) {
       this.logger.debug('Search executor diagnostics', {
@@ -277,6 +317,7 @@ export class SearchQueryExecutor {
         minimumVotesApplied: query.metadata.minimumVotesApplied,
       },
       sqlPreview: includeSqlPreview ? query.preview : null,
+      timings,
     };
   }
 
@@ -326,30 +367,18 @@ export class SearchQueryExecutor {
   private buildOperatingMetadata(
     connection: QueryResultRow,
   ): RestaurantMetadata | null {
-    const hours = this.coerceRecord(connection.hours);
-    const timeZone =
-      typeof connection.time_zone === 'string' && connection.time_zone.trim()
-        ? connection.time_zone.trim()
-        : null;
-    const utcOffsetMinutes = this.toOptionalNumber(
+    const locationMetadata = this.buildOperatingMetadataFromLocation(
+      connection.hours,
       connection.utc_offset_minutes,
+      connection.time_zone,
     );
-
-    if (!hours && !timeZone && utcOffsetMinutes === null) {
-      return null;
+    if (locationMetadata) {
+      return locationMetadata;
     }
 
-    const metadata: RestaurantMetadata = {};
-    if (hours) {
-      metadata.hours = hours;
-    }
-    if (timeZone) {
-      metadata.timezone = timeZone;
-    }
-    if (utcOffsetMinutes !== null) {
-      metadata.utc_offset_minutes = utcOffsetMinutes;
-    }
-    return metadata;
+    return this.buildOperatingMetadataFromRestaurantMetadata(
+      connection.restaurant_metadata,
+    );
   }
 
   private buildOperatingMetadataFromLocation(
@@ -379,6 +408,35 @@ export class SearchQueryExecutor {
       metadata.utc_offset_minutes = utcOffsetMinutes;
     }
     return metadata;
+  }
+
+  private buildOperatingMetadataFromRestaurantMetadata(
+    metadataValue: Prisma.JsonValue | null | undefined,
+  ): RestaurantMetadata | null {
+    const metadataRecord = this.coerceRecord(metadataValue);
+    if (!metadataRecord) {
+      return null;
+    }
+
+    const hoursValue = metadataRecord.hours;
+    const utcOffsetCandidate =
+      metadataRecord.utc_offset_minutes ?? metadataRecord.utcOffsetMinutes;
+    const timeZoneCandidate =
+      typeof metadataRecord.timezone === 'string'
+        ? metadataRecord.timezone
+        : typeof metadataRecord.timeZone === 'string'
+          ? metadataRecord.timeZone
+          : typeof metadataRecord.time_zone === 'string'
+            ? metadataRecord.time_zone
+            : typeof metadataRecord.tz === 'string'
+              ? metadataRecord.tz
+              : null;
+
+    return this.buildOperatingMetadataFromLocation(
+      hoursValue,
+      utcOffsetCandidate as Prisma.Decimal | number | string | null | undefined,
+      timeZoneCandidate,
+    );
   }
 
   private buildRestaurantContexts(

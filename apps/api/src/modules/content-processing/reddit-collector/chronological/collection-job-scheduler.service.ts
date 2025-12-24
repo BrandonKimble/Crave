@@ -1,4 +1,5 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
+import { CoverageSourceType } from '@prisma/client';
 import { InjectQueue } from '@nestjs/bull';
 import { Queue } from 'bull';
 import { ConfigService } from '@nestjs/config';
@@ -101,8 +102,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     // Database-driven scheduling - no dependency on old scheduling service
 
     // Load active subreddits from database and initialize scheduling
-    const activeSubreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const activeSubreddits = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: { name: true },
     });
     this.scheduleConfig.subreddits = activeSubreddits.map((s) => s.name);
@@ -146,8 +147,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     });
 
     // Get all active subreddits with their timing data
-    const allActiveSubreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const allActiveSubreddits = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: {
         name: true,
         safeIntervalDays: true,
@@ -158,7 +159,21 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     const now = Date.now();
 
     for (const subreddit of allActiveSubreddits) {
-      const nextDueTime = this.calculateNextDueTime(subreddit, now);
+      const safeIntervalDays = this.resolveSafeIntervalDays(
+        subreddit.safeIntervalDays,
+      );
+      if (!safeIntervalDays) {
+        this.logger.warn('Skipping delayed job scheduling (no interval)', {
+          correlationId,
+          subreddit: subreddit.name,
+        });
+        continue;
+      }
+
+      const nextDueTime = this.calculateNextDueTime(
+        { lastProcessed: subreddit.lastProcessed, safeIntervalDays },
+        now,
+      );
 
       if (nextDueTime <= now) {
         // Due now or overdue - schedule immediately
@@ -171,9 +186,7 @@ export class CollectionJobSchedulerService implements OnModuleInit {
 
         const lastProcessedTimestamp = subreddit.lastProcessed
           ? Math.floor(subreddit.lastProcessed.getTime() / 1000)
-          : Math.floor(
-              (now - subreddit.safeIntervalDays * 24 * 60 * 60 * 1000) / 1000,
-            );
+          : Math.floor((now - safeIntervalDays * 24 * 60 * 60 * 1000) / 1000);
 
         await this.scheduleChronologicalCollection(subreddit.name, {
           lastProcessedTimestamp,
@@ -281,8 +294,8 @@ export class CollectionJobSchedulerService implements OnModuleInit {
 
     // Query database for subreddits that are due for collection
     // We'll filter in code since we need to use each subreddit's individual safeIntervalDays
-    const allActiveSubreddits = await this.prisma.subreddit.findMany({
-      where: { isActive: true },
+    const allActiveSubreddits = await this.prisma.coverageArea.findMany({
+      where: { isActive: true, sourceType: CoverageSourceType.all },
       select: {
         name: true,
         safeIntervalDays: true,
@@ -370,8 +383,11 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     });
 
     // Get updated subreddit data from database
-    const subredditData = await this.prisma.subreddit.findUnique({
-      where: { name: subreddit.toLowerCase() },
+    const subredditData = await this.prisma.coverageArea.findFirst({
+      where: {
+        name: subreddit.toLowerCase(),
+        sourceType: CoverageSourceType.all,
+      },
       select: {
         name: true,
         safeIntervalDays: true,
@@ -676,8 +692,11 @@ export class CollectionJobSchedulerService implements OnModuleInit {
     nextDueTime: number;
     isDue: boolean;
   }> {
-    const subredditData = await this.prisma.subreddit.findUnique({
-      where: { name: subreddit.toLowerCase() },
+    const subredditData = await this.prisma.coverageArea.findFirst({
+      where: {
+        name: subreddit.toLowerCase(),
+        sourceType: CoverageSourceType.all,
+      },
       select: { name: true, safeIntervalDays: true, lastProcessed: true },
     });
 

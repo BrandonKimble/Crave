@@ -29,6 +29,8 @@ type RequestOptions = {
   signal?: AbortSignal;
   bounds?: MapBounds | null;
   userLocation?: Coordinate | null;
+  entityType?: string;
+  entityTypes?: string[];
 };
 
 export const autocompleteService = {
@@ -43,6 +45,12 @@ export const autocompleteService = {
     }
     if (options.userLocation) {
       payload.userLocation = options.userLocation;
+    }
+    if (options.entityType) {
+      payload.entityType = options.entityType;
+    }
+    if (options.entityTypes && options.entityTypes.length > 0) {
+      payload.entityTypes = options.entityTypes;
     }
     const { data } = await api.post<AutocompleteResponse>('/autocomplete/entities', payload, {
       signal: options.signal,

@@ -1,5 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import {
+  CoverageSourceType,
   EntityType,
   OnDemandReason,
   OnDemandStatus,
@@ -791,9 +792,10 @@ export class OnDemandProcessingService {
     safeIntervalMs: number;
     subredditNames: string[];
   }> {
-    const coverageMatches = await this.prisma.subreddit.findMany({
+    const coverageMatches = await this.prisma.coverageArea.findMany({
       where: {
         isActive: true,
+        sourceType: CoverageSourceType.all,
         coverageKey: {
           equals: locationKey,
           mode: 'insensitive',
@@ -805,9 +807,10 @@ export class OnDemandProcessingService {
     const rows =
       coverageMatches.length > 0
         ? coverageMatches
-        : await this.prisma.subreddit.findMany({
+        : await this.prisma.coverageArea.findMany({
             where: {
               isActive: true,
+              sourceType: CoverageSourceType.all,
               name: {
                 equals: locationKey,
                 mode: 'insensitive',

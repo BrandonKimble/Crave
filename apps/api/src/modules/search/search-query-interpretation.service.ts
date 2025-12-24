@@ -1,4 +1,5 @@
 import { Injectable, Inject } from '@nestjs/common';
+import { performance } from 'perf_hooks';
 import { EntityType, OnDemandReason } from '@prisma/client';
 import { v4 as uuid } from 'uuid';
 import { LLMService } from '../external-integrations/llm/llm.service';
@@ -37,11 +38,13 @@ interface InterpretationResult {
   analysisMetadata?: Record<string, unknown>;
   onDemandQueued?: boolean;
   onDemandEtaMs?: number;
+  phaseTimings?: Record<string, number>;
 }
 
 @Injectable()
 export class SearchQueryInterpretationService {
   private readonly logger: LoggerService;
+  private readonly includePhaseTimings: boolean;
 
   constructor(
     private readonly llmService: LLMService,
@@ -52,15 +55,21 @@ export class SearchQueryInterpretationService {
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchQueryInterpretationService');
+    this.includePhaseTimings =
+      (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
   }
 
   async interpret(
     request: NaturalSearchRequestDto,
   ): Promise<InterpretationResult> {
+    const interpretationStart = performance.now();
     let analysis: LLMSearchQueryAnalysis;
+    let llmMs = 0;
+    const llmStart = performance.now();
     try {
       analysis = await this.llmService.analyzeSearchQuery(request.query);
     } catch (error) {
+      llmMs = performance.now() - llmStart;
       const originalMessage =
         error instanceof Error ? error.message : String(error);
       this.logger.warn('Search query interpretation failed', {
@@ -77,6 +86,7 @@ export class SearchQueryInterpretationService {
         originalMessage,
       );
     }
+    llmMs = performance.now() - llmStart;
 
     const analysisCounts = this.getAnalysisEntityCounts(analysis);
     this.logger.info('Search query LLM analysis summary', {
@@ -95,6 +105,8 @@ export class SearchQueryInterpretationService {
 
     const locationKey = await this.resolveLocationKey(request);
     const resolutionInputs = this.buildResolutionInputs(analysis, locationKey);
+    let entityResolutionMs = 0;
+    const resolutionStart = performance.now();
     const resolutionResults = resolutionInputs.length
       ? await this.entityResolutionService.resolveBatch(resolutionInputs, {
           enableFuzzyMatching: true,
@@ -123,6 +135,7 @@ export class SearchQueryInterpretationService {
           },
           entityDetails: new Map<string, any>(),
         };
+    entityResolutionMs = performance.now() - resolutionStart;
 
     const groupedEntities = this.groupResolvedEntities(
       resolutionResults.resolutionResults,
@@ -146,7 +159,9 @@ export class SearchQueryInterpretationService {
 
     let onDemandQueued = false;
     let onDemandEtaMs: number | undefined;
+    let onDemandMs = 0;
     if (unresolved.length) {
+      const onDemandStart = performance.now();
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -198,6 +213,17 @@ export class SearchQueryInterpretationService {
           onDemandContext,
         );
       }
+      onDemandMs = performance.now() - onDemandStart;
+    }
+
+    const phaseTimings = {
+      llmMs: Math.round(llmMs),
+      entityResolutionMs: Math.round(entityResolutionMs),
+      onDemandMs: Math.round(onDemandMs),
+      interpretationMs: Math.round(performance.now() - interpretationStart),
+    };
+    if (this.includePhaseTimings) {
+      this.logger.debug('Search interpretation timings', { phaseTimings });
     }
 
     return {
@@ -207,6 +233,7 @@ export class SearchQueryInterpretationService {
       analysisMetadata: analysis.metadata,
       onDemandQueued: onDemandQueued || undefined,
       onDemandEtaMs,
+      phaseTimings,
     };
   }
 

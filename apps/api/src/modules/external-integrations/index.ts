@@ -3,3 +3,4 @@ export * from './shared';
 export { RedditService, RedditConfig, RedditTokenResponse } from './reddit';
 export { LLMService, LLMInputStructure, LLMOutputStructure } from './llm';
 export { GooglePlacesService } from './google-places';
+export { GoogleGeocodingService } from './google-geocoding/google-geocoding.service';

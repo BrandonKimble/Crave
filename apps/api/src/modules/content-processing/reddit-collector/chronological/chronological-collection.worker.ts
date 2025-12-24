@@ -3,6 +3,7 @@ import { Job, Queue } from 'bull';
 import { OnModuleInit, Inject } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { LoggerService, CorrelationUtils } from '../../../../shared';
+import { CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { RedditService } from '../../../external-integrations/reddit/reddit.service';
 import { CollectionJobSchedulerService } from './collection-job-scheduler.service';
@@ -134,8 +135,11 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
       // Use DB as source of truth so delayed jobs/retries remain correct
       let effectiveLastProcessed = options.lastProcessedTimestamp;
       if (typeof effectiveLastProcessed !== 'number') {
-        const sr = await this.prisma.subreddit.findUnique({
-          where: { name: subreddit.toLowerCase() },
+        const sr = await this.prisma.coverageArea.findFirst({
+          where: {
+            name: subreddit.toLowerCase(),
+            sourceType: CoverageSourceType.all,
+          },
           select: { lastProcessed: true, safeIntervalDays: true },
         });
         if (sr) {
@@ -308,7 +312,7 @@ export class ChronologicalCollectionWorker implements OnModuleInit {
         // For async queue approach, we update the timestamp immediately after queuing
         // The actual LLM processing will happen asynchronously
         // CRITICAL: Use collection start time to prevent missing posts during processing
-        await this.prisma.subreddit.update({
+        await this.prisma.coverageArea.update({
           where: { name: subreddit.toLowerCase() },
           data: {
             lastProcessed: new Date(collectionStartTime * 1000),

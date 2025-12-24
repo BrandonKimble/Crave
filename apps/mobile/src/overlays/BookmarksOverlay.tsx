@@ -20,9 +20,10 @@ const CARD_GAP = 4;
 
 type BookmarksOverlayProps = {
   visible: boolean;
+  navBarTop?: number;
 };
 
-const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
+const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop = 0 }) => {
   const [favorites, setFavorites] = React.useState<Favorite[]>([]);
   const [loading, setLoading] = React.useState(false);
   const insets = useSafeAreaInsets();
@@ -31,20 +32,29 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const headerPaddingTop = 0;
+  const closeCutout = useHeaderCloseCutout();
+  const headerHeight = closeCutout.headerHeight;
+  const navBarOffset = Math.max(navBarTop, 0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(insets.top, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
-    const collapsed = SCREEN_HEIGHT - 160;
     const hidden = SCREEN_HEIGHT + 80;
+    const clampedMiddle = Math.min(middle, hidden - 120);
+    const fallbackCollapsed = SCREEN_HEIGHT - 160;
+    const navAlignedCollapsed =
+      navBarOffset > 0 && headerHeight > 0
+        ? navBarOffset - headerHeight
+        : fallbackCollapsed;
+    const collapsed = Math.max(navAlignedCollapsed, clampedMiddle + 24);
     return {
       expanded,
-      middle: Math.min(middle, hidden - 120),
+      middle: clampedMiddle,
       collapsed,
       hidden,
     };
-  }, [insets.top]);
+  }, [headerHeight, insets.top, navBarOffset]);
 
   const loadFavorites = React.useCallback(async () => {
     setLoading(true);
@@ -84,7 +94,6 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
     }
     setOverlay('search');
   }, [setOverlay, visible]);
-  const closeCutout = useHeaderCloseCutout();
 
   const renderFavorite = React.useCallback(
     ({ item }: { item: Favorite }) => (
@@ -136,11 +145,14 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible }) => {
         onLayout={closeCutout.onHeaderRowLayout}
       >
         <View style={styles.headerTextGroup}>
-          <Text variant="body" weight="semibold" style={styles.headerTitle}>
+          <Text
+            variant="body"
+            weight="semibold"
+            style={styles.headerTitle}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             Bookmarks
-          </Text>
-          <Text variant="body" style={styles.headerSubtitle}>
-            Your saved favorites
           </Text>
         </View>
         <Pressable
@@ -208,10 +220,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: themeColors.text,
-  },
-  headerSubtitle: {
-    color: themeColors.muted,
-    marginTop: 2,
   },
   scrollContent: {
     paddingTop: 16,

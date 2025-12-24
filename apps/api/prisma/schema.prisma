@@ -44,6 +44,8 @@ model Entity {
   pollOptionRestaurants      PollOption[]          @relation("PollOptionRestaurantEntity")
   pollTopicDishTargets       PollTopic[]           @relation("PollTopicTargetDish")
   pollTopicRestaurantTargets PollTopic[]           @relation("PollTopicTargetRestaurant")
+  pollTopicFoodAttributeTargets PollTopic[]        @relation("PollTopicTargetFoodAttribute")
+  pollTopicRestaurantAttributeTargets PollTopic[]  @relation("PollTopicTargetRestaurantAttribute")
   searchLogs                 SearchLog[]
   userFavorites              UserFavorite[]
   restaurantViews            RestaurantView[]
@@ -246,7 +248,7 @@ model PollTopic {
   topicId            String          @id @default(dbgenerated("gen_random_uuid()")) @map("topic_id") @db.Uuid
   title              String          @db.VarChar(255)
   description        String?         @db.VarChar(500)
-  city               String?         @db.VarChar(255)
+  coverageKey        String?         @map("coverage_key") @db.VarChar(255)
   region             String?         @db.VarChar(255)
   country            String?         @db.VarChar(2)
   categoryEntityIds  String[]        @default([]) @map("category_entity_ids") @db.Uuid
@@ -257,12 +259,16 @@ model PollTopic {
   updatedAt          DateTime        @updatedAt @map("updated_at")
   targetDishId       String?         @map("target_dish_id") @db.Uuid
   targetRestaurantId String?         @map("target_restaurant_id") @db.Uuid
+  targetFoodAttributeId String?      @map("target_food_attribute_id") @db.Uuid
+  targetRestaurantAttributeId String? @map("target_restaurant_attribute_id") @db.Uuid
   topicType          PollTopicType   @default(best_dish) @map("topic_type")
   targetDish         Entity?         @relation("PollTopicTargetDish", fields: [targetDishId], references: [entityId])
   targetRestaurant   Entity?         @relation("PollTopicTargetRestaurant", fields: [targetRestaurantId], references: [entityId])
+  targetFoodAttribute Entity?        @relation("PollTopicTargetFoodAttribute", fields: [targetFoodAttributeId], references: [entityId])
+  targetRestaurantAttribute Entity?  @relation("PollTopicTargetRestaurantAttribute", fields: [targetRestaurantAttributeId], references: [entityId])
   polls              Poll[]
 
-  @@index([city], map: "idx_poll_topics_city")
+  @@index([coverageKey], map: "idx_poll_topics_coverage_key")
   @@index([status], map: "idx_poll_topics_status")
   @@map("poll_topics")
 }
@@ -272,7 +278,7 @@ model Poll {
   topicId            String       @map("topic_id") @db.Uuid
   question           String       @db.VarChar(500)
   state              PollState    @default(draft)
-  city               String?      @db.VarChar(255)
+  coverageKey        String?      @map("coverage_key") @db.VarChar(255)
   region             String?      @db.VarChar(255)
   scheduledFor       DateTime?    @map("scheduled_for")
   launchedAt         DateTime?    @map("launched_at")
@@ -289,7 +295,7 @@ model Poll {
 
   @@index([topicId], map: "idx_polls_topic_id")
   @@index([state], map: "idx_polls_state")
-  @@index([city], map: "idx_polls_city")
+  @@index([coverageKey], map: "idx_polls_coverage_key")
   @@index([scheduledFor], map: "idx_polls_scheduled_for")
   @@map("polls")
 }
@@ -618,11 +624,13 @@ model UserEvent {
   @@map("user_events")
 }
 
-model Subreddit {
+model CoverageArea {
   id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String    @unique @db.Citext
+  name             String    @unique(map: "coverage_areas_name_key") @db.Citext
   locationName     String?   @map("location_name") @db.Citext
+  displayName      String?   @map("display_name") @db.VarChar(255)
   coverageKey      String?   @map("coverage_key") @db.VarChar(100)
+  sourceType       CoverageSourceType @default(all) @map("source_type")
   avgPostsPerDay   Float?    @map("avg_posts_per_day")
   lastCalculated   DateTime? @map("last_calculated") @db.Timestamptz(6)
   lastProcessed    DateTime? @map("last_processed") @db.Timestamptz(6)
@@ -636,12 +644,12 @@ model Subreddit {
   viewportSwLat    Decimal?  @map("viewport_sw_latitude") @db.Decimal(11, 8)
   viewportSwLng    Decimal?  @map("viewport_sw_longitude") @db.Decimal(11, 8)
 
-  @@index([name])
-  @@index([coverageKey], map: "idx_collection_subreddits_coverage_key")
-  @@index([isActive])
-  @@index([lastProcessed])
-  @@index([safeIntervalDays])
-  @@map("collection_subreddits")
+  @@index([name], map: "coverage_areas_name_idx")
+  @@index([coverageKey], map: "idx_coverage_areas_coverage_key")
+  @@index([isActive], map: "idx_coverage_areas_active")
+  @@index([lastProcessed], map: "idx_coverage_areas_last_processed")
+  @@index([safeIntervalDays], map: "idx_coverage_areas_safe_interval")
+  @@map("core_coverage_areas")
 }
 
 model OnDemandRequest {
@@ -676,6 +684,13 @@ enum OnDemandStatus {
   queued
   processing
   completed
+}
+
+enum CoverageSourceType {
+  all
+  poll_only
+
+  @@map("coverage_source_type")
 }
 
 enum OnDemandOutcome {
@@ -718,6 +733,8 @@ enum PollTopicStatus {
 enum PollTopicType {
   best_dish
   what_to_order
+  best_dish_attribute
+  best_restaurant_attribute
 
   @@map("poll_topic_type")
 }

@@ -182,6 +182,9 @@ const BottomSheetWithFlashList = <T,>({
   const hiddenSnap = snapPoints.hidden;
   const initialSnapValue = snapPoints[initialSnapPoint];
   const hiddenOrCollapsed = hiddenSnap ?? collapsedSnap;
+  const currentSnapKeyRef = React.useRef<SheetSnapPoint | 'hidden'>(
+    visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
+  );
   const headerHeight = useSharedValue(0);
   const expandTouchInHeader = useSharedValue(false);
   const collapseTouchInHeader = useSharedValue(false);
@@ -234,6 +237,7 @@ const BottomSheetWithFlashList = <T,>({
         hiddenSnap
       );
       if (snapKey) {
+        currentSnapKeyRef.current = snapKey;
         onSnapChangeRef.current?.(snapKey);
       }
       sheetY.value = withSpring(
@@ -263,6 +267,24 @@ const BottomSheetWithFlashList = <T,>({
     ]
   );
 
+  const resolveSnapValue = React.useCallback(
+    (snapKey: SheetSnapPoint | 'hidden') => {
+      switch (snapKey) {
+        case 'expanded':
+          return expandedSnap;
+        case 'middle':
+          return middleSnap;
+        case 'collapsed':
+          return collapsedSnap;
+        case 'hidden':
+          return hiddenSnap ?? collapsedSnap;
+        default:
+          return undefined;
+      }
+    },
+    [collapsedSnap, expandedSnap, hiddenSnap, middleSnap]
+  );
+
   React.useEffect(() => {
     if (sheetYValue) {
       return;
@@ -272,6 +294,23 @@ const BottomSheetWithFlashList = <T,>({
     wasVisible.current = visible;
     animateTo(target, 0, shouldNotifyHidden);
   }, [animateTo, hiddenOrCollapsed, initialSnapValue, sheetYValue, visible]);
+
+  React.useEffect(() => {
+    if (sheetYValue) {
+      return;
+    }
+    const target = resolveSnapValue(currentSnapKeyRef.current);
+    if (target === undefined) {
+      return;
+    }
+    if (Math.abs(sheetY.value - target) < 0.5) {
+      return;
+    }
+    sheetY.value = withSpring(target, {
+      ...SHEET_SPRING_CONFIG,
+      velocity: 0,
+    });
+  }, [resolveSnapValue, sheetY, sheetYValue]);
 
   const onScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

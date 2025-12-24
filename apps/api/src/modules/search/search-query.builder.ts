@@ -181,6 +181,7 @@ filtered_restaurants AS (
     r.location_key,
     r.restaurant_quality_score,
     r.restaurant_attributes,
+    r.restaurant_metadata,
     r.price_level,
     r.price_level_updated_at
   FROM core_entities r
@@ -189,7 +190,7 @@ filtered_restaurants AS (
 
     const restaurantCtePreview = `
 filtered_restaurants AS (
-  SELECT r.entity_id, r.name, r.aliases, r.location_key, r.restaurant_quality_score, r.restaurant_attributes, r.price_level, r.price_level_updated_at
+  SELECT r.entity_id, r.name, r.aliases, r.location_key, r.restaurant_quality_score, r.restaurant_attributes, r.restaurant_metadata, r.price_level, r.price_level_updated_at
   FROM core_entities r
   WHERE ${restaurantWherePreview}
 )`.trim();
@@ -375,6 +376,7 @@ filtered_connections AS (
     fr.aliases AS restaurant_aliases,
     fr.restaurant_quality_score,
     fr.location_key AS restaurant_location_key,
+    fr.restaurant_metadata AS restaurant_metadata,
     drr.rank_score_display AS restaurant_display_score,
     drr.rank_percentile AS restaurant_display_percentile,
     drc.rank_score_display AS connection_display_score,
@@ -424,7 +426,7 @@ filtered_connections AS (
 filtered_connections AS (
   SELECT c.connection_id, c.restaurant_id, c.food_id, c.categories, c.food_attributes, c.mention_count, c.total_upvotes, c.recent_mention_count, c.last_mentioned_at, c.activity_level, c.food_quality_score,
          rvt.total_upvotes AS restaurant_total_upvotes, rvt.total_mentions AS restaurant_total_mentions,
-         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.location_key AS restaurant_location_key,
+         fr.name AS restaurant_name, fr.aliases AS restaurant_aliases, fr.restaurant_quality_score, fr.location_key AS restaurant_location_key, fr.restaurant_metadata AS restaurant_metadata,
          drr.rank_score_display AS restaurant_display_score, drr.rank_percentile AS restaurant_display_percentile,
          drc.rank_score_display AS connection_display_score, drc.rank_percentile AS connection_display_percentile,
          fr.price_level AS restaurant_price_level, fr.price_level_updated_at AS restaurant_price_level_updated_at, sl.location_id, sl.google_place_id, sl.latitude, sl.longitude, sl.address, sl.city, sl.region, sl.country, sl.postal_code, sl.phone_number, sl.website_url, sl.hours, sl.utc_offset_minutes, sl.time_zone, sl.is_primary AS location_is_primary, sl.last_polled_at AS location_last_polled_at, sl.created_at AS location_created_at, sl.updated_at AS location_updated_at, la.locations_json, la.location_count,

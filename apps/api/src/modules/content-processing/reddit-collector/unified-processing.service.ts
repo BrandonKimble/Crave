@@ -15,12 +15,11 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'crypto';
-import { Prisma, Connection, $Enums } from '@prisma/client';
+import { Prisma, Connection, $Enums, CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { LoggerService } from '../../../shared';
 import { EntityResolutionService } from '../entity-resolver/entity-resolution.service';
 import { QualityScoreService } from '../quality-score/quality-score.service';
-import { RankScoreService } from '../rank-score/rank-score.service';
 import {
   ProcessingResult,
   UnifiedProcessingConfig,
@@ -217,7 +216,6 @@ export class UnifiedProcessingService implements OnModuleInit {
     private readonly prismaService: PrismaService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly qualityScoreService: QualityScoreService,
-    private readonly rankScoreService: RankScoreService,
     private readonly configService: ConfigService,
     private readonly restaurantLocationEnrichmentService: RestaurantLocationEnrichmentService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
@@ -2954,16 +2952,6 @@ export class UnifiedProcessingService implements OnModuleInit {
           errors: updateResult.errors.slice(0, 5), // Log first 5 errors
         });
       }
-      try {
-        await this.rankScoreService.refreshRankScoresForConnections(
-          affectedConnectionIds,
-        );
-      } catch (error) {
-        this.logger.error('Rank score refresh failed', {
-          error: error instanceof Error ? error.message : String(error),
-          affectedConnectionIds: affectedConnectionIds.length,
-        });
-      }
     } catch (error) {
       // Non-critical error - log and continue
       this.logger.error('Quality score update batch failed', {
@@ -3214,8 +3202,8 @@ export class UnifiedProcessingService implements OnModuleInit {
       return cached;
     }
 
-    const record = await tx.subreddit.findUnique({
-      where: { name: subreddit },
+    const record = await tx.coverageArea.findFirst({
+      where: { name: subreddit, sourceType: CoverageSourceType.all },
       select: {
         centerLatitude: true,
         centerLongitude: true,
@@ -3256,12 +3244,13 @@ export class UnifiedProcessingService implements OnModuleInit {
       return cached;
     }
 
-    const record = (await this.prismaService.subreddit.findFirst({
+    const record = (await this.prismaService.coverageArea.findFirst({
       where: {
         name: {
           equals: subreddit,
           mode: 'insensitive',
         },
+        sourceType: CoverageSourceType.all,
       },
       select: { coverageKey: true, name: true },
     })) as CoverageKeyRecord;

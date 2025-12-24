@@ -391,6 +391,7 @@ async function testPipeline() {
               'core_boosts',
               'core_category_aggregates',
               'core_connections',
+              'core_display_rank_scores',
               'core_entities',
               'collection_on_demand_requests',
               'user_search_logs',
@@ -409,7 +410,7 @@ async function testPipeline() {
           ].join(' '),
         );
         await prisma.$executeRawUnsafe(
-          'UPDATE collection_subreddits SET last_processed = NULL',
+          'UPDATE core_coverage_areas SET last_processed = NULL',
         );
         console.log('🌱 Seeding base data...');
         await runSeed();

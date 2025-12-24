@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { PollScoreRefreshService } from './poll-score-refresh.service';
 
 const BATCH_SIZE = 100;
 
@@ -13,6 +14,7 @@ export class PollCategoryReplayService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly pollScoreRefresh: PollScoreRefreshService,
   ) {
     this.logger = loggerService.setContext('PollCategoryReplayService');
   }
@@ -70,6 +72,10 @@ export class PollCategoryReplayService {
       return;
     }
 
+    const connectionIds = connections.map(
+      (connection) => connection.connectionId,
+    );
+
     await this.prisma.$transaction(async (tx) => {
       for (const connection of connections) {
         await tx.connection.update({
@@ -111,5 +117,9 @@ export class PollCategoryReplayService {
         },
       });
     });
+
+    if (connectionIds.length) {
+      await this.pollScoreRefresh.refreshForConnections(connectionIds);
+    }
   }
 }
