@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bull';
 import { DiscoveryModule } from '@nestjs/core';
+import { RedisModule } from '@liaoliaots/nestjs-redis';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
@@ -34,6 +35,18 @@ import { HistoryModule } from './modules/history/history.module';
     DiscoveryModule, // Add DiscoveryModule for BullModule dependencies
     SharedModule,
     // SecurityModule, // TODO: Re-enable when validating security features - currently causing ThrottlerGuard dependency issues
+    RedisModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        config: {
+          host: configService.get<string>('redis.host') || 'localhost',
+          port: configService.get<number>('redis.port') || 6379,
+          password: configService.get<string>('redis.password'),
+          db: configService.get<number>('redis.db') ?? 0,
+        },
+      }),
+    }),
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

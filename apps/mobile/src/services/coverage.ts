@@ -3,14 +3,15 @@ import type { MapBounds } from '../types';
 
 export type CoverageResolveResponse = {
   coverageKey?: string | null;
+  coverageName?: string | null;
 };
 
 export const resolveCoverage = async (bounds: MapBounds): Promise<CoverageResolveResponse> => {
   const response = await api.post('/coverage/resolve', { bounds });
-  const payload = response.data as { coverageKey?: string | null } | { data?: unknown };
+  const payload = response.data as CoverageResolveResponse | { data?: unknown };
   if (payload && typeof payload === 'object' && 'data' in payload) {
     const data = (payload as { data?: CoverageResolveResponse }).data;
-    return data ?? { coverageKey: null };
+    return data ?? { coverageKey: null, coverageName: null };
   }
-  return payload ?? { coverageKey: null };
+  return payload ?? { coverageKey: null, coverageName: null };
 };

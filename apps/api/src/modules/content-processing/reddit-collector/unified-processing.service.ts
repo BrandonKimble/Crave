@@ -38,6 +38,8 @@ import { UnifiedProcessingExceptionFactory } from './unified-processing.exceptio
 import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment';
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY = 5;
 
 type OperationSummary = {
   affectedConnectionIds: string[];
@@ -206,6 +208,8 @@ export class UnifiedProcessingService implements OnModuleInit {
   private readonly defaultBatchSize: number;
   private readonly entityResolutionBatchSize: number;
   private readonly dryRunEnabled: boolean;
+  private readonly transactionTimeoutMs: number;
+  private readonly restaurantEnrichmentConcurrency: number;
   private readonly subredditLocationCache = new Map<
     string,
     { latitude: number; longitude: number }
@@ -227,6 +231,11 @@ export class UnifiedProcessingService implements OnModuleInit {
     this.entityResolutionBatchSize = this.getNumericConfig(
       'ENTITY_RESOLUTION_BATCH_SIZE',
       DEFAULT_ENTITY_RESOLUTION_BATCH_SIZE,
+    );
+    this.transactionTimeoutMs = DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS;
+    this.restaurantEnrichmentConcurrency = this.getNumericConfig(
+      'RESTAURANT_ENRICHMENT_CONCURRENCY',
+      DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY,
     );
     this.dryRunEnabled =
       this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
@@ -1215,437 +1224,445 @@ export class UnifiedProcessingService implements OnModuleInit {
       const categoryReplayMap = new Map<string, Set<string>>();
 
       // PRD 6.6.2: Single atomic transaction
-      const result = await this.prismaService.$transaction(async (tx) => {
-        this.logger.debug('Executing consolidated database transaction', {
-          batchId,
-          mentionsProcessed: llmOutput.mentions.length,
-        });
-
-        if (
-          Array.isArray(sourceLedgerRecords) &&
-          sourceLedgerRecords.length > 0
-        ) {
-          await tx.source.createMany({
-            data: sourceLedgerRecords.map((record) => ({
-              pipeline: record.pipeline,
-              sourceId: record.sourceId,
-              subreddit: record.subreddit ?? null,
-              processedAt: record.processedAt ?? new Date(),
-            })),
-            skipDuplicates: true,
+      const result = await this.prismaService.$transaction(
+        async (tx) => {
+          this.logger.debug('Executing consolidated database transaction', {
+            batchId,
+            mentionsProcessed: llmOutput.mentions.length,
           });
-        }
 
-        // PRD 6.6.2: Create any new entities from resolution within transaction
-        // This ensures atomicity - if entity creation fails, entire batch fails
-        let entitiesCreated = 0;
-        const createdEntitySummaries: CreatedEntitySummary[] = [];
-        const createdEntityIds: string[] = [];
-        const reusedEntitySummaries: {
-          tempId: string;
-          entityId: string;
-          entityType: string;
-          normalizedName?: string;
-          originalText?: string;
-          canonicalName?: string;
-        }[] = [];
-        const normalizedSubreddit = sourceMetadata.subreddit
-          ? sourceMetadata.subreddit.trim().toLowerCase()
-          : null;
-        const subredditLocation = await this.resolveSubredditLocation(
-          tx,
-          normalizedSubreddit,
-        );
-        for (const resolution of resolutionResult.resolutionResults) {
-          if (!resolution.isNewEntity) {
-            continue;
+          if (
+            Array.isArray(sourceLedgerRecords) &&
+            sourceLedgerRecords.length > 0
+          ) {
+            await tx.source.createMany({
+              data: sourceLedgerRecords.map((record) => ({
+                pipeline: record.pipeline,
+                sourceId: record.sourceId,
+                subreddit: record.subreddit ?? null,
+                processedAt: record.processedAt ?? new Date(),
+              })),
+              skipDuplicates: true,
+            });
           }
 
-          const tempGroupSet =
-            newEntityTempGroups.get(resolution.tempId) ??
-            new Set<string>([resolution.tempId]);
-          const tempGroup = Array.from(tempGroupSet);
-          const aggregatedAliasSet = new Set<string>();
-
-          for (const tempId of tempGroup) {
-            const groupResolution = resolutionByTempId.get(tempId);
-            if (!groupResolution) {
+          // PRD 6.6.2: Create any new entities from resolution within transaction
+          // This ensures atomicity - if entity creation fails, entire batch fails
+          let entitiesCreated = 0;
+          const createdEntitySummaries: CreatedEntitySummary[] = [];
+          const createdEntityIds: string[] = [];
+          const reusedEntitySummaries: {
+            tempId: string;
+            entityId: string;
+            entityType: string;
+            normalizedName?: string;
+            originalText?: string;
+            canonicalName?: string;
+          }[] = [];
+          const normalizedSubreddit = sourceMetadata.subreddit
+            ? sourceMetadata.subreddit.trim().toLowerCase()
+            : null;
+          const subredditLocation = await this.resolveSubredditLocation(
+            tx,
+            normalizedSubreddit,
+          );
+          for (const resolution of resolutionResult.resolutionResults) {
+            if (!resolution.isNewEntity) {
               continue;
             }
 
-            const candidateAliases = groupResolution.validatedAliases || [];
-            for (const alias of candidateAliases) {
-              if (typeof alias === 'string' && alias.length > 0) {
-                aggregatedAliasSet.add(alias);
+            const tempGroupSet =
+              newEntityTempGroups.get(resolution.tempId) ??
+              new Set<string>([resolution.tempId]);
+            const tempGroup = Array.from(tempGroupSet);
+            const aggregatedAliasSet = new Set<string>();
+
+            for (const tempId of tempGroup) {
+              const groupResolution = resolutionByTempId.get(tempId);
+              if (!groupResolution) {
+                continue;
+              }
+
+              const candidateAliases = groupResolution.validatedAliases || [];
+              for (const alias of candidateAliases) {
+                if (typeof alias === 'string' && alias.length > 0) {
+                  aggregatedAliasSet.add(alias);
+                }
+              }
+
+              const originalSurface =
+                groupResolution.originalInput?.originalText;
+              if (
+                typeof originalSurface === 'string' &&
+                originalSurface.length > 0
+              ) {
+                aggregatedAliasSet.add(originalSurface);
               }
             }
 
-            const originalSurface = groupResolution.originalInput?.originalText;
-            if (
-              typeof originalSurface === 'string' &&
-              originalSurface.length > 0
-            ) {
-              aggregatedAliasSet.add(originalSurface);
+            if (aggregatedAliasSet.size === 0) {
+              const fallbackAlias =
+                typeof resolution.originalInput.originalText === 'string' &&
+                resolution.originalInput.originalText.length > 0
+                  ? resolution.originalInput.originalText
+                  : resolution.normalizedName || '';
+              if (fallbackAlias) {
+                aggregatedAliasSet.add(fallbackAlias);
+              }
             }
-          }
 
-          if (aggregatedAliasSet.size === 0) {
-            const fallbackAlias =
-              typeof resolution.originalInput.originalText === 'string' &&
-              resolution.originalInput.originalText.length > 0
-                ? resolution.originalInput.originalText
-                : resolution.normalizedName || '';
-            if (fallbackAlias) {
-              aggregatedAliasSet.add(fallbackAlias);
-            }
-          }
+            const aggregatedAliases = Array.from(aggregatedAliasSet);
+            resolution.validatedAliases = aggregatedAliases;
 
-          const aggregatedAliases = Array.from(aggregatedAliasSet);
-          resolution.validatedAliases = aggregatedAliases;
-
-          if (!resolution.entityType) {
-            this.logger.warn('Skipping new entity without type', {
-              batchId,
-              tempId: resolution.tempId,
-              originalText: resolution.originalInput.originalText,
-            });
-            continue;
-          }
-
-          const entityType = resolution.entityType;
-
-          const canonicalName = this.normalizeEntityName(
-            resolution.normalizedName ||
-              resolution.originalInput.originalText ||
-              '',
-            entityType,
-          );
-          resolution.normalizedName = canonicalName;
-          const entityLocationKey =
-            entityType === 'restaurant'
-              ? (resolvedLocationKey ?? 'global')
-              : 'global';
-
-          const existing = await tx.entity.findUnique({
-            where: {
-              name_type_locationKey: {
-                name: canonicalName,
-                type: entityType,
-                locationKey: entityLocationKey,
-              },
-            },
-            select: {
-              entityId: true,
-              aliases: true,
-              name: true,
-            },
-          });
-
-          let entityId: string | null = null;
-          let createdNew = false;
-
-          if (existing) {
-            entityId = existing.entityId;
-
-            this.logger.warn(
-              'Resolver indicated new entity but canonical record already exists',
-              {
+            if (!resolution.entityType) {
+              this.logger.warn('Skipping new entity without type', {
                 batchId,
                 tempId: resolution.tempId,
-                entityId,
-                entityType,
-                normalizedName: resolution.normalizedName,
                 originalText: resolution.originalInput.originalText,
-                canonicalName: existing.name,
-              },
-            );
-
-            if (
-              resolution.validatedAliases &&
-              resolution.validatedAliases.length > 0
-            ) {
-              const mergedAliases = Array.from(
-                new Set([
-                  ...(existing.aliases || []),
-                  ...resolution.validatedAliases,
-                ]),
-              );
-
-              const aliasesChanged =
-                mergedAliases.length !== (existing.aliases || []).length;
-
-              if (aliasesChanged) {
-                await tx.entity.update({
-                  where: { entityId },
-                  data: {
-                    aliases: mergedAliases,
-                    lastUpdated: new Date(),
-                  },
-                });
-              }
+              });
+              continue;
             }
 
-            this.logger.debug(
-              'Entity already existed; reusing canonical record',
-              {
+            const entityType = resolution.entityType;
+
+            const canonicalName = this.normalizeEntityName(
+              resolution.normalizedName ||
+                resolution.originalInput.originalText ||
+                '',
+              entityType,
+            );
+            resolution.normalizedName = canonicalName;
+            const entityLocationKey =
+              entityType === 'restaurant'
+                ? (resolvedLocationKey ?? 'global')
+                : 'global';
+
+            const existing = await tx.entity.findUnique({
+              where: {
+                name_type_locationKey: {
+                  name: canonicalName,
+                  type: entityType,
+                  locationKey: entityLocationKey,
+                },
+              },
+              select: {
+                entityId: true,
+                aliases: true,
+                name: true,
+              },
+            });
+
+            let entityId: string | null = null;
+            let createdNew = false;
+
+            if (existing) {
+              entityId = existing.entityId;
+
+              this.logger.warn(
+                'Resolver indicated new entity but canonical record already exists',
+                {
+                  batchId,
+                  tempId: resolution.tempId,
+                  entityId,
+                  entityType,
+                  normalizedName: resolution.normalizedName,
+                  originalText: resolution.originalInput.originalText,
+                  canonicalName: existing.name,
+                },
+              );
+
+              if (
+                resolution.validatedAliases &&
+                resolution.validatedAliases.length > 0
+              ) {
+                const mergedAliases = Array.from(
+                  new Set([
+                    ...(existing.aliases || []),
+                    ...resolution.validatedAliases,
+                  ]),
+                );
+
+                const aliasesChanged =
+                  mergedAliases.length !== (existing.aliases || []).length;
+
+                if (aliasesChanged) {
+                  await tx.entity.update({
+                    where: { entityId },
+                    data: {
+                      aliases: mergedAliases,
+                      lastUpdated: new Date(),
+                    },
+                  });
+                }
+              }
+
+              this.logger.debug(
+                'Entity already existed; reusing canonical record',
+                {
+                  batchId,
+                  tempId: resolution.tempId,
+                  entityId,
+                  entityType,
+                  name: resolution.normalizedName,
+                },
+              );
+            } else {
+              const aliasSet =
+                resolution.validatedAliases &&
+                resolution.validatedAliases.length > 0
+                  ? resolution.validatedAliases.map((alias) => alias.trim())
+                  : [
+                      (resolution.originalInput.originalText || '')
+                        .trim()
+                        .replace(/\s+/g, ' '),
+                    ];
+
+              const entityData: Prisma.EntityCreateInput = {
+                name: this.normalizeEntityName(
+                  resolution.normalizedName ||
+                    resolution.originalInput.originalText ||
+                    '',
+                  entityType,
+                ),
+                type: entityType,
+                locationKey: entityLocationKey,
+                aliases: Array.from(new Set(aliasSet.filter(Boolean))),
+                createdAt: new Date(),
+                lastUpdated: new Date(),
+              };
+
+              if (entityType === 'restaurant') {
+                entityData.restaurantAttributes = { set: [] };
+                entityData.restaurantQualityScore = 0;
+                entityData.generalPraiseUpvotes = 0;
+                entityData.restaurantMetadata = Prisma.DbNull;
+                if (subredditLocation) {
+                  entityData.latitude = new Prisma.Decimal(
+                    subredditLocation.latitude.toFixed(8),
+                  );
+                  entityData.longitude = new Prisma.Decimal(
+                    subredditLocation.longitude.toFixed(8),
+                  );
+                }
+              } else {
+                entityData.generalPraiseUpvotes = null;
+              }
+
+              const createdEntity = await tx.entity.create({
+                data: entityData,
+              });
+
+              entityId = createdEntity.entityId;
+              createdNew = true;
+
+              if (entityType === 'restaurant') {
+                const location = await tx.restaurantLocation.create({
+                  data: {
+                    restaurantId: createdEntity.entityId,
+                    latitude: subredditLocation
+                      ? new Prisma.Decimal(
+                          subredditLocation.latitude.toFixed(8),
+                        )
+                      : null,
+                    longitude: subredditLocation
+                      ? new Prisma.Decimal(
+                          subredditLocation.longitude.toFixed(8),
+                        )
+                      : null,
+                    isPrimary: true,
+                  },
+                });
+
+                await tx.entity.update({
+                  where: { entityId: createdEntity.entityId },
+                  data: { primaryLocationId: location.locationId },
+                });
+              }
+
+              this.logger.debug('Created new entity during batch processing', {
                 batchId,
                 tempId: resolution.tempId,
                 entityId,
                 entityType,
                 name: resolution.normalizedName,
-              },
-            );
-          } else {
-            const aliasSet =
-              resolution.validatedAliases &&
-              resolution.validatedAliases.length > 0
-                ? resolution.validatedAliases.map((alias) => alias.trim())
-                : [
-                    (resolution.originalInput.originalText || '')
-                      .trim()
-                      .replace(/\s+/g, ' '),
-                  ];
-
-            const entityData: Prisma.EntityCreateInput = {
-              name: this.normalizeEntityName(
-                resolution.normalizedName ||
-                  resolution.originalInput.originalText ||
-                  '',
-                entityType,
-              ),
-              type: entityType,
-              locationKey: entityLocationKey,
-              aliases: Array.from(new Set(aliasSet.filter(Boolean))),
-              createdAt: new Date(),
-              lastUpdated: new Date(),
-            };
-
-            if (entityType === 'restaurant') {
-              entityData.restaurantAttributes = { set: [] };
-              entityData.restaurantQualityScore = 0;
-              entityData.generalPraiseUpvotes = 0;
-              entityData.restaurantMetadata = Prisma.DbNull;
-              if (subredditLocation) {
-                entityData.latitude = new Prisma.Decimal(
-                  subredditLocation.latitude.toFixed(8),
-                );
-                entityData.longitude = new Prisma.Decimal(
-                  subredditLocation.longitude.toFixed(8),
-                );
-              }
-            } else {
-              entityData.generalPraiseUpvotes = null;
-            }
-
-            const createdEntity = await tx.entity.create({
-              data: entityData,
-            });
-
-            entityId = createdEntity.entityId;
-            createdNew = true;
-
-            if (entityType === 'restaurant') {
-              const location = await tx.restaurantLocation.create({
-                data: {
-                  restaurantId: createdEntity.entityId,
-                  latitude: subredditLocation
-                    ? new Prisma.Decimal(subredditLocation.latitude.toFixed(8))
-                    : null,
-                  longitude: subredditLocation
-                    ? new Prisma.Decimal(subredditLocation.longitude.toFixed(8))
-                    : null,
-                  isPrimary: true,
-                },
               });
 
-              await tx.entity.update({
-                where: { entityId: createdEntity.entityId },
-                data: { primaryLocationId: location.locationId },
+              createdEntitySummaries.push({
+                entityId,
+                name: resolution.normalizedName,
+                entityType,
+                primaryTempId: resolution.tempId,
+                tempIds: tempGroup,
               });
+              createdEntityIds.push(entityId);
             }
 
-            this.logger.debug('Created new entity during batch processing', {
-              batchId,
-              tempId: resolution.tempId,
-              entityId,
-              entityType,
-              name: resolution.normalizedName,
-            });
-
-            createdEntitySummaries.push({
-              entityId,
-              name: resolution.normalizedName,
-              entityType,
-              primaryTempId: resolution.tempId,
-              tempIds: tempGroup,
-            });
-            createdEntityIds.push(entityId);
-          }
-
-          if (!entityId) {
-            throw UnifiedProcessingExceptionFactory.createEntityProcessingFailed(
-              'Failed to resolve entity ID for new entity',
-              undefined,
-              {
-                batchId,
-                tempId: resolution.tempId,
-                normalizedName: resolution.normalizedName,
-                entityType,
-              },
-            );
-          }
-
-          tempIdToEntityIdMap.set(resolution.tempId, entityId);
-          resolution.entityId = entityId;
-
-          if (createdNew) {
-            entitiesCreated++;
-          }
-        }
-
-        // Propagate entity IDs to duplicates that reference a primary temp ID
-        for (const resolution of resolutionResult.resolutionResults) {
-          if (!resolution.entityId && resolution.primaryTempId) {
-            const primaryEntityId = tempIdToEntityIdMap.get(
-              resolution.primaryTempId,
-            );
-            if (primaryEntityId) {
-              tempIdToEntityIdMap.set(resolution.tempId, primaryEntityId);
-              resolution.entityId = primaryEntityId;
-              this.logger.debug(
-                'Resolved duplicate new entity to primary entity ID',
+            if (!entityId) {
+              throw UnifiedProcessingExceptionFactory.createEntityProcessingFailed(
+                'Failed to resolve entity ID for new entity',
+                undefined,
                 {
                   batchId,
                   tempId: resolution.tempId,
-                  primaryTempId: resolution.primaryTempId,
-                  entityId: primaryEntityId,
+                  normalizedName: resolution.normalizedName,
+                  entityType,
                 },
               );
             }
-          }
-        }
 
-        const connectionOperations: ConnectionOperation[] = [];
-        const affectedConnectionIds: string[] = [];
-        const restaurantPraiseUpvotes = new Map<string, number>();
+            tempIdToEntityIdMap.set(resolution.tempId, entityId);
+            resolution.entityId = entityId;
 
-        for (const mention of llmOutput.mentions) {
-          const mentionResult = this.processConsolidatedMention(
-            mention,
-            tempIdToEntityIdMap,
-            batchId,
-          );
-
-          connectionOperations.push(...mentionResult.connectionOperations);
-          affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
-          if (
-            Array.isArray(mentionResult.categoryBoostEvents) &&
-            mentionResult.categoryBoostEvents.length > 0
-          ) {
-            categoryBoostEvents.push(...mentionResult.categoryBoostEvents);
-            for (const key of mentionResult.categoryReplayKeys) {
-              if (!categoryReplayMap.has(key.restaurantId)) {
-                categoryReplayMap.set(key.restaurantId, new Set());
-              }
-              categoryReplayMap.get(key.restaurantId)!.add(key.categoryId);
+            if (createdNew) {
+              entitiesCreated++;
             }
           }
 
-          if (mentionResult.generalPraiseUpvotes > 0) {
-            const currentTotal =
-              restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) ||
-              0;
-            restaurantPraiseUpvotes.set(
-              mentionResult.restaurantEntityId,
-              currentTotal + mentionResult.generalPraiseUpvotes,
+          // Propagate entity IDs to duplicates that reference a primary temp ID
+          for (const resolution of resolutionResult.resolutionResults) {
+            if (!resolution.entityId && resolution.primaryTempId) {
+              const primaryEntityId = tempIdToEntityIdMap.get(
+                resolution.primaryTempId,
+              );
+              if (primaryEntityId) {
+                tempIdToEntityIdMap.set(resolution.tempId, primaryEntityId);
+                resolution.entityId = primaryEntityId;
+                this.logger.debug(
+                  'Resolved duplicate new entity to primary entity ID',
+                  {
+                    batchId,
+                    tempId: resolution.tempId,
+                    primaryTempId: resolution.primaryTempId,
+                    entityId: primaryEntityId,
+                  },
+                );
+              }
+            }
+          }
+
+          const connectionOperations: ConnectionOperation[] = [];
+          const affectedConnectionIds: string[] = [];
+          const restaurantPraiseUpvotes = new Map<string, number>();
+
+          for (const mention of llmOutput.mentions) {
+            const mentionResult = this.processConsolidatedMention(
+              mention,
+              tempIdToEntityIdMap,
+              batchId,
+            );
+
+            connectionOperations.push(...mentionResult.connectionOperations);
+            affectedConnectionIds.push(...mentionResult.affectedConnectionIds);
+            if (
+              Array.isArray(mentionResult.categoryBoostEvents) &&
+              mentionResult.categoryBoostEvents.length > 0
+            ) {
+              categoryBoostEvents.push(...mentionResult.categoryBoostEvents);
+              for (const key of mentionResult.categoryReplayKeys) {
+                if (!categoryReplayMap.has(key.restaurantId)) {
+                  categoryReplayMap.set(key.restaurantId, new Set());
+                }
+                categoryReplayMap.get(key.restaurantId)!.add(key.categoryId);
+              }
+            }
+
+            if (mentionResult.generalPraiseUpvotes > 0) {
+              const currentTotal =
+                restaurantPraiseUpvotes.get(mentionResult.restaurantEntityId) ||
+                0;
+              restaurantPraiseUpvotes.set(
+                mentionResult.restaurantEntityId,
+                currentTotal + mentionResult.generalPraiseUpvotes,
+              );
+            }
+          }
+
+          // Execute all connection operations and collect affected connection IDs
+          const additionalAffectedIds: string[] = [];
+          let newConnectionsCreated = 0;
+
+          const mergeSummaries = (
+            summary: OperationSummary | null | undefined,
+          ) => {
+            if (!summary) return;
+            additionalAffectedIds.push(...summary.affectedConnectionIds);
+            newConnectionsCreated += summary.newConnectionIds.length;
+          };
+
+          for (const connectionOp of connectionOperations) {
+            if ('type' in connectionOp) {
+              switch (connectionOp.type) {
+                case 'attribute_boost': {
+                  const summary = await this.handleAttributeBoost(
+                    tx,
+                    connectionOp,
+                    batchId,
+                  );
+                  mergeSummaries(summary);
+                  break;
+                }
+                case 'food_attribute_processing': {
+                  const summary = await this.handleFoodAttributeProcessing(
+                    tx,
+                    connectionOp,
+                    batchId,
+                  );
+                  mergeSummaries(summary);
+                  break;
+                }
+                case 'restaurant_metadata_update': {
+                  await this.handleRestaurantMetadataUpdate(
+                    tx,
+                    connectionOp,
+                    batchId,
+                  );
+                  break;
+                }
+                case 'general_praise_boost': {
+                  // No-op by design. General praise is persisted on the restaurant entity only.
+                  break;
+                }
+              }
+            } else {
+              // Regular upsert operation
+              await tx.connection.upsert(connectionOp);
+            }
+          }
+
+          if (categoryBoostEvents.length > 0) {
+            await this.recordCategoryBoostEvents(
+              tx,
+              categoryBoostEvents,
+              batchId,
             );
           }
-        }
 
-        // Execute all connection operations and collect affected connection IDs
-        const additionalAffectedIds: string[] = [];
-        let newConnectionsCreated = 0;
-
-        const mergeSummaries = (
-          summary: OperationSummary | null | undefined,
-        ) => {
-          if (!summary) return;
-          additionalAffectedIds.push(...summary.affectedConnectionIds);
-          newConnectionsCreated += summary.newConnectionIds.length;
-        };
-
-        for (const connectionOp of connectionOperations) {
-          if ('type' in connectionOp) {
-            switch (connectionOp.type) {
-              case 'attribute_boost': {
-                const summary = await this.handleAttributeBoost(
-                  tx,
-                  connectionOp,
-                  batchId,
-                );
-                mergeSummaries(summary);
-                break;
-              }
-              case 'food_attribute_processing': {
-                const summary = await this.handleFoodAttributeProcessing(
-                  tx,
-                  connectionOp,
-                  batchId,
-                );
-                mergeSummaries(summary);
-                break;
-              }
-              case 'restaurant_metadata_update': {
-                await this.handleRestaurantMetadataUpdate(
-                  tx,
-                  connectionOp,
-                  batchId,
-                );
-                break;
-              }
-              case 'general_praise_boost': {
-                // No-op by design. General praise is persisted on the restaurant entity only.
-                break;
-              }
+          // Update restaurant entities with aggregated general praise upvotes
+          for (const [restaurantEntityId, upvotes] of restaurantPraiseUpvotes) {
+            if (upvotes && upvotes > 0) {
+              await tx.entity.update({
+                where: { entityId: restaurantEntityId },
+                data: {
+                  generalPraiseUpvotes: { increment: upvotes },
+                  lastUpdated: new Date(),
+                },
+              });
             }
-          } else {
-            // Regular upsert operation
-            await tx.connection.upsert(connectionOp);
           }
-        }
 
-        if (categoryBoostEvents.length > 0) {
-          await this.recordCategoryBoostEvents(
-            tx,
-            categoryBoostEvents,
-            batchId,
-          );
-        }
-
-        // Update restaurant entities with aggregated general praise upvotes
-        for (const [restaurantEntityId, upvotes] of restaurantPraiseUpvotes) {
-          if (upvotes && upvotes > 0) {
-            await tx.entity.update({
-              where: { entityId: restaurantEntityId },
-              data: {
-                generalPraiseUpvotes: { increment: upvotes },
-                lastUpdated: new Date(),
-              },
-            });
-          }
-        }
-
-        return {
-          entitiesCreated,
-          connectionsCreated: newConnectionsCreated,
-          affectedConnectionIds: [
-            ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
-          ],
-          createdEntityIds,
-          createdEntitySummaries,
-          reusedEntitySummaries,
-        };
-      });
+          return {
+            entitiesCreated,
+            connectionsCreated: newConnectionsCreated,
+            affectedConnectionIds: [
+              ...new Set([...affectedConnectionIds, ...additionalAffectedIds]),
+            ],
+            createdEntityIds,
+            createdEntitySummaries,
+            reusedEntitySummaries,
+          };
+        },
+        { timeout: this.transactionTimeoutMs },
+      );
 
       if (categoryReplayMap.size > 0) {
         const replayTargets = Array.from(categoryReplayMap.entries()).map(
@@ -3299,20 +3316,25 @@ export class UnifiedProcessingService implements OnModuleInit {
       return;
     }
 
-    const enrichmentPromises = restaurantIds.map((entityId) =>
-      this.restaurantLocationEnrichmentService
-        .enrichRestaurantById(entityId)
-        .catch((error) => {
-          this.logger.warn('Restaurant enrichment failed', {
-            entityId,
-            error: {
-              message: error instanceof Error ? error.message : String(error),
-              stack: error instanceof Error ? error.stack : undefined,
-            },
-          });
-        }),
-    );
+    const concurrency = Math.max(1, this.restaurantEnrichmentConcurrency);
 
-    await Promise.all(enrichmentPromises);
+    for (let index = 0; index < restaurantIds.length; index += concurrency) {
+      const batch = restaurantIds.slice(index, index + concurrency);
+      const enrichmentPromises = batch.map((entityId) =>
+        this.restaurantLocationEnrichmentService
+          .enrichRestaurantById(entityId)
+          .catch((error) => {
+            this.logger.warn('Restaurant enrichment failed', {
+              entityId,
+              error: {
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+              },
+            });
+          }),
+      );
+
+      await Promise.all(enrichmentPromises);
+    }
   }
 }

@@ -12,6 +12,7 @@ type MapBounds = {
 type CoverageResolution = {
   coverageKey: string | null;
   coverageAreaId?: string | null;
+  coverageName?: string | null;
   wasCreated: boolean;
 };
 
@@ -48,6 +49,7 @@ export class CoverageRegistryService {
       return {
         coverageKey: existing.coverageKey,
         coverageAreaId: existing.id,
+        coverageName: existing.coverageName ?? null,
         wasCreated: false,
       };
     }
@@ -69,13 +71,20 @@ export class CoverageRegistryService {
       where: {
         coverageKey: { equals: coverageKey, mode: 'insensitive' },
       },
-      select: { id: true, coverageKey: true },
+      select: {
+        id: true,
+        coverageKey: true,
+        displayName: true,
+        locationName: true,
+        name: true,
+      },
     });
 
     if (existingByKey?.coverageKey) {
       return {
         coverageKey: existingByKey.coverageKey,
         coverageAreaId: existingByKey.id,
+        coverageName: this.resolveCoverageName(existingByKey),
         wasCreated: false,
       };
     }
@@ -122,6 +131,7 @@ export class CoverageRegistryService {
     return {
       coverageKey: record.coverageKey ?? coverageKey,
       coverageAreaId: record.id,
+      coverageName: this.resolveCoverageName(record),
       wasCreated: true,
     };
   }
@@ -143,6 +153,7 @@ export class CoverageRegistryService {
     return {
       coverageKey: existing.coverageKey,
       coverageAreaId: existing.id,
+      coverageName: existing.coverageName ?? null,
       wasCreated: false,
     };
   }
@@ -209,13 +220,19 @@ export class CoverageRegistryService {
   private async findContainingCoverage(center: {
     lat: number;
     lng: number;
-  }): Promise<{ id: string; coverageKey: string | null } | null> {
+  }): Promise<{
+    id: string;
+    coverageKey: string | null;
+    coverageName: string | null;
+  } | null> {
     const rows = await this.prisma.coverageArea.findMany({
       where: { isActive: true },
       select: {
         id: true,
         coverageKey: true,
         name: true,
+        displayName: true,
+        locationName: true,
         viewportNeLat: true,
         viewportNeLng: true,
         viewportSwLat: true,
@@ -240,6 +257,7 @@ export class CoverageRegistryService {
         return {
           id: row.id,
           coverageKey: row.coverageKey ?? row.name,
+          coverageName: this.resolveCoverageName(row),
           viewport: {
             northEast: { lat: neLat, lng: neLng },
             southWest: { lat: swLat, lng: swLng },
@@ -264,7 +282,30 @@ export class CoverageRegistryService {
     return {
       id: smallest.id,
       coverageKey: smallest.coverageKey,
+      coverageName: smallest.coverageName ?? null,
     };
+  }
+
+  private resolveCoverageName(row: {
+    displayName?: string | null;
+    locationName?: string | null;
+    coverageKey?: string | null;
+    name: string;
+  }): string | null {
+    const displayName = row.displayName?.trim();
+    if (displayName) {
+      return displayName;
+    }
+    const locationName = row.locationName?.trim();
+    if (locationName) {
+      const [first] = locationName.split(',');
+      return first?.trim() || locationName;
+    }
+    const key = row.coverageKey?.trim();
+    if (key) {
+      return key;
+    }
+    return row.name?.trim() || null;
   }
 
   private isWithinViewport(

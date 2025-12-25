@@ -13,7 +13,7 @@ import {
 } from '../external-integrations/google-places';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
-import { RankScoreService } from '../content-processing/rank-score/rank-score.service';
+import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
 import { CoverageKeyResolverService } from '../coverage-key/coverage-key-resolver.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
 
@@ -94,6 +94,8 @@ const GOOGLE_DAY_NAMES = [
   'friday',
   'saturday',
 ] as const;
+const DEFAULT_ENRICHMENT_TX_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS = 30 * 1000;
 
 type GoogleDayName = (typeof GOOGLE_DAY_NAMES)[number];
 
@@ -371,6 +373,8 @@ type RankedCandidate = {
 export class RestaurantLocationEnrichmentService {
   private readonly logger: LoggerService;
   private readonly minScoreThreshold: number;
+  private readonly transactionTimeoutMs: number;
+  private readonly transactionMaxWaitMs: number;
 
   constructor(
     private readonly entityRepository: EntityRepository,
@@ -379,7 +383,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly aliasManagementService: AliasManagementService,
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     private readonly coverageKeyResolver: CoverageKeyResolverService,
-    private readonly rankScoreService: RankScoreService,
+    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
     private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
@@ -387,6 +391,8 @@ export class RestaurantLocationEnrichmentService {
       'RestaurantLocationEnrichmentService',
     );
     this.minScoreThreshold = this.resolveMinScoreThreshold();
+    this.transactionTimeoutMs = DEFAULT_ENRICHMENT_TX_TIMEOUT_MS;
+    this.transactionMaxWaitMs = DEFAULT_ENRICHMENT_TX_MAX_WAIT_MS;
   }
 
   async enrichMissingRestaurants(
@@ -892,31 +898,39 @@ export class RestaurantLocationEnrichmentService {
       }
 
       try {
-        await this.prisma.$transaction(async (tx) => {
-          const location = await this.upsertPrimaryLocation({
-            tx,
-            restaurantId: entity.entityId,
-            placeDetails,
-            locationUpsert,
-            targetLocation,
-          });
-
-          await tx.restaurantLocation.updateMany({
-            where: {
+        await this.prisma.$transaction(
+          async (tx) => {
+            const location = await this.upsertPrimaryLocation({
+              tx,
               restaurantId: entity.entityId,
-              locationId: { not: location.locationId },
-            },
-            data: { isPrimary: false },
-          });
+              placeDetails,
+              locationUpsert,
+              targetLocation,
+            });
 
-          await tx.entity.update({
-            where: { entityId: entity.entityId },
-            data: {
-              ...combinedUpdateData,
-              primaryLocation: { connect: { locationId: location.locationId } },
-            },
-          });
-        });
+            await tx.restaurantLocation.updateMany({
+              where: {
+                restaurantId: entity.entityId,
+                locationId: { not: location.locationId },
+              },
+              data: { isPrimary: false },
+            });
+
+            await tx.entity.update({
+              where: { entityId: entity.entityId },
+              data: {
+                ...combinedUpdateData,
+                primaryLocation: {
+                  connect: { locationId: location.locationId },
+                },
+              },
+            });
+          },
+          {
+            timeout: this.transactionTimeoutMs,
+            maxWait: this.transactionMaxWaitMs,
+          },
+        );
       } catch (error) {
         if (this.isGooglePlaceConflict(error)) {
           return this.handleGooglePlaceCollision({
@@ -1282,29 +1296,35 @@ export class RestaurantLocationEnrichmentService {
       mergeAugmentations.updatedFields,
     );
 
-    const updatedCanonical = await this.prisma.$transaction(async (tx) => {
-      const location = await tx.restaurantLocation.update({
-        where: { locationId: canonicalLocation.locationId },
-        data: {
-          ...locationUpsert.update,
-          restaurantId: canonical.entityId,
-          isPrimary: true,
-          updatedAt: new Date(),
-        } as Prisma.RestaurantLocationUncheckedUpdateInput,
-      });
-
-      const canonicalWithLocation =
-        await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
-          canonical,
-          duplicate: entity,
-          canonicalUpdate: {
-            ...mergedUpdate,
-            primaryLocation: { connect: { locationId: location.locationId } },
-          },
+    const updatedCanonical = await this.prisma.$transaction(
+      async (tx) => {
+        const location = await tx.restaurantLocation.update({
+          where: { locationId: canonicalLocation.locationId },
+          data: {
+            ...locationUpsert.update,
+            restaurantId: canonical.entityId,
+            isPrimary: true,
+            updatedAt: new Date(),
+          } as Prisma.RestaurantLocationUncheckedUpdateInput,
         });
 
-      return canonicalWithLocation;
-    });
+        const canonicalWithLocation =
+          await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+            canonical,
+            duplicate: entity,
+            canonicalUpdate: {
+              ...mergedUpdate,
+              primaryLocation: { connect: { locationId: location.locationId } },
+            },
+          });
+
+        return canonicalWithLocation;
+      },
+      {
+        timeout: this.transactionTimeoutMs,
+        maxWait: this.transactionMaxWaitMs,
+      },
+    );
 
     this.logger.info('Merged restaurant into canonical entity', {
       duplicateId: entity.entityId,
@@ -1420,27 +1440,33 @@ export class RestaurantLocationEnrichmentService {
       mergeAugmentations.updatedFields,
     );
 
-    const updatedCanonical = await this.prisma.$transaction(async (tx) => {
-      const location = await this.upsertPrimaryLocation({
-        tx,
-        restaurantId: canonical.entityId,
-        placeDetails,
-        locationUpsert,
-        targetLocation,
-      });
-
-      const mergedCanonical =
-        await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
-          canonical,
-          duplicate: entity,
-          canonicalUpdate: {
-            ...mergedUpdate,
-            primaryLocation: { connect: { locationId: location.locationId } },
-          },
+    const updatedCanonical = await this.prisma.$transaction(
+      async (tx) => {
+        const location = await this.upsertPrimaryLocation({
+          tx,
+          restaurantId: canonical.entityId,
+          placeDetails,
+          locationUpsert,
+          targetLocation,
         });
 
-      return mergedCanonical;
-    });
+        const mergedCanonical =
+          await this.restaurantEntityMergeService.mergeDuplicateRestaurant({
+            canonical,
+            duplicate: entity,
+            canonicalUpdate: {
+              ...mergedUpdate,
+              primaryLocation: { connect: { locationId: location.locationId } },
+            },
+          });
+
+        return mergedCanonical;
+      },
+      {
+        timeout: this.transactionTimeoutMs,
+        maxWait: this.transactionMaxWaitMs,
+      },
+    );
 
     this.logger.info('Merged restaurant into existing canonical by name', {
       duplicateId: entity.entityId,
@@ -2132,10 +2158,10 @@ export class RestaurantLocationEnrichmentService {
         context: params.context,
       });
 
-      await this.rankScoreService.refreshRankScoresForLocations([
-        currentKey,
-        targetKey,
-      ]);
+      await this.rankScoreRefreshQueue.queueRefreshForLocations(
+        [currentKey, targetKey],
+        { source: 'enrichment' },
+      );
 
       return {
         updated: true,
@@ -2156,10 +2182,10 @@ export class RestaurantLocationEnrichmentService {
       context: params.context,
     });
 
-    await this.rankScoreService.refreshRankScoresForLocations([
-      currentKey,
-      targetKey,
-    ]);
+    await this.rankScoreRefreshQueue.queueRefreshForLocations(
+      [currentKey, targetKey],
+      { source: 'enrichment' },
+    );
 
     return { updated: true, locationKey: targetKey };
   }

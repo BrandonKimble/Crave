@@ -3,28 +3,19 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { QualityScoreService } from '../content-processing/quality-score/quality-score.service';
-import { RankScoreService } from '../content-processing/rank-score/rank-score.service';
-
-const DEFAULT_REFRESH_WINDOW_MINUTES = 30;
+import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
 
 @Injectable()
 export class PollScoreRefreshService {
   private readonly logger: LoggerService;
-  private readonly refreshWindowMs: number;
-  private readonly lastRefreshByKey = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly qualityScoreService: QualityScoreService,
-    private readonly rankScoreService: RankScoreService,
+    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('PollScoreRefreshService');
-    const windowMinutes = this.resolveNumberEnv(
-      'POLL_RANK_REFRESH_WINDOW_MINUTES',
-      DEFAULT_REFRESH_WINDOW_MINUTES,
-    );
-    this.refreshWindowMs = windowMinutes * 60 * 1000;
   }
 
   async refreshForConnections(connectionIds: string[]): Promise<void> {
@@ -70,29 +61,9 @@ export class PollScoreRefreshService {
   }
 
   async refreshRankScores(coverageKeys: string[]): Promise<void> {
-    const filtered = this.filterDebouncedKeys(coverageKeys);
-    if (!filtered.length) {
-      return;
-    }
-    await this.rankScoreService.refreshRankScoresForLocations(filtered);
-  }
-
-  private filterDebouncedKeys(keys: string[]): string[] {
-    const now = Date.now();
-    const result: string[] = [];
-    for (const key of keys) {
-      const normalized = key.trim().toLowerCase();
-      if (!normalized) {
-        continue;
-      }
-      const last = this.lastRefreshByKey.get(normalized);
-      if (last && now - last < this.refreshWindowMs) {
-        continue;
-      }
-      this.lastRefreshByKey.set(normalized, now);
-      result.push(normalized);
-    }
-    return result;
+    await this.rankScoreRefreshQueue.queueRefreshForLocations(coverageKeys, {
+      source: 'poll',
+    });
   }
 
   private async fetchCoverageKeysForConnections(
@@ -140,14 +111,5 @@ WHERE c.connection_id = ANY(${this.buildUuidArray(connectionIds)})`,
       ', ',
     );
     return Prisma.sql`ARRAY[${mapped}]::uuid[]`;
-  }
-
-  private resolveNumberEnv(key: string, fallback: number): number {
-    const raw = process.env[key];
-    if (!raw) {
-      return fallback;
-    }
-    const parsed = Number(raw);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 }

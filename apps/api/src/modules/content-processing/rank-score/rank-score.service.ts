@@ -6,6 +6,8 @@ import { LoggerService } from '../../../shared';
 const SCORE_MAX = 100;
 const SCORE_NON_TOP_MAX = 99.9;
 const SCORE_MULTIPLIER = 10;
+const DEFAULT_RANK_SCORE_TX_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_RANK_SCORE_TX_MAX_WAIT_MS = 30 * 1000;
 
 @Injectable()
 export class RankScoreService {
@@ -75,13 +77,15 @@ export class RankScoreService {
   private async refreshConnectionRankScores(
     locationKey: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${locationKey}:connection`}))`;
+        await tx.$executeRaw`
 DELETE FROM core_display_rank_scores
 WHERE location_key = ${locationKey}
   AND subject_type = 'connection'::display_rank_subject_type`;
 
-      await tx.$executeRaw`
+        await tx.$executeRaw`
 WITH ranked AS (
   SELECT
     c.connection_id AS subject_id,
@@ -142,7 +146,12 @@ SELECT
   rank_percentile::numeric,
   NOW()
 FROM scored`;
-    });
+      },
+      {
+        timeout: DEFAULT_RANK_SCORE_TX_TIMEOUT_MS,
+        maxWait: DEFAULT_RANK_SCORE_TX_MAX_WAIT_MS,
+      },
+    );
 
     this.logger.info('Connection display ranks refreshed', { locationKey });
   }
@@ -150,13 +159,15 @@ FROM scored`;
   private async refreshRestaurantRankScores(
     locationKey: string,
   ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`
+    await this.prisma.$transaction(
+      async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`rank_score:${locationKey}:restaurant`}))`;
+        await tx.$executeRaw`
 DELETE FROM core_display_rank_scores
 WHERE location_key = ${locationKey}
   AND subject_type = 'restaurant'::display_rank_subject_type`;
 
-      await tx.$executeRaw`
+        await tx.$executeRaw`
 WITH restaurant_metrics AS (
   SELECT
     r.entity_id AS subject_id,
@@ -228,7 +239,12 @@ SELECT
   rank_percentile::numeric,
   NOW()
 FROM scored`;
-    });
+      },
+      {
+        timeout: DEFAULT_RANK_SCORE_TX_TIMEOUT_MS,
+        maxWait: DEFAULT_RANK_SCORE_TX_MAX_WAIT_MS,
+      },
+    );
 
     this.logger.info('Restaurant display ranks refreshed', { locationKey });
   }

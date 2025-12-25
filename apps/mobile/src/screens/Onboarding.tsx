@@ -20,10 +20,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { makeRedirectUri } from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import type { StackScreenProps } from '@react-navigation/stack';
-import { useAuth, useOAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/clerk-expo';
 import { Text, Button } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
+import { useClerkOAuth } from '../hooks/useClerkOAuth';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import {
   onboardingSteps,
@@ -244,8 +245,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       ? (auth.setActive as (params: { session: string }) => Promise<void>)
       : undefined;
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const appleOAuth = useOAuth({ strategy: 'oauth_apple' });
-  const googleOAuth = useOAuth({ strategy: 'oauth_google' });
+  const appleOAuth = useClerkOAuth('oauth_apple');
+  const googleOAuth = useClerkOAuth('oauth_google');
   const [oauthStatus, setOauthStatus] = React.useState<'idle' | 'apple' | 'google'>('idle');
   const [authError, setAuthError] = React.useState<string | null>(null);
   const [emailModalVisible, setEmailModalVisible] = React.useState(false);

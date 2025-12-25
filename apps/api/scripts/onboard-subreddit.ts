@@ -698,8 +698,13 @@ async function onboardSubreddit() {
 
       if (!resolvedCoverageKey) {
         const localityKey = buildLocalityCoverageKey(placeAddressComponents);
-        resolvedCoverageKey =
-          localityKey ?? normalizeCoverageKey(params.subreddit);
+        if (!localityKey) {
+          console.warn(
+            '   Skipping: unable to derive locality-based coverage key.',
+          );
+          return null;
+        }
+        resolvedCoverageKey = localityKey;
       }
 
       const resolvedDisplayName = resolveLocalityDisplayName(

@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAuth, useOAuth } from '@clerk/clerk-expo';
+import { useAuth } from '@clerk/clerk-expo';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { makeRedirectUri } from 'expo-auth-session';
 import { Text } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
+import { useClerkOAuth } from '../hooks/useClerkOAuth';
 import { logger } from '../utils';
 import { authService } from '../services/auth';
 
@@ -19,8 +20,8 @@ const SignInScreen: React.FC = () => {
       ? (auth.setActive as (params: { session: string }) => Promise<void>)
       : null;
 
-  const appleOAuth = useOAuth({ strategy: 'oauth_apple' });
-  const googleOAuth = useOAuth({ strategy: 'oauth_google' });
+  const appleOAuth = useClerkOAuth('oauth_apple');
+  const googleOAuth = useClerkOAuth('oauth_google');
 
   const [oauthStatus, setOauthStatus] = React.useState<'idle' | 'apple' | 'google'>('idle');
   const [authError, setAuthError] = React.useState<string | null>(null);

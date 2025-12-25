@@ -5,7 +5,7 @@
     "scheme": "crave",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./src/assets/icon.png",
+    "icon": "./images/logo.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./src/assets/splash.png",
@@ -17,12 +17,15 @@
     "plugins": [],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.crave",
-      "deploymentTarget": "15.1"
+      "bundleIdentifier": "com.brandonkimble.cravesearch",
+      "deploymentTarget": "15.1",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Allow $(PRODUCT_NAME) to connect to your local network for development"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "foregroundImage": "./images/logo.png",
         "backgroundColor": "#ffffff"
       },
       "package": "com.crave"

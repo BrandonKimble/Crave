@@ -15,7 +15,7 @@ import {
 import { LLMService } from '../../external-integrations/llm/llm.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { RankScoreService } from '../rank-score/rank-score.service';
+import { RankScoreRefreshQueueService } from '../rank-score/rank-score-refresh.service';
 import {
   BatchJob,
   BatchProcessingResult,
@@ -50,7 +50,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly unifiedProcessingService: UnifiedProcessingService,
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
-    private readonly rankScoreService: RankScoreService,
+    private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
   ) {}
 
   onModuleInit(): void {
@@ -1336,7 +1336,10 @@ export class RedditBatchProcessingService implements OnModuleInit {
     }
 
     try {
-      await this.rankScoreService.refreshRankScoresForLocations([coverageKey]);
+      await this.rankScoreRefreshQueue.queueRefreshForLocations([coverageKey], {
+        source: 'collection',
+        force: true,
+      });
       this.logger.info('Rank scores refreshed after collection completion', {
         correlationId,
         parentJobId: job.parentJobId,

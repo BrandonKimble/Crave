@@ -5,8 +5,12 @@ import { focusManager, onlineManager } from '@tanstack/react-query';
 
 import { useSystemStatusStore } from '../store/systemStatusStore';
 
-const isOnlineState = (state: NetInfoState) =>
-  Boolean(state.isConnected) && state.isInternetReachable !== false;
+const isOnlineState = (state: NetInfoState) => {
+  if (__DEV__) {
+    return state.type !== 'none';
+  }
+  return Boolean(state.isConnected) && state.isInternetReachable !== false;
+};
 
 const NetworkStatusListener: React.FC = () => {
   const setOffline = useSystemStatusStore((state) => state.setOffline);

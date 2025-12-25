@@ -299,16 +299,27 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         }
         const nextKey =
           typeof response.coverageKey === 'string' ? response.coverageKey.trim().toLowerCase() : '';
+        const nextName =
+          typeof response.coverageName === 'string' && response.coverageName.trim()
+            ? response.coverageName.trim()
+            : null;
         if (!nextKey) {
           if (!lastResolvedCoverageKeyRef.current) {
+            setCoverageName(null);
+            setCoverageKey(null);
             void loadPolls();
           }
           return;
         }
         if (lastResolvedCoverageKeyRef.current === nextKey) {
+          if (nextName) {
+            setCoverageName(nextName);
+          }
           return;
         }
         lastResolvedCoverageKeyRef.current = nextKey;
+        setCoverageKey(nextKey);
+        setCoverageName(nextName);
         void loadPolls({ coverageKeyOverride: nextKey });
       })
       .catch((error) => {
