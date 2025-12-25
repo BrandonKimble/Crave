@@ -37,7 +37,11 @@ import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
-import { CONTROL_HEIGHT, CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../screens/Search/constants/ui';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_HORIZONTAL_PADDING,
+  CONTROL_RADIUS,
+} from '../screens/Search/constants/ui';
 import type { MapBounds } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -622,8 +626,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const observedSheetY = sheetYObserver ?? internalSheetY;
   const plusRotationStyle = useAnimatedStyle(() => {
     const range = snapPoints.collapsed - snapPoints.middle;
-    const rawProgress =
-      range !== 0 ? (observedSheetY.value - snapPoints.middle) / range : 0;
+    const rawProgress = range !== 0 ? (observedSheetY.value - snapPoints.middle) / range : 0;
     const clamped = Math.min(Math.max(rawProgress, 0), 1);
     const rotation = 45 * clamped;
     return { transform: [{ rotate: `${rotation}deg` }] };
@@ -634,8 +637,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     (value, previous) => {
       const threshold = snapPoints.middle + CLOSE_ACTION_EPSILON;
       const shouldClose = value <= threshold;
-      const previousShouldClose =
-        previous == null ? shouldClose : previous <= threshold;
+      const previousShouldClose = previous == null ? shouldClose : previous <= threshold;
       if (previous == null || shouldClose !== previousShouldClose) {
         runOnJS(setHeaderAction)(shouldClose ? 'close' : 'create');
       }

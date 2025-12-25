@@ -13,7 +13,10 @@ const prisma = new PrismaClient();
 const SEED_TAG = 'test-poll-seed';
 const DEFAULT_COVERAGE_KEY = 'austin_tx_us';
 
-const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+const parsePositiveInt = (
+  value: string | undefined,
+  fallback: number,
+): number => {
   if (!value) {
     return fallback;
   }
@@ -138,10 +141,7 @@ const resolvePrimaryUser = async (): Promise<{
       deletedAt: null,
       authProviderUserId: { not: null },
     },
-    orderBy: [
-      { lastSignInAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
+    orderBy: [{ lastSignInAt: 'desc' }, { createdAt: 'desc' }],
     select: { userId: true, email: true },
   });
   if (preferred) {
@@ -149,10 +149,7 @@ const resolvePrimaryUser = async (): Promise<{
   }
 
   const fallback = await prisma.user.findFirst({
-    orderBy: [
-      { lastSignInAt: 'desc' },
-      { createdAt: 'desc' },
-    ],
+    orderBy: [{ lastSignInAt: 'desc' }, { createdAt: 'desc' }],
     select: { userId: true, email: true },
   });
   return fallback ?? null;
@@ -176,7 +173,12 @@ WHERE metadata->>'seedTag' = ${SEED_TAG}
 
 const fetchTopFoods = async (limit: number): Promise<Candidate[]> => {
   const rows = await prisma.$queryRaw<
-    Array<{ food_id: string; food_name: string; upvotes: number; mentions: number }>
+    Array<{
+      food_id: string;
+      food_name: string;
+      upvotes: number;
+      mentions: number;
+    }>
   >(Prisma.sql`
     SELECT
       c.food_id,
@@ -200,7 +202,12 @@ const fetchTopFoods = async (limit: number): Promise<Candidate[]> => {
 
 const fetchTopRestaurants = async (limit: number): Promise<Candidate[]> => {
   const rows = await prisma.$queryRaw<
-    Array<{ restaurant_id: string; restaurant_name: string; upvotes: number; mentions: number }>
+    Array<{
+      restaurant_id: string;
+      restaurant_name: string;
+      upvotes: number;
+      mentions: number;
+    }>
   >(Prisma.sql`
     SELECT
       r.entity_id AS restaurant_id,
@@ -406,7 +413,12 @@ const fetchRestaurantsForRestaurantAttribute = async (
   limit: number,
 ): Promise<Candidate[]> => {
   const rows = await prisma.$queryRaw<
-    Array<{ restaurant_id: string; restaurant_name: string; score: number; praise: number }>
+    Array<{
+      restaurant_id: string;
+      restaurant_name: string;
+      score: number;
+      praise: number;
+    }>
   >(Prisma.sql`
     SELECT
       r.entity_id AS restaurant_id,
@@ -502,8 +514,7 @@ const createPollWithOptions = async (params: {
   const createdOptions: Array<{ optionId: string }> = [];
   for (let index = 0; index < params.options.length; index += 1) {
     const option = params.options[index];
-    const attachUser =
-      Boolean(params.createdByUserId) && index === 0;
+    const attachUser = Boolean(params.createdByUserId) && index === 0;
     const created = await prisma.pollOption.create({
       data: {
         pollId: poll.pollId,
@@ -562,10 +573,7 @@ const seedVotesForPoll = async (
   const remainingUsers = primaryUserId
     ? uniqueUsers.filter((userId) => userId !== primaryUserId)
     : uniqueUsers;
-  const totalVotes = Math.min(
-    remainingUsers.length,
-    optionIds.length * 3,
-  );
+  const totalVotes = Math.min(remainingUsers.length, optionIds.length * 3);
   const shuffledUsers = shuffle(remainingUsers).slice(0, totalVotes);
   const shuffledOptions = shuffle(optionIds);
 
@@ -658,10 +666,9 @@ const buildBestDishPoll = async (
     categoryId: candidate.id,
   }));
 
-  const description =
-    coverageLabel.cityHint
-      ? `Which spot has the best ${candidate.name} in ${coverageLabel.cityHint}?`
-      : `Which spot has the best ${candidate.name}?`;
+  const description = coverageLabel.cityHint
+    ? `Which spot has the best ${candidate.name} in ${coverageLabel.cityHint}?`
+    : `Which spot has the best ${candidate.name}?`;
 
   return createPollWithOptions({
     question: `Best ${candidate.name}`,
@@ -699,10 +706,9 @@ const buildWhatToOrderPoll = async (
     connectionId: connection.connectionId,
   }));
 
-  const description =
-    coverageLabel.cityHint
-      ? `Help newcomers pick a must-order dish at ${candidate.name}.`
-      : `What is the one dish you should not skip at ${candidate.name}?`;
+  const description = coverageLabel.cityHint
+    ? `Help newcomers pick a must-order dish at ${candidate.name}.`
+    : `What is the one dish you should not skip at ${candidate.name}?`;
 
   return createPollWithOptions({
     question: `What to order at ${candidate.name}?`,
@@ -741,10 +747,9 @@ const buildBestDishAttributePoll = async (
     connectionId: connection.connectionId,
   }));
 
-  const description =
-    coverageLabel.cityHint
-      ? `Which dish best captures ${candidate.name} in ${coverageLabel.cityHint}?`
-      : `Which dish best captures ${candidate.name}?`;
+  const description = coverageLabel.cityHint
+    ? `Which dish best captures ${candidate.name} in ${coverageLabel.cityHint}?`
+    : `Which dish best captures ${candidate.name}?`;
 
   return createPollWithOptions({
     question: `Best ${candidate.name} dish`,
@@ -781,10 +786,9 @@ const buildBestRestaurantAttributePoll = async (
     restaurantId: restaurant.id,
   }));
 
-  const description =
-    coverageLabel.cityHint
-      ? `Which restaurants are most ${candidate.name} in ${coverageLabel.cityHint}?`
-      : `Which restaurants are most ${candidate.name}?`;
+  const description = coverageLabel.cityHint
+    ? `Which restaurants are most ${candidate.name} in ${coverageLabel.cityHint}?`
+    : `Which restaurants are most ${candidate.name}?`;
 
   return createPollWithOptions({
     question: `Best ${candidate.name} restaurants`,
@@ -822,9 +826,7 @@ async function main() {
       locationName: true,
     },
   });
-  const coverageLabel = resolveCoverageLabel(
-    coverageRow ?? undefined,
-  );
+  const coverageLabel = resolveCoverageLabel(coverageRow ?? undefined);
 
   const primaryUser = await resolvePrimaryUser();
   const seedUsers = SEED_VOTES ? await ensureSeedUsers(USER_COUNT) : [];
@@ -924,7 +926,10 @@ async function main() {
       }
     }
 
-    if (foodIndex >= topFoods.length && restaurantIndex >= topRestaurants.length) {
+    if (
+      foodIndex >= topFoods.length &&
+      restaurantIndex >= topRestaurants.length
+    ) {
       break;
     }
   }

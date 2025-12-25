@@ -61,7 +61,10 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       hasRecentlyViewedRestaurants);
 
   const containerStyles = [styles.container, style];
-  const recentSectionStyles = [styles.recentSection, showAutocomplete ? styles.recentSectionGap : null];
+  const recentSectionStyles = [
+    styles.recentSection,
+    showAutocomplete ? styles.recentSectionGap : null,
+  ];
 
   return (
     <View style={containerStyles}>

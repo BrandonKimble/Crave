@@ -14,11 +14,7 @@ type SearchChromeTransitionOptions = {
   middle: number;
 };
 
-const useSearchChromeTransition = ({
-  sheetY,
-  expanded,
-  middle,
-}: SearchChromeTransitionOptions) => {
+const useSearchChromeTransition = ({ sheetY, expanded, middle }: SearchChromeTransitionOptions) => {
   const expandedSnap = useSharedValue(expanded);
   const middleSnap = useSharedValue(middle);
 
@@ -32,12 +28,7 @@ const useSearchChromeTransition = ({
   );
 
   const chromeOpacity = useDerivedValue(() =>
-    interpolate(
-      progress.value,
-      [0, 0.3, 0.5, 0.7, 1],
-      [0, 0, 0.15, 0.9, 1],
-      Extrapolation.CLAMP
-    )
+    interpolate(progress.value, [0, 0.3, 0.5, 0.7, 1], [0, 0, 0.15, 0.9, 1], Extrapolation.CLAMP)
   );
 
   const chromeScale = useDerivedValue(() =>

@@ -979,10 +979,7 @@ const SearchScreen: React.FC = () => {
       return undefined;
     }
     const available =
-      SCREEN_HEIGHT -
-      suggestionScrollTop -
-      bottomInset -
-      SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM;
+      SCREEN_HEIGHT - suggestionScrollTop - bottomInset - SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM;
     return available > 0 ? available : undefined;
   }, [bottomInset, isSuggestionScreenActive, suggestionScrollTop]);
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
@@ -2544,8 +2541,7 @@ const SearchScreen: React.FC = () => {
                     styles.searchSuggestionHeaderPadding,
                     {
                       top: Math.max(0, suggestionHeaderContentBottom - headerPaddingOverlap),
-                      height:
-                        SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM + headerPaddingOverlap,
+                      height: SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM + headerPaddingOverlap,
                     },
                     suggestionMaskAnimatedStyle,
                   ]}
