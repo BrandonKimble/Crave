@@ -2,6 +2,7 @@ import React from 'react';
 import { Dimensions, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
+import type { SharedValue } from 'react-native-reanimated';
 import { Text } from '../components';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { favoritesService, type Favorite } from '../services/favorites';
@@ -21,9 +22,18 @@ const CARD_GAP = 4;
 type BookmarksOverlayProps = {
   visible: boolean;
   navBarTop?: number;
+  searchBarTop?: number;
+  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  sheetYObserver?: SharedValue<number>;
 };
 
-const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop = 0 }) => {
+const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
+  visible,
+  navBarTop = 0,
+  searchBarTop = 0,
+  onSnapChange,
+  sheetYObserver,
+}) => {
   const [favorites, setFavorites] = React.useState<Favorite[]>([]);
   const [loading, setLoading] = React.useState(false);
   const insets = useSafeAreaInsets();
@@ -37,7 +47,8 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop 
   const navBarOffset = Math.max(navBarTop, 0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(insets.top, 0);
+    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
+    const expanded = Math.max(expandedTop, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
     const hidden = SCREEN_HEIGHT + 80;
@@ -52,7 +63,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop 
       collapsed,
       hidden,
     };
-  }, [headerHeight, insets.top, navBarOffset]);
+  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
 
   const loadFavorites = React.useCallback(async () => {
     setLoading(true);
@@ -144,7 +155,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop 
       >
         <View style={styles.headerTextGroup}>
           <Text
-            variant="body"
+            variant="title"
             weight="semibold"
             style={styles.headerTitle}
             numberOfLines={1}
@@ -207,6 +218,8 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({ visible, navBarTop 
       headerComponent={headerComponent}
       style={overlaySheetStyles.container}
       onHidden={handleHidden}
+      onSnapChange={onSnapChange}
+      sheetYObserver={sheetYObserver}
     />
   );
 };

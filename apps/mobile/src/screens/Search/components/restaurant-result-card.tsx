@@ -165,7 +165,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={styles.titleRow}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text variant="caption" style={styles.rankBadgeText}>
+                <Text variant="body" style={styles.rankBadgeText}>
                   {index + 1}
                 </Text>
               </View>
@@ -187,7 +187,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
             ) : null}
             {coverageLabel ? (
               <View style={styles.coverageBadge}>
-                <Text variant="caption" style={styles.coverageBadgeText}>
+                <Text variant="body" style={styles.coverageBadgeText}>
                   {coverageLabel}
                 </Text>
               </View>

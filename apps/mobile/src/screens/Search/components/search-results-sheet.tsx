@@ -75,6 +75,15 @@ const SearchResultsSheet = <T,>({
     return null;
   }
 
+  const gestureSnapPoints = React.useMemo(
+    () => ({
+      expanded: snapPoints.expanded,
+      middle: snapPoints.middle,
+      collapsed: snapPoints.collapsed,
+    }),
+    [snapPoints.collapsed, snapPoints.expanded, snapPoints.middle]
+  );
+
   return (
     <>
       <Reanimated.View
@@ -84,7 +93,7 @@ const SearchResultsSheet = <T,>({
       <BottomSheetWithFlashList
         visible={visible}
         listScrollEnabled={listScrollEnabled}
-        snapPoints={snapPoints}
+        snapPoints={gestureSnapPoints}
         initialSnapPoint={initialSnapPoint}
         sheetYValue={sheetYValue}
         scrollOffsetValue={scrollOffsetValue}

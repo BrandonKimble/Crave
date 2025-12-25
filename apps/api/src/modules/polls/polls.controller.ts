@@ -10,6 +10,7 @@ import {
 import type { User } from '@prisma/client';
 import { PollsService } from './polls.service';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
+import { ListUserPollsDto } from './dto/list-user-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import { QueryPollsDto } from './dto/query-polls.dto';
@@ -41,6 +42,12 @@ export class PollsController {
   @UseGuards(ClerkAuthGuard)
   createPoll(@Body() dto: CreatePollDto, @CurrentUser() user: User) {
     return this.pollsService.createPoll(dto, user.userId);
+  }
+
+  @Get('me')
+  @UseGuards(ClerkAuthGuard)
+  listMyPolls(@Query() query: ListUserPollsDto, @CurrentUser() user: User) {
+    return this.pollsService.listPollsForUser(user.userId, query);
   }
 
   @Get(':pollId')

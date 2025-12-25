@@ -57,10 +57,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   const qualityColor = getQualityColor(index, dishesCount, item.displayPercentile ?? null);
   const restaurantForDish = restaurantsById.get(item.restaurantId);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
+  const hasStatus = Boolean(item.restaurantOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(
     null,
     dishPriceLabel,
-    item.restaurantDistanceMiles,
+    hasStatus ? null : item.restaurantDistanceMiles,
     'left',
     item.restaurantName,
     true
@@ -68,10 +69,11 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   const dishStatusLine = renderMetaDetailLine(
     item.restaurantOperatingStatus,
     null,
-    null,
+    hasStatus ? item.restaurantDistanceMiles : null,
     'left',
     undefined,
-    false
+    true,
+    true
   );
   const displayScoreValue = item.displayScore ?? item.qualityScore;
   const coverageLabel =
@@ -117,7 +119,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           <View style={styles.resultTitleContainer}>
             <View style={styles.titleRow}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
-                <Text variant="caption" style={styles.rankBadgeText}>
+                <Text variant="body" style={styles.rankBadgeText}>
                   {index + 1}
                 </Text>
               </View>
@@ -170,7 +172,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               ) : null}
               {coverageLabel ? (
                 <View style={styles.coverageBadge}>
-                  <Text variant="caption" style={styles.coverageBadgeText}>
+                  <Text variant="body" style={styles.coverageBadgeText}>
                     {coverageLabel}
                   </Text>
                 </View>

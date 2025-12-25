@@ -665,8 +665,12 @@ LIMIT ${pagination.take};`.trim();
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
     return {
-      sql: Prisma.sql`fc.food_quality_score ${Prisma.raw(direction)}`,
-      preview: `fc.food_quality_score ${direction}`,
+      sql: Prisma.sql`COALESCE(fc.connection_display_percentile, fc.food_quality_score) ${Prisma.raw(
+        direction,
+      )}, fc.total_upvotes ${Prisma.raw(direction)}, fc.mention_count ${Prisma.raw(
+        direction,
+      )}, fc.connection_id ASC`,
+      preview: `COALESCE(fc.connection_display_percentile, fc.food_quality_score) ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
     };
   }
 }

@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TextInput,
   View,
+  type LayoutChangeEvent,
   type ViewStyle,
 } from 'react-native';
 import Reanimated from 'react-native-reanimated';
@@ -28,6 +29,7 @@ type SearchHeaderProps = {
   accentColor: string;
   showBack?: boolean;
   onBackPress?: () => void;
+  onLayout?: (event: LayoutChangeEvent) => void;
   inputRef?: React.RefObject<TextInput>;
   inputAnimatedStyle?: AnimatedStyle;
   containerAnimatedStyle?: AnimatedStyle;
@@ -50,6 +52,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   accentColor,
   showBack = false,
   onBackPress,
+  onLayout,
   inputRef,
   inputAnimatedStyle,
   containerAnimatedStyle,
@@ -62,7 +65,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   const leadingIconSize = 24;
   const hasLeadingIcon = showBack || showInactiveSearchIcon;
   return (
-    <View style={styles.wrapper} pointerEvents="box-none">
+    <View style={styles.wrapper} pointerEvents="box-none" onLayout={onLayout}>
       <Reanimated.View
         style={[
           styles.promptCard,
@@ -170,8 +173,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 0,
     backgroundColor: '#ffffff',
-    minHeight: 44,
-    height: 44,
+    minHeight: 50,
+    height: 50,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -189,7 +192,7 @@ const styles = StyleSheet.create({
   promptRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 44,
+    height: 50,
     flex: 1,
     width: '100%',
   },
@@ -199,12 +202,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 0,
     paddingVertical: 0,
-    height: 44,
+    height: 50,
     gap: 8,
   },
   leadingSlot: {
     width: 36,
-    height: 44,
+    height: 50,
     marginRight: 4,
     alignItems: 'center',
     justifyContent: 'center',
@@ -215,19 +218,20 @@ const styles = StyleSheet.create({
   },
   leadingButton: {
     width: 36,
-    height: 44,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
   promptInput: {
     flex: 1,
-    fontSize: FONT_SIZES.subtitle,
+    fontSize: FONT_SIZES.title,
     color: '#111827',
     textAlign: 'left',
-    paddingVertical: 0,
+    textAlignVertical: 'center',
+    paddingVertical: 12,
     paddingHorizontal: 0,
-    height: 44,
-    lineHeight: LINE_HEIGHTS.subtitle,
+    height: 50,
+    lineHeight: LINE_HEIGHTS.title,
     includeFontPadding: false,
   },
   trailingContainer: {
@@ -235,7 +239,7 @@ const styles = StyleSheet.create({
     minWidth: 36,
     alignItems: 'flex-end',
     justifyContent: 'center',
-    height: 44,
+    height: 50,
   },
   trailingButton: {
     paddingHorizontal: 4,

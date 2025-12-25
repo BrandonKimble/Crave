@@ -288,7 +288,7 @@ export class AutocompleteService {
         restaurant_id,
         COUNT(*)::int AS location_count
       FROM core_restaurant_locations
-      WHERE restaurant_id IN (${Prisma.join(restaurantIds)})
+      WHERE restaurant_id = ANY(ARRAY[${Prisma.join(restaurantIds)}]::uuid[])
         AND google_place_id IS NOT NULL
         AND address IS NOT NULL
         AND latitude IS NOT NULL

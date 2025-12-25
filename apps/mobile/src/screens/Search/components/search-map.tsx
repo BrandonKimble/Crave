@@ -71,6 +71,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
       scaleBarEnabled={false}
       onPress={onPress}
       onCameraChanged={onCameraChanged}
+      onMapIdle={onCameraChanged}
     >
       <MapboxGL.Camera
         ref={cameraRef}

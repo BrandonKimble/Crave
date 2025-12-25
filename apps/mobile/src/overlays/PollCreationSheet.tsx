@@ -363,7 +363,7 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
     >
       <View style={styles.headerRow}>
         <View>
-          <Text variant="subtitle" weight="semibold" style={styles.headerTitle}>
+          <Text variant="title" weight="semibold" style={styles.headerTitle}>
             New poll
           </Text>
           <Text variant="body" style={styles.headerSubtitle}>

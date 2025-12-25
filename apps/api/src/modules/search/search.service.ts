@@ -115,11 +115,9 @@ export class SearchService {
       restaurantFilters,
       connectionFilters,
       ranking: {
-        foodOrder: 'food_quality_score DESC',
+        foodOrder: 'display_rank DESC',
         restaurantOrder:
-          format === 'single_list'
-            ? 'food_quality_score DESC'
-            : 'contextual_food_quality DESC',
+          format === 'single_list' ? 'display_rank DESC' : 'display_rank DESC',
       },
       diagnostics: {
         missingEntities: this.getMissingScopes(presence),

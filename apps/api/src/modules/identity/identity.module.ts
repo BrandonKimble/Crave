@@ -11,6 +11,7 @@ import { NativeAppleAuthService } from './auth/native-apple-auth.service';
 import { AuthController } from './auth.controller';
 import { UserController } from './user.controller';
 import { UserService } from './user.service';
+import { UserEventService } from './user-event.service';
 
 @Module({
   imports: [ConfigModule, SharedModule, PrismaModule, HttpModule],
@@ -22,6 +23,7 @@ import { UserService } from './user.service';
     OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
+    UserEventService,
   ],
   exports: [
     ClerkAuthService,
@@ -30,6 +32,7 @@ import { UserService } from './user.service';
     OptionalClerkAuthGuard,
     NativeAppleAuthService,
     UserService,
+    UserEventService,
   ],
 })
 export class IdentityModule {}

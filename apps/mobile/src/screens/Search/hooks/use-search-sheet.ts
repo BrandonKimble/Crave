@@ -2,8 +2,6 @@ import React from 'react';
 import { Animated } from 'react-native';
 
 import {
-  Extrapolation,
-  interpolate,
   runOnJS,
   type SharedValue,
   useAnimatedStyle,
@@ -18,7 +16,7 @@ import { SCREEN_HEIGHT } from '../constants/search';
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
   isSearchFocused: boolean;
-  searchLayoutTop: number;
+  searchBarTop: number;
 };
 
 type UseSearchSheetResult = {
@@ -35,8 +33,6 @@ type UseSearchSheetResult = {
   showPanel: () => void;
   hideSheet: () => void;
   handleSheetSnapChange: (nextSnap: SheetPosition | 'hidden') => void;
-  searchBarInputAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
-  searchBarSheetAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsScrollOffset: SharedValue<number>;
   resultsMomentum: SharedValue<boolean>;
@@ -50,12 +46,10 @@ type UseSearchSheetResult = {
 const useSearchSheet = ({
   isSearchOverlay,
   isSearchFocused,
-  searchLayoutTop,
+  searchBarTop,
 }: UseSearchSheetOptions): UseSearchSheetResult => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
-  const snapPointExpanded = useSharedValue(0);
-  const snapPointMiddle = useSharedValue(SCREEN_HEIGHT * 0.4);
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const sheetStateShared = useSharedValue<SheetPosition>('hidden');
   const resultsScrollY = React.useRef(new Animated.Value(0)).current;
@@ -65,7 +59,7 @@ const useSearchSheet = ({
   const lastScrollYRef = React.useRef(0);
 
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(searchLayoutTop, 0);
+    const expanded = Math.max(searchBarTop, 0);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
     const collapsed = SCREEN_HEIGHT - 130;
@@ -76,7 +70,7 @@ const useSearchSheet = ({
       collapsed,
       hidden,
     };
-  }, [searchLayoutTop]);
+  }, [searchBarTop]);
 
   const shouldRenderSheet =
     isSearchOverlay && !isSearchFocused && (panelVisible || sheetState !== 'hidden');
@@ -89,11 +83,6 @@ const useSearchSheet = ({
       sheetTranslateY.value = snapPoints.hidden;
     }
   }, [isSearchOverlay, sheetStateShared, sheetTranslateY, snapPoints.hidden]);
-
-  React.useEffect(() => {
-    snapPointExpanded.value = snapPoints.expanded;
-    snapPointMiddle.value = snapPoints.middle;
-  }, [snapPointExpanded, snapPointMiddle, snapPoints.expanded, snapPoints.middle]);
 
   React.useEffect(() => {
     sheetStateShared.value = sheetState;
@@ -162,46 +151,6 @@ const useSearchSheet = ({
     animateSheetTo('hidden');
   }, [animateSheetTo, panelVisible]);
 
-  const searchBarInputAnimatedStyle = useAnimatedStyle(() => {
-    const visibility = interpolate(
-      sheetTranslateY.value,
-      [snapPointExpanded.value, snapPointMiddle.value],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    return { opacity: visibility };
-  });
-
-  const searchBarSheetAnimatedStyle = useAnimatedStyle(() => {
-    const progress = interpolate(
-      sheetTranslateY.value,
-      [snapPointExpanded.value, snapPointMiddle.value],
-      [0, 1],
-      Extrapolation.CLAMP
-    );
-    const opacity = interpolate(
-      progress,
-      [0, 0.3, 0.5, 0.7, 1],
-      [0, 0, 0.15, 0.9, 1],
-      Extrapolation.CLAMP
-    );
-    const borderAlpha = interpolate(
-      progress,
-      [0, 0.3, 0.6, 0.85, 1],
-      [0.1, 0.25, 0.5, 0.75, 0.95],
-      Extrapolation.CLAMP
-    );
-    const scale = interpolate(progress, [0, 1], [0.96, 1], Extrapolation.CLAMP);
-
-    return {
-      opacity,
-      backgroundColor: '#ffffff',
-      borderColor: `rgba(229, 231, 235, ${borderAlpha})`,
-      transform: [{ scale }],
-      display: opacity < 0.02 ? 'none' : 'flex',
-    };
-  });
-
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
@@ -251,8 +200,6 @@ const useSearchSheet = ({
     showPanel,
     hideSheet,
     handleSheetSnapChange,
-    searchBarInputAnimatedStyle,
-    searchBarSheetAnimatedStyle,
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
     resultsMomentum,

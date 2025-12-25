@@ -13,6 +13,7 @@ import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Animated, {
   runOnJS,
   type SharedValue,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
@@ -63,6 +64,7 @@ type BottomSheetWithFlashListProps<T> = {
   overScrollMode?: FlashListProps<T>['overScrollMode'];
   testID?: string;
   extraData?: FlashListProps<T>['extraData'];
+  snapTo?: SheetSnapPoint | 'hidden' | null;
   flashListProps?: Partial<
     Omit<
       FlashListProps<T>,
@@ -83,6 +85,7 @@ type BottomSheetWithFlashListProps<T> = {
     >
   >;
   sheetYValue?: SharedValue<number>;
+  sheetYObserver?: SharedValue<number>;
   scrollOffsetValue?: SharedValue<number>;
   momentumFlag?: SharedValue<boolean>;
   style?: StyleProp<ViewStyle>;
@@ -167,8 +170,10 @@ const BottomSheetWithFlashList = <T,>({
   overScrollMode,
   testID,
   extraData,
+  snapTo,
   flashListProps,
   sheetYValue,
+  sheetYObserver,
   scrollOffsetValue,
   momentumFlag,
   style,
@@ -206,10 +211,21 @@ const BottomSheetWithFlashList = <T,>({
   const internalListRef = React.useRef<FlashList<T> | null>(null);
   const flashListRef = listRefProp ?? internalListRef;
 
+  useAnimatedReaction(
+    () => sheetY.value,
+    (value) => {
+      if (sheetYObserver) {
+        sheetYObserver.value = value;
+      }
+    },
+    [sheetYObserver]
+  );
+
   const onHiddenRef = React.useRef(onHidden);
   const onSnapChangeRef = React.useRef(onSnapChange);
   onHiddenRef.current = onHidden;
   onSnapChangeRef.current = onSnapChange;
+  const lastSnapToRef = React.useRef<SheetSnapPoint | 'hidden' | null>(null);
 
   const notifyHidden = React.useCallback(() => {
     onHiddenRef.current?.();
@@ -311,6 +327,22 @@ const BottomSheetWithFlashList = <T,>({
       velocity: 0,
     });
   }, [resolveSnapValue, sheetY, sheetYValue]);
+
+  React.useEffect(() => {
+    if (!snapTo) {
+      lastSnapToRef.current = null;
+      return;
+    }
+    if (snapTo === lastSnapToRef.current) {
+      return;
+    }
+    lastSnapToRef.current = snapTo;
+    const target = resolveSnapValue(snapTo);
+    if (target === undefined) {
+      return;
+    }
+    animateTo(target, 0, snapTo === 'hidden');
+  }, [animateTo, resolveSnapValue, snapTo]);
 
   const onScroll = React.useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {

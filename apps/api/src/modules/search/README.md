@@ -37,7 +37,7 @@
 ```json
 {
   "format": "dual_list",
-  "plan": { "format": "dual_list", "restaurantFilters": [...], "connectionFilters": [...], "ranking": {"foodOrder": "food_quality_score DESC", "restaurantOrder": "contextual_food_quality DESC"}, "diagnostics": {"missingEntities": [], "notes": []}},
+  "plan": { "format": "dual_list", "restaurantFilters": [...], "connectionFilters": [...], "ranking": {"foodOrder": "display_rank DESC", "restaurantOrder": "display_rank DESC"}, "diagnostics": {"missingEntities": [], "notes": []}},
   "food": [
     {
       "connectionId": "uuid-conn",

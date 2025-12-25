@@ -2,6 +2,7 @@ import React from 'react';
 import {
   ActivityIndicator,
   Animated,
+  AppState,
   Keyboard,
   Pressable,
   TouchableOpacity,
@@ -27,7 +28,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
-import Svg, { Path, Circle as SvgCircle } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
@@ -69,6 +70,7 @@ import SearchMap, {
   type RestaurantFeatureProperties,
 } from './components/search-map';
 import SearchResultsSheet from './components/search-results-sheet';
+import useSearchChromeTransition from './hooks/use-search-chrome-transition';
 import useSearchHistory from './hooks/use-search-history';
 import useSearchSheet from './hooks/use-search-sheet';
 import useSearchSubmit from './hooks/use-search-submit';
@@ -92,12 +94,10 @@ import {
   SEARCH_BAR_HOLE_RADIUS,
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
+  SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
   SEARCH_SUGGESTION_HEADER_PANEL_GAP,
-  SEARCH_SUGGESTION_PANEL_OVERLAP,
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
-  SEARCH_SUGGESTION_PANEL_PADDING_TOP,
   SECONDARY_METRIC_ICON_SIZE,
-  SHARED_SECTION_GAP,
   SHORTCUT_CHIP_HOLE_PADDING,
   SHORTCUT_CHIP_HOLE_RADIUS,
   USA_FALLBACK_CENTER,
@@ -123,6 +123,8 @@ import {
 } from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
+
+type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 
 const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -209,12 +211,16 @@ const SearchScreen: React.FC = () => {
     })();
   }, []);
 
-  React.useEffect(() => {
-    if (!userLocation) {
-      locationPulse.setValue(0);
-      return;
-    }
-    const pulseAnimation = Animated.loop(
+  const stopLocationPulse = React.useCallback(() => {
+    locationPulseAnimationRef.current?.stop();
+    locationPulseAnimationRef.current = null;
+    locationPulse.setValue(0);
+  }, [locationPulse]);
+
+  const startLocationPulse = React.useCallback(() => {
+    locationPulseAnimationRef.current?.stop();
+    locationPulse.setValue(0);
+    locationPulseAnimationRef.current = Animated.loop(
       Animated.sequence([
         Animated.timing(locationPulse, {
           toValue: 1,
@@ -230,12 +236,34 @@ const SearchScreen: React.FC = () => {
         }),
       ])
     );
-    pulseAnimation.start();
+    locationPulseAnimationRef.current.start();
+  }, [locationPulse]);
+
+  React.useEffect(() => {
+    if (!userLocation) {
+      stopLocationPulse();
+      return;
+    }
+    startLocationPulse();
     return () => {
-      pulseAnimation.stop();
-      locationPulse.setValue(0);
+      stopLocationPulse();
     };
-  }, [locationPulse, userLocation]);
+  }, [startLocationPulse, stopLocationPulse, userLocation]);
+
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        if (userLocationRef.current) {
+          startLocationPulse();
+        }
+        return;
+      }
+      stopLocationPulse();
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, [startLocationPulse, stopLocationPulse]);
 
   React.useEffect(() => {
     if (!userLocation || hasCenteredOnLocationRef.current) {
@@ -305,6 +333,7 @@ const SearchScreen: React.FC = () => {
   const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
     null
   );
+  const [searchBarFrame, setSearchBarFrame] = React.useState<LayoutRectangle | null>(null);
   const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
     null
   );
@@ -330,6 +359,8 @@ const SearchScreen: React.FC = () => {
   const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<
     Record<string, Record<number, number>>
   >({});
+  const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
+  const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
     null
   );
@@ -430,7 +461,9 @@ const SearchScreen: React.FC = () => {
     if (!isLngLatTuple(first) || !isLngLatTuple(second)) {
       return null;
     }
-    return boundsFromPairs(first, second);
+    const bounds = boundsFromPairs(first, second);
+    latestBoundsRef.current = bounds;
+    return bounds;
   }, []);
 
   const resetFocusedMapState = React.useCallback(() => {
@@ -442,12 +475,15 @@ const SearchScreen: React.FC = () => {
   const lastSearchRequestIdRef = React.useRef<string | null>(null);
   const searchSurfaceAnim = useSharedValue(0);
   const suggestionTransition = useSharedValue(0);
+  const pollsSheetY = useSharedValue(SCREEN_HEIGHT + 80);
+  const bookmarksSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const locationPulse = React.useRef(new Animated.Value(0)).current;
+  const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const hasCenteredOnLocationRef = React.useRef(false);
   const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
@@ -459,6 +495,17 @@ const SearchScreen: React.FC = () => {
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
   const showPollsOverlay = activeOverlay === 'polls';
   const pollOverlayParams = overlayParams.polls;
+  const searchBarTop = React.useMemo(() => {
+    const rawTop = searchBarFrame
+      ? searchLayout.top + searchBarFrame.y
+      : searchLayout.top + SEARCH_CONTAINER_PADDING_TOP;
+    return Math.max(rawTop, 0);
+  }, [searchBarFrame, searchLayout.top]);
+  const ensureSearchOverlay = React.useCallback(() => {
+    if (activeOverlay !== 'search') {
+      setOverlay('search');
+    }
+  }, [activeOverlay, setOverlay]);
   const {
     panelVisible,
     sheetState,
@@ -469,8 +516,6 @@ const SearchScreen: React.FC = () => {
     animateSheetTo,
     showPanel,
     handleSheetSnapChange,
-    searchBarInputAnimatedStyle,
-    searchBarSheetAnimatedStyle,
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
     resultsMomentum,
@@ -481,7 +526,71 @@ const SearchScreen: React.FC = () => {
   } = useSearchSheet({
     isSearchOverlay,
     isSearchFocused,
-    searchLayoutTop: searchLayout.top,
+    searchBarTop,
+  });
+  const pollsChromeSnaps = React.useMemo(() => {
+    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
+    const expanded = Math.max(expandedTop, 0);
+    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
+    return { expanded, middle };
+  }, [insets.top, searchBarTop]);
+  const bookmarksChromeSnaps = React.useMemo(() => {
+    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
+    const expanded = Math.max(expandedTop, 0);
+    const rawMiddle = SCREEN_HEIGHT * 0.4;
+    const middle = Math.max(expanded + 96, rawMiddle);
+    const hidden = SCREEN_HEIGHT + 80;
+    const clampedMiddle = Math.min(middle, hidden - 120);
+    return { expanded, middle: clampedMiddle };
+  }, [insets.top, searchBarTop]);
+  const shouldUsePollsChrome =
+    showPollsOverlay ||
+    (isSearchOverlay &&
+      !isSearchFocused &&
+      !isSearchSessionActive &&
+      !isLoading &&
+      !shouldRenderSheet);
+  const chromeTransitionConfig = React.useMemo(() => {
+    if (showBookmarksOverlay) {
+      return {
+        sheetY: bookmarksSheetY,
+        expanded: bookmarksChromeSnaps.expanded,
+        middle: bookmarksChromeSnaps.middle,
+      };
+    }
+    if (shouldUsePollsChrome) {
+      return {
+        sheetY: pollsSheetY,
+        expanded: pollsChromeSnaps.expanded,
+        middle: pollsChromeSnaps.middle,
+      };
+    }
+    return {
+      sheetY: sheetTranslateY,
+      expanded: snapPoints.expanded,
+      middle: snapPoints.middle,
+    };
+  }, [
+    bookmarksChromeSnaps.expanded,
+    bookmarksChromeSnaps.middle,
+    bookmarksSheetY,
+    pollsChromeSnaps.expanded,
+    pollsChromeSnaps.middle,
+    pollsSheetY,
+    shouldUsePollsChrome,
+    sheetTranslateY,
+    showBookmarksOverlay,
+    snapPoints.expanded,
+    snapPoints.middle,
+  ]);
+  const {
+    inputAnimatedStyle: searchBarInputAnimatedStyle,
+    containerAnimatedStyle: searchBarSheetAnimatedStyle,
+    chromeAnimatedStyle: searchChromeAnimatedStyle,
+  } = useSearchChromeTransition({
+    sheetY: chromeTransitionConfig.sheetY,
+    expanded: chromeTransitionConfig.expanded,
+    middle: chromeTransitionConfig.middle,
   });
   const [scoreInfo, setScoreInfo] = React.useState<{
     type: 'dish' | 'restaurant';
@@ -548,41 +657,43 @@ const SearchScreen: React.FC = () => {
     Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
   >(
     () => ({
-      search: (color: string, active: boolean) => (
-        <Svg width={20} height={20} viewBox="0 0 24 24">
-          <Path
-            d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"
-            fill={active ? color : 'none'}
-            stroke={color}
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <SvgCircle
-            cx="12"
-            cy="10"
-            r={active ? 4.2 : 3.2}
-            fill={active ? '#ffffff' : 'none'}
-            stroke={color}
-            strokeWidth={2}
-          />
-        </Svg>
-      ),
+      search: (color: string, active: boolean) => {
+        const holeRadius = active ? 4.2 : 3.2;
+        const pinPath =
+          'M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0';
+        const holePath = `M12 10m-${holeRadius},0a${holeRadius},${holeRadius} 0 1,0 ${
+          holeRadius * 2
+        },0a${holeRadius},${holeRadius} 0 1,0 -${holeRadius * 2},0`;
+        return (
+          <Svg width={24} height={24} viewBox="0 0 24 24">
+            <Path
+              d={`${pinPath} ${holePath}`}
+              fill={active ? color : 'none'}
+              stroke={color}
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fillRule="evenodd"
+              clipRule="evenodd"
+            />
+          </Svg>
+        );
+      },
       bookmarks: (color: string, active: boolean) => (
         <Heart
-          size={20}
+          size={24}
           color={color}
           strokeWidth={active ? 0 : 2}
           fill={active ? color : 'none'}
         />
       ),
       polls: (color: string, active: boolean) => (
-        <PollIcon color={color} size={20} strokeWidth={active ? 2.5 : 2} />
+        <PollIcon color={color} size={24} strokeWidth={active ? 2.5 : 2} />
       ),
       profile: (color: string, active: boolean) => {
         if (active) {
           return (
-            <Svg width={20} height={20} viewBox="0 0 24 24" fill={color} stroke="none">
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill={color} stroke="none">
               <Path
                 fillRule="evenodd"
                 clipRule="evenodd"
@@ -593,8 +704,8 @@ const SearchScreen: React.FC = () => {
         }
         return (
           <Svg
-            width={20}
-            height={20}
+            width={24}
+            height={24}
             viewBox="0 0 24 24"
             fill="none"
             stroke={color}
@@ -620,6 +731,24 @@ const SearchScreen: React.FC = () => {
       return { top: y, height };
     });
   }, []);
+  const handleSearchHeaderLayout = React.useCallback(
+    ({ nativeEvent }: LayoutChangeEvent) => {
+      const { layout } = nativeEvent;
+      setSearchBarFrame((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.x - layout.x) < 0.5 &&
+          Math.abs(prev.y - layout.y) < 0.5 &&
+          Math.abs(prev.width - layout.width) < 0.5 &&
+          Math.abs(prev.height - layout.height) < 0.5
+        ) {
+          return prev;
+        }
+        return layout;
+      });
+    },
+    [setSearchBarFrame]
+  );
   const openNow = useSearchStore((state) => state.openNow);
   const setOpenNow = useSearchStore((state) => state.setOpenNow);
   const priceLevels = useSearchStore((state) => state.priceLevels);
@@ -692,8 +821,12 @@ const SearchScreen: React.FC = () => {
     if (contentBottom <= 0) {
       return 0;
     }
-    return Math.max(0, contentBottom + SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM);
+    return Math.max(0, contentBottom);
   }, [isSuggestionScreenActive, suggestionHeaderContentBottom]);
+  const headerPaddingOverlap = Math.min(
+    SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
+    SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM
+  );
   const suggestionScrollTop = React.useMemo(() => {
     if (!isSuggestionScreenActive) {
       return 0;
@@ -701,11 +834,22 @@ const SearchScreen: React.FC = () => {
 
     const fallback = searchLayout.top + searchLayout.height + 8;
     const headerBottom =
-      suggestionHeaderHeight > 0
-        ? suggestionHeaderHeight + SEARCH_SUGGESTION_HEADER_PANEL_GAP
+      suggestionHeaderContentBottom > 0
+        ? suggestionHeaderContentBottom +
+          SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM -
+          headerPaddingOverlap +
+          SEARCH_SUGGESTION_HEADER_PANEL_GAP
         : fallback;
-    return Math.max(0, headerBottom + SHARED_SECTION_GAP);
-  }, [isSuggestionScreenActive, searchLayout.height, searchLayout.top, suggestionHeaderHeight]);
+    return Math.max(0, headerBottom);
+  }, [
+    isSuggestionScreenActive,
+    searchLayout.height,
+    searchLayout.top,
+    suggestionHeaderContentBottom,
+    SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
+    headerPaddingOverlap,
+    SEARCH_SUGGESTION_HEADER_PANEL_GAP,
+  ]);
   const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
     if (!isSuggestionScreenActive) {
       return [];
@@ -830,40 +974,17 @@ const SearchScreen: React.FC = () => {
     return null;
   }, [results?.metadata?.primaryFoodTerm]);
   const bottomInset = Math.max(insets.bottom, 12);
-  const suggestionPanelTopMargin = React.useMemo(() => {
-    if (!isSuggestionScreenActive) {
-      return 0;
-    }
-    return Math.max(0, suggestionScrollTop - SEARCH_SUGGESTION_PANEL_OVERLAP);
-  }, [isSuggestionScreenActive, suggestionScrollTop]);
-  const suggestionPanelOverlap = React.useMemo(
-    () =>
-      isSuggestionScreenActive ? Math.min(SEARCH_SUGGESTION_PANEL_OVERLAP, suggestionScrollTop) : 0,
-    [isSuggestionScreenActive, suggestionScrollTop]
-  );
   const suggestionScrollMaxHeight = React.useMemo(() => {
     if (!isSuggestionScreenActive) {
       return undefined;
     }
     const available =
       SCREEN_HEIGHT -
-      suggestionPanelTopMargin -
+      suggestionScrollTop -
       bottomInset -
       SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM;
     return available > 0 ? available : undefined;
-  }, [bottomInset, isSuggestionScreenActive, suggestionPanelTopMargin]);
-  const suggestionPanelMaxHeight = React.useMemo(() => {
-    if (!suggestionScrollMaxHeight) {
-      return undefined;
-    }
-    return Math.max(
-      0,
-      suggestionScrollMaxHeight -
-        (SEARCH_SUGGESTION_PANEL_PADDING_TOP +
-          SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM +
-          suggestionPanelOverlap)
-    );
-  }, [suggestionPanelOverlap, suggestionScrollMaxHeight]);
+  }, [bottomInset, isSuggestionScreenActive, suggestionScrollTop]);
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
   const shouldHideBottomNav =
     isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
@@ -872,6 +993,23 @@ const SearchScreen: React.FC = () => {
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
   const pollsOverlaySnapPoint = showPollsOverlay ? 'middle' : 'collapsed';
+  const isPollsExpanded = pollsSheetSnap === 'expanded';
+  const isBookmarksExpanded = bookmarksSheetSnap === 'expanded';
+  const isAnySheetExpanded = sheetState === 'expanded' || isPollsExpanded || isBookmarksExpanded;
+  const shouldRenderSearchOverlay = isSearchOverlay || shouldShowPollsSheet || showBookmarksOverlay;
+  const shouldShowSearchChrome = shouldRenderSearchOverlay && !isAnySheetExpanded;
+
+  React.useEffect(() => {
+    if (!shouldShowPollsSheet) {
+      setPollsSheetSnap('hidden');
+    }
+  }, [shouldShowPollsSheet]);
+
+  React.useEffect(() => {
+    if (!showBookmarksOverlay) {
+      setBookmarksSheetSnap('hidden');
+    }
+  }, [showBookmarksOverlay]);
 
   React.useEffect(() => {
     if (!shouldShowPollsSheet) {
@@ -909,6 +1047,7 @@ const SearchScreen: React.FC = () => {
     [cancelAutocomplete]
   );
   const focusSearchInput = React.useCallback(() => {
+    ensureSearchOverlay();
     dismissTransientOverlays();
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
@@ -920,7 +1059,13 @@ const SearchScreen: React.FC = () => {
       }
     }
     inputRef.current?.focus();
-  }, [cancelAutocomplete, dismissTransientOverlays, query, showCachedSuggestionsIfFresh]);
+  }, [
+    cancelAutocomplete,
+    dismissTransientOverlays,
+    ensureSearchOverlay,
+    query,
+    showCachedSuggestionsIfFresh,
+  ]);
   React.useEffect(() => {
     searchSurfaceAnim.value = withTiming(isSearchFocused ? 1 : 0, {
       duration: isSearchFocused ? 200 : 160,
@@ -935,6 +1080,32 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
+  const startLocationWatch = React.useCallback(async () => {
+    if (locationWatchRef.current) {
+      return;
+    }
+    try {
+      locationWatchRef.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 20_000,
+          distanceInterval: 50,
+        },
+        (update) => {
+          const nextCoords: Coordinate = {
+            lat: update.coords.latitude,
+            lng: update.coords.longitude,
+          };
+          userLocationRef.current = nextCoords;
+          setUserLocation(nextCoords);
+        }
+      );
+    } catch (watchError) {
+      logger.warn('Failed to start location watcher', {
+        message: watchError instanceof Error ? watchError.message : 'unknown',
+      });
+    }
+  }, []);
   const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
     if (userLocationRef.current) {
       return userLocationRef.current;
@@ -956,6 +1127,22 @@ const SearchScreen: React.FC = () => {
         return null;
       }
 
+      try {
+        const lastKnown = await Location.getLastKnownPositionAsync();
+        if (lastKnown) {
+          const coords: Coordinate = {
+            lat: lastKnown.coords.latitude,
+            lng: lastKnown.coords.longitude,
+          };
+          setUserLocation(coords);
+          userLocationRef.current = coords;
+        }
+      } catch {
+        // ignore
+      }
+
+      await startLocationWatch();
+
       const position = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
         maximumAge: 60_000,
@@ -968,40 +1155,16 @@ const SearchScreen: React.FC = () => {
       setUserLocation(coords);
       userLocationRef.current = coords;
 
-      if (!locationWatchRef.current) {
-        try {
-          locationWatchRef.current = await Location.watchPositionAsync(
-            {
-              accuracy: Location.Accuracy.Balanced,
-              timeInterval: 20_000,
-              distanceInterval: 50,
-            },
-            (update) => {
-              const nextCoords: Coordinate = {
-                lat: update.coords.latitude,
-                lng: update.coords.longitude,
-              };
-              userLocationRef.current = nextCoords;
-              setUserLocation(nextCoords);
-            }
-          );
-        } catch (watchError) {
-          logger.warn('Failed to start location watcher', {
-            message: watchError instanceof Error ? watchError.message : 'unknown',
-          });
-        }
-      }
-
       return coords;
     } catch (locationError) {
       logger.warn('Failed to capture user location', {
         message: locationError instanceof Error ? locationError.message : 'unknown',
       });
-      return null;
+      return userLocationRef.current;
     } finally {
       locationRequestInFlightRef.current = false;
     }
-  }, []);
+  }, [startLocationWatch]);
   React.useEffect(() => {
     void ensureUserLocation();
   }, [ensureUserLocation]);
@@ -1486,24 +1649,33 @@ const SearchScreen: React.FC = () => {
   }, [query, setVotes100Plus, submitSearch, votes100Plus]);
 
   const handleSubmit = React.useCallback(() => {
+    ensureSearchOverlay();
     setIsSearchFocused(false);
     setIsAutocompleteSuppressed(true);
     Keyboard.dismiss();
     resetFocusedMapState();
     void submitSearch();
-  }, [resetFocusedMapState, setIsAutocompleteSuppressed, setIsSearchFocused, submitSearch]);
+  }, [
+    ensureSearchOverlay,
+    resetFocusedMapState,
+    setIsAutocompleteSuppressed,
+    setIsSearchFocused,
+    submitSearch,
+  ]);
 
   const handleBestDishesHere = React.useCallback(() => {
+    ensureSearchOverlay();
     setQuery('Best dishes');
     resetFocusedMapState();
     void runBestHere('dishes', 'Best dishes');
-  }, [resetFocusedMapState, runBestHere, setQuery]);
+  }, [ensureSearchOverlay, resetFocusedMapState, runBestHere, setQuery]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
+    ensureSearchOverlay();
     setQuery('Best restaurants');
     resetFocusedMapState();
     void runBestHere('restaurants', 'Best restaurants');
-  }, [resetFocusedMapState, runBestHere, setQuery]);
+  }, [ensureSearchOverlay, resetFocusedMapState, runBestHere, setQuery]);
 
   const handleSearchThisArea = React.useCallback(() => {
     if (isLoading || isLoadingMore || !results) {
@@ -1627,10 +1799,11 @@ const SearchScreen: React.FC = () => {
   }, [clearSearchState]);
 
   const handleSearchFocus = React.useCallback(() => {
+    ensureSearchOverlay();
     dismissTransientOverlays();
     setIsSearchFocused(true);
     setIsAutocompleteSuppressed(false);
-  }, [dismissTransientOverlays]);
+  }, [dismissTransientOverlays, ensureSearchOverlay]);
 
   const handleSearchBlur = React.useCallback(() => {
     setIsSearchFocused(false);
@@ -2332,97 +2505,110 @@ const SearchScreen: React.FC = () => {
         locationPulse={locationPulse}
       />
 
-      {isSearchOverlay && (
+      {shouldRenderSearchOverlay && (
         <SafeAreaView
           style={styles.overlay}
           pointerEvents="box-none"
           edges={['top', 'left', 'right']}
         >
-          <Reanimated.View
-            pointerEvents={isSearchFocused ? 'auto' : 'none'}
-            style={[
-              styles.searchSurface,
-              searchSurfaceAnimatedStyle,
-              {
-                top: 0,
-              },
-            ]}
-          >
-            <FrostedGlassBackground />
-            {isSuggestionScreenActive && suggestionHeaderHeight > 0 ? (
-              <MaskedHoleOverlay
-                holes={suggestionHeaderHoles}
-                backgroundColor="#ffffff"
-                style={[
-                  styles.searchSuggestionHeaderSurface,
-                  { height: suggestionHeaderHeight },
-                  suggestionMaskAnimatedStyle,
-                ]}
-                pointerEvents="none"
-              />
-            ) : null}
-            <View
+          {isSearchOverlay ? (
+            <Reanimated.View
+              pointerEvents={isSearchFocused ? 'auto' : 'none'}
               style={[
-                styles.searchSurfaceScroll,
-                isSuggestionScreenActive
-                  ? [
-                      styles.searchSuggestionScrollSurface,
-                      {
-                        marginTop: suggestionPanelTopMargin,
-                        maxHeight: suggestionScrollMaxHeight,
-                      },
-                    ]
-                  : null,
+                styles.searchSurface,
+                searchSurfaceAnimatedStyle,
+                {
+                  top: 0,
+                },
               ]}
             >
-              <View
+              <FrostedGlassBackground />
+              {isSuggestionScreenActive && suggestionHeaderHeight > 0 ? (
+                <MaskedHoleOverlay
+                  holes={suggestionHeaderHoles}
+                  backgroundColor="#ffffff"
+                  style={[
+                    styles.searchSuggestionHeaderSurface,
+                    { height: suggestionHeaderHeight },
+                    suggestionMaskAnimatedStyle,
+                  ]}
+                  pointerEvents="none"
+                />
+              ) : null}
+              {isSuggestionScreenActive &&
+              suggestionHeaderContentBottom > 0 &&
+              SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM > 0 ? (
+                <Reanimated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.searchSuggestionHeaderPadding,
+                    {
+                      top: Math.max(0, suggestionHeaderContentBottom - headerPaddingOverlap),
+                      height:
+                        SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM + headerPaddingOverlap,
+                    },
+                    suggestionMaskAnimatedStyle,
+                  ]}
+                />
+              ) : null}
+              <Animated.ScrollView
                 style={[
+                  styles.searchSurfaceScroll,
+                  isSuggestionScreenActive
+                    ? [
+                        styles.searchSuggestionScrollSurface,
+                        { marginTop: suggestionScrollTop },
+                        suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
+                      ]
+                    : null,
+                ]}
+                contentContainerStyle={[
                   styles.searchSurfaceContent,
                   {
                     paddingTop: isSuggestionScreenActive
                       ? 0
                       : searchLayout.top + searchLayout.height + 8,
-                    paddingBottom: bottomInset + 32,
+                    paddingBottom: isSuggestionScreenActive
+                      ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
+                      : bottomInset + 32,
+                    paddingHorizontal: isSuggestionScreenActive ? CONTENT_HORIZONTAL_PADDING : 0,
+                    backgroundColor:
+                      isSuggestionScreenActive && shouldRenderSuggestionPanel
+                        ? '#ffffff'
+                        : 'transparent',
                   },
                 ]}
+                keyboardShouldPersistTaps="handled"
+                scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
+                showsVerticalScrollIndicator={false}
               >
                 {shouldRenderSuggestionPanel ? (
-                  <View
-                    style={[
-                      styles.searchMiddlePanel,
-                      {
-                        marginTop: SEARCH_SUGGESTION_PANEL_PADDING_TOP + suggestionPanelOverlap,
-                        paddingBottom: SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
-                        paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-                      },
-                      suggestionScrollMaxHeight ? { maxHeight: suggestionScrollMaxHeight } : null,
-                    ]}
-                  >
-                    <SearchSuggestions
-                      visible={shouldRenderSuggestionPanel}
-                      showAutocomplete={shouldRenderAutocompleteSection}
-                      showRecent={shouldRenderRecentSection}
-                      suggestions={suggestions}
-                      recentSearches={recentSearches}
-                      recentlyViewedRestaurants={recentlyViewedRestaurants}
-                      hasRecentSearches={hasRecentSearches}
-                      hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                      isAutocompleteLoading={isAutocompleteLoading}
-                      isRecentLoading={isRecentLoading}
-                      isRecentlyViewedLoading={isRecentlyViewedLoading}
-                      onSelectSuggestion={handleSuggestionPress}
-                      onSelectRecent={handleRecentSearchPress}
-                      onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
-                      panelMaxHeight={suggestionPanelMaxHeight}
-                    />
-                  </View>
+                  <SearchSuggestions
+                    visible={shouldRenderSuggestionPanel}
+                    showAutocomplete={shouldRenderAutocompleteSection}
+                    showRecent={shouldRenderRecentSection}
+                    suggestions={suggestions}
+                    recentSearches={recentSearches}
+                    recentlyViewedRestaurants={recentlyViewedRestaurants}
+                    hasRecentSearches={hasRecentSearches}
+                    hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
+                    isAutocompleteLoading={isAutocompleteLoading}
+                    isRecentLoading={isRecentLoading}
+                    isRecentlyViewedLoading={isRecentlyViewedLoading}
+                    onSelectSuggestion={handleSuggestionPress}
+                    onSelectRecent={handleRecentSearchPress}
+                    onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                  />
                 ) : null}
-              </View>
-            </View>
-          </Reanimated.View>
+              </Animated.ScrollView>
+            </Reanimated.View>
+          ) : null}
           <View
-            pointerEvents={sheetState === 'expanded' ? 'none' : 'auto'}
-            style={styles.searchContainer}
+            pointerEvents={shouldShowSearchChrome ? 'auto' : 'none'}
+            style={[
+              styles.searchContainer,
+              !shouldShowSearchChrome ? styles.searchChromeHidden : null,
+            ]}
             onLayout={({ nativeEvent: { layout } }) => {
               setSearchLayout((prev) => {
                 if (prev.top === layout.y && prev.height === layout.height) {
@@ -2458,6 +2644,7 @@ const SearchScreen: React.FC = () => {
               accentColor={ACTIVE_TAB_COLOR}
               showBack={Boolean(isSearchOverlay && isSearchFocused)}
               onBackPress={handleCloseResults}
+              onLayout={handleSearchHeaderLayout}
               inputRef={inputRef}
               inputAnimatedStyle={searchBarInputAnimatedStyle}
               containerAnimatedStyle={[
@@ -2471,9 +2658,13 @@ const SearchScreen: React.FC = () => {
               surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}
             />
           </View>
-          {!isSearchSessionActive && (
-            <View
-              style={styles.searchShortcutsRow}
+          {shouldShowSearchChrome && !isSearchSessionActive && (
+            <Reanimated.View
+              style={[
+                styles.searchShortcutsRow,
+                isSuggestionScreenActive ? styles.searchShortcutsRowSuggestion : null,
+                searchChromeAnimatedStyle,
+              ]}
               pointerEvents="box-none"
               onLayout={({ nativeEvent: { layout } }) => {
                 setSearchShortcutsFrame((prev) => {
@@ -2517,7 +2708,7 @@ const SearchScreen: React.FC = () => {
               >
                 <View style={styles.searchShortcutContent}>
                   <Store size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                  <Text variant="body" weight="regular" style={styles.searchShortcutChipText}>
                     Best restaurants
                   </Text>
                 </View>
@@ -2549,12 +2740,12 @@ const SearchScreen: React.FC = () => {
               >
                 <View style={styles.searchShortcutContent}>
                   <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="caption" weight="regular" style={styles.searchShortcutChipText}>
+                  <Text variant="body" weight="regular" style={styles.searchShortcutChipText}>
                     Best dishes
                   </Text>
                 </View>
               </Pressable>
-            </View>
+            </Reanimated.View>
           )}
           <Reanimated.View
             pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
@@ -2613,6 +2804,9 @@ const SearchScreen: React.FC = () => {
             style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
             onLayout={handleBottomNavLayout}
           >
+            <View style={styles.bottomNavBackground} pointerEvents="none">
+              <FrostedGlassBackground />
+            </View>
             {navItems.map((item) => {
               const active = activeOverlay === item.key;
               const iconColor = active ? ACTIVE_TAB_COLOR : '#94a3b8';
@@ -2626,7 +2820,7 @@ const SearchScreen: React.FC = () => {
                   >
                     <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
                     <Text
-                      variant="caption"
+                      variant="body"
                       weight={active ? 'semibold' : 'regular'}
                       style={[styles.navLabel, active && styles.navLabelActive]}
                     >
@@ -2643,7 +2837,7 @@ const SearchScreen: React.FC = () => {
                 >
                   <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
                   <Text
-                    variant="caption"
+                    variant="body"
                     weight={active ? 'semibold' : 'regular'}
                     style={[styles.navLabel, active && styles.navLabelActive]}
                   >
@@ -2655,7 +2849,13 @@ const SearchScreen: React.FC = () => {
           </View>
         </View>
       )}
-      <BookmarksOverlay visible={showBookmarksOverlay} navBarTop={bottomNavFrame.top} />
+      <BookmarksOverlay
+        visible={showBookmarksOverlay}
+        navBarTop={bottomNavFrame.top}
+        searchBarTop={searchBarTop}
+        onSnapChange={setBookmarksSheetSnap}
+        sheetYObserver={bookmarksSheetY}
+      />
       <PollsOverlay
         visible={shouldShowPollsSheet}
         bounds={pollBounds}
@@ -2663,6 +2863,10 @@ const SearchScreen: React.FC = () => {
         initialSnapPoint={pollsOverlaySnapPoint}
         mode={pollsOverlayMode}
         navBarTop={bottomNavFrame.top}
+        navBarHeight={bottomNavFrame.height}
+        searchBarTop={searchBarTop}
+        onSnapChange={setPollsSheetSnap}
+        sheetYObserver={pollsSheetY}
       />
       <RestaurantOverlay
         visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}

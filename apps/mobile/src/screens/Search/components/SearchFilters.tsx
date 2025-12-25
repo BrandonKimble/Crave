@@ -246,7 +246,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                       >
                         <Text
                           numberOfLines={1}
-                          variant="caption"
+                          variant="body"
                           weight="semibold"
                           style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
                         >
@@ -271,7 +271,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="caption"
+                    variant="body"
                     weight="semibold"
                     style={[styles.openNowText, openNow && styles.openNowTextActive]}
                   >
@@ -296,7 +296,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="caption"
+                    variant="body"
                     weight="semibold"
                     style={[
                       styles.priceButtonLabel,
@@ -327,7 +327,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="caption"
+                    variant="body"
                     weight="semibold"
                     style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
                   >

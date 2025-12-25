@@ -18,6 +18,7 @@ import { LoggerService, TextSanitizerService } from '../../shared';
 import { ModerationService } from '../moderation/moderation.service';
 import { PollsGateway } from './polls.gateway';
 import { ListPollsQueryDto } from './dto/list-polls.dto';
+import { ListUserPollsDto, UserPollActivity } from './dto/list-user-polls.dto';
 import { CreatePollOptionDto } from './dto/create-poll-option.dto';
 import { CastPollVoteDto } from './dto/cast-poll-vote.dto';
 import {
@@ -27,6 +28,7 @@ import {
 import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
+import { UserEventService } from '../identity/user-event.service';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -42,6 +44,7 @@ export class PollsService {
     private readonly pollEntitySeedService: PollEntitySeedService,
     private readonly gateway: PollsGateway,
     private readonly coverageRegistry: CoverageRegistryService,
+    private readonly userEventService: UserEventService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -92,6 +95,13 @@ export class PollsService {
         bounds: query.bounds,
       });
       coverageKey = resolved.coverageKey ?? null;
+    }
+    if (!coverageKey) {
+      return {
+        coverageKey: null,
+        coverageName: null,
+        polls: [],
+      };
     }
     const polls = await this.listPolls(
       {
@@ -216,6 +226,7 @@ export class PollsService {
           description,
           coverageKey,
           topicType: dto.topicType,
+          createdByUserId: userId,
           targetDishId,
           targetRestaurantId,
           targetFoodAttributeId,
@@ -246,6 +257,7 @@ export class PollsService {
           launchedAt: now,
           allowUserAdditions: true,
           metadata: topic.metadata ?? Prisma.JsonNull,
+          createdByUserId: userId,
         },
         include: {
           options: {
@@ -282,6 +294,16 @@ export class PollsService {
     });
 
     this.gateway.emitPollUpdate(poll.pollId);
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: 'poll_created',
+      eventData: {
+        pollId: poll.pollId,
+        topicId: poll.topicId,
+        coverageKey: poll.coverageKey,
+        topicType: dto.topicType,
+      },
+    });
     const [enriched] = await this.attachCoverageLabels([poll], coverageKey);
     return enriched;
   }
@@ -553,6 +575,14 @@ export class PollsService {
     });
 
     this.gateway.emitPollUpdate(pollId);
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: 'poll_option_added',
+      eventData: {
+        pollId,
+        optionId: option.optionId,
+      },
+    });
     return option;
   }
 
@@ -568,7 +598,7 @@ export class PollsService {
       throw new BadRequestException('Poll is not active');
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const option = await tx.pollOption.findUnique({
         where: { optionId: dto.optionId },
       });
@@ -612,7 +642,10 @@ export class PollsService {
           lastAggregatedAt: now,
         });
         this.gateway.emitPollUpdate(pollId);
-        return updatedOption;
+        return {
+          option: updatedOption,
+          eventType: 'poll_vote_removed',
+        };
       }
 
       const hadAnyVote = await tx.pollVote.findFirst({
@@ -658,8 +691,148 @@ export class PollsService {
       );
 
       this.gateway.emitPollUpdate(pollId);
-      return updatedOption;
+      return {
+        option: updatedOption,
+        eventType: 'poll_vote_cast',
+      };
     });
+
+    void this.userEventService.recordEvent({
+      userId,
+      eventType: result.eventType,
+      eventData: {
+        pollId,
+        optionId: dto.optionId,
+      },
+    });
+
+    return result.option;
+  }
+
+  async listPollsForUser(userId: string, query: ListUserPollsDto) {
+    const activity = query.activity ?? UserPollActivity.participated;
+    const limit = query.limit ?? 25;
+    const offset = query.offset ?? 0;
+    const coverageKey = query.coverageKey?.trim();
+    const state = query.state;
+
+    if (activity === UserPollActivity.created) {
+      const polls = await this.prisma.poll.findMany({
+        where: {
+          createdByUserId: userId,
+          coverageKey: coverageKey
+            ? { equals: coverageKey, mode: 'insensitive' }
+            : undefined,
+          state,
+        },
+        orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
+        skip: offset,
+        take: limit,
+        include: {
+          options: {
+            orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
+          },
+          metrics: true,
+          topic: {
+            select: {
+              topicType: true,
+              targetDishId: true,
+              targetRestaurantId: true,
+              targetFoodAttributeId: true,
+              targetRestaurantAttributeId: true,
+              coverageKey: true,
+              title: true,
+              description: true,
+              metadata: true,
+            },
+          },
+        },
+      });
+
+      const enriched = await this.attachCoverageLabels(polls, coverageKey);
+      return {
+        activity,
+        polls: await this.attachCurrentUserVotes(enriched, userId),
+      };
+    }
+
+    const pollIds = new Set<string>();
+    if (
+      activity === UserPollActivity.voted ||
+      activity === UserPollActivity.participated
+    ) {
+      const votes = await this.prisma.pollVote.findMany({
+        where: { userId },
+        select: { pollId: true },
+        distinct: ['pollId'],
+      });
+      for (const vote of votes) {
+        pollIds.add(vote.pollId);
+      }
+    }
+    if (
+      activity === UserPollActivity.optionAdded ||
+      activity === UserPollActivity.participated
+    ) {
+      const options = await this.prisma.pollOption.findMany({
+        where: { addedByUserId: userId },
+        select: { pollId: true },
+        distinct: ['pollId'],
+      });
+      for (const option of options) {
+        pollIds.add(option.pollId);
+      }
+    }
+    if (activity === UserPollActivity.participated) {
+      const created = await this.prisma.poll.findMany({
+        where: { createdByUserId: userId },
+        select: { pollId: true },
+      });
+      for (const poll of created) {
+        pollIds.add(poll.pollId);
+      }
+    }
+
+    const polls =
+      pollIds.size > 0
+        ? await this.prisma.poll.findMany({
+            where: {
+              pollId: { in: Array.from(pollIds.values()) },
+              coverageKey: coverageKey
+                ? { equals: coverageKey, mode: 'insensitive' }
+                : undefined,
+              state,
+            },
+            orderBy: [{ launchedAt: 'desc' }, { scheduledFor: 'desc' }],
+            skip: offset,
+            take: limit,
+            include: {
+              options: {
+                orderBy: [{ voteCount: 'desc' }, { createdAt: 'asc' }],
+              },
+              metrics: true,
+              topic: {
+                select: {
+                  topicType: true,
+                  targetDishId: true,
+                  targetRestaurantId: true,
+                  targetFoodAttributeId: true,
+                  targetRestaurantAttributeId: true,
+                  coverageKey: true,
+                  title: true,
+                  description: true,
+                  metadata: true,
+                },
+              },
+            },
+          })
+        : [];
+
+    const enriched = await this.attachCoverageLabels(polls, coverageKey);
+    return {
+      activity,
+      polls: await this.attachCurrentUserVotes(enriched, userId),
+    };
   }
 
   private async attachCoverageLabels<

@@ -1,7 +1,6 @@
 import React from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -31,7 +30,6 @@ type SearchSuggestionsProps = {
   onSelectRecent: (term: string) => void;
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
   style?: StyleProp<ViewStyle>;
-  panelMaxHeight?: number;
 };
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
@@ -50,7 +48,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   onSelectRecent,
   onSelectRecentlyViewed,
   style,
-  panelMaxHeight,
 }) => {
   if (!visible) {
     return null;
@@ -64,10 +61,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       hasRecentlyViewedRestaurants);
 
   const containerStyles = [styles.container, style];
-  const recentScrollStyles: ViewStyle[] = [styles.recentScroll as ViewStyle];
-  if (typeof panelMaxHeight === 'number' && panelMaxHeight > 0) {
-    recentScrollStyles.push({ maxHeight: panelMaxHeight });
-  }
+  const recentSectionStyles = [styles.recentSection, showAutocomplete ? styles.recentSectionGap : null];
 
   return (
     <View style={containerStyles}>
@@ -139,15 +133,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       ) : null}
 
       {shouldRenderRecentSection ? (
-        <ScrollView
-          style={recentScrollStyles}
-          contentContainerStyle={[
-            styles.recentScrollContent,
-            showAutocomplete ? styles.recentScrollContentGap : null,
-          ]}
-          showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
-        >
+        <View style={recentSectionStyles}>
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recent searches</Text>
             {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
@@ -193,7 +179,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </TouchableOpacity>
             ))
           )}
-        </ScrollView>
+        </View>
       ) : null}
     </View>
   );
@@ -268,14 +254,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  recentScroll: {
-    flexGrow: 0,
-  },
-  recentScrollContent: {
+  recentSection: {
     paddingHorizontal: 0,
     paddingVertical: 12,
   },
-  recentScrollContentGap: {
+  recentSectionGap: {
     marginTop: 12,
   },
   recentHeaderRow: {

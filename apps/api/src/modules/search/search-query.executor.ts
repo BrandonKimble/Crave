@@ -1036,10 +1036,43 @@ export class SearchQueryExecutor {
     restaurantOrder: string,
   ): RestaurantResultDto[] {
     const order = restaurantOrder?.toLowerCase() ?? '';
-    if (order.includes('contextual_food_quality') && order.includes('asc')) {
-      return restaurants.sort((a, b) => a.contextualScore - b.contextualScore);
-    }
-    return restaurants.sort((a, b) => b.contextualScore - a.contextualScore);
+    const isAsc = order.includes('asc');
+    const sortByContextual = order.includes('contextual_food_quality');
+    const direction = isAsc ? 1 : -1;
+
+    const getScore = (restaurant: RestaurantResultDto): number => {
+      if (sortByContextual) {
+        return restaurant.contextualScore ?? 0;
+      }
+      if (restaurant.displayPercentile != null) {
+        return restaurant.displayPercentile;
+      }
+      if (restaurant.displayScore != null) {
+        return restaurant.displayScore;
+      }
+      if (restaurant.restaurantQualityScore != null) {
+        return restaurant.restaurantQualityScore;
+      }
+      return restaurant.contextualScore ?? 0;
+    };
+
+    return restaurants.sort((a, b) => {
+      const scoreDiff = (getScore(a) - getScore(b)) * direction;
+      if (scoreDiff !== 0) {
+        return scoreDiff;
+      }
+      const upvoteDiff =
+        ((a.totalUpvotes ?? 0) - (b.totalUpvotes ?? 0)) * direction;
+      if (upvoteDiff !== 0) {
+        return upvoteDiff;
+      }
+      const mentionDiff =
+        ((a.mentionCount ?? 0) - (b.mentionCount ?? 0)) * direction;
+      if (mentionDiff !== 0) {
+        return mentionDiff;
+      }
+      return a.restaurantId.localeCompare(b.restaurantId);
+    });
   }
 
   private isRestaurantOpenNow(

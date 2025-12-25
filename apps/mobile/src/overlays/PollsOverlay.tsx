@@ -12,14 +12,13 @@ import {
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
-import { Plus } from 'lucide-react-native';
+import { Plus, X as LucideX } from 'lucide-react-native';
 import Animated, {
-  Extrapolation,
-  interpolate,
+  runOnJS,
+  useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
+  type SharedValue,
 } from 'react-native-reanimated';
 import { Text } from '../components';
 import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../services/polls';
@@ -38,14 +37,13 @@ import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
-import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../screens/Search/constants/ui';
-import { SHEET_SPRING_CONFIG } from './sheetUtils';
+import { CONTROL_HEIGHT, CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../screens/Search/constants/ui';
 import type { MapBounds } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
-type PollsSnapPoint = 'expanded' | 'middle' | 'collapsed' | 'hidden';
+const CLOSE_ACTION_EPSILON = 2;
 
 type PollsOverlayProps = {
   visible: boolean;
@@ -54,6 +52,10 @@ type PollsOverlayProps = {
   initialSnapPoint?: 'expanded' | 'middle' | 'collapsed';
   mode?: 'docked' | 'overlay';
   navBarTop?: number;
+  navBarHeight?: number;
+  searchBarTop?: number;
+  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  sheetYObserver?: SharedValue<number>;
 };
 
 const ACCENT = themeColors.primary;
@@ -68,6 +70,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   initialSnapPoint,
   mode = 'docked',
   navBarTop = 0,
+  navBarHeight = 0,
+  searchBarTop = 0,
+  onSnapChange,
+  sheetYObserver,
 }) => {
   const insets = useSafeAreaInsets();
   const setOverlay = useOverlayStore((state) => state.setOverlay);
@@ -78,6 +84,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const closeCutout = useHeaderCloseCutout();
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
+  const navBarInset = Math.max(navBarHeight, 0);
 
   const [polls, setPolls] = useState<Poll[]>([]);
   const [coverageKey, setCoverageKey] = useState<string | null>(null);
@@ -95,13 +102,17 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const [dishLoading, setDishLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showCreateSheet, setShowCreateSheet] = useState(false);
+  const [snapRequest, setSnapRequest] = useState<
+    'expanded' | 'middle' | 'collapsed' | 'hidden' | null
+  >(null);
   const socketRef = useRef<Socket | null>(null);
   const pendingPollIdRef = useRef<string | null>(null);
   const lastResolvedCoverageKeyRef = useRef<string | null>(null);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = useMemo<SnapPoints>(() => {
-    const expanded = Math.max(insets.top, 0);
+    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
+    const expanded = Math.max(expandedTop, 0);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
@@ -114,38 +125,12 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       collapsed,
       hidden,
     };
-  }, [headerHeight, insets.top, navBarOffset]);
+  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
-  const sheetY = useSharedValue(snapPoints[initialSnap]);
-  const currentSnapRef = useRef<PollsSnapPoint>(initialSnap);
-  const resolveSnapValue = useCallback(
-    (snap: PollsSnapPoint) => {
-      if (snap === 'hidden') {
-        return snapPoints.hidden ?? snapPoints.collapsed;
-      }
-      return snapPoints[snap];
-    },
-    [snapPoints]
+  const [headerAction, setHeaderAction] = useState<'create' | 'close'>(
+    initialSnap === 'collapsed' ? 'create' : 'close'
   );
-  const headerBackgroundAnimatedStyle = useAnimatedStyle(() => {
-    const progress = interpolate(
-      sheetY.value,
-      [snapPoints.middle, snapPoints.collapsed],
-      [1, 0],
-      Extrapolation.CLAMP
-    );
-    return { opacity: progress };
-  }, [snapPoints.collapsed, snapPoints.middle]);
-  const headerDividerAnimatedStyle = useAnimatedStyle(() => {
-    const progress = interpolate(
-      sheetY.value,
-      [snapPoints.middle, snapPoints.collapsed],
-      [1, 0],
-      Extrapolation.CLAMP
-    );
-    return { opacity: progress };
-  }, [snapPoints.collapsed, snapPoints.middle]);
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = (activePoll?.topic?.topicType ?? 'best_dish') as PollTopicType;
@@ -159,9 +144,15 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const needsDishInput =
     activePollType === 'what_to_order' || activePollType === 'best_dish_attribute';
 
-  const headerTitle = coverageName
-    ? `Polls in ${coverageName} · ${polls.length} live`
-    : `Polls · ${polls.length} live`;
+  const hasCoverageKey = Boolean(coverageOverride ?? coverageKey);
+  const showResolvingLocation = loading && !coverageName && !hasCoverageKey;
+  const headerBaseTitle = showResolvingLocation
+    ? 'Finding location...'
+    : coverageName
+    ? `Polls in ${coverageName}`
+    : hasCoverageKey
+    ? 'Polls'
+    : 'Polls near here';
 
   const loadPolls = useCallback(
     async (options?: {
@@ -194,7 +185,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       try {
         const response = await fetchPolls(payload);
         const normalizedPolls = response.polls ?? [];
-        const nextCoverageKey = response.coverageKey ?? resolvedCoverageKey ?? coverageKey ?? null;
+        const nextCoverageKey = response.coverageKey ?? resolvedCoverageKey ?? null;
         const normalizedKey =
           typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
         if (normalizedKey) {
@@ -247,35 +238,8 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         }
       }
     },
-    [bounds, coverageKey, coverageOverride, selectedPollId, setPersistedCity]
+    [bounds, coverageOverride, selectedPollId, setPersistedCity]
   );
-
-  useEffect(() => {
-    const nextSnap: PollsSnapPoint = visible ? initialSnap : 'hidden';
-    const target = resolveSnapValue(nextSnap);
-    if (target === undefined) {
-      return;
-    }
-    currentSnapRef.current = nextSnap;
-    sheetY.value = withSpring(target, {
-      ...SHEET_SPRING_CONFIG,
-      velocity: 0,
-    });
-  }, [initialSnap, resolveSnapValue, sheetY, visible]);
-
-  useEffect(() => {
-    const target = resolveSnapValue(currentSnapRef.current);
-    if (target === undefined) {
-      return;
-    }
-    if (Math.abs(sheetY.value - target) < 0.5) {
-      return;
-    }
-    sheetY.value = withSpring(target, {
-      ...SHEET_SPRING_CONFIG,
-      velocity: 0,
-    });
-  }, [resolveSnapValue, sheetY]);
 
   useEffect(() => {
     if (!visible || isSystemUnavailable || !coverageOverride) {
@@ -304,11 +268,13 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
             ? response.coverageName.trim()
             : null;
         if (!nextKey) {
-          if (!lastResolvedCoverageKeyRef.current) {
-            setCoverageName(null);
-            setCoverageKey(null);
-            void loadPolls();
-          }
+          setLoading(true);
+          lastResolvedCoverageKeyRef.current = null;
+          setCoverageName(null);
+          setCoverageKey(null);
+          setPolls([]);
+          setSelectedPollId(null);
+          void loadPolls();
           return;
         }
         if (lastResolvedCoverageKeyRef.current === nextKey) {
@@ -623,8 +589,11 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   );
 
   const handleClose = useCallback(() => {
-    setOverlay('search');
-  }, [setOverlay]);
+    setSnapRequest('collapsed');
+    if (mode === 'overlay') {
+      setOverlay('search');
+    }
+  }, [mode, setOverlay]);
 
   const handleHidden = useCallback(() => {
     if (!visible) {
@@ -648,22 +617,69 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     },
     [loadPolls]
   );
-  const handleSnapChange = useCallback((snap: PollsSnapPoint) => {
-    currentSnapRef.current = snap;
-  }, []);
+
+  const internalSheetY = useSharedValue(snapPoints[initialSnap]);
+  const observedSheetY = sheetYObserver ?? internalSheetY;
+  const plusRotationStyle = useAnimatedStyle(() => {
+    const range = snapPoints.collapsed - snapPoints.middle;
+    const rawProgress =
+      range !== 0 ? (observedSheetY.value - snapPoints.middle) / range : 0;
+    const clamped = Math.min(Math.max(rawProgress, 0), 1);
+    const rotation = 45 * clamped;
+    return { transform: [{ rotate: `${rotation}deg` }] };
+  }, [observedSheetY, snapPoints.collapsed, snapPoints.middle]);
+
+  useAnimatedReaction(
+    () => observedSheetY.value,
+    (value, previous) => {
+      const threshold = snapPoints.middle + CLOSE_ACTION_EPSILON;
+      const shouldClose = value <= threshold;
+      const previousShouldClose =
+        previous == null ? shouldClose : previous <= threshold;
+      if (previous == null || shouldClose !== previousShouldClose) {
+        runOnJS(setHeaderAction)(shouldClose ? 'close' : 'create');
+      }
+    },
+    [observedSheetY, snapPoints.middle]
+  );
+
+  const handleSnapChange = useCallback(
+    (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
+      onSnapChange?.(snap);
+      if (snapRequest && snapRequest === snap) {
+        setSnapRequest(null);
+      }
+      if (!sheetYObserver) {
+        const target =
+          snap === 'expanded'
+            ? snapPoints.expanded
+            : snap === 'middle'
+            ? snapPoints.middle
+            : snap === 'collapsed'
+            ? snapPoints.collapsed
+            : snapPoints.hidden ?? snapPoints.collapsed;
+        internalSheetY.value = target;
+      }
+    },
+    [
+      internalSheetY,
+      onSnapChange,
+      sheetYObserver,
+      snapPoints.collapsed,
+      snapPoints.expanded,
+      snapPoints.hidden,
+      snapPoints.middle,
+      snapRequest,
+    ]
+  );
 
   const headerComponent = (
     <View
       style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: 0 }]}
       onLayout={closeCutout.onHeaderLayout}
     >
-      <Animated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, headerBackgroundAnimatedStyle]}
-      >
-        {closeCutout.background}
-      </Animated.View>
-      <View style={[overlaySheetStyles.grabHandleWrapper, styles.transparentGrabHandleWrapper]}>
+      {closeCutout.background}
+      <View style={overlaySheetStyles.grabHandleWrapper}>
         <Pressable
           onPress={handleClose}
           accessibilityRole="button"
@@ -678,28 +694,35 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         onLayout={closeCutout.onHeaderRowLayout}
       >
         <Text
-          variant="subtitle"
+          variant="title"
           weight="semibold"
           style={styles.sheetTitle}
           numberOfLines={1}
           ellipsizeMode="tail"
         >
-          {headerTitle}
+          {headerBaseTitle}
         </Text>
+        <View style={styles.liveBadge}>
+          <Text variant="body" weight="semibold" style={styles.liveBadgeText}>
+            {`${polls.length} LIVE`}
+          </Text>
+        </View>
         <Pressable
-          onPress={handleClose}
+          onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
           accessibilityRole="button"
-          accessibilityLabel="Close polls"
+          accessibilityLabel={headerAction === 'close' ? 'Close polls' : 'Create a new poll'}
           style={overlaySheetStyles.closeButton}
           onLayout={closeCutout.onCloseLayout}
           hitSlop={8}
         >
           <View style={overlaySheetStyles.closeIcon}>
-            <Feather name="x" size={20} color={ACCENT} />
+            <Animated.View style={plusRotationStyle}>
+              <LucideX size={20} color={ACCENT} strokeWidth={2.5} />
+            </Animated.View>
           </View>
         </Pressable>
       </View>
-      <Animated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
+      <View style={overlaySheetStyles.headerDivider} />
     </View>
   );
 
@@ -847,27 +870,33 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
   return (
     <>
-      <BottomSheetWithFlashList
-        visible={visible}
-        snapPoints={snapPoints}
-        initialSnapPoint={initialSnap}
-        sheetYValue={sheetY}
-        data={polls}
-        renderItem={renderPoll}
-        keyExtractor={(item) => item.pollId}
-        estimatedItemSize={108}
-        ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
-        ListHeaderComponent={listHeaderComponent}
-        ListFooterComponent={listFooterComponent}
-        ListEmptyComponent={listEmptyComponent}
-        keyboardShouldPersistTaps="handled"
-        backgroundComponent={<FrostedGlassBackground />}
-        headerComponent={headerComponent}
-        style={overlaySheetStyles.container}
-        onHidden={handleHidden}
-        onSnapChange={handleSnapChange}
-      />
+      <View
+        pointerEvents="box-none"
+        style={[styles.sheetClip, navBarInset > 0 ? { bottom: navBarInset } : null]}
+      >
+        <BottomSheetWithFlashList
+          visible={visible}
+          snapPoints={snapPoints}
+          initialSnapPoint={initialSnap}
+          snapTo={snapRequest}
+          data={polls}
+          renderItem={renderPoll}
+          keyExtractor={(item) => item.pollId}
+          estimatedItemSize={108}
+          ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
+          ListHeaderComponent={listHeaderComponent}
+          ListFooterComponent={listFooterComponent}
+          ListEmptyComponent={listEmptyComponent}
+          keyboardShouldPersistTaps="handled"
+          backgroundComponent={<FrostedGlassBackground />}
+          headerComponent={headerComponent}
+          style={overlaySheetStyles.container}
+          onHidden={handleHidden}
+          onSnapChange={handleSnapChange}
+          sheetYObserver={sheetYObserver}
+        />
+      </View>
       <PollCreationSheet
         visible={showCreateSheet}
         coverageKey={coverageOverride ?? coverageKey}
@@ -881,17 +910,32 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
 const styles = StyleSheet.create({
   sheetTitle: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
-    color: ACCENT_DARK,
+    fontSize: FONT_SIZES.title,
+    lineHeight: LINE_HEIGHTS.title,
+    color: themeColors.text,
     flex: 1,
+    marginRight: 12,
+  },
+  liveBadge: {
+    height: CONTROL_HEIGHT,
+    borderRadius: CONTROL_RADIUS,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  liveBadgeText: {
+    color: '#ffffff',
+    letterSpacing: 0.6,
   },
   scrollContent: {
     paddingBottom: 32,
     paddingTop: 16,
   },
-  transparentGrabHandleWrapper: {
-    backgroundColor: 'transparent',
+  sheetClip: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
   },
   listHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,

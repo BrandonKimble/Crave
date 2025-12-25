@@ -255,6 +255,7 @@ model PollTopic {
   seedEntityIds      String[]        @default([]) @map("seed_entity_ids") @db.Uuid
   status             PollTopicStatus @default(draft)
   metadata           Json?           @default("{}")
+  createdByUserId    String?         @map("created_by_user_id") @db.Uuid
   createdAt          DateTime        @default(now()) @map("created_at")
   updatedAt          DateTime        @updatedAt @map("updated_at")
   targetDishId       String?         @map("target_dish_id") @db.Uuid
@@ -269,6 +270,7 @@ model PollTopic {
   polls              Poll[]
 
   @@index([coverageKey], map: "idx_poll_topics_coverage_key")
+  @@index([createdByUserId], map: "idx_poll_topics_created_by_user")
   @@index([status], map: "idx_poll_topics_status")
   @@map("poll_topics")
 }
@@ -286,6 +288,7 @@ model Poll {
   allowUserAdditions Boolean      @default(true) @map("allow_user_additions")
   audienceFilters    Json?        @map("audience_filters")
   metadata           Json?        @default("{}")
+  createdByUserId    String?      @map("created_by_user_id") @db.Uuid
   createdAt          DateTime     @default(now()) @map("created_at")
   updatedAt          DateTime     @updatedAt @map("updated_at")
   metrics            PollMetric?
@@ -296,6 +299,7 @@ model Poll {
   @@index([topicId], map: "idx_polls_topic_id")
   @@index([state], map: "idx_polls_state")
   @@index([coverageKey], map: "idx_polls_coverage_key")
+  @@index([createdByUserId], map: "idx_polls_created_by_user")
   @@index([scheduledFor], map: "idx_polls_scheduled_for")
   @@map("polls")
 }
@@ -333,6 +337,7 @@ model PollOption {
   @@index([foodId], map: "idx_poll_options_food_id")
   @@index([connectionId], map: "idx_poll_options_connection_id")
   @@index([categoryId], map: "idx_poll_options_category_id")
+  @@index([addedByUserId], map: "idx_poll_options_added_by_user")
   @@map("poll_options")
 }
 
@@ -349,6 +354,7 @@ model PollVote {
   @@id([optionId, userId])
   @@index([optionId], map: "idx_poll_votes_option_id")
   @@index([pollId, userId], map: "idx_poll_votes_poll_user")
+  @@index([userId], map: "idx_poll_votes_user_id")
   @@index([pollId], map: "idx_poll_votes_poll_id")
   @@map("poll_votes")
 }
