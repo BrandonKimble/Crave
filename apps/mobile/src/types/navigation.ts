@@ -3,4 +3,5 @@ export type RootStackParamList = {
   SignIn: undefined;
   Main: undefined;
   Profile: undefined;
+  FavoritesListDetail: { listId: string };
 };

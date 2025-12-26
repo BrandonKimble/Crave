@@ -48,6 +48,7 @@ model Entity {
   pollTopicRestaurantAttributeTargets PollTopic[]  @relation("PollTopicTargetRestaurantAttribute")
   searchLogs                 SearchLog[]
   userFavorites              UserFavorite[]
+  favoriteListItems          FavoriteListItem[]
   restaurantViews            RestaurantView[]
   locations                  RestaurantLocation[]  @relation("RestaurantLocations")
   primaryLocation            RestaurantLocation?   @relation("PrimaryLocation", fields: [primaryLocationId], references: [locationId])
@@ -124,6 +125,7 @@ model Connection {
   food                   Entity        @relation("FoodEntity", fields: [foodId], references: [entityId])
   restaurant             Entity        @relation("RestaurantEntity", fields: [restaurantId], references: [entityId])
   pollOptions            PollOption[]  @relation("PollOptionConnection")
+  favoriteListItems      FavoriteListItem[]
 
   @@unique([restaurantId, foodId])
   @@index([restaurantId], map: "idx_connections_restaurant")
@@ -473,6 +475,11 @@ model UserFavorite {
 model User {
   userId              String             @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
   email               String             @unique @db.VarChar(255)
+  username            String?            @unique(map: "users_username_key") @db.Citext
+  displayName         String?            @map("display_name") @db.VarChar(255)
+  avatarUrl           String?            @map("avatar_url") @db.VarChar(2048)
+  usernameStatus      UsernameStatus     @default(unset) @map("username_status")
+  usernameUpdatedAt   DateTime?          @map("username_updated_at")
   createdAt           DateTime           @default(now()) @map("created_at")
   trialStartedAt      DateTime?          @map("trial_started_at")
   trialEndsAt         DateTime?          @map("trial_ends_at")
@@ -491,12 +498,19 @@ model User {
   entitlements        UserEntitlement[]
   events              UserEvent[]
   favorites           UserFavorite[]
+  favoriteLists       FavoriteList[]
+  favoriteListItems   FavoriteListItem[]
   searchLogs          SearchLog[]
   restaurantViews     RestaurantView[]
+  stats               UserStats?
+  follows             UserFollow[]       @relation("UserFollows")
+  followers           UserFollow[]       @relation("UserFollowers")
+  usernameHistory     UsernameHistory[]
   referrer            User?              @relation("UserReferrals", fields: [referredBy], references: [userId])
   referrals           User[]             @relation("UserReferrals")
 
   @@index([email], map: "idx_users_email")
+  @@index([username], map: "idx_users_username")
   @@index([authProvider], map: "idx_users_auth_provider")
   @@index([authProviderUserId], map: "idx_users_auth_provider_user_id")
   @@index([revenueCatAppUserId], map: "idx_users_revenuecat_app_user_id")
@@ -506,6 +520,113 @@ model User {
   @@index([referralCode], map: "idx_users_referral_code")
   @@index([referredBy], map: "idx_users_referred_by")
   @@map("users")
+}
+
+model UserStats {
+  userId                   String   @id @map("user_id") @db.Uuid
+  pollsCreatedCount        Int      @default(0) @map("polls_created_count")
+  pollsContributedCount    Int      @default(0) @map("polls_contributed_count")
+  followersCount           Int      @default(0) @map("followers_count")
+  followingCount           Int      @default(0) @map("following_count")
+  favoriteListsCount       Int      @default(0) @map("favorite_lists_count")
+  favoritesTotalCount      Int      @default(0) @map("favorites_total_count")
+  updatedAt                DateTime @updatedAt @map("updated_at")
+  user                     User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@map("user_stats")
+}
+
+model UserFollow {
+  followerUserId  String   @map("follower_user_id") @db.Uuid
+  followingUserId String   @map("following_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  follower        User     @relation("UserFollows", fields: [followerUserId], references: [userId], onDelete: Cascade)
+  following       User     @relation("UserFollowers", fields: [followingUserId], references: [userId], onDelete: Cascade)
+
+  @@id([followerUserId, followingUserId])
+  @@index([followerUserId], map: "idx_user_follows_follower")
+  @@index([followingUserId], map: "idx_user_follows_following")
+  @@map("user_follows")
+}
+
+model ReservedUsername {
+  username  String   @id @db.Citext
+  reason    String?  @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("reserved_usernames")
+}
+
+model UsernameHistory {
+  userId    String   @map("user_id") @db.Uuid
+  username  String   @db.Citext
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([userId, username])
+  @@index([username], map: "idx_username_history_username")
+  @@map("username_history")
+}
+
+model FavoriteList {
+  listId        String                 @id @default(dbgenerated("gen_random_uuid()")) @map("list_id") @db.Uuid
+  ownerUserId   String                 @map("owner_user_id") @db.Uuid
+  name          String                 @db.VarChar(120)
+  description   String?                @db.VarChar(500)
+  listType      FavoriteListType       @map("list_type")
+  visibility    FavoriteListVisibility @default(private) @map("visibility")
+  itemCount     Int                    @default(0) @map("item_count")
+  position      Int                    @default(0) @map("position")
+  shareSlug     String?                @unique(map: "favorite_lists_share_slug_key") @map("share_slug") @db.VarChar(64)
+  shareEnabled  Boolean                @default(false) @map("share_enabled")
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  owner         User                   @relation(fields: [ownerUserId], references: [userId], onDelete: Cascade)
+  items         FavoriteListItem[]
+  shareEvents   FavoriteListShareEvent[]
+
+  @@unique([ownerUserId, listType, name], map: "favorite_lists_owner_type_name")
+  @@index([ownerUserId], map: "idx_favorite_lists_owner")
+  @@index([visibility], map: "idx_favorite_lists_visibility")
+  @@index([listType], map: "idx_favorite_lists_type")
+  @@index([updatedAt(sort: Desc)], map: "idx_favorite_lists_updated_at")
+  @@map("favorite_lists")
+}
+
+model FavoriteListItem {
+  itemId        String       @id @default(dbgenerated("gen_random_uuid()")) @map("item_id") @db.Uuid
+  listId        String       @map("list_id") @db.Uuid
+  addedByUserId String?      @map("added_by_user_id") @db.Uuid
+  restaurantId  String?      @map("restaurant_id") @db.Uuid
+  connectionId  String?      @map("connection_id") @db.Uuid
+  position      Int          @default(0) @map("position")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
+  list          FavoriteList @relation(fields: [listId], references: [listId], onDelete: Cascade)
+  addedByUser   User?        @relation(fields: [addedByUserId], references: [userId], onDelete: SetNull)
+  restaurant    Entity?      @relation(fields: [restaurantId], references: [entityId], onDelete: Cascade)
+  connection    Connection?  @relation(fields: [connectionId], references: [connectionId], onDelete: Cascade)
+
+  @@unique([listId, restaurantId], map: "favorite_list_items_list_restaurant")
+  @@unique([listId, connectionId], map: "favorite_list_items_list_connection")
+  @@index([listId], map: "idx_favorite_list_items_list")
+  @@index([restaurantId], map: "idx_favorite_list_items_restaurant")
+  @@index([connectionId], map: "idx_favorite_list_items_connection")
+  @@index([addedByUserId], map: "idx_favorite_list_items_added_by")
+  @@map("favorite_list_items")
+}
+
+model FavoriteListShareEvent {
+  eventId   String                    @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  listId    String                    @map("list_id") @db.Uuid
+  shareSlug String?                   @map("share_slug") @db.VarChar(64)
+  eventType FavoriteListShareEventType @map("event_type")
+  createdAt DateTime                  @default(now()) @map("created_at")
+  list      FavoriteList              @relation(fields: [listId], references: [listId], onDelete: Cascade)
+
+  @@index([listId], map: "idx_favorite_list_share_events_list")
+  @@index([eventType], map: "idx_favorite_list_share_events_type")
+  @@map("favorite_list_share_events")
 }
 
 model Subscription {
@@ -726,6 +847,37 @@ enum DisplayRankSubjectType {
   connection
 
   @@map("display_rank_subject_type")
+}
+
+enum FavoriteListType {
+  restaurant
+  dish
+
+  @@map("favorite_list_type")
+}
+
+enum FavoriteListVisibility {
+  public
+  private
+
+  @@map("favorite_list_visibility")
+}
+
+enum FavoriteListShareEventType {
+  created
+  opened
+  copied
+  revoked
+
+  @@map("favorite_list_share_event_type")
+}
+
+enum UsernameStatus {
+  unset
+  pending
+  active
+
+  @@map("username_status")
 }
 
 enum PollTopicStatus {

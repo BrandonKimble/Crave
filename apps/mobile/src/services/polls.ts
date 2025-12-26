@@ -32,8 +32,16 @@ export interface Poll {
   state: string;
   coverageKey?: string | null;
   coverageName?: string | null;
+  createdByUserId?: string | null;
+  createdAt?: string | null;
+  launchedAt?: string | null;
   options: PollOption[];
   topic?: PollTopic | null;
+}
+
+export interface UserPollsResponse {
+  activity: string;
+  polls: Poll[];
 }
 
 export type PollQueryResponse = {
@@ -162,5 +170,16 @@ export const addPollOption = async (
 
 export const voteOnPoll = async (pollId: string, body: { optionId: string }) => {
   const response = await api.post(`/polls/${pollId}/votes`, body);
+  return response.data;
+};
+
+export const fetchUserPolls = async (params: {
+  activity?: 'created' | 'voted' | 'option_added' | 'participated';
+  coverageKey?: string;
+  state?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<UserPollsResponse> => {
+  const response = await api.get<UserPollsResponse>('/polls/me', { params });
   return response.data;
 };

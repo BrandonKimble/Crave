@@ -51,6 +51,16 @@ const styles = StyleSheet.create({
     zIndex: 1,
     resizeMode: 'cover',
   },
+  statusBarFade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 5,
+  },
+  statusBarFadeLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
   markerView: {
     flex: 0,
     alignSelf: 'flex-start',

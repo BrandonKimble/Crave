@@ -4,7 +4,6 @@ import { Pressable, Share, TouchableOpacity, View } from 'react-native';
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { HandPlatter } from 'lucide-react-native';
 
-import type { FavoriteEntityType } from '../../../services/favorites';
 import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
@@ -32,7 +31,7 @@ type DishResultCardProps = {
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
   restaurantForDish?: RestaurantResult;
-  toggleFavorite: (entityId: string, entityType: FavoriteEntityType) => Promise<void>;
+  onSavePress: () => void;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
     foodResultsOverride?: FoodResult[],
@@ -49,7 +48,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   primaryCoverageKey = null,
   showCoverageLabel = false,
   restaurantForDish,
-  toggleFavorite,
+  onSavePress,
   openRestaurantProfile,
   openScoreInfo,
 }) => {
@@ -179,7 +178,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
           </View>
           <View style={styles.resultActions}>
             <Pressable
-              onPress={() => toggleFavorite(item.foodId, 'food')}
+              onPress={onSavePress}
               accessibilityRole="button"
               accessibilityLabel={isLiked ? 'Unlike' : 'Like'}
               style={styles.likeButton}

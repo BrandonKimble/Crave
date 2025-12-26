@@ -27,6 +27,9 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '@clerk/clerk-expo';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import MaskedView from '@react-native-masked-view/masked-view';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
@@ -38,6 +41,7 @@ import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import { logger } from '../../utils';
 import { searchService, type RecentlyViewedRestaurant } from '../../services/search';
+import type { FavoriteListType } from '../../services/favorite-lists';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
@@ -50,6 +54,7 @@ import type {
 } from '../../types';
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
+import SaveListOverlay from '../../overlays/SaveListOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
@@ -57,7 +62,6 @@ import type { RootStackParamList } from '../../types/navigation';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
-import { useFavorites } from '../../hooks/use-favorites';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
@@ -136,9 +140,6 @@ const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
-  const { favoriteMap, favoritesVersion, toggleFavorite } = useFavorites({
-    enabled: !!isSignedIn,
-  });
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
@@ -440,6 +441,11 @@ const SearchScreen: React.FC = () => {
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
+  const [saveSheetState, setSaveSheetState] = React.useState<{
+    visible: boolean;
+    listType: FavoriteListType;
+    target: { restaurantId?: string; connectionId?: string } | null;
+  }>({ visible: false, listType: 'restaurant', target: null });
   const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
     null
   );
@@ -718,7 +724,7 @@ const SearchScreen: React.FC = () => {
       [
         { key: 'search' as OverlayKey, label: 'Search' },
         { key: 'polls' as OverlayKey, label: 'Polls' },
-        { key: 'bookmarks' as OverlayKey, label: 'Saves' },
+        { key: 'bookmarks' as OverlayKey, label: 'Favorites' },
         { key: 'profile' as OverlayKey, label: 'Profile' },
       ] as const,
     []
@@ -2180,21 +2186,14 @@ const SearchScreen: React.FC = () => {
         restaurant,
         dishes: restaurantDishes,
         queryLabel: label,
-        isFavorite: favoriteMap.has(restaurant.restaurantId),
+        isFavorite: false,
       });
       setRestaurantOverlayVisible(true);
       trackRecentlyViewedRestaurant(restaurant.restaurantId, restaurant.restaurantName);
 
       void recordRestaurantView(restaurant.restaurantId, source);
     },
-    [
-      dishes,
-      favoriteMap,
-      submittedQuery,
-      trimmedQuery,
-      trackRecentlyViewedRestaurant,
-      recordRestaurantView,
-    ]
+    [dishes, submittedQuery, trimmedQuery, trackRecentlyViewedRestaurant, recordRestaurantView]
   );
 
   const openRestaurantProfileFromResults = React.useCallback(
@@ -2270,22 +2269,23 @@ const SearchScreen: React.FC = () => {
     trimmedQuery,
   ]);
 
-  React.useEffect(() => {
-    if (!restaurantProfile) {
-      return;
-    }
-    const isFavorite = favoriteMap.has(restaurantProfile.restaurant.restaurantId);
-    if (isFavorite !== restaurantProfile.isFavorite) {
-      setRestaurantProfile((prev) => (prev ? { ...prev, isFavorite } : prev));
-    }
-  }, [favoriteMap, restaurantProfile]);
+  const handleRestaurantSavePress = React.useCallback((restaurantId: string) => {
+    setSaveSheetState({
+      visible: true,
+      listType: 'restaurant',
+      target: { restaurantId },
+    });
+  }, []);
 
-  const handleRestaurantFavoriteToggle = React.useCallback(
-    (restaurantId: string) => {
-      void toggleFavorite(restaurantId, 'restaurant');
-    },
-    [toggleFavorite]
-  );
+  const handleCloseSaveSheet = React.useCallback(() => {
+    setSaveSheetState((prev) => ({ ...prev, visible: false, target: null }));
+  }, []);
+
+  React.useEffect(() => {
+    if (!isSearchOverlay && saveSheetState.visible) {
+      handleCloseSaveSheet();
+    }
+  }, [handleCloseSaveSheet, isSearchOverlay, saveSheetState.visible]);
 
   const closeRestaurantProfile = React.useCallback(() => {
     setRestaurantOverlayVisible(false);
@@ -2317,7 +2317,7 @@ const SearchScreen: React.FC = () => {
   const renderDishCard = React.useCallback(
     (item: FoodResult, index: number) => {
       const restaurantForDish = restaurantsById.get(item.restaurantId);
-      const isLiked = favoriteMap.has(item.foodId);
+      const isLiked = false;
       return (
         <DishResultCard
           item={item}
@@ -2327,7 +2327,13 @@ const SearchScreen: React.FC = () => {
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
           restaurantForDish={restaurantForDish}
-          toggleFavorite={toggleFavorite}
+          onSavePress={() =>
+            setSaveSheetState({
+              visible: true,
+              listType: 'dish',
+              target: { connectionId: item.connectionId },
+            })
+          }
           openRestaurantProfile={openRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
         />
@@ -2335,19 +2341,17 @@ const SearchScreen: React.FC = () => {
     },
     [
       dishesCount,
-      favoriteMap,
       hasCrossCoverage,
       openRestaurantProfileFromResults,
       openScoreInfo,
       primaryCoverageKey,
       restaurantsById,
-      toggleFavorite,
     ]
   );
 
   const renderRestaurantCard = React.useCallback(
     (restaurant: RestaurantResult, index: number) => {
-      const isLiked = favoriteMap.has(restaurant.restaurantId);
+      const isLiked = false;
       return (
         <RestaurantResultCard
           restaurant={restaurant}
@@ -2356,7 +2360,13 @@ const SearchScreen: React.FC = () => {
           isLiked={isLiked}
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
-          toggleFavorite={toggleFavorite}
+          onSavePress={() =>
+            setSaveSheetState({
+              visible: true,
+              listType: 'restaurant',
+              target: { restaurantId: restaurant.restaurantId },
+            })
+          }
           openRestaurantProfile={openRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
           primaryFoodTerm={primaryFoodTerm}
@@ -2364,14 +2374,12 @@ const SearchScreen: React.FC = () => {
       );
     },
     [
-      favoriteMap,
       hasCrossCoverage,
       openRestaurantProfileFromResults,
       openScoreInfo,
       primaryFoodTerm,
       primaryCoverageKey,
       restaurantsCount,
-      toggleFavorite,
     ]
   );
 
@@ -2421,7 +2429,6 @@ const SearchScreen: React.FC = () => {
     () => (Array.isArray(resultsData) ? resultsData : []),
     [resultsData]
   );
-  const listExtraData = React.useMemo(() => favoritesVersion, [favoritesVersion]);
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
   const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
@@ -2522,6 +2529,7 @@ const SearchScreen: React.FC = () => {
     snapPoints.middle,
   ]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
+  const statusBarFadeHeight = Math.max(0, insets.top + 16);
   const resultsHeaderComponent = (
     <Reanimated.View
       style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
@@ -2592,6 +2600,29 @@ const SearchScreen: React.FC = () => {
       {mapSnapshotUri && isMapFrozen ? (
         <Image source={{ uri: mapSnapshotUri }} style={styles.mapSnapshot} pointerEvents="none" />
       ) : null}
+      <View pointerEvents="none" style={[styles.statusBarFade, { height: statusBarFadeHeight }]}>
+        <MaskedView
+          style={styles.statusBarFadeLayer}
+          maskElement={
+            <LinearGradient
+              colors={[
+                'rgba(0, 0, 0, 1)',
+                'rgba(0, 0, 0, 1)',
+                'rgba(0, 0, 0, 0.85)',
+                'rgba(0, 0, 0, 0.6)',
+                'rgba(0, 0, 0, 0.3)',
+                'rgba(0, 0, 0, 0)',
+              ]}
+              locations={[0, 0.5, 0.65, 0.78, 0.9, 1]}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={styles.statusBarFadeLayer}
+            />
+          }
+        >
+          <BlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
+        </MaskedView>
+      </View>
 
       {shouldRenderSearchOverlay && (
         <SafeAreaView
@@ -2849,7 +2880,7 @@ const SearchScreen: React.FC = () => {
               accessibilityLabel="Search this area"
               hitSlop={8}
             >
-              <Text variant="caption" weight="semibold" style={styles.searchThisAreaText}>
+              <Text variant="body" weight="semibold" style={styles.searchThisAreaText}>
                 Search this area
               </Text>
             </Pressable>
@@ -2868,7 +2899,6 @@ const SearchScreen: React.FC = () => {
             onMomentumEndJS={handleResultsListMomentumEnd}
             onDragStateChange={handleResultsSheetDragStateChange}
             onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
-            extraData={listExtraData}
             data={safeResultsData}
             renderItem={renderSafeItem}
             keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
@@ -2948,6 +2978,12 @@ const SearchScreen: React.FC = () => {
         onSnapChange={setBookmarksSheetSnap}
         sheetYObserver={bookmarksSheetY}
       />
+      <SaveListOverlay
+        visible={saveSheetState.visible}
+        listType={saveSheetState.listType}
+        target={saveSheetState.target}
+        onClose={handleCloseSaveSheet}
+      />
       <PollsOverlay
         visible={shouldShowPollsSheet}
         bounds={pollBounds}
@@ -2965,7 +3001,7 @@ const SearchScreen: React.FC = () => {
         data={restaurantProfile}
         onRequestClose={closeRestaurantProfile}
         onDismiss={handleRestaurantOverlayDismissed}
-        onToggleFavorite={handleRestaurantFavoriteToggle}
+        onToggleFavorite={handleRestaurantSavePress}
         navBarTop={bottomNavFrame.top}
       />
       <SecondaryBottomSheet

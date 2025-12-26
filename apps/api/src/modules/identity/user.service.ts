@@ -18,6 +18,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import type { ClerkJwtClaims } from './auth/clerk-auth.service';
 import { UserProfileDto, UserEntitlementDto } from './dto/user-profile.dto';
+import { UserStatsService } from './user-stats.service';
+import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 
 @Injectable()
 export class UserService {
@@ -28,6 +30,7 @@ export class UserService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly logger: LoggerService,
+    private readonly userStats: UserStatsService,
   ) {
     this.defaultEntitlement =
       this.configService.get<string>('billing.defaultEntitlement') || 'premium';
@@ -100,6 +103,8 @@ export class UserService {
       authProviderUserId: authId,
     });
 
+    await this.userStats.ensure(user.userId);
+
     return user;
   }
 
@@ -112,6 +117,7 @@ export class UserService {
           take: 1,
         },
         entitlements: true,
+        stats: true,
       },
     });
 
@@ -120,9 +126,14 @@ export class UserService {
     }
 
     const activeSubscription = user.subscriptions[0];
+    const stats = user.stats ?? (await this.userStats.ensure(userId));
     return {
       userId: user.userId,
       email: user.email,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      usernameStatus: user.usernameStatus,
       subscriptionStatus: user.subscriptionStatus,
       trialEndsAt: user.trialEndsAt ?? undefined,
       stripeCustomerId: user.stripeCustomerId ?? undefined,
@@ -137,6 +148,14 @@ export class UserService {
             currentPeriodEnd: activeSubscription.currentPeriodEnd ?? undefined,
           }
         : undefined,
+      stats: {
+        pollsCreatedCount: stats.pollsCreatedCount,
+        pollsContributedCount: stats.pollsContributedCount,
+        followersCount: stats.followersCount,
+        followingCount: stats.followingCount,
+        favoriteListsCount: stats.favoriteListsCount,
+        favoritesTotalCount: stats.favoritesTotalCount,
+      },
       entitlements: user.entitlements.map((entitlement) => ({
         entitlementCode: entitlement.entitlementCode,
         source: entitlement.source,
@@ -145,6 +164,58 @@ export class UserService {
         isGracePeriod: entitlement.isGracePeriod,
       })),
     };
+  }
+
+  async getPublicProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { userId },
+      select: {
+        userId: true,
+        username: true,
+        displayName: true,
+        avatarUrl: true,
+        stats: true,
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const stats = user.stats ?? (await this.userStats.ensure(userId));
+    return {
+      userId: user.userId,
+      username: user.username,
+      displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
+      stats: {
+        pollsCreatedCount: stats.pollsCreatedCount,
+        pollsContributedCount: stats.pollsContributedCount,
+        followersCount: stats.followersCount,
+        followingCount: stats.followingCount,
+        favoriteListsCount: stats.favoriteListsCount,
+        favoritesTotalCount: stats.favoritesTotalCount,
+      },
+    };
+  }
+
+  async updateProfile(userId: string, dto: UpdateUserProfileDto) {
+    const displayName = this.normalizeNullable(dto.displayName);
+    const avatarUrl = this.normalizeNullable(dto.avatarUrl);
+
+    return this.prisma.user.update({
+      where: { userId },
+      data: {
+        displayName,
+        avatarUrl,
+      },
+      select: {
+        userId: true,
+        username: true,
+        displayName: true,
+        avatarUrl: true,
+      },
+    });
   }
 
   async listEntitlements(userId: string): Promise<UserEntitlementDto[]> {
@@ -246,5 +317,13 @@ export class UserService {
     const result = new Date(date);
     result.setDate(result.getDate() + days);
     return result;
+  }
+
+  private normalizeNullable(value?: string | null): string | null {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
 }

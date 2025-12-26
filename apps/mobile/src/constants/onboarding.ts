@@ -97,6 +97,13 @@ interface AccountStep extends BaseStep {
   disclaimer?: string;
 }
 
+interface UsernameStep extends BaseStep {
+  type: 'username';
+  title: string;
+  helper?: string;
+  placeholder?: string;
+}
+
 // New graph step types
 interface GraphStep extends BaseStep {
   type: 'graph';
@@ -137,6 +144,7 @@ export type OnboardingStep =
   | RatingStep
   | ProcessingStep
   | AccountStep
+  | UsernameStep
   | GraphStep
   | CarouselStep
   | NotificationStep;
@@ -379,6 +387,14 @@ export const onboardingSteps: OnboardingStep[] = [
     disclaimer:
       "By continuing, you agree to Crave's Terms of Service and Privacy Policy. We'll never sell your data.",
     ctaLabel: 'Join waitlist',
+  },
+  {
+    id: 'username',
+    type: 'username',
+    title: 'Pick your username',
+    helper: 'This is how people find you. You can change it later.',
+    placeholder: '@yourname',
+    ctaLabel: 'Continue',
   },
 ];
 

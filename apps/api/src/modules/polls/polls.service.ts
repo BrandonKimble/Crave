@@ -29,6 +29,7 @@ import { CoverageRegistryService } from '../coverage-key/coverage-registry.servi
 import { QueryPollsDto } from './dto/query-polls.dto';
 import { CreatePollDto } from './dto/create-poll.dto';
 import { UserEventService } from '../identity/user-event.service';
+import { UserStatsService } from '../identity/user-stats.service';
 
 const MAX_OPTIONS_PER_POLL = 8;
 
@@ -45,6 +46,7 @@ export class PollsService {
     private readonly gateway: PollsGateway,
     private readonly coverageRegistry: CoverageRegistryService,
     private readonly userEventService: UserEventService,
+    private readonly userStats: UserStatsService,
   ) {
     this.logger = loggerService.setContext('PollsService');
   }
@@ -304,6 +306,7 @@ export class PollsService {
         topicType: dto.topicType,
       },
     });
+    await this.userStats.applyDelta(userId, { pollsCreatedCount: 1 });
     const [enriched] = await this.attachCoverageLabels([poll], coverageKey);
     return enriched;
   }
@@ -556,6 +559,15 @@ export class PollsService {
       return duplicate;
     }
 
+    const existingContribution = await this.prisma.pollOption.findFirst({
+      where: { pollId, addedByUserId: userId },
+      select: { optionId: true },
+    });
+    const existingVote = await this.prisma.pollVote.findFirst({
+      where: { pollId, userId },
+      select: { pollId: true },
+    });
+
     const option = await this.prisma.pollOption.create({
       data: {
         pollId,
@@ -575,6 +587,9 @@ export class PollsService {
     });
 
     this.gateway.emitPollUpdate(pollId);
+    if (!existingContribution && !existingVote) {
+      await this.userStats.applyDelta(userId, { pollsContributedCount: 1 });
+    }
     void this.userEventService.recordEvent({
       userId,
       eventType: 'poll_option_added',
@@ -694,6 +709,7 @@ export class PollsService {
       return {
         option: updatedOption,
         eventType: 'poll_vote_cast',
+        isFirstVote: !hadAnyVote,
       };
     });
 
@@ -705,6 +721,16 @@ export class PollsService {
         optionId: dto.optionId,
       },
     });
+
+    if (result.eventType === 'poll_vote_cast' && result.isFirstVote) {
+      const existingOption = await this.prisma.pollOption.findFirst({
+        where: { pollId, addedByUserId: userId },
+        select: { optionId: true },
+      });
+      if (!existingOption) {
+        await this.userStats.applyDelta(userId, { pollsContributedCount: 1 });
+      }
+    }
 
     return result.option;
   }

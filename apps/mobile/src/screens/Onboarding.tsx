@@ -36,6 +36,7 @@ import { useOnboardingStore } from '../store/onboardingStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
 import { authService } from '../services/auth';
+import { usersService, type UsernameAvailability } from '../services/users';
 
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -218,6 +219,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const [stepIndex, setStepIndexState] = React.useState(0);
   const [answers, setAnswers] = React.useState<Record<string, AnswerValue>>({});
   const [processingReady, setProcessingReady] = React.useState(true);
+  const [usernameValue, setUsernameValue] = React.useState('');
+  const [usernameStatus, setUsernameStatus] = React.useState<UsernameAvailability | null>(null);
+  const [usernameLoading, setUsernameLoading] = React.useState(false);
+  const [usernameError, setUsernameError] = React.useState<string | null>(null);
+  const [usernameSubmitting, setUsernameSubmitting] = React.useState(false);
+  const usernameDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const usernameRequestIdRef = React.useRef(0);
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
   const activeStep = onboardingSteps[stepIndex];
   const regretBaselineAnim = React.useRef(new Animated.Value(0)).current;
@@ -397,7 +405,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   }, [completeOnboarding, navigation]);
 
   React.useEffect(() => {
-    if (isSignedIn && !hasCompletedOnboarding) {
+    if (isSignedIn && hasCompletedOnboarding) {
       goToTabs();
     }
   }, [goToTabs, hasCompletedOnboarding, isSignedIn]);
@@ -521,6 +529,85 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     setAuthError(null);
     setEmailModalVisible(true);
   }, []);
+
+  const normalizeUsernameInput = React.useCallback((value: string) => {
+    return value.trim().toLowerCase().replace(/\s+/g, '').replace(/@/g, '');
+  }, []);
+
+  const handleUsernameChange = React.useCallback(
+    (value: string) => {
+      const normalized = normalizeUsernameInput(value);
+      setUsernameValue(normalized);
+      setUsernameStatus(null);
+      setUsernameError(null);
+      updateAnswer('username', normalized);
+    },
+    [normalizeUsernameInput, updateAnswer]
+  );
+
+  const usernameNormalized = React.useMemo(
+    () => normalizeUsernameInput(usernameValue),
+    [normalizeUsernameInput, usernameValue]
+  );
+
+  React.useEffect(() => {
+    if (activeStep.type !== 'username') {
+      return;
+    }
+    if (!usernameNormalized) {
+      setUsernameStatus(null);
+      setUsernameError(null);
+      setUsernameLoading(false);
+      return;
+    }
+    if (!isSignedIn) {
+      setUsernameStatus(null);
+      setUsernameLoading(false);
+      setUsernameError('Sign in to check your username.');
+      return;
+    }
+
+    if (usernameDebounceRef.current) {
+      clearTimeout(usernameDebounceRef.current);
+    }
+
+    const requestId = ++usernameRequestIdRef.current;
+    setUsernameLoading(true);
+    setUsernameError(null);
+    usernameDebounceRef.current = setTimeout(() => {
+      usersService
+        .checkUsername(usernameNormalized)
+        .then((result) => {
+          if (requestId !== usernameRequestIdRef.current) {
+            return;
+          }
+          setUsernameStatus(result);
+          setUsernameError(null);
+        })
+        .catch((error) => {
+          if (requestId !== usernameRequestIdRef.current) {
+            return;
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Unable to check that username. Try again.';
+          setUsernameStatus(null);
+          setUsernameError(message);
+        })
+        .finally(() => {
+          if (requestId === usernameRequestIdRef.current) {
+            setUsernameLoading(false);
+          }
+        });
+    }, 420);
+
+    return () => {
+      if (usernameDebounceRef.current) {
+        clearTimeout(usernameDebounceRef.current);
+      }
+    };
+  }, [activeStep.type, isSignedIn, usernameNormalized]);
 
   const handleRegretTrackLayout = React.useCallback((event: LayoutChangeEvent) => {
     const { width } = event.nativeEvent.layout;
@@ -777,10 +864,26 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         const selected = answers[activeStep.id];
         return typeof selected === 'string' && selected.length > 0;
       }
+      case 'username': {
+        return (
+          usernameNormalized.length > 0 &&
+          Boolean(usernameStatus?.available) &&
+          !usernameLoading &&
+          !usernameSubmitting
+        );
+      }
       default:
         return true;
     }
-  }, [answers, activeStep, isSignedIn]);
+  }, [
+    activeStep,
+    answers,
+    isSignedIn,
+    usernameLoading,
+    usernameNormalized,
+    usernameStatus,
+    usernameSubmitting,
+  ]);
 
   const continueLabel = React.useMemo(() => {
     if (activeStep.ctaLabel) {
@@ -1380,6 +1483,107 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     );
   };
 
+  const getUsernameStatusCopy = React.useCallback((status: UsernameAvailability) => {
+    switch (status.reason) {
+      case 'available':
+        return 'Available — this one is yours.';
+      case 'taken':
+        return 'That username is already taken.';
+      case 'reserved':
+        return 'That name is reserved by Crave.';
+      case 'invalid_format':
+        return 'Use letters, numbers, dots, or underscores.';
+      case 'too_short':
+        return 'Usernames need at least 3 characters.';
+      case 'too_long':
+        return 'Usernames can be up to 20 characters.';
+      case 'blocked_word':
+        return 'Please avoid names that imply official accounts.';
+      case 'profanity':
+        return 'That name was flagged — try another.';
+      case 'cooldown':
+        return 'You can only change your username every 30 days.';
+      default:
+        return 'Pick another username.';
+    }
+  }, []);
+
+  const renderUsername = (step: Extract<OnboardingStep, { type: 'username' }>) => {
+    const statusText = usernameStatus ? getUsernameStatusCopy(usernameStatus) : null;
+    const statusStyle = usernameStatus?.available
+      ? styles.usernameStatusSuccess
+      : styles.usernameStatusError;
+
+    return (
+      <View style={styles.usernameContainer}>
+        <Text variant="title" weight="bold" style={styles.heroTitle}>
+          {step.title}
+        </Text>
+        {step.helper ? (
+          <Text variant="body" style={styles.heroDescription}>
+            {step.helper}
+          </Text>
+        ) : null}
+        <View style={styles.usernameInputRow}>
+          <Text style={styles.usernamePrefix}>@</Text>
+          <TextInput
+            value={usernameValue}
+            onChangeText={handleUsernameChange}
+            placeholder={step.placeholder?.replace('@', '') ?? 'yourname'}
+            placeholderTextColor={MUTED_TEXT}
+            style={styles.usernameInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+            maxLength={20}
+          />
+        </View>
+        <Text variant="caption" style={styles.usernameHint}>
+          3-20 characters · letters, numbers, dots, or underscores
+        </Text>
+        {usernameLoading ? (
+          <View style={styles.usernameStatusRow}>
+            <ActivityIndicator size="small" color={CRAVE_ACCENT} />
+            <Text variant="caption" style={styles.usernameStatusText}>
+              Checking availability…
+            </Text>
+          </View>
+        ) : null}
+        {usernameError ? (
+          <Text variant="caption" style={styles.usernameErrorText}>
+            {usernameError}
+          </Text>
+        ) : null}
+        {statusText && !usernameLoading ? (
+          <View style={[styles.usernameStatusRow, statusStyle]}>
+            <Text variant="caption" style={styles.usernameStatusText}>
+              {statusText}
+            </Text>
+          </View>
+        ) : null}
+        {usernameStatus?.suggestions?.length ? (
+          <View style={styles.usernameSuggestions}>
+            <Text variant="caption" style={styles.usernameSuggestionLabel}>
+              Try one of these:
+            </Text>
+            <View style={styles.usernameSuggestionRow}>
+              {usernameStatus.suggestions.map((suggestion) => (
+                <Pressable
+                  key={suggestion}
+                  style={styles.usernameSuggestionChip}
+                  onPress={() => handleUsernameChange(suggestion)}
+                >
+                  <Text variant="caption" weight="semibold" style={styles.usernameSuggestionText}>
+                    @{suggestion}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
+
   const renderGraph = (step: Extract<OnboardingStep, { type: 'graph' }>) => {
     // Placeholder graphs - replace with actual chart library later
     const renderGraphVisualization = () => {
@@ -1892,7 +2096,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     step.id === 'attribution' ||
     step.type === 'graph' ||
     step.type === 'carousel' ||
-    step.type === 'location';
+    step.type === 'location' ||
+    step.type === 'username';
 
   const renderStepBody = (step: OnboardingStep) => {
     switch (step.type) {
@@ -1914,6 +2119,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         return renderProcessing(step);
       case 'account':
         return renderAccount(step);
+      case 'username':
+        return renderUsername(step);
       case 'graph':
         return renderGraph(step);
       case 'carousel':
@@ -2011,12 +2218,78 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     [activeStep.type, isSignedIn]
   );
 
+  const handleUsernameSubmit = React.useCallback(async () => {
+    if (!isSignedIn) {
+      setUsernameError('Please sign in to claim a username.');
+      return false;
+    }
+    if (!usernameNormalized) {
+      setUsernameError('Pick a username to continue.');
+      return false;
+    }
+
+    setUsernameSubmitting(true);
+    setUsernameError(null);
+    try {
+      const status =
+        usernameStatus?.normalized === usernameNormalized
+          ? usernameStatus
+          : await usersService.checkUsername(usernameNormalized);
+      setUsernameStatus(status);
+
+      if (!status.available) {
+        setUsernameError(getUsernameStatusCopy(status));
+        return false;
+      }
+
+      await usersService.claimUsername(usernameNormalized);
+      setUsernameStatus({
+        ...status,
+        available: true,
+        reason: 'available',
+        suggestions: [],
+      });
+      return true;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to claim that username right now.';
+      setUsernameError(message);
+      return false;
+    } finally {
+      setUsernameSubmitting(false);
+    }
+  }, [
+    getUsernameStatusCopy,
+    isSignedIn,
+    usernameNormalized,
+    usernameStatus,
+  ]);
+
   const handleContinue = React.useCallback(() => {
     if (requiresAuthToAdvance) {
       setAuthError('Please sign in to keep going.');
       setEmailModalVisible(true);
       return;
     }
+    if (activeStep.type === 'username') {
+      void (async () => {
+        const ok = await handleUsernameSubmit();
+        if (!ok) {
+          return;
+        }
+        const nextIndex = findNextVisibleIndex(stepIndex);
+        if (nextIndex === stepIndex) {
+          logger.info('Onboarding preferences', answers);
+          goToTabs();
+          return;
+        }
+        transitionToStep(nextIndex);
+      })();
+      return;
+    }
+
     const nextIndex = findNextVisibleIndex(stepIndex);
     if (nextIndex === stepIndex) {
       logger.info('Onboarding preferences', answers);
@@ -2026,8 +2299,10 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     transitionToStep(nextIndex);
   }, [
     answers,
+    activeStep.type,
     findNextVisibleIndex,
     goToTabs,
+    handleUsernameSubmit,
     requiresAuthToAdvance,
     setEmailModalVisible,
     stepIndex,
@@ -2712,6 +2987,82 @@ const styles = StyleSheet.create({
   disclaimerLink: {
     color: CRAVE_ACCENT,
     textDecorationLine: 'underline',
+  },
+  usernameContainer: {
+    gap: 12,
+  },
+  usernameInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    backgroundColor: '#ffffff',
+  },
+  usernamePrefix: {
+    color: '#64748b',
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
+    marginRight: 6,
+  },
+  usernameInput: {
+    flex: 1,
+    color: '#0f172a',
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
+    paddingVertical: 12,
+  },
+  usernameHint: {
+    color: '#94a3b8',
+  },
+  usernameStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  usernameStatusSuccess: {
+    backgroundColor: '#ecfdf3',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  usernameStatusError: {
+    backgroundColor: '#fef2f2',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  usernameStatusText: {
+    color: '#0f172a',
+  },
+  usernameErrorText: {
+    color: '#dc2626',
+  },
+  usernameSuggestions: {
+    marginTop: 8,
+    gap: 8,
+  },
+  usernameSuggestionLabel: {
+    color: '#64748b',
+  },
+  usernameSuggestionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  usernameSuggestionChip: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: '#ffffff',
+  },
+  usernameSuggestionText: {
+    color: '#0f172a',
   },
   // Graph styles
   graphScreenContainer: {
