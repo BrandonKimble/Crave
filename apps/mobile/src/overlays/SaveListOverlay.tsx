@@ -9,6 +9,7 @@ import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { colors as themeColors } from '../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { resolveExpandedTop } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import {
   favoriteListsService,
@@ -49,6 +50,7 @@ type SaveListOverlayProps = {
   listType: FavoriteListType;
   target: { restaurantId?: string; connectionId?: string } | null;
   onClose: () => void;
+  searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
   sheetYObserver?: SharedValue<number>;
 };
@@ -65,6 +67,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
   listType,
   target,
   onClose,
+  searchBarTop = 0,
   onSnapChange,
   sheetYObserver,
 }) => {
@@ -83,7 +86,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
   const closeCutout = useHeaderCloseCutout();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(insets.top, 0);
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
     const collapsed = SCREEN_HEIGHT * 0.72;
     const hidden = SCREEN_HEIGHT + 80;
@@ -93,7 +96,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
       collapsed,
       hidden,
     };
-  }, [insets.top]);
+  }, [insets.top, searchBarTop]);
 
   const resetForm = React.useCallback(() => {
     setFormState({
@@ -314,7 +317,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
     <BottomSheetWithFlashList
       visible={visible}
       snapPoints={snapPoints}
-      initialSnapPoint="middle"
+      initialSnapPoint="expanded"
       data={lists}
       renderItem={renderListTile}
       keyExtractor={(item) => item.listId}

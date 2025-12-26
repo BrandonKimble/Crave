@@ -39,6 +39,7 @@ import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/o
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
+import { resolveExpandedTop } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import { searchService, type RecentlyViewedRestaurant } from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
@@ -135,6 +136,9 @@ const PIXEL_SCALE = PixelRatio.get();
 const CUTOUT_EDGE_SLOP = 1 / PIXEL_SCALE;
 const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_SCALE;
 const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
+const SEARCH_BAR_SHADOW_OPACITY = 0.36;
+const SEARCH_BAR_SHADOW_RADIUS = 2.5;
+const SEARCH_BAR_SHADOW_ELEVATION = 2;
 
 const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -440,6 +444,7 @@ const SearchScreen: React.FC = () => {
   } = useSearchHistory({ isSignedIn: !!isSignedIn });
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
+  const [pollsSnapRequest, setPollsSnapRequest] = React.useState<OverlaySheetSnap | null>(null);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
@@ -586,14 +591,12 @@ const SearchScreen: React.FC = () => {
     searchBarTop,
   });
   const pollsChromeSnaps = React.useMemo(() => {
-    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
-    const expanded = Math.max(expandedTop, 0);
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
     return { expanded, middle };
   }, [insets.top, searchBarTop]);
   const bookmarksChromeSnaps = React.useMemo(() => {
-    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
-    const expanded = Math.max(expandedTop, 0);
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
     const hidden = SCREEN_HEIGHT + 80;
@@ -704,14 +707,42 @@ const SearchScreen: React.FC = () => {
   const handleOverlaySelect = React.useCallback(
     (target: OverlayKey) => {
       dismissTransientOverlays();
-      setOverlay(target);
       if (target === 'search') {
-        inputRef.current?.focus();
-      } else {
+        setOverlay('search');
+        setIsSearchFocused(false);
+        setIsAutocompleteSuppressed(true);
+        setShowSuggestions(false);
         inputRef.current?.blur();
+        if (!isSearchSessionActive && !isLoading && pollsSheetSnap === 'hidden') {
+          setPollsSnapRequest('collapsed');
+        }
+        return;
+      }
+
+      setOverlay(target);
+      inputRef.current?.blur();
+    },
+    [
+      dismissTransientOverlays,
+      isLoading,
+      isSearchSessionActive,
+      pollsSheetSnap,
+      setIsAutocompleteSuppressed,
+      setIsSearchFocused,
+      setOverlay,
+      setPollsSnapRequest,
+      setPollsSheetSnap,
+      setShowSuggestions,
+    ]
+  );
+  const handlePollsSnapChange = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      setPollsSheetSnap(snap);
+      if (pollsSnapRequest && pollsSnapRequest === snap) {
+        setPollsSnapRequest(null);
       }
     },
-    [dismissTransientOverlays, setOverlay]
+    [pollsSnapRequest, setPollsSheetSnap, setPollsSnapRequest]
   );
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
     useSearchRequests();
@@ -1006,13 +1037,13 @@ const SearchScreen: React.FC = () => {
   const searchBarTransparencyAnimatedStyle = useAnimatedStyle(() => {
     const progress = suggestionTransition.value;
     const backgroundAlpha = 1 - progress;
-    const shadowOpacity = 0.2 * backgroundAlpha;
+    const shadowOpacity = SEARCH_BAR_SHADOW_OPACITY * backgroundAlpha;
     return {
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
       shadowOpacity,
-      shadowRadius: 2 + 2 * shadowOpacity,
+      shadowRadius: SEARCH_BAR_SHADOW_RADIUS * backgroundAlpha,
       borderWidth: 0,
-      elevation: backgroundAlpha > 0 ? 1 : 0,
+      elevation: backgroundAlpha > 0 ? SEARCH_BAR_SHADOW_ELEVATION : 0,
     };
   });
   const suggestionMaskAnimatedStyle = useAnimatedStyle(() => ({
@@ -2825,8 +2856,8 @@ const SearchScreen: React.FC = () => {
                 }}
               >
                 <View style={styles.searchShortcutContent}>
-                  <Store size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="body" weight="regular" style={styles.searchShortcutChipText}>
+                  <Store size={18} color="#0f172a" strokeWidth={2} />
+                  <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
                     Best restaurants
                   </Text>
                 </View>
@@ -2857,8 +2888,8 @@ const SearchScreen: React.FC = () => {
                 }}
               >
                 <View style={styles.searchShortcutContent}>
-                  <HandPlatter size={16} color="#0f172a" strokeWidth={2} />
-                  <Text variant="body" weight="regular" style={styles.searchShortcutChipText}>
+                  <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+                  <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
                     Best dishes
                   </Text>
                 </View>
@@ -2982,6 +3013,7 @@ const SearchScreen: React.FC = () => {
         visible={saveSheetState.visible}
         listType={saveSheetState.listType}
         target={saveSheetState.target}
+        searchBarTop={searchBarTop}
         onClose={handleCloseSaveSheet}
       />
       <PollsOverlay
@@ -2993,8 +3025,9 @@ const SearchScreen: React.FC = () => {
         navBarTop={bottomNavFrame.top}
         navBarHeight={bottomNavFrame.height}
         searchBarTop={searchBarTop}
-        onSnapChange={setPollsSheetSnap}
+        onSnapChange={handlePollsSnapChange}
         sheetYObserver={pollsSheetY}
+        snapTo={pollsSnapRequest}
       />
       <RestaurantOverlay
         visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}

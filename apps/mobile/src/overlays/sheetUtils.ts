@@ -28,6 +28,11 @@ export const SHEET_SPRING_CONFIG: WithSpringConfig = {
 
 export const SMALL_MOVEMENT_THRESHOLD = 30;
 
+export const resolveExpandedTop = (searchBarTop: number, fallbackTop = 0): number => {
+  const preferred = searchBarTop > 0 ? searchBarTop : fallbackTop;
+  return Math.max(preferred, 0);
+};
+
 export const snapPointForState = (
   state: SheetPosition,
   expanded: number,

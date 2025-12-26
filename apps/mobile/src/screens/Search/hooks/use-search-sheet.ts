@@ -11,7 +11,11 @@ import {
 } from 'react-native-reanimated';
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
-import { SHEET_SPRING_CONFIG, type SheetPosition } from '../../../overlays/sheetUtils';
+import {
+  resolveExpandedTop,
+  SHEET_SPRING_CONFIG,
+  type SheetPosition,
+} from '../../../overlays/sheetUtils';
 import { SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
@@ -56,7 +60,7 @@ const useSearchSheet = ({
   const draggingFromTop = useSharedValue(false);
 
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(searchBarTop, 0);
+    const expanded = resolveExpandedTop(searchBarTop);
     const rawMiddle = SCREEN_HEIGHT * 0.4;
     const middle = Math.max(expanded + 96, rawMiddle);
     const collapsed = SCREEN_HEIGHT - 130;

@@ -31,10 +31,15 @@ import { useSystemStatusStore } from '../store/systemStatusStore';
 import { colors as themeColors } from '../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { useOverlayStore } from '../store/overlayStore';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+import {
+  overlaySheetStyles,
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_STACK_ZINDEX,
+} from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { resolveExpandedTop } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
 import {
@@ -65,6 +70,7 @@ type PollsOverlayProps = {
   searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
   sheetYObserver?: SharedValue<number>;
+  snapTo?: 'expanded' | 'middle' | 'collapsed' | 'hidden' | null;
 };
 
 const ACCENT = themeColors.primary;
@@ -83,6 +89,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   searchBarTop = 0,
   onSnapChange,
   sheetYObserver,
+  snapTo,
 }) => {
   const insets = useSafeAreaInsets();
   const setOverlay = useOverlayStore((state) => state.setOverlay);
@@ -120,11 +127,17 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const socketRef = useRef<Socket | null>(null);
   const pendingPollIdRef = useRef<string | null>(null);
   const lastResolvedCoverageKeyRef = useRef<string | null>(null);
+  const activeSnapRequest = snapTo ?? snapRequest;
+
+  useEffect(() => {
+    if (snapTo) {
+      setSnapRequest(null);
+    }
+  }, [snapTo]);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = useMemo<SnapPoints>(() => {
-    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
-    const expanded = Math.max(expandedTop, 0);
+    const expanded = resolveExpandedTop(searchBarTop ?? 0, insets.top);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
@@ -717,7 +730,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
           <View style={[styles.liveBadgeRight, { backgroundColor: liveBadgeTone }]}>
             <Text
-              variant="subtitle"
+              variant="body"
               weight="semibold"
               style={
                 isLiveActive
@@ -913,7 +926,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           visible={visible}
           snapPoints={snapPoints}
           initialSnapPoint={initialSnap}
-          snapTo={snapRequest}
+          snapTo={activeSnapRequest}
           data={polls}
           renderItem={renderPoll}
           keyExtractor={(item) => item.pollId}
@@ -993,6 +1006,7 @@ const styles = StyleSheet.create({
   sheetClip: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+    zIndex: OVERLAY_STACK_ZINDEX,
   },
   listHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,

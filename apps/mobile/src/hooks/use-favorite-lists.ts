@@ -20,9 +20,10 @@ export const useFavoriteLists = (params: {
   enabled?: boolean;
 }) => {
   const enabled = params.enabled ?? true;
+  const { listType, visibility } = params;
   return useQuery<FavoriteListSummary[]>({
     queryKey: favoriteListKeys.list(params.listType, params.visibility),
-    queryFn: () => favoriteListsService.list(params),
+    queryFn: () => favoriteListsService.list({ listType, visibility }),
     enabled,
     staleTime: 1000 * 20,
   });

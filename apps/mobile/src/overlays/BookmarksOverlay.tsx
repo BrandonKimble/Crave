@@ -13,6 +13,7 @@ import { useOverlayStore } from '../store/overlayStore';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
+import { resolveExpandedTop } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import {
   favoriteListsService,
@@ -104,8 +105,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
   const navBarOffset = Math.max(navBarTop, 0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expandedTop = searchBarTop > 0 ? searchBarTop : insets.top;
-    const expanded = Math.max(expandedTop, 0);
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const rawMiddle = SCREEN_HEIGHT * 0.5;
     const middle = Math.max(expanded + 96, rawMiddle);
     const hidden = SCREEN_HEIGHT + 80;

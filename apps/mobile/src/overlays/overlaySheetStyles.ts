@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 export const OVERLAY_HORIZONTAL_PADDING = 15;
 export const OVERLAY_CORNER_RADIUS = 22;
 export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = 30;
+export const OVERLAY_STACK_ZINDEX = 10;
 
 export const overlaySheetStyles = StyleSheet.create({
   container: {
@@ -11,6 +12,7 @@ export const overlaySheetStyles = StyleSheet.create({
     right: 0,
     bottom: 0,
     top: 0,
+    zIndex: OVERLAY_STACK_ZINDEX,
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.7)',

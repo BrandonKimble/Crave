@@ -116,6 +116,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     paddingBottom: 24,
+    zIndex: 10,
   },
   searchChromeHidden: {
     opacity: 0,
@@ -123,7 +124,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
     paddingTop: SEARCH_CONTAINER_PADDING_TOP,
-    zIndex: 20,
+    zIndex: 50,
   },
   searchShortcutsRow: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
@@ -133,7 +134,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 8,
-    zIndex: 25,
+    zIndex: 55,
   },
   searchShortcutsRowSuggestion: {
     marginBottom: 0,
@@ -148,9 +149,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     marginRight: 0,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.24,
+    shadowRadius: 2,
     elevation: 2,
   },
   searchShortcutChipTransparent: {
