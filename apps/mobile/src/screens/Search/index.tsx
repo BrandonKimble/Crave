@@ -318,7 +318,7 @@ const SearchScreen: React.FC = () => {
   }, [startLocationPulse, stopLocationPulse]);
 
   React.useEffect(() => {
-    if (!isResultsSheetDragging) {
+    if (!isMapFrozen) {
       if (mapSnapshotUri) {
         setMapSnapshotUri(null);
       }
@@ -346,7 +346,7 @@ const SearchScreen: React.FC = () => {
     return () => {
       isActive = false;
     };
-  }, [isResultsSheetDragging, mapSnapshotUri]);
+  }, [isMapFrozen, mapSnapshotUri]);
 
   React.useEffect(() => {
     if (!userLocation || hasCenteredOnLocationRef.current) {
@@ -374,8 +374,9 @@ const SearchScreen: React.FC = () => {
   }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
-  const mapPreferredFramesPerSecond = isResultsSheetDragging ? 1 : undefined;
-  const resultsBlurIntensity = isResultsSheetDragging ? 18 : undefined;
+  const isMapFrozen = isResultsSheetDragging || isResultsListScrolling;
+  const mapPreferredFramesPerSecond = isMapFrozen ? 1 : undefined;
+  const resultsBlurIntensity = isMapFrozen ? 18 : undefined;
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const radialEm = LABEL_RADIAL_OFFSET_EM;
     return {
@@ -452,6 +453,7 @@ const SearchScreen: React.FC = () => {
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const [isResultsSheetDragging, setIsResultsSheetDragging] = React.useState(false);
+  const [isResultsListScrolling, setIsResultsListScrolling] = React.useState(false);
   const [mapSnapshotUri, setMapSnapshotUri] = React.useState<string | null>(null);
   const searchThisAreaVisibility = useSharedValue(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
@@ -675,6 +677,22 @@ const SearchScreen: React.FC = () => {
   }, []);
   const handleResultsSheetDragStateChange = React.useCallback((isDragging: boolean) => {
     setIsResultsSheetDragging(isDragging);
+  }, []);
+  const handleResultsListScrollBegin = React.useCallback(() => {
+    handleResultsScrollBeginDrag();
+    setIsResultsListScrolling(true);
+  }, [handleResultsScrollBeginDrag]);
+  const handleResultsListScrollEnd = React.useCallback(() => {
+    handleResultsScrollEndDrag();
+    if (!resultsMomentum.value) {
+      setIsResultsListScrolling(false);
+    }
+  }, [handleResultsScrollEndDrag, resultsMomentum]);
+  const handleResultsListMomentumBegin = React.useCallback(() => {
+    setIsResultsListScrolling(true);
+  }, []);
+  const handleResultsListMomentumEnd = React.useCallback(() => {
+    setIsResultsListScrolling(false);
   }, []);
 
   const handleOverlaySelect = React.useCallback(
@@ -927,7 +945,9 @@ const SearchScreen: React.FC = () => {
         const paddedX = Math.max(0, floorToPixel(x - CUTOUT_EDGE_SLOP));
         const paddedY = Math.max(0, floorToPixel(y - CUTOUT_EDGE_SLOP));
         const paddedWidth = ceilToPixel(width + CUTOUT_EDGE_SLOP * 2);
-        const paddedHeight = ceilToPixel(height + SEARCH_BAR_HOLE_PADDING * 2 + CUTOUT_EDGE_SLOP * 2);
+        const paddedHeight = ceilToPixel(
+          height + SEARCH_BAR_HOLE_PADDING * 2 + CUTOUT_EDGE_SLOP * 2
+        );
         holes.push({
           x: paddedX,
           y: paddedY,
@@ -2569,7 +2589,7 @@ const SearchScreen: React.FC = () => {
         userLocation={userLocation}
         locationPulse={locationPulse}
       />
-      {mapSnapshotUri && isResultsSheetDragging ? (
+      {mapSnapshotUri && isMapFrozen ? (
         <Image source={{ uri: mapSnapshotUri }} style={styles.mapSnapshot} pointerEvents="none" />
       ) : null}
 
@@ -2842,8 +2862,10 @@ const SearchScreen: React.FC = () => {
             sheetYValue={sheetTranslateY}
             scrollOffsetValue={resultsScrollOffset}
             momentumFlag={resultsMomentum}
-            onScrollBeginDrag={handleResultsScrollBeginDrag}
-            onScrollEndDrag={handleResultsScrollEndDrag}
+            onScrollBeginDrag={handleResultsListScrollBegin}
+            onScrollEndDrag={handleResultsListScrollEnd}
+            onMomentumBeginJS={handleResultsListMomentumBegin}
+            onMomentumEndJS={handleResultsListMomentumEnd}
             onDragStateChange={handleResultsSheetDragStateChange}
             onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
             extraData={listExtraData}

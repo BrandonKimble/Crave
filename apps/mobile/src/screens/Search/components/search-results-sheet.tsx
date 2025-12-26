@@ -25,6 +25,8 @@ type SearchResultsSheetProps<T> = {
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
+  onMomentumBeginJS?: () => void;
+  onMomentumEndJS?: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
   onEndReached?: FlashListProps<T>['onEndReached'];
   extraData?: FlashListProps<T>['extraData'];
@@ -58,6 +60,8 @@ const SearchResultsSheet = <T,>({
   onScrollOffsetChange,
   onScrollBeginDrag,
   onScrollEndDrag,
+  onMomentumBeginJS,
+  onMomentumEndJS,
   onDragStateChange,
   onEndReached,
   extraData,
@@ -109,6 +113,8 @@ const SearchResultsSheet = <T,>({
         onScrollOffsetChange={onScrollOffsetChange}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
+        onMomentumBeginJS={onMomentumBeginJS}
+        onMomentumEndJS={onMomentumEndJS}
         onDragStateChange={onDragStateChange}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.2}

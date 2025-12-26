@@ -55,9 +55,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm,
 }) => {
-  const [topFoodInlineWidth, setTopFoodInlineWidth] = React.useState<number | undefined>(
-    undefined
-  );
+  const [topFoodInlineWidth, setTopFoodInlineWidth] = React.useState<number | undefined>(undefined);
   const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<Record<string, number>>({});
   const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<Record<number, number>>({});
 
@@ -129,16 +127,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         topFoodMoreWidths
       )
     );
-  }, [
-    maxTopFoodToRender,
-    topFoodInlineWidth,
-    topFoodItemWidths,
-    topFoodItems,
-    topFoodMoreWidths,
-  ]);
+  }, [maxTopFoodToRender, topFoodInlineWidth, topFoodItemWidths, topFoodItems, topFoodMoreWidths]);
   const inlineTopFoods = React.useMemo(
-    () =>
-      topFoodItems.slice(0, Math.max(1, Math.min(visibleTopFoodCount, maxTopFoodToRender))),
+    () => topFoodItems.slice(0, Math.max(1, Math.min(visibleTopFoodCount, maxTopFoodToRender))),
     [maxTopFoodToRender, topFoodItems, visibleTopFoodCount]
   );
   const hiddenTopFoodCount = Math.max(0, topFoodItems.length - inlineTopFoods.length);
@@ -165,9 +156,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     if (!hasItemWidths) {
       return false;
     }
-    return potentialHiddenCounts.every(
-      (hidden) => typeof topFoodMoreWidths[hidden] === 'number'
-    );
+    return potentialHiddenCounts.every((hidden) => typeof topFoodMoreWidths[hidden] === 'number');
   }, [
     maxTopFoodToRender,
     potentialHiddenCounts,
