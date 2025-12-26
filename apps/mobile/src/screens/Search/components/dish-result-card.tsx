@@ -28,10 +28,10 @@ type DishResultCardProps = {
   item: FoodResult;
   index: number;
   dishesCount: number;
+  isLiked: boolean;
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
-  favoriteMap: Map<string, unknown>;
-  restaurantsById: Map<string, RestaurantResult>;
+  restaurantForDish?: RestaurantResult;
   toggleFavorite: (entityId: string, entityType: FavoriteEntityType) => Promise<void>;
   openRestaurantProfile: (
     restaurant: RestaurantResult,
@@ -45,17 +45,15 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   item,
   index,
   dishesCount,
+  isLiked,
   primaryCoverageKey = null,
   showCoverageLabel = false,
-  favoriteMap,
-  restaurantsById,
+  restaurantForDish,
   toggleFavorite,
   openRestaurantProfile,
   openScoreInfo,
 }) => {
-  const isLiked = favoriteMap.has(item.foodId);
   const qualityColor = getQualityColor(index, dishesCount, item.displayPercentile ?? null);
-  const restaurantForDish = restaurantsById.get(item.restaurantId);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const hasStatus = Boolean(item.restaurantOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(
@@ -210,4 +208,4 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   );
 };
 
-export default DishResultCard;
+export default React.memo(DishResultCard);

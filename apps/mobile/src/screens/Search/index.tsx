@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Animated,
   AppState,
+  Image,
   Keyboard,
+  PixelRatio,
   Pressable,
   TouchableOpacity,
   View,
@@ -95,7 +97,6 @@ import {
   SEARCH_BAR_HOLE_RADIUS,
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
-  SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
   SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
   SECONDARY_METRIC_ICON_SIZE,
@@ -126,6 +127,10 @@ import {
 MapboxGL.setTelemetryEnabled(false);
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
+const PIXEL_SCALE = PixelRatio.get();
+const CUTOUT_EDGE_SLOP = 1 / PIXEL_SCALE;
+const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_SCALE;
+const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
 
 const SearchScreen: React.FC = () => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -313,6 +318,37 @@ const SearchScreen: React.FC = () => {
   }, [startLocationPulse, stopLocationPulse]);
 
   React.useEffect(() => {
+    if (!isResultsSheetDragging) {
+      if (mapSnapshotUri) {
+        setMapSnapshotUri(null);
+      }
+      return;
+    }
+    if (mapSnapshotInFlightRef.current || mapSnapshotUri) {
+      return;
+    }
+    let isActive = true;
+    mapSnapshotInFlightRef.current = true;
+    void (async () => {
+      try {
+        const uri = await mapRef.current?.takeSnap?.(true);
+        if (uri && isActive) {
+          setMapSnapshotUri(uri);
+        }
+      } catch (error) {
+        logger.warn('Failed to snapshot map', {
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      } finally {
+        mapSnapshotInFlightRef.current = false;
+      }
+    })();
+    return () => {
+      isActive = false;
+    };
+  }, [isResultsSheetDragging, mapSnapshotUri]);
+
+  React.useEffect(() => {
     if (!userLocation || hasCenteredOnLocationRef.current) {
       return;
     }
@@ -338,6 +374,8 @@ const SearchScreen: React.FC = () => {
   }, [userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
+  const mapPreferredFramesPerSecond = isResultsSheetDragging ? 1 : undefined;
+  const resultsBlurIntensity = isResultsSheetDragging ? 18 : undefined;
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const radialEm = LABEL_RADIAL_OFFSET_EM;
     return {
@@ -399,13 +437,6 @@ const SearchScreen: React.FC = () => {
     trackRecentlyViewedRestaurant,
   } = useSearchHistory({ isSignedIn: !!isSignedIn });
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
-  const [topFoodInlineWidths, setTopFoodInlineWidths] = React.useState<Record<string, number>>({});
-  const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<
-    Record<string, Record<string, number>>
-  >({});
-  const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<
-    Record<string, Record<number, number>>
-  >({});
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
@@ -420,6 +451,8 @@ const SearchScreen: React.FC = () => {
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
+  const [isResultsSheetDragging, setIsResultsSheetDragging] = React.useState(false);
+  const [mapSnapshotUri, setMapSnapshotUri] = React.useState<string | null>(null);
   const searchThisAreaVisibility = useSharedValue(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
@@ -427,38 +460,6 @@ const SearchScreen: React.FC = () => {
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollBoundsRef = React.useRef<MapBounds | null>(null);
   const pollBoundsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const updateTopFoodInlineWidth = React.useCallback((restaurantId: string, width: number) => {
-    setTopFoodInlineWidths((prev) => {
-      if (prev[restaurantId] && Math.abs(prev[restaurantId] - width) < 0.5) {
-        return prev;
-      }
-      return { ...prev, [restaurantId]: width };
-    });
-  }, []);
-  const updateTopFoodItemWidth = React.useCallback(
-    (restaurantId: string, connectionId: string, width: number) => {
-      setTopFoodItemWidths((prev) => {
-        const existing = prev[restaurantId] ?? {};
-        if (existing[connectionId] && Math.abs(existing[connectionId] - width) < 0.5) {
-          return prev;
-        }
-        return { ...prev, [restaurantId]: { ...existing, [connectionId]: width } };
-      });
-    },
-    []
-  );
-  const updateTopFoodMoreWidth = React.useCallback(
-    (restaurantId: string, hiddenCount: number, width: number) => {
-      setTopFoodMoreWidths((prev) => {
-        const existing = prev[restaurantId] ?? {};
-        if (existing[hiddenCount] && Math.abs(existing[hiddenCount] - width) < 0.5) {
-          return prev;
-        }
-        return { ...prev, [restaurantId]: { ...existing, [hiddenCount]: width } };
-      });
-    },
-    []
-  );
   const resetMapMoveFlag = React.useCallback(() => {
     if (mapIdleTimeoutRef.current) {
       clearTimeout(mapIdleTimeoutRef.current);
@@ -533,6 +534,7 @@ const SearchScreen: React.FC = () => {
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const hasCenteredOnLocationRef = React.useRef(false);
+  const mapSnapshotInFlightRef = React.useRef(false);
   const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
   const overlayParams = useOverlayStore((state) => state.overlayParams);
@@ -670,6 +672,9 @@ const SearchScreen: React.FC = () => {
   );
   const closeScoreInfo = React.useCallback(() => {
     setScoreInfoVisible(false);
+  }, []);
+  const handleResultsSheetDragStateChange = React.useCallback((isDragging: boolean) => {
+    setIsResultsSheetDragging(isDragging);
   }, []);
 
   const handleOverlaySelect = React.useCallback(
@@ -853,10 +858,20 @@ const SearchScreen: React.FC = () => {
     }
 
     if (searchShortcutsFrame) {
-      return searchShortcutsFrame.y + searchShortcutsFrame.height;
+      return (
+        searchShortcutsFrame.y +
+        searchShortcutsFrame.height +
+        SHORTCUT_CHIP_HOLE_PADDING +
+        CUTOUT_EDGE_SLOP
+      );
     }
     if (searchContainerFrame) {
-      return searchContainerFrame.y + searchContainerFrame.height;
+      return (
+        searchContainerFrame.y +
+        searchContainerFrame.height +
+        SEARCH_BAR_HOLE_PADDING +
+        CUTOUT_EDGE_SLOP
+      );
     }
     return 0;
   }, [isSuggestionScreenActive, searchContainerFrame, searchShortcutsFrame]);
@@ -868,12 +883,9 @@ const SearchScreen: React.FC = () => {
     if (contentBottom <= 0) {
       return 0;
     }
-    return Math.max(0, contentBottom);
+    return Math.max(0, ceilToPixel(contentBottom));
   }, [isSuggestionScreenActive, suggestionHeaderContentBottom]);
-  const headerPaddingOverlap = Math.min(
-    SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
-    SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM
-  );
+  const headerPaddingOverlap = 0;
   const suggestionScrollTop = React.useMemo(() => {
     if (!isSuggestionScreenActive) {
       return 0;
@@ -912,11 +924,15 @@ const SearchScreen: React.FC = () => {
       const height = searchContainerFrame.height - SEARCH_CONTAINER_PADDING_TOP;
 
       if (width > 0 && height > 0) {
+        const paddedX = Math.max(0, floorToPixel(x - CUTOUT_EDGE_SLOP));
+        const paddedY = Math.max(0, floorToPixel(y - CUTOUT_EDGE_SLOP));
+        const paddedWidth = ceilToPixel(width + CUTOUT_EDGE_SLOP * 2);
+        const paddedHeight = ceilToPixel(height + SEARCH_BAR_HOLE_PADDING * 2 + CUTOUT_EDGE_SLOP * 2);
         holes.push({
-          x,
-          y,
-          width,
-          height: height + SEARCH_BAR_HOLE_PADDING * 2,
+          x: paddedX,
+          y: paddedY,
+          width: paddedWidth,
+          height: paddedHeight,
           borderRadius: SEARCH_BAR_HOLE_RADIUS + SEARCH_BAR_HOLE_PADDING,
         });
       }
@@ -931,11 +947,15 @@ const SearchScreen: React.FC = () => {
         if (width <= 0 || height <= 0) {
           return;
         }
+        const paddedX = Math.max(0, floorToPixel(x - CUTOUT_EDGE_SLOP));
+        const paddedY = Math.max(0, floorToPixel(y - CUTOUT_EDGE_SLOP));
+        const paddedWidth = ceilToPixel(width + CUTOUT_EDGE_SLOP * 2);
+        const paddedHeight = ceilToPixel(height + CUTOUT_EDGE_SLOP * 2);
         holes.push({
-          x,
-          y,
-          width,
-          height,
+          x: paddedX,
+          y: paddedY,
+          width: paddedWidth,
+          height: paddedHeight,
           borderRadius: SHORTCUT_CHIP_HOLE_RADIUS + SHORTCUT_CHIP_HOLE_PADDING,
         });
       });
@@ -2275,20 +2295,24 @@ const SearchScreen: React.FC = () => {
   }, [dishes, restaurants]);
 
   const renderDishCard = React.useCallback(
-    (item: FoodResult, index: number) => (
-      <DishResultCard
-        item={item}
-        index={index}
-        dishesCount={dishesCount}
-        primaryCoverageKey={primaryCoverageKey}
-        showCoverageLabel={hasCrossCoverage}
-        favoriteMap={favoriteMap}
-        restaurantsById={restaurantsById}
-        toggleFavorite={toggleFavorite}
-        openRestaurantProfile={openRestaurantProfileFromResults}
-        openScoreInfo={openScoreInfo}
-      />
-    ),
+    (item: FoodResult, index: number) => {
+      const restaurantForDish = restaurantsById.get(item.restaurantId);
+      const isLiked = favoriteMap.has(item.foodId);
+      return (
+        <DishResultCard
+          item={item}
+          index={index}
+          dishesCount={dishesCount}
+          isLiked={isLiked}
+          primaryCoverageKey={primaryCoverageKey}
+          showCoverageLabel={hasCrossCoverage}
+          restaurantForDish={restaurantForDish}
+          toggleFavorite={toggleFavorite}
+          openRestaurantProfile={openRestaurantProfileFromResults}
+          openScoreInfo={openScoreInfo}
+        />
+      );
+    },
     [
       dishesCount,
       favoriteMap,
@@ -2302,26 +2326,23 @@ const SearchScreen: React.FC = () => {
   );
 
   const renderRestaurantCard = React.useCallback(
-    (restaurant: RestaurantResult, index: number) => (
-      <RestaurantResultCard
-        restaurant={restaurant}
-        index={index}
-        restaurantsCount={restaurantsCount}
-        primaryCoverageKey={primaryCoverageKey}
-        showCoverageLabel={hasCrossCoverage}
-        favoriteMap={favoriteMap}
-        toggleFavorite={toggleFavorite}
-        openRestaurantProfile={openRestaurantProfileFromResults}
-        openScoreInfo={openScoreInfo}
-        primaryFoodTerm={primaryFoodTerm}
-        topFoodInlineWidths={topFoodInlineWidths}
-        topFoodItemWidths={topFoodItemWidths}
-        topFoodMoreWidths={topFoodMoreWidths}
-        updateTopFoodInlineWidth={updateTopFoodInlineWidth}
-        updateTopFoodItemWidth={updateTopFoodItemWidth}
-        updateTopFoodMoreWidth={updateTopFoodMoreWidth}
-      />
-    ),
+    (restaurant: RestaurantResult, index: number) => {
+      const isLiked = favoriteMap.has(restaurant.restaurantId);
+      return (
+        <RestaurantResultCard
+          restaurant={restaurant}
+          index={index}
+          restaurantsCount={restaurantsCount}
+          isLiked={isLiked}
+          primaryCoverageKey={primaryCoverageKey}
+          showCoverageLabel={hasCrossCoverage}
+          toggleFavorite={toggleFavorite}
+          openRestaurantProfile={openRestaurantProfileFromResults}
+          openScoreInfo={openScoreInfo}
+          primaryFoodTerm={primaryFoodTerm}
+        />
+      );
+    },
     [
       favoriteMap,
       hasCrossCoverage,
@@ -2331,12 +2352,6 @@ const SearchScreen: React.FC = () => {
       primaryCoverageKey,
       restaurantsCount,
       toggleFavorite,
-      topFoodInlineWidths,
-      topFoodItemWidths,
-      topFoodMoreWidths,
-      updateTopFoodInlineWidth,
-      updateTopFoodItemWidth,
-      updateTopFoodMoreWidth,
     ]
   );
 
@@ -2386,16 +2401,18 @@ const SearchScreen: React.FC = () => {
     () => (Array.isArray(resultsData) ? resultsData : []),
     [resultsData]
   );
-  const flatListDebugData = React.useMemo(() => {
-    const length = safeResultsData.length;
-    const sample = length > 0 ? safeResultsData[0] : null;
-    return {
-      isDishesTab,
-      length,
-      sampleType: sample ? typeof sample : 'nullish',
-      favoritesVersion,
-    };
-  }, [favoritesVersion, isDishesTab, safeResultsData]);
+  const listExtraData = React.useMemo(() => favoritesVersion, [favoritesVersion]);
+  const estimatedDishItemSize = 240;
+  const estimatedRestaurantItemSize = 270;
+  const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
+  const getResultItemType = React.useCallback<
+    FlashListProps<FoodResult | RestaurantResult>['getItemType']
+  >((item) => ('foodId' in item ? 'dish' : 'restaurant'), []);
+  const overrideResultItemLayout = React.useCallback<
+    FlashListProps<FoodResult | RestaurantResult>['overrideItemLayout']
+  >((layout, item) => {
+    layout.size = 'foodId' in item ? estimatedDishItemSize : estimatedRestaurantItemSize;
+  }, []);
 
   const renderSafeItem = React.useCallback<
     NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
@@ -2543,6 +2560,7 @@ const SearchScreen: React.FC = () => {
         isFollowingUser={isFollowingUser}
         onPress={handleMapPress}
         onCameraChanged={handleCameraChanged}
+        preferredFramesPerSecond={mapPreferredFramesPerSecond}
         sortedRestaurantMarkers={sortedRestaurantMarkers}
         markersRenderKey={markersRenderKey}
         buildMarkerKey={buildMarkerKey}
@@ -2551,6 +2569,9 @@ const SearchScreen: React.FC = () => {
         userLocation={userLocation}
         locationPulse={locationPulse}
       />
+      {mapSnapshotUri && isResultsSheetDragging ? (
+        <Image source={{ uri: mapSnapshotUri }} style={styles.mapSnapshot} pointerEvents="none" />
+      ) : null}
 
       {shouldRenderSearchOverlay && (
         <SafeAreaView
@@ -2823,12 +2844,15 @@ const SearchScreen: React.FC = () => {
             momentumFlag={resultsMomentum}
             onScrollBeginDrag={handleResultsScrollBeginDrag}
             onScrollEndDrag={handleResultsScrollEndDrag}
+            onDragStateChange={handleResultsSheetDragStateChange}
             onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
-            extraData={flatListDebugData}
+            extraData={listExtraData}
             data={safeResultsData}
             renderItem={renderSafeItem}
             keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
-            estimatedItemSize={240}
+            estimatedItemSize={estimatedItemSize}
+            getItemType={getResultItemType}
+            overrideItemLayout={overrideResultItemLayout}
             contentContainerStyle={{
               paddingBottom: safeResultsData.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
             }}
@@ -2840,6 +2864,7 @@ const SearchScreen: React.FC = () => {
             resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
             onHidden={resetSheetToHidden}
             onSnapChange={handleSheetSnapChange}
+            blurIntensity={resultsBlurIntensity}
           />
         </SafeAreaView>
       )}

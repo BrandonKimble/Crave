@@ -35,6 +35,7 @@ type SearchMapProps = {
   isFollowingUser: boolean;
   onPress: () => void;
   onCameraChanged: (state: MapboxMapState) => void;
+  preferredFramesPerSecond?: number;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   markersRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
@@ -54,6 +55,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
     isFollowingUser,
     onPress,
     onCameraChanged,
+    preferredFramesPerSecond,
     sortedRestaurantMarkers,
     markersRenderKey,
     buildMarkerKey,
@@ -72,6 +74,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
       onPress={onPress}
       onCameraChanged={onCameraChanged}
       onMapIdle={onCameraChanged}
+      preferredFramesPerSecond={preferredFramesPerSecond}
     >
       <MapboxGL.Camera
         ref={cameraRef}

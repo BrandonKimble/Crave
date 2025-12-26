@@ -16,15 +16,20 @@ import { FONT_SIZES } from '../../../constants/typography';
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
-const EDGE_INSET = 16;
+const EDGE_INSET = 12;
+const SEARCH_ICON_EDGE_INSET = EDGE_INSET + 1;
+const CHEVRON_ICON_EDGE_INSET = EDGE_INSET - 2;
 const ICON_TEXT_GAP = 8;
-const SEARCH_ICON_SIZE = 24;
+const SEARCH_ICON_SIZE = 32;
 const CHEVRON_ICON_SIZE = 36;
 const CLEAR_ICON_SIZE = 28;
-const CHEVRON_STROKE_WIDTH = (2 * 24) / CHEVRON_ICON_SIZE;
-const CHEVRON_X_OFFSET = (SEARCH_ICON_SIZE - CHEVRON_ICON_SIZE) / 2;
-const LEADING_SLOT_WIDTH = SEARCH_ICON_SIZE + 6;
-const SUBMITTED_TEXT_INSET = 4;
+const LEADING_SLOT_WIDTH = Math.max(SEARCH_ICON_SIZE, CHEVRON_ICON_SIZE);
+const CHEVRON_STROKE_WIDTH = ((2 * 24) / CHEVRON_ICON_SIZE) * 1.25;
+const CHEVRON_ICON_OFFSET =
+  CHEVRON_ICON_EDGE_INSET - EDGE_INSET - (LEADING_SLOT_WIDTH - CHEVRON_ICON_SIZE) / 2;
+const SEARCH_ICON_OFFSET =
+  SEARCH_ICON_EDGE_INSET - EDGE_INSET - (LEADING_SLOT_WIDTH - SEARCH_ICON_SIZE) / 2;
+const SUBMITTED_TEXT_INSET = 0;
 const TRAILING_SLOT_SIZE = 40;
 
 type SearchHeaderProps = {
@@ -116,7 +121,12 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   </Pressable>
                 ) : showInactiveSearchIcon ? (
                   <View style={styles.leadingButton}>
-                    <Search size={SEARCH_ICON_SIZE} color="#9ca3af" strokeWidth={2} />
+                    <Search
+                      size={SEARCH_ICON_SIZE}
+                      color="#9ca3af"
+                      strokeWidth={2}
+                      style={styles.searchIcon}
+                    />
                   </View>
                 ) : null}
               </View>
@@ -221,7 +231,7 @@ const styles = StyleSheet.create({
     width: LEADING_SLOT_WIDTH,
     height: 50,
     marginRight: ICON_TEXT_GAP,
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   leadingSlotCollapsed: {
@@ -231,11 +241,14 @@ const styles = StyleSheet.create({
   leadingButton: {
     width: LEADING_SLOT_WIDTH,
     height: 50,
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'center',
   },
   chevronIcon: {
-    transform: [{ translateX: CHEVRON_X_OFFSET }],
+    transform: [{ translateX: CHEVRON_ICON_OFFSET }],
+  },
+  searchIcon: {
+    transform: [{ translateX: SEARCH_ICON_OFFSET }],
   },
   promptInput: {
     flex: 1,

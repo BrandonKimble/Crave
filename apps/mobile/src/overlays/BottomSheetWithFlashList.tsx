@@ -61,6 +61,7 @@ type BottomSheetWithFlashListProps<T> = {
   overScrollMode?: FlashListProps<T>['overScrollMode'];
   testID?: string;
   extraData?: FlashListProps<T>['extraData'];
+  onDragStateChange?: (isDragging: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
   flashListProps?: Partial<
     Omit<
@@ -167,6 +168,7 @@ const BottomSheetWithFlashList = <T,>({
   overScrollMode,
   testID,
   extraData,
+  onDragStateChange,
   snapTo,
   flashListProps,
   sheetYValue,
@@ -220,8 +222,10 @@ const BottomSheetWithFlashList = <T,>({
 
   const onHiddenRef = React.useRef(onHidden);
   const onSnapChangeRef = React.useRef(onSnapChange);
+  const onDragStateChangeRef = React.useRef(onDragStateChange);
   onHiddenRef.current = onHidden;
   onSnapChangeRef.current = onSnapChange;
+  onDragStateChangeRef.current = onDragStateChange;
   const lastSnapToRef = React.useRef<SheetSnapPoint | 'hidden' | null>(null);
 
   const animatedScrollHandler = useAnimatedScrollHandler(
@@ -255,6 +259,21 @@ const BottomSheetWithFlashList = <T,>({
   const notifyHidden = React.useCallback(() => {
     onHiddenRef.current?.();
   }, []);
+
+  const notifyDragStateChange = React.useCallback((isDragging: boolean) => {
+    onDragStateChangeRef.current?.(isDragging);
+  }, []);
+
+  useAnimatedReaction(
+    () => expandPanActive.value || collapsePanActive.value,
+    (isDragging, prev) => {
+      if (prev === undefined || prev === null || isDragging === prev) {
+        return;
+      }
+      runOnJS(notifyDragStateChange)(isDragging);
+    },
+    [notifyDragStateChange]
+  );
 
   const snapCandidates = React.useMemo(() => {
     const points = [snapPoints.expanded, snapPoints.middle, snapPoints.collapsed];
@@ -647,7 +666,11 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
-        {backgroundComponent}
+        {backgroundComponent ? (
+          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+            {backgroundComponent}
+          </View>
+        ) : null}
         {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
         <View style={{ flex: 1 }}>
           <AnimatedFlashList

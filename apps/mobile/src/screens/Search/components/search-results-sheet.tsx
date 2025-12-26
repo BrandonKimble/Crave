@@ -25,12 +25,15 @@ type SearchResultsSheetProps<T> = {
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   onEndReached?: FlashListProps<T>['onEndReached'];
   extraData?: FlashListProps<T>['extraData'];
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
   keyExtractor: NonNullable<FlashListProps<T>['keyExtractor']>;
   estimatedItemSize: number;
+  getItemType?: FlashListProps<T>['getItemType'];
+  overrideItemLayout?: FlashListProps<T>['overrideItemLayout'];
   ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
@@ -41,6 +44,7 @@ type SearchResultsSheetProps<T> = {
   onHidden: () => void;
   onSnapChange: (snap: SheetSnapState) => void;
   style?: StyleProp<ViewStyle>;
+  blurIntensity?: number;
 };
 
 const SearchResultsSheet = <T,>({
@@ -54,12 +58,15 @@ const SearchResultsSheet = <T,>({
   onScrollOffsetChange,
   onScrollBeginDrag,
   onScrollEndDrag,
+  onDragStateChange,
   onEndReached,
   extraData,
   data,
   renderItem,
   keyExtractor,
   estimatedItemSize,
+  getItemType,
+  overrideItemLayout,
   ListHeaderComponent,
   ListFooterComponent,
   ListEmptyComponent,
@@ -70,6 +77,7 @@ const SearchResultsSheet = <T,>({
   onHidden,
   onSnapChange,
   style,
+  blurIntensity,
 }: SearchResultsSheetProps<T>): React.ReactElement | null => {
   if (!visible) {
     return null;
@@ -101,6 +109,7 @@ const SearchResultsSheet = <T,>({
         onScrollOffsetChange={onScrollOffsetChange}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
+        onDragStateChange={onDragStateChange}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.2}
         showsVerticalScrollIndicator={false}
@@ -119,12 +128,18 @@ const SearchResultsSheet = <T,>({
         ListFooterComponent={ListFooterComponent}
         ListEmptyComponent={ListEmptyComponent}
         contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
-        backgroundComponent={<FrostedGlassBackground />}
+        backgroundComponent={<FrostedGlassBackground intensity={blurIntensity} />}
         headerComponent={headerComponent}
         listRef={listRef}
         style={style ?? overlaySheetStyles.container}
         onHidden={onHidden}
         onSnapChange={onSnapChange}
+        flashListProps={{
+          getItemType,
+          overrideItemLayout,
+          removeClippedSubviews: true,
+          drawDistance: 200,
+        }}
       />
     </>
   );

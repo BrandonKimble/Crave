@@ -46,6 +46,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   map: StyleSheet.absoluteFillObject,
+  mapSnapshot: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+    resizeMode: 'cover',
+  },
   markerView: {
     flex: 0,
     alignSelf: 'flex-start',
@@ -112,6 +117,7 @@ const styles = StyleSheet.create({
   },
   searchShortcutsRow: {
     paddingHorizontal: SEARCH_HORIZONTAL_PADDING,
+    paddingTop: 2,
     marginBottom: SEARCH_SHORTCUTS_BOTTOM_MARGIN,
     marginTop: 10,
     flexDirection: 'row',
@@ -123,7 +129,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
   },
   searchShortcutChip: {
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 0,
     backgroundColor: '#ffffff',
     paddingHorizontal: 11,
