@@ -37,7 +37,12 @@ import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
-import { CONTROL_HEIGHT, CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../screens/Search/constants/ui';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_HORIZONTAL_PADDING,
+  CONTROL_RADIUS,
+  CONTROL_VERTICAL_PADDING,
+} from '../screens/Search/constants/ui';
 import type { MapBounds } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -45,6 +50,7 @@ const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#
 const CARD_GAP = 4;
 const CLOSE_ACTION_EPSILON = 2;
 const LIVE_BADGE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
+const LIVE_BADGE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
 
 type PollsOverlayProps = {
   visible: boolean;
@@ -709,9 +715,13 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
           <View style={styles.liveBadgeLeft}>
             <Text
-              variant="subtitle"
+              variant="body"
               weight="semibold"
-              style={isLiveActive ? styles.liveBadgeCount : [styles.liveBadgeCount, styles.liveBadgeCountMuted]}
+              style={
+                isLiveActive
+                  ? styles.liveBadgeCount
+                  : [styles.liveBadgeCount, styles.liveBadgeCountMuted]
+              }
             >
               {polls.length}
             </Text>
@@ -720,7 +730,11 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
             <Text
               variant="body"
               weight="semibold"
-              style={isLiveActive ? styles.liveBadgeLabel : [styles.liveBadgeLabel, styles.liveBadgeLabelMuted]}
+              style={
+                isLiveActive
+                  ? styles.liveBadgeLabel
+                  : [styles.liveBadgeLabel, styles.liveBadgeLabelMuted]
+              }
             >
               LIVE
             </Text>
@@ -946,6 +960,7 @@ const styles = StyleSheet.create({
   liveBadgeLeft: {
     height: '100%',
     paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
+    paddingVertical: LIVE_BADGE_VERTICAL_PADDING,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',
@@ -953,6 +968,7 @@ const styles = StyleSheet.create({
   liveBadgeRight: {
     height: '100%',
     paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
+    paddingVertical: LIVE_BADGE_VERTICAL_PADDING,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -964,7 +980,6 @@ const styles = StyleSheet.create({
   },
   liveBadgeLabel: {
     color: '#ffffff',
-    letterSpacing: 0.6,
   },
   liveBadgeLabelMuted: {
     color: 'rgba(255, 255, 255, 0.7)',

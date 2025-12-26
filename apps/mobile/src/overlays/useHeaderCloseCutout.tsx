@@ -126,14 +126,9 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
             height: badgeLayout.height + badgePadding * 2,
           }
         : null;
-    const badgeRadiusBase =
-      options.badgeRadius ?? (badgeRect ? badgeRect.height / 2 : 0);
+    const badgeRadiusBase = options.badgeRadius ?? (badgeRect ? badgeRect.height / 2 : 0);
     const badgeRadius = badgeRect
-      ? Math.min(
-          badgeRadiusBase + badgePadding,
-          badgeRect.height / 2,
-          badgeRect.width / 2,
-        )
+      ? Math.min(badgeRadiusBase + badgePadding, badgeRect.height / 2, badgeRect.width / 2)
       : 0;
 
     return (
