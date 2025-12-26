@@ -589,9 +589,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             return;
           }
           const message =
-            error instanceof Error
-              ? error.message
-              : 'Unable to check that username. Try again.';
+            error instanceof Error ? error.message : 'Unable to check that username. Try again.';
           setUsernameStatus(null);
           setUsernameError(message);
         })
@@ -2252,20 +2250,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       return true;
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : 'Unable to claim that username right now.';
+        error instanceof Error ? error.message : 'Unable to claim that username right now.';
       setUsernameError(message);
       return false;
     } finally {
       setUsernameSubmitting(false);
     }
-  }, [
-    getUsernameStatusCopy,
-    isSignedIn,
-    usernameNormalized,
-    usernameStatus,
-  ]);
+  }, [getUsernameStatusCopy, isSignedIn, usernameNormalized, usernameStatus]);
 
   const handleContinue = React.useCallback(() => {
     if (requiresAuthToAdvance) {

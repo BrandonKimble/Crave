@@ -206,16 +206,16 @@ const ProfileScreen: React.FC = () => {
   const createdPolls = createdPollsQuery.data?.polls ?? [];
 
   const activePolls =
-    activeSegment === 'created' ? createdPolls : activeSegment === 'contributed' ? contributedPolls : [];
+    activeSegment === 'created'
+      ? createdPolls
+      : activeSegment === 'contributed'
+      ? contributedPolls
+      : [];
 
   const renderPollCard = (poll: Poll) => {
     const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
     return (
-      <Pressable
-        key={poll.pollId}
-        style={styles.pollCard}
-        onPress={() => handlePollPress(poll)}
-      >
+      <Pressable key={poll.pollId} style={styles.pollCard} onPress={() => handlePollPress(poll)}>
         <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
           {poll.question}
         </Text>
@@ -338,11 +338,13 @@ const ProfileScreen: React.FC = () => {
         </View>
 
         <View style={styles.segmentRow}>
-          {([
-            { id: 'created', label: 'Created' },
-            { id: 'contributed', label: 'Contributed' },
-            { id: 'favorites', label: 'Favorites' },
-          ] as const).map((segment) => {
+          {(
+            [
+              { id: 'created', label: 'Created' },
+              { id: 'contributed', label: 'Contributed' },
+              { id: 'favorites', label: 'Favorites' },
+            ] as const
+          ).map((segment) => {
             const isActive = activeSegment === segment.id;
             return (
               <Pressable
@@ -370,9 +372,7 @@ const ProfileScreen: React.FC = () => {
             {restaurantListsQuery.isLoading ? (
               <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
             ) : restaurantListsQuery.data?.length ? (
-              <View style={styles.listGrid}>
-                {restaurantListsQuery.data.map(renderListTile)}
-              </View>
+              <View style={styles.listGrid}>{restaurantListsQuery.data.map(renderListTile)}</View>
             ) : (
               <Text variant="caption" style={styles.emptyText}>
                 No public restaurant lists yet.
@@ -394,7 +394,9 @@ const ProfileScreen: React.FC = () => {
           </View>
         ) : (
           <View style={styles.section}>
-            {profileQuery.isLoading || createdPollsQuery.isLoading || contributedPollsQuery.isLoading ? (
+            {profileQuery.isLoading ||
+            createdPollsQuery.isLoading ||
+            contributedPollsQuery.isLoading ? (
               <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
             ) : activePolls.length ? (
               <View style={styles.pollList}>{activePolls.map(renderPollCard)}</View>
@@ -414,12 +416,14 @@ const ProfileScreen: React.FC = () => {
           <View style={styles.bottomNavBackground} pointerEvents="none">
             <FrostedGlassBackground />
           </View>
-          {([
-            { key: 'search' as OverlayKey, label: 'Search' },
-            { key: 'polls' as OverlayKey, label: 'Polls' },
-            { key: 'bookmarks' as OverlayKey, label: 'Favorites' },
-            { key: 'profile' as const, label: 'Profile' },
-          ] as const).map((item) => {
+          {(
+            [
+              { key: 'search' as OverlayKey, label: 'Search' },
+              { key: 'polls' as OverlayKey, label: 'Polls' },
+              { key: 'bookmarks' as OverlayKey, label: 'Favorites' },
+              { key: 'profile' as const, label: 'Profile' },
+            ] as const
+          ).map((item) => {
             const isActive = item.key === 'profile';
             const iconColor = isActive ? themeColors.primary : '#94a3b8';
             const renderIcon = (color: string, active: boolean) => {
@@ -470,7 +474,14 @@ const ProfileScreen: React.FC = () => {
                 );
               }
               return (
-                <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={2}>
+                <Svg
+                  width={24}
+                  height={24}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={2}
+                >
                   <Path
                     strokeLinecap="round"
                     strokeLinejoin="round"

@@ -1,13 +1,5 @@
 import React from 'react';
-import {
-  Alert,
-  Dimensions,
-  Pressable,
-  Share,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Dimensions, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
@@ -24,8 +16,7 @@ import RestaurantResultCard from './Search/components/restaurant-result-card';
 import DishResultCard from './Search/components/dish-result-card';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const SHARE_BASE_URL =
-  process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
+const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
 
 const FavoritesListDetailScreen: React.FC<
   StackScreenProps<RootStackParamList, 'FavoritesListDetail'>
@@ -265,7 +256,9 @@ const FavoritesListDetailScreen: React.FC<
           data={isRestaurantList ? restaurants : dishes}
           renderItem={isRestaurantList ? renderRestaurant : renderDish}
           keyExtractor={(item) =>
-            isRestaurantList ? (item as RestaurantResult).restaurantId : (item as FoodResult).connectionId
+            isRestaurantList
+              ? (item as RestaurantResult).restaurantId
+              : (item as FoodResult).connectionId
           }
           estimatedItemSize={160}
           ListEmptyComponent={

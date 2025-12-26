@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  Dimensions,
-  Pressable,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { SharedValue } from 'react-native-reanimated';
@@ -141,9 +135,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
   const renderPreviewRow = React.useCallback(
     (item: FavoriteListSummary['previewItems'][number]) => (
       <View key={item.itemId} style={styles.previewRow}>
-        <View
-          style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]}
-        />
+        <View style={[styles.previewDot, { backgroundColor: resolveRankColor(item.score) }]} />
         <Text variant="caption" numberOfLines={1} style={styles.previewText}>
           {item.label}
           {item.subLabel ? ` • ${item.subLabel}` : ''}
@@ -233,10 +225,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
                       visibility: value,
                     }))
                   }
-                  style={[
-                    styles.visibilityOption,
-                    isActive && styles.visibilityOptionActive,
-                  ]}
+                  style={[styles.visibilityOption, isActive && styles.visibilityOptionActive]}
                 >
                   <Text
                     variant="caption"
