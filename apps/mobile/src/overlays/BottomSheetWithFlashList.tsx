@@ -1,22 +1,20 @@
 import React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import type {
-  LayoutChangeEvent,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  ScrollViewProps,
-  StyleProp,
-  ViewStyle,
-} from 'react-native';
+import type { LayoutChangeEvent, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Animated, {
+  Extrapolation,
+  interpolate,
   runOnJS,
   type SharedValue,
   useAnimatedReaction,
+  useAnimatedScrollHandler,
   useAnimatedStyle,
+  useDerivedValue,
   useSharedValue,
   withSpring,
+  withTiming,
 } from 'react-native-reanimated';
 import { SHEET_SPRING_CONFIG, clampValue } from './sheetUtils';
 
@@ -28,6 +26,9 @@ type SheetSnapPoint = 'expanded' | 'middle' | 'collapsed';
 type SnapPoints = Record<SheetSnapPoint, number> & {
   hidden?: number;
 };
+
+const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as typeof FlashList;
+const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
 type BottomSheetWithFlashListProps<T> = {
   visible: boolean;
@@ -93,7 +94,7 @@ type BottomSheetWithFlashListProps<T> = {
 
 const snapPoint = (value: number, velocity: number, points: number[]): number => {
   'worklet';
-  const projected = value + velocity * 0.2;
+  const projected = value + velocity * 0.35;
   let closest = points[0] ?? value;
   let minDist = Math.abs(projected - closest);
   for (let i = 1; i < points.length; i += 1) {
@@ -227,6 +228,34 @@ const BottomSheetWithFlashList = <T,>({
   onSnapChangeRef.current = onSnapChange;
   const lastSnapToRef = React.useRef<SheetSnapPoint | 'hidden' | null>(null);
 
+  const animatedScrollHandler = useAnimatedScrollHandler(
+    {
+      onScroll: (event) => {
+        const offsetY = event.contentOffset.y;
+        scrollOffset.value = offsetY;
+        if (onScrollOffsetChange) {
+          runOnJS(onScrollOffsetChange)(offsetY);
+        }
+      },
+      onBeginDrag: () => {
+        isInMomentum.value = false;
+      },
+      onMomentumBegin: () => {
+        isInMomentum.value = true;
+        if (onMomentumBeginJS) {
+          runOnJS(onMomentumBeginJS)();
+        }
+      },
+      onMomentumEnd: () => {
+        isInMomentum.value = false;
+        if (onMomentumEndJS) {
+          runOnJS(onMomentumEndJS)();
+        }
+      },
+    },
+    [onMomentumBeginJS, onMomentumEndJS, onScrollOffsetChange]
+  );
+
   const notifyHidden = React.useCallback(() => {
     onHiddenRef.current?.();
   }, []);
@@ -343,15 +372,6 @@ const BottomSheetWithFlashList = <T,>({
     }
     animateTo(target, 0, snapTo === 'hidden');
   }, [animateTo, resolveSnapValue, snapTo]);
-
-  const onScroll = React.useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const offsetY = event.nativeEvent.contentOffset.y;
-      scrollOffset.value = offsetY;
-      onScrollOffsetChange?.(offsetY);
-    },
-    [onScrollOffsetChange, scrollOffset]
-  );
 
   const onHeaderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -571,10 +591,15 @@ const BottomSheetWithFlashList = <T,>({
     visible,
   ]);
 
+  const dragProgress = useDerivedValue(() => {
+    const isActive = expandPanActive.value || collapsePanActive.value;
+    return withTiming(isActive ? 1 : 0, { duration: 140 });
+  });
+
   const ScrollComponent = React.useMemo(() => {
     const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
       <GestureDetector gesture={gestures.scroll}>
-        <ScrollView {...props} ref={ref} />
+        <AnimatedScrollView {...props} ref={ref} />
       </GestureDetector>
     ));
     Component.displayName = 'BottomSheetFlashListScrollView';
@@ -583,6 +608,10 @@ const BottomSheetWithFlashList = <T,>({
 
   const animatedSheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetY.value }],
+  }));
+
+  const backgroundAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(dragProgress.value, [0, 1], [1, 0.88], Extrapolation.CLAMP),
   }));
 
   const sanitizedContentContainerStyle = React.useMemo(() => {
@@ -631,11 +660,18 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
-        {backgroundComponent}
+        {backgroundComponent ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFillObject, backgroundAnimatedStyle]}
+          >
+            {backgroundComponent}
+          </Animated.View>
+        ) : null}
         {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
         <View style={{ flex: 1 }}>
-          <FlashList
-            ref={flashListRef}
+          <AnimatedFlashList
+            ref={flashListRef as React.RefObject<FlashList<T>>}
             {...flashListProps}
             data={data}
             renderItem={renderItem}
@@ -649,16 +685,8 @@ const BottomSheetWithFlashList = <T,>({
             keyboardShouldPersistTaps={keyboardShouldPersistTaps}
             scrollEnabled={shouldEnableScroll}
             renderScrollComponent={ScrollComponent}
-            onScroll={onScroll}
+            onScroll={animatedScrollHandler}
             scrollEventThrottle={16}
-            onMomentumScrollBegin={(_event) => {
-              isInMomentum.value = true;
-              onMomentumBeginJS?.();
-            }}
-            onMomentumScrollEnd={(_event) => {
-              isInMomentum.value = false;
-              onMomentumEndJS?.();
-            }}
             onScrollBeginDrag={(event) => {
               onScrollBeginDrag?.();
               flashListProps?.onScrollBeginDrag?.(event);

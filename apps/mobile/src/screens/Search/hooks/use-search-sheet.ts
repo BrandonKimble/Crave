@@ -1,7 +1,8 @@
 import React from 'react';
-import { Animated } from 'react-native';
 
 import {
+  Extrapolation,
+  interpolate,
   runOnJS,
   type SharedValue,
   useAnimatedStyle,
@@ -36,11 +37,9 @@ type UseSearchSheetResult = {
   resultsContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsScrollOffset: SharedValue<number>;
   resultsMomentum: SharedValue<boolean>;
-  onResultsScroll: (offsetY: number) => void;
   onResultsScrollBeginDrag: () => void;
   onResultsScrollEndDrag: () => void;
-  resultsScrollY: Animated.Value;
-  headerDividerAnimatedStyle: { opacity: Animated.AnimatedInterpolation<number> };
+  headerDividerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
 };
 
 const useSearchSheet = ({
@@ -52,11 +51,9 @@ const useSearchSheet = ({
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const sheetStateShared = useSharedValue<SheetPosition>('hidden');
-  const resultsScrollY = React.useRef(new Animated.Value(0)).current;
   const resultsScrollOffset = useSharedValue(0);
   const resultsMomentum = useSharedValue(false);
   const draggingFromTop = useSharedValue(false);
-  const lastScrollYRef = React.useRef(0);
 
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(searchBarTop, 0);
@@ -155,18 +152,6 @@ const useSearchSheet = ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
 
-  const onResultsScroll = React.useCallback(
-    (offsetY: number) => {
-      resultsScrollOffset.value = offsetY;
-      if (draggingFromTop.value && offsetY > 0.5) {
-        draggingFromTop.value = false;
-      }
-      resultsScrollY.setValue(offsetY);
-      lastScrollYRef.current = offsetY;
-    },
-    [draggingFromTop, resultsScrollOffset, resultsScrollY]
-  );
-
   const onResultsScrollBeginDrag = React.useCallback(() => {
     draggingFromTop.value = resultsScrollOffset.value <= 0.5;
   }, [draggingFromTop, resultsScrollOffset]);
@@ -175,16 +160,9 @@ const useSearchSheet = ({
     draggingFromTop.value = false;
   }, [draggingFromTop]);
 
-  const headerDividerAnimatedStyle = React.useMemo(
-    () => ({
-      opacity: resultsScrollY.interpolate({
-        inputRange: [0, 12],
-        outputRange: [0, 1],
-        extrapolate: 'clamp',
-      }),
-    }),
-    [resultsScrollY]
-  );
+  const headerDividerAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(resultsScrollOffset.value, [0, 12], [0, 1], Extrapolation.CLAMP),
+  }));
 
   return {
     panelVisible,
@@ -203,10 +181,8 @@ const useSearchSheet = ({
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
     resultsMomentum,
-    onResultsScroll,
     onResultsScrollBeginDrag,
     onResultsScrollEndDrag,
-    resultsScrollY,
     headerDividerAnimatedStyle,
   };
 };

@@ -567,7 +567,6 @@ const SearchScreen: React.FC = () => {
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
     resultsMomentum,
-    onResultsScroll,
     onResultsScrollBeginDrag: handleResultsScrollBeginDrag,
     onResultsScrollEndDrag: handleResultsScrollEndDrag,
     headerDividerAnimatedStyle,
@@ -2529,7 +2528,7 @@ const SearchScreen: React.FC = () => {
           </View>
         </Pressable>
       </View>
-      <Animated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
+      <Reanimated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
     </Reanimated.View>
   );
 
@@ -2822,7 +2821,6 @@ const SearchScreen: React.FC = () => {
             sheetYValue={sheetTranslateY}
             scrollOffsetValue={resultsScrollOffset}
             momentumFlag={resultsMomentum}
-            onScrollOffsetChange={onResultsScroll}
             onScrollBeginDrag={handleResultsScrollBeginDrag}
             onScrollEndDrag={handleResultsScrollEndDrag}
             onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}

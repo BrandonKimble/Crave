@@ -41,7 +41,6 @@ import {
   CONTROL_HEIGHT,
   CONTROL_HORIZONTAL_PADDING,
   CONTROL_RADIUS,
-  CONTROL_VERTICAL_PADDING,
 } from '../screens/Search/constants/ui';
 import type { MapBounds } from '../types';
 
@@ -50,7 +49,10 @@ const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#
 const CARD_GAP = 4;
 const CLOSE_ACTION_EPSILON = 2;
 const LIVE_BADGE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
-const LIVE_BADGE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
+const LIVE_BADGE_VERTICAL_PADDING = Math.max(
+  0,
+  Math.round((CONTROL_HEIGHT - LINE_HEIGHTS.title) / 2)
+);
 
 type PollsOverlayProps = {
   visible: boolean;
@@ -713,22 +715,9 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           {headerBaseTitle}
         </Text>
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
-          <View style={styles.liveBadgeLeft}>
-            <Text
-              variant="body"
-              weight="semibold"
-              style={
-                isLiveActive
-                  ? styles.liveBadgeCount
-                  : [styles.liveBadgeCount, styles.liveBadgeCountMuted]
-              }
-            >
-              {polls.length}
-            </Text>
-          </View>
           <View style={[styles.liveBadgeRight, { backgroundColor: liveBadgeTone }]}>
             <Text
-              variant="body"
+              variant="subtitle"
               weight="semibold"
               style={
                 isLiveActive
@@ -737,6 +726,19 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
               }
             >
               LIVE
+            </Text>
+          </View>
+          <View style={styles.liveBadgeLeft}>
+            <Text
+              variant="title"
+              weight="semibold"
+              style={
+                isLiveActive
+                  ? styles.liveBadgeCount
+                  : [styles.liveBadgeCount, styles.liveBadgeCountMuted]
+              }
+            >
+              {polls.length}
             </Text>
           </View>
         </View>
@@ -973,7 +975,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   liveBadgeCount: {
-    color: ACCENT,
+    color: themeColors.text,
   },
   liveBadgeCountMuted: {
     color: themeColors.text,

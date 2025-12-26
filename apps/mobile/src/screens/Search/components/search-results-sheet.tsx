@@ -22,7 +22,7 @@ type SearchResultsSheetProps<T> = {
   sheetYValue: SharedValue<number>;
   scrollOffsetValue: SharedValue<number>;
   momentumFlag: SharedValue<boolean>;
-  onScrollOffsetChange: (offsetY: number) => void;
+  onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
   onEndReached?: FlashListProps<T>['onEndReached'];
@@ -101,12 +101,6 @@ const SearchResultsSheet = <T,>({
         onScrollOffsetChange={onScrollOffsetChange}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
-        onMomentumBeginJS={() => {
-          momentumFlag.value = true;
-        }}
-        onMomentumEndJS={() => {
-          momentumFlag.value = false;
-        }}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.2}
         showsVerticalScrollIndicator={false}

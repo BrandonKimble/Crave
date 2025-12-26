@@ -18,11 +18,12 @@ export const clampValue = (value: number, lowerBound: number, upperBound: number
 };
 
 export const SHEET_SPRING_CONFIG: WithSpringConfig = {
-  damping: 22,
+  damping: 21,
   stiffness: 185,
-  overshootClamping: true,
-  restDisplacementThreshold: 0.4,
-  restSpeedThreshold: 0.4,
+  mass: 0.9,
+  overshootClamping: false,
+  restDisplacementThreshold: 0.5,
+  restSpeedThreshold: 0.5,
 };
 
 export const SMALL_MOVEMENT_THRESHOLD = 30;

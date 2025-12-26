@@ -12,9 +12,18 @@ import Reanimated from 'react-native-reanimated';
 import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
 import { colors as themeColors } from '../../../constants/theme';
 import { XCircleIcon } from '../../../components/icons/HeroIcons';
-import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
+import { FONT_SIZES } from '../../../constants/typography';
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
+
+const EDGE_INSET = 16;
+const ICON_TEXT_GAP = 10;
+const SEARCH_ICON_SIZE = 24;
+const CHEVRON_ICON_SIZE = 30;
+const CLEAR_ICON_SIZE = 28;
+const CHEVRON_STROKE_WIDTH = (2 * 24) / CHEVRON_ICON_SIZE;
+const LEADING_SLOT_WIDTH = Math.max(SEARCH_ICON_SIZE, CHEVRON_ICON_SIZE);
+const TRAILING_SLOT_SIZE = 40;
 
 type SearchHeaderProps = {
   value: string;
@@ -61,9 +70,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   isSearchSessionActive = false,
   surfaceVariant = 'solid',
 }) => {
-  const clearIconSize = 24;
-  const leadingIconSize = 24;
   const hasLeadingIcon = showBack || showInactiveSearchIcon;
+  const shouldCollapseLeadingSlot = !hasLeadingIcon;
   return (
     <View style={styles.wrapper} pointerEvents="box-none" onLayout={onLayout}>
       <Reanimated.View
@@ -77,16 +85,15 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
           <View style={styles.promptInner}>
             <Reanimated.View
               style={[
-                {
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  flex: 1,
-                },
+                styles.inputRow,
                 inputAnimatedStyle,
               ]}
             >
               <View
-                style={[styles.leadingSlot, hasLeadingIcon ? null : styles.leadingSlotCollapsed]}
+                style={[
+                  styles.leadingSlot,
+                  shouldCollapseLeadingSlot ? styles.leadingSlotCollapsed : null,
+                ]}
               >
                 {showBack ? (
                   <Pressable
@@ -104,15 +111,14 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                     accessibilityLabel="Exit search"
                   >
                     <ChevronLeft
-                      size={leadingIconSize}
+                      size={CHEVRON_ICON_SIZE}
                       color="#6b7280"
-                      strokeWidth={2}
-                      style={styles.chevronIcon}
+                      strokeWidth={CHEVRON_STROKE_WIDTH}
                     />
                   </Pressable>
                 ) : showInactiveSearchIcon ? (
                   <View style={styles.leadingButton}>
-                    <Search size={leadingIconSize} color="#9ca3af" strokeWidth={2} />
+                    <Search size={SEARCH_ICON_SIZE} color="#9ca3af" strokeWidth={2} />
                   </View>
                 ) : null}
               </View>
@@ -135,7 +141,9 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
             </Reanimated.View>
             <Reanimated.View style={[styles.trailingContainer, inputAnimatedStyle]}>
               {loading ? (
-                <ActivityIndicator size="small" color={accentColor} />
+                <View style={styles.trailingButton}>
+                  <ActivityIndicator size="small" color={accentColor} />
+                </View>
               ) : value.length > 0 ? (
                 <Pressable
                   onPress={(event) => {
@@ -148,9 +156,9 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   hitSlop={10}
                 >
                   {isSearchSessionActive ? (
-                    <LucideX size={clearIconSize} color={accentColor} strokeWidth={2} />
+                    <LucideX size={CLEAR_ICON_SIZE} color={accentColor} strokeWidth={2} />
                   ) : (
-                    <XCircleIcon size={clearIconSize} color={accentColor} />
+                    <XCircleIcon size={CLEAR_ICON_SIZE} color={accentColor} />
                   )}
                 </Pressable>
               ) : (
@@ -170,7 +178,7 @@ const styles = StyleSheet.create({
   },
   promptCard: {
     borderRadius: 14,
-    paddingHorizontal: 8,
+    paddingHorizontal: EDGE_INSET,
     paddingVertical: 0,
     backgroundColor: '#ffffff',
     minHeight: 50,
@@ -200,16 +208,19 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 0,
-    paddingVertical: 0,
     height: 50,
-    gap: 8,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    height: 50,
   },
   leadingSlot: {
-    width: 36,
+    width: LEADING_SLOT_WIDTH,
     height: 50,
-    marginRight: 4,
-    alignItems: 'center',
+    marginRight: ICON_TEXT_GAP,
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   leadingSlotCollapsed: {
@@ -217,9 +228,9 @@ const styles = StyleSheet.create({
     marginRight: 0,
   },
   leadingButton: {
-    width: 36,
+    width: LEADING_SLOT_WIDTH,
     height: 50,
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'center',
   },
   promptInput: {
@@ -228,29 +239,27 @@ const styles = StyleSheet.create({
     color: '#111827',
     textAlign: 'left',
     textAlignVertical: 'center',
-    paddingVertical: 12,
+    paddingVertical: 0,
     paddingHorizontal: 0,
     height: 50,
-    lineHeight: LINE_HEIGHTS.title,
     includeFontPadding: false,
   },
   trailingContainer: {
-    marginLeft: 'auto',
-    minWidth: 36,
+    marginLeft: ICON_TEXT_GAP,
+    width: TRAILING_SLOT_SIZE,
     alignItems: 'flex-end',
     justifyContent: 'center',
     height: 50,
   },
   trailingButton: {
-    paddingHorizontal: 4,
-    paddingVertical: 6,
-    marginLeft: 4,
-    alignItems: 'center',
+    width: TRAILING_SLOT_SIZE,
+    height: TRAILING_SLOT_SIZE,
+    alignItems: 'flex-end',
     justifyContent: 'center',
   },
   trailingPlaceholder: {
-    width: 24,
-    height: 24,
+    width: TRAILING_SLOT_SIZE,
+    height: TRAILING_SLOT_SIZE,
   },
 });
 
