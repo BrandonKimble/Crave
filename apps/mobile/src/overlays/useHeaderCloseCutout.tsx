@@ -15,6 +15,9 @@ type HeaderCloseCutoutOptions = {
   maskPadding?: number;
   holePadding?: number;
   holeYOffset?: number;
+  badgePadding?: number;
+  badgeRadius?: number;
+  badgeYOffset?: number;
 };
 
 type HeaderCloseCutoutResult = {
@@ -22,12 +25,15 @@ type HeaderCloseCutoutResult = {
   onHeaderLayout: (event: LayoutChangeEvent) => void;
   onHeaderRowLayout: (event: LayoutChangeEvent) => void;
   onCloseLayout: (event: LayoutChangeEvent) => void;
+  onBadgeLayout: (event: LayoutChangeEvent) => void;
   headerHeight: number;
 };
 
 const DEFAULT_MASK_PADDING = 2;
 const DEFAULT_HOLE_PADDING = 0;
 const DEFAULT_HOLE_Y_OFFSET = 0;
+const DEFAULT_BADGE_PADDING = 0;
+const DEFAULT_BADGE_Y_OFFSET = 0;
 
 const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderCloseCutoutResult => {
   const closeButtonSize = options.closeButtonSize ?? OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
@@ -35,11 +41,14 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
   const maskPadding = options.maskPadding ?? DEFAULT_MASK_PADDING;
   const holePadding = options.holePadding ?? DEFAULT_HOLE_PADDING;
   const holeYOffset = options.holeYOffset ?? DEFAULT_HOLE_Y_OFFSET;
+  const badgePadding = options.badgePadding ?? DEFAULT_BADGE_PADDING;
+  const badgeYOffset = options.badgeYOffset ?? DEFAULT_BADGE_Y_OFFSET;
   const holeRadius = closeButtonSize / 2 + holePadding;
 
   const [headerLayout, setHeaderLayout] = React.useState({ width: 0, height: 0 });
   const [headerRowOffset, setHeaderRowOffset] = React.useState({ x: 0, y: 0 });
   const [closeLayout, setCloseLayout] = React.useState<LayoutRectangle | null>(null);
+  const [badgeLayout, setBadgeLayout] = React.useState<LayoutRectangle | null>(null);
   const maskId = React.useMemo(
     () => `overlay-header-close-mask-${Math.random().toString(36).slice(2, 8)}`,
     []
@@ -77,6 +86,21 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     });
   }, []);
 
+  const onBadgeLayout = React.useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
+    setBadgeLayout((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.x - layout.x) < 0.5 &&
+        Math.abs(prev.y - layout.y) < 0.5 &&
+        Math.abs(prev.width - layout.width) < 0.5 &&
+        Math.abs(prev.height - layout.height) < 0.5
+      ) {
+        return prev;
+      }
+      return layout;
+    });
+  }, []);
+
   const background = React.useMemo(() => {
     const fillStyle = [styles.fill, { backgroundColor: fillColor }];
 
@@ -93,6 +117,24 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
       closeLayout?.y !== undefined
         ? headerRowOffset.y + closeLayout.y + closeLayout.height / 2 + holeYOffset
         : null;
+    const badgeRect =
+      badgeLayout?.x !== undefined && badgeLayout?.y !== undefined
+        ? {
+            x: headerRowOffset.x + badgeLayout.x - badgePadding,
+            y: headerRowOffset.y + badgeLayout.y - badgePadding + badgeYOffset,
+            width: badgeLayout.width + badgePadding * 2,
+            height: badgeLayout.height + badgePadding * 2,
+          }
+        : null;
+    const badgeRadiusBase =
+      options.badgeRadius ?? (badgeRect ? badgeRect.height / 2 : 0);
+    const badgeRadius = badgeRect
+      ? Math.min(
+          badgeRadiusBase + badgePadding,
+          badgeRect.height / 2,
+          badgeRect.width / 2,
+        )
+      : 0;
 
     return (
       <MaskedView
@@ -113,6 +155,17 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
                 <SvgRect x={0} y={0} width={headerLayout.width} height={maskHeight} fill="white" />
                 {closeCenterX !== null && closeCenterY !== null ? (
                   <SvgCircle cx={closeCenterX} cy={closeCenterY} r={holeRadius} fill="black" />
+                ) : null}
+                {badgeRect ? (
+                  <SvgRect
+                    x={badgeRect.x}
+                    y={badgeRect.y}
+                    width={badgeRect.width}
+                    height={badgeRect.height}
+                    rx={badgeRadius}
+                    ry={badgeRadius}
+                    fill="black"
+                  />
                 ) : null}
               </SvgMask>
             </SvgDefs>
@@ -135,6 +188,12 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     closeLayout?.width,
     closeLayout?.x,
     closeLayout?.y,
+    badgeLayout?.height,
+    badgeLayout?.width,
+    badgeLayout?.x,
+    badgeLayout?.y,
+    badgePadding,
+    badgeYOffset,
     fillColor,
     headerLayout.height,
     headerLayout.width,
@@ -142,6 +201,7 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     headerRowOffset.y,
     holeRadius,
     holeYOffset,
+    options.badgeRadius,
     maskId,
     maskPadding,
   ]);
@@ -151,6 +211,7 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     onHeaderLayout,
     onHeaderRowLayout,
     onCloseLayout,
+    onBadgeLayout,
     headerHeight: headerLayout.height,
   };
 };

@@ -84,6 +84,7 @@ import {
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
   LABEL_TRANSLATE_Y,
+  LOCATION_STORAGE_KEY,
   MINIMUM_VOTES_FILTER,
   NAV_BOTTOM_PADDING,
   RESULTS_BOTTOM_PADDING,
@@ -160,6 +161,20 @@ const SearchScreen: React.FC = () => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
 
+  React.useEffect(() => {
+    if (!userLocation || userLocationIsCachedRef.current) {
+      return;
+    }
+    void AsyncStorage.setItem(
+      LOCATION_STORAGE_KEY,
+      JSON.stringify({
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        updatedAt: Date.now(),
+      })
+    ).catch(() => undefined);
+  }, [userLocation]);
+
   const suppressMapMoved = React.useCallback((duration = 800) => {
     suppressMapMovedRef.current = true;
     if (suppressMapMovedTimeoutRef.current) {
@@ -205,6 +220,38 @@ const SearchScreen: React.FC = () => {
             setMapZoom(parsed.zoom);
           }
         }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  React.useEffect(() => {
+    void (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(LOCATION_STORAGE_KEY);
+        if (!stored) {
+          return;
+        }
+        const parsed = JSON.parse(stored);
+        if (
+          !parsed ||
+          typeof parsed.lat !== 'number' ||
+          !Number.isFinite(parsed.lat) ||
+          typeof parsed.lng !== 'number' ||
+          !Number.isFinite(parsed.lng)
+        ) {
+          return;
+        }
+        if (
+          typeof parsed.updatedAt === 'number' &&
+          Number.isFinite(parsed.updatedAt) &&
+          Date.now() - parsed.updatedAt > 6 * 60 * 60 * 1000
+        ) {
+          return;
+        }
+        userLocationIsCachedRef.current = true;
+        setUserLocation({ lat: parsed.lat, lng: parsed.lng });
       } catch {
         // ignore
       }
@@ -481,6 +528,7 @@ const SearchScreen: React.FC = () => {
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const userLocationRef = React.useRef<Coordinate | null>(null);
+  const userLocationIsCachedRef = React.useRef(false);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
@@ -1093,6 +1141,7 @@ const SearchScreen: React.FC = () => {
             lat: update.coords.latitude,
             lng: update.coords.longitude,
           };
+          userLocationIsCachedRef.current = false;
           userLocationRef.current = nextCoords;
           setUserLocation(nextCoords);
         }
@@ -1104,7 +1153,7 @@ const SearchScreen: React.FC = () => {
     }
   }, []);
   const ensureUserLocation = React.useCallback(async (): Promise<Coordinate | null> => {
-    if (userLocationRef.current) {
+    if (userLocationRef.current && !userLocationIsCachedRef.current) {
       return userLocationRef.current;
     }
     if (locationRequestInFlightRef.current) {
@@ -1131,6 +1180,7 @@ const SearchScreen: React.FC = () => {
             lat: lastKnown.coords.latitude,
             lng: lastKnown.coords.longitude,
           };
+          userLocationIsCachedRef.current = false;
           setUserLocation(coords);
           userLocationRef.current = coords;
         }
@@ -1149,6 +1199,7 @@ const SearchScreen: React.FC = () => {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
       };
+      userLocationIsCachedRef.current = false;
       setUserLocation(coords);
       userLocationRef.current = coords;
 

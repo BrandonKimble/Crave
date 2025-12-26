@@ -37,17 +37,14 @@ import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
-import {
-  CONTROL_HEIGHT,
-  CONTROL_HORIZONTAL_PADDING,
-  CONTROL_RADIUS,
-} from '../screens/Search/constants/ui';
+import { CONTROL_HEIGHT, CONTROL_HORIZONTAL_PADDING, CONTROL_RADIUS } from '../screens/Search/constants/ui';
 import type { MapBounds } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
 const CLOSE_ACTION_EPSILON = 2;
+const LIVE_BADGE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
 
 type PollsOverlayProps = {
   visible: boolean;
@@ -85,7 +82,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
-  const closeCutout = useHeaderCloseCutout();
+  const closeCutout = useHeaderCloseCutout({
+    badgePadding: 0,
+    badgeRadius: CONTROL_RADIUS,
+  });
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const navBarInset = Math.max(navBarHeight, 0);
@@ -157,6 +157,8 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     : hasCoverageKey
     ? 'Polls'
     : 'Polls near here';
+  const isLiveActive = polls.length > 0;
+  const liveBadgeTone = isLiveActive ? ACCENT : 'rgba(255, 0, 80, 0.35)';
 
   const loadPolls = useCallback(
     async (options?: {
@@ -704,10 +706,25 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         >
           {headerBaseTitle}
         </Text>
-        <View style={styles.liveBadge}>
-          <Text variant="body" weight="semibold" style={styles.liveBadgeText}>
-            {`${polls.length} LIVE`}
-          </Text>
+        <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
+          <View style={styles.liveBadgeLeft}>
+            <Text
+              variant="subtitle"
+              weight="semibold"
+              style={isLiveActive ? styles.liveBadgeCount : [styles.liveBadgeCount, styles.liveBadgeCountMuted]}
+            >
+              {polls.length}
+            </Text>
+          </View>
+          <View style={[styles.liveBadgeRight, { backgroundColor: liveBadgeTone }]}>
+            <Text
+              variant="body"
+              weight="semibold"
+              style={isLiveActive ? styles.liveBadgeLabel : [styles.liveBadgeLabel, styles.liveBadgeLabelMuted]}
+            >
+              LIVE
+            </Text>
+          </View>
         </View>
         <Pressable
           onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
@@ -918,18 +935,39 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  liveBadge: {
+  liveBadgeShell: {
     height: CONTROL_HEIGHT,
     borderRadius: CONTROL_RADIUS,
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING,
-    backgroundColor: ACCENT,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    marginRight: 10,
+    backgroundColor: 'transparent',
+  },
+  liveBadgeLeft: {
+    height: '100%',
+    paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    backgroundColor: 'transparent',
   },
-  liveBadgeText: {
+  liveBadgeRight: {
+    height: '100%',
+    paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveBadgeCount: {
+    color: ACCENT,
+  },
+  liveBadgeCountMuted: {
+    color: themeColors.text,
+  },
+  liveBadgeLabel: {
     color: '#ffffff',
     letterSpacing: 0.6,
+  },
+  liveBadgeLabelMuted: {
+    color: 'rgba(255, 255, 255, 0.7)',
   },
   scrollContent: {
     paddingBottom: 32,
