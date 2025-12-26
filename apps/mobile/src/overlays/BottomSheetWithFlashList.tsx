@@ -4,17 +4,13 @@ import type { LayoutChangeEvent, ScrollViewProps, StyleProp, ViewStyle } from 'r
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
 import Animated, {
-  Extrapolation,
-  interpolate,
   runOnJS,
   type SharedValue,
   useAnimatedReaction,
   useAnimatedScrollHandler,
   useAnimatedStyle,
-  useDerivedValue,
   useSharedValue,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 import { SHEET_SPRING_CONFIG, clampValue } from './sheetUtils';
 
@@ -591,11 +587,6 @@ const BottomSheetWithFlashList = <T,>({
     visible,
   ]);
 
-  const dragProgress = useDerivedValue(() => {
-    const isActive = expandPanActive.value || collapsePanActive.value;
-    return withTiming(isActive ? 1 : 0, { duration: 140 });
-  });
-
   const ScrollComponent = React.useMemo(() => {
     const Component = React.forwardRef<ScrollView, ScrollViewProps>((props, ref) => (
       <GestureDetector gesture={gestures.scroll}>
@@ -608,10 +599,6 @@ const BottomSheetWithFlashList = <T,>({
 
   const animatedSheetStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetY.value }],
-  }));
-
-  const backgroundAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(dragProgress.value, [0, 1], [1, 0.88], Extrapolation.CLAMP),
   }));
 
   const sanitizedContentContainerStyle = React.useMemo(() => {
@@ -660,14 +647,7 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
-        {backgroundComponent ? (
-          <Animated.View
-            pointerEvents="none"
-            style={[StyleSheet.absoluteFillObject, backgroundAnimatedStyle]}
-          >
-            {backgroundComponent}
-          </Animated.View>
-        ) : null}
+        {backgroundComponent}
         {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
         <View style={{ flex: 1 }}>
           <AnimatedFlashList

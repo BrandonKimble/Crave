@@ -17,12 +17,14 @@ import { FONT_SIZES } from '../../../constants/typography';
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
 const EDGE_INSET = 16;
-const ICON_TEXT_GAP = 10;
+const ICON_TEXT_GAP = 8;
 const SEARCH_ICON_SIZE = 24;
-const CHEVRON_ICON_SIZE = 30;
+const CHEVRON_ICON_SIZE = 36;
 const CLEAR_ICON_SIZE = 28;
 const CHEVRON_STROKE_WIDTH = (2 * 24) / CHEVRON_ICON_SIZE;
-const LEADING_SLOT_WIDTH = Math.max(SEARCH_ICON_SIZE, CHEVRON_ICON_SIZE);
+const CHEVRON_X_OFFSET = (SEARCH_ICON_SIZE - CHEVRON_ICON_SIZE) / 2;
+const LEADING_SLOT_WIDTH = SEARCH_ICON_SIZE + 6;
+const SUBMITTED_TEXT_INSET = 4;
 const TRAILING_SLOT_SIZE = 40;
 
 type SearchHeaderProps = {
@@ -83,12 +85,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
       >
         <Pressable style={styles.promptRow} onPress={onPress ?? onFocus}>
           <View style={styles.promptInner}>
-            <Reanimated.View
-              style={[
-                styles.inputRow,
-                inputAnimatedStyle,
-              ]}
-            >
+            <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>
               <View
                 style={[
                   styles.leadingSlot,
@@ -114,6 +111,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                       size={CHEVRON_ICON_SIZE}
                       color="#6b7280"
                       strokeWidth={CHEVRON_STROKE_WIDTH}
+                      style={styles.chevronIcon}
                     />
                   </Pressable>
                 ) : showInactiveSearchIcon ? (
@@ -128,7 +126,10 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 onChangeText={onChangeText}
                 placeholder={placeholder}
                 placeholderTextColor={themeColors.textBody}
-                style={styles.promptInput}
+                style={[
+                  styles.promptInput,
+                  shouldCollapseLeadingSlot ? styles.promptInputSubmitted : null,
+                ]}
                 returnKeyType="search"
                 onSubmitEditing={onSubmit}
                 onFocus={onFocus}
@@ -233,6 +234,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'center',
   },
+  chevronIcon: {
+    transform: [{ translateX: CHEVRON_X_OFFSET }],
+  },
   promptInput: {
     flex: 1,
     fontSize: FONT_SIZES.title,
@@ -243,6 +247,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     height: 50,
     includeFontPadding: false,
+  },
+  promptInputSubmitted: {
+    paddingLeft: SUBMITTED_TEXT_INSET,
   },
   trailingContainer: {
     marginLeft: ICON_TEXT_GAP,
