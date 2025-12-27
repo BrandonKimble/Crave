@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   AppState,
-  Image,
   Keyboard,
   PixelRatio,
   Pressable,
@@ -25,13 +24,13 @@ import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
+import AppBlurView from '../../components/app-blur-view';
 import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
@@ -107,6 +106,7 @@ import {
   SECONDARY_METRIC_ICON_SIZE,
   SHORTCUT_CHIP_HOLE_PADDING,
   SHORTCUT_CHIP_HOLE_RADIUS,
+  SINGLE_LOCATION_ZOOM_LEVEL,
   USA_FALLBACK_CENTER,
   USA_FALLBACK_ZOOM,
   type SegmentValue,
@@ -139,6 +139,11 @@ const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SC
 const SEARCH_BAR_SHADOW_OPACITY = 0.36;
 const SEARCH_BAR_SHADOW_RADIUS = 2.5;
 const SEARCH_BAR_SHADOW_ELEVATION = 2;
+const CAMERA_PERSIST_DELAY_MS = 700;
+const MAP_GRID_MINOR_SIZE = 32;
+const MAP_GRID_MAJOR_SIZE = 128;
+const MAP_GRID_MINOR_STROKE = 'rgba(15, 23, 42, 0.05)';
+const MAP_GRID_MAJOR_STROKE = 'rgba(15, 23, 42, 0.08)';
 
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -147,9 +152,12 @@ const SearchScreen: React.FC = () => {
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
   const latestBoundsRef = React.useRef<MapBounds | null>(null);
-  const [mapCenter, setMapCenter] = React.useState<[number, number]>(USA_FALLBACK_CENTER);
-  const [mapZoom, setMapZoom] = React.useState<number>(USA_FALLBACK_ZOOM);
-  const [isFollowingUser, setIsFollowingUser] = React.useState(true);
+  const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(null);
+  const [mapZoom, setMapZoom] = React.useState<number | null>(null);
+  const [isInitialCameraHydrated, setIsInitialCameraHydrated] = React.useState(false);
+  const [isInitialCameraReady, setIsInitialCameraReady] = React.useState(false);
+  const [isMapStyleReady, setIsMapStyleReady] = React.useState(false);
+  const [isFollowingUser, setIsFollowingUser] = React.useState(false);
   const [focusedRestaurantId, setFocusedRestaurantId] = React.useState<string | null>(null);
   const previousMapBoundsRef = React.useRef<MapBounds | null>(null);
   const shouldRestoreBoundsRef = React.useRef(false);
@@ -159,6 +167,7 @@ const SearchScreen: React.FC = () => {
     restaurantId: string;
     preserveBounds: boolean;
   } | null>(null);
+  const mapLoadingOpacity = useSharedValue(1);
 
   React.useEffect(() => {
     if (accessToken) {
@@ -195,6 +204,31 @@ const SearchScreen: React.FC = () => {
   }, []);
 
   React.useEffect(() => {
+    if (!isInitialCameraReady) {
+      setIsMapStyleReady(false);
+    }
+  }, [isInitialCameraReady]);
+
+  React.useEffect(() => {
+    if (!isInitialCameraReady || !isMapStyleReady) {
+      mapLoadingOpacity.value = 1;
+      return;
+    }
+    mapLoadingOpacity.value = withTiming(0, {
+      duration: 240,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [isInitialCameraReady, isMapStyleReady, mapLoadingOpacity]);
+
+  const mapLoadingAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: mapLoadingOpacity.value,
+  }));
+
+  const handleMapLoaded = React.useCallback(() => {
+    setIsMapStyleReady(true);
+  }, []);
+
+  React.useEffect(() => {
     return () => {
       if (suppressMapMovedTimeoutRef.current) {
         clearTimeout(suppressMapMovedTimeoutRef.current);
@@ -210,62 +244,115 @@ const SearchScreen: React.FC = () => {
     };
   }, []);
 
-  // Hydrate last camera position to avoid globe spin before we get user location
   React.useEffect(() => {
+    return () => {
+      if (cameraPersistTimeoutRef.current) {
+        clearTimeout(cameraPersistTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Hydrate last camera or cached location before mounting the map to avoid the globe spin.
+  React.useEffect(() => {
+    let isActive = true;
     void (async () => {
       try {
-        const stored = await AsyncStorage.getItem(CAMERA_STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
+        const [storedCamera, storedLocation] = await Promise.all([
+          AsyncStorage.getItem(CAMERA_STORAGE_KEY),
+          AsyncStorage.getItem(LOCATION_STORAGE_KEY),
+        ]);
+        if (!isActive) {
+          return;
+        }
+
+        let hydrated = false;
+        const applyInitialCamera = (center: [number, number], zoom: number) => {
+          setMapCenter(center);
+          setMapZoom(zoom);
+          lastCameraStateRef.current = { center, zoom };
+          lastPersistedCameraRef.current = JSON.stringify({ center, zoom });
+          setIsFollowingUser(false);
+          hasCenteredOnLocationRef.current = true;
+          hydrated = true;
+        };
+        if (storedCamera) {
+          const parsedCamera = JSON.parse(storedCamera);
           if (
-            parsed &&
-            Array.isArray(parsed.center) &&
-            parsed.center.length === 2 &&
-            typeof parsed.center[0] === 'number' &&
-            typeof parsed.center[1] === 'number' &&
-            typeof parsed.zoom === 'number'
+            parsedCamera &&
+            Array.isArray(parsedCamera.center) &&
+            parsedCamera.center.length === 2 &&
+            typeof parsedCamera.center[0] === 'number' &&
+            typeof parsedCamera.center[1] === 'number' &&
+            typeof parsedCamera.zoom === 'number'
           ) {
-            setMapCenter([parsed.center[0], parsed.center[1]]);
-            setMapZoom(parsed.zoom);
+            applyInitialCamera([parsedCamera.center[0], parsedCamera.center[1]], parsedCamera.zoom);
           }
+        }
+
+        if (!hydrated && storedLocation) {
+          const parsedLocation = JSON.parse(storedLocation);
+          if (
+            parsedLocation &&
+            typeof parsedLocation.lat === 'number' &&
+            Number.isFinite(parsedLocation.lat) &&
+            typeof parsedLocation.lng === 'number' &&
+            Number.isFinite(parsedLocation.lng) &&
+            (!parsedLocation.updatedAt ||
+              (typeof parsedLocation.updatedAt === 'number' &&
+                Number.isFinite(parsedLocation.updatedAt) &&
+                Date.now() - parsedLocation.updatedAt <= 6 * 60 * 60 * 1000))
+          ) {
+            userLocationIsCachedRef.current = true;
+            setUserLocation({ lat: parsedLocation.lat, lng: parsedLocation.lng });
+            applyInitialCamera(
+              [parsedLocation.lng, parsedLocation.lat],
+              SINGLE_LOCATION_ZOOM_LEVEL
+            );
+          }
+        }
+
+        if (hydrated && isActive) {
+          setIsInitialCameraReady(true);
         }
       } catch {
         // ignore
+      } finally {
+        if (isActive) {
+          setIsInitialCameraHydrated(true);
+        }
       }
     })();
+    return () => {
+      isActive = false;
+    };
   }, []);
 
   React.useEffect(() => {
-    void (async () => {
-      try {
-        const stored = await AsyncStorage.getItem(LOCATION_STORAGE_KEY);
-        if (!stored) {
-          return;
-        }
-        const parsed = JSON.parse(stored);
-        if (
-          !parsed ||
-          typeof parsed.lat !== 'number' ||
-          !Number.isFinite(parsed.lat) ||
-          typeof parsed.lng !== 'number' ||
-          !Number.isFinite(parsed.lng)
-        ) {
-          return;
-        }
-        if (
-          typeof parsed.updatedAt === 'number' &&
-          Number.isFinite(parsed.updatedAt) &&
-          Date.now() - parsed.updatedAt > 6 * 60 * 60 * 1000
-        ) {
-          return;
-        }
-        userLocationIsCachedRef.current = true;
-        setUserLocation({ lat: parsed.lat, lng: parsed.lng });
-      } catch {
-        // ignore
-      }
-    })();
-  }, []);
+    if (isInitialCameraReady || !isInitialCameraHydrated) {
+      return;
+    }
+    if (!locationPermissionDenied) {
+      return;
+    }
+    if (mapCenter && mapZoom !== null) {
+      setIsInitialCameraReady(true);
+      return;
+    }
+    const fallbackCenter = USA_FALLBACK_CENTER;
+    const fallbackZoom = USA_FALLBACK_ZOOM;
+    setMapCenter(fallbackCenter);
+    setMapZoom(fallbackZoom);
+    lastCameraStateRef.current = { center: fallbackCenter, zoom: fallbackZoom };
+    setIsFollowingUser(false);
+    setIsInitialCameraReady(true);
+  }, [
+    isInitialCameraHydrated,
+    isInitialCameraReady,
+    locationPermissionDenied,
+    mapCenter,
+    mapZoom,
+    setIsFollowingUser,
+  ]);
 
   const stopLocationPulse = React.useCallback(() => {
     locationPulseAnimationRef.current?.stop();
@@ -322,60 +409,34 @@ const SearchScreen: React.FC = () => {
   }, [startLocationPulse, stopLocationPulse]);
 
   React.useEffect(() => {
-    if (!isMapFrozen) {
-      if (mapSnapshotUri) {
-        setMapSnapshotUri(null);
-      }
+    if (!isInitialCameraHydrated) {
       return;
     }
-    if (mapSnapshotInFlightRef.current || mapSnapshotUri) {
-      return;
-    }
-    let isActive = true;
-    mapSnapshotInFlightRef.current = true;
-    void (async () => {
-      try {
-        const uri = await mapRef.current?.takeSnap?.(true);
-        if (uri && isActive) {
-          setMapSnapshotUri(uri);
-        }
-      } catch (error) {
-        logger.warn('Failed to snapshot map', {
-          message: error instanceof Error ? error.message : 'unknown',
-        });
-      } finally {
-        mapSnapshotInFlightRef.current = false;
-      }
-    })();
-    return () => {
-      isActive = false;
-    };
-  }, [isMapFrozen, mapSnapshotUri]);
-
-  React.useEffect(() => {
     if (!userLocation || hasCenteredOnLocationRef.current) {
       return;
     }
     const center: [number, number] = [userLocation.lng, userLocation.lat];
+    const zoom = SINGLE_LOCATION_ZOOM_LEVEL;
+    const payload = JSON.stringify({ center, zoom });
     setMapCenter(center);
-    setMapZoom(13);
+    setMapZoom(zoom);
+    lastCameraStateRef.current = { center, zoom };
+    lastPersistedCameraRef.current = payload;
     hasCenteredOnLocationRef.current = true;
     setIsFollowingUser(false);
     if (cameraRef.current?.setCamera) {
       cameraRef.current.setCamera({
         centerCoordinate: center,
-        zoomLevel: 13,
+        zoomLevel: zoom,
         animationDuration: 0,
         animationMode: 'none',
         pitch: 0,
         heading: 0,
       });
     }
-    // persist last camera
-    void AsyncStorage.setItem(CAMERA_STORAGE_KEY, JSON.stringify({ center, zoom: 13 })).catch(
-      () => undefined
-    );
-  }, [userLocation]);
+    setIsInitialCameraReady(true);
+    void AsyncStorage.setItem(CAMERA_STORAGE_KEY, payload).catch(() => undefined);
+  }, [isInitialCameraHydrated, userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
   const isMapFrozen = isResultsSheetDragging || isResultsListScrolling;
@@ -444,6 +505,7 @@ const SearchScreen: React.FC = () => {
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsSnapRequest, setPollsSnapRequest] = React.useState<OverlaySheetSnap | null>(null);
+  const [isDockedPollsDismissed, setIsDockedPollsDismissed] = React.useState(false);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [profileSheetSnap, setProfileSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
@@ -462,11 +524,11 @@ const SearchScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = React.useState(false);
   const [isPaginationExhausted, setIsPaginationExhausted] = React.useState(false);
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
+  const [locationPermissionDenied, setLocationPermissionDenied] = React.useState(false);
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const [isResultsSheetDragging, setIsResultsSheetDragging] = React.useState(false);
   const [isResultsListScrolling, setIsResultsListScrolling] = React.useState(false);
-  const [mapSnapshotUri, setMapSnapshotUri] = React.useState<string | null>(null);
   const searchThisAreaVisibility = useSharedValue(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
@@ -544,13 +606,15 @@ const SearchScreen: React.FC = () => {
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
+  const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCameraStateRef = React.useRef<{ center: [number, number]; zoom: number } | null>(null);
+  const lastPersistedCameraRef = React.useRef<string | null>(null);
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const userLocationIsCachedRef = React.useRef(false);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const hasCenteredOnLocationRef = React.useRef(false);
-  const mapSnapshotInFlightRef = React.useRef(false);
   const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
   const overlayParams = useOverlayStore((state) => state.overlayParams);
@@ -750,6 +814,9 @@ const SearchScreen: React.FC = () => {
         setIsAutocompleteSuppressed(true);
         setShowSuggestions(false);
         inputRef.current?.blur();
+        if (!isSearchSessionActive && !isLoading) {
+          setIsDockedPollsDismissed(false);
+        }
         if (!isSearchSessionActive && !isLoading && pollsSheetSnap === 'hidden') {
           setPollsSnapRequest('collapsed');
         }
@@ -766,6 +833,7 @@ const SearchScreen: React.FC = () => {
       pollsSheetSnap,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
+      setIsDockedPollsDismissed,
       setOverlay,
       setPollsSnapRequest,
       setPollsSheetSnap,
@@ -778,8 +846,17 @@ const SearchScreen: React.FC = () => {
       if (pollsSnapRequest && pollsSnapRequest === snap) {
         setPollsSnapRequest(null);
       }
+      if (snap === 'hidden' && (activeOverlay === 'search' || activeOverlay === 'polls')) {
+        setIsDockedPollsDismissed(true);
+      }
     },
-    [pollsSnapRequest, setPollsSheetSnap, setPollsSnapRequest]
+    [
+      activeOverlay,
+      pollsSnapRequest,
+      setPollsSheetSnap,
+      setPollsSnapRequest,
+      setIsDockedPollsDismissed,
+    ]
   );
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
     useSearchRequests();
@@ -1158,7 +1235,11 @@ const SearchScreen: React.FC = () => {
   const shouldHideBottomNav =
     isSearchOverlay && (isSearchSessionActive || isSearchFocused || isLoading);
   const showDockedPolls =
-    isSearchOverlay && !isSearchFocused && !isSearchSessionActive && !isLoading;
+    isSearchOverlay &&
+    !isSearchFocused &&
+    !isSearchSessionActive &&
+    !isLoading &&
+    !isDockedPollsDismissed;
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
   const pollsOverlaySnapPoint = showPollsOverlay ? 'middle' : 'collapsed';
@@ -1317,8 +1398,10 @@ const SearchScreen: React.FC = () => {
       }
 
       if (status !== 'granted') {
+        setLocationPermissionDenied(true);
         return null;
       }
+      setLocationPermissionDenied(false);
 
       try {
         const lastKnown = await Location.getLastKnownPositionAsync();
@@ -2074,6 +2157,30 @@ const SearchScreen: React.FC = () => {
         latestBoundsRef.current = bounds;
       }
 
+      const nextCenter = state?.properties?.center as unknown;
+      const nextZoom = state?.properties?.zoom as unknown;
+      if (isLngLatTuple(nextCenter) && typeof nextZoom === 'number' && Number.isFinite(nextZoom)) {
+        const center: [number, number] = [nextCenter[0], nextCenter[1]];
+        lastCameraStateRef.current = { center, zoom: nextZoom };
+        if (cameraPersistTimeoutRef.current) {
+          clearTimeout(cameraPersistTimeoutRef.current);
+        }
+        cameraPersistTimeoutRef.current = setTimeout(() => {
+          const snapshot = lastCameraStateRef.current;
+          if (!snapshot) {
+            return;
+          }
+          const payload = JSON.stringify({ center: snapshot.center, zoom: snapshot.zoom });
+          if (payload === lastPersistedCameraRef.current) {
+            return;
+          }
+          lastPersistedCameraRef.current = payload;
+          setMapCenter(snapshot.center);
+          setMapZoom(snapshot.zoom);
+          void AsyncStorage.setItem(CAMERA_STORAGE_KEY, payload).catch(() => undefined);
+        }, CAMERA_PERSIST_DELAY_MS);
+      }
+
       if (shouldShowPollsSheet) {
         schedulePollBoundsUpdate(bounds);
       }
@@ -2566,11 +2673,16 @@ const SearchScreen: React.FC = () => {
           setFiltersHeaderHeight((prev) => (Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight));
         }}
       >
+        <FrostedGlassBackground intensity={resultsBlurIntensity} />
         {filtersHeader}
       </View>
     ),
-    [filtersHeader]
+    [filtersHeader, resultsBlurIntensity]
   );
+  const resultsListBackground = React.useMemo(() => {
+    const topOffset = Math.max(0, resultsSheetHeaderHeight + filtersHeaderHeight);
+    return <View style={[styles.resultsListBackground, { top: topOffset }]} />;
+  }, [filtersHeaderHeight, resultsSheetHeaderHeight]);
 
   const resultsListFooterComponent = React.useMemo(() => {
     const shouldShowNotice = Boolean(onDemandNotice && safeResultsData.length > 0);
@@ -2634,7 +2746,7 @@ const SearchScreen: React.FC = () => {
   const statusBarFadeHeight = Math.max(0, insets.top + 16);
   const resultsHeaderComponent = (
     <Reanimated.View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
+      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, styles.resultsHeaderSurface]}
       onLayout={(event: LayoutChangeEvent) => {
         resultsHeaderCutout.onHeaderLayout(event);
         const nextHeight = event.nativeEvent.layout.height;
@@ -2643,8 +2755,9 @@ const SearchScreen: React.FC = () => {
         );
       }}
     >
+      <FrostedGlassBackground intensity={resultsBlurIntensity} />
       {resultsHeaderCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
+      <View style={[overlaySheetStyles.grabHandleWrapper, styles.resultsHeaderHandle]}>
         <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
           <View style={overlaySheetStyles.grabHandle} />
         </Pressable>
@@ -2681,27 +2794,66 @@ const SearchScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <SearchMap
-        mapRef={mapRef}
-        cameraRef={cameraRef}
-        styleURL={mapStyleURL}
-        mapCenter={mapCenter}
-        mapZoom={mapZoom}
-        isFollowingUser={isFollowingUser}
-        onPress={handleMapPress}
-        onCameraChanged={handleCameraChanged}
-        preferredFramesPerSecond={mapPreferredFramesPerSecond}
-        sortedRestaurantMarkers={sortedRestaurantMarkers}
-        markersRenderKey={markersRenderKey}
-        buildMarkerKey={buildMarkerKey}
-        restaurantFeatures={restaurantFeatures}
-        restaurantLabelStyle={restaurantLabelStyle}
-        userLocation={userLocation}
-        locationPulse={locationPulse}
-      />
-      {mapSnapshotUri && isMapFrozen ? (
-        <Image source={{ uri: mapSnapshotUri }} style={styles.mapSnapshot} pointerEvents="none" />
-      ) : null}
+      {isInitialCameraReady ? (
+        <SearchMap
+          mapRef={mapRef}
+          cameraRef={cameraRef}
+          styleURL={mapStyleURL}
+          mapCenter={mapCenter}
+          mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+          isFollowingUser={isFollowingUser}
+          onPress={handleMapPress}
+          onCameraChanged={handleCameraChanged}
+          onMapLoaded={handleMapLoaded}
+          preferredFramesPerSecond={mapPreferredFramesPerSecond}
+          sortedRestaurantMarkers={sortedRestaurantMarkers}
+          markersRenderKey={markersRenderKey}
+          buildMarkerKey={buildMarkerKey}
+          restaurantFeatures={restaurantFeatures}
+          restaurantLabelStyle={restaurantLabelStyle}
+          userLocation={userLocation}
+          locationPulse={locationPulse}
+        />
+      ) : (
+        <View pointerEvents="none" style={styles.mapPlaceholder} />
+      )}
+      <Reanimated.View
+        pointerEvents="none"
+        style={[styles.mapLoadingGrid, mapLoadingAnimatedStyle]}
+      >
+        <Svg width="100%" height="100%" style={styles.mapLoadingGridSvg}>
+          <Defs>
+            <Pattern
+              id="map-grid-minor"
+              width={MAP_GRID_MINOR_SIZE}
+              height={MAP_GRID_MINOR_SIZE}
+              patternUnits="userSpaceOnUse"
+            >
+              <Path
+                d={`M ${MAP_GRID_MINOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MINOR_SIZE}`}
+                fill="none"
+                stroke={MAP_GRID_MINOR_STROKE}
+                strokeWidth={1}
+              />
+            </Pattern>
+            <Pattern
+              id="map-grid-major"
+              width={MAP_GRID_MAJOR_SIZE}
+              height={MAP_GRID_MAJOR_SIZE}
+              patternUnits="userSpaceOnUse"
+            >
+              <Path
+                d={`M ${MAP_GRID_MAJOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MAJOR_SIZE}`}
+                fill="none"
+                stroke={MAP_GRID_MAJOR_STROKE}
+                strokeWidth={1}
+              />
+            </Pattern>
+          </Defs>
+          <Rect width="100%" height="100%" fill="url(#map-grid-minor)" />
+          <Rect width="100%" height="100%" fill="url(#map-grid-major)" />
+        </Svg>
+      </Reanimated.View>
       <View pointerEvents="none" style={[styles.statusBarFade, { height: statusBarFadeHeight }]}>
         <MaskedView
           style={styles.statusBarFadeLayer}
@@ -2722,7 +2874,7 @@ const SearchScreen: React.FC = () => {
             />
           }
         >
-          <BlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
+          <AppBlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
         </MaskedView>
       </View>
 
@@ -3009,11 +3161,11 @@ const SearchScreen: React.FC = () => {
             ListFooterComponent={resultsListFooterComponent}
             ListEmptyComponent={resultsListEmptyComponent}
             headerComponent={resultsHeaderComponent}
+            backgroundComponent={resultsListBackground}
             listRef={resultsScrollRef}
             resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
             onHidden={resetSheetToHidden}
             onSnapChange={handleSheetSnapChange}
-            blurIntensity={resultsBlurIntensity}
           />
         </SafeAreaView>
       )}

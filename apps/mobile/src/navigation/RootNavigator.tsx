@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { useAuth } from '@clerk/clerk-expo';
 import {
@@ -11,12 +11,13 @@ import {
 } from '../screens';
 import type { RootStackParamList } from '../types/navigation';
 import { useOnboardingStore } from '../store/onboardingStore';
+import splashImage from '../assets/splash.png';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const [isHydrated, setIsHydrated] = React.useState(() =>
     useOnboardingStore.persist.hasHydrated()
   );
@@ -34,10 +35,10 @@ const RootNavigator: React.FC = () => {
     };
   }, []);
 
-  if (!isHydrated) {
+  if (!isHydrated || !isLoaded) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6366f1" />
+        <Image source={splashImage} style={styles.loadingImage} resizeMode="contain" />
       </View>
     );
   }
@@ -66,6 +67,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#ffffff',
+  },
+  loadingImage: {
+    width: '70%',
+    maxWidth: 280,
+    height: 220,
   },
 });
 

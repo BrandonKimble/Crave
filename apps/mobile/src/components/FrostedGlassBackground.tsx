@@ -1,6 +1,6 @@
 import React from 'react';
-import { BlurView } from 'expo-blur';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import AppBlurView from './app-blur-view';
 
 const frostedStyles = StyleSheet.create({
   blur: StyleSheet.absoluteFillObject,
@@ -22,7 +22,7 @@ const FrostedGlassBackground: React.FC<FrostedGlassBackgroundProps> = ({
   blurStyle,
 }) => (
   <>
-    <BlurView
+    <AppBlurView
       pointerEvents="none"
       intensity={intensity}
       tint={tint}

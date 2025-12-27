@@ -1,13 +1,13 @@
 import React from 'react';
 import { Animated, Image, View } from 'react-native';
 
-import { BlurView } from 'expo-blur';
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import { Text } from '../../../components';
+import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
 import { USA_FALLBACK_CENTER } from '../constants/search';
 import styles from '../styles';
@@ -35,6 +35,7 @@ type SearchMapProps = {
   isFollowingUser: boolean;
   onPress: () => void;
   onCameraChanged: (state: MapboxMapState) => void;
+  onMapLoaded: () => void;
   preferredFramesPerSecond?: number;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   markersRenderKey: string;
@@ -55,6 +56,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
     isFollowingUser,
     onPress,
     onCameraChanged,
+    onMapLoaded,
     preferredFramesPerSecond,
     sortedRestaurantMarkers,
     markersRenderKey,
@@ -74,6 +76,8 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
       onPress={onPress}
       onCameraChanged={onCameraChanged}
       onMapIdle={onCameraChanged}
+      onDidFinishLoadingStyle={onMapLoaded}
+      onDidFinishRenderingMapFully={onMapLoaded}
       preferredFramesPerSecond={preferredFramesPerSecond}
     >
       <MapboxGL.Camera
@@ -141,7 +145,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
         >
           <View style={styles.userLocationWrapper}>
             <View style={styles.userLocationShadow}>
-              <BlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
+              <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
                 <Animated.View
                   style={[
                     styles.userLocationDot,
@@ -157,7 +161,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
                     },
                   ]}
                 />
-              </BlurView>
+              </AppBlurView>
             </View>
           </View>
         </MapboxGL.MarkerView>

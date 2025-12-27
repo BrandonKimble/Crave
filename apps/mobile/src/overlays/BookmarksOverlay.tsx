@@ -103,6 +103,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
   const closeCutout = useHeaderCloseCutout();
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
+  const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = resolveExpandedTop(searchBarTop, insets.top);
@@ -483,6 +484,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
       onHidden={handleHidden}
       onSnapChange={onSnapChange}
       sheetYObserver={sheetYObserver}
+      dismissThreshold={dismissThreshold}
       flashListProps={{
         numColumns: 2,
         columnWrapperStyle: styles.columnWrapper,

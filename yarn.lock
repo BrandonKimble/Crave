@@ -3070,6 +3070,11 @@
   dependencies:
     merge-options "^3.0.4"
 
+"@react-native-community/blur@^4.4.0":
+  version "4.4.1"
+  resolved "https://registry.yarnpkg.com/@react-native-community/blur/-/blur-4.4.1.tgz#72cbc0be5a84022c33091683ec6888925ebcca6e"
+  integrity sha512-XBSsRiYxE/MOEln2ayunShfJtWztHwUxLFcSL20o+HNNRnuUDv+GXkF6FmM2zE8ZUfrnhQ/zeTqvnuDPGw6O8A==
+
 "@react-native-community/cli-clean@19.1.2":
   version "19.1.2"
   resolved "https://registry.yarnpkg.com/@react-native-community/cli-clean/-/cli-clean-19.1.2.tgz#10be56a6ab966c141090176e54937cb7b7618a9b"
@@ -7736,11 +7741,6 @@ expo-auth-session@~7.0.7:
     expo-linking "~8.0.10"
     expo-web-browser "~15.0.10"
     invariant "^2.2.4"
-
-expo-blur@~15.0.6:
-  version "15.0.8"
-  resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-15.0.8.tgz#846cea275a6644639c5c338987b4cca54cf93eca"
-  integrity sha512-rWyE1NBRZEu9WD+X+5l7gyPRszw7n12cW3IRNAb5i6KFzaBp8cxqT5oeaphJapqURvcqhkOZn2k5EtBSbsuU7w==
 
 expo-constants@~18.0.11, expo-constants@~18.0.12, expo-constants@~18.0.9:
   version "18.0.12"

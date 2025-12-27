@@ -65,6 +65,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   const closeCutout = useHeaderCloseCutout();
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
+  const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = Math.max(insets.top, 0);
     const middle = Math.max(expanded + 180, SCREEN_HEIGHT * 0.6);
@@ -458,6 +459,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
       headerComponent={headerComponent}
       style={overlaySheetStyles.container}
       onHidden={onDismiss}
+      dismissThreshold={dismissThreshold}
     />
   );
 };

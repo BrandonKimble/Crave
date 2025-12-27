@@ -236,7 +236,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                           styles.segmentedOption,
                           selected && [
                             styles.segmentedOptionActive,
-                            { backgroundColor: accentColor, shadowColor: accentColor },
+                            { backgroundColor: accentColor },
                           ],
                         ]}
                         onPress={() => onTabChange(option.value)}
@@ -264,10 +264,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   accessibilityState={{ selected: openNow }}
                   style={[
                     styles.openNowButton,
-                    openNow && [
-                      styles.openNowButtonActive,
-                      { backgroundColor: accentColor, shadowColor: accentColor },
-                    ],
+                    openNow && [styles.openNowButtonActive, { backgroundColor: accentColor }],
                   ]}
                 >
                   <Text
@@ -291,7 +288,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     styles.priceButton,
                     priceButtonActive && [
                       styles.priceButtonActive,
-                      { backgroundColor: accentColor, shadowColor: accentColor },
+                      { backgroundColor: accentColor },
                     ],
                   ]}
                 >
@@ -322,7 +319,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                     styles.votesButton,
                     votesFilterActive && [
                       styles.votesButtonActive,
-                      { backgroundColor: accentColor, shadowColor: accentColor },
+                      { backgroundColor: accentColor },
                     ],
                   ]}
                 >

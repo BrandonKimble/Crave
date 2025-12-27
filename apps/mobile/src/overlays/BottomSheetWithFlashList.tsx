@@ -24,6 +24,9 @@ import { overlaySheetStyles } from './overlaySheetStyles';
 
 const TOP_EPSILON = 2;
 const EXPANDED_EPSILON = 4;
+const DEFAULT_DRAW_DISTANCE = 140;
+const DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;
+const DEFAULT_DISMISS_SLOP = 80;
 
 type SheetSnapPoint = 'expanded' | 'middle' | 'collapsed';
 
@@ -71,6 +74,7 @@ type BottomSheetWithFlashListProps<T> = {
   extraData?: FlashListProps<T>['extraData'];
   onDragStateChange?: (isDragging: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
+  dismissThreshold?: number;
   flashListProps?: Partial<
     Omit<
       FlashListProps<T>,
@@ -180,6 +184,7 @@ const BottomSheetWithFlashList = <T,>({
   extraData,
   onDragStateChange,
   snapTo,
+  dismissThreshold,
   flashListProps,
   sheetYValue,
   sheetYObserver,
@@ -192,14 +197,15 @@ const BottomSheetWithFlashList = <T,>({
   const { height: screenHeight } = useWindowDimensions();
   const pixelRatio = PixelRatio.get();
   const shouldEnableScroll = visible && listScrollEnabled;
-  const internalSheetY = useSharedValue(snapPoints[initialSnapPoint]);
-  const sheetY = sheetYValue ?? internalSheetY;
   const expandedSnap = snapPoints.expanded;
   const middleSnap = snapPoints.middle;
   const collapsedSnap = snapPoints.collapsed;
   const hiddenSnap = snapPoints.hidden;
   const initialSnapValue = snapPoints[initialSnapPoint];
   const hiddenOrCollapsed = hiddenSnap ?? collapsedSnap;
+  const initialSheetY = visible ? initialSnapValue : hiddenOrCollapsed;
+  const internalSheetY = useSharedValue(initialSheetY);
+  const sheetY = sheetYValue ?? internalSheetY;
   const currentSnapKeyRef = React.useRef<SheetSnapPoint | 'hidden'>(
     visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
   );
@@ -296,6 +302,24 @@ const BottomSheetWithFlashList = <T,>({
     }
     return points;
   }, [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle]);
+  const dismissThresholdValue =
+    typeof dismissThreshold === 'number'
+      ? dismissThreshold
+      : hiddenSnap !== undefined
+      ? hiddenSnap - DEFAULT_DISMISS_SLOP
+      : undefined;
+  const resolveDestination = React.useCallback(
+    (value: number, velocity: number): number => {
+      'worklet';
+      if (hiddenSnap !== undefined && dismissThresholdValue !== undefined) {
+        if (dismissThresholdValue > collapsedSnap && value >= dismissThresholdValue) {
+          return hiddenSnap;
+        }
+      }
+      return snapPoint(value, velocity, snapCandidates);
+    },
+    [collapsedSnap, dismissThresholdValue, hiddenSnap, snapCandidates]
+  );
 
   const animateTo = React.useCallback(
     (target: number, velocity = 0, shouldNotifyHidden = false) => {
@@ -508,7 +532,7 @@ const BottomSheetWithFlashList = <T,>({
         if (!success || expandDidHandoffToScroll.value) {
           return;
         }
-        const destination = snapPoint(sheetY.value, event.velocityY, snapCandidates);
+        const destination = resolveDestination(sheetY.value, event.velocityY);
         runOnJS(animateTo)(destination, event.velocityY, destination === snapPoints.hidden);
       })
       .onFinalize(() => {
@@ -576,7 +600,7 @@ const BottomSheetWithFlashList = <T,>({
         if (!success) {
           return;
         }
-        const destination = snapPoint(sheetY.value, event.velocityY, snapCandidates);
+        const destination = resolveDestination(sheetY.value, event.velocityY);
         runOnJS(animateTo)(destination, event.velocityY, destination === snapPoints.hidden);
       })
       .onFinalize(() => {
@@ -609,6 +633,7 @@ const BottomSheetWithFlashList = <T,>({
     expandStartSheetY,
     expandStartTouchY,
     isInMomentum,
+    resolveDestination,
     scrollOffset,
     sheetY,
     snapCandidates,
@@ -681,6 +706,19 @@ const BottomSheetWithFlashList = <T,>({
     return sanitized;
   }, [contentContainerStyle]);
 
+  const resolvedFlashListProps = React.useMemo(() => {
+    const overrideProps = {
+      initialDrawBatchSize: DEFAULT_INITIAL_DRAW_BATCH_SIZE,
+      ...(flashListProps?.overrideProps ?? {}),
+    };
+    return {
+      drawDistance: DEFAULT_DRAW_DISTANCE,
+      removeClippedSubviews: true,
+      ...flashListProps,
+      overrideProps,
+    };
+  }, [flashListProps]);
+
   const resolvedSurfaceStyle = surfaceStyle ?? overlaySheetStyles.surface;
   const resolvedShadowStyle = shadowStyle ?? overlaySheetStyles.shadowShell;
   const shadowShellStyle = [
@@ -702,7 +740,7 @@ const BottomSheetWithFlashList = <T,>({
             <View style={{ flex: 1 }}>
               <AnimatedFlashList
                 ref={flashListRef as React.RefObject<FlashList<T>>}
-                {...flashListProps}
+                {...resolvedFlashListProps}
                 data={data}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}

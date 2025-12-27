@@ -1,6 +1,5 @@
 import React from 'react';
 import { Pressable, Share, TouchableOpacity, View } from 'react-native';
-import type { TextLayoutEvent } from 'react-native';
 
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { HandPlatter, Store } from 'lucide-react-native';
@@ -13,7 +12,6 @@ import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { capitalizeFirst, formatCoverageLabel } from '../utils/format';
 import { getQualityColor } from '../utils/quality';
-import { calculateTopFoodVisibleCount } from '../utils/top-food';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -54,36 +52,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm,
 }) => {
-  const [topFoodInlineWidth, setTopFoodInlineWidth] = React.useState<number | undefined>(undefined);
-  const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<Record<string, number>>({});
-  const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<Record<number, number>>({});
-
-  const updateTopFoodInlineWidth = React.useCallback((width: number) => {
-    setTopFoodInlineWidth((prev) => {
-      if (prev && Math.abs(prev - width) < 0.5) {
-        return prev;
-      }
-      return width;
-    });
-  }, []);
-
-  const updateTopFoodItemWidth = React.useCallback((connectionId: string, width: number) => {
-    setTopFoodItemWidths((prev) => {
-      if (prev[connectionId] && Math.abs(prev[connectionId] - width) < 0.5) {
-        return prev;
-      }
-      return { ...prev, [connectionId]: width };
-    });
-  }, []);
-
-  const updateTopFoodMoreWidth = React.useCallback((hiddenCount: number, width: number) => {
-    setTopFoodMoreWidths((prev) => {
-      if (prev[hiddenCount] && Math.abs(prev[hiddenCount] - width) < 0.5) {
-        return prev;
-      }
-      return { ...prev, [hiddenCount]: width };
-    });
-  }, []);
   const qualityColor = getQualityColor(
     index,
     restaurantsCount,
@@ -112,59 +80,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     () => Math.min(topFoodItems.length, TOP_FOOD_RENDER_LIMIT),
     [topFoodItems.length]
   );
-  const visibleTopFoodCount = React.useMemo(() => {
-    if (maxTopFoodToRender === 0) {
-      return 0;
-    }
-    return Math.max(
-      1,
-      calculateTopFoodVisibleCount(
-        topFoodItems,
-        maxTopFoodToRender,
-        topFoodInlineWidth,
-        topFoodItemWidths,
-        topFoodMoreWidths
-      )
-    );
-  }, [maxTopFoodToRender, topFoodInlineWidth, topFoodItemWidths, topFoodItems, topFoodMoreWidths]);
   const inlineTopFoods = React.useMemo(
-    () => topFoodItems.slice(0, Math.max(1, Math.min(visibleTopFoodCount, maxTopFoodToRender))),
-    [maxTopFoodToRender, topFoodItems, visibleTopFoodCount]
+    () => topFoodItems.slice(0, maxTopFoodToRender),
+    [maxTopFoodToRender, topFoodItems]
   );
   const hiddenTopFoodCount = Math.max(0, topFoodItems.length - inlineTopFoods.length);
-  const potentialHiddenCounts = React.useMemo(() => {
-    const counts: number[] = [];
-    for (let count = 1; count <= maxTopFoodToRender; count += 1) {
-      const hidden = topFoodItems.length - count;
-      if (hidden > 0) {
-        counts.push(hidden);
-      }
-    }
-    return counts;
-  }, [maxTopFoodToRender, topFoodItems.length]);
-  const hasAllMeasurements = React.useMemo(() => {
-    if (maxTopFoodToRender === 0) {
-      return true;
-    }
-    if (!topFoodInlineWidth || topFoodInlineWidth <= 0) {
-      return false;
-    }
-    const hasItemWidths = topFoodItems
-      .slice(0, maxTopFoodToRender)
-      .every((food) => typeof topFoodItemWidths[food.connectionId] === 'number');
-    if (!hasItemWidths) {
-      return false;
-    }
-    return potentialHiddenCounts.every((hidden) => typeof topFoodMoreWidths[hidden] === 'number');
-  }, [
-    maxTopFoodToRender,
-    potentialHiddenCounts,
-    topFoodInlineWidth,
-    topFoodItemWidths,
-    topFoodItems,
-    topFoodMoreWidths,
-  ]);
-  const shouldRenderMeasurements = topFoodItems.length > 0 && !hasAllMeasurements;
   const restaurantMetaLine = renderMetaDetailLine(
     restaurant.operatingStatus,
     null,
@@ -325,14 +245,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                     <View style={styles.topFoodDivider} />
                   </View>
                   <View style={styles.topFoodInlineRow}>
-                    <View
-                      style={styles.topFoodInlineList}
-                      onLayout={({ nativeEvent: { layout } }) => {
-                        if (layout.width > 0) {
-                          updateTopFoodInlineWidth(layout.width);
-                        }
-                      }}
-                    >
+                    <View style={styles.topFoodInlineList}>
                       {inlineTopFoods.map((food, idx) => (
                         <Text
                           key={food.connectionId}
@@ -360,55 +273,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         </Text>
                       ) : null}
                     </View>
-                    {shouldRenderMeasurements ? (
-                      <View
-                        style={styles.topFoodInlineMeasure}
-                        pointerEvents="none"
-                        accessibilityElementsHidden
-                        importantForAccessibility="no-hide-descendants"
-                      >
-                        {topFoodItems.slice(0, maxTopFoodToRender).map((food, idx) => (
-                          <Text
-                            key={`${food.connectionId}-measure`}
-                            variant="body"
-                            weight="regular"
-                            style={styles.topFoodMeasureText}
-                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
-                              const width = nativeEvent.lines?.[0]?.width;
-                              if (typeof width === 'number') {
-                                updateTopFoodItemWidth(food.connectionId, width);
-                              }
-                            }}
-                            numberOfLines={1}
-                          >
-                            <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
-                              {idx + 1}.
-                            </Text>
-                            <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
-                              {' '}
-                              {food.foodName}
-                            </Text>
-                          </Text>
-                        ))}
-                        {potentialHiddenCounts.map((hidden) => (
-                          <Text
-                            key={`${restaurant.restaurantId}-more-${hidden}`}
-                            variant="body"
-                            weight="semibold"
-                            style={styles.topFoodMeasureText}
-                            onTextLayout={({ nativeEvent }: TextLayoutEvent) => {
-                              const width = nativeEvent.lines?.[0]?.width;
-                              if (typeof width === 'number') {
-                                updateTopFoodMoreWidth(hidden, width);
-                              }
-                            }}
-                            numberOfLines={1}
-                          >
-                            +{hidden} more
-                          </Text>
-                        ))}
-                      </View>
-                    ) : null}
                   </View>
                 </View>
               ) : null}

@@ -4,7 +4,6 @@ import { type StyleProp, type ViewStyle } from 'react-native';
 import type { FlashList, FlashListProps } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
-import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
 import BottomSheetWithFlashList, {
   type SnapPoints,
 } from '../../../overlays/BottomSheetWithFlashList';
@@ -40,13 +39,13 @@ type SearchResultsSheetProps<T> = {
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
   headerComponent?: React.ReactNode;
+  backgroundComponent?: React.ReactNode;
   contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
   resultsContainerAnimatedStyle: unknown;
   listRef?: React.RefObject<FlashList<T>>;
   onHidden: () => void;
   onSnapChange: (snap: SheetSnapState) => void;
   style?: StyleProp<ViewStyle>;
-  blurIntensity?: number;
 };
 
 const SearchResultsSheet = <T,>({
@@ -75,13 +74,13 @@ const SearchResultsSheet = <T,>({
   ListFooterComponent,
   ListEmptyComponent,
   headerComponent,
+  backgroundComponent,
   contentContainerStyle,
   resultsContainerAnimatedStyle,
   listRef,
   onHidden,
   onSnapChange,
   style,
-  blurIntensity,
 }: SearchResultsSheetProps<T>): React.ReactElement | null => {
   if (!visible) {
     return null;
@@ -134,17 +133,17 @@ const SearchResultsSheet = <T,>({
         ListFooterComponent={ListFooterComponent}
         ListEmptyComponent={ListEmptyComponent}
         contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
-        backgroundComponent={<FrostedGlassBackground intensity={blurIntensity} />}
         headerComponent={headerComponent}
+        backgroundComponent={backgroundComponent}
         listRef={listRef}
         style={style ?? overlaySheetStyles.container}
+        surfaceStyle={[overlaySheetStyles.surface, styles.resultsSheetSurface]}
         onHidden={onHidden}
         onSnapChange={onSnapChange}
         flashListProps={{
           getItemType,
           overrideItemLayout,
           removeClippedSubviews: true,
-          drawDistance: 200,
         }}
       />
     </>

@@ -46,10 +46,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   map: StyleSheet.absoluteFillObject,
-  mapSnapshot: {
+  mapPlaceholder: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
-    resizeMode: 'cover',
+    backgroundColor: themeColors.surface,
+  },
+  mapLoadingGrid: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: themeColors.background,
+    zIndex: 2,
+  },
+  mapLoadingGridSvg: {
+    ...StyleSheet.absoluteFillObject,
   },
   statusBarFade: {
     position: 'absolute',
@@ -505,6 +512,24 @@ const styles = StyleSheet.create({
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     backgroundColor: 'transparent',
   },
+  resultsSheetSurface: {
+    backgroundColor: 'transparent',
+  },
+  resultsListBackground: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#f8fafc',
+  },
+  resultsHeaderSurface: {
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
+  resultsHeaderHandle: {
+    backgroundColor: 'transparent',
+  },
   resultsCard: {
     flex: 1,
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
@@ -528,6 +553,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   resultsListHeader: {
+    position: 'relative',
+    overflow: 'hidden',
     backgroundColor: 'transparent',
     paddingHorizontal: 0,
     paddingVertical: 0,
@@ -598,11 +625,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingTop: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 30,
   },
   priceSheetHeaderRow: {
     flexDirection: 'row',
@@ -652,11 +674,6 @@ const styles = StyleSheet.create({
     height: PRICE_THUMB_SIZE,
     borderRadius: PRICE_THUMB_SIZE / 2,
     backgroundColor: themeColors.primary,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
-    elevation: 2,
   },
   priceSheetDoneButton: {
     height: CONTROL_HEIGHT,
@@ -675,9 +692,12 @@ const styles = StyleSheet.create({
     paddingBottom: CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
-    marginBottom: SHARED_SECTION_GAP,
+    marginBottom: 2,
     alignSelf: 'stretch',
     borderRadius: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   firstResultItem: {
     paddingTop:

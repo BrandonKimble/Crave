@@ -33,6 +33,7 @@ import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { useOverlayStore } from '../store/overlayStore';
 import {
   overlaySheetStyles,
+  OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
   OVERLAY_STACK_ZINDEX,
 } from './overlaySheetStyles';
@@ -42,23 +43,18 @@ import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlas
 import { resolveExpandedTop } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
-import {
-  CONTROL_HEIGHT,
-  CONTROL_HORIZONTAL_PADDING,
-  CONTROL_RADIUS,
-} from '../screens/Search/constants/ui';
+import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../screens/Search/constants/ui';
+import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../screens/Search/constants/search';
 import type { MapBounds } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
 const CLOSE_ACTION_EPSILON = 2;
-const LIVE_BADGE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
-const LIVE_BADGE_VERTICAL_PADDING = Math.max(
-  0,
-  Math.round((CONTROL_HEIGHT - LINE_HEIGHTS.title) / 2)
-);
-
+const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
+const NAV_ICON_SIZE = 24;
+const NAV_ICON_LABEL_GAP = 2;
+const HEADER_HEIGHT_FALLBACK = Math.round(LINE_HEIGHTS.title + 34);
 type PollsOverlayProps = {
   visible: boolean;
   bounds?: MapBounds | null;
@@ -99,11 +95,23 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
   const closeCutout = useHeaderCloseCutout({
     badgePadding: 0,
-    badgeRadius: CONTROL_RADIUS,
+    badgeRadius: LIVE_BADGE_HEIGHT / 2,
   });
   const headerHeight = closeCutout.headerHeight;
-  const navBarOffset = Math.max(navBarTop, 0);
-  const navBarInset = Math.max(navBarHeight, 0);
+  const resolvedHeaderHeight = headerHeight > 0 ? headerHeight : HEADER_HEIGHT_FALLBACK;
+  const estimatedNavBarHeight =
+    NAV_TOP_PADDING +
+    NAV_BOTTOM_PADDING +
+    NAV_ICON_SIZE +
+    NAV_ICON_LABEL_GAP +
+    LINE_HEIGHTS.body +
+    insets.bottom;
+  const navBarInset = Math.max(navBarHeight > 0 ? navBarHeight : estimatedNavBarHeight, 0);
+  const navBarOffset = Math.max(
+    navBarTop > 0 ? navBarTop : SCREEN_HEIGHT - navBarInset,
+    0
+  );
+  const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
 
   const [polls, setPolls] = useState<Poll[]>([]);
   const [coverageKey, setCoverageKey] = useState<string | null>(null);
@@ -142,7 +150,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
     const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
+      navBarOffset > 0 ? navBarOffset - resolvedHeaderHeight : fallbackCollapsed;
     const collapsed = Math.max(navAlignedCollapsed, middle + 24);
     return {
       expanded,
@@ -150,7 +158,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       collapsed,
       hidden,
     };
-  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
+  }, [insets.top, navBarOffset, resolvedHeaderHeight, searchBarTop]);
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
   const [headerAction, setHeaderAction] = useState<'create' | 'close'>(
@@ -179,7 +187,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     ? 'Polls'
     : 'Polls near here';
   const isLiveActive = polls.length > 0;
-  const liveBadgeTone = isLiveActive ? ACCENT : 'rgba(255, 0, 80, 0.35)';
 
   const loadPolls = useCallback(
     async (options?: {
@@ -616,7 +623,8 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   );
 
   const handleClose = useCallback(() => {
-    setSnapRequest('collapsed');
+    const targetSnap = mode === 'overlay' ? 'hidden' : 'collapsed';
+    setSnapRequest(targetSnap);
     if (mode === 'overlay') {
       setOverlay('search');
     }
@@ -670,6 +678,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
+      if (mode === 'overlay' && snap === 'collapsed') {
+        setSnapRequest('hidden');
+        return;
+      }
       onSnapChange?.(snap);
       if (snapRequest && snapRequest === snap) {
         setSnapRequest(null);
@@ -695,6 +707,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       snapPoints.hidden,
       snapPoints.middle,
       snapRequest,
+      mode,
     ]
   );
 
@@ -715,7 +728,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         </Pressable>
       </View>
       <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, styles.headerRow]}
         onLayout={closeCutout.onHeaderRowLayout}
       >
         <Text
@@ -728,32 +741,22 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           {headerBaseTitle}
         </Text>
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
-          <View style={[styles.liveBadgeRight, { backgroundColor: liveBadgeTone }]}>
-            <Text
-              variant="title"
-              weight="semibold"
-              style={
-                isLiveActive
-                  ? styles.liveBadgeLabel
-                  : [styles.liveBadgeLabel, styles.liveBadgeLabelMuted]
-              }
-            >
-              LIVE
-            </Text>
-          </View>
-          <View style={styles.liveBadgeLeft}>
-            <Text
-              variant="title"
-              weight="semibold"
-              style={
-                isLiveActive
-                  ? styles.liveBadgeCount
-                  : [styles.liveBadgeCount, styles.liveBadgeCountMuted]
-              }
-            >
-              {polls.length}
-            </Text>
-          </View>
+            <View style={styles.liveBadgeContent} pointerEvents="none">
+              <Text
+                variant="title"
+                weight="semibold"
+                style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
+              >
+                {polls.length}
+              </Text>
+              <Text
+                variant="title"
+                weight="semibold"
+                style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
+              >
+                live
+              </Text>
+            </View>
         </View>
         <Pressable
           onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
@@ -943,6 +946,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           onHidden={handleHidden}
           onSnapChange={handleSnapChange}
           sheetYObserver={sheetYObserver}
+          dismissThreshold={dismissThreshold}
         />
       </View>
       <PollCreationSheet
@@ -963,41 +967,31 @@ const styles = StyleSheet.create({
     color: themeColors.text,
     flex: 1,
     marginRight: 12,
+    minWidth: 0,
+  },
+  headerRow: {
+    justifyContent: 'flex-start',
+    gap: 10,
   },
   liveBadgeShell: {
-    height: CONTROL_HEIGHT,
-    borderRadius: CONTROL_RADIUS,
+    height: LIVE_BADGE_HEIGHT,
     flexDirection: 'row',
-    overflow: 'hidden',
-    marginRight: 10,
-    backgroundColor: 'transparent',
-  },
-  liveBadgeLeft: {
-    height: '100%',
-    paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
-    paddingVertical: LIVE_BADGE_VERTICAL_PADDING,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 10,
+    borderRadius: LIVE_BADGE_HEIGHT / 2,
     backgroundColor: 'transparent',
   },
-  liveBadgeRight: {
-    height: '100%',
-    paddingHorizontal: LIVE_BADGE_HORIZONTAL_PADDING,
-    paddingVertical: LIVE_BADGE_VERTICAL_PADDING,
+  liveBadgeContent: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: 6,
   },
-  liveBadgeCount: {
-    color: themeColors.text,
+  liveBadgeText: {
+    color: ACCENT,
   },
-  liveBadgeCountMuted: {
-    color: themeColors.text,
-  },
-  liveBadgeLabel: {
-    color: '#ffffff',
-  },
-  liveBadgeLabelMuted: {
-    color: 'rgba(255, 255, 255, 0.7)',
+  liveBadgeTextMuted: {
+    color: themeColors.textBody,
   },
   scrollContent: {
     paddingBottom: 32,

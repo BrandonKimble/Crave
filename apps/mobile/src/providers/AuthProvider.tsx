@@ -192,11 +192,11 @@ const PushNotificationRegistrar: React.FC = () => {
 };
 
 const AuthStateMonitor: React.FC = () => {
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
 
   React.useEffect(() => {
-    if (!navigationRef.isReady()) {
+    if (!isLoaded || !navigationRef.isReady()) {
       return;
     }
     if (isSignedIn) {
@@ -215,7 +215,7 @@ const AuthStateMonitor: React.FC = () => {
         },
       ],
     });
-  }, [hasCompletedOnboarding, isSignedIn]);
+  }, [hasCompletedOnboarding, isLoaded, isSignedIn]);
 
   return null;
 };

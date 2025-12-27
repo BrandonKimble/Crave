@@ -286,6 +286,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const navBarInset = Math.max(navBarHeight, 0);
+  const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 140, 160);
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = resolveExpandedTop(searchBarTop, insets.top);
@@ -503,6 +504,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
         onHidden={handleHidden}
         onSnapChange={onSnapChange}
         sheetYObserver={sheetYObserver}
+        dismissThreshold={dismissThreshold}
       />
     </View>
   );
