@@ -1,11 +1,12 @@
 import { create } from 'zustand';
 
-export type OverlayKey = 'search' | 'bookmarks' | 'polls';
+export type OverlayKey = 'search' | 'bookmarks' | 'polls' | 'profile';
 
 type OverlayParamsMap = {
   search?: undefined;
   bookmarks?: undefined;
   polls?: { coverageKey?: string | null; pollId?: string | null };
+  profile?: undefined;
 };
 
 type DismissHandler = () => void;

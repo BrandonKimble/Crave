@@ -159,7 +159,7 @@ const ProfileScreen: React.FC = () => {
   }, [handleReplayOnboarding, handleSignOut]);
 
   const handleNavPress = React.useCallback(
-    (target: OverlayKey | 'profile') => {
+    (target: OverlayKey) => {
       if (target === 'profile') {
         return;
       }

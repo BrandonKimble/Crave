@@ -24,8 +24,6 @@ import Reanimated, {
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
-import type { StackNavigationProp } from '@react-navigation/stack';
 import { useAuth } from '@clerk/clerk-expo';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -55,11 +53,11 @@ import type {
 } from '../../types';
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
+import ProfileOverlay from '../../overlays/ProfileOverlay';
 import SaveListOverlay from '../../overlays/SaveListOverlay';
 import PollsOverlay from '../../overlays/PollsOverlay';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
-import type { RootStackParamList } from '../../types/navigation';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
@@ -143,7 +141,6 @@ const SEARCH_BAR_SHADOW_RADIUS = 2.5;
 const SEARCH_BAR_SHADOW_ELEVATION = 2;
 
 const SearchScreen: React.FC = () => {
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
@@ -448,6 +445,7 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsSnapRequest, setPollsSnapRequest] = React.useState<OverlaySheetSnap | null>(null);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
+  const [profileSheetSnap, setProfileSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
@@ -541,6 +539,7 @@ const SearchScreen: React.FC = () => {
   const suggestionTransition = useSharedValue(0);
   const pollsSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const bookmarksSheetY = useSharedValue(SCREEN_HEIGHT + 80);
+  const profileSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const saveSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
@@ -561,6 +560,7 @@ const SearchScreen: React.FC = () => {
   const isSearchOverlay = activeOverlay === 'search';
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
   const showPollsOverlay = activeOverlay === 'polls';
+  const showProfileOverlay = activeOverlay === 'profile';
   const showSaveListOverlay = saveSheetState.visible;
   const pollOverlayParams = overlayParams.polls;
   const searchBarTop = React.useMemo(() => {
@@ -608,6 +608,11 @@ const SearchScreen: React.FC = () => {
     const clampedMiddle = Math.min(middle, hidden - 120);
     return { expanded, middle: clampedMiddle };
   }, [insets.top, searchBarTop]);
+  const profileChromeSnaps = React.useMemo(() => {
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
+    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
+    return { expanded, middle };
+  }, [insets.top, searchBarTop]);
   const saveChromeSnaps = React.useMemo(() => {
     const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
@@ -626,6 +631,13 @@ const SearchScreen: React.FC = () => {
         sheetY: saveSheetY,
         expanded: saveChromeSnaps.expanded,
         middle: saveChromeSnaps.middle,
+      };
+    }
+    if (showProfileOverlay) {
+      return {
+        sheetY: profileSheetY,
+        expanded: profileChromeSnaps.expanded,
+        middle: profileChromeSnaps.middle,
       };
     }
     if (showBookmarksOverlay) {
@@ -651,6 +663,9 @@ const SearchScreen: React.FC = () => {
     bookmarksChromeSnaps.expanded,
     bookmarksChromeSnaps.middle,
     bookmarksSheetY,
+    profileChromeSnaps.expanded,
+    profileChromeSnaps.middle,
+    profileSheetY,
     saveChromeSnaps.expanded,
     saveChromeSnaps.middle,
     saveSheetY,
@@ -660,6 +675,7 @@ const SearchScreen: React.FC = () => {
     shouldUsePollsChrome,
     sheetTranslateY,
     showBookmarksOverlay,
+    showProfileOverlay,
     showSaveListOverlay,
     snapPoints.expanded,
     snapPoints.middle,
@@ -768,9 +784,8 @@ const SearchScreen: React.FC = () => {
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
     useSearchRequests();
   const handleProfilePress = React.useCallback(() => {
-    dismissTransientOverlays();
-    navigation.navigate('Profile');
-  }, [dismissTransientOverlays, navigation]);
+    handleOverlaySelect('profile');
+  }, [handleOverlaySelect]);
   const navItems = React.useMemo(
     () =>
       [
@@ -1149,13 +1164,19 @@ const SearchScreen: React.FC = () => {
   const pollsOverlaySnapPoint = showPollsOverlay ? 'middle' : 'collapsed';
   const isPollsExpanded = pollsSheetSnap === 'expanded';
   const isBookmarksExpanded = bookmarksSheetSnap === 'expanded';
+  const isProfileExpanded = profileSheetSnap === 'expanded';
   const isAnySheetExpanded =
     sheetState === 'expanded' ||
     isPollsExpanded ||
     isBookmarksExpanded ||
+    isProfileExpanded ||
     saveSheetSnap === 'expanded';
   const shouldRenderSearchOverlay =
-    isSearchOverlay || shouldShowPollsSheet || showBookmarksOverlay || showSaveListOverlay;
+    isSearchOverlay ||
+    shouldShowPollsSheet ||
+    showBookmarksOverlay ||
+    showProfileOverlay ||
+    showSaveListOverlay;
   const shouldShowSearchChrome = shouldRenderSearchOverlay && !isAnySheetExpanded;
 
   React.useEffect(() => {
@@ -1169,6 +1190,12 @@ const SearchScreen: React.FC = () => {
       setBookmarksSheetSnap('hidden');
     }
   }, [showBookmarksOverlay]);
+
+  React.useEffect(() => {
+    if (!showProfileOverlay) {
+      setProfileSheetSnap('hidden');
+    }
+  }, [showProfileOverlay]);
 
   React.useEffect(() => {
     if (!showSaveListOverlay) {
@@ -3047,6 +3074,14 @@ const SearchScreen: React.FC = () => {
         searchBarTop={searchBarTop}
         onSnapChange={setBookmarksSheetSnap}
         sheetYObserver={bookmarksSheetY}
+      />
+      <ProfileOverlay
+        visible={showProfileOverlay}
+        navBarTop={bottomNavFrame.top}
+        navBarHeight={bottomNavFrame.height}
+        searchBarTop={searchBarTop}
+        onSnapChange={setProfileSheetSnap}
+        sheetYObserver={profileSheetY}
       />
       <SaveListOverlay
         visible={saveSheetState.visible}
