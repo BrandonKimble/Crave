@@ -102,6 +102,7 @@ import {
   SEARCH_BAR_HOLE_RADIUS,
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
+  SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
   SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
   SECONDARY_METRIC_ICON_SIZE,
@@ -446,6 +447,7 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsSnapRequest, setPollsSnapRequest] = React.useState<OverlaySheetSnap | null>(null);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
+  const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
     listType: FavoriteListType;
@@ -538,6 +540,7 @@ const SearchScreen: React.FC = () => {
   const suggestionTransition = useSharedValue(0);
   const pollsSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const bookmarksSheetY = useSharedValue(SCREEN_HEIGHT + 80);
+  const saveSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const inputRef = React.useRef<TextInput | null>(null);
   const resultsScrollRef = React.useRef<FlashList<FoodResult | RestaurantResult> | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
@@ -557,6 +560,7 @@ const SearchScreen: React.FC = () => {
   const isSearchOverlay = activeOverlay === 'search';
   const showBookmarksOverlay = activeOverlay === 'bookmarks';
   const showPollsOverlay = activeOverlay === 'polls';
+  const showSaveListOverlay = saveSheetState.visible;
   const pollOverlayParams = overlayParams.polls;
   const searchBarTop = React.useMemo(() => {
     const rawTop = searchBarFrame
@@ -603,6 +607,11 @@ const SearchScreen: React.FC = () => {
     const clampedMiddle = Math.min(middle, hidden - 120);
     return { expanded, middle: clampedMiddle };
   }, [insets.top, searchBarTop]);
+  const saveChromeSnaps = React.useMemo(() => {
+    const expanded = resolveExpandedTop(searchBarTop, insets.top);
+    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
+    return { expanded, middle };
+  }, [insets.top, searchBarTop]);
   const shouldUsePollsChrome =
     showPollsOverlay ||
     (isSearchOverlay &&
@@ -611,6 +620,13 @@ const SearchScreen: React.FC = () => {
       !isLoading &&
       !shouldRenderSheet);
   const chromeTransitionConfig = React.useMemo(() => {
+    if (showSaveListOverlay) {
+      return {
+        sheetY: saveSheetY,
+        expanded: saveChromeSnaps.expanded,
+        middle: saveChromeSnaps.middle,
+      };
+    }
     if (showBookmarksOverlay) {
       return {
         sheetY: bookmarksSheetY,
@@ -634,12 +650,16 @@ const SearchScreen: React.FC = () => {
     bookmarksChromeSnaps.expanded,
     bookmarksChromeSnaps.middle,
     bookmarksSheetY,
+    saveChromeSnaps.expanded,
+    saveChromeSnaps.middle,
+    saveSheetY,
     pollsChromeSnaps.expanded,
     pollsChromeSnaps.middle,
     pollsSheetY,
     shouldUsePollsChrome,
     sheetTranslateY,
     showBookmarksOverlay,
+    showSaveListOverlay,
     snapPoints.expanded,
     snapPoints.middle,
   ]);
@@ -938,30 +958,28 @@ const SearchScreen: React.FC = () => {
     if (contentBottom <= 0) {
       return 0;
     }
-    return Math.max(0, ceilToPixel(contentBottom));
+    const paddedBottom = contentBottom + SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM;
+    return Math.max(0, ceilToPixel(paddedBottom));
   }, [isSuggestionScreenActive, suggestionHeaderContentBottom]);
-  const headerPaddingOverlap = 0;
+  const headerPaddingOverlap = SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP;
   const suggestionScrollTop = React.useMemo(() => {
     if (!isSuggestionScreenActive) {
       return 0;
     }
 
     const fallback = searchLayout.top + searchLayout.height + 8;
+    const overlap = suggestionHeaderHeight > 0 ? headerPaddingOverlap : 0;
     const headerBottom =
-      suggestionHeaderContentBottom > 0
-        ? suggestionHeaderContentBottom +
-          SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM -
-          headerPaddingOverlap +
-          SEARCH_SUGGESTION_HEADER_PANEL_GAP
+      suggestionHeaderHeight > 0
+        ? suggestionHeaderHeight - overlap + SEARCH_SUGGESTION_HEADER_PANEL_GAP
         : fallback;
     return Math.max(0, headerBottom);
   }, [
     isSuggestionScreenActive,
     searchLayout.height,
     searchLayout.top,
-    suggestionHeaderContentBottom,
-    SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM,
     headerPaddingOverlap,
+    suggestionHeaderHeight,
     SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   ]);
   const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
@@ -1116,8 +1134,13 @@ const SearchScreen: React.FC = () => {
   const pollsOverlaySnapPoint = showPollsOverlay ? 'middle' : 'collapsed';
   const isPollsExpanded = pollsSheetSnap === 'expanded';
   const isBookmarksExpanded = bookmarksSheetSnap === 'expanded';
-  const isAnySheetExpanded = sheetState === 'expanded' || isPollsExpanded || isBookmarksExpanded;
-  const shouldRenderSearchOverlay = isSearchOverlay || shouldShowPollsSheet || showBookmarksOverlay;
+  const isAnySheetExpanded =
+    sheetState === 'expanded' ||
+    isPollsExpanded ||
+    isBookmarksExpanded ||
+    saveSheetSnap === 'expanded';
+  const shouldRenderSearchOverlay =
+    isSearchOverlay || shouldShowPollsSheet || showBookmarksOverlay || showSaveListOverlay;
   const shouldShowSearchChrome = shouldRenderSearchOverlay && !isAnySheetExpanded;
 
   React.useEffect(() => {
@@ -1131,6 +1154,12 @@ const SearchScreen: React.FC = () => {
       setBookmarksSheetSnap('hidden');
     }
   }, [showBookmarksOverlay]);
+
+  React.useEffect(() => {
+    if (!showSaveListOverlay) {
+      setSaveSheetSnap('hidden');
+    }
+  }, [showSaveListOverlay]);
 
   React.useEffect(() => {
     if (!shouldShowPollsSheet) {
@@ -2685,21 +2714,6 @@ const SearchScreen: React.FC = () => {
                   pointerEvents="none"
                 />
               ) : null}
-              {isSuggestionScreenActive &&
-              suggestionHeaderContentBottom > 0 &&
-              SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM > 0 ? (
-                <Reanimated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.searchSuggestionHeaderPadding,
-                    {
-                      top: Math.max(0, suggestionHeaderContentBottom - headerPaddingOverlap),
-                      height: SEARCH_SUGGESTION_HEADER_PADDING_BOTTOM + headerPaddingOverlap,
-                    },
-                    suggestionMaskAnimatedStyle,
-                  ]}
-                />
-              ) : null}
               <Animated.ScrollView
                 style={[
                   styles.searchSurfaceScroll,
@@ -2911,7 +2925,7 @@ const SearchScreen: React.FC = () => {
               accessibilityLabel="Search this area"
               hitSlop={8}
             >
-              <Text variant="body" weight="semibold" style={styles.searchThisAreaText}>
+              <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
                 Search this area
               </Text>
             </Pressable>
@@ -3015,6 +3029,8 @@ const SearchScreen: React.FC = () => {
         target={saveSheetState.target}
         searchBarTop={searchBarTop}
         onClose={handleCloseSaveSheet}
+        onSnapChange={setSaveSheetSnap}
+        sheetYObserver={saveSheetY}
       />
       <PollsOverlay
         visible={shouldShowPollsSheet}

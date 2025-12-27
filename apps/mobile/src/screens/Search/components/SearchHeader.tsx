@@ -195,7 +195,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     height: 50,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5},
+    shadowOffset: { width: 0, height: 1.5 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 1,

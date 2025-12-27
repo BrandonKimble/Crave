@@ -13,6 +13,8 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 import { SHEET_SPRING_CONFIG, clampValue } from './sheetUtils';
+import { overlaySheetStyles } from './overlaySheetStyles';
+import SheetTopShadow from './SheetTopShadow';
 
 const TOP_EPSILON = 2;
 const EXPANDED_EPSILON = 4;
@@ -87,6 +89,8 @@ type BottomSheetWithFlashListProps<T> = {
   scrollOffsetValue?: SharedValue<number>;
   momentumFlag?: SharedValue<boolean>;
   style?: StyleProp<ViewStyle>;
+  surfaceStyle?: StyleProp<ViewStyle>;
+  topShadowStyle?: StyleProp<ViewStyle>;
 };
 
 const snapPoint = (value: number, velocity: number, points: number[]): number => {
@@ -176,6 +180,8 @@ const BottomSheetWithFlashList = <T,>({
   scrollOffsetValue,
   momentumFlag,
   style,
+  surfaceStyle,
+  topShadowStyle,
 }: BottomSheetWithFlashListProps<T>): React.ReactElement | null => {
   const shouldEnableScroll = visible && listScrollEnabled;
   const internalSheetY = useSharedValue(snapPoints[initialSnapPoint]);
@@ -663,53 +669,58 @@ const BottomSheetWithFlashList = <T,>({
     return sanitized;
   }, [contentContainerStyle]);
 
+  const resolvedSurfaceStyle = surfaceStyle ?? overlaySheetStyles.surface;
+
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
-        {backgroundComponent ? (
-          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-            {backgroundComponent}
+        <View style={resolvedSurfaceStyle}>
+          {backgroundComponent ? (
+            <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+              {backgroundComponent}
+            </View>
+          ) : null}
+          {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
+          <View style={{ flex: 1 }}>
+            <AnimatedFlashList
+              ref={flashListRef as React.RefObject<FlashList<T>>}
+              {...flashListProps}
+              data={data}
+              renderItem={renderItem}
+              keyExtractor={keyExtractor}
+              estimatedItemSize={estimatedItemSize}
+              contentContainerStyle={sanitizedContentContainerStyle}
+              ListHeaderComponent={ListHeaderComponent}
+              ListFooterComponent={ListFooterComponent}
+              ListEmptyComponent={ListEmptyComponent}
+              ItemSeparatorComponent={ItemSeparatorComponent}
+              keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+              scrollEnabled={shouldEnableScroll}
+              renderScrollComponent={ScrollComponent}
+              onScroll={animatedScrollHandler}
+              scrollEventThrottle={16}
+              onScrollBeginDrag={(event) => {
+                onScrollBeginDrag?.();
+                flashListProps?.onScrollBeginDrag?.(event);
+              }}
+              onScrollEndDrag={(event) => {
+                onScrollEndDrag?.();
+                flashListProps?.onScrollEndDrag?.(event);
+              }}
+              onEndReached={onEndReached}
+              onEndReachedThreshold={onEndReachedThreshold}
+              showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+              keyboardDismissMode={keyboardDismissMode}
+              bounces={bounces}
+              alwaysBounceVertical={alwaysBounceVertical}
+              overScrollMode={overScrollMode}
+              testID={testID}
+              extraData={extraData}
+              scrollIndicatorInsets={scrollIndicatorInsets}
+            />
           </View>
-        ) : null}
-        {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
-        <View style={{ flex: 1 }}>
-          <AnimatedFlashList
-            ref={flashListRef as React.RefObject<FlashList<T>>}
-            {...flashListProps}
-            data={data}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            estimatedItemSize={estimatedItemSize}
-            contentContainerStyle={sanitizedContentContainerStyle}
-            ListHeaderComponent={ListHeaderComponent}
-            ListFooterComponent={ListFooterComponent}
-            ListEmptyComponent={ListEmptyComponent}
-            ItemSeparatorComponent={ItemSeparatorComponent}
-            keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-            scrollEnabled={shouldEnableScroll}
-            renderScrollComponent={ScrollComponent}
-            onScroll={animatedScrollHandler}
-            scrollEventThrottle={16}
-            onScrollBeginDrag={(event) => {
-              onScrollBeginDrag?.();
-              flashListProps?.onScrollBeginDrag?.(event);
-            }}
-            onScrollEndDrag={(event) => {
-              onScrollEndDrag?.();
-              flashListProps?.onScrollEndDrag?.(event);
-            }}
-            onEndReached={onEndReached}
-            onEndReachedThreshold={onEndReachedThreshold}
-            showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-            keyboardDismissMode={keyboardDismissMode}
-            bounces={bounces}
-            alwaysBounceVertical={alwaysBounceVertical}
-            overScrollMode={overScrollMode}
-            testID={testID}
-            extraData={extraData}
-            scrollIndicatorInsets={scrollIndicatorInsets}
-          />
         </View>
+        <SheetTopShadow style={topShadowStyle} />
       </Animated.View>
     </GestureDetector>
   );

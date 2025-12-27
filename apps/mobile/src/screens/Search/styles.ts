@@ -173,15 +173,15 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   searchThisAreaButton: {
-    borderRadius: 999,
+    borderRadius: 12,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 14,
+    paddingHorizontal: 11,
     paddingVertical: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.18,
-    shadowRadius: 1.5,
+    shadowOffset: { width: 0, height: 1.5 },
+    shadowOpacity: 0.24,
+    shadowRadius: 2,
     elevation: 2,
   },
   searchThisAreaText: {
@@ -242,12 +242,6 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-  },
-  searchSuggestionHeaderPadding: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    backgroundColor: '#ffffff',
   },
   searchSuggestionScrollSurface: {
     backgroundColor: 'transparent',

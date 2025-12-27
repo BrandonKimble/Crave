@@ -14,11 +14,15 @@ export const overlaySheetStyles = StyleSheet.create({
     top: 0,
     zIndex: OVERLAY_STACK_ZINDEX,
     backgroundColor: 'transparent',
+  },
+  surface: {
+    flex: 1,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.7)',
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   header: {
     backgroundColor: '#ffffff',
