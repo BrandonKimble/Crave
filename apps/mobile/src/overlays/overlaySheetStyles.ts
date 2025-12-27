@@ -16,11 +16,6 @@ export const overlaySheetStyles = StyleSheet.create({
   },
   surface: {
     flex: 1,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-    borderBottomWidth: 1,
-    borderTopWidth: 0,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     overflow: 'hidden',

@@ -701,40 +701,40 @@ const BottomSheetWithFlashList = <T,>({
             {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
             <View style={{ flex: 1 }}>
               <AnimatedFlashList
-              ref={flashListRef as React.RefObject<FlashList<T>>}
-              {...flashListProps}
-              data={data}
-              renderItem={renderItem}
-              keyExtractor={keyExtractor}
-              estimatedItemSize={estimatedItemSize}
-              contentContainerStyle={sanitizedContentContainerStyle}
-              ListHeaderComponent={ListHeaderComponent}
-              ListFooterComponent={ListFooterComponent}
-              ListEmptyComponent={ListEmptyComponent}
-              ItemSeparatorComponent={ItemSeparatorComponent}
-              keyboardShouldPersistTaps={keyboardShouldPersistTaps}
-              scrollEnabled={shouldEnableScroll}
-              renderScrollComponent={ScrollComponent}
-              onScroll={animatedScrollHandler}
-              scrollEventThrottle={16}
-              onScrollBeginDrag={(event) => {
-                onScrollBeginDrag?.();
-                flashListProps?.onScrollBeginDrag?.(event);
-              }}
-              onScrollEndDrag={(event) => {
-                onScrollEndDrag?.();
-                flashListProps?.onScrollEndDrag?.(event);
-              }}
-              onEndReached={onEndReached}
-              onEndReachedThreshold={onEndReachedThreshold}
-              showsVerticalScrollIndicator={showsVerticalScrollIndicator}
-              keyboardDismissMode={keyboardDismissMode}
-              bounces={bounces}
-              alwaysBounceVertical={alwaysBounceVertical}
-              overScrollMode={overScrollMode}
-              testID={testID}
-              extraData={extraData}
-              scrollIndicatorInsets={scrollIndicatorInsets}
+                ref={flashListRef as React.RefObject<FlashList<T>>}
+                {...flashListProps}
+                data={data}
+                renderItem={renderItem}
+                keyExtractor={keyExtractor}
+                estimatedItemSize={estimatedItemSize}
+                contentContainerStyle={sanitizedContentContainerStyle}
+                ListHeaderComponent={ListHeaderComponent}
+                ListFooterComponent={ListFooterComponent}
+                ListEmptyComponent={ListEmptyComponent}
+                ItemSeparatorComponent={ItemSeparatorComponent}
+                keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+                scrollEnabled={shouldEnableScroll}
+                renderScrollComponent={ScrollComponent}
+                onScroll={animatedScrollHandler}
+                scrollEventThrottle={16}
+                onScrollBeginDrag={(event) => {
+                  onScrollBeginDrag?.();
+                  flashListProps?.onScrollBeginDrag?.(event);
+                }}
+                onScrollEndDrag={(event) => {
+                  onScrollEndDrag?.();
+                  flashListProps?.onScrollEndDrag?.(event);
+                }}
+                onEndReached={onEndReached}
+                onEndReachedThreshold={onEndReachedThreshold}
+                showsVerticalScrollIndicator={showsVerticalScrollIndicator}
+                keyboardDismissMode={keyboardDismissMode}
+                bounces={bounces}
+                alwaysBounceVertical={alwaysBounceVertical}
+                overScrollMode={overScrollMode}
+                testID={testID}
+                extraData={extraData}
+                scrollIndicatorInsets={scrollIndicatorInsets}
               />
             </View>
           </View>
