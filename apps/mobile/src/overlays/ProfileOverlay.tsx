@@ -475,9 +475,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
             <View style={styles.pollList}>{activePolls.map(renderPollCard)}</View>
           ) : (
             <Text variant="caption" style={styles.emptyText}>
-              {activeSegment === 'created'
-                ? 'No polls created yet.'
-                : 'No poll contributions yet.'}
+              {activeSegment === 'created' ? 'No polls created yet.' : 'No poll contributions yet.'}
             </Text>
           )}
         </View>
@@ -497,10 +495,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
         data={[]}
         renderItem={() => null}
         estimatedItemSize={720}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: contentBottomPadding },
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
         ListHeaderComponent={listHeaderComponent}
         backgroundComponent={<FrostedGlassBackground />}
         headerComponent={headerComponent}
