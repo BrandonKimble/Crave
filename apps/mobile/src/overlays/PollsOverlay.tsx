@@ -730,7 +730,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
           <View style={[styles.liveBadgeRight, { backgroundColor: liveBadgeTone }]}>
             <Text
-              variant="body"
+              variant="title"
               weight="semibold"
               style={
                 isLiveActive

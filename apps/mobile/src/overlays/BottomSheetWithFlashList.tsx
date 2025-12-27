@@ -1,5 +1,12 @@
 import React from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import {
+  PixelRatio,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import type { LayoutChangeEvent, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { FlashList, type FlashListProps } from '@shopify/flash-list';
@@ -14,7 +21,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SHEET_SPRING_CONFIG, clampValue } from './sheetUtils';
 import { overlaySheetStyles } from './overlaySheetStyles';
-import SheetTopShadow from './SheetTopShadow';
 
 const TOP_EPSILON = 2;
 const EXPANDED_EPSILON = 4;
@@ -90,7 +96,7 @@ type BottomSheetWithFlashListProps<T> = {
   momentumFlag?: SharedValue<boolean>;
   style?: StyleProp<ViewStyle>;
   surfaceStyle?: StyleProp<ViewStyle>;
-  topShadowStyle?: StyleProp<ViewStyle>;
+  shadowStyle?: StyleProp<ViewStyle>;
 };
 
 const snapPoint = (value: number, velocity: number, points: number[]): number => {
@@ -181,8 +187,10 @@ const BottomSheetWithFlashList = <T,>({
   momentumFlag,
   style,
   surfaceStyle,
-  topShadowStyle,
+  shadowStyle,
 }: BottomSheetWithFlashListProps<T>): React.ReactElement | null => {
+  const { height: screenHeight } = useWindowDimensions();
+  const pixelRatio = PixelRatio.get();
   const shouldEnableScroll = visible && listScrollEnabled;
   const internalSheetY = useSharedValue(snapPoints[initialSnapPoint]);
   const sheetY = sheetYValue ?? internalSheetY;
@@ -622,9 +630,13 @@ const BottomSheetWithFlashList = <T,>({
     return Component;
   }, [gestures.scroll]);
 
-  const animatedSheetStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: sheetY.value }],
-  }));
+  const animatedSheetStyle = useAnimatedStyle(
+    () => ({
+      height: Math.max(0, screenHeight - Math.round(sheetY.value * pixelRatio) / pixelRatio),
+      transform: [{ translateY: Math.round(sheetY.value * pixelRatio) / pixelRatio }],
+    }),
+    [pixelRatio, screenHeight]
+  );
 
   const sanitizedContentContainerStyle = React.useMemo(() => {
     if (!contentContainerStyle) {
@@ -670,19 +682,25 @@ const BottomSheetWithFlashList = <T,>({
   }, [contentContainerStyle]);
 
   const resolvedSurfaceStyle = surfaceStyle ?? overlaySheetStyles.surface;
+  const resolvedShadowStyle = shadowStyle ?? overlaySheetStyles.shadowShell;
+  const shadowShellStyle = [
+    resolvedShadowStyle,
+    Platform.OS === 'android' ? overlaySheetStyles.shadowShellAndroid : null,
+  ];
 
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
-        <View style={resolvedSurfaceStyle}>
-          {backgroundComponent ? (
-            <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-              {backgroundComponent}
-            </View>
-          ) : null}
-          {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
-          <View style={{ flex: 1 }}>
-            <AnimatedFlashList
+        <View style={shadowShellStyle}>
+          <View style={resolvedSurfaceStyle}>
+            {backgroundComponent ? (
+              <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+                {backgroundComponent}
+              </View>
+            ) : null}
+            {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
+            <View style={{ flex: 1 }}>
+              <AnimatedFlashList
               ref={flashListRef as React.RefObject<FlashList<T>>}
               {...flashListProps}
               data={data}
@@ -717,10 +735,10 @@ const BottomSheetWithFlashList = <T,>({
               testID={testID}
               extraData={extraData}
               scrollIndicatorInsets={scrollIndicatorInsets}
-            />
+              />
+            </View>
           </View>
         </View>
-        <SheetTopShadow style={topShadowStyle} />
       </Animated.View>
     </GestureDetector>
   );

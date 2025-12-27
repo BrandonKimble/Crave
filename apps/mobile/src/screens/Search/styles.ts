@@ -246,6 +246,12 @@ const styles = StyleSheet.create({
   searchSuggestionScrollSurface: {
     backgroundColor: 'transparent',
   },
+  searchSuggestionTopFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    backgroundColor: '#ffffff',
+  },
   searchSurfaceContent: {
     paddingHorizontal: 0,
     paddingVertical: 0,

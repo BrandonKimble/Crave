@@ -105,6 +105,7 @@ import {
   SEARCH_SUGGESTION_HEADER_PADDING_OVERLAP,
   SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM,
+  SEARCH_SUGGESTION_TOP_FILL_HEIGHT,
   SECONDARY_METRIC_ICON_SIZE,
   SHORTCUT_CHIP_HOLE_PADDING,
   SHORTCUT_CHIP_HOLE_RADIUS,
@@ -982,6 +983,20 @@ const SearchScreen: React.FC = () => {
     suggestionHeaderHeight,
     SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   ]);
+  const suggestionTopFillHeight = React.useMemo(() => {
+    if (!isSuggestionScreenActive) {
+      return 0;
+    }
+    const maxHeight = suggestionScrollMaxHeight ?? 0;
+    if (maxHeight <= 0) {
+      return SEARCH_SUGGESTION_TOP_FILL_HEIGHT;
+    }
+    const maxFill = Math.max(0, maxHeight - 48);
+    if (maxFill <= 0) {
+      return Math.min(SEARCH_SUGGESTION_TOP_FILL_HEIGHT, maxHeight);
+    }
+    return Math.min(SEARCH_SUGGESTION_TOP_FILL_HEIGHT, maxFill);
+  }, [isSuggestionScreenActive, suggestionScrollMaxHeight]);
   const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
     if (!isSuggestionScreenActive) {
       return [];
@@ -2712,6 +2727,16 @@ const SearchScreen: React.FC = () => {
                     suggestionMaskAnimatedStyle,
                   ]}
                   pointerEvents="none"
+                />
+              ) : null}
+              {suggestionTopFillHeight > 0 ? (
+                <Reanimated.View
+                  pointerEvents="none"
+                  style={[
+                    styles.searchSuggestionTopFill,
+                    { top: suggestionScrollTop, height: suggestionTopFillHeight },
+                    suggestionMaskAnimatedStyle,
+                  ]}
                 />
               ) : null}
               <Animated.ScrollView
