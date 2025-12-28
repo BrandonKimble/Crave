@@ -9,7 +9,11 @@ import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
-import { CARD_LINE_GAP, SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
+import {
+  CARD_LINE_GAP,
+  SECONDARY_METRIC_ICON_SIZE,
+  TOP_FOOD_RENDER_LIMIT,
+} from '../constants/search';
 import { capitalizeFirst, formatCoverageLabel } from '../utils/format';
 import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
@@ -139,9 +143,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         hiddenTopFoodCount: Math.max(0, topFoodItems.length - candidateTopFoods.length),
       };
     }
-    const measuredWidths = candidateTopFoods.map(
-      (food) => topFoodItemWidths[food.connectionId]
-    );
+    const measuredWidths = candidateTopFoods.map((food) => topFoodItemWidths[food.connectionId]);
     if (measuredWidths.some((width) => width === undefined)) {
       return {
         visibleTopFoods: candidateTopFoods,
@@ -167,10 +169,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       }
     }
 
-    const clampedVisibleCount = Math.min(
-      Math.max(1, visibleCount),
-      candidateTopFoods.length
-    );
+    const clampedVisibleCount = Math.min(Math.max(1, visibleCount), candidateTopFoods.length);
 
     return {
       visibleTopFoods: candidateTopFoods.slice(0, clampedVisibleCount),
@@ -354,11 +353,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
                           </Text>
-                          <Text
-                            variant="body"
-                            weight="regular"
-                            style={styles.topFoodNameInline}
-                          >
+                          <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
                             {' '}
                             {food.foodName}
                           </Text>
@@ -388,11 +383,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
                           </Text>
-                          <Text
-                            variant="body"
-                            weight="regular"
-                            style={styles.topFoodNameInline}
-                          >
+                          <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
                             {' '}
                             {food.foodName}
                           </Text>

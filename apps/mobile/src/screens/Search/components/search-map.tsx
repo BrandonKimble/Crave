@@ -122,9 +122,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
                     ]}
                   />
                   <View style={styles.pinRankWrapper}>
-                    <Text style={styles.pinRank}>
-                      {feature.properties.rank}
-                    </Text>
+                    <Text style={styles.pinRank}>{feature.properties.rank}</Text>
                   </View>
                 </View>
               </MapboxGL.MarkerView>

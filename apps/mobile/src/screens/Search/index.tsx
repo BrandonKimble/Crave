@@ -2157,13 +2157,7 @@ const SearchScreen: React.FC = () => {
     clearSearchState({
       shouldRefocusInput: !isSearchSessionActive && !isLoading && !isLoadingMore,
     });
-  }, [
-    clearSearchState,
-    clearTypedQuery,
-    isLoading,
-    isLoadingMore,
-    isSearchSessionActive,
-  ]);
+  }, [clearSearchState, clearTypedQuery, isLoading, isLoadingMore, isSearchSessionActive]);
 
   const handleCloseResults = React.useCallback(() => {
     clearSearchState();

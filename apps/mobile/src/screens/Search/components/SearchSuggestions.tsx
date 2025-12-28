@@ -142,9 +142,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
         <View style={recentSectionStyles}>
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recent searches</Text>
-            {isRecentLoading && (
-              <ActivityIndicator size="small" color={themeColors.textBody} />
-            )}
+            {isRecentLoading && <ActivityIndicator size="small" color={themeColors.textBody} />}
           </View>
           {!isRecentLoading && !hasRecentSearches ? (
             <Text style={styles.recentEmptyText}>No recent searches yet</Text>

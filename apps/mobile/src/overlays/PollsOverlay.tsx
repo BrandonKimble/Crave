@@ -107,10 +107,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     LINE_HEIGHTS.body +
     insets.bottom;
   const navBarInset = Math.max(navBarHeight > 0 ? navBarHeight : estimatedNavBarHeight, 0);
-  const navBarOffset = Math.max(
-    navBarTop > 0 ? navBarTop : SCREEN_HEIGHT - navBarInset,
-    0
-  );
+  const navBarOffset = Math.max(navBarTop > 0 ? navBarTop : SCREEN_HEIGHT - navBarInset, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
 
   const [polls, setPolls] = useState<Poll[]>([]);
