@@ -1,8 +1,8 @@
 export const TYPE_SCALE = {
   title: { fontSize: 22, lineHeight: 28 },
-  subtitle: { fontSize: 16, lineHeight: 24, includeFontPadding: false },
+  subtitle: { fontSize: 18, lineHeight: 24, includeFontPadding: false },
   body: { fontSize: 14, lineHeight: 20 },
-  caption: { fontSize: 11, lineHeight: 14 },
+  caption: { fontSize: 11, lineHeight: 15 },
 } as const;
 
 export const FONT_SIZES = {

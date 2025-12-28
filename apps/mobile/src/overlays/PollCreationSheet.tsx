@@ -552,7 +552,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   headerSubtitle: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 4,
   },
   section: {
@@ -594,7 +594,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   templateSubtitle: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 4,
     fontSize: FONT_SIZES.caption,
     lineHeight: LINE_HEIGHTS.caption,
@@ -640,12 +640,12 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   autocompleteLoadingText: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   autocompleteEmptyText: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   autocompleteItem: {
     paddingHorizontal: 12,
@@ -657,7 +657,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   autocompleteSecondary: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 2,
     textTransform: 'capitalize',
   },

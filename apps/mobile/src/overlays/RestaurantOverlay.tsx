@@ -6,6 +6,7 @@ import { Text } from '../components';
 import type { OperatingStatus } from '@crave-search/shared';
 import type { FoodResult, RestaurantResult } from '../types';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
+import { colors as themeColors } from '../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { getPriceRangeLabel } from '../constants/pricing';
@@ -347,7 +348,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
                     <Feather
                       name={isExpanded ? 'chevron-up' : 'chevron-down'}
                       size={16}
-                      color="#94a3b8"
+                      color={themeColors.textBody}
                     />
                   </View>
                 </Pressable>
@@ -492,7 +493,7 @@ const styles = StyleSheet.create({
   restaurantAddress: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
     marginTop: 4,
   },
   headerActions: {
@@ -520,7 +521,7 @@ const styles = StyleSheet.create({
   metricLabel: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
   },
   metricValue: {
     fontSize: FONT_SIZES.title,
@@ -544,7 +545,7 @@ const styles = StyleSheet.create({
   detailValue: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
   },
   actionsRow: {
     flexDirection: 'row',
@@ -603,7 +604,7 @@ const styles = StyleSheet.create({
   locationStatus: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
     maxWidth: 160,
   },
   locationDetails: {
@@ -630,7 +631,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
   },
   locationDetailLink: {
     flex: 1,
@@ -651,14 +652,14 @@ const styles = StyleSheet.create({
   locationHoursDay: {
     fontSize: FONT_SIZES.caption,
     lineHeight: LINE_HEIGHTS.caption,
-    color: '#64748b',
+    color: themeColors.textBody,
     minWidth: 32,
   },
   locationHoursValue: {
     flex: 1,
     fontSize: FONT_SIZES.caption,
     lineHeight: LINE_HEIGHTS.caption,
-    color: '#475569',
+    color: themeColors.textBody,
     textAlign: 'right',
   },
   sectionHeader: {
@@ -674,7 +675,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
     marginTop: 2,
   },
   emptyState: {
@@ -684,7 +685,7 @@ const styles = StyleSheet.create({
   emptyStateText: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#94a3b8',
+    color: themeColors.textBody,
     textAlign: 'center',
   },
   dishCard: {
@@ -719,12 +720,12 @@ const styles = StyleSheet.create({
   dishMeta: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
   },
   dishActivity: {
     fontSize: FONT_SIZES.caption,
     lineHeight: LINE_HEIGHTS.caption,
-    color: '#94a3b8',
+    color: themeColors.textBody,
     textTransform: 'capitalize',
   },
   dishStatsRow: {
@@ -738,7 +739,7 @@ const styles = StyleSheet.create({
   dishStatLabel: {
     fontSize: FONT_SIZES.caption,
     lineHeight: LINE_HEIGHTS.caption,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   dishStatValue: {
     fontSize: FONT_SIZES.subtitle,

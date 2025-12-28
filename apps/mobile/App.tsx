@@ -45,7 +45,6 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 export default function App() {
-  const [appIsReady, setAppIsReady] = React.useState(false);
   const isBannerVisible = useSystemStatusStore(
     (state) => state.isOffline || Boolean(state.serviceIssue)
   );
@@ -64,27 +63,9 @@ export default function App() {
     borderTopRightRadius: OVERLAY_CORNER_RADIUS * bannerProgress.value,
   }));
 
-  React.useEffect(() => {
-    const prepare = async () => {
-      try {
-        // TODO: load fonts/resources when needed
-      } finally {
-        setAppIsReady(true);
-      }
-    };
-
-    void prepare();
-  }, []);
-
   const onLayoutRootView = React.useCallback(async () => {
-    if (appIsReady) {
-      await SplashScreen.hideAsync();
-    }
-  }, [appIsReady]);
-
-  if (!appIsReady) {
-    return null;
-  }
+    await SplashScreen.hideAsync();
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

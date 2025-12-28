@@ -51,8 +51,8 @@ const CRAVE_ACCENT = PRIMARY_ACCENT_COLOR;
 const CRAVE_ACCENT_LIGHT = 'rgba(249, 115, 131, 0.25)';
 const CRAVE_ACCENT_DARK = PRIMARY_ACCENT_COLOR;
 const PRIMARY_TEXT = '#0f172a';
-const SECONDARY_TEXT = '#475569';
-const MUTED_TEXT = '#94a3b8';
+const SECONDARY_TEXT = themeColors.textBody;
+const MUTED_TEXT = themeColors.textBody;
 const SURFACE_COLOR = '#ffffff';
 const CTA_PRESS_SCALE = 0.95;
 const CTA_OVERSHOOT_SCALE = 1.05;
@@ -1078,7 +1078,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
                 <TextInput
                   style={[styles.textInput, styles.customInputField]}
                   placeholder={step.customPlaceholder ?? 'Add your own'}
-                  placeholderTextColor="#94a3b8"
+                  placeholderTextColor={MUTED_TEXT}
                   value={customInputValue}
                   onChangeText={(text) => updateAnswer(customInputKey, text)}
                 />
@@ -1159,7 +1159,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         <TextInput
           style={styles.textInput}
           placeholder={step.placeholder ?? 'City name'}
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={MUTED_TEXT}
           value={requestValue}
           onChangeText={(text) => updateAnswer(step.id, text)}
           autoCapitalize="words"
@@ -2602,7 +2602,7 @@ const styles = StyleSheet.create({
   },
   heroDescription: {
     textAlign: 'left',
-    color: '#475569',
+    color: SECONDARY_TEXT,
   },
   questionTitle: {
     color: '#0f172a',
@@ -2611,7 +2611,7 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.title,
   },
   helperText: {
-    color: '#64748b',
+    color: SECONDARY_TEXT,
     marginBottom: 12,
   },
   choiceStep: {
@@ -2659,7 +2659,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   choiceCardDetail: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     marginTop: 4,
   },
   chipGrid: {
@@ -2746,7 +2746,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e2e8f0',
   },
   locationDividerText: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
   },
   waitlistMessage: {
     marginTop: 12,
@@ -2813,7 +2813,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   comparisonRowText: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     lineHeight: LINE_HEIGHTS.caption,
   },
   comparisonBodyText: {
@@ -2886,7 +2886,7 @@ const styles = StyleSheet.create({
     color: '#15803d',
   },
   processingBadgeTextPending: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
   },
   processingChecklistLabel: {
     color: '#0f172a',
@@ -2906,7 +2906,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   processingHighlightLabel: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
   },
   processingHighlightValue: {
     color: '#0f172a',
@@ -2922,7 +2922,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   processingSpinnerLabel: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
   },
   summaryContainer: {
     gap: 12,
@@ -2940,7 +2940,7 @@ const styles = StyleSheet.create({
     backgroundColor: CRAVE_ACCENT,
   },
   summaryBulletText: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     flex: 1,
   },
   accountButtons: {
@@ -2971,7 +2971,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#e2e8f0',
   },
   disclaimerText: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
     textAlign: 'left',
     lineHeight: LINE_HEIGHTS.caption,
   },
@@ -2992,7 +2992,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   usernamePrefix: {
-    color: '#64748b',
+    color: SECONDARY_TEXT,
     fontSize: FONT_SIZES.subtitle,
     lineHeight: LINE_HEIGHTS.subtitle,
     marginRight: 6,
@@ -3005,7 +3005,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   usernameHint: {
-    color: '#94a3b8',
+    color: MUTED_TEXT,
   },
   usernameStatusRow: {
     flexDirection: 'row',
@@ -3037,7 +3037,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   usernameSuggestionLabel: {
-    color: '#64748b',
+    color: SECONDARY_TEXT,
   },
   usernameSuggestionRow: {
     flexDirection: 'row',
@@ -3079,12 +3079,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   graphLabel: {
-    color: '#64748b',
+    color: SECONDARY_TEXT,
     textAlign: 'left',
     marginBottom: 8,
   },
   graphDetailText: {
-    color: '#64748b',
+    color: SECONDARY_TEXT,
     marginBottom: 4,
   },
   graphBarRow: {
@@ -3096,7 +3096,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   graphBarLabel: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     width: 100,
   },
   graphBarTrack: {
@@ -3123,12 +3123,12 @@ const styles = StyleSheet.create({
     width: '16%',
   },
   graphBarValue: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     width: 70,
     textAlign: 'right',
   },
   graphCallout: {
-    color: '#334155',
+    color: SECONDARY_TEXT,
     textAlign: 'center',
     marginTop: 8,
     fontSize: FONT_SIZES.body,
@@ -3237,7 +3237,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   notificationFeatureText: {
-    color: '#475569',
+    color: SECONDARY_TEXT,
     flex: 1,
   },
   notificationOptionsTitle: {

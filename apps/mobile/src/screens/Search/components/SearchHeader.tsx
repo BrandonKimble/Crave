@@ -114,7 +114,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   >
                     <ChevronLeft
                       size={CHEVRON_ICON_SIZE}
-                      color="#6b7280"
+                      color="#000000"
                       strokeWidth={CHEVRON_STROKE_WIDTH}
                       style={styles.chevronIcon}
                     />
@@ -123,7 +123,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   <View style={styles.leadingButton}>
                     <Search
                       size={SEARCH_ICON_SIZE}
-                      color="#9ca3af"
+                      color="#000000"
                       strokeWidth={2}
                       style={styles.searchIcon}
                     />
@@ -141,6 +141,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   shouldCollapseLeadingSlot ? styles.promptInputSubmitted : null,
                 ]}
                 returnKeyType="search"
+                blurOnSubmit
                 onSubmitEditing={onSubmit}
                 onFocus={onFocus}
                 onBlur={onBlur}
@@ -253,7 +254,7 @@ const styles = StyleSheet.create({
   promptInput: {
     flex: 1,
     fontSize: FONT_SIZES.title,
-    color: '#111827',
+    color: '#000000',
     textAlign: 'left',
     textAlignVertical: 'center',
     paddingVertical: 0,

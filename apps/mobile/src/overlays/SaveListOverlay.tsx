@@ -26,15 +26,15 @@ const TILE_RADIUS = 16;
 const TILE_BORDER = '#e2e8f0';
 const TILE_BG = '#f8fafc';
 const TILE_TEXT = '#0f172a';
-const TILE_SUBTEXT = '#64748b';
+const TILE_SUBTEXT = themeColors.textBody;
 const FORM_BORDER = '#e2e8f0';
-const FORM_PLACEHOLDER = '#94a3b8';
+const FORM_PLACEHOLDER = themeColors.textBody;
 const FORM_TOGGLE_BG = '#f1f5f9';
 const FORM_TOGGLE_ACTIVE = '#0f172a';
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
-    return '#94a3b8';
+    return themeColors.textBody;
   }
   if (score >= 8) {
     return '#10b981';
@@ -52,6 +52,7 @@ type SaveListOverlayProps = {
   onClose: () => void;
   searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   sheetYObserver?: SharedValue<number>;
 };
 
@@ -69,6 +70,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
   onClose,
   searchBarTop = 0,
   onSnapChange,
+  onDragStateChange,
   sheetYObserver,
 }) => {
   const insets = useSafeAreaInsets();
@@ -341,6 +343,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
       style={overlaySheetStyles.container}
       onHidden={onClose}
       onSnapChange={onSnapChange}
+      onDragStateChange={onDragStateChange}
       sheetYObserver={sheetYObserver}
       flashListProps={{
         numColumns: 2,

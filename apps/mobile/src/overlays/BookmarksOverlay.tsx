@@ -31,15 +31,15 @@ const TILE_RADIUS = 16;
 const TILE_BORDER = '#e2e8f0';
 const TILE_BG = '#f8fafc';
 const TILE_TEXT = '#0f172a';
-const TILE_SUBTEXT = '#64748b';
-const PREVIEW_DOT = '#94a3b8';
+const TILE_SUBTEXT = themeColors.textBody;
+const PREVIEW_DOT = themeColors.textBody;
 const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
-const SEGMENT_TEXT = '#475569';
+const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
 const FORM_BG = '#ffffff';
 const FORM_BORDER = '#e2e8f0';
-const FORM_PLACEHOLDER = '#94a3b8';
+const FORM_PLACEHOLDER = themeColors.textBody;
 const FORM_TOGGLE_BG = '#f1f5f9';
 const FORM_TOGGLE_ACTIVE = '#0f172a';
 const SHARE_BASE_URL = process.env.EXPO_PUBLIC_SHARE_BASE_URL || 'https://crave-search.app';
@@ -62,7 +62,9 @@ type BookmarksOverlayProps = {
   navBarTop?: number;
   searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   sheetYObserver?: SharedValue<number>;
+  snapTo?: 'expanded' | 'middle' | 'collapsed' | 'hidden' | null;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -80,7 +82,9 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
   navBarTop = 0,
   searchBarTop = 0,
   onSnapChange,
+  onDragStateChange,
   sheetYObserver,
+  snapTo,
 }) => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
@@ -459,7 +463,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
     <BottomSheetWithFlashList
       visible={visible}
       snapPoints={snapPoints}
-      initialSnapPoint="middle"
+      initialSnapPoint="expanded"
       data={lists}
       renderItem={renderListTile}
       keyExtractor={(item) => item.listId}
@@ -483,7 +487,9 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
       style={overlaySheetStyles.container}
       onHidden={handleHidden}
       onSnapChange={onSnapChange}
+      onDragStateChange={onDragStateChange}
       sheetYObserver={sheetYObserver}
+      snapTo={snapTo}
       dismissThreshold={dismissThreshold}
       flashListProps={{
         numColumns: 2,

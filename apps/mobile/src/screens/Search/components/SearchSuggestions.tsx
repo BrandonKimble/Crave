@@ -10,6 +10,7 @@ import {
 import { Clock, Eye, HandPlatter, Heart, Search as SearchIcon, Store } from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { RecentlyViewedRestaurant } from '../../../services/search';
@@ -31,6 +32,8 @@ type SearchSuggestionsProps = {
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
   style?: StyleProp<ViewStyle>;
 };
+
+const ICON_COLOR = '#000000';
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   visible,
@@ -89,11 +92,11 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               const shouldShowLocationCount =
                 match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
               const leadingIcon = isQuery ? (
-                <SearchIcon size={18} color="#6b7280" strokeWidth={2} />
+                <SearchIcon size={18} color={ICON_COLOR} strokeWidth={2} />
               ) : match.entityType === 'restaurant' ? (
-                <Store size={18} color="#6b7280" strokeWidth={2} />
+                <Store size={18} color={ICON_COLOR} strokeWidth={2} />
               ) : (
-                <HandPlatter size={18} color="#6b7280" strokeWidth={2} />
+                <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
               );
               return (
                 <TouchableOpacity
@@ -119,13 +122,13 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   </View>
                   <View style={styles.autocompleteBadges}>
                     {match.badges?.recentQuery ? (
-                      <Clock size={16} color="#6b7280" strokeWidth={2} />
+                      <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
                     ) : null}
                     {match.badges?.viewed ? (
-                      <Eye size={16} color="#6b7280" strokeWidth={2} />
+                      <Eye size={16} color={ICON_COLOR} strokeWidth={2} />
                     ) : null}
                     {match.badges?.favorite ? (
-                      <Heart size={16} color="#6b7280" strokeWidth={2} />
+                      <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
                     ) : null}
                   </View>
                 </TouchableOpacity>
@@ -139,7 +142,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
         <View style={recentSectionStyles}>
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recent searches</Text>
-            {isRecentLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+            {isRecentLoading && (
+              <ActivityIndicator size="small" color={themeColors.textBody} />
+            )}
           </View>
           {!isRecentLoading && !hasRecentSearches ? (
             <Text style={styles.recentEmptyText}>No recent searches yet</Text>
@@ -151,7 +156,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
               >
                 <View style={styles.recentIcon}>
-                  <Clock size={16} color="#6b7280" strokeWidth={2} />
+                  <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
                 </View>
                 <Text style={styles.recentText} numberOfLines={1}>
                   {term}
@@ -162,7 +167,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recently viewed</Text>
-            {isRecentlyViewedLoading && <ActivityIndicator size="small" color="#9ca3af" />}
+            {isRecentlyViewedLoading && (
+              <ActivityIndicator size="small" color={themeColors.textBody} />
+            )}
           </View>
           {!isRecentlyViewedLoading && !hasRecentlyViewedRestaurants ? (
             <Text style={styles.recentEmptyText}>No restaurants viewed yet</Text>
@@ -174,7 +181,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
               >
                 <View style={styles.recentIcon}>
-                  <Eye size={16} color="#6b7280" strokeWidth={2} />
+                  <Eye size={16} color={ICON_COLOR} strokeWidth={2} />
                 </View>
                 <Text style={styles.recentText} numberOfLines={1}>
                   {item.restaurantName}
@@ -210,7 +217,7 @@ const styles = StyleSheet.create({
   autocompleteLoadingText: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
     marginLeft: 8,
   },
   autocompleteEmptyText: {
@@ -218,7 +225,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   autocompleteItemRow: {
     paddingHorizontal: 0,
@@ -250,7 +257,7 @@ const styles = StyleSheet.create({
   autocompleteSecondaryText: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#64748b',
+    color: themeColors.textBody,
   },
   autocompleteBadges: {
     flexDirection: 'row',
@@ -283,7 +290,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   recentRow: {
     flexDirection: 'row',

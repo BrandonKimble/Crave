@@ -54,7 +54,6 @@ const CLOSE_ACTION_EPSILON = 2;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 const NAV_ICON_SIZE = 24;
 const NAV_ICON_LABEL_GAP = 2;
-const HEADER_HEIGHT_FALLBACK = Math.round(LINE_HEIGHTS.title + 34);
 type PollsOverlayProps = {
   visible: boolean;
   bounds?: MapBounds | null;
@@ -65,6 +64,7 @@ type PollsOverlayProps = {
   navBarHeight?: number;
   searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   sheetYObserver?: SharedValue<number>;
   snapTo?: 'expanded' | 'middle' | 'collapsed' | 'hidden' | null;
 };
@@ -84,6 +84,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   navBarHeight = 0,
   searchBarTop = 0,
   onSnapChange,
+  onDragStateChange,
   sheetYObserver,
   snapTo,
 }) => {
@@ -98,7 +99,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     badgeRadius: LIVE_BADGE_HEIGHT / 2,
   });
   const headerHeight = closeCutout.headerHeight;
-  const resolvedHeaderHeight = headerHeight > 0 ? headerHeight : HEADER_HEIGHT_FALLBACK;
   const estimatedNavBarHeight =
     NAV_TOP_PADDING +
     NAV_BOTTOM_PADDING +
@@ -150,7 +150,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     const hidden = SCREEN_HEIGHT + 80;
     const fallbackCollapsed = SCREEN_HEIGHT - 160;
     const navAlignedCollapsed =
-      navBarOffset > 0 ? navBarOffset - resolvedHeaderHeight : fallbackCollapsed;
+      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
     const collapsed = Math.max(navAlignedCollapsed, middle + 24);
     return {
       expanded,
@@ -158,7 +158,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       collapsed,
       hidden,
     };
-  }, [insets.top, navBarOffset, resolvedHeaderHeight, searchBarTop]);
+  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
   const [headerAction, setHeaderAction] = useState<'create' | 'close'>(
@@ -356,7 +356,11 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     if (!visible) {
       return;
     }
-    const base = API_BASE_URL.replace(/\/api$/, '');
+    const baseUrl = typeof API_BASE_URL === 'string' ? API_BASE_URL : '';
+    if (!baseUrl) {
+      return;
+    }
+    const base = baseUrl.replace(/\/api$/, '');
     socketRef.current = io(`${base}/polls`, {
       transports: ['websocket'],
     });
@@ -741,22 +745,22 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           {headerBaseTitle}
         </Text>
         <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
-            <View style={styles.liveBadgeContent} pointerEvents="none">
-              <Text
-                variant="title"
-                weight="semibold"
-                style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
-              >
-                {polls.length}
-              </Text>
-              <Text
-                variant="title"
-                weight="semibold"
-                style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
-              >
-                live
-              </Text>
-            </View>
+          <View style={styles.liveBadgeContent} pointerEvents="none">
+            <Text
+              variant="title"
+              weight="semibold"
+              style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
+            >
+              {polls.length}
+            </Text>
+            <Text
+              variant="title"
+              weight="semibold"
+              style={[styles.liveBadgeText, !isLiveActive && styles.liveBadgeTextMuted]}
+            >
+              live
+            </Text>
+          </View>
         </View>
         <Pressable
           onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
@@ -945,6 +949,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           style={overlaySheetStyles.container}
           onHidden={handleHidden}
           onSnapChange={handleSnapChange}
+          onDragStateChange={onDragStateChange}
           sheetYObserver={sheetYObserver}
           dismissThreshold={dismissThreshold}
         />
@@ -1038,7 +1043,7 @@ const styles = StyleSheet.create({
   },
   pollDescription: {
     marginTop: 6,
-    color: '#475569',
+    color: themeColors.textBody,
   },
   pollMeta: {
     marginTop: 6,
@@ -1059,7 +1064,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   detailDescription: {
-    color: '#475569',
+    color: themeColors.textBody,
     marginBottom: 12,
   },
   optionBarWrapper: {
@@ -1145,12 +1150,12 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   autocompleteLoadingText: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   autocompleteEmptyText: {
     paddingHorizontal: 12,
     paddingVertical: 10,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   autocompleteItem: {
     paddingHorizontal: 12,
@@ -1162,7 +1167,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   autocompleteSecondary: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 2,
     textTransform: 'capitalize',
   },

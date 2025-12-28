@@ -1,6 +1,7 @@
 import { Dimensions } from 'react-native';
 
 import { colors as themeColors } from '../../../constants/theme';
+import { FONT_SIZES } from '../../../constants/typography';
 import { OVERLAY_HORIZONTAL_PADDING } from '../../../overlays/overlaySheetStyles';
 import { CONTROL_HEIGHT } from './ui';
 
@@ -43,8 +44,8 @@ export const PIN_FILL_WIDTH = 80;
 export const PIN_FILL_HEIGHT = 72;
 export const PIN_FILL_SCALE = 0.97;
 export const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT;
-export const PIN_FILL_VERTICAL_BIAS = -4.8;
-export const PIN_FILL_HORIZONTAL_BIAS = -0.1;
+export const PIN_FILL_VERTICAL_BIAS = -5.32; // Calculated so top gap = side gap (8 source px)
+export const PIN_FILL_HORIZONTAL_BIAS = 0;
 export const PIN_FILL_RENDER_WIDTH = PIN_FILL_WIDTH * PIN_BASE_SCALE * PIN_FILL_SCALE;
 export const PIN_FILL_RENDER_HEIGHT = PIN_FILL_HEIGHT * PIN_BASE_SCALE * PIN_FILL_SCALE;
 export const PIN_FILL_LEFT_OFFSET =
@@ -53,6 +54,27 @@ export const PIN_FILL_LEFT_OFFSET =
 export const PIN_FILL_TOP_OFFSET =
   (PIN_BASE_HEIGHT * PIN_BASE_SCALE - PIN_FILL_RENDER_HEIGHT) / 2 +
   PIN_FILL_VERTICAL_BIAS * PIN_BASE_SCALE;
+
+// Visual center of pin fill shape (calculated from centroid of opaque pixels)
+// This is where the text should be centered for optimal visual appearance
+const PIN_FILL_VISUAL_CENTER_X_SOURCE = 39.5; // In source image pixels (80px wide)
+const PIN_FILL_VISUAL_CENTER_Y_SOURCE = 35.5; // In source image pixels (72px tall)
+
+// Convert visual center to render coordinates (relative to fill's top-left)
+const PIN_FILL_VISUAL_CENTER_X_RENDER = PIN_FILL_VISUAL_CENTER_X_SOURCE * PIN_BASE_SCALE * PIN_FILL_SCALE;
+const PIN_FILL_VISUAL_CENTER_Y_RENDER = PIN_FILL_VISUAL_CENTER_Y_SOURCE * PIN_BASE_SCALE * PIN_FILL_SCALE;
+
+// Visual center in wrapper coordinates
+export const PIN_FILL_VISUAL_CENTER_X = PIN_FILL_LEFT_OFFSET + PIN_FILL_VISUAL_CENTER_X_RENDER;
+export const PIN_FILL_VISUAL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_VISUAL_CENTER_Y_RENDER;
+
+// Text container: sized for 2-digit numbers at body font size
+export const PIN_RANK_FONT_SIZE = FONT_SIZES.body;
+export const PIN_RANK_CONTAINER_SIZE = 22;
+
+// Position text container so its center aligns with pin fill's visual center
+export const PIN_RANK_LEFT = PIN_FILL_VISUAL_CENTER_X - PIN_RANK_CONTAINER_SIZE / 2;
+export const PIN_RANK_TOP = PIN_FILL_VISUAL_CENTER_Y - PIN_RANK_CONTAINER_SIZE / 2;
 
 export const AUTOCOMPLETE_MIN_CHARS = 1;
 export const SEARCH_BAR_HOLE_PADDING = 0;

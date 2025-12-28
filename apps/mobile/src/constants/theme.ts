@@ -9,9 +9,9 @@ export const colors = {
   surface: '#FFFFFF',
   textPrimary: '#0f172a',
   textBody: '#6c7380',
-  textMuted: '#9ca3af',
+  textMuted: '#6c7380',
   text: '#1A1A1A',
-  muted: '#6B7280',
+  muted: '#6c7380',
   border: '#E5E7EB',
   secondaryAccent: '#5c5bff',
 };

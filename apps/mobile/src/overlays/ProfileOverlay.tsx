@@ -41,6 +41,7 @@ type ProfileOverlayProps = {
   navBarHeight?: number;
   searchBarTop?: number;
   onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
+  onDragStateChange?: (isDragging: boolean) => void;
   sheetYObserver?: SharedValue<number>;
 };
 
@@ -49,12 +50,12 @@ type Navigation = StackNavigationProp<RootStackParamList>;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
-const SEGMENT_TEXT = '#475569';
+const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
-    return '#94a3b8';
+    return themeColors.textBody;
   }
   if (score >= 8) {
     return '#10b981';
@@ -71,6 +72,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
   navBarHeight = 0,
   searchBarTop = 0,
   onSnapChange,
+  onDragStateChange,
   sheetYObserver,
 }) => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
@@ -503,6 +505,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
         style={overlaySheetStyles.container}
         onHidden={handleHidden}
         onSnapChange={onSnapChange}
+        onDragStateChange={onDragStateChange}
         sheetYObserver={sheetYObserver}
         dismissThreshold={dismissThreshold}
       />
@@ -561,7 +564,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   username: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 4,
   },
   settingsButton: {
@@ -589,7 +592,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   statLabel: {
-    color: '#64748b',
+    color: themeColors.textBody,
     textAlign: 'center',
   },
   segmentRow: {
@@ -636,11 +639,11 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   pollDescription: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 6,
   },
   pollMeta: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
     marginTop: 8,
   },
   listGrid: {
@@ -679,10 +682,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   previewEmpty: {
-    color: '#64748b',
+    color: themeColors.textBody,
   },
   emptyText: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
 });
 

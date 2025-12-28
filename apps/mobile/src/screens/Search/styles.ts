@@ -23,13 +23,16 @@ import {
   PIN_FILL_RENDER_WIDTH,
   PIN_FILL_TOP_OFFSET,
   PIN_MARKER_RENDER_SIZE,
+  PIN_RANK_CONTAINER_SIZE,
+  PIN_RANK_FONT_SIZE,
+  PIN_RANK_LEFT,
+  PIN_RANK_TOP,
   PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
   PRICE_THUMB_SIZE,
   SEARCH_CONTAINER_PADDING_TOP,
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SHORTCUTS_BOTTOM_MARGIN,
   SEARCH_THIS_AREA_COLOR,
-  SHARED_SECTION_GAP,
   SPACING_SM,
   SPACING_XS,
 } from './constants/search';
@@ -101,21 +104,22 @@ const styles = StyleSheet.create({
     top: PIN_FILL_TOP_OFFSET,
   },
   pinRankWrapper: {
+    // Centered on pin fill's visual centroid (calculated from opaque pixel distribution)
     position: 'absolute',
-    left: PIN_FILL_LEFT_OFFSET,
-    top: PIN_FILL_TOP_OFFSET,
-    width: PIN_FILL_RENDER_WIDTH,
-    height: PIN_FILL_RENDER_HEIGHT,
-    alignItems: 'center',
-    justifyContent: 'center',
+    left: PIN_RANK_LEFT,
+    top: PIN_RANK_TOP,
+    width: PIN_RANK_CONTAINER_SIZE,
+    height: PIN_RANK_CONTAINER_SIZE,
   },
   pinRank: {
-    fontSize: FONT_SIZES.caption,
-    lineHeight: LINE_HEIGHTS.caption,
+    // Text fills container; lineHeight = container height for vertical centering
+    width: PIN_RANK_CONTAINER_SIZE,
+    height: PIN_RANK_CONTAINER_SIZE,
+    fontSize: PIN_RANK_FONT_SIZE,
+    lineHeight: PIN_RANK_CONTAINER_SIZE,
     fontWeight: '700',
     color: '#fff',
     textAlign: 'center',
-    fontVariant: ['tabular-nums'],
     includeFontPadding: false,
     textAlignVertical: 'center',
   },
@@ -180,11 +184,13 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   searchThisAreaButton: {
-    borderRadius: 12,
+    height: CONTROL_HEIGHT + 4,
+    borderRadius: CONTROL_RADIUS,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: 11,
-    paddingVertical: 8,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 8,
+    paddingVertical: CONTROL_VERTICAL_PADDING,
+    justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1.5 },
     shadowOpacity: 0.24,
@@ -289,7 +295,7 @@ const styles = StyleSheet.create({
   autocompleteLoadingText: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#475569',
+    color: themeColors.textBody,
     marginLeft: 8,
   },
   autocompleteEmptyText: {
@@ -297,7 +303,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   autocompleteItem: {
     paddingHorizontal: 0,
@@ -410,7 +416,7 @@ const styles = StyleSheet.create({
   },
   navLabel: {
     marginTop: 0,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   navLabelActive: {
     color: ACTIVE_TAB_COLOR,
@@ -521,6 +527,9 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#f8fafc',
+  },
+  resultsListBackgroundLoading: {
+    backgroundColor: '#ffffff',
   },
   resultsHeaderSurface: {
     position: 'relative',
@@ -750,6 +759,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   rankBadgeText: {
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: '#ffffff',
     fontWeight: '700',
     textAlign: 'center',
@@ -1077,7 +1088,7 @@ const styles = StyleSheet.create({
   },
   topFoodInlineText: {
     color: themeColors.textBody,
-    flexShrink: 1,
+    flexShrink: 0,
     minWidth: 0,
   },
   topFoodRankInline: {
@@ -1099,6 +1110,11 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     pointerEvents: 'none',
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    columnGap: CARD_LINE_GAP,
+    alignSelf: 'flex-start',
   },
   topFoodMeasureText: {
     color: themeColors.textBody,

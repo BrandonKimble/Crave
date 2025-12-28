@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import type { LayoutChangeEvent, ScrollViewProps, StyleProp, ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { FlashList, type FlashListProps } from '@shopify/flash-list';
+import { FlashList, type FlashListProps, type FlashListRef } from '@shopify/flash-list';
 import Animated, {
   runOnJS,
   type SharedValue,
@@ -46,7 +46,7 @@ type BottomSheetWithFlashListProps<T> = {
   renderItem: FlashListProps<T>['renderItem'];
   keyExtractor?: FlashListProps<T>['keyExtractor'];
   estimatedItemSize: number;
-  listRef?: React.RefObject<FlashList<T>>;
+  listRef?: React.RefObject<FlashListRef<T>>;
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
@@ -227,7 +227,7 @@ const BottomSheetWithFlashList = <T,>({
   const isInMomentum = momentumFlag ?? internalMomentum;
   const wasVisible = React.useRef(visible);
   const hasNotifiedHidden = useSharedValue(false);
-  const internalListRef = React.useRef<FlashList<T> | null>(null);
+  const internalListRef = React.useRef<FlashListRef<T> | null>(null);
   const flashListRef = listRefProp ?? internalListRef;
 
   useAnimatedReaction(
@@ -387,6 +387,10 @@ const BottomSheetWithFlashList = <T,>({
     if (sheetYValue) {
       return;
     }
+    // Only animate when visibility actually changes, not when snap point values change
+    if (wasVisible.current === visible) {
+      return;
+    }
     const target = visible ? initialSnapValue : hiddenOrCollapsed;
     const shouldNotifyHidden = wasVisible.current && !visible;
     wasVisible.current = visible;
@@ -395,6 +399,10 @@ const BottomSheetWithFlashList = <T,>({
 
   React.useEffect(() => {
     if (sheetYValue) {
+      return;
+    }
+    // Don't interrupt hidden animations - they need to complete to trigger onHidden
+    if (currentSnapKeyRef.current === 'hidden') {
       return;
     }
     const target = resolveSnapValue(currentSnapKeyRef.current);

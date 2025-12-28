@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSignIn, useSignUp } from '@clerk/clerk-expo';
 import { Text } from './ui/Text';
+import { colors as themeColors } from '../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { logger } from '../utils';
 
@@ -268,14 +269,14 @@ const styles = StyleSheet.create({
   },
   modalSubtitle: {
     textAlign: 'center',
-    color: '#475569',
+    color: themeColors.textBody,
     marginBottom: 16,
   },
   formGroup: {
     marginBottom: 12,
   },
   label: {
-    color: '#475569',
+    color: themeColors.textBody,
     marginBottom: 6,
   },
   input: {
@@ -314,7 +315,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeLinkText: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   errorText: {
     color: '#dc2626',

@@ -186,7 +186,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
             >
               <LucideHeart
                 size={20}
-                color={isLiked ? themeColors.primary : '#cbd5e1'}
+                color={isLiked ? themeColors.primary : themeColors.textBody}
                 fill={isLiked ? themeColors.primary : 'none'}
                 strokeWidth={2}
               />
@@ -198,7 +198,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               style={styles.shareButton}
               hitSlop={8}
             >
-              <LucideShare size={20} color="#cbd5e1" strokeWidth={2} />
+              <LucideShare size={20} color={themeColors.textBody} strokeWidth={2} />
             </Pressable>
           </View>
         </View>

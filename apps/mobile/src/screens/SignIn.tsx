@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
   subtitle: {
-    color: '#475569',
+    color: themeColors.textBody,
     marginTop: 8,
   },
   buttonGroup: {
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
   },
   disclaimer: {
     marginTop: 32,
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   link: {
     color: CTA_COLOR,

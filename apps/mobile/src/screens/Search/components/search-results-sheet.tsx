@@ -1,7 +1,7 @@
 import React from 'react';
 import { type StyleProp, type ViewStyle } from 'react-native';
 
-import type { FlashList, FlashListProps } from '@shopify/flash-list';
+import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import BottomSheetWithFlashList, {
@@ -42,7 +42,7 @@ type SearchResultsSheetProps<T> = {
   backgroundComponent?: React.ReactNode;
   contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
   resultsContainerAnimatedStyle: unknown;
-  listRef?: React.RefObject<FlashList<T>>;
+  listRef?: React.RefObject<FlashListRef<T>>;
   onHidden: () => void;
   onSnapChange: (snap: SheetSnapState) => void;
   style?: StyleProp<ViewStyle>;

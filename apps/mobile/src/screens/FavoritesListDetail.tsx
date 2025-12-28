@@ -180,14 +180,14 @@ const FavoritesListDetailScreen: React.FC<
                 value={draftName}
                 onChangeText={setDraftName}
                 placeholder="List name"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={themeColors.textBody}
                 style={styles.editTitleInput}
               />
               <TextInput
                 value={draftDescription}
                 onChangeText={setDraftDescription}
                 placeholder="Description"
-                placeholderTextColor="#94a3b8"
+                placeholderTextColor={themeColors.textBody}
                 style={styles.editDescriptionInput}
                 multiline
               />
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   headerSubtitle: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 2,
   },
   visibilityBadge: {
@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   visibilityText: {
-    color: '#475569',
+    color: themeColors.textBody,
   },
   headerActions: {
     flexDirection: 'row',
@@ -343,7 +343,7 @@ const styles = StyleSheet.create({
   editDescriptionInput: {
     marginTop: 6,
     fontSize: 14,
-    color: '#64748b',
+    color: themeColors.textBody,
     textAlignVertical: 'top',
   },
   listContainer: {
@@ -354,7 +354,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   emptyText: {
-    color: '#64748b',
+    color: themeColors.textBody,
   },
 });
 

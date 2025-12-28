@@ -37,12 +37,12 @@ type ProfileSegment = 'created' | 'contributed' | 'favorites';
 const NAV_BOTTOM_PADDING = 10;
 const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
-const SEGMENT_TEXT = '#475569';
+const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
-    return '#94a3b8';
+    return themeColors.textBody;
   }
   if (score >= 8) {
     return '#10b981';
@@ -425,7 +425,7 @@ const ProfileScreen: React.FC = () => {
             ] as const
           ).map((item) => {
             const isActive = item.key === 'profile';
-            const iconColor = isActive ? themeColors.primary : '#94a3b8';
+            const iconColor = isActive ? themeColors.primary : themeColors.textBody;
             const renderIcon = (color: string, active: boolean) => {
               if (item.key === 'search') {
                 const holeRadius = active ? 4.2 : 3.2;
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   username: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 4,
   },
   settingsButton: {
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   statLabel: {
-    color: '#64748b',
+    color: themeColors.textBody,
     textAlign: 'center',
   },
   segmentRow: {
@@ -635,11 +635,11 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
   pollDescription: {
-    color: '#64748b',
+    color: themeColors.textBody,
     marginTop: 6,
   },
   pollMeta: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
     marginTop: 8,
   },
   listGrid: {
@@ -678,10 +678,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   previewEmpty: {
-    color: '#64748b',
+    color: themeColors.textBody,
   },
   emptyText: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   bottomNavWrapper: {
     ...StyleSheet.absoluteFillObject,
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   navLabel: {
-    color: '#94a3b8',
+    color: themeColors.textBody,
   },
   navLabelActive: {
     color: themeColors.primary,

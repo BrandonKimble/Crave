@@ -13,6 +13,8 @@ import { USA_FALLBACK_CENTER } from '../constants/search';
 import styles from '../styles';
 import { getMarkerZIndex } from '../utils/map';
 
+const MAP_PAN_DECELERATION_FACTOR = 0.995;
+
 export type RestaurantFeatureProperties = {
   restaurantId: string;
   restaurantName: string;
@@ -73,6 +75,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
       logoEnabled={false}
       attributionEnabled={false}
       scaleBarEnabled={false}
+      gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
       onPress={onPress}
       onCameraChanged={onCameraChanged}
       onMapIdle={onCameraChanged}
@@ -119,7 +122,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
                     ]}
                   />
                   <View style={styles.pinRankWrapper}>
-                    <Text variant="caption" style={styles.pinRank}>
+                    <Text style={styles.pinRank}>
                       {feature.properties.rank}
                     </Text>
                   </View>

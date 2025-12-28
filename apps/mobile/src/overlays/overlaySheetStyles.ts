@@ -1,8 +1,9 @@
 import { StyleSheet } from 'react-native';
+import { CONTROL_HEIGHT } from '../screens/Search/constants/ui';
 
-export const OVERLAY_HORIZONTAL_PADDING = 15;
+export const OVERLAY_HORIZONTAL_PADDING = 16;
 export const OVERLAY_CORNER_RADIUS = 22;
-export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = 30;
+export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = CONTROL_HEIGHT;
 export const OVERLAY_STACK_ZINDEX = 10;
 
 export const overlaySheetStyles = StyleSheet.create({
@@ -62,7 +63,7 @@ export const overlaySheetStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
+    marginTop: 7,
   },
   headerRowSpaced: {
     marginBottom: 8,
