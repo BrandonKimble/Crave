@@ -18,6 +18,7 @@ import { ExternalApiService } from '../shared/external-integrations.types';
 const DEFAULT_PLACE_DETAILS_FIELD_MASK_FIELDS = [
   'id',
   'displayName',
+  'editorialSummary',
   'primaryType',
   'primaryTypeDisplayName',
   'formattedAddress',
@@ -97,6 +98,7 @@ export interface GooglePlacesV1AddressComponent {
 export interface GooglePlacesV1Place {
   id?: string;
   displayName?: { text?: string; languageCode?: string };
+  editorialSummary?: { text?: string; languageCode?: string };
   primaryType?: string;
   primaryTypeDisplayName?: { text?: string; languageCode?: string };
   formattedAddress?: string;

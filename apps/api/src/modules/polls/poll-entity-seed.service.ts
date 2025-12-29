@@ -3,6 +3,7 @@ import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { AliasManagementService } from '../content-processing/entity-resolver/alias-management.service';
+import { RestaurantCuisineExtractionQueueService } from '../restaurant-enrichment/restaurant-cuisine-extraction-queue.service';
 import { RestaurantLocationEnrichmentService } from '../restaurant-enrichment/restaurant-location-enrichment.service';
 
 export type CoverageContext = {
@@ -32,6 +33,7 @@ export class PollEntitySeedService {
     loggerService: LoggerService,
     private readonly aliasManagement: AliasManagementService,
     private readonly restaurantEnrichment: RestaurantLocationEnrichmentService,
+    private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
   ) {
     this.logger = loggerService.setContext('PollEntitySeedService');
   }
@@ -191,6 +193,10 @@ export class PollEntitySeedService {
       entityId: created.entityId,
       name: created.name,
       coverageKey: params.coverage.coverageKey,
+    });
+
+    await this.cuisineExtractionQueue.queueExtraction(created.entityId, {
+      source: 'poll_input',
     });
 
     return { entityId: created.entityId, name: created.name, created: true };

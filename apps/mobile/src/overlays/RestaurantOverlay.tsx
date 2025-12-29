@@ -12,6 +12,7 @@ import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { getPriceRangeLabel } from '../constants/pricing';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
+import { calculateSnapPoints } from './sheetUtils';
 
 type RestaurantOverlayData = {
   restaurant: RestaurantResult;
@@ -27,6 +28,7 @@ type RestaurantOverlayProps = {
   onRequestClose: () => void;
   onToggleFavorite: (id: string) => void;
   navBarTop?: number;
+  searchBarTop?: number;
 };
 
 type RestaurantOverlayContentProps = {
@@ -36,6 +38,7 @@ type RestaurantOverlayContentProps = {
   onRequestClose: () => void;
   onToggleFavorite: (id: string) => void;
   navBarTop?: number;
+  searchBarTop?: number;
 };
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -60,6 +63,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   onRequestClose,
   onToggleFavorite,
   navBarTop = 0,
+  searchBarTop = 0,
 }) => {
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
@@ -67,21 +71,10 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = Math.max(insets.top, 0);
-    const middle = Math.max(expanded + 180, SCREEN_HEIGHT * 0.6);
-    const hidden = SCREEN_HEIGHT + 80;
-    const fallbackCollapsed = SCREEN_HEIGHT - 180;
-    const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
-    const collapsed = Math.max(navAlignedCollapsed, middle + 24);
-    return {
-      expanded,
-      middle,
-      collapsed,
-      hidden,
-    };
-  }, [headerHeight, insets.top, navBarOffset]);
+  const snapPoints = React.useMemo<SnapPoints>(
+    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop]
+  );
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
 
   const { restaurant, dishes, queryLabel, isFavorite } = data;
@@ -461,16 +454,17 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
       style={overlaySheetStyles.container}
       onHidden={onDismiss}
       dismissThreshold={dismissThreshold}
+      preventSwipeDismiss
     />
   );
 };
 
-const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({ data, ...rest }) => {
+const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({ data, searchBarTop, ...rest }) => {
   if (!data) {
     return null;
   }
 
-  return <RestaurantOverlayContent {...rest} data={data} />;
+  return <RestaurantOverlayContent {...rest} data={data} searchBarTop={searchBarTop} />;
 };
 
 const styles = StyleSheet.create({

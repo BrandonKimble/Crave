@@ -40,7 +40,7 @@ import {
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import SquircleSpinner from '../components/SquircleSpinner';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { resolveExpandedTop } from './sheetUtils';
+import { calculateSnapPoints } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import PollCreationSheet from './PollCreationSheet';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../screens/Search/constants/ui';
@@ -141,21 +141,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   }, [snapTo]);
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const snapPoints = useMemo<SnapPoints>(() => {
-    const expanded = resolveExpandedTop(searchBarTop ?? 0, insets.top);
-    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
-    const hidden = SCREEN_HEIGHT + 80;
-    const fallbackCollapsed = SCREEN_HEIGHT - 160;
-    const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
-    const collapsed = Math.max(navAlignedCollapsed, middle + 24);
-    return {
-      expanded,
-      middle,
-      collapsed,
-      hidden,
-    };
-  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
+  const snapPoints = useMemo<SnapPoints>(
+    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop]
+  );
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
   const [headerAction, setHeaderAction] = useState<'create' | 'close'>(

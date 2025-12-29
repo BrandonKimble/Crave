@@ -256,6 +256,10 @@ export interface LLMSearchQueryAnalysis {
   metadata?: Record<string, unknown>;
 }
 
+export interface LLMCuisineExtractionResult {
+  cuisines: string[];
+}
+
 export type LLMUsageMetadata = NonNullable<LLMApiResponse['usageMetadata']>;
 
 export interface RateLimitInfo {

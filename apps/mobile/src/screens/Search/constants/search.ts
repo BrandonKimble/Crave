@@ -8,8 +8,8 @@ import { CONTROL_HEIGHT } from './ui';
 export const SCREEN_HEIGHT = Dimensions.get('window').height;
 export const SCREEN_WIDTH = Dimensions.get('window').width;
 
-export const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
-export const SEARCH_HORIZONTAL_PADDING = Math.max(8, CONTENT_HORIZONTAL_PADDING - 2);
+export const CONTENT_HORIZONTAL_PADDING = 12;
+export const SEARCH_HORIZONTAL_PADDING = CONTENT_HORIZONTAL_PADDING;
 export const SEARCH_CONTAINER_PADDING_TOP = 8;
 export const CARD_GAP = 6;
 export const SHARED_SECTION_GAP = CARD_GAP;
@@ -68,7 +68,8 @@ export const PIN_RANK_CONTAINER_HEIGHT = PIN_FILL_RENDER_HEIGHT; // ~20.37
 const PIN_RANK_OPTICAL_OFFSET_X = 0;
 
 // Position container centered on pin fill center (with optical adjustment)
-export const PIN_RANK_LEFT = PIN_FILL_CENTER_X - PIN_RANK_CONTAINER_WIDTH / 2 + PIN_RANK_OPTICAL_OFFSET_X;
+export const PIN_RANK_LEFT =
+  PIN_FILL_CENTER_X - PIN_RANK_CONTAINER_WIDTH / 2 + PIN_RANK_OPTICAL_OFFSET_X;
 export const PIN_RANK_TOP = PIN_FILL_CENTER_Y - PIN_RANK_CONTAINER_HEIGHT / 2;
 
 export const AUTOCOMPLETE_MIN_CHARS = 1;

@@ -27,6 +27,7 @@ type SearchResultsSheetProps<T> = {
   onMomentumBeginJS?: () => void;
   onMomentumEndJS?: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
+  listKey?: string;
   onEndReached?: FlashListProps<T>['onEndReached'];
   extraData?: FlashListProps<T>['extraData'];
   data: ReadonlyArray<T>;
@@ -38,6 +39,7 @@ type SearchResultsSheetProps<T> = {
   ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
+  ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
@@ -62,6 +64,7 @@ const SearchResultsSheet = <T,>({
   onMomentumBeginJS,
   onMomentumEndJS,
   onDragStateChange,
+  listKey,
   onEndReached,
   extraData,
   data,
@@ -73,6 +76,7 @@ const SearchResultsSheet = <T,>({
   ListHeaderComponent,
   ListFooterComponent,
   ListEmptyComponent,
+  ItemSeparatorComponent,
   headerComponent,
   backgroundComponent,
   contentContainerStyle,
@@ -115,6 +119,7 @@ const SearchResultsSheet = <T,>({
         onMomentumBeginJS={onMomentumBeginJS}
         onMomentumEndJS={onMomentumEndJS}
         onDragStateChange={onDragStateChange}
+        listKey={listKey}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.2}
         showsVerticalScrollIndicator={false}
@@ -132,6 +137,7 @@ const SearchResultsSheet = <T,>({
         ListHeaderComponent={ListHeaderComponent}
         ListFooterComponent={ListFooterComponent}
         ListEmptyComponent={ListEmptyComponent}
+        ItemSeparatorComponent={ItemSeparatorComponent}
         contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
         headerComponent={headerComponent}
         backgroundComponent={backgroundComponent}

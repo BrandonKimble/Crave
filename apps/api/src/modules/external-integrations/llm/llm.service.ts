@@ -24,6 +24,7 @@ import {
   LLMApiResponse,
   LLMPerformanceMetrics,
   LLMSearchQueryAnalysis,
+  LLMCuisineExtractionResult,
   SystemInstructionCacheState,
 } from './llm.types';
 import { LLMInputDto, LLMOutputDto } from './dto';
@@ -137,6 +138,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
   >();
   private queryCacheLookupCounter?: Counter<string>;
   private queryPrompt!: string;
+  private cuisinePrompt!: string;
   private queryInstructionCache: GeminiCacheEntry | null = null;
   private queryModel!: string;
   private thoughtDebugEntries: {
@@ -307,6 +309,7 @@ export class LLMService implements OnModuleInit, OnModuleDestroy {
     // Load system prompt from collection-prompt.md
     this.systemPrompt = this.loadSystemPrompt();
     this.queryPrompt = this.loadQueryPrompt();
+    this.cuisinePrompt = this.loadCuisinePrompt();
     this.validateConfig();
 
     this.logger.info('Gemini LLM service initialized with @google/genai', {
@@ -778,6 +781,26 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
   }
 
+  private loadCuisinePrompt(): string {
+    try {
+      const promptPath = join(process.cwd(), '..', '..', 'cuisine-prompt.md');
+      return readFileSync(promptPath, 'utf-8');
+    } catch (error) {
+      this.logger.error(
+        'Failed to load cuisine prompt from cuisine-prompt.md',
+        {
+          correlationId: CorrelationUtils.getCorrelationId(),
+          operation: 'load_cuisine_prompt',
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+          },
+        },
+      );
+
+      return `Extract cuisines from a restaurant summary. Return minified JSON with a single key "cuisines" (array of lowercased strings). If no cuisines are present, return {"cuisines":[]}.`;
+    }
+  }
+
   private validateConfig(): void {
     const missingFields: string[] = [];
     if (!this.llmConfig.apiKey) missingFields.push('llm.apiKey');
@@ -1031,6 +1054,84 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     return this.decorateSearchQueryAnalysis(analysis, false, null);
   }
 
+  async extractCuisineFromSummary(
+    summary: string,
+  ): Promise<LLMCuisineExtractionResult> {
+    const trimmedSummary = summary?.trim() ?? '';
+    if (!trimmedSummary) {
+      return { cuisines: [] };
+    }
+
+    this.logger.info('Extracting cuisines from summary', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'extract_cuisine_summary',
+      summaryLength: trimmedSummary.length,
+    });
+
+    const prompt = this.buildCuisineExtractionPrompt(trimmedSummary);
+    const generationConfig: GeminiGenerationConfig = {
+      temperature: Math.min(this.llmConfig.temperature ?? 0.1, 0.2),
+      topP: this.llmConfig.topP,
+      topK: this.llmConfig.topK,
+      candidateCount: 1,
+      maxOutputTokens: 512,
+      responseMimeType: 'application/json',
+      responseJsonSchema: {
+        type: 'object',
+        description: 'Cuisine extraction result',
+        properties: {
+          cuisines: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of cuisine names inferred from the summary',
+          },
+        },
+        required: ['cuisines'],
+        additionalProperties: false,
+      },
+    };
+    const thinkingConfig = this.getThinkingConfig(this.queryModel, 'query');
+    if (thinkingConfig) {
+      generationConfig.thinkingConfig = thinkingConfig;
+    }
+
+    const response = await this.callLLMApi(prompt, {
+      generationConfig,
+      systemInstruction: this.cuisinePrompt,
+      model: this.queryModel,
+      timeoutMs:
+        typeof this.llmConfig.queryTimeout === 'number' &&
+        Number.isFinite(this.llmConfig.queryTimeout) &&
+        this.llmConfig.queryTimeout > 0
+          ? this.llmConfig.queryTimeout
+          : undefined,
+      maxRetries: 0,
+      thinkingContext: 'query',
+    });
+    const content = this.extractTextContent(
+      response,
+      'extract_cuisine_summary',
+    );
+    if (this.llmConfig.queryLogOutputs) {
+      this.logger.info('Cuisine extraction LLM raw output', {
+        correlationId: CorrelationUtils.getCorrelationId(),
+        operation: 'extract_cuisine_summary',
+        outputLength: content.length,
+        output: content,
+      });
+    }
+
+    const parsed = this.parseCuisineResponse(content);
+
+    this.logger.debug('Cuisine extraction completed', {
+      correlationId: CorrelationUtils.getCorrelationId(),
+      operation: 'extract_cuisine_summary',
+      cuisines: parsed.cuisines.length,
+    });
+
+    return parsed;
+  }
+
   /**
    * Build the processing prompt using the complete collection-prompt.md system prompt
    */
@@ -1127,6 +1228,10 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
 
   private buildSearchQueryPrompt(query: string): string {
     return JSON.stringify({ query });
+  }
+
+  private buildCuisineExtractionPrompt(summary: string): string {
+    return JSON.stringify({ summary });
   }
 
   private normalizeSearchQueryForCache(query: string): string {
@@ -1534,6 +1639,33 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     };
   }
 
+  private parseCuisineResponse(content: string): LLMCuisineExtractionResult {
+    const cleanContent = this.sanitizeJsonContent(content);
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(cleanContent);
+    } catch (error) {
+      const reason =
+        error instanceof Error ? error.message : 'Unknown JSON parse error';
+      throw new LLMResponseParsingError(
+        `Failed to parse cuisine extraction response: ${reason}`,
+        content,
+      );
+    }
+
+    if (!this.isCuisineResponse(parsed)) {
+      throw new LLMResponseParsingError(
+        'Cuisine extraction response was not in the expected format',
+        content,
+      );
+    }
+
+    const cuisines = this.coerceStringArray(parsed.cuisines);
+
+    return { cuisines };
+  }
+
   private coerceStringArray(value: unknown): string[] {
     if (!Array.isArray(value)) {
       return [];
@@ -1551,6 +1683,17 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     }
 
     return Array.from(set);
+  }
+
+  private isCuisineResponse(
+    value: unknown,
+  ): value is LLMCuisineExtractionResult {
+    if (typeof value !== 'object' || value === null) {
+      return false;
+    }
+
+    const record = value as Record<string, unknown>;
+    return this.isStringArray(record.cuisines);
   }
 
   private isSearchQueryResponse(

@@ -53,3 +53,42 @@ export const snapPointForState = (
       return hidden;
   }
 };
+
+export type SnapPoints = {
+  expanded: number;
+  middle: number;
+  collapsed: number;
+  hidden: number;
+};
+
+/**
+ * Shared snap point calculation used by all overlay sheets.
+ * This ensures consistent positioning across results sheet, restaurant overlay,
+ * bookmarks overlay, polls overlay, and profile overlay.
+ */
+export const calculateSnapPoints = (
+  screenHeight: number,
+  searchBarTop: number,
+  insetTop: number,
+  navBarOffset: number,
+  headerHeight: number
+): SnapPoints => {
+  const expanded = resolveExpandedTop(searchBarTop, insetTop);
+  const rawMiddle = screenHeight * 0.4;
+  const middle = Math.max(expanded + 96, rawMiddle);
+  const hidden = screenHeight + 80;
+  const clampedMiddle = Math.min(middle, hidden - 120);
+  const collapsed = screenHeight - 130;
+  // If we have a nav bar, align collapsed to it
+  const fallbackCollapsed = collapsed;
+  const navAlignedCollapsed =
+    navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
+  const finalCollapsed = Math.max(navAlignedCollapsed, clampedMiddle + 24);
+
+  return {
+    expanded,
+    middle: clampedMiddle,
+    collapsed: finalCollapsed,
+    hidden,
+  };
+};

@@ -16,6 +16,11 @@ import { AliasManagementService } from '../content-processing/entity-resolver/al
 import { RankScoreRefreshQueueService } from '../content-processing/rank-score/rank-score-refresh.service';
 import { CoverageKeyResolverService } from '../coverage-key/coverage-key-resolver.service';
 import { RestaurantEntityMergeService } from './restaurant-entity-merge.service';
+import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
+import {
+  GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
+  GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP,
+} from './google-place-type-attributes';
 
 const DEFAULT_COUNTRY = 'US';
 const DEFAULT_MIN_SCORE_THRESHOLD = 0.1;
@@ -277,9 +282,12 @@ const GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS: GoogleRestaurantAttributeDefiniti
 
 const GOOGLE_RESTAURANT_ATTRIBUTE_CANONICAL_NAMES = Array.from(
   new Set(
-    GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.map((definition) =>
-      definition.canonicalName.trim().toLowerCase(),
-    ).filter((name) => name.length > 0),
+    [
+      ...GOOGLE_RESTAURANT_ATTRIBUTE_DEFINITIONS.map((definition) =>
+        definition.canonicalName.trim().toLowerCase(),
+      ),
+      ...GOOGLE_PLACE_TYPE_ATTRIBUTE_CANONICAL_NAMES,
+    ].filter((name) => name.length > 0),
   ),
 );
 
@@ -384,6 +392,7 @@ export class RestaurantLocationEnrichmentService {
     private readonly restaurantEntityMergeService: RestaurantEntityMergeService,
     private readonly coverageKeyResolver: CoverageKeyResolverService,
     private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
+    private readonly cuisineExtractionQueue: RestaurantCuisineExtractionQueueService,
     private readonly configService: ConfigService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
@@ -623,6 +632,15 @@ export class RestaurantLocationEnrichmentService {
       await this.resolveRestaurantAttributeIdsForDefinitions(
         googleAttributeDefinitions,
       );
+    const placeTypeAttributes = this.mapPlaceTypesToRestaurantAttributeNames(
+      params.place,
+    );
+    const placeTypeAttributeIds =
+      await this.resolveRestaurantAttributeIdsForNames(placeTypeAttributes);
+    const mergedRestaurantAttributes = this.unionStringArrays(
+      googleRestaurantAttributeIds,
+      placeTypeAttributeIds,
+    );
 
     return {
       ...createUpdateData,
@@ -630,7 +648,7 @@ export class RestaurantLocationEnrichmentService {
       type: EntityType.restaurant,
       locationKey: params.coverageKey,
       aliases: alias,
-      restaurantAttributes: googleRestaurantAttributeIds,
+      restaurantAttributes: mergedRestaurantAttributes,
       restaurantQualityScore: 0,
       generalPraiseUpvotes: 0,
     };
@@ -880,6 +898,14 @@ export class RestaurantLocationEnrichmentService {
         await this.resolveRestaurantAttributeIdsForDefinitions(
           googleAttributeDefinitions,
         );
+      const placeTypeAttributes =
+        this.mapPlaceTypesToRestaurantAttributeNames(placeDetails);
+      const placeTypeAttributeIds =
+        await this.resolveRestaurantAttributeIdsForNames(placeTypeAttributes);
+      googleRestaurantAttributeIds = this.unionStringArrays(
+        googleRestaurantAttributeIds,
+        placeTypeAttributeIds,
+      );
       const mergedRestaurantAttributes = this.unionStringArrays(
         entity.restaurantAttributes,
         googleRestaurantAttributeIds,
@@ -965,6 +991,10 @@ export class RestaurantLocationEnrichmentService {
         entity,
         placeDetails,
         context: 'enrichment_update',
+      });
+      const cuisineTargetId = coverageRehome?.mergedInto ?? entity.entityId;
+      await this.cuisineExtractionQueue.queueExtraction(cuisineTargetId, {
+        source: 'google_places_enrichment',
       });
       if (coverageRehome?.mergedInto) {
         return {
@@ -1339,6 +1369,9 @@ export class RestaurantLocationEnrichmentService {
       context: 'place_collision',
     });
     const mergedInto = coverageRehome?.mergedInto ?? updatedCanonical.entityId;
+    await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
+      source: 'google_places_collision',
+    });
 
     return {
       entityId: entity.entityId,
@@ -1480,6 +1513,9 @@ export class RestaurantLocationEnrichmentService {
       context: 'name_collision',
     });
     const mergedInto = coverageRehome?.mergedInto ?? updatedCanonical.entityId;
+    await this.cuisineExtractionQueue.queueExtraction(mergedInto, {
+      source: 'google_places_name_collision',
+    });
 
     return {
       entityId: entity.entityId,
@@ -2233,6 +2269,29 @@ export class RestaurantLocationEnrichmentService {
     );
   }
 
+  private mapPlaceTypesToRestaurantAttributeNames(
+    place: GooglePlacesV1Place,
+  ): string[] {
+    const types = Array.isArray(place.types) ? place.types : [];
+    const names = new Set<string>();
+
+    for (const type of types) {
+      if (typeof type !== 'string') {
+        continue;
+      }
+      const normalized = type.trim().toLowerCase();
+      if (!normalized) {
+        continue;
+      }
+      const canonical = GOOGLE_PLACE_TYPE_ATTRIBUTE_MAP[normalized];
+      if (canonical) {
+        names.add(canonical);
+      }
+    }
+
+    return Array.from(names);
+  }
+
   private normalizeRestaurantAttributeName(value: string): string {
     return value.trim().toLowerCase();
   }
@@ -2288,6 +2347,32 @@ export class RestaurantLocationEnrichmentService {
       const canonicalName = this.normalizeRestaurantAttributeName(
         definition.canonicalName,
       );
+      const entityId = idsByName.get(canonicalName);
+      if (!entityId) {
+        this.logger.warn('Missing seeded restaurant_attribute entity', {
+          canonicalName,
+          type: EntityType.restaurant_attribute,
+        });
+        continue;
+      }
+      ids.push(entityId);
+    }
+
+    return Array.from(new Set(ids));
+  }
+
+  private async resolveRestaurantAttributeIdsForNames(
+    names: string[],
+  ): Promise<string[]> {
+    if (!names.length) {
+      return [];
+    }
+
+    const idsByName = await this.getGoogleRestaurantAttributeIdsByName();
+    const ids: string[] = [];
+
+    for (const name of names) {
+      const canonicalName = this.normalizeRestaurantAttributeName(name);
       const entityId = idsByName.get(canonicalName);
       if (!entityId) {
         this.logger.warn('Missing seeded restaurant_attribute entity', {
@@ -2822,6 +2907,13 @@ export class RestaurantLocationEnrichmentService {
 
     if (details.primaryTypeDisplayName?.text) {
       metadata.primaryTypeDisplayName = details.primaryTypeDisplayName.text;
+    }
+
+    if (details.editorialSummary?.text) {
+      metadata.editorialSummary = {
+        text: details.editorialSummary.text,
+        languageCode: details.editorialSummary.languageCode,
+      };
     }
 
     const mappedPriceLevel = this.mapGooglePriceLevel(details.priceLevel);

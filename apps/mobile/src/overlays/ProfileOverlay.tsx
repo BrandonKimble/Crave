@@ -28,9 +28,13 @@ import { fetchUserPolls, type Poll } from '../services/polls';
 import { useFavoriteLists } from '../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../services/favorite-lists';
 import type { RootStackParamList } from '../types/navigation';
-import { overlaySheetStyles, OVERLAY_STACK_ZINDEX } from './overlaySheetStyles';
+import {
+  overlaySheetStyles,
+  OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_STACK_ZINDEX,
+} from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { resolveExpandedTop } from './sheetUtils';
+import { calculateSnapPoints } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
@@ -290,21 +294,10 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
   const navBarInset = Math.max(navBarHeight, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 140, 160);
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = resolveExpandedTop(searchBarTop, insets.top);
-    const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.5);
-    const hidden = SCREEN_HEIGHT + 80;
-    const fallbackCollapsed = SCREEN_HEIGHT - 160;
-    const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
-    const collapsed = Math.max(navAlignedCollapsed, middle + 24);
-    return {
-      expanded,
-      middle,
-      collapsed,
-      hidden,
-    };
-  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
+  const snapPoints = React.useMemo<SnapPoints>(
+    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop]
+  );
 
   const headerComponent = (
     <View
@@ -521,7 +514,7 @@ const styles = StyleSheet.create({
     zIndex: OVERLAY_STACK_ZINDEX,
   },
   scrollContent: {
-    paddingHorizontal: 20,
+    paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingTop: 16,
   },
   contentContainer: {

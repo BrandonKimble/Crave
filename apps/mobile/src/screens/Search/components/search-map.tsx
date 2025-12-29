@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, Image, Text as RNText, View } from 'react-native';
+import { Animated, Image, Pressable, Text as RNText, View } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -27,16 +27,28 @@ export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
 };
 
+type CameraPadding = {
+  paddingTop: number;
+  paddingBottom: number;
+  paddingLeft: number;
+  paddingRight: number;
+};
+
+const PRIMARY_COLOR = '#ff3368';
+
 type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
   styleURL: string;
   mapCenter: [number, number] | null;
   mapZoom: number;
+  cameraPadding?: CameraPadding | null;
   isFollowingUser: boolean;
   onPress: () => void;
   onCameraChanged: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
+  onMarkerPress?: (restaurantId: string) => void;
+  selectedRestaurantId?: string | null;
   preferredFramesPerSecond?: number;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   markersRenderKey: string;
@@ -54,10 +66,13 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
     styleURL,
     mapCenter,
     mapZoom,
+    cameraPadding,
     isFollowingUser,
     onPress,
     onCameraChanged,
     onMapLoaded,
+    onMarkerPress,
+    selectedRestaurantId,
     preferredFramesPerSecond,
     sortedRestaurantMarkers,
     markersRenderKey,
@@ -86,6 +101,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
         ref={cameraRef}
         centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
         zoomLevel={mapZoom}
+        padding={cameraPadding ?? undefined}
         followUserLocation={isFollowingUser}
         followZoomLevel={13}
         followPitch={0}
@@ -109,21 +125,29 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
                 allowOverlap
                 style={[styles.markerView, { zIndex }]}
               >
-                <View style={[styles.pinWrapper, styles.pinShadow]}>
-                  <Image source={pinAsset} style={styles.pinBase} />
-                  <Image
-                    source={pinFillAsset}
-                    style={[
-                      styles.pinFill,
-                      {
-                        tintColor: feature.properties.pinColor,
-                      },
-                    ]}
-                  />
-                  <View style={styles.pinRankWrapper}>
-                    <RNText style={styles.pinRank}>{feature.properties.rank}</RNText>
+                <Pressable
+                  onPress={() => onMarkerPress?.(feature.properties.restaurantId)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <View style={[styles.pinWrapper, styles.pinShadow]}>
+                    <Image source={pinAsset} style={styles.pinBase} />
+                    <Image
+                      source={pinFillAsset}
+                      style={[
+                        styles.pinFill,
+                        {
+                          tintColor:
+                            selectedRestaurantId === feature.properties.restaurantId
+                              ? PRIMARY_COLOR
+                              : feature.properties.pinColor,
+                        },
+                      ]}
+                    />
+                    <View style={styles.pinRankWrapper}>
+                      <RNText style={styles.pinRank}>{feature.properties.rank}</RNText>
+                    </View>
                   </View>
-                </View>
+                </Pressable>
               </MapboxGL.MarkerView>
             );
           })}

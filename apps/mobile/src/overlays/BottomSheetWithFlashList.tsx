@@ -75,6 +75,7 @@ type BottomSheetWithFlashListProps<T> = {
   onDragStateChange?: (isDragging: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
   dismissThreshold?: number;
+  listKey?: string;
   preventSwipeDismiss?: boolean;
   flashListProps?: Partial<
     Omit<
@@ -157,6 +158,7 @@ const BottomSheetWithFlashList = <T,>({
   renderItem,
   keyExtractor,
   listRef: listRefProp,
+  listKey,
   estimatedItemSize,
   headerComponent,
   backgroundComponent,
@@ -304,7 +306,13 @@ const BottomSheetWithFlashList = <T,>({
       points.push(snapPoints.hidden);
     }
     return points;
-  }, [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle, preventSwipeDismiss]);
+  }, [
+    snapPoints.collapsed,
+    snapPoints.expanded,
+    snapPoints.hidden,
+    snapPoints.middle,
+    preventSwipeDismiss,
+  ]);
   const dismissThresholdValue =
     typeof dismissThreshold === 'number'
       ? dismissThreshold
@@ -751,6 +759,7 @@ const BottomSheetWithFlashList = <T,>({
             {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
             <View style={{ flex: 1 }}>
               <AnimatedFlashList
+                key={listKey}
                 ref={flashListRef as React.RefObject<FlashList<T>>}
                 {...resolvedFlashListProps}
                 data={data}

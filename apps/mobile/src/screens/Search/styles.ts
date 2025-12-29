@@ -528,7 +528,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#ffffff',
   },
   resultsListBackgroundLoading: {
     backgroundColor: '#ffffff',
@@ -537,6 +537,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
     backgroundColor: 'transparent',
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   resultsHeaderHandle: {
     backgroundColor: 'transparent',
@@ -703,12 +704,16 @@ const styles = StyleSheet.create({
     paddingBottom: CARD_VERTICAL_PADDING + CARD_VERTICAL_PADDING_BALANCE,
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     backgroundColor: '#ffffff',
-    marginBottom: 2,
     alignSelf: 'stretch',
     borderRadius: 0,
     shadowOpacity: 0,
     shadowRadius: 0,
     elevation: 0,
+  },
+  resultItemSeparator: {
+    height: 1,
+    backgroundColor: '#f1f5f9',
+    marginHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   firstResultItem: {
     paddingTop:

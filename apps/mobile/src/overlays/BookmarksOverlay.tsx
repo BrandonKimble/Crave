@@ -13,7 +13,7 @@ import { useOverlayStore } from '../store/overlayStore';
 import { useSystemStatusStore } from '../store/systemStatusStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { resolveExpandedTop } from './sheetUtils';
+import { calculateSnapPoints } from './sheetUtils';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
 import {
   favoriteListsService,
@@ -109,23 +109,10 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = resolveExpandedTop(searchBarTop, insets.top);
-    const rawMiddle = SCREEN_HEIGHT * 0.5;
-    const middle = Math.max(expanded + 96, rawMiddle);
-    const hidden = SCREEN_HEIGHT + 80;
-    const clampedMiddle = Math.min(middle, hidden - 120);
-    const fallbackCollapsed = SCREEN_HEIGHT - 160;
-    const navAlignedCollapsed =
-      navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
-    const collapsed = Math.max(navAlignedCollapsed, clampedMiddle + 24);
-    return {
-      expanded,
-      middle: clampedMiddle,
-      collapsed,
-      hidden,
-    };
-  }, [headerHeight, insets.top, navBarOffset, searchBarTop]);
+  const snapPoints = React.useMemo<SnapPoints>(
+    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop]
+  );
 
   const handleClose = React.useCallback(() => {
     setOverlay('search');

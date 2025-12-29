@@ -29,6 +29,11 @@ type SubmitSearchOptions = {
   };
 };
 
+type StructuredSearchFilters = Pick<
+  SubmitSearchOptions,
+  'openNow' | 'priceLevels' | 'minimumVotes'
+>;
+
 type UseSearchSubmitOptions = {
   query: string;
   isLoading: boolean;
@@ -77,7 +82,7 @@ type UseSearchSubmitResult = {
   runBestHere: (
     targetTab: SegmentValue,
     submittedLabel: string,
-    options?: { preserveSheetState?: boolean }
+    options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
   ) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   cancelActiveSearchRequest: () => void;
@@ -258,16 +263,23 @@ const useSearchSubmit = ({
   );
 
   const buildStructuredSearchPayload = React.useCallback(
-    async (page: number): Promise<StructuredSearchRequest> => {
+    async (page: number, filters: StructuredSearchFilters = {}): Promise<StructuredSearchRequest> => {
       const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
       const payload: StructuredSearchRequest = {
         entities: {},
         pagination,
       };
 
-      const effectiveOpenNow = openNow;
-      const normalizedPriceLevels = normalizePriceFilter(priceLevels);
-      const effectiveMinimumVotes = votes100Plus ? MINIMUM_VOTES_FILTER : null;
+      const effectiveOpenNow = filters.openNow ?? openNow;
+      const effectivePriceLevels =
+        filters.priceLevels !== undefined ? filters.priceLevels : priceLevels;
+      const normalizedPriceLevels = normalizePriceFilter(effectivePriceLevels);
+      const effectiveMinimumVotes =
+        filters.minimumVotes !== undefined
+          ? filters.minimumVotes
+          : votes100Plus
+          ? MINIMUM_VOTES_FILTER
+          : null;
 
       if (effectiveOpenNow) {
         payload.openNow = true;
@@ -509,7 +521,7 @@ const useSearchSubmit = ({
     async (
       targetTab: SegmentValue,
       submittedLabel: string,
-      options?: { preserveSheetState?: boolean }
+      options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
     ) => {
       if (isLoading || isLoadingMore) {
         return;
@@ -535,7 +547,7 @@ const useSearchSubmit = ({
 
       try {
         setIsLoading(true);
-        const payload = await buildStructuredSearchPayload(1);
+        const payload = await buildStructuredSearchPayload(1, options?.filters);
         const response = await runSearch({ kind: 'structured', payload });
         if (response) {
           logger.info('Structured search response payload', response);
