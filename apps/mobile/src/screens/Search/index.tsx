@@ -2579,8 +2579,7 @@ const SearchScreen: React.FC = () => {
         setSaveSheetState((prev) => ({ ...prev, visible: false }));
       }
 
-      const shouldCenterPin =
-        !shouldRestoreBoundsRef.current && getLocationCount(restaurant) <= 1;
+      const shouldCenterPin = !shouldRestoreBoundsRef.current && getLocationCount(restaurant) <= 1;
       if (lastCameraStateRef.current) {
         previousRestaurantProfileCameraRef.current = { ...lastCameraStateRef.current };
       }
@@ -2589,8 +2588,7 @@ const SearchScreen: React.FC = () => {
         if (location) {
           const nextCenter: [number, number] = [location.longitude, location.latitude];
           const currentZoom =
-            lastCameraStateRef.current?.zoom ??
-            (typeof mapZoom === 'number' ? mapZoom : null);
+            lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
           setMapCenter(nextCenter);
           if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
             setMapZoom(currentZoom);
@@ -2605,17 +2603,11 @@ const SearchScreen: React.FC = () => {
             bottomNavFrame.top,
             0
           );
-          const topPadding = Math.max(
-            searchBarTop + (searchBarFrame?.height ?? 0),
-            snaps.expanded
-          );
+          const topPadding = Math.max(searchBarTop + (searchBarFrame?.height ?? 0), snaps.expanded);
           const desiredCenter = SCREEN_HEIGHT * PROFILE_PIN_TARGET_CENTER_RATIO;
           const minCenter = topPadding + PROFILE_PIN_MIN_VISIBLE_HEIGHT / 2;
           const targetCenter = Math.max(desiredCenter, minCenter);
-          const bottomPadding = Math.max(
-            SCREEN_HEIGHT + topPadding - 2 * targetCenter,
-            0
-          );
+          const bottomPadding = Math.max(SCREEN_HEIGHT + topPadding - 2 * targetCenter, 0);
           const padding = {
             paddingTop: topPadding,
             paddingBottom: bottomPadding,
@@ -2794,13 +2786,7 @@ const SearchScreen: React.FC = () => {
         animationMode: 'easeTo',
       });
     }
-  }, [
-    restoreFocusedMapView,
-    setMapCameraPadding,
-    setMapCenter,
-    setMapZoom,
-    suppressMapMoved,
-  ]);
+  }, [restoreFocusedMapView, setMapCameraPadding, setMapCenter, setMapZoom, suppressMapMoved]);
 
   const restoreSearchSheetState = React.useCallback(() => {
     const previousState = previousSheetStateRef.current;

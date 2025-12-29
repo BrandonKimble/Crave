@@ -495,7 +495,6 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
       'seafood house',
       'fish house',
       'seafood shack',
-      
     ],
   },
   {

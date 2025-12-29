@@ -263,7 +263,10 @@ const useSearchSubmit = ({
   );
 
   const buildStructuredSearchPayload = React.useCallback(
-    async (page: number, filters: StructuredSearchFilters = {}): Promise<StructuredSearchRequest> => {
+    async (
+      page: number,
+      filters: StructuredSearchFilters = {}
+    ): Promise<StructuredSearchRequest> => {
       const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
       const payload: StructuredSearchRequest = {
         entities: {},
