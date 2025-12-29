@@ -679,10 +679,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
-      if (mode === 'overlay' && snap === 'collapsed') {
-        setSnapRequest('hidden');
-        return;
-      }
       onSnapChange?.(snap);
       if (snapRequest && snapRequest === snap) {
         setSnapRequest(null);
@@ -708,7 +704,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       snapPoints.hidden,
       snapPoints.middle,
       snapRequest,
-      mode,
     ]
   );
 
@@ -949,6 +944,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
           onDragStateChange={onDragStateChange}
           sheetYObserver={sheetYObserver}
           dismissThreshold={dismissThreshold}
+          preventSwipeDismiss={mode === 'overlay'}
         />
       </View>
       <PollCreationSheet

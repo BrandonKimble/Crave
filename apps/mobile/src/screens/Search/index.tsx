@@ -848,10 +848,8 @@ const SearchScreen: React.FC = () => {
       }
 
       if (target === 'polls') {
-        // If polls is already visible (docked at collapsed), expand it fully
-        if (pollsSheetSnap === 'collapsed') {
-          setPollsSnapRequest('expanded');
-        }
+        // Always expand polls fully when polls nav is clicked
+        setPollsSnapRequest('expanded');
       }
 
       if (target === 'bookmarks') {
@@ -866,7 +864,6 @@ const SearchScreen: React.FC = () => {
       dismissTransientOverlays,
       isLoading,
       isSearchSessionActive,
-      pollsSheetSnap,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsDockedPollsDismissed,
@@ -2112,6 +2109,8 @@ const SearchScreen: React.FC = () => {
       hidePanel();
       setIsSearchSessionActive(false);
       setSearchMode(null);
+      // Reactivate persistent polls when search is cleared
+      setIsDockedPollsDismissed(false);
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
       setCurrentPage(1);
@@ -2135,6 +2134,7 @@ const SearchScreen: React.FC = () => {
       resetFilters,
       resetFocusedMapState,
       resetMapMoveFlag,
+      setIsDockedPollsDismissed,
       setIsSearchSessionActive,
       setSearchMode,
       scrollResultsToTop,

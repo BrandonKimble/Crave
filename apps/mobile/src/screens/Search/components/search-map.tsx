@@ -1,12 +1,11 @@
 import React from 'react';
-import { Animated, Image, View } from 'react-native';
+import { Animated, Image, Text as RNText, View } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
-import { Text } from '../../../components';
 import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
 import { USA_FALLBACK_CENTER } from '../constants/search';
@@ -122,7 +121,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
                     ]}
                   />
                   <View style={styles.pinRankWrapper}>
-                    <Text style={styles.pinRank}>{feature.properties.rank}</Text>
+                    <RNText style={styles.pinRank}>{feature.properties.rank}</RNText>
                   </View>
                 </View>
               </MapboxGL.MarkerView>

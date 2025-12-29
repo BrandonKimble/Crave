@@ -23,7 +23,8 @@ import {
   PIN_FILL_RENDER_WIDTH,
   PIN_FILL_TOP_OFFSET,
   PIN_MARKER_RENDER_SIZE,
-  PIN_RANK_CONTAINER_SIZE,
+  PIN_RANK_CONTAINER_HEIGHT,
+  PIN_RANK_CONTAINER_WIDTH,
   PIN_RANK_FONT_SIZE,
   PIN_RANK_LEFT,
   PIN_RANK_TOP,
@@ -104,24 +105,25 @@ const styles = StyleSheet.create({
     top: PIN_FILL_TOP_OFFSET,
   },
   pinRankWrapper: {
-    // Centered on pin fill's visual centroid (calculated from opaque pixel distribution)
+    // Container exactly matches pin fill bounds, centered on pin fill
     position: 'absolute',
     left: PIN_RANK_LEFT,
     top: PIN_RANK_TOP,
-    width: PIN_RANK_CONTAINER_SIZE,
-    height: PIN_RANK_CONTAINER_SIZE,
+    width: PIN_RANK_CONTAINER_WIDTH,
+    height: PIN_RANK_CONTAINER_HEIGHT,
+    // Flexbox centering as primary method
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   pinRank: {
-    // Text fills container; lineHeight = container height for vertical centering
-    width: PIN_RANK_CONTAINER_SIZE,
-    height: PIN_RANK_CONTAINER_SIZE,
+    // Multiple centering methods for cross-platform reliability
     fontSize: PIN_RANK_FONT_SIZE,
-    lineHeight: PIN_RANK_CONTAINER_SIZE,
     fontWeight: '700',
     color: '#fff',
-    textAlign: 'center',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
+    textAlign: 'center', // Horizontal centering
+    textAlignVertical: 'center', // Android vertical centering
+    lineHeight: PIN_RANK_CONTAINER_HEIGHT, // iOS vertical centering fallback
+    includeFontPadding: false, // Remove Android extra padding
   },
   overlay: {
     flex: 1,
@@ -751,16 +753,16 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   rankBadge: {
-    width: 26,
-    height: 24,
-    borderRadius: 12,
+    width: 32,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: themeColors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rankBadgeText: {
-    fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
+    fontSize: FONT_SIZES.title,
+    lineHeight: 30, // Match container height exactly for vertical centering
     color: '#ffffff',
     fontWeight: '700',
     textAlign: 'center',

@@ -491,6 +491,7 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
       sheetYObserver={sheetYObserver}
       snapTo={snapTo}
       dismissThreshold={dismissThreshold}
+      preventSwipeDismiss
       flashListProps={{
         numColumns: 2,
         columnWrapperStyle: styles.columnWrapper,

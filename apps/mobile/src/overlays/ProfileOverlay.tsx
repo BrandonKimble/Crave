@@ -508,6 +508,7 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
         onDragStateChange={onDragStateChange}
         sheetYObserver={sheetYObserver}
         dismissThreshold={dismissThreshold}
+        preventSwipeDismiss
       />
     </View>
   );

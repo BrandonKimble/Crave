@@ -75,6 +75,7 @@ type BottomSheetWithFlashListProps<T> = {
   onDragStateChange?: (isDragging: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
   dismissThreshold?: number;
+  preventSwipeDismiss?: boolean;
   flashListProps?: Partial<
     Omit<
       FlashListProps<T>,
@@ -185,6 +186,7 @@ const BottomSheetWithFlashList = <T,>({
   onDragStateChange,
   snapTo,
   dismissThreshold,
+  preventSwipeDismiss = false,
   flashListProps,
   sheetYValue,
   sheetYObserver,
@@ -297,11 +299,12 @@ const BottomSheetWithFlashList = <T,>({
 
   const snapCandidates = React.useMemo(() => {
     const points = [snapPoints.expanded, snapPoints.middle, snapPoints.collapsed];
-    if (typeof snapPoints.hidden === 'number') {
+    // Only include hidden snap point if swipe dismiss is allowed
+    if (typeof snapPoints.hidden === 'number' && !preventSwipeDismiss) {
       points.push(snapPoints.hidden);
     }
     return points;
-  }, [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle]);
+  }, [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle, preventSwipeDismiss]);
   const dismissThresholdValue =
     typeof dismissThreshold === 'number'
       ? dismissThreshold
@@ -311,14 +314,15 @@ const BottomSheetWithFlashList = <T,>({
   const resolveDestination = React.useCallback(
     (value: number, velocity: number): number => {
       'worklet';
-      if (hiddenSnap !== undefined && dismissThresholdValue !== undefined) {
+      // Skip dismiss threshold check if swipe dismiss is prevented
+      if (!preventSwipeDismiss && hiddenSnap !== undefined && dismissThresholdValue !== undefined) {
         if (dismissThresholdValue > collapsedSnap && value >= dismissThresholdValue) {
           return hiddenSnap;
         }
       }
       return snapPoint(value, velocity, snapCandidates);
     },
-    [collapsedSnap, dismissThresholdValue, hiddenSnap, snapCandidates]
+    [collapsedSnap, dismissThresholdValue, hiddenSnap, preventSwipeDismiss, snapCandidates]
   );
 
   const animateTo = React.useCallback(
