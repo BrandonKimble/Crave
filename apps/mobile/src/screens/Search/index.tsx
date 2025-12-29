@@ -38,10 +38,7 @@ import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/o
 import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
 import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
-import {
-  calculateSnapPoints,
-  resolveExpandedTop,
-} from '../../overlays/sheetUtils';
+import { calculateSnapPoints, resolveExpandedTop } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
 import { searchService, type RecentlyViewedRestaurant } from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
@@ -321,8 +318,7 @@ const SearchScreen: React.FC = () => {
 
         let hydrated = false;
         const shouldDeferInitialCamera = () =>
-          profileTransitionRef.current.status !== 'idle' ||
-          Boolean(lastCameraStateRef.current);
+          profileTransitionRef.current.status !== 'idle' || Boolean(lastCameraStateRef.current);
         const hasActiveCamera = Boolean(lastCameraStateRef.current);
         const cacheDeferredCamera = (center: [number, number], zoom: number) => {
           const transition = profileTransitionRef.current;
@@ -608,9 +604,7 @@ const SearchScreen: React.FC = () => {
   const [isResultsSheetSuspended, setResultsSheetSuspended] = React.useState(false);
   const [profileTransitionStatus, setProfileTransitionStatusState] =
     React.useState<ProfileTransitionStatus>('idle');
-  const lastVisibleSheetStateRef = React.useRef<
-    Exclude<OverlaySheetSnap, 'hidden'>
-  >('middle');
+  const lastVisibleSheetStateRef = React.useRef<Exclude<OverlaySheetSnap, 'hidden'>>('middle');
   const previousSaveSheetStateRef = React.useRef<{
     visible: boolean;
     listType: FavoriteListType;
@@ -958,12 +952,9 @@ const SearchScreen: React.FC = () => {
   const handleSaveSheetDragStateChange = React.useCallback((isDragging: boolean) => {
     setIsSaveSheetDragging(isDragging);
   }, []);
-  const handleSearchFiltersLayoutCache = React.useCallback(
-    (cache: SearchFiltersLayoutCache) => {
-      searchFiltersLayoutCacheRef.current = cache;
-    },
-    []
-  );
+  const handleSearchFiltersLayoutCache = React.useCallback((cache: SearchFiltersLayoutCache) => {
+    searchFiltersLayoutCacheRef.current = cache;
+  }, []);
   const handleResultsListScrollBegin = React.useCallback(() => {
     handleResultsScrollBeginDrag();
     setIsResultsListScrolling(true);
@@ -1300,9 +1291,7 @@ const SearchScreen: React.FC = () => {
     showSaveListOverlay;
   const shouldShowSearchChrome = shouldRenderSearchOverlay && !isAnySheetExpanded;
   const shouldShowSearchShortcuts =
-    shouldShowSearchChrome &&
-    (isSuggestionPanelActive || !isSearchSessionActive) &&
-    !hasRawQuery;
+    shouldShowSearchChrome && (isSuggestionPanelActive || !isSearchSessionActive) && !hasRawQuery;
   React.useEffect(() => {
     const target = isSuggestionScreenActive ? 1 : 0;
     suggestionTransition.value = withTiming(target, {
@@ -1383,7 +1372,6 @@ const SearchScreen: React.FC = () => {
     SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   ]);
   const bottomInset = Math.max(insets.bottom, 12);
-  const suggestionBottomInset = insets.bottom;
   const suggestionScrollMaxHeightTarget = React.useMemo(() => {
     if (!isSuggestionScreenVisible) {
       return undefined;
@@ -1556,12 +1544,7 @@ const SearchScreen: React.FC = () => {
     opacity: suggestionTransition.value,
     transform: [
       {
-        translateY: interpolate(
-          suggestionTransition.value,
-          [0, 1],
-          [6, 0],
-          Extrapolation.CLAMP
-        ),
+        translateY: interpolate(suggestionTransition.value, [0, 1], [6, 0], Extrapolation.CLAMP),
       },
     ],
   }));
@@ -2070,8 +2053,7 @@ const SearchScreen: React.FC = () => {
       const targetIndex = restaurants.findIndex(
         (restaurant) => restaurant.restaurantId === restaurantOnlyId
       );
-      const targetRestaurant =
-        targetIndex >= 0 ? restaurants[targetIndex] : null;
+      const targetRestaurant = targetIndex >= 0 ? restaurants[targetIndex] : null;
       if (targetRestaurant) {
         addFeatures(targetRestaurant, targetIndex);
       }
@@ -2154,9 +2136,7 @@ const SearchScreen: React.FC = () => {
       setRestaurantOnlyId(null);
       return;
     }
-    const hasMatch = results.restaurants?.some(
-      (restaurant) => restaurant.restaurantId === intent
-    );
+    const hasMatch = results.restaurants?.some((restaurant) => restaurant.restaurantId === intent);
     setRestaurantOnlyId(hasMatch ? intent : null);
   }, [results]);
 
@@ -2941,7 +2921,12 @@ const SearchScreen: React.FC = () => {
 
   const buildFitBoundsPadding = React.useCallback(
     (padding: MapCameraPadding) =>
-      [padding.paddingTop, padding.paddingRight, padding.paddingBottom, padding.paddingLeft] as const,
+      [
+        padding.paddingTop,
+        padding.paddingRight,
+        padding.paddingBottom,
+        padding.paddingLeft,
+      ] as const,
     []
   );
 
@@ -3196,12 +3181,7 @@ const SearchScreen: React.FC = () => {
     }
     openRestaurantProfile(targetRestaurant, results.food ?? [], 'auto_open_single_candidate');
     lastAutoOpenKeyRef.current = autoOpenKey;
-  }, [
-    openRestaurantProfile,
-    results,
-    submittedQuery,
-    trimmedQuery,
-  ]);
+  }, [openRestaurantProfile, results, submittedQuery, trimmedQuery]);
 
   const handleRestaurantSavePress = React.useCallback((restaurantId: string) => {
     setSaveSheetState({
@@ -3223,13 +3203,12 @@ const SearchScreen: React.FC = () => {
 
   const applyCameraSnapshot = React.useCallback(
     (snapshot: CameraSnapshot, options?: { animationDuration?: number }) => {
-      const padding =
-        snapshot.padding ?? {
-          paddingTop: 0,
-          paddingBottom: 0,
-          paddingLeft: 0,
-          paddingRight: 0,
-        };
+      const padding = snapshot.padding ?? {
+        paddingTop: 0,
+        paddingBottom: 0,
+        paddingLeft: 0,
+        paddingRight: 0,
+      };
       clearCameraPersistTimeout();
       setIsFollowingUser(false);
       suppressMapMoved();
@@ -3311,7 +3290,12 @@ const SearchScreen: React.FC = () => {
       restoreSearchSheetState();
     }
     setRestaurantOverlayVisible(false);
-  }, [isSearchOverlay, restoreRestaurantProfileMap, restoreSearchSheetState, setProfileTransitionStatus]);
+  }, [
+    isSearchOverlay,
+    restoreRestaurantProfileMap,
+    restoreSearchSheetState,
+    setProfileTransitionStatus,
+  ]);
 
   const handleRestaurantOverlayDismissed = React.useCallback(() => {
     setRestaurantProfile(null);
@@ -3582,7 +3566,10 @@ const SearchScreen: React.FC = () => {
     const topOffset = Math.max(0, resultsSheetHeaderHeight + filtersHeaderHeight);
     const pointerEvents = topOffset > 0 ? 'auto' : 'none';
     return (
-      <View pointerEvents={pointerEvents} style={[styles.resultsLoadingOverlay, { top: topOffset }]}>
+      <View
+        pointerEvents={pointerEvents}
+        style={[styles.resultsLoadingOverlay, { top: topOffset }]}
+      >
         <View style={styles.resultsLoadingOverlayBackdrop} />
         <View style={styles.resultsLoadingOverlaySpinner}>
           <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
@@ -3858,7 +3845,7 @@ const SearchScreen: React.FC = () => {
                       ? 0
                       : searchLayout.top + searchLayout.height + 8,
                     paddingBottom: isSuggestionScreenVisible
-                      ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM + suggestionBottomInset
+                      ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
                       : bottomInset + 32,
                     paddingHorizontal: isSuggestionScreenVisible ? CONTENT_HORIZONTAL_PADDING : 0,
                     backgroundColor: shouldShowSuggestionSurface ? '#ffffff' : 'transparent',

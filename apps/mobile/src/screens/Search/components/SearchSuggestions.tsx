@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
   },
   autocompleteSectionSurface: {
     paddingHorizontal: 0,
-    paddingVertical: 8,
+    paddingVertical: 16,
     borderRadius: 0,
     backgroundColor: 'transparent',
   },
@@ -252,7 +252,7 @@ const styles = StyleSheet.create({
   },
   recentSection: {
     paddingHorizontal: 0,
-    paddingVertical: 8,
+    paddingVertical: 16,
   },
   recentSectionGap: {
     marginTop: 12,
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 4,
-    marginTop: 6,
+    marginTop: 0,
   },
   recentHeaderRowSpaced: {
     marginTop: 12,

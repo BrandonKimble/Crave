@@ -118,13 +118,17 @@ export class EntitySearchService {
       }
 
       const remaining = Math.max(0, limit - primaryRows.length);
-      const excludedIds = primaryRows.map((row) => Prisma.sql`${row.entityId}::uuid`);
+      const excludedIds = primaryRows.map(
+        (row) => Prisma.sql`${row.entityId}::uuid`,
+      );
       const excludeClause = excludedIds.length
         ? Prisma.sql`AND e.entity_id NOT IN (${Prisma.join(excludedIds)})`
         : Prisma.empty;
 
       // Fallback for aliases/fuzzy/phonetic matches only when needed.
-      const fallbackRows = await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
+      const fallbackRows = await this.prisma.$queryRaw<
+        EntitySearchRow[]
+      >(Prisma.sql`
         SELECT
           e.entity_id AS "entityId",
           e.name AS "name",
@@ -181,7 +185,6 @@ export class EntitySearchService {
         type: row.type,
         similarity: Number(row.nameSimilarity ?? 0),
       }));
-
     } catch (error) {
       this.logger.error('Entity search query failed', {
         term: normalizedTerm,

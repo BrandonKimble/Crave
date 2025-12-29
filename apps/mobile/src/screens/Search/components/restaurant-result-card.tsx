@@ -307,7 +307,11 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                             <Text variant="body" style={styles.metricDot}>
                               {'·'}
                             </Text>
-                            <Text variant="body" style={styles.resultMetaDistance} numberOfLines={1}>
+                            <Text
+                              variant="body"
+                              style={styles.resultMetaDistance}
+                              numberOfLines={1}
+                            >
                               {distanceLabel ?? ''}
                             </Text>
                           </>

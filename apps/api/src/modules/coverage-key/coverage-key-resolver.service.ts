@@ -45,9 +45,10 @@ type CoverageAreaLookupRow = {
 
 @Injectable()
 export class CoverageKeyResolverService {
-  private coverageCache:
-    | { rows: CoverageAreaLookupRow[]; expiresAt: number }
-    | null = null;
+  private coverageCache: {
+    rows: CoverageAreaLookupRow[];
+    expiresAt: number;
+  } | null = null;
   private coverageCacheRequest: Promise<CoverageAreaLookupRow[]> | null = null;
 
   constructor(private readonly prisma: PrismaService) {}

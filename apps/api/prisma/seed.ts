@@ -215,12 +215,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'barbecue',
-    aliases: [
-      'barbecue',
-      'barbecue restaurant',
-      'bbq restaurant',
-      'barbeque',
-    ],
+    aliases: ['barbecue', 'barbecue restaurant', 'bbq restaurant', 'barbeque'],
   },
   {
     canonicalName: 'brazilian',
@@ -340,11 +335,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'burger',
-    aliases: [
-      'burger joint',
-      'burger restaurant',
-      'hamburger restaurant',
-    ],
+    aliases: ['burger joint', 'burger restaurant', 'hamburger restaurant'],
   },
   {
     canonicalName: 'ice cream shop',
@@ -388,12 +379,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'juice shop',
-    aliases: [
-      'juice shop',
-      'juice bar',
-      'smoothie shop',
-      'smoothie bar',
-    ],
+    aliases: ['juice shop', 'juice bar', 'smoothie shop', 'smoothie bar'],
   },
   {
     canonicalName: 'korean',
@@ -453,7 +439,12 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'seafood',
-    aliases: ['seafood restaurant', 'seafood house', 'fish house', 'seafood shack'],
+    aliases: [
+      'seafood restaurant',
+      'seafood house',
+      'fish house',
+      'seafood shack',
+    ],
   },
   {
     canonicalName: 'spanish',
