@@ -162,7 +162,7 @@ const BASE_RESTAURANT_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
 const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   {
     canonicalName: 'acai shop',
-    aliases: ['acai', 'acai bar', 'acai shop', 'acai bowl shop'],
+    aliases: ['acai bar', 'acai shop', 'acai bowl shop'],
   },
   {
     canonicalName: 'afghani',
@@ -199,7 +199,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'bagel shop',
-    aliases: ['bagel', 'bagel shop', 'bagel store', 'bagels'],
+    aliases: ['bagel shop', 'bagel store'],
   },
   {
     canonicalName: 'bakery',
@@ -211,21 +211,13 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'bar and grill',
-    aliases: [
-      'bar and grill',
-      'bar & grill',
-      'bar n grill',
-      'bar-n-grill',
-      'bar',
-      'grill',
-    ],
+    aliases: ['bar and grill', 'bar & grill', 'bar n grill', 'bar-n-grill'],
   },
   {
     canonicalName: 'barbecue',
     aliases: [
       'barbecue',
       'barbecue restaurant',
-      'bbq',
       'bbq restaurant',
       'barbeque',
     ],
@@ -241,16 +233,11 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'breakfast restaurant',
-    aliases: [
-      'breakfast restaurant',
-      'breakfast spot',
-      'breakfast place',
-      'breakfast',
-    ],
+    aliases: ['breakfast restaurant', 'breakfast spot', 'breakfast place'],
   },
   {
     canonicalName: 'brunch restaurant',
-    aliases: ['brunch restaurant', 'brunch spot', 'brunch place', 'brunch'],
+    aliases: ['brunch restaurant', 'brunch spot', 'brunch place'],
   },
   {
     canonicalName: 'buffet',
@@ -271,7 +258,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'candy store',
-    aliases: ['candy store', 'candy shop', 'candy'],
+    aliases: ['candy store', 'candy shop'],
   },
   {
     canonicalName: 'cat cafe',
@@ -288,12 +275,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'chocolate factory',
-    aliases: [
-      'chocolate factory',
-      'chocolate maker',
-      'chocolate manufacturer',
-      'chocolate',
-    ],
+    aliases: ['chocolate factory', 'chocolate maker', 'chocolate manufacturer'],
   },
   {
     canonicalName: 'chocolate shop',
@@ -302,12 +284,11 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
       'chocolate store',
       'chocolatier',
       'chocolate boutique',
-      'chocolate',
     ],
   },
   {
     canonicalName: 'coffee shop',
-    aliases: ['coffee shop', 'coffee house', 'coffeehouse', 'coffee'],
+    aliases: ['coffee shop', 'coffee house', 'coffeehouse'],
   },
   {
     canonicalName: 'confectionery',
@@ -319,11 +300,11 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'dessert restaurant',
-    aliases: ['dessert restaurant', 'dessert'],
+    aliases: ['dessert restaurant'],
   },
   {
     canonicalName: 'dessert shop',
-    aliases: ['dessert shop', 'dessert bar', 'sweet shop', 'dessert'],
+    aliases: ['dessert shop', 'dessert bar', 'sweet shop'],
   },
   {
     canonicalName: 'diner',
@@ -335,7 +316,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'donut shop',
-    aliases: ['donut shop', 'doughnut shop', 'donut store', 'donuts', 'donut'],
+    aliases: ['donut shop', 'doughnut shop', 'donut store'],
   },
   {
     canonicalName: 'fast food',
@@ -360,12 +341,8 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   {
     canonicalName: 'burger',
     aliases: [
-      'burger',
-      'burgers',
       'burger joint',
       'burger restaurant',
-      'hamburger',
-      'hamburgers',
       'hamburger restaurant',
     ],
   },
@@ -376,8 +353,6 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
       'ice cream parlor',
       'ice cream parlour',
       'gelato shop',
-      'ice cream',
-      'gelato',
     ],
   },
   {
@@ -418,10 +393,6 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
       'juice bar',
       'smoothie shop',
       'smoothie bar',
-      'juices',
-      'juice',
-      'smoothies',
-      'smoothie',
     ],
   },
   {
@@ -466,7 +437,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'pizza',
-    aliases: ['pizza', 'pizza place', 'pizza shop', 'pizza joint', 'pizzeria'],
+    aliases: ['pizza place', 'pizza shop', 'pizza joint', 'pizzeria'],
   },
   {
     canonicalName: 'pub',
@@ -474,28 +445,15 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'ramen',
-    aliases: ['ramen', 'ramen shop', 'ramen house'],
+    aliases: ['ramen shop', 'ramen house'],
   },
   {
     canonicalName: 'sandwich shop',
-    aliases: [
-      'sandwich shop',
-      'sandwiches',
-      'sandwich',
-      'sub shop',
-      'subs',
-      'sub',
-    ],
+    aliases: ['sandwich shop', 'sub shop'],
   },
   {
     canonicalName: 'seafood',
-    aliases: [
-      'seafood',
-      'seafood restaurant',
-      'seafood house',
-      'fish house',
-      'seafood shack',
-    ],
+    aliases: ['seafood restaurant', 'seafood house', 'fish house', 'seafood shack'],
   },
   {
     canonicalName: 'spanish',
@@ -508,15 +466,15 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'steakhouse',
-    aliases: ['steakhouse', 'steak house', 'steakhouse grill', 'steak'],
+    aliases: ['steakhouse', 'steak house', 'steakhouse grill'],
   },
   {
     canonicalName: 'sushi',
-    aliases: ['sushi', 'sushi bar', 'sushi house'],
+    aliases: ['sushi bar', 'sushi house'],
   },
   {
     canonicalName: 'tea house',
-    aliases: ['tea house', 'teahouse', 'tea room', 'tea salon', 'tea'],
+    aliases: ['tea house', 'teahouse', 'tea room', 'tea salon'],
   },
   {
     canonicalName: 'thai',
@@ -546,7 +504,7 @@ const GOOGLE_PLACE_TYPE_ATTRIBUTE_SEEDS: RestaurantAttributeSeed[] = [
   },
   {
     canonicalName: 'wine bar',
-    aliases: ['wine bar', 'wine-bar', 'wine lounge', 'wine'],
+    aliases: ['wine bar', 'wine-bar', 'wine lounge'],
   },
 ];
 

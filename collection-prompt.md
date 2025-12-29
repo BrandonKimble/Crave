@@ -182,7 +182,7 @@ Examples:
 - Otherwise, keep forms distinct in this input (do not merge across distinct places).
 - Pronouns and deictics are resolved in Step 1 and are not handled here.
 - Chains and multi-branch brands: Always emit the location-free canonical form (e.g., "mcdonalds"), even if the written variant includes a neighborhood/city token. The raw location text still lives in `restaurant_surface`. See 2.5 for scoring tie-breakers.
-- Eligibility happens here; the surviving canonical string still comes from the normalization rules in 2.2, and when several survivors remain, defer to the canonical selection scoring in 2.5 to choose the one to keep.
+- When several surviving variants remain after unification, defer to the canonical selection scoring in 2.5 to choose the one to keep.
 
 ### 2.4 Ambiguity & Safety
 
@@ -397,30 +397,49 @@ Produce a cascading, high-signal list of categories after locking the `food` phr
    - Preserve head-first constructions: "pho tai" → `["pho tai", "pho"]`, not `["tai"]`.
    - Stop before the remainder is a lone ingredient; ingredient nouns belong in the component step below.
 
-3. Append component nouns.
+3. Add parent categories (menu-section parents).
+   - Use the parent-category rules in 4.4 to add section-level parents (dessert, pastry, coffee, tea, sandwich, soup, etc.) that the dish implies.
+   - Add these even when not explicitly stated, but only when the dish clearly belongs to that section.
+
+4. Append component nouns.
    - Add distinct edible components revealed during the peeling process ("tuna" from "tuna roll", "pork belly" from "pork belly bao bun", "bao" in addition to "bao bun").
    - Exclude adjectives, cuisines, meal periods, and service styles.
 
-4. Merge additive ingredients from "with/and" clauses (burrata, chanterelles, pesto, etc.).
+5. Merge additive ingredients from "with/and" clauses (burrata, chanterelles, pesto, etc.).
 
-5. Deduplicate, sort by specificity (most specific first), and cap the list at roughly 4–6 high-signal entries.
+6. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent categories and core ingredients. If the list grows long, drop low-signal ingredients before dropping parent categories or dish-level categories.
 
 Self-check questions:
 - Does each category describe an orderable dish or core ingredient?
 - Does the chain broaden logically without jumping to unrelated attribute-only terms?
 - Are cuisines or dietary flags kept in attributes instead of categories?
+- Does the list include parent categories when the dish clearly belongs to a menu section?
 
 Example pairs:
 - Good: "spicy tuna roll" → `["tuna roll", "roll", "tuna"]`; avoid `["spicy", "tuna"]`.
-- Good: "tuna melt sandwich" → `["tuna melt sandwich", "tuna melt"]`; avoid emitting only `["sandwich"]`.
+- Good: "tuna melt sandwich" → `["tuna melt sandwich", "tuna melt", "sandwich"]`; avoid emitting only `["sandwich"]`.
 - Good: "south indian filter coffee" → `["filter coffee", "coffee"]` with "south indian" as an attribute.
-- Good: "pho tai" → `["pho tai", "pho"]`.
+- Good: "pho tai" → `["pho tai", "pho", "soup"]`.
 
-### 4.4 Inference Rules
+### 4.4 Parent Category Inference
 
-- Infer reasonable parent dish categories even when not explicitly mentioned (e.g., "al pastor" implies "taco").
-- Only derive broader terms when the result is still a food noun. If the broader term is really a cuisine/service attribute (BBQ, Indian, brunch, mexican, etc.), keep it out of `food_categories` and treat it as a food attribute.
-- Apply these inferences conservatively so categories stay focused and high-signal.
+Goal: ensure dishes carry one or more parent categories when they clearly belong to a common menu section. Parent categories are food nouns (menu sections or dish families), not cuisines or meal periods.
+
+Rules:
+- Add 1-3 parent categories when the dish clearly implies them, even if they are not explicitly stated.
+- Parent categories must be food nouns (dessert, pastry, cake, cookie, ice cream, coffee, tea, sandwich, soup, salad, pizza, taco, burger, noodle, dumpling, rice bowl, etc.).
+- Do not add cuisines, meal periods, or service styles (mexican, indian, brunch, bbq, happy hour, etc.); those belong in attributes.
+- It is fine to include both dish-family and section-level parents (e.g., "croissant" → "pastry" and "dessert").
+
+Common inference families (non-exhaustive; use judgment and context):
+- Desserts & sweets: cake, brownie, pie, tart, pudding, custard, parfait, sundae, sorbet, gelato, ice cream, frozen yogurt -> add "dessert" (and "ice cream" for frozen desserts).
+- Pastries & baked goods: croissant, danish, scone, muffin, brioche, strudel, turnover, baklava, macaron, cookie -> add "pastry" (and "dessert" when sweet).
+- Coffee drinks: latte, cappuccino, espresso, americano, cold brew, mocha -> add "coffee".
+- Tea drinks: chai, matcha, oolong, earl grey, herbal tea -> add "tea".
+- Sandwich family: banh mi, torta, hoagie, grinder, sub, hero, panini, po' boy -> add "sandwich".
+- Soups & stews: pho, ramen, udon, pozole, menudo, laksa (when brothy) -> add "soup".
+
+Apply these inferences conservatively so categories stay focused and high-signal.
 
 ### 4.5 Examples
 

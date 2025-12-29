@@ -14,7 +14,7 @@ import {
   SECONDARY_METRIC_ICON_SIZE,
   TOP_FOOD_RENDER_LIMIT,
 } from '../constants/search';
-import { capitalizeFirst, formatCoverageLabel } from '../utils/format';
+import { capitalizeFirst, formatCoverageLabel, formatDistanceMiles } from '../utils/format';
 import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
@@ -62,6 +62,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     restaurant.displayPercentile ?? null
   );
   const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
+  const hasStatus =
+    restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false;
+  const distanceLabel = formatDistanceMiles(restaurant.distanceMiles);
+  const showDistanceInScore = !hasStatus && distanceLabel !== null;
   const topFoodItems = restaurant.topFood ?? [];
   const displayScoreValue = restaurant.displayScore ?? restaurant.restaurantQualityScore;
   const coverageLabel =
@@ -182,10 +186,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     topFoodMoreWidths,
     topFoodItems.length,
   ]);
-  const restaurantMetaLine = renderMetaDetailLine(
-    restaurant.operatingStatus,
+  const restaurantStatusLine = renderMetaDetailLine(
+    hasStatus ? restaurant.operatingStatus : null,
     null,
-    restaurant.distanceMiles,
+    hasStatus ? restaurant.distanceMiles : null,
     'left',
     undefined,
     true,
@@ -243,13 +247,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 {restaurant.restaurantName}
               </Text>
             </View>
-            {restaurantMetaLine ? (
-              <View
-                style={[styles.resultMetaLine, index === 0 && styles.resultMetaLineFirstInList]}
-              >
-                {restaurantMetaLine}
-              </View>
-            ) : null}
             {coverageLabel ? (
               <View style={styles.coverageBadge}>
                 <Text variant="body" style={styles.coverageBadgeText}>
@@ -293,14 +290,28 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         />
                       </TouchableOpacity>
                     </View>
-                    {priceRangeLabel ? (
+                    {priceRangeLabel || showDistanceInScore ? (
                       <View style={styles.restaurantMetricRight}>
-                        <Text variant="body" style={styles.metricDot}>
-                          {'·'}
-                        </Text>
-                        <Text variant="body" style={styles.resultMetaPrice} numberOfLines={1}>
-                          {priceRangeLabel}
-                        </Text>
+                        {priceRangeLabel ? (
+                          <>
+                            <Text variant="body" style={styles.metricDot}>
+                              {'·'}
+                            </Text>
+                            <Text variant="body" style={styles.resultMetaPrice} numberOfLines={1}>
+                              {priceRangeLabel}
+                            </Text>
+                          </>
+                        ) : null}
+                        {showDistanceInScore ? (
+                          <>
+                            <Text variant="body" style={styles.metricDot}>
+                              {'·'}
+                            </Text>
+                            <Text variant="body" style={styles.resultMetaDistance} numberOfLines={1}>
+                              {distanceLabel ?? ''}
+                            </Text>
+                          </>
+                        ) : null}
                       </View>
                     ) : null}
                   </View>
@@ -406,6 +417,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                     </View>
                   </View>
                 </View>
+              ) : null}
+              {restaurantStatusLine ? (
+                <View style={styles.resultMetaLine}>{restaurantStatusLine}</View>
               ) : null}
             </View>
           </View>

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OVERLAY_CORNER_RADIUS, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+import { OVERLAY_TIMING_CONFIG } from './sheetUtils';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -52,7 +53,7 @@ const SecondaryBottomSheet: React.FC<SecondaryBottomSheetProps> = ({
       progress.setValue(0);
       Animated.timing(progress, {
         toValue: 1,
-        duration: 220,
+        duration: OVERLAY_TIMING_CONFIG.enterDurationMs,
         easing: RNEasing.out(RNEasing.cubic),
         useNativeDriver: true,
       }).start();
@@ -65,7 +66,7 @@ const SecondaryBottomSheet: React.FC<SecondaryBottomSheetProps> = ({
 
     Animated.timing(progress, {
       toValue: 0,
-      duration: 200,
+      duration: OVERLAY_TIMING_CONFIG.exitDurationMs,
       easing: RNEasing.in(RNEasing.cubic),
       useNativeDriver: true,
     }).start(({ finished }) => {

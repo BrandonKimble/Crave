@@ -8,7 +8,7 @@ import { CONTROL_HEIGHT } from './ui';
 export const SCREEN_HEIGHT = Dimensions.get('window').height;
 export const SCREEN_WIDTH = Dimensions.get('window').width;
 
-export const CONTENT_HORIZONTAL_PADDING = 12;
+export const CONTENT_HORIZONTAL_PADDING = OVERLAY_HORIZONTAL_PADDING;
 export const SEARCH_HORIZONTAL_PADDING = CONTENT_HORIZONTAL_PADDING;
 export const SEARCH_CONTAINER_PADDING_TOP = 8;
 export const CARD_GAP = 6;

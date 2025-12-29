@@ -25,6 +25,8 @@ export type RestaurantFeatureProperties = {
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
+  getCenter?: () => Promise<[number, number]>;
+  getZoom?: () => Promise<number>;
 };
 
 type CameraPadding = {
@@ -35,6 +37,7 @@ type CameraPadding = {
 };
 
 const PRIMARY_COLOR = '#ff3368';
+const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 
 type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
@@ -101,7 +104,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
         ref={cameraRef}
         centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
         zoomLevel={mapZoom}
-        padding={cameraPadding ?? undefined}
+        padding={cameraPadding ?? ZERO_CAMERA_PADDING}
         followUserLocation={isFollowingUser}
         followZoomLevel={13}
         followPitch={0}

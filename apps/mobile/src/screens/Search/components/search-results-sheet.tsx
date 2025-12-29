@@ -30,6 +30,7 @@ type SearchResultsSheetProps<T> = {
   listKey?: string;
   onEndReached?: FlashListProps<T>['onEndReached'];
   extraData?: FlashListProps<T>['extraData'];
+  interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
   keyExtractor: NonNullable<FlashListProps<T>['keyExtractor']>;
@@ -42,8 +43,9 @@ type SearchResultsSheetProps<T> = {
   ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
+  overlayComponent?: React.ReactNode;
   contentContainerStyle?: FlashListProps<T>['contentContainerStyle'];
-  resultsContainerAnimatedStyle: unknown;
+  resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
   listRef?: React.RefObject<FlashListRef<T>>;
   onHidden: () => void;
   onSnapChange: (snap: SheetSnapState) => void;
@@ -67,6 +69,7 @@ const SearchResultsSheet = <T,>({
   listKey,
   onEndReached,
   extraData,
+  interactionEnabled = true,
   data,
   renderItem,
   keyExtractor,
@@ -79,6 +82,7 @@ const SearchResultsSheet = <T,>({
   ItemSeparatorComponent,
   headerComponent,
   backgroundComponent,
+  overlayComponent,
   contentContainerStyle,
   resultsContainerAnimatedStyle,
   listRef,
@@ -103,7 +107,7 @@ const SearchResultsSheet = <T,>({
     <>
       <Reanimated.View
         pointerEvents="none"
-        style={[styles.resultsShadow, resultsContainerAnimatedStyle as never]}
+        style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
       />
       <BottomSheetWithFlashList
         visible={visible}
@@ -141,11 +145,13 @@ const SearchResultsSheet = <T,>({
         contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
         headerComponent={headerComponent}
         backgroundComponent={backgroundComponent}
+        overlayComponent={overlayComponent}
         listRef={listRef}
         style={style ?? overlaySheetStyles.container}
         surfaceStyle={[overlaySheetStyles.surface, styles.resultsSheetSurface]}
         onHidden={onHidden}
         onSnapChange={onSnapChange}
+        interactionEnabled={interactionEnabled}
         flashListProps={{
           getItemType,
           overrideItemLayout,

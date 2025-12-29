@@ -42,6 +42,8 @@ type SearchHeaderProps = {
   onBlur: () => void;
   onClear: () => void;
   onPress?: () => void;
+  onPressIn?: () => void;
+  onInputTouchStart?: () => void;
   accentColor: string;
   showBack?: boolean;
   onBackPress?: () => void;
@@ -65,6 +67,8 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   onBlur,
   onClear,
   onPress,
+  onPressIn,
+  onInputTouchStart,
   accentColor,
   showBack = false,
   onBackPress,
@@ -88,7 +92,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
           containerAnimatedStyle,
         ]}
       >
-        <Pressable style={styles.promptRow} onPress={onPress ?? onFocus}>
+        <Pressable style={styles.promptRow} onPress={onPress ?? onFocus} onPressIn={onPressIn}>
           <View style={styles.promptInner}>
             <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>
               <View
@@ -145,6 +149,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                 onSubmitEditing={onSubmit}
                 onFocus={onFocus}
                 onBlur={onBlur}
+                onTouchStart={onInputTouchStart}
                 editable={editable}
                 autoCapitalize="none"
                 autoCorrect={false}

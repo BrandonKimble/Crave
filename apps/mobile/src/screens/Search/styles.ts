@@ -533,6 +533,26 @@ const styles = StyleSheet.create({
   resultsListBackgroundLoading: {
     backgroundColor: '#ffffff',
   },
+  resultsLoadingOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 52,
+    backgroundColor: '#ffffff',
+    zIndex: 2,
+    elevation: 2,
+  },
+  resultsLoadingOverlayBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
+    opacity: 1,
+  },
+  resultsLoadingOverlaySpinner: {
+    paddingTop: 0,
+  },
   resultsHeaderSurface: {
     position: 'relative',
     overflow: 'hidden',
@@ -855,7 +875,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     minWidth: 0,
-    columnGap: 0,
+    columnGap: SPACING_XS,
     rowGap: CARD_LINE_GAP,
   },
   restaurantMetricLeft: {

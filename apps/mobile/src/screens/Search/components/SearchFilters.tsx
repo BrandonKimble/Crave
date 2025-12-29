@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { Dimensions, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
@@ -26,6 +26,7 @@ const TOGGLE_STACK_GAP = 7;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
+const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
@@ -117,6 +118,12 @@ const buildRoundedRectPath = (
 
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
 
+export type SearchFiltersLayoutCache = {
+  viewportWidth: number;
+  rowHeight: number;
+  holeMap: Record<string, ExtendedHole>;
+};
+
 type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
@@ -130,6 +137,8 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
+  initialLayoutCache?: SearchFiltersLayoutCache | null;
+  onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
 };
 
 const SearchFilters: React.FC<SearchFiltersProps> = ({
@@ -145,10 +154,18 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
+  initialLayoutCache,
+  onLayoutCacheChange,
 }) => {
-  const [viewportWidth, setViewportWidth] = React.useState(0);
-  const [rowHeight, setRowHeight] = React.useState(0);
-  const [holeMap, setHoleMap] = React.useState<Record<string, ExtendedHole>>({});
+  const [viewportWidth, setViewportWidth] = React.useState(
+    initialLayoutCache?.viewportWidth ?? DEFAULT_VIEWPORT_WIDTH
+  );
+  const [rowHeight, setRowHeight] = React.useState(
+    initialLayoutCache?.rowHeight ?? TOGGLE_MIN_HEIGHT
+  );
+  const [holeMap, setHoleMap] = React.useState<Record<string, ExtendedHole>>(
+    initialLayoutCache?.holeMap ?? {}
+  );
   const maskIdRef = React.useRef<string>(
     `search-filter-mask-${Math.random().toString(36).slice(2, 8)}`
   );
@@ -201,6 +218,16 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     transform: [{ translateX: -scrollX.value }],
   }));
   const AnimatedG = Reanimated.createAnimatedComponent(G);
+
+  React.useEffect(() => {
+    if (!onLayoutCacheChange) {
+      return;
+    }
+    if (viewportWidth <= 0 || rowHeight <= 0) {
+      return;
+    }
+    onLayoutCacheChange({ viewportWidth, rowHeight, holeMap });
+  }, [holeMap, onLayoutCacheChange, rowHeight, viewportWidth]);
 
   return (
     <View style={styles.resultFiltersWrapper}>
@@ -542,5 +569,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export type { SegmentValue };
+export type { SegmentValue, SearchFiltersLayoutCache };
 export default SearchFilters;

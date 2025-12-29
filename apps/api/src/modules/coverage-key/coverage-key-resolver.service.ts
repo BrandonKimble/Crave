@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
+const COVERAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+
 export interface CoverageResolveOptions {
   bounds?: {
     northEast: { lat: number; lng: number };
@@ -43,6 +45,11 @@ type CoverageAreaLookupRow = {
 
 @Injectable()
 export class CoverageKeyResolverService {
+  private coverageCache:
+    | { rows: CoverageAreaLookupRow[]; expiresAt: number }
+    | null = null;
+  private coverageCacheRequest: Promise<CoverageAreaLookupRow[]> | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(options: CoverageResolveOptions = {}): Promise<string[]> {
@@ -62,19 +69,7 @@ export class CoverageKeyResolverService {
     options: CoverageResolveOptions,
     settings: { fallbackToAll: boolean },
   ): Promise<string[]> {
-    const coverageAreas = (await this.prisma.coverageArea.findMany({
-      where: { isActive: true },
-      select: {
-        name: true,
-        coverageKey: true,
-        centerLatitude: true,
-        centerLongitude: true,
-        viewportNeLat: true,
-        viewportNeLng: true,
-        viewportSwLat: true,
-        viewportSwLng: true,
-      },
-    })) as CoverageAreaLookupRow[];
+    const coverageAreas = await this.loadCoverageAreas();
 
     if (!coverageAreas.length) {
       return [];
@@ -189,6 +184,51 @@ export class CoverageKeyResolverService {
     }
 
     return null;
+  }
+
+  private async loadCoverageAreas(): Promise<CoverageAreaLookupRow[]> {
+    const now = Date.now();
+    if (this.coverageCache && this.coverageCache.expiresAt > now) {
+      return this.coverageCache.rows;
+    }
+    if (this.coverageCacheRequest) {
+      return this.coverageCacheRequest;
+    }
+
+    const request = this.prisma.coverageArea
+      .findMany({
+        where: { isActive: true },
+        select: {
+          name: true,
+          coverageKey: true,
+          centerLatitude: true,
+          centerLongitude: true,
+          viewportNeLat: true,
+          viewportNeLng: true,
+          viewportSwLat: true,
+          viewportSwLng: true,
+        },
+      })
+      .then((rows) => {
+        const normalized = rows as CoverageAreaLookupRow[];
+        this.coverageCache = {
+          rows: normalized,
+          expiresAt: Date.now() + COVERAGE_CACHE_TTL_MS,
+        };
+        return normalized;
+      })
+      .catch((error) => {
+        if (this.coverageCache) {
+          return this.coverageCache.rows;
+        }
+        throw error;
+      })
+      .finally(() => {
+        this.coverageCacheRequest = null;
+      });
+
+    this.coverageCacheRequest = request;
+    return request;
   }
 
   private isValidCoordinate(value: unknown): value is number {

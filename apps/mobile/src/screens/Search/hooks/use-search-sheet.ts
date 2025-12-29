@@ -20,7 +20,7 @@ import { SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
-  isSearchFocused: boolean;
+  isSuggestionPanelActive: boolean;
   searchBarTop: number;
 };
 
@@ -48,7 +48,7 @@ type UseSearchSheetResult = {
 
 const useSearchSheet = ({
   isSearchOverlay,
-  isSearchFocused,
+  isSuggestionPanelActive,
   searchBarTop,
 }: UseSearchSheetOptions): UseSearchSheetResult => {
   const [panelVisible, setPanelVisible] = React.useState(false);
@@ -74,7 +74,7 @@ const useSearchSheet = ({
   }, [searchBarTop]);
 
   const shouldRenderSheet =
-    isSearchOverlay && !isSearchFocused && (panelVisible || sheetState !== 'hidden');
+    isSearchOverlay && !isSuggestionPanelActive && (panelVisible || sheetState !== 'hidden');
 
   React.useEffect(() => {
     if (!isSearchOverlay) {

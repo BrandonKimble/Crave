@@ -526,9 +526,8 @@ const useSearchSubmit = ({
       submittedLabel: string,
       options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
     ) => {
-      if (isLoading || isLoadingMore) {
-        return;
-      }
+      const requestId = ++searchRequestSeqRef.current;
+      activeSearchRequestRef.current = requestId;
 
       resetMapMoveFlag();
       const preserveSheetState = Boolean(options?.preserveSheetState);
@@ -549,10 +548,13 @@ const useSearchSubmit = ({
       Keyboard.dismiss();
 
       try {
+        if (isLoadingMore) {
+          setIsLoadingMore(false);
+        }
         setIsLoading(true);
         const payload = await buildStructuredSearchPayload(1, options?.filters);
         const response = await runSearch({ kind: 'structured', payload });
-        if (response) {
+        if (response && requestId === activeSearchRequestRef.current) {
           logger.info('Structured search response payload', response);
           handleSearchResponse(response, {
             append: false,
@@ -565,16 +567,19 @@ const useSearchSubmit = ({
         logger.error('Best here request failed', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
-        setError(null);
-        showPanel();
+        if (requestId === activeSearchRequestRef.current) {
+          setError(null);
+          showPanel();
+        }
       } finally {
-        setIsLoading(false);
+        if (requestId === activeSearchRequestRef.current) {
+          setIsLoading(false);
+        }
       }
     },
     [
       buildStructuredSearchPayload,
       handleSearchResponse,
-      isLoading,
       isLoadingMore,
       lastAutoOpenKeyRef,
       resetMapMoveFlag,
@@ -587,6 +592,7 @@ const useSearchSubmit = ({
       setHasMoreRestaurants,
       setIsAutocompleteSuppressed,
       setIsLoading,
+      setIsLoadingMore,
       setIsPaginationExhausted,
       setIsSearchSessionActive,
       setSearchMode,

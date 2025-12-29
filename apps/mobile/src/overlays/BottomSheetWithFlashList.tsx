@@ -49,6 +49,7 @@ type BottomSheetWithFlashListProps<T> = {
   listRef?: React.RefObject<FlashListRef<T>>;
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
+  overlayComponent?: React.ReactNode;
   ListHeaderComponent?: FlashListProps<T>['ListHeaderComponent'];
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
@@ -77,6 +78,7 @@ type BottomSheetWithFlashListProps<T> = {
   dismissThreshold?: number;
   listKey?: string;
   preventSwipeDismiss?: boolean;
+  interactionEnabled?: boolean;
   flashListProps?: Partial<
     Omit<
       FlashListProps<T>,
@@ -162,6 +164,7 @@ const BottomSheetWithFlashList = <T,>({
   estimatedItemSize,
   headerComponent,
   backgroundComponent,
+  overlayComponent,
   ListHeaderComponent,
   ListFooterComponent,
   ListEmptyComponent,
@@ -189,6 +192,7 @@ const BottomSheetWithFlashList = <T,>({
   snapTo,
   dismissThreshold,
   preventSwipeDismiss = false,
+  interactionEnabled = true,
   flashListProps,
   sheetYValue,
   sheetYObserver,
@@ -200,7 +204,7 @@ const BottomSheetWithFlashList = <T,>({
 }: BottomSheetWithFlashListProps<T>): React.ReactElement | null => {
   const { height: screenHeight } = useWindowDimensions();
   const pixelRatio = PixelRatio.get();
-  const shouldEnableScroll = visible && listScrollEnabled;
+  const shouldEnableScroll = visible && listScrollEnabled && interactionEnabled;
   const expandedSnap = snapPoints.expanded;
   const middleSnap = snapPoints.middle;
   const collapsedSnap = snapPoints.collapsed;
@@ -213,6 +217,7 @@ const BottomSheetWithFlashList = <T,>({
   const currentSnapKeyRef = React.useRef<SheetSnapPoint | 'hidden'>(
     visible ? initialSnapPoint : hiddenSnap !== undefined ? 'hidden' : 'collapsed'
   );
+  const gestureEnabled = visible && interactionEnabled;
   const headerHeight = useSharedValue(0);
   const expandTouchInHeader = useSharedValue(false);
   const collapseTouchInHeader = useSharedValue(false);
@@ -459,7 +464,7 @@ const BottomSheetWithFlashList = <T,>({
 
   const gestures = React.useMemo(() => {
     const expandPanGesture = Gesture.Pan()
-      .enabled(visible)
+      .enabled(gestureEnabled)
       .manualActivation(true)
       .cancelsTouchesInView(false)
       .onTouchesDown((event) => {
@@ -562,7 +567,7 @@ const BottomSheetWithFlashList = <T,>({
       });
 
     const collapsePanGesture = Gesture.Pan()
-      .enabled(visible)
+      .enabled(gestureEnabled)
       .manualActivation(true)
       .cancelsTouchesInView(false)
       .onTouchesDown((event) => {
@@ -662,7 +667,7 @@ const BottomSheetWithFlashList = <T,>({
     snapPoints.hidden,
     snapPoints.middle,
     shouldEnableScroll,
-    visible,
+    gestureEnabled,
   ]);
 
   const ScrollComponent = React.useMemo(() => {
@@ -748,7 +753,10 @@ const BottomSheetWithFlashList = <T,>({
 
   return (
     <GestureDetector gesture={gestures.sheet}>
-      <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={[style, animatedSheetStyle]}>
+      <Animated.View
+        pointerEvents={visible && interactionEnabled ? 'auto' : 'none'}
+        style={[style, animatedSheetStyle]}
+      >
         <View style={shadowShellStyle}>
           <View style={resolvedSurfaceStyle}>
             {backgroundComponent ? (
@@ -796,6 +804,11 @@ const BottomSheetWithFlashList = <T,>({
                 scrollIndicatorInsets={scrollIndicatorInsets}
               />
             </View>
+            {overlayComponent ? (
+              <View pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
+                {overlayComponent}
+              </View>
+            ) : null}
           </View>
         </View>
       </Animated.View>

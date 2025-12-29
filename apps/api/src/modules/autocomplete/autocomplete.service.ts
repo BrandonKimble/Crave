@@ -20,7 +20,7 @@ import { SearchSubredditResolverService } from '../search/search-subreddit-resol
 import { MapBoundsDto } from '../search/dto/search-query.dto';
 
 const DEFAULT_LIMIT = 8;
-const MIN_QUERY_LENGTH = 2;
+const MIN_QUERY_LENGTH = 1;
 const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
 const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
 const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
@@ -29,7 +29,7 @@ const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
 @Injectable()
 export class AutocompleteService {
   private readonly logger: LoggerService;
-  private readonly cacheTtlMs = 4000;
+  private readonly cacheTtlMs = 10000;
   private readonly sessionCache = new Map<string, CacheEntry>();
   private readonly weightConfidence: number;
   private readonly weightGlobalPopularity: number;
@@ -134,6 +134,16 @@ export class AutocompleteService {
       return cached;
     }
 
+    const injectedPromise = user
+      ? this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user)
+      : Promise.resolve({ favorites: [], viewed: [] });
+    const querySuggestionPromise =
+      this.searchQuerySuggestionService.getSuggestions(
+        normalizedQuery,
+        Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
+        user?.userId,
+      );
+
     const searchResults = await this.entitySearchService.searchEntities(
       normalizedQuery,
       entityTypes,
@@ -152,7 +162,7 @@ export class AutocompleteService {
         matchType: 'entity',
       }));
 
-    if (matches.length === 0) {
+    if (matches.length === 0 && normalizedQuery.length >= 3) {
       matches = await this.resolveViaEntityResolver(
         dto,
         normalizedQuery,
@@ -164,21 +174,14 @@ export class AutocompleteService {
 
     const hadEntityMatches = matches.length > 0;
 
-    const injected = user
-      ? await this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user)
-      : { favorites: [], viewed: [] };
+    const injected = await injectedPromise;
 
     const candidateMatches = this.mergeEntityMatches(matches, [
       ...injected.favorites,
       ...injected.viewed,
     ]);
 
-    const querySuggestions =
-      await this.searchQuerySuggestionService.getSuggestions(
-        normalizedQuery,
-        Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
-        user?.userId,
-      );
+    const querySuggestions = await querySuggestionPromise;
 
     const ranked = await this.rankCandidates({
       entityMatches: candidateMatches,

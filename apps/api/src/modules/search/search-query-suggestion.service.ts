@@ -22,7 +22,7 @@ export interface QuerySuggestion {
 @Injectable()
 export class SearchQuerySuggestionService {
   private readonly logger: LoggerService;
-  private readonly minPrefixLength = 2;
+  private readonly minPrefixLength = 1;
 
   constructor(
     private readonly prisma: PrismaService,

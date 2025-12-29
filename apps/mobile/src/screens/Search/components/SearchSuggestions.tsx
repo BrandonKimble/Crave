@@ -7,13 +7,22 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
-import { Clock, Eye, HandPlatter, Heart, Search as SearchIcon, Store } from 'lucide-react-native';
+import {
+  Clock,
+  HandPlatter,
+  Heart,
+  Search as SearchIcon,
+  Store,
+  View as ViewIcon,
+} from 'lucide-react-native';
 
 import { Text } from '../../../components';
+import SquircleSpinner from '../../../components/SquircleSpinner';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { RecentlyViewedRestaurant } from '../../../services/search';
+import { ACTIVE_TAB_COLOR } from '../constants/search';
 
 type SearchSuggestionsProps = {
   visible: boolean;
@@ -62,6 +71,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       isRecentlyViewedLoading ||
       hasRecentSearches ||
       hasRecentlyViewedRestaurants);
+  const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
+  const shouldShowAutocompleteSpinner =
+    showAutocomplete && isAutocompleteLoading && suggestions.length === 0;
 
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
@@ -71,70 +83,63 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
   return (
     <View style={containerStyles}>
-      {showAutocomplete ? (
+      {shouldShowAutocompleteResults ? (
         <View style={styles.autocompleteSectionSurface}>
-          {isAutocompleteLoading && (
-            <View style={styles.autocompleteLoadingRow}>
-              <ActivityIndicator size="small" color="#6366f1" />
-              <Text style={styles.autocompleteLoadingText}>Looking for matches…</Text>
-            </View>
-          )}
-          {!isAutocompleteLoading && suggestions.length === 0 ? (
-            <Text style={styles.autocompleteEmptyText}>Keep typing to add a dish or spot</Text>
-          ) : (
-            suggestions.map((match, index) => {
-              const itemKey = match.entityId
-                ? `${match.entityId}-${index}`
-                : `${match.name}-${index}`;
-              const isQuery = match.matchType === 'query' || match.entityType === 'query';
-              const locationCount =
-                typeof match.locationCount === 'number' ? match.locationCount : null;
-              const shouldShowLocationCount =
-                match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
-              const leadingIcon = isQuery ? (
-                <SearchIcon size={18} color={ICON_COLOR} strokeWidth={2} />
-              ) : match.entityType === 'restaurant' ? (
-                <Store size={18} color={ICON_COLOR} strokeWidth={2} />
-              ) : (
-                <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
-              );
-              return (
-                <TouchableOpacity
-                  key={itemKey}
-                  onPress={() => onSelectSuggestion(match)}
-                  style={[
-                    styles.autocompleteItemRow,
-                    index === suggestions.length - 1 && !shouldRenderRecentSection
-                      ? styles.autocompleteItemLast
-                      : null,
-                  ]}
-                >
-                  <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
-                  <View style={styles.autocompleteTextGroup}>
-                    <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
-                      {match.name}
+          {suggestions.map((match, index) => {
+            const itemKey = match.entityId
+              ? `${match.entityId}-${index}`
+              : `${match.name}-${index}`;
+            const isQuery = match.matchType === 'query' || match.entityType === 'query';
+            const locationCount =
+              typeof match.locationCount === 'number' ? match.locationCount : null;
+            const shouldShowLocationCount =
+              match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
+            const leadingIcon = isQuery ? (
+              <SearchIcon size={18} color={ICON_COLOR} strokeWidth={2} />
+            ) : match.entityType === 'restaurant' ? (
+              <Store size={18} color={ICON_COLOR} strokeWidth={2} />
+            ) : (
+              <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
+            );
+            return (
+              <TouchableOpacity
+                key={itemKey}
+                onPress={() => onSelectSuggestion(match)}
+                style={[
+                  styles.autocompleteItemRow,
+                  index === suggestions.length - 1 ? styles.autocompleteItemLast : null,
+                ]}
+              >
+                <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
+                <View style={styles.autocompleteTextGroup}>
+                  <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
+                    {match.name}
+                  </Text>
+                  {shouldShowLocationCount ? (
+                    <Text style={styles.autocompleteSecondaryText} numberOfLines={1}>
+                      {`${locationCount} locations`}
                     </Text>
-                    {shouldShowLocationCount ? (
-                      <Text style={styles.autocompleteSecondaryText} numberOfLines={1}>
-                        {`${locationCount} locations`}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View style={styles.autocompleteBadges}>
-                    {match.badges?.recentQuery ? (
-                      <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
-                    ) : null}
-                    {match.badges?.viewed ? (
-                      <Eye size={16} color={ICON_COLOR} strokeWidth={2} />
-                    ) : null}
-                    {match.badges?.favorite ? (
-                      <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
-                    ) : null}
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
+                  ) : null}
+                </View>
+                <View style={styles.autocompleteBadges}>
+                  {match.badges?.recentQuery ? (
+                    <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
+                  ) : null}
+                  {match.badges?.viewed ? (
+                    <ViewIcon size={16} color={ICON_COLOR} strokeWidth={2} />
+                  ) : null}
+                  {match.badges?.favorite ? (
+                    <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ) : null}
+      {shouldShowAutocompleteSpinner ? (
+        <View style={styles.autocompleteLoadingContainer}>
+          <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
         </View>
       ) : null}
 
@@ -163,7 +168,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             ))
           )}
 
-          <View style={styles.recentHeaderRow}>
+          <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
             <Text style={styles.recentHeaderText}>Recently viewed</Text>
             {isRecentlyViewedLoading && (
               <ActivityIndicator size="small" color={themeColors.textBody} />
@@ -179,7 +184,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
               >
                 <View style={styles.recentIcon}>
-                  <Eye size={16} color={ICON_COLOR} strokeWidth={2} />
+                  <ViewIcon size={16} color={ICON_COLOR} strokeWidth={2} />
                 </View>
                 <Text style={styles.recentText} numberOfLines={1}>
                   {item.restaurantName}
@@ -202,28 +207,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 0,
     backgroundColor: 'transparent',
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
   },
-  autocompleteLoadingRow: {
-    flexDirection: 'row',
+  autocompleteLoadingContainer: {
     alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-  },
-  autocompleteLoadingText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textBody,
-    marginLeft: 8,
-  },
-  autocompleteEmptyText: {
-    paddingHorizontal: 0,
-    paddingVertical: 10,
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
-    color: themeColors.textBody,
+    justifyContent: 'center',
+    paddingVertical: 20,
   },
   autocompleteItemRow: {
     paddingHorizontal: 0,
@@ -253,8 +241,8 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   autocompleteSecondaryText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: themeColors.textBody,
   },
   autocompleteBadges: {
@@ -276,6 +264,9 @@ const styles = StyleSheet.create({
     marginBottom: 4,
     marginTop: 6,
   },
+  recentHeaderRowSpaced: {
+    marginTop: 12,
+  },
   recentHeaderText: {
     fontSize: FONT_SIZES.body,
     lineHeight: LINE_HEIGHTS.body,
@@ -286,8 +277,8 @@ const styles = StyleSheet.create({
   },
   recentEmptyText: {
     paddingVertical: 6,
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: themeColors.textBody,
   },
   recentRow: {
@@ -306,8 +297,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   recentText: {
-    fontSize: FONT_SIZES.body,
-    lineHeight: LINE_HEIGHTS.body,
+    fontSize: FONT_SIZES.subtitle,
+    lineHeight: LINE_HEIGHTS.subtitle,
     color: '#1f2937',
     flex: 1,
   },

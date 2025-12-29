@@ -47,6 +47,7 @@ export class EntitySearchService {
     const prefixPattern = `${normalizedTerm}%`;
     const phoneticTerm = normalizedTerm.replace(/[^a-z0-9 ]+/g, ' ');
     const similarityThreshold = this.resolveSimilarityThreshold(normalizedTerm);
+    const isShortQuery = normalizedTerm.length <= 2;
 
     const normalizedLocationKey =
       typeof options.locationKey === 'string'
@@ -61,7 +62,69 @@ export class EntitySearchService {
         ? Prisma.sql`AND (e.type != 'restaurant' OR e.location_key = ${normalizedLocationKey})`
         : Prisma.empty;
 
-      const rows = await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
+      const primaryPattern = isShortQuery ? prefixPattern : containsPattern;
+      const primaryRows = isShortQuery
+        ? await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
+            SELECT
+              e.entity_id AS "entityId",
+              e.name AS "name",
+              e.type AS "type",
+              0 AS "nameSimilarity",
+              CASE WHEN lower(e.name) LIKE ${prefixPattern} THEN 1 ELSE 0 END AS "prefixHit",
+              0 AS "phoneticMatch",
+              e.restaurant_quality_score AS "restaurantQualityScore",
+              e.general_praise_upvotes AS "generalPraiseUpvotes"
+            FROM core_entities e
+            WHERE e.type = ANY(${entityTypeArray})
+              ${locationFilter}
+              AND lower(e.name) LIKE ${primaryPattern}
+            ORDER BY
+              CASE WHEN lower(e.name) LIKE ${prefixPattern} THEN 1 ELSE 0 END DESC,
+              COALESCE(e.restaurant_quality_score, 0) DESC,
+              COALESCE(e.general_praise_upvotes, 0) DESC,
+              e.name ASC
+            LIMIT ${limit}
+          `)
+        : await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
+            SELECT
+              e.entity_id AS "entityId",
+              e.name AS "name",
+              e.type AS "type",
+              similarity(lower(e.name), ${normalizedTerm}) AS "nameSimilarity",
+              CASE WHEN lower(e.name) LIKE ${prefixPattern} THEN 1 ELSE 0 END AS "prefixHit",
+              0 AS "phoneticMatch",
+              e.restaurant_quality_score AS "restaurantQualityScore",
+              e.general_praise_upvotes AS "generalPraiseUpvotes"
+            FROM core_entities e
+            WHERE e.type = ANY(${entityTypeArray})
+              ${locationFilter}
+              AND lower(e.name) LIKE ${primaryPattern}
+            ORDER BY
+              CASE WHEN lower(e.name) LIKE ${prefixPattern} THEN 1 ELSE 0 END DESC,
+              similarity(lower(e.name), ${normalizedTerm}) DESC,
+              COALESCE(e.restaurant_quality_score, 0) DESC,
+              COALESCE(e.general_praise_upvotes, 0) DESC,
+              e.name ASC
+            LIMIT ${limit}
+          `);
+
+      if (primaryRows.length >= limit || isShortQuery) {
+        return primaryRows.map((row) => ({
+          entityId: row.entityId,
+          name: row.name,
+          type: row.type,
+          similarity: Number(row.nameSimilarity ?? 0),
+        }));
+      }
+
+      const remaining = Math.max(0, limit - primaryRows.length);
+      const excludedIds = primaryRows.map((row) => Prisma.sql`${row.entityId}::uuid`);
+      const excludeClause = excludedIds.length
+        ? Prisma.sql`AND e.entity_id NOT IN (${Prisma.join(excludedIds)})`
+        : Prisma.empty;
+
+      // Fallback for aliases/fuzzy/phonetic matches only when needed.
+      const fallbackRows = await this.prisma.$queryRaw<EntitySearchRow[]>(Prisma.sql`
         SELECT
           e.entity_id AS "entityId",
           e.name AS "name",
@@ -78,9 +141,9 @@ export class EntitySearchService {
         FROM core_entities e
         WHERE e.type = ANY(${entityTypeArray})
           ${locationFilter}
+          ${excludeClause}
           AND (
-            lower(e.name) LIKE ${containsPattern}
-            OR EXISTS (
+            EXISTS (
               SELECT 1 FROM unnest(e.aliases) alias
               WHERE lower(alias) LIKE ${containsPattern}
             )
@@ -99,15 +162,26 @@ export class EntitySearchService {
           COALESCE(e.restaurant_quality_score, 0) DESC,
           COALESCE(e.general_praise_upvotes, 0) DESC,
           e.name ASC
-        LIMIT ${limit}
+        LIMIT ${remaining}
       `);
 
-      return rows.map((row) => ({
+      const mergedRows = [...primaryRows];
+      const seen = new Set(primaryRows.map((row) => row.entityId));
+      fallbackRows.forEach((row) => {
+        if (seen.has(row.entityId)) {
+          return;
+        }
+        seen.add(row.entityId);
+        mergedRows.push(row);
+      });
+
+      return mergedRows.map((row) => ({
         entityId: row.entityId,
         name: row.name,
         type: row.type,
         similarity: Number(row.nameSimilarity ?? 0),
       }));
+
     } catch (error) {
       this.logger.error('Entity search query failed', {
         term: normalizedTerm,
