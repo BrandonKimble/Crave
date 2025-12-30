@@ -6,7 +6,6 @@ import {
   Keyboard,
   PixelRatio,
   Pressable,
-  StyleSheet,
   TouchableOpacity,
   View,
   Easing as RNEasing,
@@ -731,17 +730,6 @@ const SearchScreen: React.FC = () => {
     isResultsSheetDragging || isResultsListScrolling || isResultsSheetSettling;
   const isMapFrozen = isResultsInteracting;
   const mapPreferredFramesPerSecond = isMapFrozen ? 1 : undefined;
-  const resultsBlurOpacity = useSharedValue(1);
-  const resultsBlurAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsBlurOpacity.value,
-  }));
-  React.useEffect(() => {
-    const targetOpacity = isMapFrozen ? 0.75 : 1;
-    resultsBlurOpacity.value = withTiming(targetOpacity, {
-      duration: 160,
-      easing: Easing.out(Easing.cubic),
-    });
-  }, [isMapFrozen, resultsBlurOpacity]);
 
   // Stable context value so list items don't re-render on drag state changes
   const searchInteractionContextValue = React.useMemo(
@@ -3914,16 +3902,11 @@ const SearchScreen: React.FC = () => {
   const listHeader = React.useMemo(
     () => (
       <View style={styles.resultsListHeader} onLayout={onFiltersHeaderLayout}>
-        <Reanimated.View
-          pointerEvents="none"
-          style={[StyleSheet.absoluteFillObject, resultsBlurAnimatedStyle]}
-        >
-          <FrostedGlassBackground />
-        </Reanimated.View>
+        <FrostedGlassBackground />
         {filtersHeader}
       </View>
     ),
-    [filtersHeader, onFiltersHeaderLayout, resultsBlurAnimatedStyle]
+    [filtersHeader, onFiltersHeaderLayout]
   );
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const shouldShowResultsLoadingState =
@@ -4069,12 +4052,7 @@ const SearchScreen: React.FC = () => {
       ]}
       onLayout={handleResultsHeaderLayout}
     >
-      <Reanimated.View
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFillObject, resultsBlurAnimatedStyle]}
-      >
-        <FrostedGlassBackground />
-      </Reanimated.View>
+      <FrostedGlassBackground />
       {resultsHeaderCutout.background}
       <View style={[overlaySheetStyles.grabHandleWrapper, styles.resultsHeaderHandle]}>
         <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
