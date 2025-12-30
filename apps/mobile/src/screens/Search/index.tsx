@@ -3732,11 +3732,7 @@ const SearchScreen: React.FC = () => {
     <>
       <Reanimated.View
         pointerEvents="none"
-        style={[
-          styles.resultsWashOverlay,
-          { top: resultsWashTopOffset },
-          resultsWashAnimatedStyle,
-        ]}
+        style={[styles.resultsWashOverlay, { top: resultsWashTopOffset }, resultsWashAnimatedStyle]}
       />
       {resultsLoadingOverlay}
     </>
@@ -3953,171 +3949,113 @@ const SearchScreen: React.FC = () => {
             pointerEvents="box-none"
             edges={['top', 'left', 'right']}
           >
-          {isSearchOverlay ? (
-            <Reanimated.View
-              pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
-              style={[
-                styles.searchSurface,
-                searchSurfaceAnimatedStyle,
-                {
-                  top: 0,
-                },
-              ]}
-            >
-              <FrostedGlassBackground />
-              {isSuggestionScreenVisible ? (
-                <MaskedHoleOverlay
-                  holes={suggestionHeaderHoles}
-                  backgroundColor="#ffffff"
-                  style={[
-                    styles.searchSuggestionHeaderSurface,
-                    suggestionHeaderHeightAnimatedStyle,
-                    suggestionMaskAnimatedStyle,
-                  ]}
-                  pointerEvents="none"
-                />
-              ) : null}
-              {shouldShowSuggestionSurface && suggestionTopFillHeight > 0 ? (
-                <Reanimated.View
-                  pointerEvents="none"
-                  style={[
-                    styles.searchSuggestionTopFill,
-                    suggestionTopFillAnimatedStyle,
-                    { height: suggestionTopFillHeight },
-                    suggestionMaskAnimatedStyle,
-                  ]}
-                />
-              ) : null}
-              <Reanimated.ScrollView
+            {isSearchOverlay ? (
+              <Reanimated.View
+                pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
                 style={[
-                  styles.searchSurfaceScroll,
-                  suggestionPanelAnimatedStyle,
-                  isSuggestionScreenVisible
-                    ? [
-                        styles.searchSuggestionScrollSurface,
-                        suggestionScrollTopAnimatedStyle,
-                        suggestionScrollMaxHeightTarget
-                          ? suggestionScrollMaxHeightAnimatedStyle
-                          : null,
-                      ]
-                    : null,
-                ]}
-                contentContainerStyle={[
-                  styles.searchSurfaceContent,
+                  styles.searchSurface,
+                  searchSurfaceAnimatedStyle,
                   {
-                    paddingTop: isSuggestionScreenVisible
-                      ? 0
-                      : searchLayout.top + searchLayout.height + 8,
-                    paddingBottom: isSuggestionScreenVisible
-                      ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
-                      : bottomInset + 32,
-                    paddingHorizontal: isSuggestionScreenVisible ? CONTENT_HORIZONTAL_PADDING : 0,
-                    backgroundColor: shouldShowSuggestionSurface ? '#ffffff' : 'transparent',
+                    top: 0,
                   },
                 ]}
-                keyboardShouldPersistTaps="handled"
-                onTouchStart={handleSuggestionInteractionStart}
-                onScrollBeginDrag={handleSuggestionInteractionStart}
-                scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
-                showsVerticalScrollIndicator={false}
               >
-                {shouldRenderSuggestionPanel ? (
-                  <SearchSuggestions
-                    visible={shouldRenderSuggestionPanel}
-                    showAutocomplete={shouldRenderAutocompleteSection}
-                    showRecent={shouldRenderRecentSection}
-                    suggestions={suggestions}
-                    recentSearches={recentSearches}
-                    recentlyViewedRestaurants={recentlyViewedRestaurants}
-                    hasRecentSearches={hasRecentSearches}
-                    hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                    isAutocompleteLoading={isAutocompleteLoading}
-                    isRecentLoading={isRecentLoading}
-                    isRecentlyViewedLoading={isRecentlyViewedLoading}
-                    onSelectSuggestion={handleSuggestionPress}
-                    onSelectRecent={handleRecentSearchPress}
-                    onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
-                    onPressRecentViewMore={handleRecentViewMorePress}
-                    onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
+                <FrostedGlassBackground />
+                {isSuggestionScreenVisible ? (
+                  <MaskedHoleOverlay
+                    holes={suggestionHeaderHoles}
+                    backgroundColor="#ffffff"
+                    style={[
+                      styles.searchSuggestionHeaderSurface,
+                      suggestionHeaderHeightAnimatedStyle,
+                      suggestionMaskAnimatedStyle,
+                    ]}
+                    pointerEvents="none"
                   />
                 ) : null}
-              </Reanimated.ScrollView>
-            </Reanimated.View>
-          ) : null}
-          <View
-            pointerEvents={shouldShowSearchChrome ? 'auto' : 'none'}
-            style={[
-              styles.searchContainer,
-              !shouldShowSearchChrome ? styles.searchChromeHidden : null,
-            ]}
-            onLayout={({ nativeEvent: { layout } }) => {
-              setSearchLayout((prev) => {
-                if (prev.top === layout.y && prev.height === layout.height) {
-                  return prev;
-                }
-
-                return { top: layout.y, height: layout.height };
-              });
-
-              setSearchContainerFrame((prev) => {
-                if (
-                  prev &&
-                  Math.abs(prev.x - layout.x) < 0.5 &&
-                  Math.abs(prev.y - layout.y) < 0.5 &&
-                  Math.abs(prev.width - layout.width) < 0.5 &&
-                  Math.abs(prev.height - layout.height) < 0.5
-                ) {
-                  return prev;
-                }
-                return layout;
-              });
-            }}
-          >
-            <SearchHeader
-              value={query}
-              placeholder="What are you craving?"
-              onChangeText={handleQueryChange}
-              onSubmit={handleSubmit}
-              onFocus={handleSearchFocus}
-              onBlur={handleSearchBlur}
-              onClear={handleClear}
-              onPress={focusSearchInput}
-              onPressIn={handleSearchPressIn}
-              onInputTouchStart={handleSearchPressIn}
-              accentColor={ACTIVE_TAB_COLOR}
-              showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
-              onBackPress={handleCloseResults}
-              onLayout={handleSearchHeaderLayout}
-              inputRef={inputRef}
-              inputAnimatedStyle={searchBarInputAnimatedStyle}
-              containerAnimatedStyle={[
-                searchBarSheetAnimatedStyle,
-                searchBarAnimatedStyle,
-                searchBarTransparencyAnimatedStyle,
-              ]}
-              editable
-              showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
-              isSearchSessionActive={isSearchSessionActive}
-              surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}
-            />
-          </View>
-          {shouldShowSearchShortcuts && (
-            <Reanimated.View
+                {shouldShowSuggestionSurface && suggestionTopFillHeight > 0 ? (
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.searchSuggestionTopFill,
+                      suggestionTopFillAnimatedStyle,
+                      { height: suggestionTopFillHeight },
+                      suggestionMaskAnimatedStyle,
+                    ]}
+                  />
+                ) : null}
+                <Reanimated.ScrollView
+                  style={[
+                    styles.searchSurfaceScroll,
+                    suggestionPanelAnimatedStyle,
+                    isSuggestionScreenVisible
+                      ? [
+                          styles.searchSuggestionScrollSurface,
+                          suggestionScrollTopAnimatedStyle,
+                          suggestionScrollMaxHeightTarget
+                            ? suggestionScrollMaxHeightAnimatedStyle
+                            : null,
+                        ]
+                      : null,
+                  ]}
+                  contentContainerStyle={[
+                    styles.searchSurfaceContent,
+                    {
+                      paddingTop: isSuggestionScreenVisible
+                        ? 0
+                        : searchLayout.top + searchLayout.height + 8,
+                      paddingBottom: isSuggestionScreenVisible
+                        ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
+                        : bottomInset + 32,
+                      paddingHorizontal: isSuggestionScreenVisible ? CONTENT_HORIZONTAL_PADDING : 0,
+                      backgroundColor: shouldShowSuggestionSurface ? '#ffffff' : 'transparent',
+                    },
+                  ]}
+                  keyboardShouldPersistTaps="handled"
+                  onTouchStart={handleSuggestionInteractionStart}
+                  onScrollBeginDrag={handleSuggestionInteractionStart}
+                  scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {shouldRenderSuggestionPanel ? (
+                    <SearchSuggestions
+                      visible={shouldRenderSuggestionPanel}
+                      showAutocomplete={shouldRenderAutocompleteSection}
+                      showRecent={shouldRenderRecentSection}
+                      suggestions={suggestions}
+                      recentSearches={recentSearches}
+                      recentlyViewedRestaurants={recentlyViewedRestaurants}
+                      hasRecentSearches={hasRecentSearches}
+                      hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
+                      isAutocompleteLoading={isAutocompleteLoading}
+                      isRecentLoading={isRecentLoading}
+                      isRecentlyViewedLoading={isRecentlyViewedLoading}
+                      onSelectSuggestion={handleSuggestionPress}
+                      onSelectRecent={handleRecentSearchPress}
+                      onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                      onPressRecentViewMore={handleRecentViewMorePress}
+                      onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
+                    />
+                  ) : null}
+                </Reanimated.ScrollView>
+              </Reanimated.View>
+            ) : null}
+            <View
+              pointerEvents={shouldShowSearchChrome ? 'auto' : 'none'}
               style={[
-                styles.searchShortcutsRow,
-                isSuggestionScreenActive ? styles.searchShortcutsRowSuggestion : null,
-                searchChromeAnimatedStyle,
+                styles.searchContainer,
+                !shouldShowSearchChrome ? styles.searchChromeHidden : null,
               ]}
-              entering={FadeInUp.duration(SUGGESTION_PANEL_FADE_IN_MS).easing(
-                Easing.out(Easing.cubic)
-              )}
-              exiting={FadeOutUp.duration(SUGGESTION_PANEL_FADE_OUT_MS).easing(
-                Easing.in(Easing.cubic)
-              )}
-              pointerEvents="box-none"
               onLayout={({ nativeEvent: { layout } }) => {
-                searchShortcutsLayoutCacheRef.current.frame = layout;
-                setSearchShortcutsFrame((prev) => {
+                setSearchLayout((prev) => {
+                  if (prev.top === layout.y && prev.height === layout.height) {
+                    return prev;
+                  }
+
+                  return { top: layout.y, height: layout.height };
+                });
+
+                setSearchContainerFrame((prev) => {
                   if (
                     prev &&
                     Math.abs(prev.x - layout.x) < 0.5 &&
@@ -4131,98 +4069,156 @@ const SearchScreen: React.FC = () => {
                 });
               }}
             >
-              <Pressable
-                onPress={handleBestRestaurantsHere}
-                style={[
-                  styles.searchShortcutChip,
-                  isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
+              <SearchHeader
+                value={query}
+                placeholder="What are you craving?"
+                onChangeText={handleQueryChange}
+                onSubmit={handleSubmit}
+                onFocus={handleSearchFocus}
+                onBlur={handleSearchBlur}
+                onClear={handleClear}
+                onPress={focusSearchInput}
+                onPressIn={handleSearchPressIn}
+                onInputTouchStart={handleSearchPressIn}
+                accentColor={ACTIVE_TAB_COLOR}
+                showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
+                onBackPress={handleCloseResults}
+                onLayout={handleSearchHeaderLayout}
+                inputRef={inputRef}
+                inputAnimatedStyle={searchBarInputAnimatedStyle}
+                containerAnimatedStyle={[
+                  searchBarSheetAnimatedStyle,
+                  searchBarAnimatedStyle,
+                  searchBarTransparencyAnimatedStyle,
                 ]}
-                accessibilityRole="button"
-                accessibilityLabel="Show best restaurants here"
-                hitSlop={8}
+                editable
+                showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
+                isSearchSessionActive={isSearchSessionActive}
+                surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}
+              />
+            </View>
+            {shouldShowSearchShortcuts && (
+              <Reanimated.View
+                style={[
+                  styles.searchShortcutsRow,
+                  isSuggestionScreenActive ? styles.searchShortcutsRowSuggestion : null,
+                  searchChromeAnimatedStyle,
+                ]}
+                entering={FadeInUp.duration(SUGGESTION_PANEL_FADE_IN_MS).easing(
+                  Easing.out(Easing.cubic)
+                )}
+                exiting={FadeOutUp.duration(SUGGESTION_PANEL_FADE_OUT_MS).easing(
+                  Easing.in(Easing.cubic)
+                )}
+                pointerEvents="box-none"
                 onLayout={({ nativeEvent: { layout } }) => {
-                  setSearchShortcutChipFrames((prev) => {
-                    const prevLayout = prev.restaurants;
+                  searchShortcutsLayoutCacheRef.current.frame = layout;
+                  setSearchShortcutsFrame((prev) => {
                     if (
-                      prevLayout &&
-                      Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                      Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                      Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                      Math.abs(prevLayout.height - layout.height) < 0.5
+                      prev &&
+                      Math.abs(prev.x - layout.x) < 0.5 &&
+                      Math.abs(prev.y - layout.y) < 0.5 &&
+                      Math.abs(prev.width - layout.width) < 0.5 &&
+                      Math.abs(prev.height - layout.height) < 0.5
                     ) {
-                      searchShortcutsLayoutCacheRef.current.chipFrames = prev;
                       return prev;
                     }
-                    const next = { ...prev, restaurants: layout };
-                    searchShortcutsLayoutCacheRef.current.chipFrames = next;
-                    return next;
+                    return layout;
                   });
                 }}
               >
-                <View style={styles.searchShortcutContent}>
-                  <Store size={18} color="#0f172a" strokeWidth={2} />
-                  <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                    Best restaurants
-                  </Text>
-                </View>
-              </Pressable>
+                <Pressable
+                  onPress={handleBestRestaurantsHere}
+                  style={[
+                    styles.searchShortcutChip,
+                    isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show best restaurants here"
+                  hitSlop={8}
+                  onLayout={({ nativeEvent: { layout } }) => {
+                    setSearchShortcutChipFrames((prev) => {
+                      const prevLayout = prev.restaurants;
+                      if (
+                        prevLayout &&
+                        Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                        Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                        Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                        Math.abs(prevLayout.height - layout.height) < 0.5
+                      ) {
+                        searchShortcutsLayoutCacheRef.current.chipFrames = prev;
+                        return prev;
+                      }
+                      const next = { ...prev, restaurants: layout };
+                      searchShortcutsLayoutCacheRef.current.chipFrames = next;
+                      return next;
+                    });
+                  }}
+                >
+                  <View style={styles.searchShortcutContent}>
+                    <Store size={18} color="#0f172a" strokeWidth={2} />
+                    <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                      Best restaurants
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={handleBestDishesHere}
+                  style={[
+                    styles.searchShortcutChip,
+                    isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Show best dishes here"
+                  hitSlop={8}
+                  onLayout={({ nativeEvent: { layout } }) => {
+                    setSearchShortcutChipFrames((prev) => {
+                      const prevLayout = prev.dishes;
+                      if (
+                        prevLayout &&
+                        Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                        Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                        Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                        Math.abs(prevLayout.height - layout.height) < 0.5
+                      ) {
+                        searchShortcutsLayoutCacheRef.current.chipFrames = prev;
+                        return prev;
+                      }
+                      const next = { ...prev, dishes: layout };
+                      searchShortcutsLayoutCacheRef.current.chipFrames = next;
+                      return next;
+                    });
+                  }}
+                >
+                  <View style={styles.searchShortcutContent}>
+                    <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+                    <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                      Best dishes
+                    </Text>
+                  </View>
+                </Pressable>
+              </Reanimated.View>
+            )}
+            <Reanimated.View
+              pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
+              style={[
+                styles.searchThisAreaContainer,
+                { top: searchThisAreaTop },
+                searchThisAreaAnimatedStyle,
+              ]}
+            >
               <Pressable
-                onPress={handleBestDishesHere}
-                style={[
-                  styles.searchShortcutChip,
-                  isSuggestionScreenActive ? styles.searchShortcutChipTransparent : null,
-                ]}
+                onPress={handleSearchThisArea}
+                style={styles.searchThisAreaButton}
                 accessibilityRole="button"
-                accessibilityLabel="Show best dishes here"
+                accessibilityLabel="Search this area"
                 hitSlop={8}
-                onLayout={({ nativeEvent: { layout } }) => {
-                  setSearchShortcutChipFrames((prev) => {
-                    const prevLayout = prev.dishes;
-                    if (
-                      prevLayout &&
-                      Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                      Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                      Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                      Math.abs(prevLayout.height - layout.height) < 0.5
-                    ) {
-                      searchShortcutsLayoutCacheRef.current.chipFrames = prev;
-                      return prev;
-                    }
-                    const next = { ...prev, dishes: layout };
-                    searchShortcutsLayoutCacheRef.current.chipFrames = next;
-                    return next;
-                  });
-                }}
               >
-                <View style={styles.searchShortcutContent}>
-                  <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-                  <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                    Best dishes
-                  </Text>
-                </View>
+                <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
+                  Search this area
+                </Text>
               </Pressable>
             </Reanimated.View>
-          )}
-          <Reanimated.View
-            pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
-            style={[
-              styles.searchThisAreaContainer,
-              { top: searchThisAreaTop },
-              searchThisAreaAnimatedStyle,
-            ]}
-          >
-            <Pressable
-              onPress={handleSearchThisArea}
-              style={styles.searchThisAreaButton}
-              accessibilityRole="button"
-              accessibilityLabel="Search this area"
-              hitSlop={8}
-            >
-              <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
-                Search this area
-              </Text>
-            </Pressable>
-          </Reanimated.View>
           </SafeAreaView>
           <SearchInteractionProvider value={searchInteractionContextValue}>
             <SearchResultsSheet
@@ -4258,7 +4254,7 @@ const SearchScreen: React.FC = () => {
               ItemSeparatorComponent={ResultItemSeparator}
               headerComponent={resultsHeaderComponent}
               backgroundComponent={resultsListBackground}
-            overlayComponent={resultsOverlayComponent}
+              overlayComponent={resultsOverlayComponent}
               listRef={resultsScrollRef}
               resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
               onHidden={resetSheetToHidden}

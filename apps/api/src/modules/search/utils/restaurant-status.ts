@@ -44,7 +44,7 @@ export class RestaurantStatusEvaluator {
   buildOperatingMetadataFromLocation(
     hoursValue: unknown,
     utcOffsetMinutesValue: Prisma.Decimal | number | string | null | undefined,
-    timeZoneValue: string | null | undefined
+    timeZoneValue: string | null | undefined,
   ): RestaurantMetadata | null {
     const hours = this.coerceRecord(hoursValue);
     const timeZone =
@@ -71,7 +71,7 @@ export class RestaurantStatusEvaluator {
   }
 
   buildOperatingMetadataFromRestaurantMetadata(
-    metadataValue: Prisma.JsonValue | null | undefined
+    metadataValue: Prisma.JsonValue | null | undefined,
   ): RestaurantMetadata | null {
     const metadataRecord = this.coerceRecord(metadataValue);
     if (!metadataRecord) {
@@ -95,15 +95,17 @@ export class RestaurantStatusEvaluator {
     return this.buildOperatingMetadataFromLocation(
       hoursValue,
       utcOffsetCandidate as Prisma.Decimal | number | string | null | undefined,
-      timeZoneCandidate
+      timeZoneCandidate,
     );
   }
 
   evaluateOperatingStatus(
     metadataValue: RestaurantMetadata | null | undefined,
-    referenceDate: Date
+    referenceDate: Date,
   ): OperatingStatus | null {
-    const metadata = this.coerceRecord(metadataValue) as RestaurantMetadata | null;
+    const metadata = this.coerceRecord(
+      metadataValue,
+    ) as RestaurantMetadata | null;
     if (!metadata) {
       return null;
     }
@@ -120,7 +122,8 @@ export class RestaurantStatusEvaluator {
 
     const daySegments = schedule[timeContext.dayKey] || [];
     const dayIndex = DAY_KEYS.indexOf(timeContext.dayKey);
-    const previousDayKey = DAY_KEYS[(dayIndex + DAY_KEYS.length - 1) % DAY_KEYS.length];
+    const previousDayKey =
+      DAY_KEYS[(dayIndex + DAY_KEYS.length - 1) % DAY_KEYS.length];
     const previousDaySegments = schedule[previousDayKey] || [];
 
     for (const segment of daySegments) {
@@ -128,7 +131,7 @@ export class RestaurantStatusEvaluator {
         const minutesUntilClose = this.computeMinutesUntilClose(
           segment,
           timeContext.minutes,
-          false
+          false,
         );
         return {
           isOpen: true,
@@ -140,11 +143,14 @@ export class RestaurantStatusEvaluator {
     }
 
     for (const segment of previousDaySegments) {
-      if (segment.crossesMidnight && this.matchesSegment(segment, timeContext.minutes, true)) {
+      if (
+        segment.crossesMidnight &&
+        this.matchesSegment(segment, timeContext.minutes, true)
+      ) {
         const minutesUntilClose = this.computeMinutesUntilClose(
           segment,
           timeContext.minutes,
-          true
+          true,
         );
         return {
           isOpen: true,
@@ -168,7 +174,7 @@ export class RestaurantStatusEvaluator {
   computeDistanceMiles(
     userLocation: { lat: number; lng: number },
     latitude: number,
-    longitude: number
+    longitude: number,
   ): number | null {
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
       return null;
@@ -191,7 +197,11 @@ export class RestaurantStatusEvaluator {
     return Number.isFinite(distance) ? distance : null;
   }
 
-  private matchesSegment(segment: DaySegment, minutes: number, previousDay: boolean): boolean {
+  private matchesSegment(
+    segment: DaySegment,
+    minutes: number,
+    previousDay: boolean,
+  ): boolean {
     if (segment.crossesMidnight) {
       if (previousDay) {
         return minutes < segment.end;
@@ -205,7 +215,7 @@ export class RestaurantStatusEvaluator {
   private computeMinutesUntilClose(
     segment: DaySegment,
     minutes: number,
-    previousDay: boolean
+    previousDay: boolean,
   ): number {
     if (segment.crossesMidnight) {
       if (previousDay) {
@@ -232,7 +242,7 @@ export class RestaurantStatusEvaluator {
 
   private getLocalTimeContext(
     metadata: RestaurantMetadata,
-    referenceDate: Date
+    referenceDate: Date,
   ): LocalTimeContext | null {
     const timezone = this.extractTimeZone(metadata);
     if (timezone) {
@@ -324,7 +334,9 @@ export class RestaurantStatusEvaluator {
   }
 
   private extractUtcOffset(metadata: RestaurantMetadata): number | null {
-    const candidates: Array<number | string | undefined> = [metadata.utc_offset_minutes];
+    const candidates: Array<number | string | undefined> = [
+      metadata.utc_offset_minutes,
+    ];
     const hoursRecord = this.coerceRecord(metadata.hours);
     if (hoursRecord) {
       const offsetCandidate = (
@@ -361,7 +373,9 @@ export class RestaurantStatusEvaluator {
     return match ?? null;
   }
 
-  private buildDailySchedule(metadata: RestaurantMetadata): DailySchedule | null {
+  private buildDailySchedule(
+    metadata: RestaurantMetadata,
+  ): DailySchedule | null {
     const hoursValue = metadata.hours;
     if (!hoursValue) {
       return null;
@@ -394,7 +408,9 @@ export class RestaurantStatusEvaluator {
 
         const entryRecord = entry as Record<string, unknown>;
         const rawDay = entryRecord.day ?? entryRecord.weekday;
-        const dayKey = this.normalizeDayKey(typeof rawDay === 'string' ? rawDay : '');
+        const dayKey = this.normalizeDayKey(
+          typeof rawDay === 'string' ? rawDay : '',
+        );
         if (!dayKey) {
           continue;
         }
@@ -460,7 +476,7 @@ export class RestaurantStatusEvaluator {
 
   private parseHourString(value: string): DaySegment[] {
     const rangeMatch = value.match(
-      /(\d{1,2}:?\d{0,2}\s?(am|pm)?)[^\d]+(\d{1,2}:?\d{0,2}\s?(am|pm)?)/i
+      /(\d{1,2}:?\d{0,2}\s?(am|pm)?)[^\d]+(\d{1,2}:?\d{0,2}\s?(am|pm)?)/i,
     );
     if (!rangeMatch) {
       return [];
@@ -516,7 +532,7 @@ export class RestaurantStatusEvaluator {
 
   private findNextOpenDisplay(
     schedule: DailySchedule,
-    timeContext: { dayKey: DayKey; minutes: number }
+    timeContext: { dayKey: DayKey; minutes: number },
   ): string | null {
     const startDayIndex = DAY_KEYS.indexOf(timeContext.dayKey);
     if (startDayIndex < 0) {
@@ -560,7 +576,9 @@ export class RestaurantStatusEvaluator {
     return value as Record<string, unknown>;
   }
 
-  private toOptionalNumber(value?: Prisma.Decimal | number | string | null): number | null {
+  private toOptionalNumber(
+    value?: Prisma.Decimal | number | string | null,
+  ): number | null {
     if (value === null || value === undefined) {
       return null;
     }

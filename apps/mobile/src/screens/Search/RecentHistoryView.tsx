@@ -145,15 +145,8 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title }) =>
     if (isRecentMode) {
       return buildSections(recentSearches, (item) => item.lastSearchedAt, previousLabel);
     }
-    const deduped = filterRecentlyViewedByRecentSearches(
-      recentlyViewedRestaurants,
-      recentSearches
-    );
-    return buildSections(
-      deduped,
-      (item) => item.lastViewedAt,
-      previousLabel
-    );
+    const deduped = filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches);
+    return buildSections(deduped, (item) => item.lastViewedAt, previousLabel);
   }, [isRecentMode, recentSearches, recentlyViewedRestaurants, previousLabel]);
 
   const hasSections = sections.length > 0;
@@ -199,7 +192,11 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title }) =>
           hitSlop={12}
           style={styles.backButton}
         >
-          <ChevronLeft size={CHEVRON_ICON_SIZE} color="#000000" strokeWidth={CHEVRON_STROKE_WIDTH} />
+          <ChevronLeft
+            size={CHEVRON_ICON_SIZE}
+            color="#000000"
+            strokeWidth={CHEVRON_STROKE_WIDTH}
+          />
         </Pressable>
         <Text variant="subtitle" weight="semibold" style={styles.headerTitle}>
           {title}

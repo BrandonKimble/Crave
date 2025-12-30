@@ -43,11 +43,7 @@ type LayoutMeasurementOptions = {
 /**
  * Checks if two layout states are equal within the given threshold.
  */
-function areLayoutsEqual(
-  a: LayoutState,
-  b: LayoutState,
-  threshold: number
-): boolean {
+function areLayoutsEqual(a: LayoutState, b: LayoutState, threshold: number): boolean {
   return (
     Math.abs(a.width - b.width) < threshold &&
     Math.abs(a.height - b.height) < threshold &&
@@ -86,12 +82,7 @@ function useDebouncedLayoutMeasurement(options?: LayoutMeasurementOptions): {
   onLayout: (event: LayoutChangeEvent) => void;
   measureNow: (event: LayoutChangeEvent) => void;
 } {
-  const {
-    debounceMs = 16,
-    enabled = true,
-    threshold = 0.5,
-    deferInitial = false,
-  } = options ?? {};
+  const { debounceMs = 16, enabled = true, threshold = 0.5, deferInitial = false } = options ?? {};
 
   const [layout, setLayout] = React.useState<LayoutState | null>(null);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -238,9 +229,7 @@ function useMultiLayoutMeasurement<K extends string | number>(options: {
 } {
   const { keys, enabled = true, debounceMs = 50, threshold = 0.5 } = options;
 
-  const [measurements, setMeasurements] = React.useState<Map<K, LayoutState>>(
-    () => new Map()
-  );
+  const [measurements, setMeasurements] = React.useState<Map<K, LayoutState>>(() => new Map());
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = React.useRef<Map<K, LayoutState>>(new Map());
 
@@ -322,10 +311,7 @@ function useMultiLayoutMeasurement<K extends string | number>(options: {
     [enabled, debounceMs, threshold]
   );
 
-  const hasMeasured = React.useCallback(
-    (key: K) => measurements.has(key),
-    [measurements]
-  );
+  const hasMeasured = React.useCallback((key: K) => measurements.has(key), [measurements]);
 
   const hasAllMeasured = React.useMemo(
     () => keys.every((key) => measurements.has(key)),

@@ -25,6 +25,7 @@ React Native uses two main threads:
 - **JS Thread**: Runs React components, business logic, and JavaScript. Target 35-45+ FPS during interactions.
 
 When the JS thread drops to 0-15 FPS, common symptoms include:
+
 - Laggy list scrolling
 - Delayed touch responses
 - Animation stuttering
@@ -44,9 +45,7 @@ When the JS thread drops to 0-15 FPS, common symptoms include:
 
 ```tsx
 // BAD: Creates new function every render, breaks React.memo
-<RestaurantResultCard
-  onSavePress={() => handleSave(restaurant.id)}
-/>
+<RestaurantResultCard onSavePress={() => handleSave(restaurant.id)} />
 ```
 
 ### The Solution
@@ -57,20 +56,16 @@ Use `useKeyedCallback` for list items:
 import { useKeyedCallback } from '../../hooks/useCallbackFactory';
 
 // GOOD: Returns stable references keyed by ID
-const getSaveHandler = useKeyedCallback(
-  (restaurantId: string) => handleSave(restaurantId),
-  []
-);
+const getSaveHandler = useKeyedCallback((restaurantId: string) => handleSave(restaurantId), []);
 
 // Usage in list item
-<RestaurantResultCard
-  onSavePress={getSaveHandler(restaurant.id)}
-/>
+<RestaurantResultCard onSavePress={getSaveHandler(restaurant.id)} />;
 ```
 
 ### Available Hooks
 
 **`useCallbackFactory`** - For callbacks with additional arguments:
+
 ```tsx
 const getHandler = useCallbackFactory(
   (id: string, ...args: unknown[]) => doSomething(id, ...args),
@@ -81,11 +76,9 @@ const getHandler = useCallbackFactory(
 ```
 
 **`useKeyedCallback`** - For simple void callbacks:
+
 ```tsx
-const getHandler = useKeyedCallback(
-  (id: string) => doSomething(id),
-  []
-);
+const getHandler = useKeyedCallback((id: string) => doSomething(id), []);
 
 // Returns: (id) => () => void
 ```
@@ -109,7 +102,7 @@ const filtersHeader = React.useMemo(
       // ... other props
     />
   ),
-  [activeTab, openNow, /* all dependencies */]
+  [activeTab, openNow /* all dependencies */]
 );
 ```
 
@@ -120,20 +113,16 @@ Use `React.useCallback` for list render functions:
 ```tsx
 const renderItem = React.useCallback(
   (item: ItemType, index: number) => (
-    <ItemCard
-      item={item}
-      index={index}
-      onPress={getItemHandler(item.id)}
-      isDragging={isDragging}
-    />
+    <ItemCard item={item} index={index} onPress={getItemHandler(item.id)} isDragging={isDragging} />
   ),
-  [getItemHandler, isDragging, /* other dependencies */]
+  [getItemHandler, isDragging /* other dependencies */]
 );
 ```
 
 ### When to Memoize
 
 Memoize if the component:
+
 - Is large (100+ lines, complex JSX)
 - Re-renders during gestures
 - Contains expensive calculations
@@ -146,6 +135,7 @@ Memoize if the component:
 ### The Problem
 
 Multiple `onLayout` callbacks during scroll cause:
+
 - State updates on every frame
 - Cascading re-renders
 - JS thread blocking
@@ -158,9 +148,9 @@ Use `useTopFoodMeasurement` pattern or `useDebouncedLayoutMeasurement`:
 import { useDebouncedLayoutMeasurement } from '../../hooks';
 
 const { layout, onLayout } = useDebouncedLayoutMeasurement({
-  enabled: !isDragging,  // Disable during gestures
-  debounceMs: 50,        // Batch updates
-  threshold: 0.5,        // Ignore sub-pixel changes
+  enabled: !isDragging, // Disable during gestures
+  debounceMs: 50, // Batch updates
+  threshold: 0.5, // Ignore sub-pixel changes
 });
 
 return <View onLayout={onLayout}>...</View>;
@@ -172,12 +162,12 @@ Use `useMultiLayoutMeasurement`:
 
 ```tsx
 const { measurements, registerLayout, hasAllMeasured } = useMultiLayoutMeasurement({
-  keys: items.map(item => item.id),
+  keys: items.map((item) => item.id),
   enabled: !isDragging,
   debounceMs: 50,
 });
 
-return items.map(item => (
+return items.map((item) => (
   <View key={item.id} onLayout={registerLayout(item.id)}>
     ...
   </View>
@@ -202,7 +192,7 @@ return items.map(item => (
 // Components should use React.memo
 const RestaurantResultCard: React.FC<Props> = ({
   restaurant,
-  isDragging = false,  // New prop!
+  isDragging = false, // New prop!
   onSavePress,
   // ...
 }) => {
@@ -213,11 +203,7 @@ const RestaurantResultCard: React.FC<Props> = ({
   });
 
   // All callbacks should be stable (from parent's factory)
-  return (
-    <Pressable onPress={handlePress}>
-      ...
-    </Pressable>
-  );
+  return <Pressable onPress={handlePress}>...</Pressable>;
 };
 
 export default React.memo(RestaurantResultCard);
@@ -230,7 +216,7 @@ const renderCard = React.useCallback(
   (item, index) => (
     <RestaurantResultCard
       restaurant={item}
-      isDragging={isSheetDragging}  // From sheet interaction state
+      isDragging={isSheetDragging} // From sheet interaction state
       onSavePress={getSaveHandler(item.id)}
     />
   ),
@@ -266,6 +252,7 @@ const renderCard = React.useCallback(
 ### When to Extract
 
 Extract hooks when state management:
+
 - Has 3+ related state variables
 - Has multiple derived values
 - Is used across multiple components
@@ -371,12 +358,12 @@ Use this checklist when building new overlays or optimizing existing ones:
 
 Key optimizations implemented for Search results sheet:
 
-| Optimization | Impact |
-|-------------|--------|
-| Memoized `filtersHeader` | Prevents 574-line component re-render |
-| `useKeyedCallback` for save handlers | Stable callbacks for list items |
-| `useTopFoodMeasurement` hook | Debounced, pausable layout measurement |
-| `isDragging` prop on cards | Skip measurements during gestures |
-| Extracted `useSaveSheetState` | Clean state management |
+| Optimization                         | Impact                                 |
+| ------------------------------------ | -------------------------------------- |
+| Memoized `filtersHeader`             | Prevents 574-line component re-render  |
+| `useKeyedCallback` for save handlers | Stable callbacks for list items        |
+| `useTopFoodMeasurement` hook         | Debounced, pausable layout measurement |
+| `isDragging` prop on cards           | Skip measurements during gestures      |
+| Extracted `useSaveSheetState`        | Clean state management                 |
 
 Expected result: 35-45 FPS during drag (up from 0-15 FPS).

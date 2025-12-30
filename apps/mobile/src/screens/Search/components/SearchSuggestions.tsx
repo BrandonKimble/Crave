@@ -87,8 +87,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   );
   const recentlyViewedToRender = recentlyViewedDeduped.slice(0, RECENT_PREVIEW_LIMIT);
   const hasRecentlyViewedToRender = recentlyViewedDeduped.length > 0;
-  const shouldShowRecentViewMore =
-    !isRecentLoading && recentSearches.length > RECENT_PREVIEW_LIMIT;
+  const shouldShowRecentViewMore = !isRecentLoading && recentSearches.length > RECENT_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
     !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENT_PREVIEW_LIMIT;
 
@@ -184,9 +183,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   <View style={styles.recentIcon}>
                     <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
                   </View>
-                  <View
-                    style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
-                  >
+                  <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                     <Text style={styles.recentText} numberOfLines={1}>
                       {term.queryText}
                     </Text>
@@ -227,9 +224,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   <View style={styles.recentIcon}>
                     <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
                   </View>
-                  <View
-                    style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
-                  >
+                  <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                     <Text style={styles.recentText} numberOfLines={1}>
                       {item.restaurantName}
                     </Text>

@@ -1,7 +1,11 @@
 import React from 'react';
 
 import { logger } from '../../../utils';
-import { searchService, type RecentSearch, type RecentlyViewedRestaurant } from '../../../services/search';
+import {
+  searchService,
+  type RecentSearch,
+  type RecentlyViewedRestaurant,
+} from '../../../services/search';
 import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../../../constants/searchHistory';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 

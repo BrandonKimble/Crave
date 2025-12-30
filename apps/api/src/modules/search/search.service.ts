@@ -884,7 +884,10 @@ export class SearchService {
     });
   }
 
-  async listRecentSearches(userId: string, limit?: number): Promise<SearchHistoryEntry[]> {
+  async listRecentSearches(
+    userId: string,
+    limit?: number,
+  ): Promise<SearchHistoryEntry[]> {
     if (!userId) {
       return [];
     }

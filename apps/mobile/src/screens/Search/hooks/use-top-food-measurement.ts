@@ -217,7 +217,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
   }, [isDragging, scheduleUpdate]);
 
   // Cache for item layout callbacks
-  const itemLayoutCallbacksRef = React.useRef(new Map<string, (event: LayoutChangeEvent) => void>());
+  const itemLayoutCallbacksRef = React.useRef(
+    new Map<string, (event: LayoutChangeEvent) => void>()
+  );
 
   const onItemLayout = React.useCallback(
     (connectionId: string) => {
@@ -248,7 +250,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
   );
 
   // Cache for "more" layout callbacks
-  const moreLayoutCallbacksRef = React.useRef(new Map<number, (event: LayoutChangeEvent) => void>());
+  const moreLayoutCallbacksRef = React.useRef(
+    new Map<number, (event: LayoutChangeEvent) => void>()
+  );
 
   const onMoreLayout = React.useCallback(
     (hiddenCount: number) => {
@@ -319,9 +323,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       const elementCount = count + (needsMore ? 1 : 0);
       const gapWidth = Math.max(0, elementCount - 1) * itemGap;
       const totalWidth =
-        widths.reduce((sum, width) => sum + width, 0) +
-        gapWidth +
-        (needsMore ? moreWidth ?? 0 : 0);
+        widths.reduce((sum, width) => sum + width, 0) + gapWidth + (needsMore ? moreWidth ?? 0 : 0);
       if (totalWidth <= containerWidth) {
         bestCount = count;
         break;

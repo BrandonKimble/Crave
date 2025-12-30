@@ -35,7 +35,8 @@ function useCallbackFactory<K extends string | number, A extends unknown[], R>(
 
   // Track deps to clear cache when they change
   const depsRef = React.useRef<React.DependencyList>(deps);
-  const depsChanged = deps.length !== depsRef.current.length ||
+  const depsChanged =
+    deps.length !== depsRef.current.length ||
     deps.some((dep, i) => !Object.is(dep, depsRef.current[i]));
 
   if (depsChanged) {
@@ -84,7 +85,8 @@ function useKeyedCallback<K extends string | number>(
   const cacheRef = React.useRef(new Map<K, () => void>());
   const depsRef = React.useRef<React.DependencyList>(deps);
 
-  const depsChanged = deps.length !== depsRef.current.length ||
+  const depsChanged =
+    deps.length !== depsRef.current.length ||
     deps.some((dep, i) => !Object.is(dep, depsRef.current[i]));
 
   if (depsChanged) {

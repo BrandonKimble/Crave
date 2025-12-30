@@ -35,9 +35,7 @@ const SearchInteractionProvider: React.FC<SearchInteractionProviderProps> = ({
   value,
   children,
 }) => (
-  <SearchInteractionContext.Provider value={value}>
-    {children}
-  </SearchInteractionContext.Provider>
+  <SearchInteractionContext.Provider value={value}>{children}</SearchInteractionContext.Provider>
 );
 
 /**

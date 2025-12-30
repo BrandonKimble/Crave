@@ -145,8 +145,4 @@ function useSaveSheetState(): UseSaveSheetStateResult {
   };
 }
 
-export {
-  useSaveSheetState,
-  type SaveSheetState,
-  type UseSaveSheetStateResult,
-};
+export { useSaveSheetState, type SaveSheetState, type UseSaveSheetStateResult };

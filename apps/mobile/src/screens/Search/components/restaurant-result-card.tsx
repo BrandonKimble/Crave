@@ -296,10 +296,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                   <View style={styles.topFoodInlineRow}>
                     <View style={styles.topFoodInlineList}>
                       {visibleTopFoods.map((food, idx) => (
-                        <Text
-                          key={food.connectionId}
-                          style={styles.topFoodInlineText}
-                        >
+                        <Text key={food.connectionId} style={styles.topFoodInlineText}>
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
                           </Text>
@@ -310,11 +307,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         </Text>
                       ))}
                       {hiddenTopFoodCount > 0 ? (
-                        <Text
-                          variant="body"
-                          weight="semibold"
-                          style={styles.topFoodMore}
-                        >
+                        <Text variant="body" weight="semibold" style={styles.topFoodMore}>
                           +{hiddenTopFoodCount} more
                         </Text>
                       ) : null}

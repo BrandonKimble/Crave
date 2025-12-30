@@ -14,7 +14,5 @@ export const filterRecentlyViewedByRecentSearches = (
     return recentlyViewed;
   }
   const lookup = buildRecentSearchLookup(recentSearches);
-  return recentlyViewed.filter(
-    (item) => !lookup.has(normalizeHistoryLabel(item.restaurantName))
-  );
+  return recentlyViewed.filter((item) => !lookup.has(normalizeHistoryLabel(item.restaurantName)));
 };

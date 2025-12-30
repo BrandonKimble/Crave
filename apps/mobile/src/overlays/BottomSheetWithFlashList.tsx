@@ -214,7 +214,11 @@ const BottomSheetWithFlashList = <T,>({
   const initialSnapValue = snapPoints[initialSnapPoint];
   const hiddenOrCollapsed = hiddenSnap ?? collapsedSnap;
   const shouldAnimateOnMount = animateOnMount && visible && !sheetYValue;
-  const initialSheetY = shouldAnimateOnMount ? hiddenOrCollapsed : visible ? initialSnapValue : hiddenOrCollapsed;
+  const initialSheetY = shouldAnimateOnMount
+    ? hiddenOrCollapsed
+    : visible
+    ? initialSnapValue
+    : hiddenOrCollapsed;
   const internalSheetY = useSharedValue(initialSheetY);
   const sheetY = sheetYValue ?? internalSheetY;
   const currentSnapKeyRef = React.useRef<SheetSnapPoint | 'hidden'>(
