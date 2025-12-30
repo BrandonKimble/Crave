@@ -1501,9 +1501,8 @@ const SearchScreen: React.FC = () => {
     shouldRenderSearchOverlay && (!isAnySheetExpanded || isAnySheetDragging);
   const shouldShowSearchShortcuts =
     isSearchOverlay && (isSuggestionPanelActive || !isSearchSessionActive) && !hasRawQuery;
-  const [shouldRenderSearchShortcuts, setShouldRenderSearchShortcuts] = React.useState(
-    shouldShowSearchShortcuts
-  );
+  const [shouldRenderSearchShortcuts, setShouldRenderSearchShortcuts] =
+    React.useState(shouldShowSearchShortcuts);
   const searchShortcutsVisibility = useSharedValue(shouldShowSearchShortcuts ? 1 : 0);
   const searchShortcutsAnimationRef = React.useRef(0);
   const commitSearchShortcutsHidden = React.useCallback(
@@ -1784,23 +1783,20 @@ const SearchScreen: React.FC = () => {
       elevation: backgroundAlpha > 0 ? SEARCH_BAR_SHADOW_ELEVATION : 0,
     };
   });
-  const searchShortcutsAnimatedStyle = useAnimatedStyle(
-    () => {
-      const chromeVisibility = shouldShowSearchChrome ? 1 : 0;
-      const visibility = searchShortcutsVisibility.value;
-      const opacity = searchChromeOpacity.value * visibility * chromeVisibility;
-      return {
-        opacity,
-        transform: [
-          {
-            translateY: interpolate(visibility, [0, 1], [-8, 0], Extrapolation.CLAMP),
-          },
-          { scale: searchChromeScale.value },
-        ],
-      };
-    },
-    [shouldShowSearchChrome]
-  );
+  const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
+    const chromeVisibility = shouldShowSearchChrome ? 1 : 0;
+    const visibility = searchShortcutsVisibility.value;
+    const opacity = searchChromeOpacity.value * visibility * chromeVisibility;
+    return {
+      opacity,
+      transform: [
+        {
+          translateY: interpolate(visibility, [0, 1], [-8, 0], Extrapolation.CLAMP),
+        },
+        { scale: searchChromeScale.value },
+      ],
+    };
+  }, [shouldShowSearchChrome]);
   const suggestionMaskAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchSurfaceAnim.value,
   }));
