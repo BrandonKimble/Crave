@@ -6,6 +6,7 @@ import {
   Keyboard,
   PixelRatio,
   Pressable,
+  StyleSheet,
   TouchableOpacity,
   View,
   Easing as RNEasing,
@@ -13,11 +14,10 @@ import {
 import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native';
 import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, {
-  FadeIn,
-  FadeOut,
   Extrapolation,
   Easing,
   interpolate,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -42,7 +42,11 @@ import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import { calculateSnapPoints, resolveExpandedTop } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
-import { searchService, type RecentSearch, type RecentlyViewedRestaurant } from '../../services/search';
+import {
+  searchService,
+  type RecentSearch,
+  type RecentlyViewedRestaurant,
+} from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
 import type { AutocompleteMatch } from '../../services/autocomplete';
 import { useSearchStore } from '../../store/searchStore';
@@ -520,9 +524,6 @@ const SearchScreen: React.FC = () => {
   }, [isInitialCameraHydrated, userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
-  const isMapFrozen = isResultsSheetDragging || isResultsListScrolling;
-  const mapPreferredFramesPerSecond = isMapFrozen ? 1 : undefined;
-  const resultsBlurIntensity = isMapFrozen ? 18 : undefined;
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const radialEm = LABEL_RADIAL_OFFSET_EM;
     return {
@@ -652,8 +653,11 @@ const SearchScreen: React.FC = () => {
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const [isResultsSheetDragging, setIsResultsSheetDragging] = React.useState(false);
   const [isResultsListScrolling, setIsResultsListScrolling] = React.useState(false);
+  const [isResultsSheetSettling, setIsResultsSheetSettling] = React.useState(false);
   const resultsSheetDraggingRef = React.useRef(false);
   const resultsListScrollingRef = React.useRef(false);
+  const resultsSheetSettlingRef = React.useRef(false);
+  const pendingResultsSheetSnapRef = React.useRef<OverlaySheetSnap | null>(null);
   const [isPollsSheetDragging, setIsPollsSheetDragging] = React.useState(false);
   const [isBookmarksSheetDragging, setIsBookmarksSheetDragging] = React.useState(false);
   const [isProfileSheetDragging, setIsProfileSheetDragging] = React.useState(false);
@@ -676,12 +680,16 @@ const SearchScreen: React.FC = () => {
     isInteracting: false,
     isResultsSheetDragging: false,
     isResultsListScrolling: false,
+    isResultsSheetSettling: false,
   });
   const updateSearchInteractionRef = React.useCallback(
     (next: Partial<typeof searchInteractionRef.current>) => {
       const current = searchInteractionRef.current;
       const merged = { ...current, ...next };
-      merged.isInteracting = merged.isResultsSheetDragging || merged.isResultsListScrolling;
+      merged.isInteracting =
+        merged.isResultsSheetDragging ||
+        merged.isResultsListScrolling ||
+        merged.isResultsSheetSettling;
       searchInteractionRef.current = merged;
     },
     []
@@ -708,7 +716,32 @@ const SearchScreen: React.FC = () => {
     },
     [updateSearchInteractionRef]
   );
-  const isResultsInteracting = isResultsSheetDragging || isResultsListScrolling;
+  const setResultsSheetSettlingState = React.useCallback(
+    (isSettling: boolean) => {
+      if (resultsSheetSettlingRef.current === isSettling) {
+        return;
+      }
+      resultsSheetSettlingRef.current = isSettling;
+      updateSearchInteractionRef({ isResultsSheetSettling: isSettling });
+      setIsResultsSheetSettling(isSettling);
+    },
+    [updateSearchInteractionRef]
+  );
+  const isResultsInteracting =
+    isResultsSheetDragging || isResultsListScrolling || isResultsSheetSettling;
+  const isMapFrozen = isResultsInteracting;
+  const mapPreferredFramesPerSecond = isMapFrozen ? 1 : undefined;
+  const resultsBlurOpacity = useSharedValue(1);
+  const resultsBlurAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: resultsBlurOpacity.value,
+  }));
+  React.useEffect(() => {
+    const targetOpacity = isMapFrozen ? 0.75 : 1;
+    resultsBlurOpacity.value = withTiming(targetOpacity, {
+      duration: 160,
+      easing: Easing.out(Easing.cubic),
+    });
+  }, [isMapFrozen, resultsBlurOpacity]);
 
   // Stable context value so list items don't re-render on drag state changes
   const searchInteractionContextValue = React.useMemo(
@@ -966,7 +999,8 @@ const SearchScreen: React.FC = () => {
   const {
     inputAnimatedStyle: searchBarInputAnimatedStyle,
     containerAnimatedStyle: searchBarSheetAnimatedStyle,
-    chromeAnimatedStyle: searchChromeAnimatedStyle,
+    chromeOpacity: searchChromeOpacity,
+    chromeScale: searchChromeScale,
   } = useSearchChromeTransition({
     sheetY: chromeTransitionConfig.sheetY,
     expanded: chromeTransitionConfig.expanded,
@@ -997,9 +1031,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     const nextHeight = resultsHeaderLayout.height;
-    setResultsSheetHeaderHeight((prev) =>
-      Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight
-    );
+    setResultsSheetHeaderHeight((prev) => (Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight));
   }, [resultsHeaderLayout]);
   React.useEffect(() => {
     if (!filtersHeaderLayout) {
@@ -1044,6 +1076,33 @@ const SearchScreen: React.FC = () => {
       setResultsSheetDragging(isDragging);
     },
     [setResultsSheetDragging]
+  );
+  const applyResultsSheetSnapChange = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      handleSheetSnapChange(snap);
+    },
+    [handleSheetSnapChange]
+  );
+  const handleResultsSheetSnapChange = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      if (resultsSheetSettlingRef.current) {
+        pendingResultsSheetSnapRef.current = snap;
+        return;
+      }
+      applyResultsSheetSnapChange(snap);
+    },
+    [applyResultsSheetSnapChange]
+  );
+  const handleResultsSheetSettlingChange = React.useCallback(
+    (isSettling: boolean) => {
+      setResultsSheetSettlingState(isSettling);
+      if (!isSettling && pendingResultsSheetSnapRef.current) {
+        const pending = pendingResultsSheetSnapRef.current;
+        pendingResultsSheetSnapRef.current = null;
+        applyResultsSheetSnapChange(pending);
+      }
+    },
+    [applyResultsSheetSnapChange, setResultsSheetSettlingState]
   );
   const handlePollsSheetDragStateChange = React.useCallback((isDragging: boolean) => {
     setIsPollsSheetDragging(isDragging);
@@ -1438,9 +1497,48 @@ const SearchScreen: React.FC = () => {
     showBookmarksOverlay ||
     showProfileOverlay ||
     showSaveListOverlay;
-  const shouldShowSearchChrome = shouldRenderSearchOverlay && !isAnySheetExpanded;
+  const shouldShowSearchChrome =
+    shouldRenderSearchOverlay && (!isAnySheetExpanded || isAnySheetDragging);
   const shouldShowSearchShortcuts =
     isSearchOverlay && (isSuggestionPanelActive || !isSearchSessionActive) && !hasRawQuery;
+  const [shouldRenderSearchShortcuts, setShouldRenderSearchShortcuts] = React.useState(
+    shouldShowSearchShortcuts
+  );
+  const searchShortcutsVisibility = useSharedValue(shouldShowSearchShortcuts ? 1 : 0);
+  const searchShortcutsAnimationRef = React.useRef(0);
+  const commitSearchShortcutsHidden = React.useCallback(
+    (requestId: number) => {
+      if (searchShortcutsAnimationRef.current !== requestId) {
+        return;
+      }
+      setShouldRenderSearchShortcuts(false);
+    },
+    [setShouldRenderSearchShortcuts]
+  );
+  React.useEffect(() => {
+    searchShortcutsAnimationRef.current += 1;
+    const requestId = searchShortcutsAnimationRef.current;
+    if (shouldShowSearchShortcuts) {
+      setShouldRenderSearchShortcuts(true);
+      searchShortcutsVisibility.value = withTiming(1, {
+        duration: SUGGESTION_PANEL_FADE_IN_MS,
+        easing: Easing.out(Easing.cubic),
+      });
+      return;
+    }
+    searchShortcutsVisibility.value = withTiming(
+      0,
+      {
+        duration: SUGGESTION_PANEL_FADE_OUT_MS,
+        easing: Easing.in(Easing.cubic),
+      },
+      (finished) => {
+        if (finished) {
+          runOnJS(commitSearchShortcutsHidden)(requestId);
+        }
+      }
+    );
+  }, [commitSearchShortcutsHidden, searchShortcutsVisibility, shouldShowSearchShortcuts]);
   React.useEffect(() => {
     const target = isSuggestionScreenActive ? 1 : 0;
     suggestionTransition.value = withTiming(target, {
@@ -1543,10 +1641,10 @@ const SearchScreen: React.FC = () => {
     }
     return Math.min(SEARCH_SUGGESTION_TOP_FILL_HEIGHT, maxFill);
   }, [isSuggestionScreenVisible, suggestionScrollMaxHeightTarget]);
-  const suggestionSpacingDuration = shouldShowSearchShortcuts
+  const suggestionSpacingDuration = isSuggestionScreenVisible
     ? SUGGESTION_PANEL_FADE_IN_MS
     : SUGGESTION_PANEL_FADE_OUT_MS;
-  const suggestionSpacingEasing = shouldShowSearchShortcuts
+  const suggestionSpacingEasing = isSuggestionScreenVisible
     ? Easing.out(Easing.cubic)
     : Easing.in(Easing.cubic);
   React.useEffect(() => {
@@ -1686,6 +1784,23 @@ const SearchScreen: React.FC = () => {
       elevation: backgroundAlpha > 0 ? SEARCH_BAR_SHADOW_ELEVATION : 0,
     };
   });
+  const searchShortcutsAnimatedStyle = useAnimatedStyle(
+    () => {
+      const chromeVisibility = shouldShowSearchChrome ? 1 : 0;
+      const visibility = searchShortcutsVisibility.value;
+      const opacity = searchChromeOpacity.value * visibility * chromeVisibility;
+      return {
+        opacity,
+        transform: [
+          {
+            translateY: interpolate(visibility, [0, 1], [-8, 0], Extrapolation.CLAMP),
+          },
+          { scale: searchChromeScale.value },
+        ],
+      };
+    },
+    [shouldShowSearchChrome]
+  );
   const suggestionMaskAnimatedStyle = useAnimatedStyle(() => ({
     opacity: searchSurfaceAnim.value,
   }));
@@ -2336,50 +2451,48 @@ const SearchScreen: React.FC = () => {
     runBestHere,
     loadMoreResults,
     cancelActiveSearchRequest,
-  } = useSearchSubmit(
-    {
-      query,
-      isLoading,
-      setIsLoading,
-      isLoadingMore,
-      setIsLoadingMore,
-      results,
-      setResults,
-      submittedQuery,
-      setSubmittedQuery,
-      activeTab,
-      setActiveTab,
-      setHasMoreFood,
-      setHasMoreRestaurants,
-      currentPage,
-      setCurrentPage,
-      isPaginationExhausted,
-      setIsPaginationExhausted,
-      canLoadMore,
-      setError,
-      setIsSearchSessionActive,
-      setSearchMode,
-      setIsAutocompleteSuppressed,
-      setShowSuggestions,
-      showPanel,
-      resetSheetToHidden,
-      scrollResultsToTop,
-      lastSearchRequestIdRef,
-      lastAutoOpenKeyRef,
-      openNow,
-      priceLevels,
-      votes100Plus,
-      runSearch,
-      cancelSearch,
-      mapRef,
-      latestBoundsRef,
-      ensureUserLocation,
-      userLocationRef,
-      resetMapMoveFlag,
-      loadRecentHistory,
-      updateLocalRecentSearches,
-    }
-  );
+  } = useSearchSubmit({
+    query,
+    isLoading,
+    setIsLoading,
+    isLoadingMore,
+    setIsLoadingMore,
+    results,
+    setResults,
+    submittedQuery,
+    setSubmittedQuery,
+    activeTab,
+    setActiveTab,
+    setHasMoreFood,
+    setHasMoreRestaurants,
+    currentPage,
+    setCurrentPage,
+    isPaginationExhausted,
+    setIsPaginationExhausted,
+    canLoadMore,
+    setError,
+    setIsSearchSessionActive,
+    setSearchMode,
+    setIsAutocompleteSuppressed,
+    setShowSuggestions,
+    showPanel,
+    resetSheetToHidden,
+    scrollResultsToTop,
+    lastSearchRequestIdRef,
+    lastAutoOpenKeyRef,
+    openNow,
+    priceLevels,
+    votes100Plus,
+    runSearch,
+    cancelSearch,
+    mapRef,
+    latestBoundsRef,
+    ensureUserLocation,
+    userLocationRef,
+    resetMapMoveFlag,
+    loadRecentHistory,
+    updateLocalRecentSearches,
+  });
 
   const shouldRetrySearchOnReconnectRef = React.useRef(false);
   React.useEffect(() => {
@@ -3654,7 +3767,6 @@ const SearchScreen: React.FC = () => {
           index={index}
           restaurantsCount={restaurantsCount}
           isLiked={isLiked}
-          isResultsInteracting={isResultsInteracting}
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
           onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
@@ -3667,7 +3779,6 @@ const SearchScreen: React.FC = () => {
     [
       getRestaurantSaveHandler,
       hasCrossCoverage,
-      isResultsInteracting,
       stableOpenRestaurantProfileFromResults,
       openScoreInfo,
       primaryFoodTerm,
@@ -3807,11 +3918,16 @@ const SearchScreen: React.FC = () => {
   const listHeader = React.useMemo(
     () => (
       <View style={styles.resultsListHeader} onLayout={onFiltersHeaderLayout}>
-        <FrostedGlassBackground intensity={resultsBlurIntensity} />
+        <Reanimated.View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFillObject, resultsBlurAnimatedStyle]}
+        >
+          <FrostedGlassBackground />
+        </Reanimated.View>
         {filtersHeader}
       </View>
     ),
-    [filtersHeader, onFiltersHeaderLayout, resultsBlurIntensity]
+    [filtersHeader, onFiltersHeaderLayout, resultsBlurAnimatedStyle]
   );
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const shouldShowResultsLoadingState =
@@ -3957,7 +4073,12 @@ const SearchScreen: React.FC = () => {
       ]}
       onLayout={handleResultsHeaderLayout}
     >
-      <FrostedGlassBackground intensity={resultsBlurIntensity} />
+      <Reanimated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFillObject, resultsBlurAnimatedStyle]}
+      >
+        <FrostedGlassBackground />
+      </Reanimated.View>
       {resultsHeaderCutout.background}
       <View style={[overlaySheetStyles.grabHandleWrapper, styles.resultsHeaderHandle]}>
         <Pressable onPress={hidePanel} accessibilityRole="button" accessibilityLabel="Hide results">
@@ -4240,16 +4361,16 @@ const SearchScreen: React.FC = () => {
                 surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}
               />
             </View>
-            {shouldShowSearchShortcuts && (
+            {shouldRenderSearchShortcuts && (
               <Reanimated.View
                 style={[
                   styles.searchShortcutsRow,
                   isSuggestionScreenActive ? styles.searchShortcutsRowSuggestion : null,
-                  searchChromeAnimatedStyle,
+                  searchShortcutsAnimatedStyle,
                 ]}
-                entering={FadeIn.duration(SUGGESTION_PANEL_FADE_IN_MS).easing(Easing.out(Easing.cubic))}
-                exiting={FadeOut.duration(SUGGESTION_PANEL_FADE_OUT_MS).easing(Easing.in(Easing.cubic))}
-                pointerEvents="box-none"
+                pointerEvents={
+                  shouldShowSearchShortcuts && shouldShowSearchChrome ? 'box-none' : 'none'
+                }
                 onLayout={({ nativeEvent: { layout } }) => {
                   searchShortcutsLayoutCacheRef.current.frame = layout;
                   setSearchShortcutsFrame((prev) => {
@@ -4375,6 +4496,7 @@ const SearchScreen: React.FC = () => {
               onMomentumBeginJS={handleResultsListMomentumBegin}
               onMomentumEndJS={handleResultsListMomentumEnd}
               onDragStateChange={handleResultsSheetDragStateChange}
+              onSettleStateChange={handleResultsSheetSettlingChange}
               interactionEnabled={!shouldSuspendResultsSheet}
               onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
               data={safeResultsData}
@@ -4397,7 +4519,7 @@ const SearchScreen: React.FC = () => {
               listRef={resultsScrollRef}
               resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
               onHidden={resetSheetToHidden}
-              onSnapChange={handleSheetSnapChange}
+              onSnapChange={handleResultsSheetSnapChange}
               style={styles.resultsSheetContainer}
             />
           </SearchInteractionProvider>

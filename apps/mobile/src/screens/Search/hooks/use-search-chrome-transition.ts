@@ -68,7 +68,13 @@ const useSearchChromeTransition = ({ sheetY, expanded, middle }: SearchChromeTra
     display: chromeOpacity.value < 0.02 ? 'none' : 'flex',
   }));
 
-  return { inputAnimatedStyle, containerAnimatedStyle, chromeAnimatedStyle };
+  return {
+    inputAnimatedStyle,
+    containerAnimatedStyle,
+    chromeAnimatedStyle,
+    chromeOpacity,
+    chromeScale,
+  };
 };
 
 export default useSearchChromeTransition;

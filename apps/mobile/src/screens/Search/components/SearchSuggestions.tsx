@@ -98,8 +98,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   const shouldShowRecentViewMore =
     !isRecentLoading && recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
-    !isRecentlyViewedLoading &&
-    recentlyViewedDeduped.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
+    !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
   const statusLookup = restaurantStatusPreviews ?? {};
 
   const containerStyles = [styles.container, style];
@@ -153,10 +152,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
             const isViewed = Boolean(match.badges?.viewed);
             const statusLine =
               match.entityType === 'restaurant'
-                ? renderStatusLine(
-                    match.entityId,
-                    shouldShowLocationCount ? locationCount : null
-                  )
+                ? renderStatusLine(match.entityId, shouldShowLocationCount ? locationCount : null)
                 : null;
             const leadingIcon = isRecentQuery ? (
               <Clock size={20} color={ICON_COLOR} strokeWidth={2} />
@@ -230,12 +226,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View
-                      style={[
-                        styles.recentRowContent,
-                        index === 0 && styles.recentRowFirst,
-                      ]}
-                    >
+                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                       <Text style={styles.recentText} numberOfLines={1}>
                         {term.queryText}
                       </Text>
@@ -280,12 +271,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View
-                      style={[
-                        styles.recentRowContent,
-                        index === 0 && styles.recentRowFirst,
-                      ]}
-                    >
+                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
                       <Text style={styles.recentText} numberOfLines={1}>
                         {item.restaurantName}
                       </Text>
@@ -434,7 +420,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metaLine: {
-    marginTop: 2,
+    marginTop: 0,
   },
   recentViewMore: {
     alignSelf: 'center',

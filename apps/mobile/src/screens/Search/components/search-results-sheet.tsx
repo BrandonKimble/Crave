@@ -27,6 +27,7 @@ type SearchResultsSheetProps<T> = {
   onMomentumBeginJS?: () => void;
   onMomentumEndJS?: () => void;
   onDragStateChange?: (isDragging: boolean) => void;
+  onSettleStateChange?: (isSettling: boolean) => void;
   listKey?: string;
   onEndReached?: FlashListProps<T>['onEndReached'];
   extraData?: FlashListProps<T>['extraData'];
@@ -66,6 +67,7 @@ const SearchResultsSheet = <T,>({
   onMomentumBeginJS,
   onMomentumEndJS,
   onDragStateChange,
+  onSettleStateChange,
   listKey,
   onEndReached,
   extraData,
@@ -123,6 +125,7 @@ const SearchResultsSheet = <T,>({
         onMomentumBeginJS={onMomentumBeginJS}
         onMomentumEndJS={onMomentumEndJS}
         onDragStateChange={onDragStateChange}
+        onSettleStateChange={onSettleStateChange}
         listKey={listKey}
         onEndReached={onEndReached}
         onEndReachedThreshold={0.2}

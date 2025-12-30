@@ -46,8 +46,7 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       if (!trimmedValue) {
         return state;
       }
-      const selectedEntityId =
-        typeof value === 'string' ? null : value.selectedEntityId ?? null;
+      const selectedEntityId = typeof value === 'string' ? null : value.selectedEntityId ?? null;
       const selectedEntityType =
         typeof value === 'string' ? null : value.selectedEntityType ?? null;
       const normalized = trimmedValue.toLowerCase();

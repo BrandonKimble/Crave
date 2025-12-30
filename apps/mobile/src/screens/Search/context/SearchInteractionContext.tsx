@@ -4,6 +4,7 @@ type SearchInteractionSnapshot = {
   isInteracting: boolean;
   isResultsSheetDragging: boolean;
   isResultsListScrolling: boolean;
+  isResultsSheetSettling: boolean;
 };
 
 type SearchInteractionState = {
@@ -14,6 +15,7 @@ const defaultSnapshot: SearchInteractionSnapshot = {
   isInteracting: false,
   isResultsSheetDragging: false,
   isResultsListScrolling: false,
+  isResultsSheetSettling: false,
 };
 
 const defaultInteractionRef = {

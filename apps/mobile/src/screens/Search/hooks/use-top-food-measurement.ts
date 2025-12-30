@@ -1,5 +1,5 @@
 import React from 'react';
-import { type LayoutChangeEvent, InteractionManager } from 'react-native';
+import { type LayoutChangeEvent } from 'react-native';
 
 type TopFoodItem = {
   connectionId: string;
@@ -94,7 +94,7 @@ type TopFoodMeasurementResult = {
  * This hook optimizes performance by:
  * 1. Debouncing layout measurements to batch updates
  * 2. Skipping measurements entirely during drag/scroll operations
- * 3. Using InteractionManager to defer heavy calculations
+ * 3. Deferring heavy calculations until interactions are idle
  * 4. Caching measurement callbacks to prevent re-renders
  *
  * @example
@@ -217,7 +217,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     return isDragging;
   }, [isDragging, isDraggingRef]);
 
-  // Schedule debounced update
+  // Schedule debounced update and wait for the sheet to be idle.
   const scheduleUpdate = React.useCallback(() => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
@@ -225,26 +225,13 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
 
     debounceTimeoutRef.current = setTimeout(() => {
       debounceTimeoutRef.current = null;
-      // Defer to after interactions for better perceived performance
-      void InteractionManager.runAfterInteractions(() => {
-        flushPendingUpdates();
-      });
-    }, debounceMs);
-  }, [debounceMs, flushPendingUpdates]);
-
-  const deferredFlushRef = React.useRef(false);
-  const scheduleDeferredFlush = React.useCallback(() => {
-    if (deferredFlushRef.current) {
-      return;
-    }
-    deferredFlushRef.current = true;
-    void InteractionManager.runAfterInteractions(() => {
-      deferredFlushRef.current = false;
-      if (Object.keys(pendingUpdatesRef.current).length > 0) {
+      if (getIsDragging()) {
         scheduleUpdate();
+        return;
       }
-    });
-  }, [scheduleUpdate]);
+      flushPendingUpdates();
+    }, debounceMs);
+  }, [debounceMs, flushPendingUpdates, getIsDragging]);
 
   // Cache for item layout callbacks
   const itemLayoutCallbacksRef = React.useRef(
@@ -263,7 +250,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
               pendingUpdatesRef.current.itemWidths = new Map();
             }
             pendingUpdatesRef.current.itemWidths.set(connectionId, nextWidth);
-            scheduleDeferredFlush();
+            scheduleUpdate();
             return;
           }
 
@@ -277,7 +264,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [getIsDragging, scheduleDeferredFlush, scheduleUpdate]
+    [getIsDragging, scheduleUpdate]
   );
 
   // Cache for "more" layout callbacks
@@ -297,7 +284,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
               pendingUpdatesRef.current.moreWidths = new Map();
             }
             pendingUpdatesRef.current.moreWidths.set(hiddenCount, nextWidth);
-            scheduleDeferredFlush();
+            scheduleUpdate();
             return;
           }
 
@@ -311,7 +298,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [getIsDragging, scheduleDeferredFlush, scheduleUpdate]
+    [getIsDragging, scheduleUpdate]
   );
 
   // Calculate visible items based on measurements

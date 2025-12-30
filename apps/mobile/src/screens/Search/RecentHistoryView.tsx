@@ -211,20 +211,13 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title, user
 
   const renderRecentRow = (item: RecentSearch, index: number) => {
     const statusLine =
-      item.selectedEntityType === 'restaurant'
-        ? renderStatusLine(item.selectedEntityId)
-        : null;
+      item.selectedEntityType === 'restaurant' ? renderStatusLine(item.selectedEntityId) : null;
     return (
       <View key={`${item.queryText}-${item.lastSearchedAt}`} style={styles.recentRow}>
         <View style={styles.recentIcon}>
           <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
-        <View
-          style={[
-            styles.recentRowContent,
-            index === 0 && styles.recentRowFirst,
-          ]}
-        >
+        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
           <Text style={styles.recentText} numberOfLines={1}>
             {item.queryText}
           </Text>
@@ -385,7 +378,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metaLine: {
-    marginTop: 2,
+    marginTop: 0,
   },
 });
 

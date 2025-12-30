@@ -36,7 +36,6 @@ type RestaurantResultCardProps = {
   index: number;
   restaurantsCount: number;
   isLiked: boolean;
-  isResultsInteracting?: boolean;
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
   onSavePress: () => void;
@@ -54,7 +53,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   index,
   restaurantsCount,
   isLiked,
-  isResultsInteracting = false,
   primaryCoverageKey = null,
   showCoverageLabel = false,
   onSavePress,
@@ -64,6 +62,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
 }) => {
   // Read interaction state from a ref to avoid re-rendering on drag changes
   const { interactionRef } = useSearchInteraction();
+  const isInteracting = interactionRef.current.isInteracting;
 
   const qualityColor = getQualityColor(
     index,
@@ -121,10 +120,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     debounceMs: 50,
   });
   const topFoodSignature = React.useMemo(
-    () =>
-      `${topFoodItems.length}:${candidateTopFoods
-        .map((food) => food.connectionId)
-        .join('|')}`,
+    () => `${topFoodItems.length}:${candidateTopFoods.map((food) => food.connectionId).join('|')}`,
     [candidateTopFoods, topFoodItems.length]
   );
   const measuredCacheRef = React.useRef<{
@@ -133,7 +129,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     hiddenCount: number;
   } | null>(null);
   React.useEffect(() => {
-    if (isResultsInteracting || !hasMeasured) {
+    if (interactionRef.current.isInteracting || !hasMeasured) {
       return;
     }
     measuredCacheRef.current = {
@@ -141,32 +137,30 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       foods: visibleTopFoods,
       hiddenCount: hiddenTopFoodCount,
     };
-  }, [hasMeasured, hiddenTopFoodCount, isResultsInteracting, topFoodSignature, visibleTopFoods]);
+  }, [hasMeasured, hiddenTopFoodCount, interactionRef, topFoodSignature, visibleTopFoods]);
   const fastVisibleTopFoods = React.useMemo(
     () => topFoodItems.slice(0, Math.min(2, TOP_FOOD_RENDER_LIMIT)),
     [topFoodItems]
   );
   const fastHiddenTopFoodCount = Math.max(0, topFoodItems.length - fastVisibleTopFoods.length);
   const cachedTopFoods = measuredCacheRef.current;
-  const useCachedTopFoods =
-    isResultsInteracting && cachedTopFoods?.signature === topFoodSignature;
+  const useCachedTopFoods = isInteracting && cachedTopFoods?.signature === topFoodSignature;
   const effectiveTopFoods = useCachedTopFoods
     ? cachedTopFoods.foods
-    : isResultsInteracting && !hasMeasured
+    : isInteracting && !hasMeasured
     ? fastVisibleTopFoods
     : visibleTopFoods;
   const effectiveHiddenTopFoodCount = useCachedTopFoods
     ? cachedTopFoods.hiddenCount
-    : isResultsInteracting && !hasMeasured
+    : isInteracting && !hasMeasured
     ? fastHiddenTopFoodCount
     : hiddenTopFoodCount;
   const showDishCountLabel =
     topFoodItems.length > 0 &&
     effectiveTopFoods.length === 0 &&
     effectiveHiddenTopFoodCount === topFoodItems.length;
-  const dishCountLabel =
-    topFoodItems.length === 1 ? '1 dish' : `${topFoodItems.length} dishes`;
-  const shouldRenderMeasurements = !isResultsInteracting && !hasMeasured;
+  const dishCountLabel = topFoodItems.length === 1 ? '1 dish' : `${topFoodItems.length} dishes`;
+  const shouldRenderMeasurements = !isInteracting && !hasMeasured;
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
