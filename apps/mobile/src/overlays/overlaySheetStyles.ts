@@ -27,9 +27,9 @@ export const overlaySheetStyles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -1.5 },
-    shadowOpacity: 0.24,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.20,
+    shadowRadius: 3,
     elevation: 2,
   },
   shadowShellAndroid: {

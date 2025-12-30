@@ -21,6 +21,7 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
 import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
 import { SearchPopularityService } from './search-popularity.service';
+import { RestaurantStatusService } from './restaurant-status.service';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SearchPopularityService } from './search-popularity.service';
     OnDemandPlaceholderCleanupService,
     SearchQuerySuggestionService,
     SearchPopularityService,
+    RestaurantStatusService,
   ],
   exports: [
     SearchService,

@@ -687,12 +687,13 @@ const BottomSheetWithFlashList = <T,>({
     return Component;
   }, [gestures.scroll]);
 
+  // Keep height fixed to avoid relayout of large lists during sheet drag.
+  const sheetHeightStyle = React.useMemo(() => ({ height: screenHeight }), [screenHeight]);
   const animatedSheetStyle = useAnimatedStyle(
     () => ({
-      height: Math.max(0, screenHeight - Math.round(sheetY.value * pixelRatio) / pixelRatio),
       transform: [{ translateY: Math.round(sheetY.value * pixelRatio) / pixelRatio }],
     }),
-    [pixelRatio, screenHeight]
+    [pixelRatio]
   );
 
   const sanitizedContentContainerStyle = React.useMemo(() => {
@@ -762,7 +763,7 @@ const BottomSheetWithFlashList = <T,>({
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View
         pointerEvents={visible && interactionEnabled ? 'auto' : 'none'}
-        style={[style, animatedSheetStyle]}
+        style={[style, sheetHeightStyle, animatedSheetStyle]}
       >
         <View style={shadowShellStyle}>
           <View style={resolvedSurfaceStyle}>

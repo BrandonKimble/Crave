@@ -97,7 +97,6 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
       onCameraChanged={onCameraChanged}
       onMapIdle={onCameraChanged}
       onDidFinishLoadingStyle={onMapLoaded}
-      onDidFinishRenderingMapFully={onMapLoaded}
       preferredFramesPerSecond={preferredFramesPerSecond}
     >
       <MapboxGL.Camera

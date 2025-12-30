@@ -13,7 +13,8 @@ export const renderMetaDetailLine = (
   align: 'left' | 'right' = 'left',
   prefix?: React.ReactNode,
   showLocationDetails = true,
-  statusFirst = false
+  statusFirst = false,
+  locationCount?: number | null
 ): React.ReactNode => {
   const segments: React.ReactNode[] = [];
   const pushSegment = (node: React.ReactNode) => {
@@ -46,6 +47,11 @@ export const renderMetaDetailLine = (
   }
   const normalizedPriceLabel = priceLabel ?? null;
   const distanceLabel = formatDistanceMiles(distanceMiles);
+  const normalizedLocationCount =
+    typeof locationCount === 'number' && locationCount > 1 ? locationCount : null;
+  const locationCountLabel = normalizedLocationCount
+    ? `${normalizedLocationCount} locations`
+    : null;
   const effectiveMinutesUntilClose =
     status?.isOpen && typeof status.closesInMinutes === 'number'
       ? status.closesInMinutes
@@ -121,7 +127,13 @@ export const renderMetaDetailLine = (
         </Text>
       );
     }
-    if (distanceLabel) {
+    if (locationCountLabel) {
+      pushSegment(
+        <Text key="locations" variant="body" style={styles.resultMetaDistance}>
+          {locationCountLabel}
+        </Text>
+      );
+    } else if (distanceLabel) {
       pushSegment(
         <Text key="distance" variant="body" style={styles.resultMetaDistance}>
           {distanceLabel}

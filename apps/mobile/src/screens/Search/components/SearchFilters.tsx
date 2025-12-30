@@ -163,6 +163,7 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
+  layoutEnabled?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
 };
@@ -180,6 +181,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
+  layoutEnabled = true,
   initialLayoutCache,
   onLayoutCacheChange,
 }) => {
@@ -234,6 +236,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
 
   const registerSegmentLayout = React.useCallback(
     (value: SegmentValue) => (event: LayoutChangeEvent) => {
+      if (!layoutEnabled) {
+        return;
+      }
       const layout = event.nativeEvent.layout;
       const prev = segmentLayoutsRef.current[value];
       if (prev && areLayoutsEqual(prev, layout)) {
@@ -247,12 +252,15 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         }
       }
     },
-    [activeTab, updateSegmentHighlight]
+    [activeTab, layoutEnabled, updateSegmentHighlight]
   );
 
   const registerHole = React.useCallback(
     (key: string, borderRadius: number | Partial<CornerRadii> = TOGGLE_BORDER_RADIUS) =>
       (event: LayoutChangeEvent) => {
+        if (!layoutEnabled) {
+          return;
+        }
         const { x, y, width, height } = event.nativeEvent.layout;
         const cornerRadii = normalizeCornerRadii(borderRadius);
         const next: ExtendedHole = {
@@ -271,7 +279,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           return { ...prev, [key]: next };
         });
       },
-    []
+    [layoutEnabled]
   );
 
   const holes = React.useMemo(() => Object.values(holeMap), [holeMap]);
@@ -318,7 +326,12 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
       <View style={styles.paddedWrapper}>
         <View
           style={styles.stripContainer}
-          onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
+          onLayout={(event) => {
+            if (!layoutEnabled) {
+              return;
+            }
+            setViewportWidth(event.nativeEvent.layout.width);
+          }}
         >
           <Reanimated.ScrollView
             horizontal
@@ -333,7 +346,12 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           >
             <View
               style={styles.cutoutStrip}
-              onLayout={(event) => setRowHeight(event.nativeEvent.layout.height)}
+              onLayout={(event) => {
+                if (!layoutEnabled) {
+                  return;
+                }
+                setRowHeight(event.nativeEvent.layout.height);
+              }}
             >
               <View style={styles.toggleRow}>
                 <View

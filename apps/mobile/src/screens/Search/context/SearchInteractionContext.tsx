@@ -1,26 +1,28 @@
 import React from 'react';
 
-/**
- * State shape for search interaction context.
- * This allows cards to access interaction state without prop drilling,
- * which keeps the parent's renderItem callback stable.
- */
-type SearchInteractionState = {
-  /** Whether any interaction (dragging or scrolling) is in progress */
+type SearchInteractionSnapshot = {
   isInteracting: boolean;
-  /** Whether the results sheet is currently being dragged */
   isResultsSheetDragging: boolean;
-  /** Whether the results list is currently scrolling */
   isResultsListScrolling: boolean;
 };
 
-const defaultState: SearchInteractionState = {
+type SearchInteractionState = {
+  interactionRef: React.MutableRefObject<SearchInteractionSnapshot>;
+};
+
+const defaultSnapshot: SearchInteractionSnapshot = {
   isInteracting: false,
   isResultsSheetDragging: false,
   isResultsListScrolling: false,
 };
 
-const SearchInteractionContext = React.createContext<SearchInteractionState>(defaultState);
+const defaultInteractionRef = {
+  current: defaultSnapshot,
+} as React.MutableRefObject<SearchInteractionSnapshot>;
+
+const SearchInteractionContext = React.createContext<SearchInteractionState>({
+  interactionRef: defaultInteractionRef,
+});
 
 /**
  * Provider component that wraps the results list.
@@ -41,17 +43,16 @@ const SearchInteractionProvider: React.FC<SearchInteractionProviderProps> = ({
 /**
  * Hook for card components to consume interaction state.
  *
- * This allows cards to access isDragging/isScrolling state without
- * requiring the parent's renderItem callback to depend on that state.
+ * Cards read from a ref so they don't re-render on drag state changes.
  *
  * @example
  * ```tsx
  * const RestaurantResultCard = React.memo(({ ... }) => {
- *   const { isInteracting } = useSearchInteraction();
+ *   const { interactionRef } = useSearchInteraction();
  *
- *   // Use isInteracting to skip expensive operations during drag
+ *   // Use interactionRef.current to skip expensive operations during drag
  *   const { visibleTopFoods } = useTopFoodMeasurement({
- *     isDragging: isInteracting,
+ *     isDraggingRef: interactionRef,
  *     ...
  *   });
  * });
@@ -64,5 +65,6 @@ export {
   SearchInteractionContext,
   SearchInteractionProvider,
   useSearchInteraction,
+  type SearchInteractionSnapshot,
   type SearchInteractionState,
 };

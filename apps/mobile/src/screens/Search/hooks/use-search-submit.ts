@@ -4,7 +4,7 @@ import { Keyboard } from 'react-native';
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import { logger } from '../../../utils';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
-import type { StructuredSearchRequest } from '../../../services/search';
+import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import type { SegmentValue } from '../constants/search';
 import { DEFAULT_PAGE_SIZE, MINIMUM_VOTES_FILTER } from '../constants/search';
@@ -74,11 +74,24 @@ type UseSearchSubmitOptions = {
   userLocationRef: React.MutableRefObject<Coordinate | null>;
   resetMapMoveFlag: () => void;
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
-  updateLocalRecentSearches: (value: string) => void;
+  updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
+};
+
+type RecentSearchInput = {
+  queryText: string;
+  selectedEntityId?: string | null;
+  selectedEntityType?: RecentSearch['selectedEntityType'] | null;
 };
 
 type UseSearchSubmitResult = {
   submitSearch: (options?: SubmitSearchOptions, overrideQuery?: string) => Promise<void>;
+  runRestaurantEntitySearch: (params: {
+    restaurantId: string;
+    restaurantName: string;
+    submissionSource: NaturalSearchRequest['submissionSource'];
+    typedPrefix?: string;
+    preserveSheetState?: boolean;
+  }) => Promise<void>;
   runBestHere: (
     targetTab: SegmentValue,
     submittedLabel: string,
@@ -147,6 +160,7 @@ const useSearchSubmit = ({
         targetPage: number;
         submittedLabel?: string;
         pushToHistory?: boolean;
+        submissionContext?: NaturalSearchRequest['submissionContext'];
       }
     ) => {
       const { append, targetPage, submittedLabel, pushToHistory } = options;
@@ -228,7 +242,23 @@ const useSearchSubmit = ({
           ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
 
           if (hasEntityTargets) {
-            updateLocalRecentSearches(submittedLabel);
+            const contextRecord =
+              options.submissionContext &&
+              typeof options.submissionContext === 'object' &&
+              !Array.isArray(options.submissionContext)
+                ? (options.submissionContext as Record<string, unknown>)
+                : null;
+            const selectedEntityId =
+              typeof contextRecord?.selectedEntityId === 'string'
+                ? contextRecord.selectedEntityId
+                : null;
+            const selectedEntityType =
+              contextRecord?.selectedEntityType === 'restaurant' ? 'restaurant' : null;
+            updateLocalRecentSearches({
+              queryText: submittedLabel,
+              selectedEntityId,
+              selectedEntityType,
+            });
           }
 
           void loadRecentHistory({ force: true });
@@ -467,6 +497,7 @@ const useSearchSubmit = ({
             targetPage,
             submittedLabel,
             pushToHistory: !append,
+            submissionContext: options?.submission?.context,
           });
         }
       } catch (err) {
@@ -517,6 +548,116 @@ const useSearchSubmit = ({
       showPanel,
       userLocationRef,
       votes100Plus,
+    ]
+  );
+
+  const runRestaurantEntitySearch = React.useCallback(
+    async (params: {
+      restaurantId: string;
+      restaurantName: string;
+      submissionSource: NaturalSearchRequest['submissionSource'];
+      typedPrefix?: string;
+      preserveSheetState?: boolean;
+    }) => {
+      const requestId = ++searchRequestSeqRef.current;
+      activeSearchRequestRef.current = requestId;
+
+      resetMapMoveFlag();
+      const preserveSheetState = Boolean(params.preserveSheetState);
+      setSearchMode('natural');
+      setIsSearchSessionActive(true);
+      setError(null);
+      if (!preserveSheetState) {
+        resetSheetToHidden();
+      }
+      setHasMoreFood(false);
+      setHasMoreRestaurants(false);
+      setIsPaginationExhausted(false);
+      setCurrentPage(1);
+      lastAutoOpenKeyRef.current = null;
+      setIsAutocompleteSuppressed(true);
+      setShowSuggestions(false);
+      Keyboard.dismiss();
+
+      const trimmedName = params.restaurantName.trim();
+      if (!trimmedName) {
+        return;
+      }
+
+      try {
+        if (isLoadingMore) {
+          setIsLoadingMore(false);
+        }
+        setIsLoading(true);
+        const payload = await buildStructuredSearchPayload(1, {
+          openNow: false,
+          priceLevels: [],
+          minimumVotes: 0,
+        });
+        payload.entities = {
+          restaurants: [
+            {
+              normalizedName: trimmedName,
+              entityIds: [params.restaurantId],
+              originalText: trimmedName,
+            },
+          ],
+        };
+        payload.sourceQuery = trimmedName;
+        payload.submissionSource = params.submissionSource;
+        const submissionContext = {
+          typedPrefix: params.typedPrefix ?? trimmedName,
+          matchType: 'entity',
+          selectedEntityId: params.restaurantId,
+          selectedEntityType: 'restaurant',
+        };
+        payload.submissionContext = submissionContext;
+
+        const response = await runSearch({ kind: 'structured', payload });
+        if (response && requestId === activeSearchRequestRef.current) {
+          logger.info('Structured restaurant search response payload', response);
+          handleSearchResponse(response, {
+            append: false,
+            targetPage: 1,
+            submittedLabel: trimmedName,
+            pushToHistory: true,
+            submissionContext,
+          });
+        }
+      } catch (err) {
+        logger.error('Structured restaurant search failed', {
+          message: err instanceof Error ? err.message : 'unknown error',
+        });
+        if (requestId === activeSearchRequestRef.current) {
+          setError(null);
+          showPanel();
+        }
+      } finally {
+        if (requestId === activeSearchRequestRef.current) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [
+      buildStructuredSearchPayload,
+      handleSearchResponse,
+      isLoadingMore,
+      lastAutoOpenKeyRef,
+      resetMapMoveFlag,
+      resetSheetToHidden,
+      runSearch,
+      setCurrentPage,
+      setError,
+      setHasMoreFood,
+      setHasMoreRestaurants,
+      setIsAutocompleteSuppressed,
+      setIsLoading,
+      setIsLoadingMore,
+      setIsPaginationExhausted,
+      setIsSearchSessionActive,
+      setSearchMode,
+      setShowSuggestions,
+      showPanel,
     ]
   );
 
@@ -680,6 +821,7 @@ const useSearchSubmit = ({
 
   return {
     submitSearch,
+    runRestaurantEntitySearch,
     runBestHere,
     loadMoreResults,
     cancelActiveSearchRequest,

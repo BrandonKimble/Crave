@@ -34,6 +34,11 @@ type TopFoodMeasurementOptions = {
   isDragging?: boolean;
 
   /**
+   * Ref-based interaction state to avoid re-renders during drag.
+   */
+  isDraggingRef?: React.RefObject<{ isInteracting: boolean }>;
+
+  /**
    * Debounce delay for layout updates in milliseconds.
    * Default: 50ms
    */
@@ -70,6 +75,16 @@ type TopFoodMeasurementResult = {
    * Whether all required measurements have been taken
    */
   hasMeasured: boolean;
+
+  /**
+   * Items considered for measurement (first N items)
+   */
+  candidateTopFoods: readonly TopFoodItem[];
+
+  /**
+   * "+N more" counts to measure
+   */
+  topFoodMoreCounts: number[];
 };
 
 /**
@@ -89,12 +104,14 @@ type TopFoodMeasurementResult = {
  *   hiddenTopFoodCount,
  *   onItemLayout,
  *   onMoreLayout,
+ *   candidateTopFoods,
+ *   topFoodMoreCounts,
  * } = useTopFoodMeasurement({
  *   topFoodItems: restaurant.topFood,
  *   maxToRender: 5,
  *   availableWidth,
  *   itemGap: 8,
- *   isDragging,
+ *   isDraggingRef,
  * });
  * ```
  */
@@ -105,6 +122,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     availableWidth,
     itemGap,
     isDragging = false,
+    isDraggingRef,
     debounceMs = 50,
   } = options;
 
@@ -192,10 +210,15 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     });
   }, []);
 
+  const getIsDragging = React.useCallback(() => {
+    if (isDraggingRef?.current) {
+      return isDraggingRef.current.isInteracting;
+    }
+    return isDragging;
+  }, [isDragging, isDraggingRef]);
+
   // Schedule debounced update
   const scheduleUpdate = React.useCallback(() => {
-    if (isDragging) return;
-
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
@@ -207,14 +230,21 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
         flushPendingUpdates();
       });
     }, debounceMs);
-  }, [isDragging, debounceMs, flushPendingUpdates]);
+  }, [debounceMs, flushPendingUpdates]);
 
-  // Process any pending updates when dragging stops
-  React.useEffect(() => {
-    if (!isDragging && Object.keys(pendingUpdatesRef.current).length > 0) {
-      scheduleUpdate();
+  const deferredFlushRef = React.useRef(false);
+  const scheduleDeferredFlush = React.useCallback(() => {
+    if (deferredFlushRef.current) {
+      return;
     }
-  }, [isDragging, scheduleUpdate]);
+    deferredFlushRef.current = true;
+    void InteractionManager.runAfterInteractions(() => {
+      deferredFlushRef.current = false;
+      if (Object.keys(pendingUpdatesRef.current).length > 0) {
+        scheduleUpdate();
+      }
+    });
+  }, [scheduleUpdate]);
 
   // Cache for item layout callbacks
   const itemLayoutCallbacksRef = React.useRef(
@@ -228,11 +258,12 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
         callback = (event: LayoutChangeEvent) => {
           const nextWidth = Math.round(event.nativeEvent.layout.width);
 
-          if (isDragging) {
+          if (getIsDragging()) {
             if (!pendingUpdatesRef.current.itemWidths) {
               pendingUpdatesRef.current.itemWidths = new Map();
             }
             pendingUpdatesRef.current.itemWidths.set(connectionId, nextWidth);
+            scheduleDeferredFlush();
             return;
           }
 
@@ -246,7 +277,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [isDragging, scheduleUpdate]
+    [getIsDragging, scheduleDeferredFlush, scheduleUpdate]
   );
 
   // Cache for "more" layout callbacks
@@ -261,11 +292,12 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
         callback = (event: LayoutChangeEvent) => {
           const nextWidth = Math.round(event.nativeEvent.layout.width);
 
-          if (isDragging) {
+          if (getIsDragging()) {
             if (!pendingUpdatesRef.current.moreWidths) {
               pendingUpdatesRef.current.moreWidths = new Map();
             }
             pendingUpdatesRef.current.moreWidths.set(hiddenCount, nextWidth);
+            scheduleDeferredFlush();
             return;
           }
 
@@ -279,7 +311,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [isDragging, scheduleUpdate]
+    [getIsDragging, scheduleDeferredFlush, scheduleUpdate]
   );
 
   // Calculate visible items based on measurements
@@ -351,8 +383,13 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
   // Check if we have all the measurements we need
   const hasMeasured = React.useMemo(() => {
     if (!availableWidth) return false;
-    return candidateTopFoods.every((food) => measurements.itemWidths.has(food.connectionId));
-  }, [availableWidth, measurements, candidateTopFoods]);
+    if (candidateTopFoods.length === 0) return true;
+    const hasItems = candidateTopFoods.every((food) =>
+      measurements.itemWidths.has(food.connectionId)
+    );
+    const hasMore = topFoodMoreCounts.every((count) => measurements.moreWidths.has(count));
+    return hasItems && hasMore;
+  }, [availableWidth, candidateTopFoods, measurements, topFoodMoreCounts]);
 
   return {
     visibleTopFoods,
@@ -360,12 +397,8 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     onItemLayout,
     onMoreLayout,
     hasMeasured,
-    // Also expose these for the measurement elements
     candidateTopFoods,
     topFoodMoreCounts,
-  } as TopFoodMeasurementResult & {
-    candidateTopFoods: readonly TopFoodItem[];
-    topFoodMoreCounts: number[];
   };
 }
 

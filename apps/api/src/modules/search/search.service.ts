@@ -54,6 +54,8 @@ interface EntityPresenceSummary {
 export type SearchHistoryEntry = {
   queryText: string;
   lastSearchedAt: string;
+  selectedEntityId: string | null;
+  selectedEntityType: EntityType | null;
 };
 
 @Injectable()
@@ -892,36 +894,130 @@ export class SearchService {
       return [];
     }
     const take = Math.max(1, Math.min(limit ?? 8, 50));
-    const rows = await this.prisma.searchLog.groupBy({
-      by: ['queryText'],
+    const fetchLimit = Math.min(take * 5, 250);
+    const rows = await this.prisma.searchLog.findMany({
       where: {
         userId,
         source: SearchLogSource.search,
         queryText: { not: null },
       },
-      _max: {
-        loggedAt: true,
-      },
       orderBy: {
-        _max: {
-          loggedAt: 'desc',
+        loggedAt: 'desc',
+      },
+      take: fetchLimit,
+      select: {
+        queryText: true,
+        loggedAt: true,
+        metadata: true,
+        entityId: true,
+        entityType: true,
+        entity: {
+          select: {
+            name: true,
+          },
         },
       },
-      take,
     });
 
     const fallbackTimestamp = new Date().toISOString();
-    return rows
-      .map((row) => {
-        if (typeof row.queryText !== 'string') {
-          return null;
-        }
-        return {
-          queryText: row.queryText,
-          lastSearchedAt: row._max.loggedAt?.toISOString() ?? fallbackTimestamp,
+    const entries: SearchHistoryEntry[] = [];
+    const entriesByQuery = new Map<string, SearchHistoryEntry>();
+
+    for (const row of rows) {
+      const queryText =
+        typeof row.queryText === 'string' ? row.queryText.trim() : '';
+      if (!queryText) {
+        continue;
+      }
+      const normalizedQuery = queryText.toLowerCase();
+      const selection =
+        this.extractSelectedEntity(row.metadata) ??
+        this.resolveSelectionFromSearchLogRow({
+          queryText,
+          entityId: row.entityId,
+          entityType: row.entityType,
+          entityName: row.entity?.name ?? null,
+        });
+
+      const existing = entriesByQuery.get(normalizedQuery);
+      if (!existing) {
+        const entry: SearchHistoryEntry = {
+          queryText,
+          lastSearchedAt: row.loggedAt?.toISOString() ?? fallbackTimestamp,
+          selectedEntityId: selection?.entityId ?? null,
+          selectedEntityType: selection?.entityType ?? null,
         };
-      })
-      .filter((entry): entry is SearchHistoryEntry => entry !== null);
+        entriesByQuery.set(normalizedQuery, entry);
+        entries.push(entry);
+      } else if (!existing.selectedEntityId && selection) {
+        existing.selectedEntityId = selection.entityId;
+        existing.selectedEntityType = selection.entityType;
+      }
+    }
+
+    return entries.slice(0, take);
+  }
+
+  private extractSelectedEntity(
+    metadataValue: unknown,
+  ): { entityId: string; entityType: EntityType } | null {
+    if (
+      !metadataValue ||
+      typeof metadataValue !== 'object' ||
+      Array.isArray(metadataValue)
+    ) {
+      return null;
+    }
+    const metadata = metadataValue as Record<string, unknown>;
+    const submissionContextValue = metadata.submissionContext;
+    if (
+      !submissionContextValue ||
+      typeof submissionContextValue !== 'object' ||
+      Array.isArray(submissionContextValue)
+    ) {
+      return null;
+    }
+    const submissionContext = submissionContextValue as Record<string, unknown>;
+    const selectedEntityId =
+      typeof submissionContext.selectedEntityId === 'string'
+        ? submissionContext.selectedEntityId
+        : null;
+    const selectedEntityType =
+      typeof submissionContext.selectedEntityType === 'string'
+        ? submissionContext.selectedEntityType
+        : null;
+    if (!selectedEntityId || !selectedEntityType) {
+      return null;
+    }
+    const entityType = Object.values(EntityType).includes(
+      selectedEntityType as EntityType,
+    )
+      ? (selectedEntityType as EntityType)
+      : null;
+    if (!entityType) {
+      return null;
+    }
+    return { entityId: selectedEntityId, entityType };
+  }
+
+  private resolveSelectionFromSearchLogRow(params: {
+    queryText: string;
+    entityId: string;
+    entityType: EntityType;
+    entityName?: string | null;
+  }): { entityId: string; entityType: EntityType } | null {
+    if (params.entityType !== EntityType.restaurant) {
+      return null;
+    }
+    const queryText = params.queryText.trim().toLowerCase();
+    const entityName =
+      typeof params.entityName === 'string'
+        ? params.entityName.trim().toLowerCase()
+        : '';
+    if (!queryText || !entityName || queryText !== entityName) {
+      return null;
+    }
+    return { entityId: params.entityId, entityType: EntityType.restaurant };
   }
 
   private calculateCoverageStatus(params: {

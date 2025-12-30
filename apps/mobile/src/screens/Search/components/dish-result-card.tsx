@@ -114,7 +114,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       >
         <View style={styles.resultHeader}>
           <View style={styles.resultTitleContainer}>
-            <View style={styles.titleRow}>
+            <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                 <Text variant="body" style={styles.rankBadgeText}>
                   {index + 1}

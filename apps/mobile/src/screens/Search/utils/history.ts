@@ -3,8 +3,19 @@ import type { RecentSearch, RecentlyViewedRestaurant } from '../../../services/s
 const normalizeHistoryLabel = (value: string): string =>
   value.trim().toLowerCase().replace(/\s+/g, ' ');
 
-const buildRecentSearchLookup = (recentSearches: RecentSearch[]): Set<string> =>
-  new Set(recentSearches.map((entry) => normalizeHistoryLabel(entry.queryText)));
+const buildRecentSearchLookup = (
+  recentSearches: RecentSearch[]
+): { names: Set<string>; restaurantIds: Set<string> } => {
+  const names = new Set<string>();
+  const restaurantIds = new Set<string>();
+  recentSearches.forEach((entry) => {
+    names.add(normalizeHistoryLabel(entry.queryText));
+    if (entry.selectedEntityType === 'restaurant' && entry.selectedEntityId) {
+      restaurantIds.add(entry.selectedEntityId);
+    }
+  });
+  return { names, restaurantIds };
+};
 
 export const filterRecentlyViewedByRecentSearches = (
   recentlyViewed: RecentlyViewedRestaurant[],
@@ -14,5 +25,10 @@ export const filterRecentlyViewedByRecentSearches = (
     return recentlyViewed;
   }
   const lookup = buildRecentSearchLookup(recentSearches);
-  return recentlyViewed.filter((item) => !lookup.has(normalizeHistoryLabel(item.restaurantName)));
+  return recentlyViewed.filter((item) => {
+    if (lookup.restaurantIds.has(item.restaurantId)) {
+      return false;
+    }
+    return !lookup.names.has(normalizeHistoryLabel(item.restaurantName));
+  });
 };

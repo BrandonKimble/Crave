@@ -8,10 +8,15 @@ import {
   SearchResponseDto,
   SearchResultClickDto,
 } from './dto/search-query.dto';
+import {
+  RestaurantStatusPreviewDto,
+  RestaurantStatusPreviewRequestDto,
+} from './dto/restaurant-status-preview.dto';
 import { SearchService, type SearchHistoryEntry } from './search.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
+import { RestaurantStatusService } from './restaurant-status.service';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -21,6 +26,7 @@ export class SearchController {
   constructor(
     private readonly searchService: SearchService,
     private readonly searchOrchestrationService: SearchOrchestrationService,
+    private readonly restaurantStatusService: RestaurantStatusService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
@@ -64,5 +70,12 @@ export class SearchController {
     @CurrentUser() user: User,
   ): Promise<SearchHistoryEntry[]> {
     return this.searchService.listRecentSearches(user.userId, query.limit);
+  }
+
+  @Post('restaurant-status')
+  async listRestaurantStatusPreview(
+    @Body() dto: RestaurantStatusPreviewRequestDto,
+  ): Promise<RestaurantStatusPreviewDto[]> {
+    return this.restaurantStatusService.getStatusPreviews(dto);
   }
 }

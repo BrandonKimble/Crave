@@ -21,7 +21,7 @@ type UseSearchHistoryResult = {
   isRecentlyViewedLoading: boolean;
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   loadRecentlyViewedRestaurants: (options?: { force?: boolean }) => Promise<void>;
-  updateLocalRecentSearches: (value: string) => void;
+  updateLocalRecentSearches: (value: string | RecentSearch) => void;
   trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
 };
 

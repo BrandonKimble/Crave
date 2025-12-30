@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
 import { ActivityLevel, Prisma } from '@prisma/client';
+import type { OperatingStatus } from '@crave-search/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import {
@@ -11,6 +12,14 @@ import {
   SearchQueryRequestDto,
 } from './dto/search-query.dto';
 import { SearchQueryBuilder } from './search-query.builder';
+import {
+  buildOperatingMetadata as buildOperatingMetadataUtil,
+  buildOperatingMetadataFromLocation as buildOperatingMetadataFromLocationUtil,
+  buildOperatingMetadataFromRestaurantMetadata as buildOperatingMetadataFromRestaurantMetadataUtil,
+  computeDistanceMiles as computeDistanceMilesUtil,
+  evaluateOperatingStatus as evaluateOperatingStatusUtil,
+  normalizeUserLocation as normalizeUserLocationUtil,
+} from './utils/restaurant-status';
 
 const DAY_KEYS = [
   'sunday',
@@ -114,11 +123,7 @@ interface UserLocationInput {
 
 interface RestaurantContext {
   locationId: string;
-  operatingStatus: {
-    isOpen: boolean;
-    closesAtDisplay?: string | null;
-    closesInMinutes?: number | null;
-  } | null;
+  operatingStatus: OperatingStatus | null;
   priceLevel: number | null;
   priceSymbol: string | null;
   distanceMiles: number | null;
@@ -334,15 +339,7 @@ export class SearchQueryExecutor {
   private normalizeUserLocation(
     input?: { lat?: number; lng?: number } | null,
   ): UserLocationInput | null {
-    if (!input) {
-      return null;
-    }
-    const lat = Number(input.lat);
-    const lng = Number(input.lng);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return null;
-    }
-    return { lat, lng };
+    return normalizeUserLocationUtil(input);
   }
 
   private resolveSearchCenter(
@@ -367,18 +364,12 @@ export class SearchQueryExecutor {
   private buildOperatingMetadata(
     connection: QueryResultRow,
   ): RestaurantMetadata | null {
-    const locationMetadata = this.buildOperatingMetadataFromLocation(
-      connection.hours,
-      connection.utc_offset_minutes,
-      connection.time_zone,
-    );
-    if (locationMetadata) {
-      return locationMetadata;
-    }
-
-    return this.buildOperatingMetadataFromRestaurantMetadata(
-      connection.restaurant_metadata,
-    );
+    return buildOperatingMetadataUtil({
+      hoursValue: connection.hours,
+      utcOffsetMinutesValue: connection.utc_offset_minutes,
+      timeZoneValue: connection.time_zone,
+      restaurantMetadataValue: connection.restaurant_metadata,
+    });
   }
 
   private buildOperatingMetadataFromLocation(
@@ -386,57 +377,17 @@ export class SearchQueryExecutor {
     utcOffsetMinutesValue: Prisma.Decimal | number | string | null | undefined,
     timeZoneValue: string | null | undefined,
   ): RestaurantMetadata | null {
-    const hours = this.coerceRecord(hoursValue);
-    const timeZone =
-      typeof timeZoneValue === 'string' && timeZoneValue.trim()
-        ? timeZoneValue.trim()
-        : null;
-    const utcOffsetMinutes = this.toOptionalNumber(utcOffsetMinutesValue);
-
-    if (!hours && !timeZone && utcOffsetMinutes === null) {
-      return null;
-    }
-
-    const metadata: RestaurantMetadata = {};
-    if (hours) {
-      metadata.hours = hours;
-    }
-    if (timeZone) {
-      metadata.timezone = timeZone;
-    }
-    if (utcOffsetMinutes !== null) {
-      metadata.utc_offset_minutes = utcOffsetMinutes;
-    }
-    return metadata;
+    return buildOperatingMetadataFromLocationUtil(
+      hoursValue,
+      utcOffsetMinutesValue,
+      timeZoneValue,
+    );
   }
 
   private buildOperatingMetadataFromRestaurantMetadata(
     metadataValue: Prisma.JsonValue | null | undefined,
   ): RestaurantMetadata | null {
-    const metadataRecord = this.coerceRecord(metadataValue);
-    if (!metadataRecord) {
-      return null;
-    }
-
-    const hoursValue = metadataRecord.hours;
-    const utcOffsetCandidate =
-      metadataRecord.utc_offset_minutes ?? metadataRecord.utcOffsetMinutes;
-    const timeZoneCandidate =
-      typeof metadataRecord.timezone === 'string'
-        ? metadataRecord.timezone
-        : typeof metadataRecord.timeZone === 'string'
-          ? metadataRecord.timeZone
-          : typeof metadataRecord.time_zone === 'string'
-            ? metadataRecord.time_zone
-            : typeof metadataRecord.tz === 'string'
-              ? metadataRecord.tz
-              : null;
-
-    return this.buildOperatingMetadataFromLocation(
-      hoursValue,
-      utcOffsetCandidate as Prisma.Decimal | number | string | null | undefined,
-      timeZoneCandidate,
-    );
+    return buildOperatingMetadataFromRestaurantMetadataUtil(metadataValue);
   }
 
   private buildRestaurantContexts(
@@ -1089,78 +1040,18 @@ export class SearchQueryExecutor {
   private evaluateOperatingStatus(
     metadataValue: unknown,
     referenceDate: Date,
-  ): {
-    isOpen: boolean;
-    closesAtDisplay?: string | null;
-    closesInMinutes?: number | null;
-    nextOpenDisplay?: string | null;
-  } | null {
-    const metadata = this.coerceRecord(
-      metadataValue,
-    ) as RestaurantMetadata | null;
-    if (!metadata) {
-      return null;
-    }
-
-    const schedule = this.buildDailySchedule(metadata);
-    if (!schedule) {
-      return null;
-    }
-
-    const timeContext = this.getLocalTimeContext(metadata, referenceDate);
-    if (!timeContext) {
-      return null;
-    }
-
-    const daySegments = schedule[timeContext.dayKey] || [];
-    const dayIndex = DAY_KEYS.indexOf(timeContext.dayKey);
-    const previousDayKey =
-      DAY_KEYS[(dayIndex + DAY_KEYS.length - 1) % DAY_KEYS.length];
-    const previousDaySegments = schedule[previousDayKey] || [];
-
-    for (const segment of daySegments) {
-      if (this.matchesSegment(segment, timeContext.minutes, false)) {
-        const minutesUntilClose = this.computeMinutesUntilClose(
-          segment,
-          timeContext.minutes,
-          false,
-        );
-        return {
-          isOpen: true,
-          closesAtDisplay: this.formatMinutesToDisplay(segment.end),
-          closesInMinutes: minutesUntilClose,
-          nextOpenDisplay: null,
-        };
-      }
-    }
-
-    for (const segment of previousDaySegments) {
-      if (
-        segment.crossesMidnight &&
-        this.matchesSegment(segment, timeContext.minutes, true)
-      ) {
-        const minutesUntilClose = this.computeMinutesUntilClose(
-          segment,
-          timeContext.minutes,
-          true,
-        );
-        return {
-          isOpen: true,
-          closesAtDisplay: this.formatMinutesToDisplay(segment.end),
-          closesInMinutes: minutesUntilClose,
-          nextOpenDisplay: null,
-        };
-      }
-    }
-
-    const nextOpenDisplay = this.findNextOpenDisplay(schedule, timeContext);
-
-    return {
-      isOpen: false,
-      closesAtDisplay: null,
-      closesInMinutes: null,
-      nextOpenDisplay,
-    };
+  ): OperatingStatus | null {
+    return evaluateOperatingStatusUtil(metadataValue, referenceDate, {
+      onTimezoneError: ({ timezone, error }) => {
+        this.logger.warn('Failed to evaluate timezone for open-now filter', {
+          timezone,
+          error: {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+          },
+        });
+      },
+    });
   }
 
   private findNextOpenDisplay(
@@ -1407,12 +1298,7 @@ export class SearchQueryExecutor {
     hours?: Record<string, unknown> | null;
     utcOffsetMinutes?: number | null;
     timeZone?: string | null;
-    operatingStatus?: {
-      isOpen: boolean;
-      closesAtDisplay?: string | null;
-      closesInMinutes?: number | null;
-      nextOpenDisplay?: string | null;
-    } | null;
+    operatingStatus?: OperatingStatus | null;
     isPrimary: boolean;
     lastPolledAt?: string | null;
     createdAt?: string | null;
@@ -1437,12 +1323,7 @@ export class SearchQueryExecutor {
       hours?: Record<string, unknown> | null;
       utcOffsetMinutes?: number | null;
       timeZone?: string | null;
-      operatingStatus?: {
-        isOpen: boolean;
-        closesAtDisplay?: string | null;
-        closesInMinutes?: number | null;
-        nextOpenDisplay?: string | null;
-      } | null;
+      operatingStatus?: OperatingStatus | null;
       isPrimary: boolean;
       lastPolledAt?: string | null;
       createdAt?: string | null;
@@ -1529,25 +1410,7 @@ export class SearchQueryExecutor {
     latitude: number,
     longitude: number,
   ): number | null {
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      return null;
-    }
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const earthRadiusMiles = 3958.8;
-
-    const lat1 = toRad(userLocation.lat);
-    const lon1 = toRad(userLocation.lng);
-    const lat2 = toRad(latitude);
-    const lon2 = toRad(longitude);
-
-    const dLat = lat2 - lat1;
-    const dLon = lon2 - lon1;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const distance = earthRadiusMiles * c;
-    return Number.isFinite(distance) ? distance : null;
+    return computeDistanceMilesUtil(userLocation, latitude, longitude);
   }
 
   private formatMinutesToDisplay(minutes: number): string {

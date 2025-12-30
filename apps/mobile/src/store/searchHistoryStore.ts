@@ -12,9 +12,15 @@ type SearchHistoryState = {
   setIsRecentLoading: (value: boolean) => void;
   setRecentlyViewedRestaurants: (value: RecentlyViewedRestaurant[]) => void;
   setIsRecentlyViewedLoading: (value: boolean) => void;
-  updateLocalRecentSearches: (value: string) => void;
+  updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
   trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
   resetHistory: () => void;
+};
+
+type RecentSearchInput = {
+  queryText: string;
+  selectedEntityId?: string | null;
+  selectedEntityType?: RecentSearch['selectedEntityType'] | null;
 };
 
 const defaultState = {
@@ -35,10 +41,15 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
   setIsRecentlyViewedLoading: (isRecentlyViewedLoading) => set({ isRecentlyViewedLoading }),
   updateLocalRecentSearches: (value) =>
     set((state) => {
-      const trimmedValue = value.trim();
+      const rawQuery = typeof value === 'string' ? value : value.queryText;
+      const trimmedValue = rawQuery.trim();
       if (!trimmedValue) {
         return state;
       }
+      const selectedEntityId =
+        typeof value === 'string' ? null : value.selectedEntityId ?? null;
+      const selectedEntityType =
+        typeof value === 'string' ? null : value.selectedEntityType ?? null;
       const normalized = trimmedValue.toLowerCase();
       const withoutMatch = state.recentSearches.filter(
         (entry) => entry.queryText.toLowerCase() !== normalized
@@ -46,6 +57,8 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       const next: RecentSearch = {
         queryText: trimmedValue,
         lastSearchedAt: new Date().toISOString(),
+        selectedEntityId,
+        selectedEntityType,
       };
       return {
         ...state,

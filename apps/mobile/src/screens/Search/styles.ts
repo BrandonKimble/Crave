@@ -778,7 +778,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     minHeight: 0,
     paddingTop: 0,
-    paddingRight: RESULT_TITLE_RIGHT_PADDING,
     gap: CARD_LINE_GAP,
   },
   titleRow: {
@@ -786,6 +785,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: CARD_LINE_GAP,
     maxWidth: '100%',
+  },
+  titleRowWithActions: {
+    paddingRight: RESULT_TITLE_RIGHT_PADDING,
   },
   rankBadge: {
     width: RANK_BADGE_WIDTH,

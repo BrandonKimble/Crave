@@ -13,7 +13,6 @@ import {
   CARD_LINE_GAP,
   CONTENT_HORIZONTAL_PADDING,
   RESULT_DETAILS_INDENT,
-  RESULT_TITLE_RIGHT_PADDING,
   SECONDARY_METRIC_ICON_SIZE,
   TOP_FOOD_RENDER_LIMIT,
 } from '../constants/search';
@@ -37,6 +36,7 @@ type RestaurantResultCardProps = {
   index: number;
   restaurantsCount: number;
   isLiked: boolean;
+  isResultsInteracting?: boolean;
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
   onSavePress: () => void;
@@ -54,6 +54,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   index,
   restaurantsCount,
   isLiked,
+  isResultsInteracting = false,
   primaryCoverageKey = null,
   showCoverageLabel = false,
   onSavePress,
@@ -61,8 +62,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm,
 }) => {
-  // Get interaction state from context (not props!) for performance optimization
-  const { isInteracting } = useSearchInteraction();
+  // Read interaction state from a ref to avoid re-rendering on drag changes
+  const { interactionRef } = useSearchInteraction();
 
   const qualityColor = getQualityColor(
     index,
@@ -97,9 +98,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   const { width: windowWidth } = useWindowDimensions();
   const topFoodInlineWidth = React.useMemo(() => {
     const horizontalPadding = CONTENT_HORIZONTAL_PADDING * 2;
-    const baseWidth = windowWidth - horizontalPadding - RESULT_TITLE_RIGHT_PADDING;
+    const baseWidth = windowWidth - horizontalPadding;
     return Math.max(0, baseWidth - RESULT_DETAILS_INDENT);
-  }, [windowWidth, CONTENT_HORIZONTAL_PADDING, RESULT_DETAILS_INDENT, RESULT_TITLE_RIGHT_PADDING]);
+  }, [windowWidth, CONTENT_HORIZONTAL_PADDING, RESULT_DETAILS_INDENT]);
 
   // Use the optimized layout measurement hook
   // This debounces measurements and skips them during drag/scroll
@@ -108,6 +109,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     hiddenTopFoodCount,
     onItemLayout,
     onMoreLayout,
+    hasMeasured,
     candidateTopFoods,
     topFoodMoreCounts,
   } = useTopFoodMeasurement({
@@ -115,9 +117,56 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     maxToRender: TOP_FOOD_RENDER_LIMIT,
     availableWidth: topFoodInlineWidth,
     itemGap: CARD_LINE_GAP,
-    isDragging: isInteracting,
+    isDraggingRef: interactionRef,
     debounceMs: 50,
   });
+  const topFoodSignature = React.useMemo(
+    () =>
+      `${topFoodItems.length}:${candidateTopFoods
+        .map((food) => food.connectionId)
+        .join('|')}`,
+    [candidateTopFoods, topFoodItems.length]
+  );
+  const measuredCacheRef = React.useRef<{
+    signature: string;
+    foods: typeof visibleTopFoods;
+    hiddenCount: number;
+  } | null>(null);
+  React.useEffect(() => {
+    if (isResultsInteracting || !hasMeasured) {
+      return;
+    }
+    measuredCacheRef.current = {
+      signature: topFoodSignature,
+      foods: visibleTopFoods,
+      hiddenCount: hiddenTopFoodCount,
+    };
+  }, [hasMeasured, hiddenTopFoodCount, isResultsInteracting, topFoodSignature, visibleTopFoods]);
+  const fastVisibleTopFoods = React.useMemo(
+    () => topFoodItems.slice(0, Math.min(2, TOP_FOOD_RENDER_LIMIT)),
+    [topFoodItems]
+  );
+  const fastHiddenTopFoodCount = Math.max(0, topFoodItems.length - fastVisibleTopFoods.length);
+  const cachedTopFoods = measuredCacheRef.current;
+  const useCachedTopFoods =
+    isResultsInteracting && cachedTopFoods?.signature === topFoodSignature;
+  const effectiveTopFoods = useCachedTopFoods
+    ? cachedTopFoods.foods
+    : isResultsInteracting && !hasMeasured
+    ? fastVisibleTopFoods
+    : visibleTopFoods;
+  const effectiveHiddenTopFoodCount = useCachedTopFoods
+    ? cachedTopFoods.hiddenCount
+    : isResultsInteracting && !hasMeasured
+    ? fastHiddenTopFoodCount
+    : hiddenTopFoodCount;
+  const showDishCountLabel =
+    topFoodItems.length > 0 &&
+    effectiveTopFoods.length === 0 &&
+    effectiveHiddenTopFoodCount === topFoodItems.length;
+  const dishCountLabel =
+    topFoodItems.length === 1 ? '1 dish' : `${topFoodItems.length} dishes`;
+  const shouldRenderMeasurements = !isResultsInteracting && !hasMeasured;
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -168,7 +217,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       >
         <View style={styles.resultHeader}>
           <View style={styles.resultTitleContainer}>
-            <View style={styles.titleRow}>
+            <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                 <Text variant="body" style={styles.rankBadgeText}>
                   {index + 1}
@@ -293,9 +342,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                     </View>
                     <View style={styles.topFoodDivider} />
                   </View>
-                  <View style={styles.topFoodInlineRow}>
+                  <View style={[styles.topFoodInlineRow, { width: topFoodInlineWidth }]}>
                     <View style={styles.topFoodInlineList}>
-                      {visibleTopFoods.map((food, idx) => (
+                      {effectiveTopFoods.map((food, idx) => (
                         <Text key={food.connectionId} style={styles.topFoodInlineText}>
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
@@ -306,42 +355,48 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           </Text>
                         </Text>
                       ))}
-                      {hiddenTopFoodCount > 0 ? (
+                      {showDishCountLabel ? (
                         <Text variant="body" weight="semibold" style={styles.topFoodMore}>
-                          +{hiddenTopFoodCount} more
+                          {dishCountLabel}
+                        </Text>
+                      ) : effectiveHiddenTopFoodCount > 0 ? (
+                        <Text variant="body" weight="semibold" style={styles.topFoodMore}>
+                          +{effectiveHiddenTopFoodCount} more
                         </Text>
                       ) : null}
                     </View>
-                    <View style={styles.topFoodInlineMeasure}>
-                      {candidateTopFoods.map((food, idx) => (
-                        <Text
-                          key={`${food.connectionId}-measure`}
-                          style={styles.topFoodInlineText}
-                          numberOfLines={1}
-                          onLayout={onItemLayout(food.connectionId)}
-                        >
-                          <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
-                            {idx + 1}.
+                    {shouldRenderMeasurements ? (
+                      <View style={styles.topFoodInlineMeasure}>
+                        {candidateTopFoods.map((food, idx) => (
+                          <Text
+                            key={`${food.connectionId}-measure`}
+                            style={styles.topFoodInlineText}
+                            numberOfLines={1}
+                            onLayout={onItemLayout(food.connectionId)}
+                          >
+                            <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
+                              {idx + 1}.
+                            </Text>
+                            <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
+                              {' '}
+                              {food.foodName}
+                            </Text>
                           </Text>
-                          <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
-                            {' '}
-                            {food.foodName}
+                        ))}
+                        {topFoodMoreCounts.map((count) => (
+                          <Text
+                            key={`top-food-more-${count}`}
+                            variant="body"
+                            weight="semibold"
+                            style={styles.topFoodMore}
+                            numberOfLines={1}
+                            onLayout={onMoreLayout(count)}
+                          >
+                            +{count} more
                           </Text>
-                        </Text>
-                      ))}
-                      {topFoodMoreCounts.map((count) => (
-                        <Text
-                          key={`top-food-more-${count}`}
-                          variant="body"
-                          weight="semibold"
-                          style={styles.topFoodMore}
-                          numberOfLines={1}
-                          onLayout={onMoreLayout(count)}
-                        >
-                          +{count} more
-                        </Text>
-                      ))}
-                    </View>
+                        ))}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               ) : null}

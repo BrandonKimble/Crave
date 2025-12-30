@@ -6,6 +6,7 @@ export type {
   FoodResult,
   MapBounds,
   NaturalSearchRequest,
+  OperatingStatus,
   Pagination,
   QueryFormat,
   QueryPlan,

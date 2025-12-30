@@ -11,9 +11,12 @@ import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import type { RecentSearch, RecentlyViewedRestaurant } from '../../services/search';
 import type { RootStackParamList } from '../../types/navigation';
+import type { Coordinate } from '../../types';
 import useSearchHistory from './hooks/use-search-history';
+import useRestaurantStatusPreviews from './hooks/use-restaurant-status-previews';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
+import { renderMetaDetailLine } from './components/render-meta-detail-line';
 
 type HistoryMode = 'recentSearches' | 'recentlyViewed';
 
@@ -28,6 +31,7 @@ type HistorySection<T> = {
 type RecentHistoryViewProps = {
   mode: HistoryMode;
   title: string;
+  userLocation?: Coordinate | null;
 };
 
 const ICON_COLOR = '#000000';
@@ -116,7 +120,7 @@ const buildSections = <T,>(
   })).filter((section) => section.items.length > 0);
 };
 
-const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title }) => {
+const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title, userLocation }) => {
   const { isSignedIn } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -141,13 +145,17 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title }) =>
     void loadRecentlyViewedRestaurants();
   }, [isRecentMode, loadRecentHistory, loadRecentlyViewedRestaurants]);
 
+  const dedupedRecentlyViewed = React.useMemo(
+    () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
+    [recentlyViewedRestaurants, recentSearches]
+  );
+
   const sections = React.useMemo(() => {
     if (isRecentMode) {
       return buildSections(recentSearches, (item) => item.lastSearchedAt, previousLabel);
     }
-    const deduped = filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches);
-    return buildSections(deduped, (item) => item.lastViewedAt, previousLabel);
-  }, [isRecentMode, recentSearches, recentlyViewedRestaurants, previousLabel]);
+    return buildSections(dedupedRecentlyViewed, (item) => item.lastViewedAt, previousLabel);
+  }, [isRecentMode, recentSearches, dedupedRecentlyViewed, previousLabel]);
 
   const hasSections = sections.length > 0;
   const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No restaurants viewed yet';
@@ -156,31 +164,92 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title }) =>
     [insets.bottom]
   );
 
-  const renderRecentRow = (item: RecentSearch, index: number) => (
-    <View key={`${item.queryText}-${item.lastSearchedAt}`} style={styles.recentRow}>
-      <View style={styles.recentIcon}>
-        <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
-      </View>
-      <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-        <Text style={styles.recentText} numberOfLines={1}>
-          {item.queryText}
-        </Text>
-      </View>
-    </View>
-  );
+  const restaurantStatusIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (isRecentMode) {
+      recentSearches.forEach((item) => {
+        if (item.selectedEntityType === 'restaurant' && item.selectedEntityId) {
+          ids.add(item.selectedEntityId);
+        }
+      });
+    } else {
+      dedupedRecentlyViewed.forEach((item) => {
+        ids.add(item.restaurantId);
+      });
+    }
+    return Array.from(ids);
+  }, [isRecentMode, recentSearches, dedupedRecentlyViewed]);
 
-  const renderRecentlyViewedRow = (item: RecentlyViewedRestaurant, index: number) => (
-    <View key={item.restaurantId} style={styles.recentRow}>
-      <View style={styles.recentIcon}>
-        <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
+  const restaurantStatusPreviews = useRestaurantStatusPreviews(restaurantStatusIds, {
+    enabled: restaurantStatusIds.length > 0 && Boolean(isSignedIn),
+    userLocation,
+  });
+
+  const renderStatusLine = (restaurantId?: string | null) => {
+    if (!restaurantId) {
+      return null;
+    }
+    const preview = restaurantStatusPreviews[restaurantId];
+    if (!preview) {
+      return null;
+    }
+    const statusLine = renderMetaDetailLine(
+      preview.operatingStatus ?? null,
+      null,
+      null,
+      'left',
+      undefined,
+      true,
+      true,
+      preview.locationCount ?? null
+    );
+    if (!statusLine) {
+      return null;
+    }
+    return <View style={styles.metaLine}>{statusLine}</View>;
+  };
+
+  const renderRecentRow = (item: RecentSearch, index: number) => {
+    const statusLine =
+      item.selectedEntityType === 'restaurant'
+        ? renderStatusLine(item.selectedEntityId)
+        : null;
+    return (
+      <View key={`${item.queryText}-${item.lastSearchedAt}`} style={styles.recentRow}>
+        <View style={styles.recentIcon}>
+          <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
+        </View>
+        <View
+          style={[
+            styles.recentRowContent,
+            index === 0 && styles.recentRowFirst,
+          ]}
+        >
+          <Text style={styles.recentText} numberOfLines={1}>
+            {item.queryText}
+          </Text>
+          {statusLine}
+        </View>
       </View>
-      <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-        <Text style={styles.recentText} numberOfLines={1}>
-          {item.restaurantName}
-        </Text>
+    );
+  };
+
+  const renderRecentlyViewedRow = (item: RecentlyViewedRestaurant, index: number) => {
+    const statusLine = renderStatusLine(item.restaurantId);
+    return (
+      <View key={item.restaurantId} style={styles.recentRow}>
+        <View style={styles.recentIcon}>
+          <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
+        </View>
+        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
+          <Text style={styles.recentText} numberOfLines={1}>
+            {item.restaurantName}
+          </Text>
+          {statusLine}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -299,6 +368,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
+    gap: 2,
   },
   recentRowFirst: {
     borderTopWidth: 0,
@@ -313,6 +383,9 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.subtitle,
     color: '#1f2937',
     flex: 1,
+  },
+  metaLine: {
+    marginTop: 2,
   },
 });
 
