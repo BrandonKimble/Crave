@@ -8,7 +8,7 @@ import {
   SearchResponseDto,
   SearchResultClickDto,
 } from './dto/search-query.dto';
-import { SearchService } from './search.service';
+import { SearchService, type SearchHistoryEntry } from './search.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
@@ -62,7 +62,7 @@ export class SearchController {
   async listHistory(
     @Query() query: ListSearchHistoryDto,
     @CurrentUser() user: User,
-  ): Promise<string[]> {
+  ): Promise<SearchHistoryEntry[]> {
     return this.searchService.listRecentSearches(user.userId, query.limit);
   }
 }

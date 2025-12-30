@@ -21,15 +21,16 @@ import SquircleSpinner from '../../../components/SquircleSpinner';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
-import type { RecentlyViewedRestaurant } from '../../../services/search';
+import type { RecentSearch, RecentlyViewedRestaurant } from '../../../services/search';
 import { ACTIVE_TAB_COLOR } from '../constants/search';
+import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 
 type SearchSuggestionsProps = {
   visible: boolean;
   showAutocomplete: boolean;
   showRecent: boolean;
   suggestions: AutocompleteMatch[];
-  recentSearches: string[];
+  recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   hasRecentSearches: boolean;
   hasRecentlyViewedRestaurants: boolean;
@@ -39,10 +40,13 @@ type SearchSuggestionsProps = {
   onSelectSuggestion: (match: AutocompleteMatch) => void;
   onSelectRecent: (term: string) => void;
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
+  onPressRecentViewMore: () => void;
+  onPressRecentlyViewedMore: () => void;
   style?: StyleProp<ViewStyle>;
 };
 
 const ICON_COLOR = '#000000';
+const RECENT_PREVIEW_LIMIT = 5;
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   visible,
@@ -59,6 +63,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   onSelectSuggestion,
   onSelectRecent,
   onSelectRecentlyViewed,
+  onPressRecentViewMore,
+  onPressRecentlyViewedMore,
   style,
 }) => {
   if (!visible) {
@@ -74,6 +80,17 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   const shouldShowAutocompleteSpinner =
     showAutocomplete && isAutocompleteLoading && suggestions.length === 0;
+  const recentSearchesToRender = recentSearches.slice(0, RECENT_PREVIEW_LIMIT);
+  const recentlyViewedDeduped = React.useMemo(
+    () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
+    [recentlyViewedRestaurants, recentSearches]
+  );
+  const recentlyViewedToRender = recentlyViewedDeduped.slice(0, RECENT_PREVIEW_LIMIT);
+  const hasRecentlyViewedToRender = recentlyViewedDeduped.length > 0;
+  const shouldShowRecentViewMore =
+    !isRecentLoading && recentSearches.length > RECENT_PREVIEW_LIMIT;
+  const shouldShowRecentlyViewedMore =
+    !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENT_PREVIEW_LIMIT;
 
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
@@ -94,43 +111,48 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               typeof match.locationCount === 'number' ? match.locationCount : null;
             const shouldShowLocationCount =
               match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
-            const leadingIcon = isQuery ? (
-              <SearchIcon size={18} color={ICON_COLOR} strokeWidth={2} />
+            const isRecentQuery = Boolean(match.badges?.recentQuery);
+            const isViewed = Boolean(match.badges?.viewed);
+            const leadingIcon = isRecentQuery ? (
+              <Clock size={20} color={ICON_COLOR} strokeWidth={2} />
+            ) : isViewed ? (
+              <ViewIcon size={20} color={ICON_COLOR} strokeWidth={2} />
+            ) : isQuery ? (
+              <SearchIcon size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : match.entityType === 'restaurant' ? (
-              <Store size={18} color={ICON_COLOR} strokeWidth={2} />
+              <Store size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : (
-              <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
+              <HandPlatter size={20} color={ICON_COLOR} strokeWidth={2} />
             );
             return (
               <TouchableOpacity
                 key={itemKey}
                 onPress={() => onSelectSuggestion(match)}
-                style={[
-                  styles.autocompleteItemRow,
-                  index === suggestions.length - 1 ? styles.autocompleteItemLast : null,
-                ]}
+                style={styles.autocompleteItemRow}
               >
                 <View style={styles.autocompleteLeadingIcon}>{leadingIcon}</View>
-                <View style={styles.autocompleteTextGroup}>
-                  <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
-                    {match.name}
-                  </Text>
-                  {shouldShowLocationCount ? (
-                    <Text style={styles.autocompleteSecondaryText} numberOfLines={1}>
-                      {`${locationCount} locations`}
+                <View
+                  style={[
+                    styles.autocompleteItemContent,
+                    index === 0 ? styles.autocompleteItemFirst : null,
+                    index === suggestions.length - 1 ? styles.autocompleteItemLast : null,
+                  ]}
+                >
+                  <View style={styles.autocompleteTextGroup}>
+                    <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
+                      {match.name}
                     </Text>
-                  ) : null}
-                </View>
-                <View style={styles.autocompleteBadges}>
-                  {match.badges?.recentQuery ? (
-                    <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
-                  ) : null}
-                  {match.badges?.viewed ? (
-                    <ViewIcon size={16} color={ICON_COLOR} strokeWidth={2} />
-                  ) : null}
-                  {match.badges?.favorite ? (
-                    <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
-                  ) : null}
+                    {shouldShowLocationCount ? (
+                      <Text style={styles.autocompleteSecondaryText} numberOfLines={1}>
+                        {`${locationCount} locations`}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <View style={styles.autocompleteBadges}>
+                    {match.badges?.favorite ? (
+                      <Heart size={16} color={ICON_COLOR} strokeWidth={2} />
+                    ) : null}
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -152,20 +174,38 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           {!isRecentLoading && !hasRecentSearches ? (
             <Text style={styles.recentEmptyText}>No recent searches yet</Text>
           ) : (
-            recentSearches.map((term, index) => (
-              <TouchableOpacity
-                key={`${term}-${index}`}
-                onPress={() => onSelectRecent(term)}
-                style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-              >
-                <View style={styles.recentIcon}>
-                  <Clock size={16} color={ICON_COLOR} strokeWidth={2} />
-                </View>
-                <Text style={styles.recentText} numberOfLines={1}>
-                  {term}
-                </Text>
-              </TouchableOpacity>
-            ))
+            <>
+              {recentSearchesToRender.map((term, index) => (
+                <TouchableOpacity
+                  key={`${term.queryText}-${index}`}
+                  onPress={() => onSelectRecent(term.queryText)}
+                  style={styles.recentRow}
+                >
+                  <View style={styles.recentIcon}>
+                    <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
+                  </View>
+                  <View
+                    style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
+                  >
+                    <Text style={styles.recentText} numberOfLines={1}>
+                      {term.queryText}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {shouldShowRecentViewMore ? (
+                <TouchableOpacity
+                  onPress={onPressRecentViewMore}
+                  style={styles.recentViewMore}
+                  accessibilityRole="button"
+                  accessibilityLabel="View more recent searches"
+                >
+                  <Text variant="body" weight="semibold" style={styles.recentViewMoreText}>
+                    View more
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
 
           <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
@@ -174,23 +214,41 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               <ActivityIndicator size="small" color={themeColors.textBody} />
             )}
           </View>
-          {!isRecentlyViewedLoading && !hasRecentlyViewedRestaurants ? (
+          {!isRecentlyViewedLoading && !hasRecentlyViewedToRender ? (
             <Text style={styles.recentEmptyText}>No restaurants viewed yet</Text>
           ) : (
-            recentlyViewedRestaurants.map((item, index) => (
-              <TouchableOpacity
-                key={`${item.restaurantId}-${index}`}
-                onPress={() => onSelectRecentlyViewed(item)}
-                style={[styles.recentRow, index === 0 && styles.recentRowFirst]}
-              >
-                <View style={styles.recentIcon}>
-                  <ViewIcon size={16} color={ICON_COLOR} strokeWidth={2} />
-                </View>
-                <Text style={styles.recentText} numberOfLines={1}>
-                  {item.restaurantName}
-                </Text>
-              </TouchableOpacity>
-            ))
+            <>
+              {recentlyViewedToRender.map((item, index) => (
+                <TouchableOpacity
+                  key={`${item.restaurantId}-${index}`}
+                  onPress={() => onSelectRecentlyViewed(item)}
+                  style={styles.recentRow}
+                >
+                  <View style={styles.recentIcon}>
+                    <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
+                  </View>
+                  <View
+                    style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}
+                  >
+                    <Text style={styles.recentText} numberOfLines={1}>
+                      {item.restaurantName}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {shouldShowRecentlyViewedMore ? (
+                <TouchableOpacity
+                  onPress={onPressRecentlyViewedMore}
+                  style={[styles.recentViewMore, styles.recentViewMoreLast]}
+                  accessibilityRole="button"
+                  accessibilityLabel="View more recently viewed restaurants"
+                >
+                  <Text variant="body" weight="semibold" style={styles.recentViewMoreText}>
+                    View more
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           )}
         </View>
       ) : null}
@@ -204,7 +262,8 @@ const styles = StyleSheet.create({
   },
   autocompleteSectionSurface: {
     paddingHorizontal: 0,
-    paddingVertical: 16,
+    paddingTop: 12,
+    paddingBottom: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
   },
@@ -215,24 +274,32 @@ const styles = StyleSheet.create({
   },
   autocompleteItemRow: {
     paddingHorizontal: 0,
-    paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  autocompleteItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
   autocompleteItemLast: {
     borderBottomWidth: 0,
   },
+  autocompleteItemFirst: {
+    paddingTop: 0,
+  },
   autocompleteLeadingIcon: {
-    width: 22,
+    width: 24,
     alignItems: 'center',
   },
   autocompletePrimaryText: {
     fontSize: FONT_SIZES.subtitle,
     lineHeight: LINE_HEIGHTS.subtitle,
-    fontWeight: '600',
+    fontWeight: '400',
     color: '#111827',
   },
   autocompleteTextGroup: {
@@ -252,7 +319,8 @@ const styles = StyleSheet.create({
   },
   recentSection: {
     paddingHorizontal: 0,
-    paddingVertical: 16,
+    paddingTop: 12,
+    paddingBottom: 0,
   },
   recentSectionGap: {
     marginTop: 12,
@@ -284,7 +352,10 @@ const styles = StyleSheet.create({
   recentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+  },
+  recentRowContent: {
+    flex: 1,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
   },
@@ -293,7 +364,7 @@ const styles = StyleSheet.create({
   },
   recentIcon: {
     marginRight: 10,
-    width: 20,
+    width: 22,
     alignItems: 'center',
   },
   recentText: {
@@ -301,6 +372,20 @@ const styles = StyleSheet.create({
     lineHeight: LINE_HEIGHTS.subtitle,
     color: '#1f2937',
     flex: 1,
+  },
+  recentViewMore: {
+    alignSelf: 'center',
+    marginTop: 0,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentViewMoreLast: {
+    marginBottom: 12,
+  },
+  recentViewMoreText: {
+    color: themeColors.secondaryAccent,
   },
 });
 

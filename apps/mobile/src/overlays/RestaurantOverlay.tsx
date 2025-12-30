@@ -436,6 +436,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   return (
     <BottomSheetWithFlashList
       visible={visible}
+      animateOnMount
       snapPoints={snapPoints}
       initialSnapPoint="middle"
       data={dishes}

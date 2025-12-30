@@ -79,6 +79,7 @@ type BottomSheetWithFlashListProps<T> = {
   listKey?: string;
   preventSwipeDismiss?: boolean;
   interactionEnabled?: boolean;
+  animateOnMount?: boolean;
   flashListProps?: Partial<
     Omit<
       FlashListProps<T>,
@@ -193,6 +194,7 @@ const BottomSheetWithFlashList = <T,>({
   dismissThreshold,
   preventSwipeDismiss = false,
   interactionEnabled = true,
+  animateOnMount = false,
   flashListProps,
   sheetYValue,
   sheetYObserver,
@@ -211,7 +213,8 @@ const BottomSheetWithFlashList = <T,>({
   const hiddenSnap = snapPoints.hidden;
   const initialSnapValue = snapPoints[initialSnapPoint];
   const hiddenOrCollapsed = hiddenSnap ?? collapsedSnap;
-  const initialSheetY = visible ? initialSnapValue : hiddenOrCollapsed;
+  const shouldAnimateOnMount = animateOnMount && visible && !sheetYValue;
+  const initialSheetY = shouldAnimateOnMount ? hiddenOrCollapsed : visible ? initialSnapValue : hiddenOrCollapsed;
   const internalSheetY = useSharedValue(initialSheetY);
   const sheetY = sheetYValue ?? internalSheetY;
   const currentSnapKeyRef = React.useRef<SheetSnapPoint | 'hidden'>(

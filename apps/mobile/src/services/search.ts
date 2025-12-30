@@ -23,6 +23,11 @@ export interface StructuredSearchRequest {
   minimumVotes?: number;
 }
 
+export type RecentSearch = {
+  queryText: string;
+  lastSearchedAt: string;
+};
+
 export type RecentlyViewedRestaurant = {
   restaurantId: string;
   restaurantName: string;
@@ -55,8 +60,8 @@ export const searchService = {
     });
     return data;
   },
-  recentHistory: async (limit = 8): Promise<string[]> => {
-    const { data } = await api.get<string[]>('/search/history', {
+  recentHistory: async (limit = 8): Promise<RecentSearch[]> => {
+    const { data } = await api.get<RecentSearch[]>('/search/history', {
       params: { limit },
     });
     return data;

@@ -26,6 +26,8 @@ import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -52,6 +54,7 @@ import type {
   MapBounds,
   Coordinate,
 } from '../../types';
+import type { RootStackParamList } from '../../types/navigation';
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import ProfileOverlay from '../../overlays/ProfileOverlay';
@@ -62,6 +65,7 @@ import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
+import { useKeyedCallback } from '../../hooks/useCallbackFactory';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
@@ -80,6 +84,7 @@ import useSearchChromeTransition from './hooks/use-search-chrome-transition';
 import useSearchHistory from './hooks/use-search-history';
 import useSearchSheet from './hooks/use-search-sheet';
 import useSearchSubmit from './hooks/use-search-submit';
+import { SearchInteractionProvider } from './context/SearchInteractionContext';
 import styles from './styles';
 import {
   ACTIVE_TAB_COLOR,
@@ -157,8 +162,7 @@ const PROFILE_CAMERA_ANIMATION_MS = 800;
 const PROFILE_RESTORE_ANIMATION_MS = 650;
 const PROFILE_TRANSITION_LOCK_MS = 750;
 const FIT_BOUNDS_SYNC_BUFFER_MS = 160;
-const RESULTS_SHEET_FADE_OUT_MS = 300;
-const RESULTS_SHEET_FADE_IN_MS = 320;
+const RESULTS_WASH_FADE_MS = 220;
 
 type MapCameraPadding = {
   paddingTop: number;
@@ -190,6 +194,7 @@ type ProfileTransitionState = {
 const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
@@ -299,6 +304,9 @@ const SearchScreen: React.FC = () => {
       }
       if (fitBoundsSyncTimeoutRef.current) {
         clearTimeout(fitBoundsSyncTimeoutRef.current);
+      }
+      if (cameraStateSyncTimeoutRef.current) {
+        clearTimeout(cameraStateSyncTimeoutRef.current);
       }
     };
   }, []);
@@ -597,11 +605,32 @@ const SearchScreen: React.FC = () => {
     listType: FavoriteListType;
     target: { restaurantId?: string; connectionId?: string } | null;
   }>({ visible: false, listType: 'restaurant', target: null });
+
+  // Stable callback factories for save handlers - prevents inline closures from breaking React.memo
+  const getDishSaveHandler = useKeyedCallback(
+    (connectionId: string) =>
+      setSaveSheetState({
+        visible: true,
+        listType: 'dish',
+        target: { connectionId },
+      }),
+    []
+  );
+
+  const getRestaurantSaveHandler = useKeyedCallback(
+    (restaurantId: string) =>
+      setSaveSheetState({
+        visible: true,
+        listType: 'restaurant',
+        target: { restaurantId },
+      }),
+    []
+  );
+
   const [restaurantProfile, setRestaurantProfile] = React.useState<RestaurantOverlayData | null>(
     null
   );
   const [isRestaurantOverlayVisible, setRestaurantOverlayVisible] = React.useState(false);
-  const [isResultsSheetSuspended, setResultsSheetSuspended] = React.useState(false);
   const [profileTransitionStatus, setProfileTransitionStatusState] =
     React.useState<ProfileTransitionStatus>('idle');
   const lastVisibleSheetStateRef = React.useRef<Exclude<OverlaySheetSnap, 'hidden'>>('middle');
@@ -638,6 +667,19 @@ const SearchScreen: React.FC = () => {
     isBookmarksSheetDragging ||
     isProfileSheetDragging ||
     isSaveSheetDragging;
+
+  // Memoized context value for cards to access interaction state
+  // This avoids passing isDragging as a prop which would require adding it to
+  // renderRestaurantCard's dependencies and cause ALL cards to re-render on drag state change
+  const searchInteractionContextValue = React.useMemo(
+    () => ({
+      isInteracting: isResultsSheetDragging || isResultsListScrolling,
+      isResultsSheetDragging,
+      isResultsListScrolling,
+    }),
+    [isResultsSheetDragging, isResultsListScrolling]
+  );
+
   const resetMapMoveFlag = React.useCallback(() => {
     if (mapIdleTimeoutRef.current) {
       clearTimeout(mapIdleTimeoutRef.current);
@@ -714,6 +756,7 @@ const SearchScreen: React.FC = () => {
   const inputRef = React.useRef<TextInput | null>(null);
   const ignoreNextSearchBlurRef = React.useRef(false);
   const resultsScrollRef = React.useRef<FlashListRef<FoodResult | RestaurantResult> | null>(null);
+  const resultsScrollingTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -728,7 +771,7 @@ const SearchScreen: React.FC = () => {
   const hasRestoredProfileMapRef = React.useRef(false);
   const profileTransitionTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const fitBoundsSyncTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resultsScrollOffsetRef = React.useRef(0);
+  const cameraStateSyncTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const userLocationRef = React.useRef<Coordinate | null>(null);
   const userLocationIsCachedRef = React.useRef(false);
   const locationWatchRef = React.useRef<Location.LocationSubscription | null>(null);
@@ -787,21 +830,18 @@ const SearchScreen: React.FC = () => {
       lastVisibleSheetStateRef.current = sheetState;
     }
   }, [sheetState]);
-  const resultsSheetOpacity = useSharedValue(1);
-  const resultsSheetOpacityAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsSheetOpacity.value,
-  }));
-  const resultsSheetShadowAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: resultsSheetOpacity.value,
-  }));
-  const shouldDimResultsSheet =
+  const shouldSuspendResultsSheet =
     profileTransitionStatus === 'opening' || profileTransitionStatus === 'open';
+  const resultsWashOpacity = useSharedValue(0);
+  const resultsWashAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: resultsWashOpacity.value,
+  }));
   React.useEffect(() => {
-    resultsSheetOpacity.value = withTiming(shouldDimResultsSheet ? 0 : 1, {
-      duration: shouldDimResultsSheet ? RESULTS_SHEET_FADE_OUT_MS : RESULTS_SHEET_FADE_IN_MS,
+    resultsWashOpacity.value = withTiming(shouldSuspendResultsSheet ? 1 : 0, {
+      duration: RESULTS_WASH_FADE_MS,
       easing: Easing.out(Easing.cubic),
     });
-  }, [resultsSheetOpacity, shouldDimResultsSheet]);
+  }, [resultsWashOpacity, shouldSuspendResultsSheet]);
   const pollsChromeSnaps = React.useMemo(() => {
     const expanded = resolveExpandedTop(searchBarTop, insets.top);
     const middle = Math.max(expanded + 140, SCREEN_HEIGHT * 0.45);
@@ -957,22 +997,43 @@ const SearchScreen: React.FC = () => {
   }, []);
   const handleResultsListScrollBegin = React.useCallback(() => {
     handleResultsScrollBeginDrag();
+    // Clear any pending debounce timeout and immediately set scrolling true
+    if (resultsScrollingTimeoutRef.current) {
+      clearTimeout(resultsScrollingTimeoutRef.current);
+      resultsScrollingTimeoutRef.current = null;
+    }
     setIsResultsListScrolling(true);
   }, [handleResultsScrollBeginDrag]);
   const handleResultsListScrollEnd = React.useCallback(() => {
     handleResultsScrollEndDrag();
     if (!resultsMomentum.value) {
-      setIsResultsListScrolling(false);
+      // Debounce the "scrolling ended" signal to reduce state transitions
+      if (resultsScrollingTimeoutRef.current) {
+        clearTimeout(resultsScrollingTimeoutRef.current);
+      }
+      resultsScrollingTimeoutRef.current = setTimeout(() => {
+        setIsResultsListScrolling(false);
+        resultsScrollingTimeoutRef.current = null;
+      }, 100);
     }
   }, [handleResultsScrollEndDrag, resultsMomentum]);
-  const handleResultsScrollOffsetChange = React.useCallback((offset: number) => {
-    resultsScrollOffsetRef.current = offset;
-  }, []);
   const handleResultsListMomentumBegin = React.useCallback(() => {
+    // Clear any pending debounce timeout and immediately set scrolling true
+    if (resultsScrollingTimeoutRef.current) {
+      clearTimeout(resultsScrollingTimeoutRef.current);
+      resultsScrollingTimeoutRef.current = null;
+    }
     setIsResultsListScrolling(true);
   }, []);
   const handleResultsListMomentumEnd = React.useCallback(() => {
-    setIsResultsListScrolling(false);
+    // Debounce the "scrolling ended" signal to reduce state transitions
+    if (resultsScrollingTimeoutRef.current) {
+      clearTimeout(resultsScrollingTimeoutRef.current);
+    }
+    resultsScrollingTimeoutRef.current = setTimeout(() => {
+      setIsResultsListScrolling(false);
+      resultsScrollingTimeoutRef.current = null;
+    }, 100);
   }, []);
 
   const handleOverlaySelect = React.useCallback(
@@ -2176,7 +2237,6 @@ const SearchScreen: React.FC = () => {
     }
     listRef.clearLayoutCacheOnUpdate?.();
     resultsScrollOffset.value = 0;
-    resultsScrollOffsetRef.current = 0;
     requestAnimationFrame(() => {
       listRef.scrollToOffset({ offset: 0, animated: false });
     });
@@ -2631,6 +2691,14 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
+  const handleRecentViewMorePress = React.useCallback(() => {
+    navigation.navigate('RecentSearches');
+  }, [navigation]);
+
+  const handleRecentlyViewedMorePress = React.useCallback(() => {
+    navigation.navigate('RecentlyViewed');
+  }, [navigation]);
+
   const handleMapPress = React.useCallback(() => {
     // Fully exit autocomplete: blur input, suppress suggestions, and clear loading state.
     Keyboard.dismiss();
@@ -2844,6 +2912,37 @@ const SearchScreen: React.FC = () => {
     }
   }, []);
 
+  const clearCameraStateSync = React.useCallback(() => {
+    if (cameraStateSyncTimeoutRef.current) {
+      clearTimeout(cameraStateSyncTimeoutRef.current);
+      cameraStateSyncTimeoutRef.current = null;
+    }
+  }, []);
+
+  const commitCameraState = React.useCallback(
+    (payload: { center: [number, number]; zoom: number; padding?: MapCameraPadding | null }) => {
+      setMapCenter(payload.center);
+      setMapZoom(payload.zoom);
+      setMapCameraPadding(payload.padding ?? null);
+      lastCameraStateRef.current = { center: payload.center, zoom: payload.zoom };
+    },
+    [setMapCameraPadding, setMapCenter, setMapZoom]
+  );
+
+  const scheduleCameraStateCommit = React.useCallback(
+    (
+      payload: { center: [number, number]; zoom: number; padding?: MapCameraPadding | null },
+      delayMs = PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS
+    ) => {
+      clearCameraStateSync();
+      cameraStateSyncTimeoutRef.current = setTimeout(() => {
+        cameraStateSyncTimeoutRef.current = null;
+        commitCameraState(payload);
+      }, delayMs);
+    },
+    [clearCameraStateSync, commitCameraState]
+  );
+
   const clearProfileTransitionLock = React.useCallback(() => {
     if (profileTransitionTimeoutRef.current) {
       clearTimeout(profileTransitionTimeoutRef.current);
@@ -2894,7 +2993,7 @@ const SearchScreen: React.FC = () => {
       }
     }
     if (transition.savedResultsScrollOffset === null) {
-      transition.savedResultsScrollOffset = resultsScrollOffsetRef.current;
+      transition.savedResultsScrollOffset = resultsScrollOffset.value;
     }
   }, [captureCameraSnapshot, sheetState]);
 
@@ -2953,16 +3052,22 @@ const SearchScreen: React.FC = () => {
   }, [clearCameraPersistTimeout]);
 
   const scheduleFitBoundsCameraSync = React.useCallback(
-    (delayMs = PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS) => {
+    (
+      delayMs = PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS,
+      paddingToApply?: MapCameraPadding | null
+    ) => {
       if (fitBoundsSyncTimeoutRef.current) {
         clearTimeout(fitBoundsSyncTimeoutRef.current);
       }
       fitBoundsSyncTimeoutRef.current = setTimeout(() => {
         fitBoundsSyncTimeoutRef.current = null;
+        if (paddingToApply !== undefined) {
+          setMapCameraPadding(paddingToApply);
+        }
         void syncCameraStateFromMap();
       }, delayMs);
     },
-    [syncCameraStateFromMap]
+    [setMapCameraPadding, syncCameraStateFromMap]
   );
 
   const focusRestaurantLocations = React.useCallback(
@@ -2988,9 +3093,7 @@ const SearchScreen: React.FC = () => {
         },
       };
 
-      if (options?.padding) {
-        setMapCameraPadding(options.padding);
-      }
+      clearCameraStateSync();
       setIsFollowingUser(false);
       clearCameraPersistTimeout();
       if (cameraRef.current?.fitBounds) {
@@ -3004,18 +3107,18 @@ const SearchScreen: React.FC = () => {
           paddingArray,
           animationDuration
         );
-        scheduleFitBoundsCameraSync(animationDuration + FIT_BOUNDS_SYNC_BUFFER_MS);
+        scheduleFitBoundsCameraSync(animationDuration + FIT_BOUNDS_SYNC_BUFFER_MS, padding);
       }
       return true;
     },
     [
       buildFitBoundsPadding,
       clearCameraPersistTimeout,
+      clearCameraStateSync,
       focusPaddingObject,
       resolveRestaurantMapLocations,
       scheduleFitBoundsCameraSync,
       setIsFollowingUser,
-      setMapCameraPadding,
       suppressMapMoved,
     ]
   );
@@ -3046,8 +3149,15 @@ const SearchScreen: React.FC = () => {
         setIsInitialCameraReady(true);
       }
       setProfileTransitionStatus('opening', 'open');
+      if (isSearchOverlay && sheetState !== 'hidden') {
+        animateSheetTo('collapsed');
+      }
       clearCameraPersistTimeout();
-      setResultsSheetSuspended(true);
+      clearCameraStateSync();
+      if (fitBoundsSyncTimeoutRef.current) {
+        clearTimeout(fitBoundsSyncTimeoutRef.current);
+        fitBoundsSyncTimeoutRef.current = null;
+      }
       // Store and hide save sheet if visible
       if (saveSheetState.visible && !previousSaveSheetStateRef.current) {
         previousSaveSheetStateRef.current = saveSheetState;
@@ -3059,8 +3169,7 @@ const SearchScreen: React.FC = () => {
         padding: profilePadding,
         animationDuration: PROFILE_CAMERA_ANIMATION_MS,
       });
-      if (!didFitBounds && cameraRef.current?.setCamera) {
-        setMapCameraPadding(profilePadding);
+      if (!didFitBounds) {
         const [location] = resolveRestaurantMapLocations(restaurant, false);
         if (location) {
           const nextCenter: [number, number] = [location.longitude, location.latitude];
@@ -3068,25 +3177,35 @@ const SearchScreen: React.FC = () => {
             lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
           if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
             clearCameraPersistTimeout();
-            setMapCameraPadding(profilePadding);
             setIsFollowingUser(false);
             suppressMapMoved();
-            setMapCenter(nextCenter);
-            setMapZoom(currentZoom);
-            lastCameraStateRef.current = { center: nextCenter, zoom: currentZoom };
-            cameraRef.current.setCamera({
-              centerCoordinate: nextCenter,
-              zoomLevel: currentZoom,
-              padding: profilePadding,
-              animationDuration: PROFILE_CAMERA_ANIMATION_MS,
-              animationMode: 'easeTo',
-            });
+            if (!cameraRef.current?.setCamera) {
+              commitCameraState({
+                center: nextCenter,
+                zoom: currentZoom,
+                padding: profilePadding,
+              });
+            } else {
+              cameraRef.current.setCamera({
+                centerCoordinate: nextCenter,
+                zoomLevel: currentZoom,
+                padding: profilePadding,
+                animationDuration: PROFILE_CAMERA_ANIMATION_MS,
+                animationMode: 'easeTo',
+              });
+              scheduleCameraStateCommit(
+                {
+                  center: nextCenter,
+                  zoom: currentZoom,
+                  padding: profilePadding,
+                },
+                PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS
+              );
+            }
           } else if (lastCameraStateRef.current) {
             lastCameraStateRef.current = { ...lastCameraStateRef.current, center: nextCenter };
           }
         }
-      } else {
-        setMapCameraPadding(profilePadding);
       }
 
       setRestaurantProfile({
@@ -3101,21 +3220,23 @@ const SearchScreen: React.FC = () => {
       void recordRestaurantView(restaurant.restaurantId, source);
     },
     [
+      animateSheetTo,
+      commitCameraState,
+      clearCameraStateSync,
       clearCameraPersistTimeout,
       dishes,
       ensureProfileTransitionSnapshot,
       focusRestaurantLocations,
+      isSearchOverlay,
       isInitialCameraReady,
       mapZoom,
       resolveRestaurantMapLocations,
       resolveProfileCameraPadding,
       saveSheetState,
+      scheduleCameraStateCommit,
       setIsInitialCameraReady,
-      setMapCameraPadding,
-      setMapCenter,
-      setMapZoom,
       setProfileTransitionStatus,
-      setResultsSheetSuspended,
+      sheetState,
       submittedQuery,
       suppressMapMoved,
       trimmedQuery,
@@ -3133,6 +3254,22 @@ const SearchScreen: React.FC = () => {
       openRestaurantProfile(restaurant, foodResultsOverride, 'results_sheet');
     },
     [openRestaurantProfile]
+  );
+
+  // Stable wrapper for openRestaurantProfileFromResults using ref pattern
+  // This prevents render callback dependencies from changing when openRestaurantProfile changes
+  const openRestaurantProfileFromResultsRef = React.useRef(openRestaurantProfileFromResults);
+  openRestaurantProfileFromResultsRef.current = openRestaurantProfileFromResults;
+
+  const stableOpenRestaurantProfileFromResults = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      foodResultsOverride?: FoodResult[],
+      source?: 'results_sheet' | 'auto_open_single_candidate'
+    ) => {
+      openRestaurantProfileFromResultsRef.current(restaurant, foodResultsOverride, source);
+    },
+    []
   );
 
   const handleMarkerPress = React.useCallback(
@@ -3210,29 +3347,40 @@ const SearchScreen: React.FC = () => {
         paddingRight: 0,
       };
       clearCameraPersistTimeout();
+      clearCameraStateSync();
       setIsFollowingUser(false);
       suppressMapMoved();
-      setMapCameraPadding(snapshot.padding);
-      setMapCenter(snapshot.center);
-      setMapZoom(snapshot.zoom);
-      lastCameraStateRef.current = { center: snapshot.center, zoom: snapshot.zoom };
       if (!cameraRef.current?.setCamera) {
+        commitCameraState({
+          center: snapshot.center,
+          zoom: snapshot.zoom,
+          padding: snapshot.padding ?? null,
+        });
         return;
       }
+      const animationDuration = options?.animationDuration ?? PROFILE_RESTORE_ANIMATION_MS;
       cameraRef.current.setCamera({
         centerCoordinate: snapshot.center,
         zoomLevel: snapshot.zoom,
         padding,
-        animationDuration: options?.animationDuration ?? PROFILE_RESTORE_ANIMATION_MS,
+        animationDuration,
         animationMode: 'easeTo',
       });
+      scheduleCameraStateCommit(
+        {
+          center: snapshot.center,
+          zoom: snapshot.zoom,
+          padding: snapshot.padding ?? null,
+        },
+        animationDuration + FIT_BOUNDS_SYNC_BUFFER_MS
+      );
     },
     [
+      clearCameraStateSync,
       clearCameraPersistTimeout,
+      commitCameraState,
+      scheduleCameraStateCommit,
       setIsFollowingUser,
-      setMapCameraPadding,
-      setMapCenter,
-      setMapZoom,
       suppressMapMoved,
     ]
   );
@@ -3242,6 +3390,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     hasRestoredProfileMapRef.current = true;
+    clearCameraStateSync();
     if (fitBoundsSyncTimeoutRef.current) {
       clearTimeout(fitBoundsSyncTimeoutRef.current);
       fitBoundsSyncTimeoutRef.current = null;
@@ -3253,7 +3402,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     applyCameraSnapshot(snapshot, { animationDuration: PROFILE_RESTORE_ANIMATION_MS });
-  }, [applyCameraSnapshot, setMapCameraPadding]);
+  }, [applyCameraSnapshot, clearCameraStateSync, setMapCameraPadding]);
 
   const restoreSearchSheetState = React.useCallback(() => {
     const transition = profileTransitionRef.current;
@@ -3271,7 +3420,6 @@ const SearchScreen: React.FC = () => {
     if (offset === null) {
       return;
     }
-    resultsScrollOffsetRef.current = offset;
     resultsScrollOffset.value = offset;
     const applyOffset = () => {
       resultsScrollRef.current?.scrollToOffset({ offset, animated: false });
@@ -3309,7 +3457,6 @@ const SearchScreen: React.FC = () => {
       setSaveSheetState(previousSaveSheetStateRef.current);
     }
     previousSaveSheetStateRef.current = null;
-    setResultsSheetSuspended(false);
     restoreResultsScrollOffset();
     hasRestoredProfileMapRef.current = false;
     profileTransitionRef.current = {
@@ -3326,7 +3473,6 @@ const SearchScreen: React.FC = () => {
     restoreRestaurantProfileMap,
     restoreResultsScrollOffset,
     restoreSearchSheetState,
-    setResultsSheetSuspended,
     setProfileTransitionStatusState,
   ]);
   const dishesCount = dishes.length;
@@ -3360,22 +3506,17 @@ const SearchScreen: React.FC = () => {
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
           restaurantForDish={restaurantForDish}
-          onSavePress={() =>
-            setSaveSheetState({
-              visible: true,
-              listType: 'dish',
-              target: { connectionId: item.connectionId },
-            })
-          }
-          openRestaurantProfile={openRestaurantProfileFromResults}
+          onSavePress={getDishSaveHandler(item.connectionId)}
+          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
         />
       );
     },
     [
       dishesCount,
+      getDishSaveHandler,
       hasCrossCoverage,
-      openRestaurantProfileFromResults,
+      stableOpenRestaurantProfileFromResults,
       openScoreInfo,
       primaryCoverageKey,
       restaurantsById,
@@ -3393,22 +3534,17 @@ const SearchScreen: React.FC = () => {
           isLiked={isLiked}
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
-          onSavePress={() =>
-            setSaveSheetState({
-              visible: true,
-              listType: 'restaurant',
-              target: { restaurantId: restaurant.restaurantId },
-            })
-          }
-          openRestaurantProfile={openRestaurantProfileFromResults}
+          onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
+          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
           openScoreInfo={openScoreInfo}
           primaryFoodTerm={primaryFoodTerm}
         />
       );
     },
     [
+      getRestaurantSaveHandler,
       hasCrossCoverage,
-      openRestaurantProfileFromResults,
+      stableOpenRestaurantProfileFromResults,
       openScoreInfo,
       primaryFoodTerm,
       primaryCoverageKey,
@@ -3416,23 +3552,37 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
-  const filtersHeader = (
-    <SearchFilters
-      activeTab={activeTab}
-      onTabChange={setActiveTab}
-      openNow={openNow}
-      onToggleOpenNow={toggleOpenNow}
-      votesFilterActive={votesFilterActive}
-      onToggleVotesFilter={toggleVotesFilter}
-      priceButtonLabel={priceButtonLabelText}
-      priceButtonActive={priceButtonIsActive}
-      onTogglePriceSelector={togglePriceSelector}
-      isPriceSelectorVisible={isPriceSelectorVisible}
-      contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
-      accentColor={ACTIVE_TAB_COLOR}
-      initialLayoutCache={searchFiltersLayoutCacheRef.current}
-      onLayoutCacheChange={handleSearchFiltersLayoutCache}
-    />
+  const filtersHeader = React.useMemo(
+    () => (
+      <SearchFilters
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        openNow={openNow}
+        onToggleOpenNow={toggleOpenNow}
+        votesFilterActive={votesFilterActive}
+        onToggleVotesFilter={toggleVotesFilter}
+        priceButtonLabel={priceButtonLabelText}
+        priceButtonActive={priceButtonIsActive}
+        onTogglePriceSelector={togglePriceSelector}
+        isPriceSelectorVisible={isPriceSelectorVisible}
+        contentHorizontalPadding={CONTENT_HORIZONTAL_PADDING}
+        accentColor={ACTIVE_TAB_COLOR}
+        initialLayoutCache={searchFiltersLayoutCacheRef.current}
+        onLayoutCacheChange={handleSearchFiltersLayoutCache}
+      />
+    ),
+    [
+      activeTab,
+      openNow,
+      votesFilterActive,
+      priceButtonLabelText,
+      priceButtonIsActive,
+      isPriceSelectorVisible,
+      toggleOpenNow,
+      toggleVotesFilter,
+      togglePriceSelector,
+      handleSearchFiltersLayoutCache,
+    ]
   );
 
   const dishKeyExtractor = React.useCallback((item: FoodResult, index: number) => {
@@ -3577,6 +3727,20 @@ const SearchScreen: React.FC = () => {
       </View>
     );
   }, [filtersHeaderHeight, resultsSheetHeaderHeight, shouldShowResultsOverlay]);
+  const resultsWashTopOffset = Math.max(0, resultsSheetHeaderHeight + filtersHeaderHeight);
+  const resultsOverlayComponent = (
+    <>
+      <Reanimated.View
+        pointerEvents="none"
+        style={[
+          styles.resultsWashOverlay,
+          { top: resultsWashTopOffset },
+          resultsWashAnimatedStyle,
+        ]}
+      />
+      {resultsLoadingOverlay}
+    </>
+  );
 
   const ResultItemSeparator = React.useCallback(() => {
     return <View style={styles.resultItemSeparator} />;
@@ -3782,13 +3946,13 @@ const SearchScreen: React.FC = () => {
           <AppBlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
         </MaskedView>
       </View>
-
       {shouldRenderSearchOverlay && (
-        <SafeAreaView
-          style={styles.overlay}
-          pointerEvents="box-none"
-          edges={['top', 'left', 'right']}
-        >
+        <>
+          <SafeAreaView
+            style={styles.overlay}
+            pointerEvents="box-none"
+            edges={['top', 'left', 'right']}
+          >
           {isSearchOverlay ? (
             <Reanimated.View
               pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
@@ -3873,6 +4037,8 @@ const SearchScreen: React.FC = () => {
                     onSelectSuggestion={handleSuggestionPress}
                     onSelectRecent={handleRecentSearchPress}
                     onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                    onPressRecentViewMore={handleRecentViewMorePress}
+                    onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
                   />
                 ) : null}
               </Reanimated.ScrollView>
@@ -4057,51 +4223,50 @@ const SearchScreen: React.FC = () => {
               </Text>
             </Pressable>
           </Reanimated.View>
-          <SearchResultsSheet
-            visible={shouldRenderSheet}
-            listScrollEnabled={
-              !isPriceSelectorVisible && !isFilterTogglePending && !isResultsSheetSuspended
-            }
-            snapPoints={snapPoints}
-            initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
-            sheetYValue={sheetTranslateY}
-            scrollOffsetValue={resultsScrollOffset}
-            momentumFlag={resultsMomentum}
-            onScrollOffsetChange={handleResultsScrollOffsetChange}
-            onScrollBeginDrag={handleResultsListScrollBegin}
-            onScrollEndDrag={handleResultsListScrollEnd}
-            onMomentumBeginJS={handleResultsListMomentumBegin}
-            onMomentumEndJS={handleResultsListMomentumEnd}
-            onDragStateChange={handleResultsSheetDragStateChange}
-            interactionEnabled={!isResultsSheetSuspended}
-            onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
-            data={safeResultsData}
-            renderItem={renderSafeItem}
-            keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
-            estimatedItemSize={estimatedItemSize}
-            getItemType={getResultItemType}
-            overrideItemLayout={overrideResultItemLayout}
-            listKey={resultsListKey}
-            contentContainerStyle={{
-              paddingBottom: safeResultsData.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
-            }}
-            ListHeaderComponent={listHeader}
-            ListFooterComponent={resultsListFooterComponent}
-            ListEmptyComponent={resultsListEmptyComponent}
-            ItemSeparatorComponent={ResultItemSeparator}
-            headerComponent={resultsHeaderComponent}
-            backgroundComponent={resultsListBackground}
-            overlayComponent={resultsLoadingOverlay}
-            listRef={resultsScrollRef}
-            resultsContainerAnimatedStyle={[
-              resultsContainerAnimatedStyle,
-              resultsSheetShadowAnimatedStyle,
-            ]}
-            onHidden={resetSheetToHidden}
-            onSnapChange={handleSheetSnapChange}
-            style={[styles.resultsSheetContainer, resultsSheetOpacityAnimatedStyle as never]}
-          />
-        </SafeAreaView>
+          </SafeAreaView>
+          <SearchInteractionProvider value={searchInteractionContextValue}>
+            <SearchResultsSheet
+              visible={shouldRenderSheet}
+              listScrollEnabled={
+                !isPriceSelectorVisible && !isFilterTogglePending && !shouldSuspendResultsSheet
+              }
+              snapPoints={snapPoints}
+              initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
+              sheetYValue={sheetTranslateY}
+              scrollOffsetValue={resultsScrollOffset}
+              momentumFlag={resultsMomentum}
+              onScrollBeginDrag={handleResultsListScrollBegin}
+              onScrollEndDrag={handleResultsListScrollEnd}
+              onMomentumBeginJS={handleResultsListMomentumBegin}
+              onMomentumEndJS={handleResultsListMomentumEnd}
+              onDragStateChange={handleResultsSheetDragStateChange}
+              interactionEnabled={!shouldSuspendResultsSheet}
+              onEndReached={canLoadMore ? () => loadMoreResults(searchMode) : undefined}
+              data={safeResultsData}
+              renderItem={renderSafeItem}
+              keyExtractor={isDishesTab ? dishKeyExtractor : restaurantKeyExtractor}
+              estimatedItemSize={estimatedItemSize}
+              getItemType={getResultItemType}
+              overrideItemLayout={overrideResultItemLayout}
+              listKey={resultsListKey}
+              contentContainerStyle={{
+                paddingBottom: safeResultsData.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
+              }}
+              ListHeaderComponent={listHeader}
+              ListFooterComponent={resultsListFooterComponent}
+              ListEmptyComponent={resultsListEmptyComponent}
+              ItemSeparatorComponent={ResultItemSeparator}
+              headerComponent={resultsHeaderComponent}
+              backgroundComponent={resultsListBackground}
+            overlayComponent={resultsOverlayComponent}
+              listRef={resultsScrollRef}
+              resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
+              onHidden={resetSheetToHidden}
+              onSnapChange={handleSheetSnapChange}
+              style={styles.resultsSheetContainer}
+            />
+          </SearchInteractionProvider>
+        </>
       )}
       {!shouldHideBottomNav && (
         <View style={styles.bottomNavWrapper} pointerEvents="box-none">

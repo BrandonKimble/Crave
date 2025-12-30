@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutChangeEvent, Pressable, Share, TouchableOpacity, View } from 'react-native';
+import { Pressable, Share, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
 import { Share as LucideShare, Heart as LucideHeart } from 'lucide-react-native';
 import { HandPlatter, Store } from 'lucide-react-native';
@@ -11,6 +11,9 @@ import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
 import {
   CARD_LINE_GAP,
+  CONTENT_HORIZONTAL_PADDING,
+  RESULT_DETAILS_INDENT,
+  RESULT_TITLE_RIGHT_PADDING,
   SECONDARY_METRIC_ICON_SIZE,
   TOP_FOOD_RENDER_LIMIT,
 } from '../constants/search';
@@ -18,6 +21,8 @@ import { capitalizeFirst, formatCoverageLabel, formatDistanceMiles } from '../ut
 import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
+import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
+import { useSearchInteraction } from '../context/SearchInteractionContext';
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
@@ -56,6 +61,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   openScoreInfo,
   primaryFoodTerm,
 }) => {
+  // Get interaction state from context (not props!) for performance optimization
+  const { isInteracting } = useSearchInteraction();
+
   const qualityColor = getQualityColor(
     index,
     restaurantsCount,
@@ -72,6 +80,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
       ? formatCoverageLabel(restaurant.coverageKey)
       : null;
+
   const topFoodAverage = React.useMemo(() => {
     if (topFoodItems.length === 0) {
       return null;
@@ -82,110 +91,34 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     }, 0);
     return total / topFoodItems.length;
   }, [topFoodItems]);
+
   const topFoodPrimaryLabel = primaryFoodTerm ? capitalizeFirst(primaryFoodTerm.trim()) : null;
   const topFoodAvgLabel = topFoodPrimaryLabel ? 'Average dish score' : 'Average dish score';
-  const [topFoodInlineWidth, setTopFoodInlineWidth] = React.useState(0);
-  const [topFoodItemWidths, setTopFoodItemWidths] = React.useState<Record<string, number>>({});
-  const [topFoodMoreWidths, setTopFoodMoreWidths] = React.useState<Record<number, number>>({});
+  const { width: windowWidth } = useWindowDimensions();
+  const topFoodInlineWidth = React.useMemo(() => {
+    const horizontalPadding = CONTENT_HORIZONTAL_PADDING * 2;
+    const baseWidth = windowWidth - horizontalPadding - RESULT_TITLE_RIGHT_PADDING;
+    return Math.max(0, baseWidth - RESULT_DETAILS_INDENT);
+  }, [windowWidth, CONTENT_HORIZONTAL_PADDING, RESULT_DETAILS_INDENT, RESULT_TITLE_RIGHT_PADDING]);
 
-  const maxTopFoodToRender = React.useMemo(
-    () => Math.min(topFoodItems.length, TOP_FOOD_RENDER_LIMIT),
-    [topFoodItems.length]
-  );
-  const candidateTopFoods = React.useMemo(
-    () => topFoodItems.slice(0, maxTopFoodToRender),
-    [maxTopFoodToRender, topFoodItems]
-  );
-  const topFoodMoreCounts = React.useMemo(() => {
-    if (candidateTopFoods.length === 0) {
-      return [];
-    }
-    const counts = new Set<number>();
-    for (let visibleCount = 1; visibleCount <= candidateTopFoods.length; visibleCount += 1) {
-      const hiddenCount = topFoodItems.length - visibleCount;
-      if (hiddenCount > 0) {
-        counts.add(hiddenCount);
-      }
-    }
-    return Array.from(counts);
-  }, [candidateTopFoods.length, topFoodItems.length]);
-  const handleResultPressableLayout = React.useCallback((event: LayoutChangeEvent) => {
-    const nextWidth = Math.round(event.nativeEvent.layout.width);
-    setTopFoodInlineWidth((current) => (current === nextWidth ? current : nextWidth));
-  }, []);
-  const handleTopFoodItemLayout = React.useCallback((connectionId: string, width: number) => {
-    const nextWidth = Math.round(width);
-    setTopFoodItemWidths((current) => {
-      if (current[connectionId] === nextWidth) {
-        return current;
-      }
-      return {
-        ...current,
-        [connectionId]: nextWidth,
-      };
-    });
-  }, []);
-  const handleTopFoodMoreLayout = React.useCallback((hiddenCount: number, width: number) => {
-    const nextWidth = Math.round(width);
-    setTopFoodMoreWidths((current) => {
-      if (current[hiddenCount] === nextWidth) {
-        return current;
-      }
-      return {
-        ...current,
-        [hiddenCount]: nextWidth,
-      };
-    });
-  }, []);
-  const { visibleTopFoods, hiddenTopFoodCount } = React.useMemo(() => {
-    if (candidateTopFoods.length === 0) {
-      return { visibleTopFoods: candidateTopFoods, hiddenTopFoodCount: 0 };
-    }
-    if (!topFoodInlineWidth) {
-      return {
-        visibleTopFoods: candidateTopFoods,
-        hiddenTopFoodCount: Math.max(0, topFoodItems.length - candidateTopFoods.length),
-      };
-    }
-    const measuredWidths = candidateTopFoods.map((food) => topFoodItemWidths[food.connectionId]);
-    if (measuredWidths.some((width) => width === undefined)) {
-      return {
-        visibleTopFoods: candidateTopFoods,
-        hiddenTopFoodCount: Math.max(0, topFoodItems.length - candidateTopFoods.length),
-      };
-    }
-
-    let visibleCount = 0;
-    let usedWidth = 0;
-
-    for (let i = 0; i < candidateTopFoods.length; i += 1) {
-      const itemWidth = measuredWidths[i] ?? 0;
-      const nextWidth = visibleCount === 0 ? itemWidth : usedWidth + CARD_LINE_GAP + itemWidth;
-      const remainingCount = topFoodItems.length - (i + 1);
-      const needsMore = remainingCount > 0;
-      const moreWidth = needsMore ? topFoodMoreWidths[remainingCount] ?? 0 : 0;
-      const reservedMore = needsMore ? moreWidth + CARD_LINE_GAP : 0;
-      if (nextWidth + reservedMore <= topFoodInlineWidth) {
-        visibleCount = i + 1;
-        usedWidth = nextWidth;
-      } else {
-        break;
-      }
-    }
-
-    const clampedVisibleCount = Math.min(Math.max(1, visibleCount), candidateTopFoods.length);
-
-    return {
-      visibleTopFoods: candidateTopFoods.slice(0, clampedVisibleCount),
-      hiddenTopFoodCount: Math.max(0, topFoodItems.length - clampedVisibleCount),
-    };
-  }, [
+  // Use the optimized layout measurement hook
+  // This debounces measurements and skips them during drag/scroll
+  const {
+    visibleTopFoods,
+    hiddenTopFoodCount,
+    onItemLayout,
+    onMoreLayout,
     candidateTopFoods,
-    topFoodInlineWidth,
-    topFoodItemWidths,
-    topFoodMoreWidths,
-    topFoodItems.length,
-  ]);
+    topFoodMoreCounts,
+  } = useTopFoodMeasurement({
+    topFoodItems,
+    maxToRender: TOP_FOOD_RENDER_LIMIT,
+    availableWidth: topFoodInlineWidth,
+    itemGap: CARD_LINE_GAP,
+    isDragging: isInteracting,
+    debounceMs: 50,
+  });
+
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
     null,
@@ -218,6 +151,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     displayScoreValue,
   ]);
 
+  const handleRestaurantPress = React.useCallback(() => {
+    openRestaurantProfile(restaurant);
+  }, [openRestaurantProfile, restaurant]);
+
   return (
     <View
       key={restaurant.restaurantId}
@@ -225,8 +162,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     >
       <Pressable
         style={styles.resultPressable}
-        onPress={() => openRestaurantProfile(restaurant)}
-        onLayout={handleResultPressableLayout}
+        onPress={handleRestaurantPress}
         accessibilityRole="button"
         accessibilityLabel={`View ${restaurant.restaurantName}`}
       >
@@ -363,7 +299,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         <Text
                           key={food.connectionId}
                           style={styles.topFoodInlineText}
-                          numberOfLines={1}
                         >
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
@@ -379,7 +314,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           variant="body"
                           weight="semibold"
                           style={styles.topFoodMore}
-                          numberOfLines={1}
                         >
                           +{hiddenTopFoodCount} more
                         </Text>
@@ -391,9 +325,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           key={`${food.connectionId}-measure`}
                           style={styles.topFoodInlineText}
                           numberOfLines={1}
-                          onLayout={({ nativeEvent }) =>
-                            handleTopFoodItemLayout(food.connectionId, nativeEvent.layout.width)
-                          }
+                          onLayout={onItemLayout(food.connectionId)}
                         >
                           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
                             {idx + 1}.
@@ -411,9 +343,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           weight="semibold"
                           style={styles.topFoodMore}
                           numberOfLines={1}
-                          onLayout={({ nativeEvent }) =>
-                            handleTopFoodMoreLayout(count, nativeEvent.layout.width)
-                          }
+                          onLayout={onMoreLayout(count)}
                         >
                           +{count} more
                         </Text>

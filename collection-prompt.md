@@ -438,7 +438,7 @@ Produce a cascading, high-signal list of categories after locking the `food` phr
 
 5. Merge additive ingredients from "with/and" clauses (burrata, chanterelles, pesto, etc.).
 
-6. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent categories and core ingredients. If the list grows long, drop low-signal ingredients before dropping parent categories or dish-level categories.
+6. Deduplicate, sort by specificity (most specific first). Keep the list concise but do not enforce a hard cap; include all high-signal parent categories and core ingredients.
 
 Self-check questions:
 

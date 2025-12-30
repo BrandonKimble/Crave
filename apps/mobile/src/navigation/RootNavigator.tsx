@@ -8,6 +8,8 @@ import {
   OnboardingScreen,
   SignInScreen,
   FavoritesListDetailScreen,
+  RecentSearchesScreen,
+  RecentlyViewedScreen,
 } from '../screens';
 import type { RootStackParamList } from '../types/navigation';
 import { useOnboardingStore } from '../store/onboardingStore';
@@ -52,6 +54,8 @@ const RootNavigator: React.FC = () => {
       {showSignIn ? <Stack.Screen name="SignIn" component={SignInScreen} /> : null}
       <Stack.Screen name="Main" component={SearchScreen} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="RecentSearches" component={RecentSearchesScreen} />
+      <Stack.Screen name="RecentlyViewed" component={RecentlyViewedScreen} />
       <Stack.Screen
         name="FavoritesListDetail"
         component={FavoritesListDetailScreen}

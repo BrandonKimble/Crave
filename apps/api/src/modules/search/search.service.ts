@@ -51,6 +51,11 @@ interface EntityPresenceSummary {
   restaurantAttributes: number;
 }
 
+export type SearchHistoryEntry = {
+  queryText: string;
+  lastSearchedAt: string;
+};
+
 @Injectable()
 export class SearchService {
   private readonly logger: LoggerService;
@@ -879,7 +884,7 @@ export class SearchService {
     });
   }
 
-  async listRecentSearches(userId: string, limit?: number): Promise<string[]> {
+  async listRecentSearches(userId: string, limit?: number): Promise<SearchHistoryEntry[]> {
     if (!userId) {
       return [];
     }
@@ -902,9 +907,18 @@ export class SearchService {
       take,
     });
 
+    const fallbackTimestamp = new Date().toISOString();
     return rows
-      .map((row) => row.queryText)
-      .filter((text): text is string => typeof text === 'string');
+      .map((row) => {
+        if (typeof row.queryText !== 'string') {
+          return null;
+        }
+        return {
+          queryText: row.queryText,
+          lastSearchedAt: row._max.loggedAt?.toISOString() ?? fallbackTimestamp,
+        };
+      })
+      .filter((entry): entry is SearchHistoryEntry => entry !== null);
   }
 
   private calculateCoverageStatus(params: {

@@ -1,14 +1,14 @@
 import { create } from 'zustand';
 
-import type { RecentlyViewedRestaurant } from '../services/search';
+import type { RecentSearch, RecentlyViewedRestaurant } from '../services/search';
 import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../constants/searchHistory';
 
 type SearchHistoryState = {
-  recentSearches: string[];
+  recentSearches: RecentSearch[];
   isRecentLoading: boolean;
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   isRecentlyViewedLoading: boolean;
-  setRecentSearches: (value: string[]) => void;
+  setRecentSearches: (value: RecentSearch[]) => void;
   setIsRecentLoading: (value: boolean) => void;
   setRecentlyViewedRestaurants: (value: RecentlyViewedRestaurant[]) => void;
   setIsRecentlyViewedLoading: (value: boolean) => void;
@@ -18,7 +18,7 @@ type SearchHistoryState = {
 };
 
 const defaultState = {
-  recentSearches: [] as string[],
+  recentSearches: [] as RecentSearch[],
   isRecentLoading: false,
   recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
   isRecentlyViewedLoading: false,
@@ -41,11 +41,15 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       }
       const normalized = trimmedValue.toLowerCase();
       const withoutMatch = state.recentSearches.filter(
-        (entry) => entry.toLowerCase() !== normalized
+        (entry) => entry.queryText.toLowerCase() !== normalized
       );
+      const next: RecentSearch = {
+        queryText: trimmedValue,
+        lastSearchedAt: new Date().toISOString(),
+      };
       return {
         ...state,
-        recentSearches: [trimmedValue, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT),
+        recentSearches: [next, ...withoutMatch].slice(0, RECENT_HISTORY_LIMIT),
       };
     }),
   trackRecentlyViewedRestaurant: (restaurantId, restaurantName) =>

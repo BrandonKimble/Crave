@@ -1,12 +1,22 @@
 import React from 'react';
-import { Dimensions, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import {
+  Dimensions,
+  Pressable,
+  StyleSheet,
+  View,
+  type LayoutChangeEvent,
+  type LayoutRectangle,
+} from 'react-native';
 import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
 import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import Reanimated, {
+  Easing,
   useAnimatedProps,
   useAnimatedScrollHandler,
+  useAnimatedStyle,
   useSharedValue,
+  withTiming,
 } from 'react-native-reanimated';
 import {
   CONTROL_HEIGHT,
@@ -22,11 +32,14 @@ const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
 const TOGGLE_HORIZONTAL_PADDING = CONTROL_HORIZONTAL_PADDING + 4;
 const TOGGLE_VERTICAL_PADDING = CONTROL_VERTICAL_PADDING;
-const TOGGLE_STACK_GAP = 7;
+const TOGGLE_STACK_GAP = 8;
 const TOGGLE_MIN_HEIGHT = TOGGLE_HEIGHT;
 const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
 const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
+
+const SEGMENT_HIGHLIGHT_DURATION_MS = 180;
+const SEGMENT_HIGHLIGHT_EASING = Easing.out(Easing.cubic);
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
@@ -69,6 +82,19 @@ const areHolesEqual = (prev: ExtendedHole | undefined, next: ExtendedHole): bool
     closeEnough(prev.height, next.height) &&
     (prev.borderRadius ?? 0) === (next.borderRadius ?? 0) &&
     areCornerRadiiEqual(prev.cornerRadii, next.cornerRadii)
+  );
+};
+
+const areLayoutsEqual = (prev: LayoutRectangle | undefined, next: LayoutRectangle): boolean => {
+  if (!prev) {
+    return false;
+  }
+  const closeEnough = (a: number, b: number) => Math.abs(a - b) < 0.5;
+  return (
+    closeEnough(prev.x, next.x) &&
+    closeEnough(prev.y, next.y) &&
+    closeEnough(prev.width, next.width) &&
+    closeEnough(prev.height, next.height)
   );
 };
 
@@ -170,13 +196,59 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     `search-filter-mask-${Math.random().toString(36).slice(2, 8)}`
   );
   const maskId = maskIdRef.current;
+  const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>({});
+  const highlightReadyRef = React.useRef(false);
 
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
+  const highlightTranslateX = useSharedValue(0);
+  const highlightWidth = useSharedValue(0);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
   });
+
+  const updateSegmentHighlight = React.useCallback(
+    (value: SegmentValue, animated: boolean): boolean => {
+      const layout = segmentLayoutsRef.current[value];
+      if (!layout) {
+        return false;
+      }
+      if (animated) {
+        highlightTranslateX.value = withTiming(layout.x, {
+          duration: SEGMENT_HIGHLIGHT_DURATION_MS,
+          easing: SEGMENT_HIGHLIGHT_EASING,
+        });
+        highlightWidth.value = withTiming(layout.width, {
+          duration: SEGMENT_HIGHLIGHT_DURATION_MS,
+          easing: SEGMENT_HIGHLIGHT_EASING,
+        });
+        return true;
+      }
+      highlightTranslateX.value = layout.x;
+      highlightWidth.value = layout.width;
+      return true;
+    },
+    [highlightTranslateX, highlightWidth]
+  );
+
+  const registerSegmentLayout = React.useCallback(
+    (value: SegmentValue) => (event: LayoutChangeEvent) => {
+      const layout = event.nativeEvent.layout;
+      const prev = segmentLayoutsRef.current[value];
+      if (prev && areLayoutsEqual(prev, layout)) {
+        return;
+      }
+      segmentLayoutsRef.current[value] = layout;
+      if (value === activeTab) {
+        const didUpdate = updateSegmentHighlight(value, highlightReadyRef.current);
+        if (didUpdate && !highlightReadyRef.current) {
+          highlightReadyRef.current = true;
+        }
+      }
+    },
+    [activeTab, updateSegmentHighlight]
+  );
 
   const registerHole = React.useCallback(
     (key: string, borderRadius: number | Partial<CornerRadii> = TOGGLE_BORDER_RADIUS) =>
@@ -218,6 +290,18 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     transform: [{ translateX: -scrollX.value }],
   }));
   const AnimatedG = Reanimated.createAnimatedComponent(G);
+  const highlightAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: highlightWidth.value > 0 ? 1 : 0,
+    transform: [{ translateX: highlightTranslateX.value }],
+    width: highlightWidth.value,
+  }));
+
+  React.useEffect(() => {
+    const didUpdate = updateSegmentHighlight(activeTab, highlightReadyRef.current);
+    if (didUpdate && !highlightReadyRef.current) {
+      highlightReadyRef.current = true;
+    }
+  }, [activeTab, updateSegmentHighlight]);
 
   React.useEffect(() => {
     if (!onLayoutCacheChange) {
@@ -252,20 +336,25 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               onLayout={(event) => setRowHeight(event.nativeEvent.layout.height)}
             >
               <View style={styles.toggleRow}>
-                <View style={styles.segmentedControl}>
+                <View
+                  style={styles.segmentedControl}
+                  onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
+                >
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[
+                      styles.segmentedHighlight,
+                      { backgroundColor: accentColor },
+                      highlightAnimatedStyle,
+                    ]}
+                  />
                   {SEGMENT_OPTIONS.map((option) => {
                     const selected = activeTab === option.value;
                     return (
                       <Pressable
                         key={option.value}
-                        onLayout={registerHole(`segment-${option.value}`, TOGGLE_BORDER_RADIUS)}
-                        style={[
-                          styles.segmentedOption,
-                          selected && [
-                            styles.segmentedOptionActive,
-                            { backgroundColor: accentColor },
-                          ],
-                        ]}
+                        onLayout={registerSegmentLayout(option.value)}
+                        style={styles.segmentedOption}
                         onPress={() => onTabChange(option.value)}
                         accessibilityRole="button"
                         accessibilityLabel={`View ${option.label.toLowerCase()}`}
@@ -487,12 +576,13 @@ const styles = StyleSheet.create({
   segmentedControl: {
     flexDirection: 'row',
     alignItems: 'center',
-    columnGap: TOGGLE_STACK_GAP,
+    columnGap: 0,
     padding: 0,
-    borderRadius: TOGGLE_BORDER_RADIUS + 3,
+    borderRadius: TOGGLE_BORDER_RADIUS,
     backgroundColor: 'transparent',
     alignSelf: 'flex-start',
     flexShrink: 0,
+    overflow: 'hidden',
   },
   segmentedOption: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
@@ -501,7 +591,11 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 1,
   },
-  segmentedOptionActive: {
+  segmentedHighlight: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
     borderRadius: TOGGLE_BORDER_RADIUS,
   },
   segmentedLabel: {

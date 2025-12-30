@@ -34,6 +34,9 @@ import {
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SHORTCUTS_BOTTOM_MARGIN,
   SEARCH_THIS_AREA_COLOR,
+  RANK_BADGE_WIDTH,
+  RESULT_DETAILS_INDENT,
+  RESULT_TITLE_RIGHT_PADDING,
   SPACING_SM,
   SPACING_XS,
 } from './constants/search';
@@ -553,6 +556,13 @@ const styles = StyleSheet.create({
   resultsLoadingOverlaySpinner: {
     paddingTop: 0,
   },
+  resultsWashOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#ffffff',
+  },
   resultsHeaderSurface: {
     position: 'relative',
     overflow: 'hidden',
@@ -768,17 +778,17 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     minHeight: 0,
     paddingTop: 0,
-    paddingRight: 48,
+    paddingRight: RESULT_TITLE_RIGHT_PADDING,
     gap: CARD_LINE_GAP,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: CARD_LINE_GAP,
     maxWidth: '100%',
   },
   rankBadge: {
-    width: 32,
+    width: RANK_BADGE_WIDTH,
     height: 30,
     borderRadius: 15,
     backgroundColor: themeColors.primary,
@@ -797,6 +807,7 @@ const styles = StyleSheet.create({
   cardBodyStack: {
     width: '100%',
     gap: CARD_LINE_GAP,
+    paddingLeft: RESULT_DETAILS_INDENT,
   },
   coverageBadge: {
     alignSelf: 'flex-start',
@@ -873,7 +884,7 @@ const styles = StyleSheet.create({
   restaurantMetricRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     minWidth: 0,
     columnGap: SPACING_XS,
     rowGap: CARD_LINE_GAP,
@@ -893,7 +904,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingLeft: 0,
-    flexShrink: 0,
+    flexShrink: 1,
+    minWidth: 0,
     columnGap: SPACING_XS,
   },
   metricSupportLabel: {
@@ -999,6 +1011,7 @@ const styles = StyleSheet.create({
     marginLeft: 0,
     marginTop: 0,
     paddingBottom: 0,
+    paddingLeft: RESULT_DETAILS_INDENT,
   },
   resultContentStack: {
     gap: CARD_LINE_GAP,
