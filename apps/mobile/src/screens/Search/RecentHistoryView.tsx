@@ -197,12 +197,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         <View style={styles.recentIcon}>
           <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
-        <View
-          style={[
-            styles.recentRowContent,
-            index === 0 && styles.recentRowFirst,
-          ]}
-        >
+        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
           <View style={styles.recentRowTextGroup}>
             <Text style={styles.recentText} numberOfLines={1}>
               {item.queryText}
@@ -222,12 +217,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         <View style={styles.recentIcon}>
           <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
-        <View
-          style={[
-            styles.recentRowContent,
-            index === 0 && styles.recentRowFirst,
-          ]}
-        >
+        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
           <View style={styles.recentRowTextGroup}>
             <Text style={styles.recentText} numberOfLines={1}>
               {item.restaurantName}

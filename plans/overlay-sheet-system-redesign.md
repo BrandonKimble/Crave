@@ -1,17 +1,17 @@
 Is there any info out there about what approach Google Maps devs took with their bottom sheet + list implementations? My implementation is very low in JS performance and I’m curious if I can learn anything from the approach they have taken and why.
 
-There **isn’t a direct, official deep-dive from Google engineers specifically documenting exactly how the Google Maps team implemented their bottom sheet + list system (e.g., exact view hierarchies, diffing strategies, rendering pipeline choices, etc.)** in the way you might find for an open-source project. That said, we *do* have several credible clues and community/engineering signals you can learn from to understand why their implementation is performant — and what patterns they’re likely using under the hood.
+There **isn’t a direct, official deep-dive from Google engineers specifically documenting exactly how the Google Maps team implemented their bottom sheet + list system (e.g., exact view hierarchies, diffing strategies, rendering pipeline choices, etc.)** in the way you might find for an open-source project. That said, we _do_ have several credible clues and community/engineering signals you can learn from to understand why their implementation is performant — and what patterns they’re likely using under the hood.
 
 ---
 
-## 📌 1. They *don’t* use out-of-the-box bottom sheet components
+## 📌 1. They _don’t_ use out-of-the-box bottom sheet components
 
 Across Android development discussions (e.g., Reddit, StackOverflow), the consensus is that Maps doesn’t use the standard `BottomSheetDialogFragment` or the stock Material bottom sheet; instead, they use **a custom bottom sheet mechanism**, often with bespoke behavior that supports multiple states and gesture handling beyond what the standard library provides. Custom implementations are likely optimized at a lower level. ([Reddit][1])
 
-* Community threads talking about “what type of bottom sheet Google Maps uses” conclude that it’s not a simple `BottomSheet` from the design library — hence why simple prompts/libraries don’t match its behavior. ([Reddit][1])
-* Older StackOverflow threads show Google Maps bottom sheet behaving in *three distinct interaction phases* (peek, expanded with toolbar, expanded without toolbar), something stock bottom sheets don’t offer without heavy customization. ([Stack Overflow][2])
+- Community threads talking about “what type of bottom sheet Google Maps uses” conclude that it’s not a simple `BottomSheet` from the design library — hence why simple prompts/libraries don’t match its behavior. ([Reddit][1])
+- Older StackOverflow threads show Google Maps bottom sheet behaving in _three distinct interaction phases_ (peek, expanded with toolbar, expanded without toolbar), something stock bottom sheets don’t offer without heavy customization. ([Stack Overflow][2])
 
-**Key takeaway:** *Performance gains may come from a carefully tailored sheet implementation with fine-tuned state transitions and frame-budget-aware gesture handling.*
+**Key takeaway:** _Performance gains may come from a carefully tailored sheet implementation with fine-tuned state transitions and frame-budget-aware gesture handling._
 
 ---
 
@@ -19,8 +19,8 @@ Across Android development discussions (e.g., Reddit, StackOverflow), the consen
 
 Part of what makes the Maps bottom sheet feel smooth is that the **map itself isn’t being resized or re-rendered on every bottom sheet drag.** There are references (e.g., in Medium posts about map + sheet interactions) where developers show that high-performance integrations:
 
-* *Adjust the map’s UI overlay (e.g., pad UI controls) instead of resizing the entire map view.*
-* *Only adjust heavier states (like camera position) at key transition points rather than per-frame during drag.* ([Medium][3])
+- _Adjust the map’s UI overlay (e.g., pad UI controls) instead of resizing the entire map view._
+- _Only adjust heavier states (like camera position) at key transition points rather than per-frame during drag._ ([Medium][3])
 
 This pattern reduces expensive layout passes and avoids forcing the map to continuously relayout/recompose as the bottom sheet moves.
 
@@ -33,49 +33,49 @@ Map rendering is usually GPU-accelerated and runs on a separate compositor than 
 
 Even if they use Compose internally on Android (which many parts of Android are migrating toward), performance best practices still apply:
 
-* Flatten hierarchies where possible. Nested view hierarchies impose heavy measure/layout costs on each UI frame. ([Android Developers][4])
-* Use derived state or other memoization mechanisms (in Compose) to prevent expensive recompositions for animations.
-* Render large lists with virtualized scrolling (e.g., `LazyColumn` in Compose or `RecyclerView` on View system) to avoid layout constantly recalculating every child’s measurement.
+- Flatten hierarchies where possible. Nested view hierarchies impose heavy measure/layout costs on each UI frame. ([Android Developers][4])
+- Use derived state or other memoization mechanisms (in Compose) to prevent expensive recompositions for animations.
+- Render large lists with virtualized scrolling (e.g., `LazyColumn` in Compose or `RecyclerView` on View system) to avoid layout constantly recalculating every child’s measurement.
 
-These patterns are standard for high-performance Android UI, and anything as complex as Maps’ sheet + list *must* use them to hit 60fps.
+These patterns are standard for high-performance Android UI, and anything as complex as Maps’ sheet + list _must_ use them to hit 60fps.
 
 ---
 
-## 📌 4. Google Maps UI redesign uses *sheet overlays everywhere*
+## 📌 4. Google Maps UI redesign uses _sheet overlays everywhere_
 
-Design articles (e.g., Android Authority on Maps’ sheet redesign) point out that Google is aggressively moving to sheet-based navigation across the app — and they do so in a way that keeps the map content *visible and interactive behind it.* ([Android Authority][5])
+Design articles (e.g., Android Authority on Maps’ sheet redesign) point out that Google is aggressively moving to sheet-based navigation across the app — and they do so in a way that keeps the map content _visible and interactive behind it._ ([Android Authority][5])
 
 This implies:
 
-* The bottom sheet is a peer layer rendered over the map, rather than causing major layout shifts in the main screen.
-* Animations and transitions are likely using highly optimized interpolators, gesture detection, and composited animations to avoid forced synchronous layout.
+- The bottom sheet is a peer layer rendered over the map, rather than causing major layout shifts in the main screen.
+- Animations and transitions are likely using highly optimized interpolators, gesture detection, and composited animations to avoid forced synchronous layout.
 
 ---
 
-## 🚀 Performance Patterns *You* Can Apply
+## 🚀 Performance Patterns _You_ Can Apply
 
 While we don’t have Google’s exact source, here are **practical learnings** based on what’s known about high-performance mobile UI (and what Maps likely does):
 
 ### 🧠 Use a custom sheet with:
 
-* Multi-state gesture tension and snapping logic.
-* A *single composited animation driver* (avoid remeasuring on every drag).
-* Gesture handling separated from layout passes.
+- Multi-state gesture tension and snapping logic.
+- A _single composited animation driver_ (avoid remeasuring on every drag).
+- Gesture handling separated from layout passes.
 
 ### 📊 Optimize list and UI rendering:
 
-* Virtualize your list (e.g., `LazyColumn`, `RecyclerView`), only rendering visible items.
-* Avoid deep nested views — flatten hierarchies where possible.
+- Virtualize your list (e.g., `LazyColumn`, `RecyclerView`), only rendering visible items.
+- Avoid deep nested views — flatten hierarchies where possible.
 
 ### 🎨 Separate map interaction from sheet logic:
 
-* Don’t resize or reflow the map every frame; only adjust padding/UI overlay offsets. ([Medium][3])
-* Only update expensive map interactions (like camera movements) at key states.
+- Don’t resize or reflow the map every frame; only adjust padding/UI overlay offsets. ([Medium][3])
+- Only update expensive map interactions (like camera movements) at key states.
 
 ### 🧪 Profile aggressively:
 
-* Use instruments like *Systrace*/**Android Studio Profiler* (on Android) to find UI thread spikes.
-* Look for layout passes >16ms — those kill smooth animations.
+- Use instruments like _Systrace_/\*_Android Studio Profiler_ (on Android) to find UI thread spikes.
+- Look for layout passes >16ms — those kill smooth animations.
 
 ---
 
@@ -92,26 +92,26 @@ While we don’t have Google’s exact source, here are **practical learnings** 
 
 ## If you want deeper engineering references
 
-There isn’t an official Maps UI engineering blog on this — but you *can* look at:
+There isn’t an official Maps UI engineering blog on this — but you _can_ look at:
 
-* Google I/O and Android UI talks about performant UI patterns.
-* Android Developers guidance on flattening layouts and Compose performance.
-* Medium blog posts on custom sheet implementations (e.g., how padding adjustments can avoid heavy redraws). ([Medium][3])
+- Google I/O and Android UI talks about performant UI patterns.
+- Android Developers guidance on flattening layouts and Compose performance.
+- Medium blog posts on custom sheet implementations (e.g., how padding adjustments can avoid heavy redraws). ([Medium][3])
 
 If you can share details of your implementation (e.g., JS / React Native vs native), I can tailor specific performance suggestions based on your stack.
 
-[1]: https://www.reddit.com/r/androiddev/comments/xjfjx4/what_type_of_bottom_sheet_dialog_that_google_map/?utm_source=chatgpt.com "What type of bottom sheet dialog that google map use?"
+[1]: https://www.reddit.com/r/androiddev/comments/xjfjx4/what_type_of_bottom_sheet_dialog_that_google_map/?utm_source=chatgpt.com 'What type of bottom sheet dialog that google map use?'
 [2]: https://stackoverflow.com/questions/34160423/how-to-mimic-google-maps-bottom-sheet-3-phases-behavior?utm_source=chatgpt.com "How to mimic Google Maps' bottom-sheet 3 phases ..."
-[3]: https://medium.com/turo-engineering/adjusting-compose-google-map-while-bottom-sheet-moves-4a7465305137?utm_source=chatgpt.com "Adjusting Compose Google Map While Bottom Sheet Moves"
-[4]: https://developer.android.com/topic/performance/rendering/optimizing-view-hierarchies?utm_source=chatgpt.com "Performance and view hierarchies | App quality"
-[5]: https://www.androidauthority.com/google-maps-sheets-3548003/?utm_source=chatgpt.com "Google Maps sheets redesign hits every last corner of ..."
+[3]: https://medium.com/turo-engineering/adjusting-compose-google-map-while-bottom-sheet-moves-4a7465305137?utm_source=chatgpt.com 'Adjusting Compose Google Map While Bottom Sheet Moves'
+[4]: https://developer.android.com/topic/performance/rendering/optimizing-view-hierarchies?utm_source=chatgpt.com 'Performance and view hierarchies | App quality'
+[5]: https://www.androidauthority.com/google-maps-sheets-3548003/?utm_source=chatgpt.com 'Google Maps sheets redesign hits every last corner of ...'
 
 I’m using react native with mapbox. I have a lot of bottomsheets like Google Maps but I use a library (not sure which one) and the main problematic sheet is my search results sheet with 20+ results on it and toggles and more - JS gets as low as 0 but honestly none of the other sheets stay at 60 when being flicked around and tend to hover at 20 to 30 and they don’t even have lists on them. Is it really possible to get them all to 60 fps?
 
 Yeah — **it’s absolutely possible to have Google-Maps-style sheets feel like 60fps** in React Native… but the important nuance is:
 
-* You can get **60fps sheet dragging** even while **JS is ~0 fps**, *if the drag animation is fully UI-thread driven* (Reanimated + Gesture Handler).
-* If your sheets hover at **20–30fps while being flicked**, that usually means the **UI thread** is getting hammered (layout, blur/shadows, overdraw, expensive view trees, Mapbox composition issues), *not* just JS.
+- You can get **60fps sheet dragging** even while **JS is ~0 fps**, _if the drag animation is fully UI-thread driven_ (Reanimated + Gesture Handler).
+- If your sheets hover at **20–30fps while being flicked**, that usually means the **UI thread** is getting hammered (layout, blur/shadows, overdraw, expensive view trees, Mapbox composition issues), _not_ just JS.
 
 So the question becomes less “can RN do 60” and more “can my current implementation avoid UI-thread work while the sheet moves?” Most apps can, with some targeted changes.
 
@@ -123,8 +123,8 @@ If the sheet is animating **height** (or anything that causes re-layout) instead
 
 **What you want:**
 
-* The sheet moves via **transform: [{ translateY }]** (UI-thread), not by resizing.
-* The content inside the sheet should not re-measure/reflow on every drag.
+- The sheet moves via **transform: [{ translateY }]** (UI-thread), not by resizing.
+- The content inside the sheet should not re-measure/reflow on every drag.
 
 Many bottom sheet libs do this right, but it’s easy to accidentally reintroduce layout work via wrappers/styles.
 
@@ -132,24 +132,24 @@ Many bottom sheet libs do this right, but it’s easy to accidentally reintroduc
 
 Blur (Expo Blur) + big translucent surfaces + shadows over a live map is a classic 20–30fps recipe. It creates:
 
-* expensive offscreen rendering
-* lots of overdraw
-* extra compositing against Mapbox’s GPU surface
+- expensive offscreen rendering
+- lots of overdraw
+- extra compositing against Mapbox’s GPU surface
 
 **If you want 60 while dragging:**
 
-* Avoid blur on the moving surface (or only enable blur when “settled”).
-* Use a solid/semi-opaque background while dragging, then fade in blur after the gesture ends.
+- Avoid blur on the moving surface (or only enable blur when “settled”).
+- Use a solid/semi-opaque background while dragging, then fade in blur after the gesture ends.
 
 ### 3) The sheet re-renders while you drag
 
 Even if the gesture is on the UI thread, you can still cause UI-thread jank if the sheet subtree is huge/complex and you’re doing things that trigger updates during drag:
 
-* state updates tied to animated position
-* toggles/list items rerendering due to props changing
-* dynamic styles recalculated in JS during movement
+- state updates tied to animated position
+- toggles/list items rerendering due to props changing
+- dynamic styles recalculated in JS during movement
 
-**Rule of thumb:** while the sheet is moving, *nothing should be re-rendering or re-measuring.*
+**Rule of thumb:** while the sheet is moving, _nothing should be re-rendering or re-measuring._
 
 ### 4) Mapbox + overlays interaction
 
@@ -169,9 +169,9 @@ Google Maps makes compromises too: lots of effects are subtly reduced during int
 
 Most RN apps use one of these:
 
-* `@gorhom/bottom-sheet` (Reanimated-driven, usually best)
-* `react-native-bottom-sheet` variants
-* `reanimated-bottom-sheet` (older)
+- `@gorhom/bottom-sheet` (Reanimated-driven, usually best)
+- `react-native-bottom-sheet` variants
+- `reanimated-bottom-sheet` (older)
 
 Open your `package.json` and search for “bottom-sheet”. If it’s Gorhom and you’re still at 20–30fps, it’s almost certainly **UI-thread rendering/compositing**, not the gesture.
 
@@ -179,14 +179,14 @@ Open your `package.json` and search for “bottom-sheet”. If it’s Gorhom and
 
 Turn on RN Perf Monitor and watch:
 
-* **UI FPS** vs **JS FPS**
+- **UI FPS** vs **JS FPS**
   If UI FPS drops with JS near 0 → you’re looking at **layout/compositing/overdraw** problems.
 
 ### Step 3: Remove effects during drag (big win)
 
-* Disable blur while the sheet is being dragged; re-enable on settle.
-* Reduce/remove shadows on the moving container (or only shadow the “handle” area).
-* Avoid transparent backgrounds over Mapbox while moving.
+- Disable blur while the sheet is being dragged; re-enable on settle.
+- Reduce/remove shadows on the moving container (or only shadow the “handle” area).
+- Avoid transparent backgrounds over Mapbox while moving.
 
 This one change alone often takes “30fps” to “buttery”.
 
@@ -194,15 +194,15 @@ This one change alone often takes “30fps” to “buttery”.
 
 Common pattern:
 
-* While dragging: render a **lightweight shell** (or freeze list updates)
-* When settled: render the full interactive list/toggles
+- While dragging: render a **lightweight shell** (or freeze list updates)
+- When settled: render the full interactive list/toggles
 
 With lists: keep FlashList, but make sure:
 
-* `renderItem` is memoized (`React.memo`)
-* stable `keyExtractor`
-* avoid inline functions/styles in item rows
-* avoid measuring text/layout repeatedly
+- `renderItem` is memoized (`React.memo`)
+- stable `keyExtractor`
+- avoid inline functions/styles in item rows
+- avoid measuring text/layout repeatedly
 
 ### Step 5: Make sure the sheet moves by transform, not layout
 
@@ -212,17 +212,17 @@ Even with Gorhom, you can accidentally force layout work if your container depen
 
 These frequently crush UI FPS:
 
-* large rounded corners + overflow clipping on moving views
-* big shadows on large surfaces
-* nested scroll views inside the sheet
-* images without fixed size
-* too many absolutely positioned layers
+- large rounded corners + overflow clipping on moving views
+- big shadows on large surfaces
+- nested scroll views inside the sheet
+- images without fixed size
+- too many absolutely positioned layers
 
 ## The honest answer
 
-* **Yes**, 60fps sheet movement is achievable in RN + Mapbox.
-* If you’re seeing **20–30fps on sheets without lists**, that strongly suggests **blur/shadow/transparency/layout** issues (UI-thread), not “RN can’t do it.”
-* You’ll likely need a couple **interaction-time compromises** (disable blur, reduce compositing, freeze heavy content) to make it consistent.
+- **Yes**, 60fps sheet movement is achievable in RN + Mapbox.
+- If you’re seeing **20–30fps on sheets without lists**, that strongly suggests **blur/shadow/transparency/layout** issues (UI-thread), not “RN can’t do it.”
+- You’ll likely need a couple **interaction-time compromises** (disable blur, reduce compositing, freeze heavy content) to make it consistent.
 
 If you paste:
 
@@ -234,12 +234,12 @@ The UI stays pretty high around 60 but the JS often drops to near 0
 
 That combo (UI ~60, JS ~0) is actually a **very specific and common “good-ish” failure mode** in RN:
 
-* **Your sheet drag is running on the UI thread** (so it *can* stay smooth).
-* **Your JS thread is getting blocked** (so anything that needs JS—list updates, toggles responding instantly, network/state updates, search filtering, etc.) can stutter or “lag behind.”
+- **Your sheet drag is running on the UI thread** (so it _can_ stay smooth).
+- **Your JS thread is getting blocked** (so anything that needs JS—list updates, toggles responding instantly, network/state updates, search filtering, etc.) can stutter or “lag behind.”
 
 So yes: **it’s normal for JS FPS to drop during heavy interactions**, and **Google Maps feels great because most of the interaction loop doesn’t depend on a JS thread at all**.
 
-What matters is: do you *feel* jank (missed touch, delayed presses, list “catching up”, toggles lag), or is it just the perf monitor number?
+What matters is: do you _feel_ jank (missed touch, delayed presses, list “catching up”, toggles lag), or is it just the perf monitor number?
 
 ## Why JS drops to ~0 even when UI is 60
 
@@ -249,9 +249,9 @@ Typical causes:
 
 Examples:
 
-* `onChange` / `onAnimate` / `onScroll` handlers that call `setState`
-* deriving visible results, sorting/filtering, computing distances, etc. as the sheet moves
-* updating Mapbox camera / padding / selected marker in JS continuously
+- `onChange` / `onAnimate` / `onScroll` handlers that call `setState`
+- deriving visible results, sorting/filtering, computing distances, etc. as the sheet moves
+- updating Mapbox camera / padding / selected marker in JS continuously
 
 If any of those fire at 60hz and touch React state, JS will get wrecked.
 
@@ -259,17 +259,17 @@ If any of those fire at 60hz and touch React state, JS will get wrecked.
 
 Even if FlashList is efficient, if:
 
-* parent state changes cause list props to change
-* item rows aren’t memoized / stable props
-* inline objects/functions are recreated
+- parent state changes cause list props to change
+- item rows aren’t memoized / stable props
+- inline objects/functions are recreated
   …you can trigger continuous reconciliation.
 
 ### 3) Expensive effects/logging/allocations
 
-* `console.log` in render paths (kills perf)
-* large objects created every frame (styles, arrays, derived data)
-* JSON parsing, map/reduce on big arrays, fuzzy search, etc.
-* Hermes GC pauses (looks like JS FPS cliff)
+- `console.log` in render paths (kills perf)
+- large objects created every frame (styles, arrays, derived data)
+- JSON parsing, map/reduce on big arrays, fuzzy search, etc.
+- Hermes GC pauses (looks like JS FPS cliff)
 
 ## What to do (in the order that usually fixes it fastest)
 
@@ -277,9 +277,9 @@ Even if FlashList is efficient, if:
 
 During sheet movement, aim for:
 
-* **No `setState`**
-* **No derived computations**
-* **No Mapbox updates via JS per-frame**
+- **No `setState`**
+- **No derived computations**
+- **No Mapbox updates via JS per-frame**
 
 If you need to react to position, keep it on the UI thread (Reanimated shared values). Only “commit” something to JS when the gesture ends (snap index settled).
 
@@ -291,14 +291,14 @@ If you need to react to position, keep it on the UI thread (Reanimated shared va
 
 Bad (common):
 
-* `useAnimatedScrollHandler` → `runOnJS(setSomething)` every scroll tick
-* bottom sheet animated position → `runOnJS(updateUI)` continuously
+- `useAnimatedScrollHandler` → `runOnJS(setSomething)` every scroll tick
+- bottom sheet animated position → `runOnJS(updateUI)` continuously
 
 Better:
 
-* Keep it in shared values
-* Debounce/throttle a JS update
-* Only fire when crossing thresholds or on end
+- Keep it in shared values
+- Debounce/throttle a JS update
+- Only fire when crossing thresholds or on end
 
 ### C) “Freeze” heavy content while dragging
 
@@ -306,35 +306,35 @@ This is a Google-Maps-ish trick: while the sheet is actively moving, render a li
 
 Examples:
 
-* Don’t live-update search results while dragging
-* Disable expensive row components until settled
-* Defer list re-render until snap completes
+- Don’t live-update search results while dragging
+- Disable expensive row components until settled
+- Defer list re-render until snap completes
 
 In RN you can do:
 
-* `InteractionManager.runAfterInteractions(() => { heavy work })` for recalcs
-* maintain a `isInteracting` flag (set on gesture begin/end) and gate heavy work
+- `InteractionManager.runAfterInteractions(() => { heavy work })` for recalcs
+- maintain a `isInteracting` flag (set on gesture begin/end) and gate heavy work
 
-### D) Make your list rows *boringly stable*
+### D) Make your list rows _boringly stable_
 
 For FlashList:
 
-* `renderItem` stable (`useCallback`)
-* Row component wrapped in `React.memo`
-* Avoid passing inline style objects, inline handlers; use `useCallback` + stable deps
-* Use `extraData` carefully (it forces re-render)
-* Prefer primitive props, avoid passing the whole `item` object if it changes identity
+- `renderItem` stable (`useCallback`)
+- Row component wrapped in `React.memo`
+- Avoid passing inline style objects, inline handlers; use `useCallback` + stable deps
+- Use `extraData` carefully (it forces re-render)
+- Prefer primitive props, avoid passing the whole `item` object if it changes identity
 
 ### E) Verify what’s blocking JS (don’t guess)
 
 Fast ways:
 
-* **Hermes profiling** (Chrome/Flipper) to see what functions spike during drag
-* Turn off **LogBox** and remove logs
-* Temporarily replace your row with a `<View style={{height:…}} />` skeleton:
+- **Hermes profiling** (Chrome/Flipper) to see what functions spike during drag
+- Turn off **LogBox** and remove logs
+- Temporarily replace your row with a `<View style={{height:…}} />` skeleton:
 
-  * If JS FPS recovers → it’s your row rendering / props churn
-  * If it doesn’t → it’s global state updates / handlers / computations
+  - If JS FPS recovers → it’s your row rendering / props churn
+  - If it doesn’t → it’s global state updates / handlers / computations
 
 ## Interpreting your current situation
 

@@ -19,8 +19,7 @@ export const renderMetaDetailLine = (
   textStyle?: StyleProp<TextStyle>
 ): React.ReactNode => {
   const segments: React.ReactNode[] = [];
-  const applyTextStyle = (style?: StyleProp<TextStyle>) =>
-    textStyle ? [textStyle, style] : style;
+  const applyTextStyle = (style?: StyleProp<TextStyle>) => (textStyle ? [textStyle, style] : style);
   const applyBaseTextStyle = (style?: StyleProp<TextStyle>) =>
     textStyle ? [styles.resultMetaText, textStyle, style] : [styles.resultMetaText, style];
   const pushSegment = (node: React.ReactNode) => {
@@ -75,12 +74,7 @@ export const renderMetaDetailLine = (
     }
     if (isClosingSoon) {
       return (
-        <Text
-          key="status-closing-soon"
-          variant="body"
-          weight="semibold"
-          style={textStyle}
-        >
+        <Text key="status-closing-soon" variant="body" weight="semibold" style={textStyle}>
           <Text
             variant="body"
             weight="semibold"
@@ -115,11 +109,7 @@ export const renderMetaDetailLine = (
     if (status.isOpen === false) {
       return (
         <Text key="status-closed" variant="body" weight="semibold" style={textStyle}>
-          <Text
-            variant="body"
-            weight="semibold"
-            style={applyTextStyle(styles.resultMetaClosed)}
-          >
+          <Text variant="body" weight="semibold" style={applyTextStyle(styles.resultMetaClosed)}>
             Closed
           </Text>
           {status.nextOpenDisplay ? (
@@ -148,21 +138,13 @@ export const renderMetaDetailLine = (
     }
     if (locationCountLabel) {
       pushSegment(
-        <Text
-          key="locations"
-          variant="body"
-          style={applyTextStyle(styles.resultMetaDistance)}
-        >
+        <Text key="locations" variant="body" style={applyTextStyle(styles.resultMetaDistance)}>
           {locationCountLabel}
         </Text>
       );
     } else if (distanceLabel) {
       pushSegment(
-        <Text
-          key="distance"
-          variant="body"
-          style={applyTextStyle(styles.resultMetaDistance)}
-        >
+        <Text key="distance" variant="body" style={applyTextStyle(styles.resultMetaDistance)}>
           {distanceLabel}
         </Text>
       );

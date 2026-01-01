@@ -94,20 +94,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldDisableBlur = disableBlur === true;
   const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
   return (
-      <MapboxGL.MapView
-        ref={mapRef}
-        style={styles.map}
-        styleURL={styleURL}
-        logoEnabled={false}
-        attributionEnabled={false}
-        scaleBarEnabled={false}
-        gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
-        onPress={onPress}
-        onCameraChanged={onCameraChanged}
-        onMapIdle={onMapIdle}
-        onDidFinishLoadingStyle={onMapLoaded}
-        onDidFinishLoadingMap={onMapLoaded}
-      >
+    <MapboxGL.MapView
+      ref={mapRef}
+      style={styles.map}
+      styleURL={styleURL}
+      logoEnabled={false}
+      attributionEnabled={false}
+      scaleBarEnabled={false}
+      gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
+      onPress={onPress}
+      onCameraChanged={onCameraChanged}
+      onMapIdle={onMapIdle}
+      onDidFinishLoadingStyle={onMapLoaded}
+      onDidFinishLoadingMap={onMapLoaded}
+    >
       <MapboxGL.Camera
         ref={cameraRef}
         centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
@@ -240,10 +240,7 @@ const areCameraPaddingEqual = (left?: CameraPadding | null, right?: CameraPaddin
   );
 };
 
-const areCentersEqual = (
-  left?: [number, number] | null,
-  right?: [number, number] | null
-) => {
+const areCentersEqual = (left?: [number, number] | null, right?: [number, number] | null) => {
   if (left === right) {
     return true;
   }

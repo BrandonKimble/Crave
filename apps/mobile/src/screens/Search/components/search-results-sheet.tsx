@@ -150,11 +150,13 @@ const SearchResultsSheet = <T,>({
       if (prev.ListHeaderComponent !== ListHeaderComponent) changes.push('ListHeaderComponent');
       if (prev.ListFooterComponent !== ListFooterComponent) changes.push('ListFooterComponent');
       if (prev.ListEmptyComponent !== ListEmptyComponent) changes.push('ListEmptyComponent');
-      if (prev.ItemSeparatorComponent !== ItemSeparatorComponent) changes.push('ItemSeparatorComponent');
+      if (prev.ItemSeparatorComponent !== ItemSeparatorComponent)
+        changes.push('ItemSeparatorComponent');
       if (prev.headerComponent !== headerComponent) changes.push('headerComponent');
       if (prev.backgroundComponent !== backgroundComponent) changes.push('backgroundComponent');
       if (prev.overlayComponent !== overlayComponent) changes.push('overlayComponent');
-      if (prev.contentContainerStyle !== contentContainerStyle) changes.push('contentContainerStyle');
+      if (prev.contentContainerStyle !== contentContainerStyle)
+        changes.push('contentContainerStyle');
       if (prev.resultsContainerAnimatedStyle !== resultsContainerAnimatedStyle) {
         changes.push('resultsContainerAnimatedStyle');
       }

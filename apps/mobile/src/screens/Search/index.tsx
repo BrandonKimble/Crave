@@ -2162,11 +2162,11 @@ const SearchScreen: React.FC = () => {
       // Dev-only logging to identify commits during sheet interactions.
       // eslint-disable-next-line no-console
       console.log(
-        `[SearchPerf] ${id} ${phase} actual=${actualDuration.toFixed(1)}ms base=${baseDuration.toFixed(
+        `[SearchPerf] ${id} ${phase} actual=${actualDuration.toFixed(
           1
-        )}ms start=${startTime.toFixed(1)} commit=${commitTime.toFixed(
+        )}ms base=${baseDuration.toFixed(1)}ms start=${startTime.toFixed(
           1
-        )} drag=${interactionState.isResultsSheetDragging} scroll=${
+        )} commit=${commitTime.toFixed(1)} drag=${interactionState.isResultsSheetDragging} scroll=${
           interactionState.isResultsListScrolling
         } settle=${interactionState.isResultsSheetSettling}`
       );
@@ -3132,7 +3132,11 @@ const SearchScreen: React.FC = () => {
 
       const nextCenter = state?.properties?.center as unknown;
       const nextZoom = state?.properties?.zoom as unknown;
-      if (!isLngLatTuple(nextCenter) || typeof nextZoom !== 'number' || !Number.isFinite(nextZoom)) {
+      if (
+        !isLngLatTuple(nextCenter) ||
+        typeof nextZoom !== 'number' ||
+        !Number.isFinite(nextZoom)
+      ) {
         return;
       }
       const roundedCenter: [number, number] = [
@@ -4252,12 +4256,7 @@ const SearchScreen: React.FC = () => {
       }
       onFiltersHeaderLayout(event);
     },
-    [
-      filtersHeaderHeight,
-      measureFiltersHeaderNow,
-      onFiltersHeaderLayout,
-      searchInteractionRef,
-    ]
+    [filtersHeaderHeight, measureFiltersHeaderNow, onFiltersHeaderLayout, searchInteractionRef]
   );
   const resultsHeaderComponent = React.useMemo(
     () => (
@@ -4701,9 +4700,7 @@ const SearchScreen: React.FC = () => {
               <SearchResultsSheet
                 visible={shouldRenderSheet}
                 listScrollEnabled={
-                  !isPriceSelectorVisible &&
-                  !isFilterTogglePending &&
-                  !shouldSuspendResultsSheet
+                  !isPriceSelectorVisible && !isFilterTogglePending && !shouldSuspendResultsSheet
                 }
                 snapPoints={snapPoints}
                 initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}

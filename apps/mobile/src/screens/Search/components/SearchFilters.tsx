@@ -180,23 +180,24 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   );
 
   const registerHole = React.useCallback(
-    (key: string, borderRadius: number = TOGGLE_BORDER_RADIUS) => (event: LayoutChangeEvent) => {
-      const { x, y, width, height } = event.nativeEvent.layout;
-      const next: MaskedHole = {
-        x,
-        y,
-        width,
-        height,
-        borderRadius,
-      };
-      setHoleMap((prev) => {
-        const prevHole = prev[key];
-        if (prevHole && areHolesEqual(prevHole, next)) {
-          return prev;
-        }
-        return { ...prev, [key]: next };
-      });
-    },
+    (key: string, borderRadius: number = TOGGLE_BORDER_RADIUS) =>
+      (event: LayoutChangeEvent) => {
+        const { x, y, width, height } = event.nativeEvent.layout;
+        const next: MaskedHole = {
+          x,
+          y,
+          width,
+          height,
+          borderRadius,
+        };
+        setHoleMap((prev) => {
+          const prevHole = prev[key];
+          if (prevHole && areHolesEqual(prevHole, next)) {
+            return prev;
+          }
+          return { ...prev, [key]: next };
+        });
+      },
     []
   );
 
