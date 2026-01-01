@@ -28,6 +28,8 @@ import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
+import { RestaurantStatusService } from './restaurant-status.service';
+import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -56,6 +58,7 @@ export type SearchHistoryEntry = {
   lastSearchedAt: string;
   selectedEntityId: string | null;
   selectedEntityType: EntityType | null;
+  statusPreview?: RestaurantStatusPreviewDto | null;
 };
 
 @Injectable()
@@ -83,6 +86,7 @@ export class SearchService {
     private readonly prisma: PrismaService,
     private readonly subredditResolver: SearchSubredditResolverService,
     private readonly coverageRegistry: CoverageRegistryService,
+    private readonly restaurantStatusService: RestaurantStatusService,
   ) {
     this.logger = loggerService.setContext('SearchService');
     this.resultLimit = this.resolveResultLimit();
@@ -955,7 +959,43 @@ export class SearchService {
       }
     }
 
-    return entries.slice(0, take);
+    const trimmedEntries = entries.slice(0, take);
+    const restaurantIds = Array.from(
+      new Set(
+        trimmedEntries
+          .filter(
+            (entry) =>
+              entry.selectedEntityType === EntityType.restaurant &&
+              Boolean(entry.selectedEntityId),
+          )
+          .map((entry) => entry.selectedEntityId!)
+          .filter(Boolean),
+      ),
+    );
+
+    if (restaurantIds.length === 0) {
+      return trimmedEntries;
+    }
+
+    const previews = await this.restaurantStatusService.getStatusPreviews({
+      restaurantIds,
+    });
+    const previewMap = new Map(
+      previews.map((preview) => [preview.restaurantId, preview]),
+    );
+
+    return trimmedEntries.map((entry) => {
+      if (
+        entry.selectedEntityType !== EntityType.restaurant ||
+        !entry.selectedEntityId
+      ) {
+        return entry;
+      }
+      return {
+        ...entry,
+        statusPreview: previewMap.get(entry.selectedEntityId) ?? null,
+      };
+    });
   }
 
   private extractSelectedEntity(

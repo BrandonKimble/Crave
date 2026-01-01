@@ -49,56 +49,65 @@ type SearchMapProps = {
   isFollowingUser: boolean;
   onPress: () => void;
   onCameraChanged: (state: MapboxMapState) => void;
+  onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
   onMarkerPress?: (restaurantId: string) => void;
   selectedRestaurantId?: string | null;
-  preferredFramesPerSecond?: number;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   markersRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
+  isMapStyleReady: boolean;
   userLocation: Coordinate | null;
   locationPulse: Animated.Value;
+  disableMarkers?: boolean;
+  disableBlur?: boolean;
 };
 
-const SearchMap: React.FC<SearchMapProps> = React.memo(
-  ({
-    mapRef,
-    cameraRef,
-    styleURL,
-    mapCenter,
-    mapZoom,
-    cameraPadding,
-    isFollowingUser,
-    onPress,
-    onCameraChanged,
-    onMapLoaded,
-    onMarkerPress,
-    selectedRestaurantId,
-    preferredFramesPerSecond,
-    sortedRestaurantMarkers,
-    markersRenderKey,
-    buildMarkerKey,
-    restaurantFeatures,
-    restaurantLabelStyle,
-    userLocation,
-    locationPulse,
-  }) => (
-    <MapboxGL.MapView
-      ref={mapRef}
-      style={styles.map}
-      styleURL={styleURL}
-      logoEnabled={false}
-      attributionEnabled={false}
-      scaleBarEnabled={false}
-      gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
-      onPress={onPress}
-      onCameraChanged={onCameraChanged}
-      onMapIdle={onCameraChanged}
-      onDidFinishLoadingStyle={onMapLoaded}
-      preferredFramesPerSecond={preferredFramesPerSecond}
-    >
+const SearchMap: React.FC<SearchMapProps> = ({
+  mapRef,
+  cameraRef,
+  styleURL,
+  mapCenter,
+  mapZoom,
+  cameraPadding,
+  isFollowingUser,
+  onPress,
+  onCameraChanged,
+  onMapIdle,
+  onMapLoaded,
+  onMarkerPress,
+  selectedRestaurantId,
+  sortedRestaurantMarkers,
+  markersRenderKey,
+  buildMarkerKey,
+  restaurantFeatures,
+  restaurantLabelStyle,
+  isMapStyleReady,
+  userLocation,
+  locationPulse,
+  disableMarkers = false,
+  disableBlur = false,
+}) => {
+  const shouldDisableMarkers = disableMarkers === true;
+  const shouldDisableBlur = disableBlur === true;
+  const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
+  return (
+      <MapboxGL.MapView
+        ref={mapRef}
+        style={styles.map}
+        styleURL={styleURL}
+        logoEnabled={false}
+        attributionEnabled={false}
+        scaleBarEnabled={false}
+        gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
+        onPress={onPress}
+        onCameraChanged={onCameraChanged}
+        onMapIdle={onMapIdle}
+        onDidFinishLoadingStyle={onMapLoaded}
+        onDidFinishLoadingMap={onMapLoaded}
+      >
       <MapboxGL.Camera
         ref={cameraRef}
         centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
@@ -112,7 +121,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
         animationDuration={0}
         pitch={32}
       />
-      {sortedRestaurantMarkers.length ? (
+      {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
         <React.Fragment key={`markers-${markersRenderKey}`}>
           {sortedRestaurantMarkers.map((feature) => {
             const coordinates = feature.geometry.coordinates as [number, number];
@@ -155,7 +164,7 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
           })}
         </React.Fragment>
       ) : null}
-      {restaurantFeatures.features.length ? (
+      {shouldRenderLabels ? (
         <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
           <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
         </MapboxGL.ShapeSource>
@@ -171,29 +180,145 @@ const SearchMap: React.FC<SearchMapProps> = React.memo(
         >
           <View style={styles.userLocationWrapper}>
             <View style={styles.userLocationShadow}>
-              <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
-                <Animated.View
-                  style={[
-                    styles.userLocationDot,
-                    {
-                      transform: [
-                        {
-                          scale: locationPulse.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [1.4, 1.8],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                />
-              </AppBlurView>
+              {shouldDisableBlur ? (
+                <View style={styles.userLocationHaloWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.userLocationDot,
+                      {
+                        transform: [
+                          {
+                            scale: locationPulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1.4, 1.8],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                </View>
+              ) : (
+                <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
+                  <Animated.View
+                    style={[
+                      styles.userLocationDot,
+                      {
+                        transform: [
+                          {
+                            scale: locationPulse.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: [1.4, 1.8],
+                            }),
+                          },
+                        ],
+                      },
+                    ]}
+                  />
+                </AppBlurView>
+              )}
             </View>
           </View>
         </MapboxGL.MarkerView>
       ) : null}
     </MapboxGL.MapView>
-  )
-);
+  );
+};
 
-export default SearchMap;
+const areCameraPaddingEqual = (left?: CameraPadding | null, right?: CameraPadding | null) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return (
+    left.paddingTop === right.paddingTop &&
+    left.paddingBottom === right.paddingBottom &&
+    left.paddingLeft === right.paddingLeft &&
+    left.paddingRight === right.paddingRight
+  );
+};
+
+const areCentersEqual = (
+  left?: [number, number] | null,
+  right?: [number, number] | null
+) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return left[0] === right[0] && left[1] === right[1];
+};
+
+const areUserLocationsEqual = (left?: Coordinate | null, right?: Coordinate | null) => {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return left.lat === right.lat && left.lng === right.lng;
+};
+
+const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
+  if (prev.styleURL !== next.styleURL) {
+    return false;
+  }
+  if (prev.mapZoom !== next.mapZoom) {
+    return false;
+  }
+  if (!areCentersEqual(prev.mapCenter, next.mapCenter)) {
+    return false;
+  }
+  if (!areCameraPaddingEqual(prev.cameraPadding, next.cameraPadding)) {
+    return false;
+  }
+  if (prev.isFollowingUser !== next.isFollowingUser) {
+    return false;
+  }
+  if (prev.selectedRestaurantId !== next.selectedRestaurantId) {
+    return false;
+  }
+  if (prev.markersRenderKey !== next.markersRenderKey) {
+    return false;
+  }
+  if (prev.disableMarkers !== next.disableMarkers) {
+    return false;
+  }
+  if (prev.disableBlur !== next.disableBlur) {
+    return false;
+  }
+  if (!areUserLocationsEqual(prev.userLocation, next.userLocation)) {
+    return false;
+  }
+  if (prev.locationPulse !== next.locationPulse) {
+    return false;
+  }
+  if (prev.restaurantLabelStyle !== next.restaurantLabelStyle) {
+    return false;
+  }
+  if (prev.buildMarkerKey !== next.buildMarkerKey) {
+    return false;
+  }
+  if (prev.onPress !== next.onPress) {
+    return false;
+  }
+  if (prev.onCameraChanged !== next.onCameraChanged) {
+    return false;
+  }
+  if (prev.onMapIdle !== next.onMapIdle) {
+    return false;
+  }
+  if (prev.onMapLoaded !== next.onMapLoaded) {
+    return false;
+  }
+  if (prev.onMarkerPress !== next.onMarkerPress) {
+    return false;
+  }
+  return true;
+};
+
+export default React.memo(SearchMap, arePropsEqual);

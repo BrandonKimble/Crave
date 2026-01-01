@@ -33,6 +33,7 @@ export type RecentSearch = {
   lastSearchedAt: string;
   selectedEntityId?: string | null;
   selectedEntityType?: EntityScope | null;
+  statusPreview?: RestaurantStatusPreview | null;
 };
 
 export type RecentlyViewedRestaurant = {
@@ -42,6 +43,7 @@ export type RecentlyViewedRestaurant = {
   region?: string | null;
   lastViewedAt: string;
   viewCount: number;
+  statusPreview?: RestaurantStatusPreview | null;
 };
 
 export type RestaurantStatusPreview = {
@@ -84,16 +86,6 @@ export const searchService = {
     const { data } = await api.get<RecentlyViewedRestaurant[]>('/history/restaurants/viewed', {
       params: { limit },
     });
-    return data;
-  },
-  restaurantStatusPreviews: async (payload: {
-    restaurantIds: string[];
-    userLocation?: Coordinate;
-  }): Promise<RestaurantStatusPreview[]> => {
-    const { data } = await api.post<RestaurantStatusPreview[]>(
-      '/search/restaurant-status',
-      payload
-    );
     return data;
   },
   recordRestaurantView: async (payload: {

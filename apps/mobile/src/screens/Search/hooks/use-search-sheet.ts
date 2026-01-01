@@ -3,19 +3,13 @@ import React from 'react';
 import {
   Extrapolation,
   interpolate,
-  runOnJS,
   type SharedValue,
   useAnimatedStyle,
   useSharedValue,
-  withSpring,
 } from 'react-native-reanimated';
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
-import {
-  resolveExpandedTop,
-  SHEET_SPRING_CONFIG,
-  type SheetPosition,
-} from '../../../overlays/sheetUtils';
+import { resolveExpandedTop, type SheetPosition } from '../../../overlays/sheetUtils';
 import { SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
@@ -26,23 +20,18 @@ type UseSearchSheetOptions = {
 
 type UseSearchSheetResult = {
   panelVisible: boolean;
-  setPanelVisible: React.Dispatch<React.SetStateAction<boolean>>;
   sheetState: SheetPosition;
-  setSheetState: React.Dispatch<React.SetStateAction<SheetPosition>>;
   snapPoints: SnapPoints;
   shouldRenderSheet: boolean;
   sheetTranslateY: SharedValue<number>;
-  sheetStateShared: SharedValue<SheetPosition>;
+  snapTo: SheetPosition | null;
   resetSheetToHidden: () => void;
   animateSheetTo: (position: SheetPosition, velocity?: number) => void;
   showPanel: () => void;
-  hideSheet: () => void;
   handleSheetSnapChange: (nextSnap: SheetPosition | 'hidden') => void;
   resultsContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsScrollOffset: SharedValue<number>;
   resultsMomentum: SharedValue<boolean>;
-  onResultsScrollBeginDrag: () => void;
-  onResultsScrollEndDrag: () => void;
   headerDividerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
 };
 
@@ -54,10 +43,10 @@ const useSearchSheet = ({
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
-  const sheetStateShared = useSharedValue<SheetPosition>('hidden');
   const resultsScrollOffset = useSharedValue(0);
   const resultsMomentum = useSharedValue(false);
-  const draggingFromTop = useSharedValue(false);
+  const [snapTo, setSnapTo] = React.useState<SheetPosition | null>(null);
+  const snapToRef = React.useRef<SheetPosition | null>(null);
 
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = resolveExpandedTop(searchBarTop);
@@ -80,14 +69,11 @@ const useSearchSheet = ({
     if (!isSearchOverlay) {
       setPanelVisible(false);
       setSheetState('hidden');
-      sheetStateShared.value = 'hidden';
+      setSnapTo(null);
+      snapToRef.current = null;
       sheetTranslateY.value = snapPoints.hidden;
     }
-  }, [isSearchOverlay, sheetStateShared, sheetTranslateY, snapPoints.hidden]);
-
-  React.useEffect(() => {
-    sheetStateShared.value = sheetState;
-  }, [sheetState, sheetStateShared]);
+  }, [isSearchOverlay, sheetTranslateY, snapPoints.hidden]);
 
   React.useEffect(() => {
     if (!panelVisible) {
@@ -95,46 +81,37 @@ const useSearchSheet = ({
     }
   }, [panelVisible, sheetTranslateY, snapPoints.hidden]);
 
+  const handleSheetSnapChange = React.useCallback(
+    (nextSnap: SheetPosition | 'hidden') => {
+      const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
+      setSheetState(nextState);
+      setPanelVisible(nextSnap !== 'hidden');
+      if (snapToRef.current) {
+        snapToRef.current = null;
+        setSnapTo(null);
+      }
+    },
+    [setPanelVisible, setSnapTo]
+  );
+
   const animateSheetTo = React.useCallback(
-    (position: SheetPosition, velocity = 0) => {
-      const target = snapPoints[position];
-      setSheetState(position);
-      sheetStateShared.value = position;
+    (position: SheetPosition, _velocity = 0) => {
       if (position !== 'hidden') {
         setPanelVisible(true);
       }
-      sheetTranslateY.value = withSpring(
-        target,
-        {
-          ...SHEET_SPRING_CONFIG,
-          velocity,
-        },
-        (finished) => {
-          if (finished && position === 'hidden') {
-            runOnJS(setPanelVisible)(false);
-          }
-        }
-      );
+      snapToRef.current = position;
+      setSnapTo(position);
     },
-    [sheetStateShared, sheetTranslateY, snapPoints]
+    [setPanelVisible, setSnapTo]
   );
 
   const resetSheetToHidden = React.useCallback(() => {
     setPanelVisible(false);
     setSheetState('hidden');
-    sheetStateShared.value = 'hidden';
+    setSnapTo(null);
+    snapToRef.current = null;
     sheetTranslateY.value = snapPoints.hidden;
-  }, [sheetStateShared, sheetTranslateY, snapPoints.hidden]);
-
-  const handleSheetSnapChange = React.useCallback(
-    (nextSnap: SheetPosition | 'hidden') => {
-      const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
-      setSheetState(nextState);
-      sheetStateShared.value = nextState;
-      setPanelVisible(nextSnap !== 'hidden');
-    },
-    [sheetStateShared]
-  );
+  }, [sheetTranslateY, snapPoints.hidden]);
 
   const showPanel = React.useCallback(() => {
     if (!panelVisible) {
@@ -145,24 +122,9 @@ const useSearchSheet = ({
     });
   }, [animateSheetTo, panelVisible]);
 
-  const hideSheet = React.useCallback(() => {
-    if (!panelVisible) {
-      return;
-    }
-    animateSheetTo('hidden');
-  }, [animateSheetTo, panelVisible]);
-
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
-
-  const onResultsScrollBeginDrag = React.useCallback(() => {
-    draggingFromTop.value = resultsScrollOffset.value <= 0.5;
-  }, [draggingFromTop, resultsScrollOffset]);
-
-  const onResultsScrollEndDrag = React.useCallback(() => {
-    draggingFromTop.value = false;
-  }, [draggingFromTop]);
 
   const headerDividerAnimatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(resultsScrollOffset.value, [0, 12], [0, 1], Extrapolation.CLAMP),
@@ -170,23 +132,18 @@ const useSearchSheet = ({
 
   return {
     panelVisible,
-    setPanelVisible,
     sheetState,
-    setSheetState,
     snapPoints,
     shouldRenderSheet,
     sheetTranslateY,
-    sheetStateShared,
+    snapTo,
     resetSheetToHidden,
     animateSheetTo,
     showPanel,
-    hideSheet,
     handleSheetSnapChange,
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
     resultsMomentum,
-    onResultsScrollBeginDrag,
-    onResultsScrollEndDrag,
     headerDividerAnimatedStyle,
   };
 };

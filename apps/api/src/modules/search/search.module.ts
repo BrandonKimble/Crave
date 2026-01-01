@@ -59,6 +59,7 @@ import { RestaurantStatusService } from './restaurant-status.service';
     SearchSubredditResolverService,
     SearchQuerySuggestionService,
     SearchPopularityService,
+    RestaurantStatusService,
   ],
 })
 export class SearchModule {}

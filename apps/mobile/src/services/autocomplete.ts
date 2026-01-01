@@ -1,5 +1,6 @@
 import api from './api';
 import type { Coordinate, MapBounds } from '../types';
+import type { RestaurantStatusPreview } from './search';
 
 export type AutocompleteMatch = {
   entityId: string;
@@ -15,6 +16,7 @@ export type AutocompleteMatch = {
   };
   querySuggestionSource?: 'personal' | 'global';
   locationCount?: number;
+  statusPreview?: RestaurantStatusPreview | null;
 };
 
 export type AutocompleteResponse = {

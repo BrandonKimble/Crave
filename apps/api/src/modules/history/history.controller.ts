@@ -3,6 +3,7 @@ import type { User } from '@prisma/client';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
 import { HistoryService } from './history.service';
+import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
 
@@ -32,6 +33,7 @@ export class HistoryController {
       region?: string | null;
       lastViewedAt: Date;
       viewCount: number;
+      statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
     return this.historyService.listRecentlyViewedRestaurants(

@@ -13,7 +13,6 @@ import type { RecentSearch, RecentlyViewedRestaurant } from '../../services/sear
 import type { RootStackParamList } from '../../types/navigation';
 import type { Coordinate } from '../../types';
 import useSearchHistory from './hooks/use-search-history';
-import useRestaurantStatusPreviews from './hooks/use-restaurant-status-previews';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
 import { renderMetaDetailLine } from './components/render-meta-detail-line';
@@ -37,6 +36,10 @@ type RecentHistoryViewProps = {
 const ICON_COLOR = '#000000';
 const CHEVRON_ICON_SIZE = 36;
 const CHEVRON_STROKE_WIDTH = ((2 * 24) / CHEVRON_ICON_SIZE) * 1.25;
+const ROW_HEIGHT = 60;
+const NAME_LINE_HEIGHT = FONT_SIZES.subtitle + 2;
+const META_LINE_HEIGHT = FONT_SIZES.body + 2;
+const META_LINE_SPACING = 4;
 const SECTION_ORDER: HistorySectionKey[] = [
   'today',
   'yesterday',
@@ -120,7 +123,11 @@ const buildSections = <T,>(
   })).filter((section) => section.items.length > 0);
 };
 
-const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title, userLocation }) => {
+const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
+  mode,
+  title,
+  userLocation: _userLocation,
+}) => {
   const { isSignedIn } = useAuth();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
@@ -164,81 +171,69 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({ mode, title, user
     [insets.bottom]
   );
 
-  const restaurantStatusIds = React.useMemo(() => {
-    const ids = new Set<string>();
-    if (isRecentMode) {
-      recentSearches.forEach((item) => {
-        if (item.selectedEntityType === 'restaurant' && item.selectedEntityId) {
-          ids.add(item.selectedEntityId);
-        }
-      });
-    } else {
-      dedupedRecentlyViewed.forEach((item) => {
-        ids.add(item.restaurantId);
-      });
-    }
-    return Array.from(ids);
-  }, [isRecentMode, recentSearches, dedupedRecentlyViewed]);
-
-  const restaurantStatusPreviews = useRestaurantStatusPreviews(restaurantStatusIds, {
-    enabled: restaurantStatusIds.length > 0 && Boolean(isSignedIn),
-    userLocation,
-  });
-
-  const renderStatusLine = (restaurantId?: string | null) => {
-    if (!restaurantId) {
-      return null;
-    }
-    const preview = restaurantStatusPreviews[restaurantId];
-    if (!preview) {
-      return null;
-    }
+  const renderStatusLine = (statusPreview?: RecentSearch['statusPreview'] | null) => {
     const statusLine = renderMetaDetailLine(
-      preview.operatingStatus ?? null,
+      statusPreview?.operatingStatus ?? null,
       null,
       null,
       'left',
       undefined,
       true,
       true,
-      preview.locationCount ?? null
+      statusPreview?.locationCount ?? null,
+      styles.metaLineText
     );
-    if (!statusLine) {
-      return null;
-    }
-    return <View style={styles.metaLine}>{statusLine}</View>;
+    return statusLine ?? null;
   };
 
   const renderRecentRow = (item: RecentSearch, index: number) => {
     const statusLine =
-      item.selectedEntityType === 'restaurant' ? renderStatusLine(item.selectedEntityId) : null;
+      item.selectedEntityType === 'restaurant'
+        ? renderStatusLine(item.statusPreview ?? null)
+        : null;
+    const hasMetaLine = Boolean(statusLine);
     return (
       <View key={`${item.queryText}-${item.lastSearchedAt}`} style={styles.recentRow}>
         <View style={styles.recentIcon}>
           <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
-        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-          <Text style={styles.recentText} numberOfLines={1}>
-            {item.queryText}
-          </Text>
-          {statusLine}
+        <View
+          style={[
+            styles.recentRowContent,
+            index === 0 && styles.recentRowFirst,
+          ]}
+        >
+          <View style={styles.recentRowTextGroup}>
+            <Text style={styles.recentText} numberOfLines={1}>
+              {item.queryText}
+            </Text>
+            {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+          </View>
         </View>
       </View>
     );
   };
 
   const renderRecentlyViewedRow = (item: RecentlyViewedRestaurant, index: number) => {
-    const statusLine = renderStatusLine(item.restaurantId);
+    const statusLine = renderStatusLine(item.statusPreview ?? null);
+    const hasMetaLine = Boolean(statusLine);
     return (
       <View key={item.restaurantId} style={styles.recentRow}>
         <View style={styles.recentIcon}>
           <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
-        <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-          <Text style={styles.recentText} numberOfLines={1}>
-            {item.restaurantName}
-          </Text>
-          {statusLine}
+        <View
+          style={[
+            styles.recentRowContent,
+            index === 0 && styles.recentRowFirst,
+          ]}
+        >
+          <View style={styles.recentRowTextGroup}>
+            <Text style={styles.recentText} numberOfLines={1}>
+              {item.restaurantName}
+            </Text>
+            {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+          </View>
         </View>
       </View>
     );
@@ -358,10 +353,14 @@ const styles = StyleSheet.create({
   },
   recentRowContent: {
     flex: 1,
-    paddingVertical: 12,
+    height: ROW_HEIGHT,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
-    gap: 2,
+    justifyContent: 'center',
+  },
+  recentRowTextGroup: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   recentRowFirst: {
     borderTopWidth: 0,
@@ -373,12 +372,18 @@ const styles = StyleSheet.create({
   },
   recentText: {
     fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
+    lineHeight: NAME_LINE_HEIGHT,
+    includeFontPadding: false,
     color: '#1f2937',
-    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   metaLine: {
-    marginTop: 0,
+    marginTop: META_LINE_SPACING,
+  },
+  metaLineText: {
+    lineHeight: META_LINE_HEIGHT,
+    includeFontPadding: false,
   },
 });
 

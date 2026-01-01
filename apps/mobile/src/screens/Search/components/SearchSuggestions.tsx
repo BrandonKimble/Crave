@@ -21,11 +21,7 @@ import SquircleSpinner from '../../../components/SquircleSpinner';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
-import type {
-  RecentSearch,
-  RecentlyViewedRestaurant,
-  RestaurantStatusPreview,
-} from '../../../services/search';
+import type { RecentSearch, RecentlyViewedRestaurant } from '../../../services/search';
 import { ACTIVE_TAB_COLOR } from '../constants/search';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import { renderMetaDetailLine } from './render-meta-detail-line';
@@ -37,7 +33,6 @@ type SearchSuggestionsProps = {
   suggestions: AutocompleteMatch[];
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
-  restaurantStatusPreviews?: Record<string, RestaurantStatusPreview | null | undefined>;
   hasRecentSearches: boolean;
   hasRecentlyViewedRestaurants: boolean;
   isAutocompleteLoading: boolean;
@@ -54,6 +49,10 @@ type SearchSuggestionsProps = {
 const ICON_COLOR = '#000000';
 const RECENT_SEARCH_PREVIEW_LIMIT = 5;
 const RECENTLY_VIEWED_PREVIEW_LIMIT = 3;
+const ROW_HEIGHT = 60;
+const NAME_LINE_HEIGHT = FONT_SIZES.subtitle + 2;
+const META_LINE_HEIGHT = FONT_SIZES.body + 2;
+const META_LINE_SPACING = 4;
 
 const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   visible,
@@ -62,7 +61,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   suggestions,
   recentSearches,
   recentlyViewedRestaurants,
-  restaurantStatusPreviews,
   hasRecentSearches,
   hasRecentlyViewedRestaurants,
   isAutocompleteLoading,
@@ -99,8 +97,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     !isRecentLoading && recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
     !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
-  const statusLookup = restaurantStatusPreviews ?? {};
-
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
     styles.recentSection,
@@ -108,31 +104,25 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   ];
 
   const renderStatusLine = (
-    restaurantId?: string | null,
+    statusPreview?: RecentSearch['statusPreview'] | null,
     fallbackLocationCount?: number | null
   ) => {
-    if (!restaurantId) {
-      return null;
-    }
-    const preview = statusLookup[restaurantId] ?? null;
-    const locationCount = preview?.locationCount ?? fallbackLocationCount ?? null;
-    if (!preview?.operatingStatus && !locationCount) {
+    const locationCount = statusPreview?.locationCount ?? fallbackLocationCount ?? null;
+    if (!statusPreview?.operatingStatus && !locationCount) {
       return null;
     }
     const statusLine = renderMetaDetailLine(
-      preview?.operatingStatus ?? null,
+      statusPreview?.operatingStatus ?? null,
       null,
       null,
       'left',
       undefined,
       true,
       true,
-      locationCount
+      locationCount,
+      styles.metaLineText
     );
-    if (!statusLine) {
-      return null;
-    }
-    return <View style={styles.metaLine}>{statusLine}</View>;
+    return statusLine ?? null;
   };
 
   return (
@@ -145,15 +135,21 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               : `${match.name}-${index}`;
             const isQuery = match.matchType === 'query' || match.entityType === 'query';
             const locationCount =
-              typeof match.locationCount === 'number' ? match.locationCount : null;
+              typeof match.locationCount === 'number'
+                ? match.locationCount
+                : match.statusPreview?.locationCount ?? null;
             const shouldShowLocationCount =
               match.entityType === 'restaurant' && locationCount !== null && locationCount > 1;
             const isRecentQuery = Boolean(match.badges?.recentQuery);
             const isViewed = Boolean(match.badges?.viewed);
             const statusLine =
               match.entityType === 'restaurant'
-                ? renderStatusLine(match.entityId, shouldShowLocationCount ? locationCount : null)
+                ? renderStatusLine(
+                    match.statusPreview ?? null,
+                    shouldShowLocationCount ? locationCount : null
+                  )
                 : null;
+            const hasMetaLine = Boolean(statusLine);
             const leadingIcon = isRecentQuery ? (
               <Clock size={20} color={ICON_COLOR} strokeWidth={2} />
             ) : isViewed ? (
@@ -175,7 +171,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                 <View
                   style={[
                     styles.autocompleteItemContent,
-                    index === 0 ? styles.autocompleteItemFirst : null,
                     index === suggestions.length - 1 ? styles.autocompleteItemLast : null,
                   ]}
                 >
@@ -183,7 +178,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <Text style={styles.autocompletePrimaryText} numberOfLines={1}>
                       {match.name}
                     </Text>
-                    {statusLine}
+                    {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
                   </View>
                   <View style={styles.autocompleteBadges}>
                     {match.badges?.favorite ? (
@@ -215,8 +210,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               {recentSearchesToRender.map((term, index) => {
                 const statusLine =
                   term.selectedEntityType === 'restaurant'
-                    ? renderStatusLine(term.selectedEntityId)
+                    ? renderStatusLine(term.statusPreview ?? null)
                     : null;
+                const hasMetaLine = Boolean(statusLine);
                 return (
                   <TouchableOpacity
                     key={`${term.queryText}-${index}`}
@@ -226,11 +222,18 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-                      <Text style={styles.recentText} numberOfLines={1}>
-                        {term.queryText}
-                      </Text>
-                      {statusLine}
+                    <View
+                      style={[
+                        styles.recentRowContent,
+                        index === 0 && styles.recentRowFirst,
+                      ]}
+                    >
+                      <View style={styles.recentRowTextGroup}>
+                        <Text style={styles.recentText} numberOfLines={1}>
+                          {term.queryText}
+                        </Text>
+                        {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -261,7 +264,8 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           ) : (
             <>
               {recentlyViewedToRender.map((item, index) => {
-                const statusLine = renderStatusLine(item.restaurantId);
+                const statusLine = renderStatusLine(item.statusPreview ?? null);
+                const hasMetaLine = Boolean(statusLine);
                 return (
                   <TouchableOpacity
                     key={`${item.restaurantId}-${index}`}
@@ -271,11 +275,18 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     <View style={styles.recentIcon}>
                       <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
                     </View>
-                    <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
-                      <Text style={styles.recentText} numberOfLines={1}>
-                        {item.restaurantName}
-                      </Text>
-                      {statusLine}
+                    <View
+                      style={[
+                        styles.recentRowContent,
+                        index === 0 && styles.recentRowFirst,
+                      ]}
+                    >
+                      <View style={styles.recentRowTextGroup}>
+                        <Text style={styles.recentText} numberOfLines={1}>
+                          {item.restaurantName}
+                        </Text>
+                        {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+                      </View>
                     </View>
                   </TouchableOpacity>
                 );
@@ -325,16 +336,13 @@ const styles = StyleSheet.create({
   autocompleteItemContent: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 12,
+    alignItems: 'center',
+    height: ROW_HEIGHT,
     borderBottomWidth: 1,
     borderBottomColor: '#f1f5f9',
   },
   autocompleteItemLast: {
     borderBottomWidth: 0,
-  },
-  autocompleteItemFirst: {
-    paddingTop: 0,
   },
   autocompleteLeadingIcon: {
     width: 24,
@@ -342,14 +350,14 @@ const styles = StyleSheet.create({
   },
   autocompletePrimaryText: {
     fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
+    lineHeight: NAME_LINE_HEIGHT,
+    includeFontPadding: false,
     fontWeight: '400',
     color: '#111827',
   },
   autocompleteTextGroup: {
     flex: 1,
     justifyContent: 'center',
-    gap: 2,
     alignItems: 'flex-start',
   },
   autocompleteSecondaryText: {
@@ -400,10 +408,14 @@ const styles = StyleSheet.create({
   },
   recentRowContent: {
     flex: 1,
-    paddingVertical: 12,
+    height: ROW_HEIGHT,
     borderTopWidth: 1,
     borderTopColor: '#f1f5f9',
-    gap: 2,
+    justifyContent: 'center',
+  },
+  recentRowTextGroup: {
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   recentRowFirst: {
     borderTopWidth: 0,
@@ -415,12 +427,18 @@ const styles = StyleSheet.create({
   },
   recentText: {
     fontSize: FONT_SIZES.subtitle,
-    lineHeight: LINE_HEIGHTS.subtitle,
+    lineHeight: NAME_LINE_HEIGHT,
+    includeFontPadding: false,
     color: '#1f2937',
-    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   metaLine: {
-    marginTop: 0,
+    marginTop: META_LINE_SPACING,
+  },
+  metaLineText: {
+    lineHeight: META_LINE_HEIGHT,
+    includeFontPadding: false,
   },
   recentViewMore: {
     alignSelf: 'center',

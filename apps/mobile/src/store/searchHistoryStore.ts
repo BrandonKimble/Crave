@@ -21,6 +21,7 @@ type RecentSearchInput = {
   queryText: string;
   selectedEntityId?: string | null;
   selectedEntityType?: RecentSearch['selectedEntityType'] | null;
+  statusPreview?: RecentSearch['statusPreview'] | null;
 };
 
 const defaultState = {
@@ -49,6 +50,7 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       const selectedEntityId = typeof value === 'string' ? null : value.selectedEntityId ?? null;
       const selectedEntityType =
         typeof value === 'string' ? null : value.selectedEntityType ?? null;
+      const statusPreview = typeof value === 'string' ? null : value.statusPreview ?? null;
       const normalized = trimmedValue.toLowerCase();
       const withoutMatch = state.recentSearches.filter(
         (entry) => entry.queryText.toLowerCase() !== normalized
@@ -58,6 +60,7 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
         lastSearchedAt: new Date().toISOString(),
         selectedEntityId,
         selectedEntityType,
+        statusPreview,
       };
       return {
         ...state,
@@ -76,6 +79,7 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
         region: existing?.region ?? null,
         lastViewedAt: new Date().toISOString(),
         viewCount: existing ? existing.viewCount + 1 : 1,
+        statusPreview: existing?.statusPreview ?? null,
       };
       const withoutMatch = state.recentlyViewedRestaurants.filter(
         (item) => item.restaurantId !== restaurantId

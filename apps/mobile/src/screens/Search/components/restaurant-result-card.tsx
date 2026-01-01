@@ -22,6 +22,7 @@ import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
 import { useSearchInteraction } from '../context/SearchInteractionContext';
+import searchPerfDebug from '../search-perf-debug';
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
@@ -63,6 +64,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   // Read interaction state from a ref to avoid re-rendering on drag changes
   const { interactionRef } = useSearchInteraction();
   const isInteracting = interactionRef.current.isInteracting;
+  const disableTopFoodMeasurement =
+    searchPerfDebug.enabled && searchPerfDebug.disableTopFoodMeasurement;
 
   const qualityColor = getQualityColor(
     index,
@@ -117,6 +120,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     availableWidth: topFoodInlineWidth,
     itemGap: CARD_LINE_GAP,
     isDraggingRef: interactionRef,
+    enabled: !disableTopFoodMeasurement,
     debounceMs: 50,
   });
   const topFoodSignature = React.useMemo(

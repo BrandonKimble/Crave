@@ -34,6 +34,11 @@ type TopFoodMeasurementOptions = {
   isDragging?: boolean;
 
   /**
+   * When false, measurement work is skipped (perf diagnostics).
+   */
+  enabled?: boolean;
+
+  /**
    * Ref-based interaction state to avoid re-renders during drag.
    */
   isDraggingRef?: React.RefObject<{ isInteracting: boolean }>;
@@ -122,9 +127,11 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     availableWidth,
     itemGap,
     isDragging = false,
+    enabled = true,
     isDraggingRef,
     debounceMs = 50,
   } = options;
+  const isEnabled = enabled;
 
   // Consolidated measurement state
   const [measurements, setMeasurements] = React.useState<MeasurementState>({
@@ -219,6 +226,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
 
   // Schedule debounced update and wait for the sheet to be idle.
   const scheduleUpdate = React.useCallback(() => {
+    if (!isEnabled) {
+      return;
+    }
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
@@ -231,7 +241,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       flushPendingUpdates();
     }, debounceMs);
-  }, [debounceMs, flushPendingUpdates, getIsDragging]);
+  }, [debounceMs, flushPendingUpdates, getIsDragging, isEnabled]);
 
   // Cache for item layout callbacks
   const itemLayoutCallbacksRef = React.useRef(
@@ -243,6 +253,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       let callback = itemLayoutCallbacksRef.current.get(connectionId);
       if (!callback) {
         callback = (event: LayoutChangeEvent) => {
+          if (!isEnabled) {
+            return;
+          }
           const nextWidth = Math.round(event.nativeEvent.layout.width);
 
           if (getIsDragging()) {
@@ -264,7 +277,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [getIsDragging, scheduleUpdate]
+    [getIsDragging, isEnabled, scheduleUpdate]
   );
 
   // Cache for "more" layout callbacks
@@ -277,6 +290,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       let callback = moreLayoutCallbacksRef.current.get(hiddenCount);
       if (!callback) {
         callback = (event: LayoutChangeEvent) => {
+          if (!isEnabled) {
+            return;
+          }
           const nextWidth = Math.round(event.nativeEvent.layout.width);
 
           if (getIsDragging()) {
@@ -298,11 +314,18 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       }
       return callback;
     },
-    [getIsDragging, scheduleUpdate]
+    [getIsDragging, isEnabled, scheduleUpdate]
   );
 
   // Calculate visible items based on measurements
   const { visibleTopFoods, hiddenTopFoodCount } = React.useMemo(() => {
+    if (!isEnabled) {
+      const visible = candidateTopFoods;
+      return {
+        visibleTopFoods: visible,
+        hiddenTopFoodCount: Math.max(0, topFoodItems.length - visible.length),
+      };
+    }
     const { itemWidths, moreWidths } = measurements;
     const containerWidth = Math.round(availableWidth ?? 0);
 
@@ -365,10 +388,11 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       visibleTopFoods: candidateTopFoods.slice(0, bestCount),
       hiddenTopFoodCount: hiddenCount,
     };
-  }, [availableWidth, measurements, candidateTopFoods, topFoodItems.length, itemGap]);
+  }, [availableWidth, candidateTopFoods, isEnabled, itemGap, measurements, topFoodItems.length]);
 
   // Check if we have all the measurements we need
   const hasMeasured = React.useMemo(() => {
+    if (!isEnabled) return true;
     if (!availableWidth) return false;
     if (candidateTopFoods.length === 0) return true;
     const hasItems = candidateTopFoods.every((food) =>
@@ -376,7 +400,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     );
     const hasMore = topFoodMoreCounts.every((count) => measurements.moreWidths.has(count));
     return hasItems && hasMore;
-  }, [availableWidth, candidateTopFoods, measurements, topFoodMoreCounts]);
+  }, [availableWidth, candidateTopFoods, isEnabled, measurements, topFoodMoreCounts]);
 
   return {
     visibleTopFoods,

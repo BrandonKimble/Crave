@@ -9,6 +9,7 @@ import BottomSheetWithFlashList, {
 } from '../../../overlays/BottomSheetWithFlashList';
 import { overlaySheetStyles } from '../../../overlays/overlaySheetStyles';
 import { RESULTS_BOTTOM_PADDING } from '../constants/search';
+import searchPerfDebug from '../search-perf-debug';
 import styles from '../styles';
 
 type SheetSnapState = 'expanded' | 'middle' | 'collapsed' | 'hidden';
@@ -21,6 +22,7 @@ type SearchResultsSheetProps<T> = {
   sheetYValue: SharedValue<number>;
   scrollOffsetValue: SharedValue<number>;
   momentumFlag: SharedValue<boolean>;
+  snapTo?: SheetSnapState | null;
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag: () => void;
   onScrollEndDrag: () => void;
@@ -61,6 +63,7 @@ const SearchResultsSheet = <T,>({
   sheetYValue,
   scrollOffsetValue,
   momentumFlag,
+  snapTo,
   onScrollOffsetChange,
   onScrollBeginDrag,
   onScrollEndDrag,
@@ -96,13 +99,129 @@ const SearchResultsSheet = <T,>({
     return null;
   }
 
+  const shouldLogPropChanges = searchPerfDebug.enabled && searchPerfDebug.logCommitInfo;
+  const prevPropsRef = React.useRef<{
+    listScrollEnabled: boolean;
+    snapPointsKey: string;
+    snapTo: SheetSnapState | null | undefined;
+    listKey?: string;
+    interactionEnabled?: boolean;
+    estimatedItemSize: number;
+    dataRef: ReadonlyArray<T>;
+    renderItem: SearchResultsSheetProps<T>['renderItem'];
+    keyExtractor: SearchResultsSheetProps<T>['keyExtractor'];
+    getItemType?: SearchResultsSheetProps<T>['getItemType'];
+    overrideItemLayout?: SearchResultsSheetProps<T>['overrideItemLayout'];
+    ListHeaderComponent?: SearchResultsSheetProps<T>['ListHeaderComponent'];
+    ListFooterComponent?: SearchResultsSheetProps<T>['ListFooterComponent'];
+    ListEmptyComponent?: SearchResultsSheetProps<T>['ListEmptyComponent'];
+    ItemSeparatorComponent?: SearchResultsSheetProps<T>['ItemSeparatorComponent'];
+    headerComponent?: React.ReactNode;
+    backgroundComponent?: React.ReactNode;
+    overlayComponent?: React.ReactNode;
+    contentContainerStyle?: SearchResultsSheetProps<T>['contentContainerStyle'];
+    resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
+    onEndReached?: FlashListProps<T>['onEndReached'];
+  } | null>(null);
+
+  React.useEffect(() => {
+    if (!shouldLogPropChanges) {
+      return;
+    }
+    const snapPointsKey = `${snapPoints.expanded}:${snapPoints.middle}:${snapPoints.collapsed}:${snapPoints.hidden}`;
+    const prev = prevPropsRef.current;
+    const changes: string[] = [];
+    if (!prev) {
+      changes.push('init');
+    } else {
+      if (prev.listScrollEnabled !== listScrollEnabled) changes.push('listScrollEnabled');
+      if (prev.snapPointsKey !== snapPointsKey) changes.push('snapPoints');
+      if (prev.snapTo !== snapTo) changes.push('snapTo');
+      if (prev.listKey !== listKey) changes.push('listKey');
+      if (prev.interactionEnabled !== interactionEnabled) changes.push('interactionEnabled');
+      if (prev.estimatedItemSize !== estimatedItemSize) changes.push('estimatedItemSize');
+      if (prev.dataRef !== data) {
+        changes.push(`data:${prev.dataRef.length}->${data.length}`);
+      }
+      if (prev.renderItem !== renderItem) changes.push('renderItem');
+      if (prev.keyExtractor !== keyExtractor) changes.push('keyExtractor');
+      if (prev.getItemType !== getItemType) changes.push('getItemType');
+      if (prev.overrideItemLayout !== overrideItemLayout) changes.push('overrideItemLayout');
+      if (prev.ListHeaderComponent !== ListHeaderComponent) changes.push('ListHeaderComponent');
+      if (prev.ListFooterComponent !== ListFooterComponent) changes.push('ListFooterComponent');
+      if (prev.ListEmptyComponent !== ListEmptyComponent) changes.push('ListEmptyComponent');
+      if (prev.ItemSeparatorComponent !== ItemSeparatorComponent) changes.push('ItemSeparatorComponent');
+      if (prev.headerComponent !== headerComponent) changes.push('headerComponent');
+      if (prev.backgroundComponent !== backgroundComponent) changes.push('backgroundComponent');
+      if (prev.overlayComponent !== overlayComponent) changes.push('overlayComponent');
+      if (prev.contentContainerStyle !== contentContainerStyle) changes.push('contentContainerStyle');
+      if (prev.resultsContainerAnimatedStyle !== resultsContainerAnimatedStyle) {
+        changes.push('resultsContainerAnimatedStyle');
+      }
+      if (prev.onEndReached !== onEndReached) changes.push('onEndReached');
+    }
+    if (changes.length) {
+      console.log(`[SearchPerf] SearchResultsSheet prop changes: ${changes.join(', ')}`);
+    }
+    prevPropsRef.current = {
+      listScrollEnabled,
+      snapPointsKey,
+      snapTo,
+      listKey,
+      interactionEnabled,
+      estimatedItemSize,
+      dataRef: data,
+      renderItem,
+      keyExtractor,
+      getItemType,
+      overrideItemLayout,
+      ListHeaderComponent,
+      ListFooterComponent,
+      ListEmptyComponent,
+      ItemSeparatorComponent,
+      headerComponent,
+      backgroundComponent,
+      overlayComponent,
+      contentContainerStyle,
+      resultsContainerAnimatedStyle,
+      onEndReached,
+    };
+  }, [
+    backgroundComponent,
+    contentContainerStyle,
+    data,
+    estimatedItemSize,
+    getItemType,
+    headerComponent,
+    interactionEnabled,
+    ItemSeparatorComponent,
+    keyExtractor,
+    listKey,
+    listScrollEnabled,
+    ListEmptyComponent,
+    ListFooterComponent,
+    ListHeaderComponent,
+    onEndReached,
+    overlayComponent,
+    overrideItemLayout,
+    renderItem,
+    resultsContainerAnimatedStyle,
+    snapPoints.collapsed,
+    snapPoints.expanded,
+    snapPoints.hidden,
+    snapPoints.middle,
+    snapTo,
+    shouldLogPropChanges,
+  ]);
+
   const gestureSnapPoints = React.useMemo(
     () => ({
       expanded: snapPoints.expanded,
       middle: snapPoints.middle,
       collapsed: snapPoints.collapsed,
+      hidden: snapPoints.hidden,
     }),
-    [snapPoints.collapsed, snapPoints.expanded, snapPoints.middle]
+    [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle]
   );
 
   return (
@@ -119,6 +238,8 @@ const SearchResultsSheet = <T,>({
         sheetYValue={sheetYValue}
         scrollOffsetValue={scrollOffsetValue}
         momentumFlag={momentumFlag}
+        snapTo={snapTo}
+        preventSwipeDismiss
         onScrollOffsetChange={onScrollOffsetChange}
         onScrollBeginDrag={onScrollBeginDrag}
         onScrollEndDrag={onScrollEndDrag}
@@ -165,4 +286,6 @@ const SearchResultsSheet = <T,>({
   );
 };
 
-export default SearchResultsSheet;
+const MemoizedSearchResultsSheet = React.memo(SearchResultsSheet) as typeof SearchResultsSheet;
+
+export default MemoizedSearchResultsSheet;

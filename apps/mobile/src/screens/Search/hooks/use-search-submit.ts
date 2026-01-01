@@ -81,6 +81,7 @@ type RecentSearchInput = {
   queryText: string;
   selectedEntityId?: string | null;
   selectedEntityType?: RecentSearch['selectedEntityType'] | null;
+  statusPreview?: RecentSearch['statusPreview'] | null;
 };
 
 type UseSearchSubmitResult = {

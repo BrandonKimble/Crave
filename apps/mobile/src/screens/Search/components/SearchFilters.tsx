@@ -7,12 +7,9 @@ import {
   type LayoutChangeEvent,
   type LayoutRectangle,
 } from 'react-native';
-import MaskedView from '@react-native-masked-view/masked-view';
 import { Feather } from '@expo/vector-icons';
-import Svg, { Defs, G, Mask, Path, Rect } from 'react-native-svg';
 import Reanimated, {
   Easing,
-  useAnimatedProps,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
@@ -26,7 +23,8 @@ import {
 } from '../constants/ui';
 
 import { Text } from '../../../components';
-import { type MaskedHole } from '../../../components/MaskedHoleOverlay';
+import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
+import { FrostedGlassBackground } from '../../../components/FrostedGlassBackground';
 
 const TOGGLE_HEIGHT = CONTROL_HEIGHT;
 const TOGGLE_BORDER_RADIUS = CONTROL_RADIUS; // fixed radius as before
@@ -48,29 +46,7 @@ const SEGMENT_OPTIONS = [
 
 const HOLE_RADIUS_BOOST = 1;
 
-type CornerRadii = {
-  topLeft: number;
-  topRight: number;
-  bottomRight: number;
-  bottomLeft: number;
-};
-
-type ExtendedHole = MaskedHole & { cornerRadii?: CornerRadii };
-
-const areCornerRadiiEqual = (prev?: CornerRadii, next?: CornerRadii): boolean => {
-  if (!prev || !next) {
-    return false;
-  }
-  const closeEnough = (a: number, b: number) => Math.abs(a - b) < 0.5;
-  return (
-    closeEnough(prev.topLeft, next.topLeft) &&
-    closeEnough(prev.topRight, next.topRight) &&
-    closeEnough(prev.bottomRight, next.bottomRight) &&
-    closeEnough(prev.bottomLeft, next.bottomLeft)
-  );
-};
-
-const areHolesEqual = (prev: ExtendedHole | undefined, next: ExtendedHole): boolean => {
+const areHolesEqual = (prev: MaskedHole | undefined, next: MaskedHole): boolean => {
   if (!prev) {
     return false;
   }
@@ -80,8 +56,7 @@ const areHolesEqual = (prev: ExtendedHole | undefined, next: ExtendedHole): bool
     closeEnough(prev.y, next.y) &&
     closeEnough(prev.width, next.width) &&
     closeEnough(prev.height, next.height) &&
-    (prev.borderRadius ?? 0) === (next.borderRadius ?? 0) &&
-    areCornerRadiiEqual(prev.cornerRadii, next.cornerRadii)
+    (prev.borderRadius ?? 0) === (next.borderRadius ?? 0)
   );
 };
 
@@ -98,56 +73,12 @@ const areLayoutsEqual = (prev: LayoutRectangle | undefined, next: LayoutRectangl
   );
 };
 
-const normalizeCornerRadii = (value?: number | Partial<CornerRadii>): CornerRadii => {
-  const fallback = TOGGLE_BORDER_RADIUS;
-  if (typeof value === 'number') {
-    return {
-      topLeft: value,
-      topRight: value,
-      bottomRight: value,
-      bottomLeft: value,
-    };
-  }
-  return {
-    topLeft: value?.topLeft ?? fallback,
-    topRight: value?.topRight ?? fallback,
-    bottomRight: value?.bottomRight ?? fallback,
-    bottomLeft: value?.bottomLeft ?? fallback,
-  };
-};
-
-const buildRoundedRectPath = (
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  radii: CornerRadii
-): string => {
-  const tl = Math.min(radii.topLeft, width / 2, height / 2);
-  const tr = Math.min(radii.topRight, width / 2, height / 2);
-  const br = Math.min(radii.bottomRight, width / 2, height / 2);
-  const bl = Math.min(radii.bottomLeft, width / 2, height / 2);
-
-  return [
-    `M${x + tl},${y}`,
-    `H${x + width - tr}`,
-    `Q${x + width},${y} ${x + width},${y + tr}`,
-    `V${y + height - br}`,
-    `Q${x + width},${y + height} ${x + width - br},${y + height}`,
-    `H${x + bl}`,
-    `Q${x},${y + height} ${x},${y + height - bl}`,
-    `V${y + tl}`,
-    `Q${x},${y} ${x + tl},${y}`,
-    'Z',
-  ].join(' ');
-};
-
 type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];
 
 export type SearchFiltersLayoutCache = {
   viewportWidth: number;
   rowHeight: number;
-  holeMap: Record<string, ExtendedHole>;
+  holeMap: Record<string, MaskedHole>;
 };
 
 type SearchFiltersProps = {
@@ -163,7 +94,7 @@ type SearchFiltersProps = {
   isPriceSelectorVisible: boolean;
   contentHorizontalPadding: number;
   accentColor: string;
-  layoutEnabled?: boolean;
+  disableBlur?: boolean;
   initialLayoutCache?: SearchFiltersLayoutCache | null;
   onLayoutCacheChange?: (cache: SearchFiltersLayoutCache) => void;
 };
@@ -181,7 +112,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   isPriceSelectorVisible,
   contentHorizontalPadding,
   accentColor,
-  layoutEnabled = true,
+  disableBlur = false,
   initialLayoutCache,
   onLayoutCacheChange,
 }) => {
@@ -191,13 +122,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const [rowHeight, setRowHeight] = React.useState(
     initialLayoutCache?.rowHeight ?? TOGGLE_MIN_HEIGHT
   );
-  const [holeMap, setHoleMap] = React.useState<Record<string, ExtendedHole>>(
+  const [holeMap, setHoleMap] = React.useState<Record<string, MaskedHole>>(
     initialLayoutCache?.holeMap ?? {}
   );
-  const maskIdRef = React.useRef<string>(
-    `search-filter-mask-${Math.random().toString(36).slice(2, 8)}`
-  );
-  const maskId = maskIdRef.current;
   const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>({});
   const highlightReadyRef = React.useRef(false);
 
@@ -236,9 +163,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
 
   const registerSegmentLayout = React.useCallback(
     (value: SegmentValue) => (event: LayoutChangeEvent) => {
-      if (!layoutEnabled) {
-        return;
-      }
       const layout = event.nativeEvent.layout;
       const prev = segmentLayoutsRef.current[value];
       if (prev && areLayoutsEqual(prev, layout)) {
@@ -252,34 +176,28 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         }
       }
     },
-    [activeTab, layoutEnabled, updateSegmentHighlight]
+    [activeTab, updateSegmentHighlight]
   );
 
   const registerHole = React.useCallback(
-    (key: string, borderRadius: number | Partial<CornerRadii> = TOGGLE_BORDER_RADIUS) =>
-      (event: LayoutChangeEvent) => {
-        if (!layoutEnabled) {
-          return;
+    (key: string, borderRadius: number = TOGGLE_BORDER_RADIUS) => (event: LayoutChangeEvent) => {
+      const { x, y, width, height } = event.nativeEvent.layout;
+      const next: MaskedHole = {
+        x,
+        y,
+        width,
+        height,
+        borderRadius,
+      };
+      setHoleMap((prev) => {
+        const prevHole = prev[key];
+        if (prevHole && areHolesEqual(prevHole, next)) {
+          return prev;
         }
-        const { x, y, width, height } = event.nativeEvent.layout;
-        const cornerRadii = normalizeCornerRadii(borderRadius);
-        const next: ExtendedHole = {
-          x,
-          y,
-          width,
-          height,
-          borderRadius: typeof borderRadius === 'number' ? borderRadius : undefined,
-          cornerRadii,
-        };
-        setHoleMap((prev) => {
-          const prevHole = prev[key];
-          if (prevHole && areHolesEqual(prevHole, next)) {
-            return prev;
-          }
-          return { ...prev, [key]: next };
-        });
-      },
-    [layoutEnabled]
+        return { ...prev, [key]: next };
+      });
+    },
+    []
   );
 
   const holes = React.useMemo(() => Object.values(holeMap), [holeMap]);
@@ -294,10 +212,20 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const maskHeight = rowHeight > 0 ? rowHeight + TOGGLE_STACK_GAP + 1 : 0;
   const maskTopOffset = rowHeight > 0 ? -1 : 0;
 
-  const holesTranslateProps = useAnimatedProps(() => ({
+  const maskAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: -scrollX.value }],
   }));
-  const AnimatedG = Reanimated.createAnimatedComponent(G);
+  const maskedHoles = React.useMemo(
+    () =>
+      holes.map((hole) => ({
+        x: hole.x + inset,
+        y: hole.y + 1,
+        width: hole.width,
+        height: hole.height,
+        borderRadius: (hole.borderRadius ?? TOGGLE_BORDER_RADIUS) + HOLE_RADIUS_BOOST,
+      })),
+    [holes, inset]
+  );
   const highlightAnimatedStyle = useAnimatedStyle(() => ({
     opacity: highlightWidth.value > 0 ? 1 : 0,
     transform: [{ translateX: highlightTranslateX.value }],
@@ -323,14 +251,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
 
   return (
     <View style={styles.resultFiltersWrapper}>
+      {!disableBlur && <FrostedGlassBackground />}
       <View style={styles.paddedWrapper}>
         <View
           style={styles.stripContainer}
           onLayout={(event) => {
-            if (!layoutEnabled) {
-              return;
-            }
-            setViewportWidth(event.nativeEvent.layout.width);
+            const nextWidth = event.nativeEvent.layout.width;
+            setViewportWidth((prev) => (Math.abs(prev - nextWidth) < 0.5 ? prev : nextWidth));
           }}
         >
           <Reanimated.ScrollView
@@ -347,10 +274,8 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             <View
               style={styles.cutoutStrip}
               onLayout={(event) => {
-                if (!layoutEnabled) {
-                  return;
-                }
-                setRowHeight(event.nativeEvent.layout.height);
+                const nextHeight = event.nativeEvent.layout.height;
+                setRowHeight((prev) => (Math.abs(prev - nextHeight) < 0.5 ? prev : nextHeight));
               }}
             >
               <View style={styles.toggleRow}>
@@ -469,62 +394,17 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             </View>
           </Reanimated.ScrollView>
 
-          {viewportWidth > 0 && rowHeight > 0 ? (
-            <MaskedView
+          {viewportWidth > 0 && rowHeight > 0 && maskedHoles.length > 0 ? (
+            <MaskedHoleOverlay
               pointerEvents="none"
+              holes={maskedHoles}
+              backgroundColor="#ffffff"
               style={[
                 styles.maskOverlay,
                 { width: maskWidth, height: maskHeight, top: maskTopOffset },
+                maskAnimatedStyle,
               ]}
-              maskElement={
-                <Svg width={maskWidth} height={maskHeight}>
-                  <Defs>
-                    <Mask
-                      id={maskId}
-                      x="0"
-                      y="0"
-                      width={maskWidth}
-                      height={maskHeight}
-                      maskUnits="userSpaceOnUse"
-                      maskContentUnits="userSpaceOnUse"
-                    >
-                      <Rect x={0} y={0} width={maskWidth} height={maskHeight} fill="white" />
-                      <AnimatedG animatedProps={holesTranslateProps}>
-                        {holes.map((hole, index) => {
-                          const radiiBase =
-                            hole.cornerRadii ?? normalizeCornerRadii(hole.borderRadius);
-                          const radii = {
-                            topLeft: radiiBase.topLeft + HOLE_RADIUS_BOOST,
-                            topRight: radiiBase.topRight + HOLE_RADIUS_BOOST,
-                            bottomRight: radiiBase.bottomRight + HOLE_RADIUS_BOOST,
-                            bottomLeft: radiiBase.bottomLeft + HOLE_RADIUS_BOOST,
-                          };
-                          const y = hole.y + 1;
-                          const height = hole.height;
-                          return (
-                            <Path
-                              key={index}
-                              d={buildRoundedRectPath(hole.x + inset, y, hole.width, height, radii)}
-                              fill="black"
-                            />
-                          );
-                        })}
-                      </AnimatedG>
-                    </Mask>
-                  </Defs>
-                  <Rect
-                    x={0}
-                    y={0}
-                    width={maskWidth}
-                    height={maskHeight}
-                    fill="white"
-                    mask={`url(#${maskId})`}
-                  />
-                </Svg>
-              }
-            >
-              <View style={styles.whiteFill} pointerEvents="none" />
-            </MaskedView>
+            />
           ) : null}
         </View>
       </View>
@@ -550,6 +430,8 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     gap: 0,
     backgroundColor: 'transparent',
+    position: 'relative',
+    overflow: 'hidden',
   },
   paddedWrapper: {
     width: '100%',
@@ -672,14 +554,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
   },
-  maskFill: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  whiteFill: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-  },
 });
 
 export type { SegmentValue, SearchFiltersLayoutCache };
-export default SearchFilters;
+export default React.memo(SearchFilters);

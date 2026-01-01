@@ -18,6 +18,7 @@ import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
 import { SearchSubredditResolverService } from '../search/search-subreddit-resolver.service';
 import { MapBoundsDto } from '../search/dto/search-query.dto';
+import { RestaurantStatusService } from '../search/restaurant-status.service';
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
@@ -53,6 +54,7 @@ export class AutocompleteService {
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
     private readonly subredditResolver: SearchSubredditResolverService,
+    private readonly restaurantStatusService: RestaurantStatusService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
     this.weightConfidence = this.resolveEnvNumber(
@@ -226,8 +228,10 @@ export class AutocompleteService {
     }
 
     const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
+    const matchesWithStatus =
+      await this.attachStatusPreviews(matchesWithCounts);
     const response: AutocompleteResponseDto = {
-      matches: matchesWithCounts,
+      matches: matchesWithStatus,
       query: dto.query,
       normalizedQuery,
       onDemandQueued,
@@ -309,6 +313,44 @@ export class AutocompleteService {
       }
       const locationCount = counts.get(match.entityId) ?? 0;
       return { ...match, locationCount };
+    });
+  }
+
+  private async attachStatusPreviews(
+    matches: AutocompleteMatchDto[],
+  ): Promise<AutocompleteMatchDto[]> {
+    const restaurantIds = Array.from(
+      new Set(
+        matches
+          .filter((match) => match.entityType === EntityType.restaurant)
+          .map((match) => match.entityId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    if (restaurantIds.length === 0) {
+      return matches;
+    }
+
+    const previews = await this.restaurantStatusService.getStatusPreviews({
+      restaurantIds,
+    });
+    const previewMap = new Map(
+      previews.map((preview) => [preview.restaurantId, preview]),
+    );
+
+    return matches.map((match) => {
+      if (match.entityType !== EntityType.restaurant) {
+        return match;
+      }
+      const preview = previewMap.get(match.entityId);
+      if (!preview) {
+        return match;
+      }
+      return {
+        ...match,
+        statusPreview: preview,
+      };
     });
   }
 

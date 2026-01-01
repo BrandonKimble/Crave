@@ -14,6 +14,7 @@ import {
   Min,
 } from 'class-validator';
 import { CoordinateDto, MapBoundsDto } from '../../search/dto/search-query.dto';
+import type { RestaurantStatusPreviewDto } from '../../search/dto/restaurant-status-preview.dto';
 
 export class AutocompleteRequestDto {
   @IsString()
@@ -67,6 +68,7 @@ export class AutocompleteMatchDto {
   };
   querySuggestionSource?: 'personal' | 'global';
   locationCount?: number;
+  statusPreview?: RestaurantStatusPreviewDto | null;
 }
 
 export class AutocompleteResponseDto {

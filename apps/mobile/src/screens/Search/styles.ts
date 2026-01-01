@@ -742,6 +742,11 @@ const styles = StyleSheet.create({
   },
   resultItemSeparator: {
     height: 1,
+    width: '100%',
+    backgroundColor: '#ffffff',
+  },
+  resultItemSeparatorLine: {
+    height: 1,
     backgroundColor: '#f1f5f9',
     marginHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
@@ -928,6 +933,8 @@ const styles = StyleSheet.create({
   resultMetaText: {
     color: themeColors.textBody,
     flexShrink: 1,
+    includeFontPadding: false,
+    lineHeight: LINE_HEIGHTS.body,
   },
   resultMetaPrefix: {
     color: themeColors.textBody,

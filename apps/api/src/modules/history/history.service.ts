@@ -8,6 +8,8 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
+import { RestaurantStatusService } from '../search/restaurant-status.service';
+import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 
 @Injectable()
 export class HistoryService {
@@ -17,6 +19,7 @@ export class HistoryService {
   constructor(
     private readonly prisma: PrismaService,
     loggerService: LoggerService,
+    private readonly restaurantStatusService: RestaurantStatusService,
   ) {
     this.logger = loggerService.setContext('HistoryService');
     this.viewCooldownMs = this.resolveViewCooldownMs();
@@ -121,6 +124,7 @@ export class HistoryService {
       region?: string | null;
       lastViewedAt: Date;
       viewCount: number;
+      statusPreview?: RestaurantStatusPreviewDto | null;
     }>
   > {
     const take = Math.max(1, Math.min(query.limit ?? 10, 50));
@@ -153,6 +157,17 @@ export class HistoryService {
       },
     });
 
+    const restaurantIds = rows.map((row) => row.restaurant.entityId);
+    const previews =
+      restaurantIds.length > 0
+        ? await this.restaurantStatusService.getStatusPreviews({
+            restaurantIds,
+          })
+        : [];
+    const previewMap = new Map(
+      previews.map((preview) => [preview.restaurantId, preview]),
+    );
+
     return rows.map((row) => ({
       restaurantId: row.restaurant.entityId,
       restaurantName: row.restaurant.name,
@@ -160,6 +175,7 @@ export class HistoryService {
       region: row.restaurant.region,
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
+      statusPreview: previewMap.get(row.restaurant.entityId) ?? null,
     }));
   }
 
