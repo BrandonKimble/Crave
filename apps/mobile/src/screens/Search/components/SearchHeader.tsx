@@ -85,13 +85,13 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
     if (!containerAnimatedStyle) {
       return [];
     }
-    return Array.isArray(containerAnimatedStyle) ? containerAnimatedStyle : [containerAnimatedStyle];
+    return Array.isArray(containerAnimatedStyle)
+      ? containerAnimatedStyle
+      : [containerAnimatedStyle];
   }, [containerAnimatedStyle]);
   return (
     <View style={styles.wrapper} pointerEvents="box-none" onLayout={onLayout}>
-      <Reanimated.View
-        style={[styles.promptCard, ...resolvedContainerStyle]}
-      >
+      <Reanimated.View style={[styles.promptCard, ...resolvedContainerStyle]}>
         <Pressable style={styles.promptRow} onPress={onPress ?? onFocus} onPressIn={onPressIn}>
           <View style={styles.promptInner}>
             <Reanimated.View style={[styles.inputRow, inputAnimatedStyle]}>

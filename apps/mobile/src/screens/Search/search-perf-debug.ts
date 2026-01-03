@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 type SearchPerfDebugFlags = {
   enabled: boolean;
   disableBlur: boolean;
@@ -26,31 +28,67 @@ type SearchPerfDebugFlags = {
   logSearchResponseTimingMinMs: number;
 };
 
-const parseEnvBoolean = (value: string | undefined): boolean | undefined => {
-  if (!value) {
+const parseEnvBoolean = (value?: string | boolean): boolean | undefined => {
+  if (value == null) {
     return undefined;
   }
+  if (typeof value === 'boolean') {
+    return value;
+  }
   const normalized = value.trim().toLowerCase();
-  if (['true', '1', 'yes', 'y'].includes(normalized)) {
+  if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
     return true;
   }
-  if (['false', '0', 'no', 'n'].includes(normalized)) {
+  if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
     return false;
   }
   return undefined;
 };
 
-const resolveEnvFlag = (key: string, fallback: boolean): boolean => {
-  const value = parseEnvBoolean(process.env[key]);
-  return value ?? fallback;
+const getExtraValue = (key: string): string | boolean | undefined => {
+  const extra =
+    Constants.expoConfig?.extra ??
+    (Constants.manifest2 as { extra?: Record<string, unknown> } | undefined)?.extra ??
+    (Constants.manifest as { extra?: Record<string, unknown> } | undefined)?.extra;
+  if (!extra || typeof extra !== 'object') {
+    return undefined;
+  }
+  const value = (extra as Record<string, unknown>)[key];
+  if (typeof value === 'string' || typeof value === 'boolean') {
+    return value;
+  }
+  return undefined;
+};
+
+const getEnvValue = (key: string): string | boolean | undefined => {
+  if (typeof process !== 'undefined' && process.env && key in process.env) {
+    const value = process.env[key];
+    if (typeof value === 'string') {
+      return value;
+    }
+  }
+  return getExtraValue(key);
+};
+
+const resolveEnvFlag = (keys: string[], fallback: boolean): boolean => {
+  for (const key of keys) {
+    const value = parseEnvBoolean(getEnvValue(key));
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return fallback;
 };
 
 const isDevEnvironment = __DEV__;
 const perfLogsEnabled = isDevEnvironment
-  ? resolveEnvFlag('EXPO_PUBLIC_SEARCH_PERF_LOGS', true)
+  ? resolveEnvFlag(['SEARCH_PERF_DEBUG_ENABLED'], false)
   : false;
-const logSearchResponsePayload = isDevEnvironment
-  ? resolveEnvFlag('EXPO_PUBLIC_SEARCH_LOG_RESPONSE_PAYLOAD', true)
+const overlayLogsEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_OVERLAY_DEBUG_ENABLED'], false)
+  : false;
+const searchResponsePayloadEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED'], true)
   : false;
 
 // Dev-only perf toggles; flip env vars to enable logging.
@@ -76,8 +114,8 @@ const searchPerfDebug: SearchPerfDebugFlags = {
   logTopFoodMeasurementMinMs: isDevEnvironment ? 1 : 8,
   logSearchStateChanges: perfLogsEnabled,
   logSearchStateWhenSettlingOnly: !isDevEnvironment,
-  logSuggestionOverlayState: perfLogsEnabled,
-  logSearchResponsePayload,
+  logSuggestionOverlayState: overlayLogsEnabled,
+  logSearchResponsePayload: searchResponsePayloadEnabled,
   logSearchResponseTimings: perfLogsEnabled,
   logSearchResponseTimingMinMs: isDevEnvironment ? 0 : 5,
 };

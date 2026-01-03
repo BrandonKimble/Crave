@@ -13,23 +13,27 @@
 ## Current Behavior & Root Causes (Observed in Code)
 
 1. **Search bar + shortcut chips “snap” to transparent/white via JS state.**
+
    - `SearchHeader` uses `surfaceVariant={isSuggestionScreenActive ? 'transparent' : 'solid'}` which applies `promptCardTransparent` immediately.
    - Shortcut chips use `styles.searchShortcutChipTransparent` when `isSuggestionScreenActive` is true.
    - These are instant style toggles that bypass any animation.
    - Files: `apps/mobile/src/screens/Search/index.tsx`, `apps/mobile/src/screens/Search/components/SearchHeader.tsx`, `apps/mobile/src/screens/Search/styles.ts`.
 
 2. **Overlay blur visibility is controlled by a separate, non-animated shared value.**
+
    - `searchSurfaceAnim` is set to `1` or `0` directly (no `withTiming`) when `isSuggestionScreenVisible` changes.
    - `isSuggestionScreenVisible` lags `isSuggestionScreenActive` due to `SUGGESTION_PANEL_HIDE_DELAY_MS`.
    - Result: blur/overlay can **snap off** after a delay, out of sync with the search bar transition.
    - Files: `apps/mobile/src/screens/Search/index.tsx`.
 
 3. **Multiple animation triggers compete.**
+
    - `handleSearchPressIn` manually sets `searchSurfaceAnim` and `suggestionTransition`, while `useEffect` also animates `suggestionTransition` when `isSuggestionScreenActive` changes.
    - This double-trigger can lead to inconsistent timing and state.
    - File: `apps/mobile/src/screens/Search/index.tsx`.
 
 4. **Suggestion overlay opacity and layout are driven by different signals.**
+
    - `suggestionTransition` animates the panel and input transparency.
    - `searchSurfaceAnim` controls blur/mask opacity.
    - `shouldShowSuggestionBackground` toggles white background based on results presence (not animated).

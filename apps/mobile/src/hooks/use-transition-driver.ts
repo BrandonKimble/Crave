@@ -44,19 +44,13 @@ export const useTransitionDriver = ({
         setIsVisible(true);
       }
       const duration = getDurationMs(nextTarget);
-      const easing = getEasing
-        ? getEasing(nextTarget)
-        : (t: number) => t;
+      const easing = getEasing ? getEasing(nextTarget) : (t: number) => t;
       const start = () => {
-        progress.value = withTiming(
-          nextTarget,
-          { duration, easing },
-          (finished) => {
-            if (finished && nextTarget === 0 && requestId === requestSeq.value) {
-              runOnJS(setIsVisible)(false);
-            }
+        progress.value = withTiming(nextTarget, { duration, easing }, (finished) => {
+          if (finished && nextTarget === 0 && requestId === requestSeq.value) {
+            runOnJS(setIsVisible)(false);
           }
-        );
+        });
       };
       const delayMs = getDelayMs ? getDelayMs(nextTarget) : 0;
       if (delayMs > 0) {

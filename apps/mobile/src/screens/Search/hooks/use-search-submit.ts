@@ -341,7 +341,7 @@ const useSearchSubmit = ({
 
           void loadRecentHistory({ force: true });
         };
-        InteractionManager.runAfterInteractions(enqueueHistoryUpdate);
+        void InteractionManager.runAfterInteractions(enqueueHistoryUpdate);
         logSearchPhase('handleSearchResponse:history-deferred');
       }
 
@@ -491,20 +491,20 @@ const useSearchSubmit = ({
       if (!append) {
         const preserveSheetState = Boolean(options?.preserveSheetState);
         unstable_batchedUpdates(() => {
-        if (!preserveSheetState) {
-          resetSheetToHidden();
-        }
-        setSearchMode('natural');
-        setIsSearchSessionActive(true);
+          if (!preserveSheetState) {
+            resetSheetToHidden();
+          }
+          setSearchMode('natural');
+          setIsSearchSessionActive(true);
           setIsAutocompleteSuppressed(true);
           setShowSuggestions(false);
           setHasMoreFood(false);
           setHasMoreRestaurants(false);
-        setCurrentPage(targetPage);
-      });
-      logSearchPhase('submitSearch:ui-prep');
-      lastAutoOpenKeyRef.current = null;
-    }
+          setCurrentPage(targetPage);
+        });
+        logSearchPhase('submitSearch:ui-prep');
+        lastAutoOpenKeyRef.current = null;
+      }
 
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =

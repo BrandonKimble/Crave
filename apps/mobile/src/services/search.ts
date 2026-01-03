@@ -77,9 +77,7 @@ const buildDebugTransform = (label: string, minMs: number) => [
     const duration = getPerfNow() - start;
     if (__DEV__ && duration >= minMs) {
       // eslint-disable-next-line no-console
-      console.log(
-        `[SearchPerf] parse ${label} ${duration.toFixed(1)}ms bytes=${data.length}`
-      );
+      console.log(`[SearchPerf] parse ${label} ${duration.toFixed(1)}ms bytes=${data.length}`);
     }
     return parsed;
   },

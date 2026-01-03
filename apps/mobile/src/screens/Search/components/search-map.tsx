@@ -141,7 +141,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMarkerPress,
   selectedRestaurantId,
   sortedRestaurantMarkers,
-  markersRenderKey,
+  markersRenderKey: _markersRenderKey,
   buildMarkerKey,
   markerRevealChunk = 1,
   markerRevealStaggerMs = 0,
@@ -197,7 +197,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
             {sortedRestaurantMarkers.map((feature, index) => {
               const coordinates = feature.geometry.coordinates as [number, number];
               const markerKey = buildMarkerKey(feature);
-              const zIndex = getMarkerZIndex(feature.properties.rank, sortedRestaurantMarkers.length);
+              const zIndex = getMarkerZIndex(
+                feature.properties.rank,
+                sortedRestaurantMarkers.length
+              );
               const revealChunk = Math.max(1, markerRevealChunk);
               const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
               const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;

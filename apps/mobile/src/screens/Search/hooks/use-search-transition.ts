@@ -63,19 +63,14 @@ const useSearchTransition = ({
   }, [maxMs, minMs]);
 
   const getDurationMs = React.useCallback(
-    (target: 0 | 1) =>
-      target === 1 ? durationRef.current.show : durationRef.current.hide,
+    (target: 0 | 1) => (target === 1 ? durationRef.current.show : durationRef.current.hide),
     []
   );
   const getEasing = React.useCallback(
-    (target: 0 | 1) =>
-      target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+    (target: 0 | 1) => (target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic)),
     []
   );
-  const getDelayMs = React.useCallback(
-    (target: 0 | 1) => (target === 1 ? delayMs : 0),
-    [delayMs]
-  );
+  const getDelayMs = React.useCallback((target: 0 | 1) => (target === 1 ? delayMs : 0), [delayMs]);
 
   return useTransitionDriver({
     enabled,

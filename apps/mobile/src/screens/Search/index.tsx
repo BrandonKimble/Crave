@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
   Easing as RNEasing,
-  unstable_batchedUpdates,
 } from 'react-native';
 import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native';
 import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
@@ -152,9 +151,7 @@ MapboxGL.setTelemetryEnabled(false);
 
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
-const memoizeHiddenOverlay = <P extends { visible: boolean }>(
-  Component: React.ComponentType<P>
-) =>
+const memoizeHiddenOverlay = <P extends { visible: boolean }>(Component: React.ComponentType<P>) =>
   React.memo(Component, (prev, next) => !prev.visible && !next.visible);
 
 const MemoBookmarksOverlay = memoizeHiddenOverlay(BookmarksOverlay);
@@ -263,13 +260,12 @@ const SearchScreen: React.FC = () => {
   const isClearingSearchRef = React.useRef(false);
   const closeRestaurantProfileRef = React.useRef<(() => void) | null>(null);
   const clearSearchStateRef = React.useRef<
-    ((
-      options?: {
+    | ((options?: {
         shouldRefocusInput?: boolean;
         skipSheetAnimation?: boolean;
         deferSuggestionClear?: boolean;
-      }
-    ) => void) | null
+      }) => void)
+    | null
   >(null);
   const openRestaurantProfilePreviewRef = React.useRef<
     ((restaurantId: string, restaurantName: string) => void) | null
@@ -975,8 +971,8 @@ const SearchScreen: React.FC = () => {
   const showProfileOverlay = activeOverlay === 'profile';
   const showSaveListOverlay = saveSheetState.visible;
   const pollOverlayParams = overlayParams.polls;
-  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } =
-    useSearchTransition({
+  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
+    {
       enabled: isSearchOverlay,
       active: isSuggestionPanelActive,
       showMs: SUGGESTION_PANEL_FADE_IN_MS,
@@ -984,7 +980,8 @@ const SearchScreen: React.FC = () => {
       minMs: SUGGESTION_PANEL_MIN_MS,
       maxMs: SUGGESTION_PANEL_MAX_MS,
       delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
-    });
+    }
+  );
   const searchBarTop = React.useMemo(() => {
     const rawTop = searchBarFrame
       ? searchLayout.top + searchBarFrame.y
@@ -1013,7 +1010,6 @@ const SearchScreen: React.FC = () => {
     headerDividerAnimatedStyle,
   } = useSearchSheet({
     isSearchOverlay,
-    isSuggestionPanelActive,
     searchBarTop,
   });
   React.useEffect(() => {
@@ -1030,10 +1026,20 @@ const SearchScreen: React.FC = () => {
   }, [resetResultsSheetInteraction, shouldRenderSheet]);
   const shouldSuspendResultsSheet =
     profileTransitionStatus === 'opening' || profileTransitionStatus === 'open';
+  const shouldHideResultsSheet =
+    (isSuggestionPanelActive || isSuggestionPanelVisible) &&
+    (panelVisible || sheetState !== 'hidden');
+  const shouldDisableResultsSheetInteraction = shouldSuspendResultsSheet || shouldHideResultsSheet;
   const resultsWashOpacity = useSharedValue(0);
   const resultsWashAnimatedStyle = useAnimatedStyle(() => ({
     opacity: resultsWashOpacity.value,
   }));
+  const resultsSheetVisibilityAnimatedStyle = useAnimatedStyle(
+    () => ({
+      opacity: shouldHideResultsSheet ? 1 - suggestionProgress.value : 1,
+    }),
+    [shouldHideResultsSheet]
+  );
   React.useEffect(() => {
     resultsWashOpacity.value = withTiming(shouldSuspendResultsSheet ? 1 : 0, {
       duration: RESULTS_WASH_FADE_MS,
@@ -1652,25 +1658,21 @@ const SearchScreen: React.FC = () => {
         suggestionLayoutHoldTimeoutRef.current = null;
       }
     };
-  }, [
-    isSearchOverlay,
-    isSuggestionLayoutWarm,
-    isSuggestionPanelActive,
-    isSuggestionPanelVisible,
-  ]);
+  }, [isSearchOverlay, isSuggestionLayoutWarm, isSuggestionPanelActive, isSuggestionPanelVisible]);
   const shouldDriveSuggestionLayout =
     isSearchOverlay &&
     (isSuggestionPanelActive || isSuggestionPanelVisible || isSuggestionLayoutWarm);
   const submitTransitionHold = submitTransitionHoldRef.current;
-  const isSuggestionHoldActive = shouldDriveSuggestionLayout && submitTransitionHold.active;
+  const isSuggestionHoldActive =
+    shouldDriveSuggestionLayout &&
+    (isSuggestionPanelActive || isSuggestionPanelVisible) &&
+    submitTransitionHold.active;
   const suggestionDisplayQuery = isSuggestionHoldActive ? submitTransitionHold.query : query;
   const suggestionDisplayTrimmedQuery = suggestionDisplayQuery.trim();
   const hasTypedQuery = suggestionDisplayTrimmedQuery.length > 0;
   const hasRawQuery = suggestionDisplayQuery.length > 0;
-  const shouldHoldSearchShortcuts =
-    isSuggestionHoldActive && submitTransitionHold.holdShortcuts;
-  const shouldHoldAutocomplete =
-    isSuggestionHoldActive && submitTransitionHold.holdAutocomplete;
+  const shouldHoldSearchShortcuts = isSuggestionHoldActive && submitTransitionHold.holdShortcuts;
+  const shouldHoldAutocomplete = isSuggestionHoldActive && submitTransitionHold.holdAutocomplete;
   const shouldHoldRecent = isSuggestionHoldActive && submitTransitionHold.holdRecent;
   const shouldHoldSuggestionPanel =
     isSuggestionHoldActive && submitTransitionHold.holdSuggestionPanel;
@@ -1706,12 +1708,10 @@ const SearchScreen: React.FC = () => {
     shouldHoldAutocomplete || baseShouldRenderAutocompleteSection;
   const shouldRenderSuggestionPanel =
     shouldHoldSuggestionPanel || shouldRenderAutocompleteSection || shouldRenderRecentSection;
-  const shouldShowAutocompleteResults = shouldRenderAutocompleteSection && suggestions.length > 0;
   const shouldShowSuggestionBackground =
     shouldDriveSuggestionLayout || shouldHoldSuggestionBackground;
   const shouldShowSuggestionSurface = shouldDriveSuggestionLayout;
-  const shouldLockSearchChromeTransform =
-    isSuggestionPanelActive || isSuggestionPanelVisible;
+  const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionPanelVisible;
   React.useEffect(() => {
     if (shouldDriveSuggestionLayout) {
       return;
@@ -1759,15 +1759,6 @@ const SearchScreen: React.FC = () => {
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
   const pollsOverlaySnapPoint = showPollsOverlay ? 'expanded' : 'collapsed';
-  const isPollsExpanded = pollsSheetSnap === 'expanded';
-  const isBookmarksExpanded = bookmarksSheetSnap === 'expanded';
-  const isProfileExpanded = profileSheetSnap === 'expanded';
-  const isAnySheetExpanded =
-    sheetState === 'expanded' ||
-    isPollsExpanded ||
-    isBookmarksExpanded ||
-    isProfileExpanded ||
-    saveSheetSnap === 'expanded';
   const shouldRenderSearchOverlay =
     isSearchOverlay ||
     shouldShowPollsSheet ||
@@ -1827,8 +1818,7 @@ const SearchScreen: React.FC = () => {
     shouldForceHideShortcuts,
     shouldShowSearchShortcuts,
   ]);
-  const shouldUseSearchShortcutFrames =
-    shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
+  const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const resolvedSearchShortcutsFrame = React.useMemo(() => {
     if (!shouldUseSearchShortcutFrames) {
       return null;
@@ -1859,7 +1849,7 @@ const SearchScreen: React.FC = () => {
     submitTransitionHoldRef.current = {
       active: true,
       query,
-      holdShortcuts: shouldShowSearchShortcuts,
+      holdShortcuts: shouldShowSearchShortcuts && !hasSearchChromeRawQuery,
       holdSuggestionPanel: shouldRenderSuggestionPanel,
       holdSuggestionBackground: shouldShowSuggestionBackground,
       holdAutocomplete: shouldRenderAutocompleteSection,
@@ -1868,6 +1858,7 @@ const SearchScreen: React.FC = () => {
     return true;
   }, [
     isSuggestionScreenVisible,
+    hasSearchChromeRawQuery,
     query,
     shouldRenderAutocompleteSection,
     shouldRenderRecentSection,
@@ -1905,10 +1896,7 @@ const SearchScreen: React.FC = () => {
     if (!shouldDriveSuggestionLayout) {
       return 0;
     }
-    if (
-      shouldFreezeSuggestionHeader &&
-      suggestionHeaderContentBottomRef.current > 0
-    ) {
+    if (shouldFreezeSuggestionHeader && suggestionHeaderContentBottomRef.current > 0) {
       return suggestionHeaderContentBottomRef.current;
     }
     if (
@@ -2005,8 +1993,7 @@ const SearchScreen: React.FC = () => {
     if (maxHeight <= 0) {
       return 0;
     }
-    const desiredHeight =
-      suggestionContentHeight > 0 ? suggestionContentHeight : fallbackHeight;
+    const desiredHeight = suggestionContentHeight > 0 ? suggestionContentHeight : fallbackHeight;
     return Math.min(desiredHeight, maxHeight);
   }, [
     shouldDriveSuggestionLayout,
@@ -2168,39 +2155,29 @@ const SearchScreen: React.FC = () => {
       display: chromeOpacity < 0.02 ? 'none' : 'flex',
     };
   }, [shouldLockSearchChromeTransform]);
-  const searchShortcutChipAnimatedStyle = useAnimatedStyle(
-    () => {
-      const progress = suggestionProgress.value;
-      const backgroundAlpha = searchTransitionVariant === 'submitting' ? 0 : 1 - progress;
-      return {
-        backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
-        shadowOpacity: SEARCH_SHORTCUT_SHADOW_OPACITY * backgroundAlpha,
-        shadowRadius: SEARCH_SHORTCUT_SHADOW_RADIUS * backgroundAlpha,
-        elevation: backgroundAlpha > 0 ? SEARCH_SHORTCUT_SHADOW_ELEVATION : 0,
-      };
-    },
-    [searchTransitionVariant]
-  );
-  const searchShortcutsAnimatedStyle = useAnimatedStyle(
-    () => {
-      const visibility = searchShortcutsVisibility.value;
-      const submitOpacity =
-        searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
-      const opacity = searchChromeOpacity.value * visibility * submitOpacity;
-      const translateY = shouldLockSearchChromeTransform
-        ? 0
-        : interpolate(visibility, [0, 1], [-8, 0], Extrapolation.CLAMP);
-      const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
-      return {
-        opacity,
-        transform: [
-          { translateY },
-          { scale: chromeScale },
-        ],
-      };
-    },
-    [searchTransitionVariant, shouldLockSearchChromeTransform]
-  );
+  const searchShortcutChipAnimatedStyle = useAnimatedStyle(() => {
+    const progress = suggestionProgress.value;
+    const backgroundAlpha = searchTransitionVariant === 'submitting' ? 0 : 1 - progress;
+    return {
+      backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
+      shadowOpacity: SEARCH_SHORTCUT_SHADOW_OPACITY * backgroundAlpha,
+      shadowRadius: SEARCH_SHORTCUT_SHADOW_RADIUS * backgroundAlpha,
+      elevation: backgroundAlpha > 0 ? SEARCH_SHORTCUT_SHADOW_ELEVATION : 0,
+    };
+  }, [searchTransitionVariant]);
+  const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
+    const visibility = searchShortcutsVisibility.value;
+    const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
+    const opacity = searchChromeOpacity.value * visibility * submitOpacity;
+    const translateY = shouldLockSearchChromeTransform
+      ? 0
+      : interpolate(visibility, [0, 1], [-8, 0], Extrapolation.CLAMP);
+    const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
+    return {
+      opacity,
+      transform: [{ translateY }, { scale: chromeScale }],
+    };
+  }, [searchTransitionVariant, shouldLockSearchChromeTransform]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -2509,17 +2486,21 @@ const SearchScreen: React.FC = () => {
   const shouldHydrateResults =
     resultsHydrationKey != null && resultsHydrationKey !== hydratedResultsKey;
   const markerUpdateSeqRef = React.useRef(0);
-  const markerUpdateTaskRef =
-    React.useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const markerUpdateTaskRef = React.useRef<ReturnType<
+    typeof InteractionManager.runAfterInteractions
+  > | null>(null);
   const markerRevealSeqRef = React.useRef(0);
-  const markerRevealTaskRef =
-    React.useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const markerRevealTaskRef = React.useRef<ReturnType<
+    typeof InteractionManager.runAfterInteractions
+  > | null>(null);
   const markerRevealRafRef = React.useRef<number | null>(null);
   const markerRevealTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resultsHydrationTaskRef =
-    React.useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
-  const shortcutQuerySyncTaskRef =
-    React.useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const resultsHydrationTaskRef = React.useRef<ReturnType<
+    typeof InteractionManager.runAfterInteractions
+  > | null>(null);
+  const shortcutQuerySyncTaskRef = React.useRef<ReturnType<
+    typeof InteractionManager.runAfterInteractions
+  > | null>(null);
   const isPerfDebugEnabled = searchPerfDebug.enabled;
   const shouldDisableSearchBlur = isPerfDebugEnabled && searchPerfDebug.disableBlur;
   const shouldDisableMarkerViews = isPerfDebugEnabled && searchPerfDebug.disableMarkerViews;
@@ -2527,8 +2508,7 @@ const SearchScreen: React.FC = () => {
     (isPerfDebugEnabled && searchPerfDebug.usePlaceholderRows) || shouldHydrateResults;
   const shouldDisableFiltersHeader = isPerfDebugEnabled && searchPerfDebug.disableFiltersHeader;
   const shouldDisableResultsHeader = isPerfDebugEnabled && searchPerfDebug.disableResultsHeader;
-  const shouldDisableSearchShortcuts =
-    isPerfDebugEnabled && searchPerfDebug.disableSearchShortcuts;
+  const shouldDisableSearchShortcuts = isPerfDebugEnabled && searchPerfDebug.disableSearchShortcuts;
   const shouldLogJsStalls = isPerfDebugEnabled && searchPerfDebug.logJsStalls;
   const jsStallMinMs = searchPerfDebug.logJsStallMinMs;
   const shouldLogMapEventRates = isPerfDebugEnabled && searchPerfDebug.logMapEventRates;
@@ -2538,8 +2518,7 @@ const SearchScreen: React.FC = () => {
   const shouldLogSearchStateChanges = isPerfDebugEnabled && searchPerfDebug.logSearchStateChanges;
   const shouldLogSearchStateWhenSettlingOnly =
     isPerfDebugEnabled && searchPerfDebug.logSearchStateWhenSettlingOnly;
-  const shouldLogSuggestionOverlayState =
-    isPerfDebugEnabled && searchPerfDebug.logSuggestionOverlayState;
+  const shouldLogSuggestionOverlayState = searchPerfDebug.logSuggestionOverlayState;
   const shouldLogProfiler = isPerfDebugEnabled && searchPerfDebug.logCommitInfo;
   const profilerMinMs = searchPerfDebug.logCommitMinMs;
   const getPerfNow = React.useCallback(() => {
@@ -2613,12 +2592,7 @@ const SearchScreen: React.FC = () => {
     requestAnimationFrame(apply);
   }, [restaurants, shouldDisableMarkerViews]);
   const handleProfilerRender = React.useCallback(
-    (
-      id: string,
-      phase: 'mount' | 'update',
-      actualDuration: number,
-      baseDuration: number
-    ) => {
+    (id: string, phase: 'mount' | 'update', actualDuration: number, baseDuration: number) => {
       if (!shouldLogProfiler || actualDuration < profilerMinMs) {
         return;
       }
@@ -2631,26 +2605,23 @@ const SearchScreen: React.FC = () => {
     },
     [profilerMinMs, shouldLogProfiler]
   );
-  const searchStateSnapshot = React.useMemo(
-    () => {
-      const pollBoundsKey = (() => {
-        if (!pollBounds) {
-          return null;
-        }
-        const ne = pollBounds.northEast;
-        const sw = pollBounds.southWest;
-        if (!ne || !sw) {
-          return null;
-        }
-        const parts = [ne.lat, ne.lng, sw.lat, sw.lng];
-        if (parts.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
-          return null;
-        }
-        return `${ne.lat.toFixed(3)}:${ne.lng.toFixed(3)}:${sw.lat.toFixed(3)}:${sw.lng.toFixed(
-          3
-        )}`;
-      })();
-      return {
+  const searchStateSnapshot = React.useMemo(() => {
+    const pollBoundsKey = (() => {
+      if (!pollBounds) {
+        return null;
+      }
+      const ne = pollBounds.northEast;
+      const sw = pollBounds.southWest;
+      if (!ne || !sw) {
+        return null;
+      }
+      const parts = [ne.lat, ne.lng, sw.lat, sw.lng];
+      if (parts.some((value) => typeof value !== 'number' || !Number.isFinite(value))) {
+        return null;
+      }
+      return `${ne.lat.toFixed(3)}:${ne.lng.toFixed(3)}:${sw.lat.toFixed(3)}:${sw.lng.toFixed(3)}`;
+    })();
+    return {
       overlay: activeOverlay,
       overlayParamsPollKey: overlayParams.polls
         ? `${overlayParams.polls.pollId ?? 'none'}:${overlayParams.polls.coverageKey ?? 'none'}`
@@ -2688,21 +2659,21 @@ const SearchScreen: React.FC = () => {
       searchLayoutKey: `${searchLayout.top.toFixed(1)}:${searchLayout.height.toFixed(1)}`,
       bottomNavKey: `${bottomNavFrame.top.toFixed(1)}:${bottomNavFrame.height.toFixed(1)}`,
       searchContainerKey: searchContainerFrame
-        ? `${searchContainerFrame.x.toFixed(1)}:${searchContainerFrame.y.toFixed(1)}:${searchContainerFrame.width.toFixed(
+        ? `${searchContainerFrame.x.toFixed(1)}:${searchContainerFrame.y.toFixed(
             1
-          )}:${searchContainerFrame.height.toFixed(1)}`
+          )}:${searchContainerFrame.width.toFixed(1)}:${searchContainerFrame.height.toFixed(1)}`
         : null,
       searchBarKey: searchBarFrame
-        ? `${searchBarFrame.x.toFixed(1)}:${searchBarFrame.y.toFixed(1)}:${searchBarFrame.width.toFixed(
+        ? `${searchBarFrame.x.toFixed(1)}:${searchBarFrame.y.toFixed(
             1
-          )}:${searchBarFrame.height.toFixed(1)}`
+          )}:${searchBarFrame.width.toFixed(1)}:${searchBarFrame.height.toFixed(1)}`
         : null,
       searchShortcutsKey:
         !shouldDisableSearchShortcuts && searchShortcutsFrame
-        ? `${searchShortcutsFrame.x.toFixed(1)}:${searchShortcutsFrame.y.toFixed(1)}:${searchShortcutsFrame.width.toFixed(
-          1
-        )}:${searchShortcutsFrame.height.toFixed(1)}`
-        : null,
+          ? `${searchShortcutsFrame.x.toFixed(1)}:${searchShortcutsFrame.y.toFixed(
+              1
+            )}:${searchShortcutsFrame.width.toFixed(1)}:${searchShortcutsFrame.height.toFixed(1)}`
+          : null,
       searchShortcutChipCount: shouldDisableSearchShortcuts
         ? 0
         : Object.keys(searchShortcutChipFrames).length,
@@ -2717,70 +2688,70 @@ const SearchScreen: React.FC = () => {
       saveSheetVisible: saveSheetState.visible,
       saveSheetType: saveSheetState.listType,
       saveSheetTargetKey: saveSheetState.target
-        ? `${saveSheetState.target.connectionId ?? 'none'}:${saveSheetState.target.restaurantId ?? 'none'}`
+        ? `${saveSheetState.target.connectionId ?? 'none'}:${
+            saveSheetState.target.restaurantId ?? 'none'
+          }`
         : null,
       isPriceSelectorVisible,
       isFilterTogglePending,
       shouldSuspendResultsSheet,
     };
-    },
-    [
-      activeOverlay,
-      overlayParams.polls,
-      activeTab,
-      bookmarksSheetSnap,
-      bookmarksSnapRequest,
-      bottomNavFrame.height,
-      bottomNavFrame.top,
-      currentPage,
-      dishes.length,
-      filtersHeaderHeight,
-      hasMoreFood,
-      hasMoreRestaurants,
-      isFilterTogglePending,
-      isLoading,
-      isLoadingMore,
-      isPaginationExhausted,
-      isPriceSelectorVisible,
-      isSearchFocused,
-      isSearchOverlay,
-      isSearchSessionActive,
-      isSuggestionPanelActive,
-      isSuggestionScreenActive,
-      isSuggestionPanelVisible,
-      mapCenter,
-      mapMovedSinceSearch,
-      mapZoom,
-      openNow,
-      panelVisible,
-      priceLevels,
-      pollBounds,
-      pollsSheetSnap,
-      pollsSnapRequest,
-      query,
-      restaurants.length,
-      results?.metadata?.requestId,
-      resultsSheetHeaderHeight,
-      resultsListKey,
-      resultsSheetSnapTo,
-      saveSheetSnap,
-      saveSheetState.listType,
-      saveSheetState.target,
-      saveSheetState.visible,
-      searchBarFrame,
-      searchContainerFrame,
-      searchLayout.height,
-      searchLayout.top,
-      searchShortcutChipFrames,
-      searchShortcutsFrame,
-      suggestionContentHeight,
-      shouldRenderSheet,
-      shouldSuspendResultsSheet,
-      sheetState,
-      submittedQuery,
-      votes100Plus,
-    ]
-  );
+  }, [
+    activeOverlay,
+    overlayParams.polls,
+    activeTab,
+    bookmarksSheetSnap,
+    bookmarksSnapRequest,
+    bottomNavFrame.height,
+    bottomNavFrame.top,
+    currentPage,
+    dishes.length,
+    filtersHeaderHeight,
+    hasMoreFood,
+    hasMoreRestaurants,
+    isFilterTogglePending,
+    isLoading,
+    isLoadingMore,
+    isPaginationExhausted,
+    isPriceSelectorVisible,
+    isSearchFocused,
+    isSearchOverlay,
+    isSearchSessionActive,
+    isSuggestionPanelActive,
+    isSuggestionScreenActive,
+    isSuggestionPanelVisible,
+    mapCenter,
+    mapMovedSinceSearch,
+    mapZoom,
+    openNow,
+    panelVisible,
+    priceLevels,
+    pollBounds,
+    pollsSheetSnap,
+    pollsSnapRequest,
+    query,
+    restaurants.length,
+    results?.metadata?.requestId,
+    resultsSheetHeaderHeight,
+    resultsListKey,
+    resultsSheetSnapTo,
+    saveSheetSnap,
+    saveSheetState.listType,
+    saveSheetState.target,
+    saveSheetState.visible,
+    searchBarFrame,
+    searchContainerFrame,
+    searchLayout.height,
+    searchLayout.top,
+    searchShortcutChipFrames,
+    searchShortcutsFrame,
+    suggestionContentHeight,
+    shouldRenderSheet,
+    shouldSuspendResultsSheet,
+    sheetState,
+    submittedQuery,
+    votes100Plus,
+  ]);
   const searchStateRef = React.useRef(searchStateSnapshot);
   const suggestionOverlayDebugSnapshotRef = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -2810,11 +2781,7 @@ const SearchScreen: React.FC = () => {
       );
     }
     searchStateRef.current = next;
-  }, [
-    searchStateSnapshot,
-    shouldLogSearchStateChanges,
-    shouldLogSearchStateWhenSettlingOnly,
-  ]);
+  }, [searchStateSnapshot, shouldLogSearchStateChanges, shouldLogSearchStateWhenSettlingOnly]);
   const suggestionOverlayDebugSnapshot = React.useMemo(() => {
     if (!shouldLogSuggestionOverlayState) {
       return null;
@@ -3402,27 +3369,24 @@ const SearchScreen: React.FC = () => {
     }
     return collection;
   }, [getPerfNow, logSearchCompute, shouldLogSearchComputes, sortedRestaurantMarkers]);
-  const markersRenderKey = React.useMemo(
-    () => {
-      const start = shouldLogSearchComputes ? getPerfNow() : 0;
-      const key = sortedRestaurantMarkers
-        .map((feature) => {
-          const id = feature.id ?? feature.properties.restaurantId;
-          const name = feature.properties.restaurantName ?? '';
-          const color = feature.properties.pinColor ?? '';
-          const coordinates = feature.geometry.coordinates as [number, number];
-          const lng = Math.round(coordinates[0] * CAMERA_CENTER_PRECISION);
-          const lat = Math.round(coordinates[1] * CAMERA_CENTER_PRECISION);
-          return `${id}-${feature.properties.rank}-${name}-${color}-${lng}-${lat}`;
-        })
-        .join('|');
-      if (shouldLogSearchComputes) {
-        logSearchCompute('markersRenderKey', getPerfNow() - start);
-      }
-      return key;
-    },
-    [getPerfNow, logSearchCompute, shouldLogSearchComputes, sortedRestaurantMarkers]
-  );
+  const markersRenderKey = React.useMemo(() => {
+    const start = shouldLogSearchComputes ? getPerfNow() : 0;
+    const key = sortedRestaurantMarkers
+      .map((feature) => {
+        const id = feature.id ?? feature.properties.restaurantId;
+        const name = feature.properties.restaurantName ?? '';
+        const color = feature.properties.pinColor ?? '';
+        const coordinates = feature.geometry.coordinates as [number, number];
+        const lng = Math.round(coordinates[0] * CAMERA_CENTER_PRECISION);
+        const lat = Math.round(coordinates[1] * CAMERA_CENTER_PRECISION);
+        return `${id}-${feature.properties.rank}-${name}-${color}-${lng}-${lat}`;
+      })
+      .join('|');
+    if (shouldLogSearchComputes) {
+      logSearchCompute('markersRenderKey', getPerfNow() - start);
+    }
+    return key;
+  }, [getPerfNow, logSearchCompute, shouldLogSearchComputes, sortedRestaurantMarkers]);
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
@@ -3975,6 +3939,7 @@ const SearchScreen: React.FC = () => {
     isLoadingMore,
     isRestaurantOverlayVisible,
     isSearchSessionActive,
+    isSuggestionPanelActive,
   ]);
 
   const handleCloseResults = React.useCallback(() => {
@@ -4199,11 +4164,7 @@ const SearchScreen: React.FC = () => {
     const interactionState = searchInteractionRef.current;
     // eslint-disable-next-line no-console
     console.log(
-      `[SearchPerf] Map events ${mapEventLogIntervalMs}ms cameraChanged=${stats.cameraChanged} mapIdle=${
-        stats.mapIdle
-      } drag=${interactionState.isResultsSheetDragging} scroll=${
-        interactionState.isResultsListScrolling
-      } settle=${interactionState.isResultsSheetSettling}`
+      `[SearchPerf] Map events ${mapEventLogIntervalMs}ms cameraChanged=${stats.cameraChanged} mapIdle=${stats.mapIdle} drag=${interactionState.isResultsSheetDragging} scroll=${interactionState.isResultsListScrolling} settle=${interactionState.isResultsSheetSettling}`
     );
     stats.cameraChanged = 0;
     stats.mapIdle = 0;
@@ -4419,11 +4380,19 @@ const SearchScreen: React.FC = () => {
 
   React.useEffect(() => {
     return registerTransientDismissor(() => {
-      setRestaurantOverlayVisible(false);
+      if (!isSuggestionPanelActive && !isSuggestionPanelVisible) {
+        setRestaurantOverlayVisible(false);
+      }
       closePriceSelector();
       closeScoreInfo();
     });
-  }, [closePriceSelector, closeScoreInfo, registerTransientDismissor]);
+  }, [
+    closePriceSelector,
+    closeScoreInfo,
+    isSuggestionPanelActive,
+    isSuggestionPanelVisible,
+    registerTransientDismissor,
+  ]);
 
   const handlePriceDone = React.useCallback(() => {
     commitPriceSelection();
@@ -5377,14 +5346,8 @@ const SearchScreen: React.FC = () => {
       return null;
     }
     const topOffset = Math.max(0, effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight);
-    return (
-      <View style={[styles.resultsListBackground, { top: topOffset }]} />
-    );
-  }, [
-    effectiveFiltersHeaderHeight,
-    effectiveResultsHeaderHeight,
-    shouldShowResultsSurface,
-  ]);
+    return <View style={[styles.resultsListBackground, { top: topOffset }]} />;
+  }, [effectiveFiltersHeaderHeight, effectiveResultsHeaderHeight, shouldShowResultsSurface]);
   const resultsLoadingOverlay = React.useMemo(() => {
     if (!shouldShowResultsOverlay) {
       return null;
@@ -5402,11 +5365,7 @@ const SearchScreen: React.FC = () => {
         </View>
       </View>
     );
-  }, [
-    effectiveFiltersHeaderHeight,
-    effectiveResultsHeaderHeight,
-    shouldShowResultsOverlay,
-  ]);
+  }, [effectiveFiltersHeaderHeight, effectiveResultsHeaderHeight, shouldShowResultsOverlay]);
   const resultsWashTopOffset = Math.max(
     0,
     effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight
@@ -5643,419 +5602,448 @@ const SearchScreen: React.FC = () => {
   return (
     <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
       <View style={styles.container}>
-      {isInitialCameraReady ? (
-        <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
-          <SearchMap
-            mapRef={mapRef}
-            cameraRef={cameraRef}
-            styleURL={mapStyleURL}
-            mapCenter={mapCenter}
-            mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
-            cameraPadding={mapCameraPadding}
-            isFollowingUser={isFollowingUser}
-            onPress={stableHandleMapPress}
-            onCameraChanged={stableHandleCameraChanged}
-            onMapIdle={stableHandleMapIdle}
-            onMapLoaded={stableHandleMapLoaded}
-            onMarkerPress={stableHandleMarkerPress}
-            selectedRestaurantId={
-              isRestaurantOverlayVisible ? restaurantProfile?.restaurant.restaurantId : null
-            }
-            sortedRestaurantMarkers={sortedRestaurantMarkers}
-            markersRenderKey={markersRenderKey}
-            buildMarkerKey={buildMarkerKey}
-            markerRevealChunk={MARKER_REVEAL_CHUNK}
-            markerRevealStaggerMs={MARKER_REVEAL_STAGGER_MS}
-            markerRevealAnimMs={MARKER_REVEAL_ANIM_MS}
-            restaurantFeatures={restaurantFeatures}
-            restaurantLabelStyle={restaurantLabelStyle}
-            isMapStyleReady={isMapStyleReady}
-            userLocation={userLocation}
-            locationPulse={locationPulse}
-            disableMarkers={shouldDisableMarkerViews}
-            disableBlur={shouldDisableSearchBlur}
-            onProfilerRender={handleProfilerRender}
-          />
-        </React.Profiler>
-      ) : (
-        <React.Profiler id="SearchMapPlaceholder" onRender={handleProfilerRender}>
-          <View pointerEvents="none" style={styles.mapPlaceholder} />
-        </React.Profiler>
-      )}
-      <Reanimated.View
-        pointerEvents="none"
-        style={[styles.mapLoadingGrid, mapLoadingAnimatedStyle]}
-      >
-        <Svg width="100%" height="100%" style={styles.mapLoadingGridSvg}>
-          <Defs>
-            <Pattern
-              id="map-grid-minor"
-              width={MAP_GRID_MINOR_SIZE}
-              height={MAP_GRID_MINOR_SIZE}
-              patternUnits="userSpaceOnUse"
-            >
-              <Path
-                d={`M ${MAP_GRID_MINOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MINOR_SIZE}`}
-                fill="none"
-                stroke={MAP_GRID_MINOR_STROKE}
-                strokeWidth={1}
-              />
-            </Pattern>
-            <Pattern
-              id="map-grid-major"
-              width={MAP_GRID_MAJOR_SIZE}
-              height={MAP_GRID_MAJOR_SIZE}
-              patternUnits="userSpaceOnUse"
-            >
-              <Path
-                d={`M ${MAP_GRID_MAJOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MAJOR_SIZE}`}
-                fill="none"
-                stroke={MAP_GRID_MAJOR_STROKE}
-                strokeWidth={1}
-              />
-            </Pattern>
-          </Defs>
-          <Rect width="100%" height="100%" fill="url(#map-grid-minor)" />
-          <Rect width="100%" height="100%" fill="url(#map-grid-major)" />
-        </Svg>
-      </Reanimated.View>
-      <View pointerEvents="none" style={[styles.statusBarFade, { height: statusBarFadeHeight }]}>
-        <MaskedView
-          style={styles.statusBarFadeLayer}
-          maskElement={
-            <LinearGradient
-              colors={[
-                'rgba(0, 0, 0, 1)',
-                'rgba(0, 0, 0, 1)',
-                'rgba(0, 0, 0, 0.85)',
-                'rgba(0, 0, 0, 0.6)',
-                'rgba(0, 0, 0, 0.3)',
-                'rgba(0, 0, 0, 0)',
-              ]}
-              locations={[0, 0.5, 0.65, 0.78, 0.9, 1]}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={styles.statusBarFadeLayer}
+        {isInitialCameraReady ? (
+          <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
+            <SearchMap
+              mapRef={mapRef}
+              cameraRef={cameraRef}
+              styleURL={mapStyleURL}
+              mapCenter={mapCenter}
+              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+              cameraPadding={mapCameraPadding}
+              isFollowingUser={isFollowingUser}
+              onPress={stableHandleMapPress}
+              onCameraChanged={stableHandleCameraChanged}
+              onMapIdle={stableHandleMapIdle}
+              onMapLoaded={stableHandleMapLoaded}
+              onMarkerPress={stableHandleMarkerPress}
+              selectedRestaurantId={
+                isRestaurantOverlayVisible ? restaurantProfile?.restaurant.restaurantId : null
+              }
+              sortedRestaurantMarkers={sortedRestaurantMarkers}
+              markersRenderKey={markersRenderKey}
+              buildMarkerKey={buildMarkerKey}
+              markerRevealChunk={MARKER_REVEAL_CHUNK}
+              markerRevealStaggerMs={MARKER_REVEAL_STAGGER_MS}
+              markerRevealAnimMs={MARKER_REVEAL_ANIM_MS}
+              restaurantFeatures={restaurantFeatures}
+              restaurantLabelStyle={restaurantLabelStyle}
+              isMapStyleReady={isMapStyleReady}
+              userLocation={userLocation}
+              locationPulse={locationPulse}
+              disableMarkers={shouldDisableMarkerViews}
+              disableBlur={shouldDisableSearchBlur}
+              onProfilerRender={handleProfilerRender}
             />
-          }
-        >
-          <AppBlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
-        </MaskedView>
-      </View>
-      {shouldRenderSearchOverlay && (
-        <>
-          <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
-            <SafeAreaView
-              style={styles.overlay}
-              pointerEvents="box-none"
-              edges={['top', 'left', 'right']}
-            >
-            {isSearchOverlay ? (
-              <Reanimated.View
-                pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
-                style={[
-                  styles.searchSurface,
-                  searchSurfaceAnimatedStyle,
-                  {
-                    top: 0,
-                  },
-                ]}
-              >
-                {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-                {shouldShowSuggestionSurface ? (
-                  <MaskedHoleOverlay
-                    holes={resolvedSuggestionHeaderHoles}
-                    backgroundColor="#ffffff"
-                    style={[
-                      styles.searchSuggestionHeaderSurface,
-                      suggestionHeaderHeightAnimatedStyle,
-                    ]}
-                    pointerEvents="none"
-                  />
-                ) : null}
-                {shouldShowSuggestionSurface && suggestionTopFillHeight > 0 ? (
-                  <Reanimated.View
-                    pointerEvents="none"
-                    style={[
-                      styles.searchSuggestionTopFill,
-                      suggestionTopFillAnimatedStyle,
-                      { height: suggestionTopFillHeight },
-                    ]}
-                  />
-                ) : null}
-                <Reanimated.ScrollView
-                  style={[
-                    styles.searchSurfaceScroll,
-                    suggestionPanelAnimatedStyle,
-                    shouldDriveSuggestionLayout
-                      ? [
-                          styles.searchSuggestionScrollSurface,
-                          suggestionScrollTopAnimatedStyle,
-                          suggestionScrollMaxHeightTarget
-                            ? suggestionScrollMaxHeightAnimatedStyle
-                            : null,
-                        ]
-                      : null,
-                  ]}
-                  contentContainerStyle={[
-                    styles.searchSurfaceContent,
-                    {
-                      paddingTop: shouldDriveSuggestionLayout
-                        ? 0
-                        : searchLayout.top + searchLayout.height + 8,
-                      paddingBottom: shouldDriveSuggestionLayout
-                        ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
-                        : bottomInset + 32,
-                      paddingHorizontal: shouldDriveSuggestionLayout
-                        ? CONTENT_HORIZONTAL_PADDING
-                        : 0,
-                      backgroundColor: 'transparent',
-                    },
-                  ]}
-                  keyboardShouldPersistTaps="handled"
-                  onContentSizeChange={handleSuggestionContentSizeChange}
-                  onTouchStart={handleSuggestionInteractionStart}
-                  onScrollBeginDrag={handleSuggestionInteractionStart}
-                  scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {shouldRenderSuggestionPanel ? (
-                    <SearchSuggestions
-                      visible={shouldRenderSuggestionPanel}
-                      showAutocomplete={shouldRenderAutocompleteSection}
-                      showRecent={shouldRenderRecentSection}
-                      suggestions={suggestions}
-                      recentSearches={recentSearches}
-                      recentlyViewedRestaurants={recentlyViewedRestaurants}
-                      hasRecentSearches={hasRecentSearches}
-                      hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                      isAutocompleteLoading={isAutocompleteLoading}
-                      isRecentLoading={isRecentLoading}
-                      isRecentlyViewedLoading={isRecentlyViewedLoading}
-                      onSelectSuggestion={handleSuggestionPress}
-                      onSelectRecent={handleRecentSearchPress}
-                      onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
-                      onPressRecentViewMore={handleRecentViewMorePress}
-                      onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
-                    />
-                  ) : null}
-                </Reanimated.ScrollView>
-              </Reanimated.View>
-            ) : null}
-            <View
-              pointerEvents="box-none"
-              style={styles.searchContainer}
-              onLayout={handleSearchContainerLayout}
-            >
-              <SearchHeader
-                value={query}
-                placeholder="What are you craving?"
-                onChangeText={handleQueryChange}
-                onSubmit={handleSubmit}
-                onFocus={handleSearchFocus}
-                onBlur={handleSearchBlur}
-                onClear={handleClear}
-                onPress={focusSearchInput}
-                onPressIn={handleSearchPressIn}
-                onInputTouchStart={handleSearchPressIn}
-                accentColor={ACTIVE_TAB_COLOR}
-                showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
-                onBackPress={handleCloseResults}
-                onLayout={handleSearchHeaderLayout}
-                inputRef={inputRef}
-                inputAnimatedStyle={searchBarInputAnimatedStyle}
-                containerAnimatedStyle={searchBarContainerAnimatedStyle}
-                editable
-                showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
-                isSearchSessionActive={isSearchSessionActive}
-              />
-            </View>
-            {shouldRenderSearchShortcuts && (
-              <Reanimated.View
-                style={[
-                  styles.searchShortcutsRow,
-                  searchShortcutsAnimatedStyle,
-                ]}
-                pointerEvents={shouldShowSearchShortcuts ? 'box-none' : 'none'}
-                onLayout={({ nativeEvent: { layout } }) => {
-                  searchShortcutsLayoutCacheRef.current.frame = layout;
-                  setSearchShortcutsFrame((prev) => {
-                    if (
-                      prev &&
-                      Math.abs(prev.x - layout.x) < 0.5 &&
-                      Math.abs(prev.y - layout.y) < 0.5 &&
-                      Math.abs(prev.width - layout.width) < 0.5 &&
-                      Math.abs(prev.height - layout.height) < 0.5
-                    ) {
-                      return prev;
-                    }
-                    return layout;
-                  });
-                }}
-              >
-                <AnimatedPressable
-                  onPress={handleBestRestaurantsHere}
-                  style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Show best restaurants here"
-                  hitSlop={8}
-                  onLayout={({ nativeEvent: { layout } }) => {
-                    setSearchShortcutChipFrames((prev) => {
-                      const prevLayout = prev.restaurants;
-                      if (
-                        prevLayout &&
-                        Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                        Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                        Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                        Math.abs(prevLayout.height - layout.height) < 0.5
-                      ) {
-                        if (Object.keys(prev).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
-                          searchShortcutsLayoutCacheRef.current.chipFrames = prev;
-                        }
-                        return prev;
-                      }
-                      const next = { ...prev, restaurants: layout };
-                      if (Object.keys(next).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
-                        searchShortcutsLayoutCacheRef.current.chipFrames = next;
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <View style={styles.searchShortcutContent}>
-                    <Store size={18} color="#0f172a" strokeWidth={2} />
-                    <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                      Best restaurants
-                    </Text>
-                  </View>
-                </AnimatedPressable>
-                <AnimatedPressable
-                  onPress={handleBestDishesHere}
-                  style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                  accessibilityRole="button"
-                  accessibilityLabel="Show best dishes here"
-                  hitSlop={8}
-                  onLayout={({ nativeEvent: { layout } }) => {
-                    setSearchShortcutChipFrames((prev) => {
-                      const prevLayout = prev.dishes;
-                      if (
-                        prevLayout &&
-                        Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                        Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                        Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                        Math.abs(prevLayout.height - layout.height) < 0.5
-                      ) {
-                        if (Object.keys(prev).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
-                          searchShortcutsLayoutCacheRef.current.chipFrames = prev;
-                        }
-                        return prev;
-                      }
-                      const next = { ...prev, dishes: layout };
-                      if (Object.keys(next).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
-                        searchShortcutsLayoutCacheRef.current.chipFrames = next;
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <View style={styles.searchShortcutContent}>
-                    <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-                    <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                      Best dishes
-                    </Text>
-                  </View>
-                </AnimatedPressable>
-              </Reanimated.View>
-            )}
-            <Reanimated.View
-              pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
-              style={[
-                styles.searchThisAreaContainer,
-                { top: searchThisAreaTop },
-                searchThisAreaAnimatedStyle,
-              ]}
-            >
-              <Pressable
-                onPress={handleSearchThisArea}
-                style={styles.searchThisAreaButton}
-                accessibilityRole="button"
-                accessibilityLabel="Search this area"
-                hitSlop={8}
-              >
-                <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
-                  Search this area
-                </Text>
-              </Pressable>
-            </Reanimated.View>
-            </SafeAreaView>
           </React.Profiler>
-          <SearchInteractionProvider value={searchInteractionContextValue}>
-            <React.Profiler id="SearchResultsSheetTree" onRender={handleProfilerRender}>
-              <SearchResultsSheet
-                visible={shouldRenderSheet}
-                listScrollEnabled={
-                  !isPriceSelectorVisible && !isFilterTogglePending && !shouldSuspendResultsSheet
-                }
-                snapPoints={snapPoints}
-                initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
-                sheetYValue={sheetTranslateY}
-                snapTo={resultsSheetSnapTo}
-                scrollOffsetValue={resultsScrollOffset}
-                momentumFlag={resultsMomentum}
-                onScrollBeginDrag={handleResultsListScrollBegin}
-                onScrollEndDrag={handleResultsListScrollEnd}
-                onMomentumBeginJS={handleResultsListMomentumBegin}
-                onMomentumEndJS={handleResultsListMomentumEnd}
-                onDragStateChange={handleResultsSheetDragStateChange}
-                onSettleStateChange={handleResultsSheetSettlingChange}
-                interactionEnabled={!shouldSuspendResultsSheet}
-                onEndReached={handleResultsEndReached}
-                data={resultsListData}
-                renderItem={renderSafeItem}
-                keyExtractor={resultsKeyExtractor}
-                estimatedItemSize={estimatedItemSize}
-                getItemType={getResultItemType}
-                overrideItemLayout={overrideResultItemLayout}
-                listKey={resultsListKey}
-                contentContainerStyle={resultsContentContainerStyle}
-                ListHeaderComponent={listHeader}
-                ListFooterComponent={resultsListFooterComponent}
-                ListEmptyComponent={resultsListEmptyComponent}
-                ItemSeparatorComponent={ResultItemSeparator}
-                headerComponent={resultsHeaderComponent}
-                backgroundComponent={resultsListBackground}
-                overlayComponent={resultsOverlayComponent}
-                listRef={resultsScrollRef}
-                resultsContainerAnimatedStyle={resultsContainerAnimatedStyle}
-                flashListProps={resultsFlashListProps}
-                onHidden={resetSheetToHidden}
-                onSnapChange={handleResultsSheetSnapChange}
-                style={styles.resultsSheetContainer}
+        ) : (
+          <React.Profiler id="SearchMapPlaceholder" onRender={handleProfilerRender}>
+            <View pointerEvents="none" style={styles.mapPlaceholder} />
+          </React.Profiler>
+        )}
+        <Reanimated.View
+          pointerEvents="none"
+          style={[styles.mapLoadingGrid, mapLoadingAnimatedStyle]}
+        >
+          <Svg width="100%" height="100%" style={styles.mapLoadingGridSvg}>
+            <Defs>
+              <Pattern
+                id="map-grid-minor"
+                width={MAP_GRID_MINOR_SIZE}
+                height={MAP_GRID_MINOR_SIZE}
+                patternUnits="userSpaceOnUse"
+              >
+                <Path
+                  d={`M ${MAP_GRID_MINOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MINOR_SIZE}`}
+                  fill="none"
+                  stroke={MAP_GRID_MINOR_STROKE}
+                  strokeWidth={1}
+                />
+              </Pattern>
+              <Pattern
+                id="map-grid-major"
+                width={MAP_GRID_MAJOR_SIZE}
+                height={MAP_GRID_MAJOR_SIZE}
+                patternUnits="userSpaceOnUse"
+              >
+                <Path
+                  d={`M ${MAP_GRID_MAJOR_SIZE} 0 L 0 0 0 ${MAP_GRID_MAJOR_SIZE}`}
+                  fill="none"
+                  stroke={MAP_GRID_MAJOR_STROKE}
+                  strokeWidth={1}
+                />
+              </Pattern>
+            </Defs>
+            <Rect width="100%" height="100%" fill="url(#map-grid-minor)" />
+            <Rect width="100%" height="100%" fill="url(#map-grid-major)" />
+          </Svg>
+        </Reanimated.View>
+        <View pointerEvents="none" style={[styles.statusBarFade, { height: statusBarFadeHeight }]}>
+          <MaskedView
+            style={styles.statusBarFadeLayer}
+            maskElement={
+              <LinearGradient
+                colors={[
+                  'rgba(0, 0, 0, 1)',
+                  'rgba(0, 0, 0, 1)',
+                  'rgba(0, 0, 0, 0.85)',
+                  'rgba(0, 0, 0, 0.6)',
+                  'rgba(0, 0, 0, 0.3)',
+                  'rgba(0, 0, 0, 0)',
+                ]}
+                locations={[0, 0.5, 0.65, 0.78, 0.9, 1]}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
+                style={styles.statusBarFadeLayer}
               />
+            }
+          >
+            <AppBlurView intensity={12} tint="default" style={styles.statusBarFadeLayer} />
+          </MaskedView>
+        </View>
+        {shouldRenderSearchOverlay && (
+          <>
+            <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
+              <SafeAreaView
+                style={styles.overlay}
+                pointerEvents="box-none"
+                edges={['top', 'left', 'right']}
+              >
+                {isSearchOverlay ? (
+                  <Reanimated.View
+                    pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
+                    style={[
+                      styles.searchSurface,
+                      searchSurfaceAnimatedStyle,
+                      {
+                        top: 0,
+                      },
+                    ]}
+                  >
+                    {!shouldDisableSearchBlur && <FrostedGlassBackground />}
+                    {shouldShowSuggestionSurface ? (
+                      <MaskedHoleOverlay
+                        holes={resolvedSuggestionHeaderHoles}
+                        backgroundColor="#ffffff"
+                        style={[
+                          styles.searchSuggestionHeaderSurface,
+                          suggestionHeaderHeightAnimatedStyle,
+                        ]}
+                        pointerEvents="none"
+                      />
+                    ) : null}
+                    {shouldShowSuggestionSurface && suggestionTopFillHeight > 0 ? (
+                      <Reanimated.View
+                        pointerEvents="none"
+                        style={[
+                          styles.searchSuggestionTopFill,
+                          suggestionTopFillAnimatedStyle,
+                          { height: suggestionTopFillHeight },
+                        ]}
+                      />
+                    ) : null}
+                    <Reanimated.ScrollView
+                      style={[
+                        styles.searchSurfaceScroll,
+                        suggestionPanelAnimatedStyle,
+                        shouldDriveSuggestionLayout
+                          ? [
+                              styles.searchSuggestionScrollSurface,
+                              suggestionScrollTopAnimatedStyle,
+                              suggestionScrollMaxHeightTarget
+                                ? suggestionScrollMaxHeightAnimatedStyle
+                                : null,
+                            ]
+                          : null,
+                      ]}
+                      contentContainerStyle={[
+                        styles.searchSurfaceContent,
+                        {
+                          paddingTop: shouldDriveSuggestionLayout
+                            ? 0
+                            : searchLayout.top + searchLayout.height + 8,
+                          paddingBottom: shouldDriveSuggestionLayout
+                            ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
+                            : bottomInset + 32,
+                          paddingHorizontal: shouldDriveSuggestionLayout
+                            ? CONTENT_HORIZONTAL_PADDING
+                            : 0,
+                          backgroundColor: 'transparent',
+                        },
+                      ]}
+                      keyboardShouldPersistTaps="handled"
+                      onContentSizeChange={handleSuggestionContentSizeChange}
+                      onTouchStart={handleSuggestionInteractionStart}
+                      onScrollBeginDrag={handleSuggestionInteractionStart}
+                      scrollEnabled={Boolean(
+                        isSuggestionScreenActive && shouldRenderSuggestionPanel
+                      )}
+                      showsVerticalScrollIndicator={false}
+                    >
+                      {shouldRenderSuggestionPanel ? (
+                        <SearchSuggestions
+                          visible={shouldRenderSuggestionPanel}
+                          showAutocomplete={shouldRenderAutocompleteSection}
+                          showRecent={shouldRenderRecentSection}
+                          suggestions={suggestions}
+                          recentSearches={recentSearches}
+                          recentlyViewedRestaurants={recentlyViewedRestaurants}
+                          hasRecentSearches={hasRecentSearches}
+                          hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
+                          isAutocompleteLoading={isAutocompleteLoading}
+                          isRecentLoading={isRecentLoading}
+                          isRecentlyViewedLoading={isRecentlyViewedLoading}
+                          onSelectSuggestion={handleSuggestionPress}
+                          onSelectRecent={handleRecentSearchPress}
+                          onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                          onPressRecentViewMore={handleRecentViewMorePress}
+                          onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
+                        />
+                      ) : null}
+                    </Reanimated.ScrollView>
+                  </Reanimated.View>
+                ) : null}
+                <View
+                  pointerEvents="box-none"
+                  style={styles.searchContainer}
+                  onLayout={handleSearchContainerLayout}
+                >
+                  <SearchHeader
+                    value={query}
+                    placeholder="What are you craving?"
+                    onChangeText={handleQueryChange}
+                    onSubmit={handleSubmit}
+                    onFocus={handleSearchFocus}
+                    onBlur={handleSearchBlur}
+                    onClear={handleClear}
+                    onPress={focusSearchInput}
+                    onPressIn={handleSearchPressIn}
+                    onInputTouchStart={handleSearchPressIn}
+                    accentColor={ACTIVE_TAB_COLOR}
+                    showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
+                    onBackPress={handleCloseResults}
+                    onLayout={handleSearchHeaderLayout}
+                    inputRef={inputRef}
+                    inputAnimatedStyle={searchBarInputAnimatedStyle}
+                    containerAnimatedStyle={searchBarContainerAnimatedStyle}
+                    editable
+                    showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
+                    isSearchSessionActive={isSearchSessionActive}
+                  />
+                </View>
+                {shouldRenderSearchShortcuts && (
+                  <Reanimated.View
+                    style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
+                    pointerEvents={shouldShowSearchShortcuts ? 'box-none' : 'none'}
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      searchShortcutsLayoutCacheRef.current.frame = layout;
+                      setSearchShortcutsFrame((prev) => {
+                        if (
+                          prev &&
+                          Math.abs(prev.x - layout.x) < 0.5 &&
+                          Math.abs(prev.y - layout.y) < 0.5 &&
+                          Math.abs(prev.width - layout.width) < 0.5 &&
+                          Math.abs(prev.height - layout.height) < 0.5
+                        ) {
+                          return prev;
+                        }
+                        return layout;
+                      });
+                    }}
+                  >
+                    <AnimatedPressable
+                      onPress={handleBestRestaurantsHere}
+                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Show best restaurants here"
+                      hitSlop={8}
+                      onLayout={({ nativeEvent: { layout } }) => {
+                        setSearchShortcutChipFrames((prev) => {
+                          const prevLayout = prev.restaurants;
+                          if (
+                            prevLayout &&
+                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                            Math.abs(prevLayout.height - layout.height) < 0.5
+                          ) {
+                            if (Object.keys(prev).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
+                              searchShortcutsLayoutCacheRef.current.chipFrames = prev;
+                            }
+                            return prev;
+                          }
+                          const next = { ...prev, restaurants: layout };
+                          if (Object.keys(next).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
+                            searchShortcutsLayoutCacheRef.current.chipFrames = next;
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <View style={styles.searchShortcutContent}>
+                        <Store size={18} color="#0f172a" strokeWidth={2} />
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
+                          Best restaurants
+                        </Text>
+                      </View>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      onPress={handleBestDishesHere}
+                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Show best dishes here"
+                      hitSlop={8}
+                      onLayout={({ nativeEvent: { layout } }) => {
+                        setSearchShortcutChipFrames((prev) => {
+                          const prevLayout = prev.dishes;
+                          if (
+                            prevLayout &&
+                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                            Math.abs(prevLayout.height - layout.height) < 0.5
+                          ) {
+                            if (Object.keys(prev).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
+                              searchShortcutsLayoutCacheRef.current.chipFrames = prev;
+                            }
+                            return prev;
+                          }
+                          const next = { ...prev, dishes: layout };
+                          if (Object.keys(next).length >= SEARCH_SHORTCUT_CHIP_COUNT) {
+                            searchShortcutsLayoutCacheRef.current.chipFrames = next;
+                          }
+                          return next;
+                        });
+                      }}
+                    >
+                      <View style={styles.searchShortcutContent}>
+                        <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
+                          Best dishes
+                        </Text>
+                      </View>
+                    </AnimatedPressable>
+                  </Reanimated.View>
+                )}
+                <Reanimated.View
+                  pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
+                  style={[
+                    styles.searchThisAreaContainer,
+                    { top: searchThisAreaTop },
+                    searchThisAreaAnimatedStyle,
+                  ]}
+                >
+                  <Pressable
+                    onPress={handleSearchThisArea}
+                    style={styles.searchThisAreaButton}
+                    accessibilityRole="button"
+                    accessibilityLabel="Search this area"
+                    hitSlop={8}
+                  >
+                    <Text variant="subtitle" weight="semibold" style={styles.searchThisAreaText}>
+                      Search this area
+                    </Text>
+                  </Pressable>
+                </Reanimated.View>
+              </SafeAreaView>
             </React.Profiler>
-          </SearchInteractionProvider>
-        </>
-      )}
-      {!shouldHideBottomNav && (
-        <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
-          <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-            <View
-              style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
-              onLayout={handleBottomNavLayout}
-            >
-              <View style={styles.bottomNavBackground} pointerEvents="none">
-                {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-              </View>
-              {navItems.map((item) => {
-                const active = activeOverlay === item.key;
-                const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
-                const renderIcon = navIconRenderers[item.key];
-                if (item.key === 'profile') {
+            <SearchInteractionProvider value={searchInteractionContextValue}>
+              <React.Profiler id="SearchResultsSheetTree" onRender={handleProfilerRender}>
+                <SearchResultsSheet
+                  visible={shouldRenderSheet}
+                  listScrollEnabled={
+                    !isPriceSelectorVisible &&
+                    !isFilterTogglePending &&
+                    !shouldDisableResultsSheetInteraction
+                  }
+                  snapPoints={snapPoints}
+                  initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
+                  sheetYValue={sheetTranslateY}
+                  snapTo={resultsSheetSnapTo}
+                  scrollOffsetValue={resultsScrollOffset}
+                  momentumFlag={resultsMomentum}
+                  onScrollBeginDrag={handleResultsListScrollBegin}
+                  onScrollEndDrag={handleResultsListScrollEnd}
+                  onMomentumBeginJS={handleResultsListMomentumBegin}
+                  onMomentumEndJS={handleResultsListMomentumEnd}
+                  onDragStateChange={handleResultsSheetDragStateChange}
+                  onSettleStateChange={handleResultsSheetSettlingChange}
+                  interactionEnabled={!shouldDisableResultsSheetInteraction}
+                  onEndReached={handleResultsEndReached}
+                  data={resultsListData}
+                  renderItem={renderSafeItem}
+                  keyExtractor={resultsKeyExtractor}
+                  estimatedItemSize={estimatedItemSize}
+                  getItemType={getResultItemType}
+                  overrideItemLayout={overrideResultItemLayout}
+                  listKey={resultsListKey}
+                  contentContainerStyle={resultsContentContainerStyle}
+                  ListHeaderComponent={listHeader}
+                  ListFooterComponent={resultsListFooterComponent}
+                  ListEmptyComponent={resultsListEmptyComponent}
+                  ItemSeparatorComponent={ResultItemSeparator}
+                  headerComponent={resultsHeaderComponent}
+                  backgroundComponent={resultsListBackground}
+                  overlayComponent={resultsOverlayComponent}
+                  listRef={resultsScrollRef}
+                  resultsContainerAnimatedStyle={[
+                    resultsContainerAnimatedStyle,
+                    resultsSheetVisibilityAnimatedStyle,
+                  ]}
+                  flashListProps={resultsFlashListProps}
+                  onHidden={resetSheetToHidden}
+                  onSnapChange={handleResultsSheetSnapChange}
+                  style={[styles.resultsSheetContainer, resultsSheetVisibilityAnimatedStyle]}
+                />
+              </React.Profiler>
+            </SearchInteractionProvider>
+          </>
+        )}
+        {!shouldHideBottomNav && (
+          <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
+            <View style={styles.bottomNavWrapper} pointerEvents="box-none">
+              <View
+                style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
+                onLayout={handleBottomNavLayout}
+              >
+                <View style={styles.bottomNavBackground} pointerEvents="none">
+                  {!shouldDisableSearchBlur && <FrostedGlassBackground />}
+                </View>
+                {navItems.map((item) => {
+                  const active = activeOverlay === item.key;
+                  const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
+                  const renderIcon = navIconRenderers[item.key];
+                  if (item.key === 'profile') {
+                    return (
+                      <TouchableOpacity
+                        key={item.key}
+                        style={styles.navButton}
+                        onPress={handleProfilePress}
+                      >
+                        <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
+                        <Text
+                          variant="body"
+                          weight={active ? 'semibold' : 'regular'}
+                          style={[styles.navLabel, active && styles.navLabelActive]}
+                        >
+                          {item.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  }
                   return (
                     <TouchableOpacity
                       key={item.key}
                       style={styles.navButton}
-                      onPress={handleProfilePress}
+                      onPress={() => handleOverlaySelect(item.key)}
                     >
                       <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
                       <Text
@@ -6067,208 +6055,191 @@ const SearchScreen: React.FC = () => {
                       </Text>
                     </TouchableOpacity>
                   );
-                }
-                return (
-                  <TouchableOpacity
-                    key={item.key}
-                    style={styles.navButton}
-                    onPress={() => handleOverlaySelect(item.key)}
-                  >
-                    <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
-                    <Text
-                      variant="body"
-                      weight={active ? 'semibold' : 'regular'}
-                      style={[styles.navLabel, active && styles.navLabelActive]}
-                    >
-                      {item.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+                })}
+              </View>
             </View>
-          </View>
-        </React.Profiler>
-      )}
-      <React.Profiler id="Overlays" onRender={handleProfilerRender}>
-        <>
-          <React.Profiler id="BookmarksOverlay" onRender={handleProfilerRender}>
-            <MemoBookmarksOverlay
-              visible={showBookmarksOverlay}
-              navBarTop={bottomNavFrame.top}
-              searchBarTop={searchBarTop}
-              onSnapChange={handleBookmarksSnapChange}
-              onDragStateChange={handleBookmarksSheetDragStateChange}
-              sheetYObserver={bookmarksSheetY}
-              snapTo={bookmarksSnapRequest}
-            />
           </React.Profiler>
-          <React.Profiler id="ProfileOverlay" onRender={handleProfilerRender}>
-            <MemoProfileOverlay
-              visible={showProfileOverlay}
-              navBarTop={bottomNavFrame.top}
-              navBarHeight={bottomNavFrame.height}
-              searchBarTop={searchBarTop}
-              onSnapChange={handleProfileSnapChange}
-              onDragStateChange={handleProfileSheetDragStateChange}
-              sheetYObserver={profileSheetY}
-            />
-          </React.Profiler>
-          <React.Profiler id="SaveListOverlay" onRender={handleProfilerRender}>
-            <MemoSaveListOverlay
-              visible={saveSheetState.visible}
-              listType={saveSheetState.listType}
-              target={saveSheetState.target}
-              searchBarTop={searchBarTop}
-              onClose={handleCloseSaveSheet}
-              onSnapChange={setSaveSheetSnap}
-              onDragStateChange={handleSaveSheetDragStateChange}
-              sheetYObserver={saveSheetY}
-            />
-          </React.Profiler>
-          <React.Profiler id="PollsOverlay" onRender={handleProfilerRender}>
-            <MemoPollsOverlay
-              visible={shouldShowPollsSheet}
-              bounds={pollBounds}
-              params={pollOverlayParams}
-              initialSnapPoint={pollsOverlaySnapPoint}
-              mode={pollsOverlayMode}
-              navBarTop={bottomNavFrame.top}
-              navBarHeight={bottomNavFrame.height}
-              searchBarTop={searchBarTop}
-              onSnapChange={handlePollsSnapChange}
-              onDragStateChange={handlePollsSheetDragStateChange}
-              sheetYObserver={pollsSheetY}
-              snapTo={pollsSnapRequest}
-            />
-          </React.Profiler>
-          <React.Profiler id="RestaurantOverlay" onRender={handleProfilerRender}>
-            <MemoRestaurantOverlay
-              visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}
-              data={restaurantProfile}
-              onRequestClose={handleRestaurantOverlayRequestClose}
-              onDismiss={handleRestaurantOverlayDismissed}
-              onToggleFavorite={handleRestaurantSavePress}
-              navBarTop={bottomNavFrame.top}
-              searchBarTop={searchBarTop}
-              interactionEnabled={shouldEnableRestaurantOverlayInteraction}
-              containerStyle={restaurantOverlayAnimatedStyle}
-            />
-          </React.Profiler>
-          <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
-            <MemoSecondaryBottomSheet
-              visible={isPriceSelectorVisible}
-              onRequestClose={closePriceSelector}
-              paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
-              paddingTop={12}
-            >
-              <View style={styles.priceSheetHeaderRow}>
-                <Text
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  variant="body"
-                  weight="semibold"
-                  style={styles.priceSheetHeadline}
-                >
-                  {priceSheetHeadline}
-                </Text>
-                <Pressable
-                  onPress={handlePriceDone}
-                  accessibilityRole="button"
-                  accessibilityLabel="Apply price filters"
-                  style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
-                >
-                  <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
-                    Done
+        )}
+        <React.Profiler id="Overlays" onRender={handleProfilerRender}>
+          <>
+            <React.Profiler id="BookmarksOverlay" onRender={handleProfilerRender}>
+              <MemoBookmarksOverlay
+                visible={showBookmarksOverlay}
+                navBarTop={bottomNavFrame.top}
+                searchBarTop={searchBarTop}
+                onSnapChange={handleBookmarksSnapChange}
+                onDragStateChange={handleBookmarksSheetDragStateChange}
+                sheetYObserver={bookmarksSheetY}
+                snapTo={bookmarksSnapRequest}
+              />
+            </React.Profiler>
+            <React.Profiler id="ProfileOverlay" onRender={handleProfilerRender}>
+              <MemoProfileOverlay
+                visible={showProfileOverlay}
+                navBarTop={bottomNavFrame.top}
+                navBarHeight={bottomNavFrame.height}
+                searchBarTop={searchBarTop}
+                onSnapChange={handleProfileSnapChange}
+                onDragStateChange={handleProfileSheetDragStateChange}
+                sheetYObserver={profileSheetY}
+              />
+            </React.Profiler>
+            <React.Profiler id="SaveListOverlay" onRender={handleProfilerRender}>
+              <MemoSaveListOverlay
+                visible={saveSheetState.visible}
+                listType={saveSheetState.listType}
+                target={saveSheetState.target}
+                searchBarTop={searchBarTop}
+                onClose={handleCloseSaveSheet}
+                onSnapChange={setSaveSheetSnap}
+                onDragStateChange={handleSaveSheetDragStateChange}
+                sheetYObserver={saveSheetY}
+              />
+            </React.Profiler>
+            <React.Profiler id="PollsOverlay" onRender={handleProfilerRender}>
+              <MemoPollsOverlay
+                visible={shouldShowPollsSheet}
+                bounds={pollBounds}
+                params={pollOverlayParams}
+                initialSnapPoint={pollsOverlaySnapPoint}
+                mode={pollsOverlayMode}
+                navBarTop={bottomNavFrame.top}
+                navBarHeight={bottomNavFrame.height}
+                searchBarTop={searchBarTop}
+                onSnapChange={handlePollsSnapChange}
+                onDragStateChange={handlePollsSheetDragStateChange}
+                sheetYObserver={pollsSheetY}
+                snapTo={pollsSnapRequest}
+              />
+            </React.Profiler>
+            <React.Profiler id="RestaurantOverlay" onRender={handleProfilerRender}>
+              <MemoRestaurantOverlay
+                visible={isRestaurantOverlayVisible && Boolean(restaurantProfile)}
+                data={restaurantProfile}
+                onRequestClose={handleRestaurantOverlayRequestClose}
+                onDismiss={handleRestaurantOverlayDismissed}
+                onToggleFavorite={handleRestaurantSavePress}
+                navBarTop={bottomNavFrame.top}
+                searchBarTop={searchBarTop}
+                interactionEnabled={shouldEnableRestaurantOverlayInteraction}
+                containerStyle={restaurantOverlayAnimatedStyle}
+              />
+            </React.Profiler>
+            <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
+              <MemoSecondaryBottomSheet
+                visible={isPriceSelectorVisible}
+                onRequestClose={closePriceSelector}
+                paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
+                paddingTop={12}
+              >
+                <View style={styles.priceSheetHeaderRow}>
+                  <Text
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                    variant="body"
+                    weight="semibold"
+                    style={styles.priceSheetHeadline}
+                  >
+                    {priceSheetHeadline}
                   </Text>
-                </Pressable>
-              </View>
-              <View style={styles.priceSheetSliderWrapper}>
-                <PriceRangeSlider
-                  range={pendingPriceRange}
-                  onRangePreview={setPendingPriceRange}
-                  onRangeCommit={setPendingPriceRange}
-                />
-              </View>
-            </MemoSecondaryBottomSheet>
-          </React.Profiler>
-          <React.Profiler id="ScoreInfoSheet" onRender={handleProfilerRender}>
-            <MemoSecondaryBottomSheet
-              visible={Boolean(isScoreInfoVisible && scoreInfo)}
-              onRequestClose={closeScoreInfo}
-              onDismiss={() => setScoreInfo(null)}
-              paddingHorizontal={CONTENT_HORIZONTAL_PADDING}
-              paddingTop={12}
-              sheetStyle={{ height: SCORE_INFO_MAX_HEIGHT }}
-            >
-              {scoreInfo ? (
-                <View style={styles.scoreInfoContent}>
-                  <View style={styles.scoreInfoHeaderRow}>
-                    <View style={styles.scoreInfoTitleRow}>
-                      {scoreInfo.type === 'dish' ? (
-                        <HandPlatter
-                          size={SECONDARY_METRIC_ICON_SIZE + 2}
-                          color={themeColors.textPrimary}
-                          strokeWidth={2}
-                        />
-                      ) : (
-                        <Store
-                          size={SECONDARY_METRIC_ICON_SIZE + 2}
-                          color={themeColors.textPrimary}
-                          strokeWidth={2}
-                        />
-                      )}
-                      <Text variant="body" weight="semibold" style={styles.scoreInfoTitle}>
-                        {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
-                      </Text>
-                      <Text variant="body" weight="semibold" style={styles.scoreInfoValue}>
-                        {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={closeScoreInfo}
-                      style={styles.scoreInfoClose}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel="Close score details"
-                    >
-                      <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
-                    </TouchableOpacity>
-                  </View>
-                  <Text variant="body" style={styles.scoreInfoSubtitle} numberOfLines={1}>
-                    {scoreInfo.title}
-                  </Text>
-                  <View style={styles.scoreInfoMetricsRow}>
-                    <View style={styles.scoreInfoMetricItem}>
-                      <VoteIcon color={themeColors.textPrimary} size={14} />
-                      <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
-                        {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
-                      </Text>
-                      <Text variant="body" style={styles.scoreInfoMetricLabel}>
-                        Votes
-                      </Text>
-                    </View>
-                    <View style={styles.scoreInfoMetricItem}>
-                      <PollIcon color={themeColors.textPrimary} size={14} />
-                      <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
-                        {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
-                      </Text>
-                      <Text variant="body" style={styles.scoreInfoMetricLabel}>
-                        Polls
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.scoreInfoDivider} />
-                  <Text variant="body" style={styles.scoreInfoDescription}>
-                    {scoreInfo.type === 'dish'
-                      ? 'Dish score is a rank-based 0–100 index within this city. It reflects mention and upvote signals (time-decayed) plus restaurant context. 100 is the top dish in this coverage area.'
-                      : 'Restaurant score is a rank-based 0–100 index within this city. It reflects the strength of its best dishes, overall menu consistency, and general praise. 100 is the top restaurant in this coverage area.'}
-                  </Text>
+                  <Pressable
+                    onPress={handlePriceDone}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply price filters"
+                    style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
+                  >
+                    <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
+                      Done
+                    </Text>
+                  </Pressable>
                 </View>
-              ) : null}
-            </MemoSecondaryBottomSheet>
-          </React.Profiler>
-        </>
-      </React.Profiler>
+                <View style={styles.priceSheetSliderWrapper}>
+                  <PriceRangeSlider
+                    range={pendingPriceRange}
+                    onRangePreview={setPendingPriceRange}
+                    onRangeCommit={setPendingPriceRange}
+                  />
+                </View>
+              </MemoSecondaryBottomSheet>
+            </React.Profiler>
+            <React.Profiler id="ScoreInfoSheet" onRender={handleProfilerRender}>
+              <MemoSecondaryBottomSheet
+                visible={Boolean(isScoreInfoVisible && scoreInfo)}
+                onRequestClose={closeScoreInfo}
+                onDismiss={() => setScoreInfo(null)}
+                paddingHorizontal={CONTENT_HORIZONTAL_PADDING}
+                paddingTop={12}
+                sheetStyle={{ height: SCORE_INFO_MAX_HEIGHT }}
+              >
+                {scoreInfo ? (
+                  <View style={styles.scoreInfoContent}>
+                    <View style={styles.scoreInfoHeaderRow}>
+                      <View style={styles.scoreInfoTitleRow}>
+                        {scoreInfo.type === 'dish' ? (
+                          <HandPlatter
+                            size={SECONDARY_METRIC_ICON_SIZE + 2}
+                            color={themeColors.textPrimary}
+                            strokeWidth={2}
+                          />
+                        ) : (
+                          <Store
+                            size={SECONDARY_METRIC_ICON_SIZE + 2}
+                            color={themeColors.textPrimary}
+                            strokeWidth={2}
+                          />
+                        )}
+                        <Text variant="body" weight="semibold" style={styles.scoreInfoTitle}>
+                          {scoreInfo.type === 'dish' ? 'Dish score' : 'Restaurant score'}
+                        </Text>
+                        <Text variant="body" weight="semibold" style={styles.scoreInfoValue}>
+                          {scoreInfo.score != null ? scoreInfo.score.toFixed(1) : '—'}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={closeScoreInfo}
+                        style={styles.scoreInfoClose}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel="Close score details"
+                      >
+                        <LucideX size={18} color={themeColors.textBody} strokeWidth={2} />
+                      </TouchableOpacity>
+                    </View>
+                    <Text variant="body" style={styles.scoreInfoSubtitle} numberOfLines={1}>
+                      {scoreInfo.title}
+                    </Text>
+                    <View style={styles.scoreInfoMetricsRow}>
+                      <View style={styles.scoreInfoMetricItem}>
+                        <VoteIcon color={themeColors.textPrimary} size={14} />
+                        <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
+                          {scoreInfo.votes == null ? '—' : formatCompactCount(scoreInfo.votes)}
+                        </Text>
+                        <Text variant="body" style={styles.scoreInfoMetricLabel}>
+                          Votes
+                        </Text>
+                      </View>
+                      <View style={styles.scoreInfoMetricItem}>
+                        <PollIcon color={themeColors.textPrimary} size={14} />
+                        <Text variant="body" weight="medium" style={styles.scoreInfoMetricText}>
+                          {scoreInfo.polls == null ? '—' : formatCompactCount(scoreInfo.polls)}
+                        </Text>
+                        <Text variant="body" style={styles.scoreInfoMetricLabel}>
+                          Polls
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={styles.scoreInfoDivider} />
+                    <Text variant="body" style={styles.scoreInfoDescription}>
+                      {scoreInfo.type === 'dish'
+                        ? 'Dish score is a rank-based 0–100 index within this city. It reflects mention and upvote signals (time-decayed) plus restaurant context. 100 is the top dish in this coverage area.'
+                        : 'Restaurant score is a rank-based 0–100 index within this city. It reflects the strength of its best dishes, overall menu consistency, and general praise. 100 is the top restaurant in this coverage area.'}
+                    </Text>
+                  </View>
+                ) : null}
+              </MemoSecondaryBottomSheet>
+            </React.Profiler>
+          </>
+        </React.Profiler>
       </View>
     </React.Profiler>
   );

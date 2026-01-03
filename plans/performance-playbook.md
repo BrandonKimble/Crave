@@ -3,6 +3,7 @@
 ## Goal
 
 Keep sheet + map interactions smooth (UI ~60fps) and prevent JS stalls during gestures. Target:
+
 - No React commit > 20ms during drag/settle.
 - JS stall < 40ms during interactions; short one-off stalls on submit are acceptable but should be explainable.
 
@@ -30,9 +31,9 @@ Use these when perf is shaky:
 - Parse timing logs: enable `debugParse`/`debugLabel` in `useSearchRequests` to log JSON parse cost via `searchService` transformResponse.
 - Map event rate logs: `cameraChanged`/`mapIdle` counters to spot event storms.
 - Top-food measurement logs: `use-top-food-measurement.ts` logs flush/compute timing.
-- Response logging: `EXPO_PUBLIC_SEARCH_LOG_RESPONSE_PAYLOAD` toggles full response payload logs in dev.
+- Response logging: `SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED` toggles full response payload logs in dev.
 - Hermes profiling + React DevTools “Highlight updates” to verify commits during drag.
-- Env switches: `EXPO_PUBLIC_SEARCH_PERF_LOGS` (enable perf logs), `EXPO_PUBLIC_SEARCH_LOG_RESPONSE_PAYLOAD` (log full response payloads in dev).
+- Env switches: `SEARCH_PERF_DEBUG_ENABLED` (perf logs) and `SEARCH_OVERLAY_DEBUG_ENABLED` (overlay debug logs).
 
 ## Baseline Scenarios (Always Measure)
 
@@ -43,13 +44,13 @@ Use these when perf is shaky:
 
 ## Diagnostic Flow
 
-1) Check UI vs JS FPS (Perf Monitor).
+1. Check UI vs JS FPS (Perf Monitor).
    - UI FPS low + JS OK => compositing/layout issue.
    - JS FPS low => React/state churn or heavy JS work.
-2) Identify the subtree committing via profiler logs.
-3) Use prop-change logs to see which props are unstable.
-4) Flip perf flags (placeholder rows, disable markers, disable headers/shortcuts, disable top-food measurement) to isolate the culprit. Blur stays on; only de-duplicate overlapping blur layers for the same region.
-5) Apply the relevant fix from the patterns below.
+2. Identify the subtree committing via profiler logs.
+3. Use prop-change logs to see which props are unstable.
+4. Flip perf flags (placeholder rows, disable markers, disable headers/shortcuts, disable top-food measurement) to isolate the culprit. Blur stays on; only de-duplicate overlapping blur layers for the same region.
+5. Apply the relevant fix from the patterns below.
 
 ## Patterns Applied (Search Case Study)
 
