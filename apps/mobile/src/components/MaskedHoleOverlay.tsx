@@ -15,23 +15,43 @@ type MaskedHoleOverlayProps = {
   holes: MaskedHole[];
   backgroundColor?: string;
   opacity?: number;
+  renderWhenEmpty?: boolean;
   style?: Reanimated.AnimatedStyleProp<ViewStyle>;
 } & Pick<ViewProps, 'pointerEvents'>;
 
 const MaskedHoleOverlay = React.forwardRef<View, MaskedHoleOverlayProps>(
-  ({ holes, backgroundColor = '#ffffff', opacity = 1, style, pointerEvents }, ref) => {
+  (
+    {
+      holes,
+      backgroundColor = '#ffffff',
+      opacity = 1,
+      renderWhenEmpty = false,
+      style,
+      pointerEvents,
+    },
+    ref
+  ) => {
     const maskIdRef = React.useRef<string>(
       `masked-hole-overlay-mask-${Math.random().toString(36).slice(2, 8)}`
     );
     const maskId = maskIdRef.current;
 
-    if (!holes.length) {
-      return null;
-    }
-
     const containerStyle = style
       ? [overlayStyles.absoluteTopLeft, style]
       : StyleSheet.absoluteFillObject;
+
+    if (!holes.length) {
+      if (!renderWhenEmpty) {
+        return null;
+      }
+      return (
+        <Reanimated.View
+          ref={ref}
+          pointerEvents={pointerEvents ?? 'none'}
+          style={[containerStyle, { backgroundColor, opacity }]}
+        />
+      );
+    }
 
     return (
       <Reanimated.View ref={ref} pointerEvents={pointerEvents ?? 'none'} style={containerStyle}>

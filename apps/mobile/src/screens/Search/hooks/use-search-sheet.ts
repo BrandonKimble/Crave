@@ -28,6 +28,7 @@ type UseSearchSheetResult = {
   resetSheetToHidden: () => void;
   animateSheetTo: (position: SheetPosition, velocity?: number) => void;
   showPanel: () => void;
+  showPanelInstant: (position?: SheetPosition) => void;
   handleSheetSnapChange: (nextSnap: SheetPosition | 'hidden') => void;
   resultsContainerAnimatedStyle: ReturnType<typeof useAnimatedStyle>;
   resultsScrollOffset: SharedValue<number>;
@@ -117,10 +118,24 @@ const useSearchSheet = ({
     if (!panelVisible) {
       setPanelVisible(true);
     }
+    if (sheetState === 'middle') {
+      return;
+    }
     requestAnimationFrame(() => {
       animateSheetTo('middle');
     });
-  }, [animateSheetTo, panelVisible]);
+  }, [animateSheetTo, panelVisible, sheetState]);
+
+  const showPanelInstant = React.useCallback(
+    (position: SheetPosition = 'middle') => {
+      setPanelVisible(true);
+      setSheetState(position);
+      setSnapTo(null);
+      snapToRef.current = null;
+      sheetTranslateY.value = snapPoints[position];
+    },
+    [setPanelVisible, setSheetState, setSnapTo, sheetTranslateY, snapPoints]
+  );
 
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: sheetTranslateY.value }],
@@ -140,6 +155,7 @@ const useSearchSheet = ({
     resetSheetToHidden,
     animateSheetTo,
     showPanel,
+    showPanelInstant,
     handleSheetSnapChange,
     resultsContainerAnimatedStyle,
     resultsScrollOffset,

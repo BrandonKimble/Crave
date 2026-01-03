@@ -16,8 +16,20 @@ type RunAutocompleteOptions = {
 };
 
 type RunSearchParams =
-  | { kind: 'natural'; payload: NaturalSearchRequest }
-  | { kind: 'structured'; payload: StructuredSearchRequest };
+  | {
+      kind: 'natural';
+      payload: NaturalSearchRequest;
+      debugParse?: boolean;
+      debugLabel?: string;
+      debugMinMs?: number;
+    }
+  | {
+      kind: 'structured';
+      payload: StructuredSearchRequest;
+      debugParse?: boolean;
+      debugLabel?: string;
+      debugMinMs?: number;
+    };
 
 export const useSearchRequests = () => {
   const searchControllerRef = React.useRef<AbortController | null>(null);
@@ -102,9 +114,17 @@ export const useSearchRequests = () => {
       try {
         const response =
           request.kind === 'natural'
-            ? await searchService.naturalSearch(request.payload, { signal: controller.signal })
+            ? await searchService.naturalSearch(request.payload, {
+                signal: controller.signal,
+                debugParse: request.debugParse,
+                debugLabel: request.debugLabel,
+                debugMinMs: request.debugMinMs,
+              })
             : await searchService.structuredSearch(request.payload, {
                 signal: controller.signal,
+                debugParse: request.debugParse,
+                debugLabel: request.debugLabel,
+                debugMinMs: request.debugMinMs,
               });
 
         if (controller.signal.aborted) {

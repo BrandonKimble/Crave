@@ -1,6 +1,15 @@
 import React from 'react';
 import { type LayoutChangeEvent } from 'react-native';
 
+import searchPerfDebug from '../search-perf-debug';
+
+const getPerfNow = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
 type TopFoodItem = {
   connectionId: string;
   foodName: string;
@@ -131,6 +140,9 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     isDraggingRef,
     debounceMs = 50,
   } = options;
+  const shouldLogTopFoodMeasurement =
+    searchPerfDebug.enabled && searchPerfDebug.logTopFoodMeasurement;
+  const topFoodMeasurementMinMs = searchPerfDebug.logTopFoodMeasurementMinMs;
   const isEnabled = enabled;
 
   // Consolidated measurement state
@@ -150,7 +162,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, []);
+  }, [logTopFoodMeasurement, shouldLogTopFoodMeasurement]);
 
   // Items we'll actually consider for display
   const candidateTopFoods = React.useMemo(
@@ -173,7 +185,10 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
 
   // Apply pending updates with debouncing
   const flushPendingUpdates = React.useCallback(() => {
+    const start = shouldLogTopFoodMeasurement ? getPerfNow() : 0;
     const pending = pendingUpdatesRef.current;
+    const pendingItemCount = pending.itemWidths?.size ?? 0;
+    const pendingMoreCount = pending.moreWidths?.size ?? 0;
     if (Object.keys(pending).length === 0) return;
 
     setMeasurements((prev) => {
@@ -215,6 +230,13 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       pendingUpdatesRef.current = {};
       return hasChanges ? next : prev;
     });
+    if (shouldLogTopFoodMeasurement) {
+      logTopFoodMeasurement(
+        'flush',
+        getPerfNow() - start,
+        `items=${pendingItemCount} more=${pendingMoreCount}`
+      );
+    }
   }, []);
 
   const getIsDragging = React.useCallback(() => {
@@ -223,6 +245,20 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
     }
     return isDragging;
   }, [isDragging, isDraggingRef]);
+
+  const logTopFoodMeasurement = React.useCallback(
+    (label: string, duration: number, extra?: string) => {
+      if (!shouldLogTopFoodMeasurement || duration < topFoodMeasurementMinMs) {
+        return;
+      }
+      const suffix = extra ? ` ${extra}` : '';
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SearchPerf] TopFood ${label} ${duration.toFixed(1)}ms drag=${getIsDragging()}${suffix}`
+      );
+    },
+    [getIsDragging, shouldLogTopFoodMeasurement, topFoodMeasurementMinMs]
+  );
 
   // Schedule debounced update and wait for the sheet to be idle.
   const scheduleUpdate = React.useCallback(() => {
@@ -319,76 +355,92 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
 
   // Calculate visible items based on measurements
   const { visibleTopFoods, hiddenTopFoodCount } = React.useMemo(() => {
+    const start = shouldLogTopFoodMeasurement ? getPerfNow() : 0;
+    let result: { visibleTopFoods: readonly TopFoodItem[]; hiddenTopFoodCount: number };
+
     if (!isEnabled) {
       const visible = candidateTopFoods;
-      return {
+      result = {
         visibleTopFoods: visible,
         hiddenTopFoodCount: Math.max(0, topFoodItems.length - visible.length),
       };
-    }
-    const { itemWidths, moreWidths } = measurements;
-    const containerWidth = Math.round(availableWidth ?? 0);
+    } else {
+      const { itemWidths, moreWidths } = measurements;
+      const containerWidth = Math.round(availableWidth ?? 0);
 
-    // No items to show
-    if (candidateTopFoods.length === 0) {
-      return { visibleTopFoods: [] as readonly TopFoodItem[], hiddenTopFoodCount: 0 };
-    }
+      if (candidateTopFoods.length === 0) {
+        result = { visibleTopFoods: [] as readonly TopFoodItem[], hiddenTopFoodCount: 0 };
+      } else if (!containerWidth) {
+        result = {
+          visibleTopFoods: candidateTopFoods,
+          hiddenTopFoodCount: 0,
+        };
+      } else {
+        const measuredWidths = candidateTopFoods.map((food) => itemWidths.get(food.connectionId));
+        if (measuredWidths.some((width) => width === undefined)) {
+          result = {
+            visibleTopFoods: candidateTopFoods,
+            hiddenTopFoodCount: 0,
+          };
+        } else {
+          let hasMeasurements = false;
+          let bestCount = candidateTopFoods.length;
 
-    // No container width yet - show all candidates as placeholder
-    if (!containerWidth) {
-      return {
-        visibleTopFoods: candidateTopFoods,
-        hiddenTopFoodCount: 0,
-      };
-    }
+          for (let count = candidateTopFoods.length; count >= 1; count--) {
+            const hiddenCount = topFoodItems.length - count;
+            const needsMore = hiddenCount > 0;
+            const moreWidth = needsMore ? moreWidths.get(hiddenCount) : 0;
+            if (needsMore && typeof moreWidth !== 'number') {
+              continue;
+            }
+            hasMeasurements = true;
+            const widths = measuredWidths.slice(0, count) as number[];
+            const elementCount = count + (needsMore ? 1 : 0);
+            const gapWidth = Math.max(0, elementCount - 1) * itemGap;
+            const totalWidth =
+              widths.reduce((sum, width) => sum + width, 0) +
+              gapWidth +
+              (needsMore ? moreWidth ?? 0 : 0);
+            if (totalWidth <= containerWidth) {
+              bestCount = count;
+              break;
+            }
+            if (count === 1) {
+              bestCount = 1;
+            }
+          }
 
-    const measuredWidths = candidateTopFoods.map((food) => itemWidths.get(food.connectionId));
-    if (measuredWidths.some((width) => width === undefined)) {
-      return {
-        visibleTopFoods: candidateTopFoods,
-        hiddenTopFoodCount: 0,
-      };
-    }
-
-    let hasMeasurements = false;
-    let bestCount = candidateTopFoods.length;
-
-    for (let count = candidateTopFoods.length; count >= 1; count--) {
-      const hiddenCount = topFoodItems.length - count;
-      const needsMore = hiddenCount > 0;
-      const moreWidth = needsMore ? moreWidths.get(hiddenCount) : 0;
-      if (needsMore && typeof moreWidth !== 'number') {
-        continue;
+          if (!hasMeasurements) {
+            result = {
+              visibleTopFoods: candidateTopFoods,
+              hiddenTopFoodCount: 0,
+            };
+          } else {
+            const hiddenCount = Math.max(0, topFoodItems.length - bestCount);
+            result = {
+              visibleTopFoods: candidateTopFoods.slice(0, bestCount),
+              hiddenTopFoodCount: hiddenCount,
+            };
+          }
+        }
       }
-      hasMeasurements = true;
-      const widths = measuredWidths.slice(0, count) as number[];
-      const elementCount = count + (needsMore ? 1 : 0);
-      const gapWidth = Math.max(0, elementCount - 1) * itemGap;
-      const totalWidth =
-        widths.reduce((sum, width) => sum + width, 0) + gapWidth + (needsMore ? moreWidth ?? 0 : 0);
-      if (totalWidth <= containerWidth) {
-        bestCount = count;
-        break;
-      }
-      if (count === 1) {
-        bestCount = 1;
-      }
     }
 
-    if (!hasMeasurements) {
-      return {
-        visibleTopFoods: candidateTopFoods,
-        hiddenTopFoodCount: 0,
-      };
+    if (shouldLogTopFoodMeasurement) {
+      logTopFoodMeasurement('compute', getPerfNow() - start);
     }
 
-    const hiddenCount = Math.max(0, topFoodItems.length - bestCount);
-
-    return {
-      visibleTopFoods: candidateTopFoods.slice(0, bestCount),
-      hiddenTopFoodCount: hiddenCount,
-    };
-  }, [availableWidth, candidateTopFoods, isEnabled, itemGap, measurements, topFoodItems.length]);
+    return result;
+  }, [
+    availableWidth,
+    candidateTopFoods,
+    isEnabled,
+    itemGap,
+    logTopFoodMeasurement,
+    measurements,
+    shouldLogTopFoodMeasurement,
+    topFoodItems.length,
+  ]);
 
   // Check if we have all the measurements we need
   const hasMeasured = React.useMemo(() => {

@@ -5,6 +5,7 @@ import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, { type SharedValue } from 'react-native-reanimated';
 
 import BottomSheetWithFlashList, {
+  type BottomSheetWithFlashListProps,
   type SnapPoints,
 } from '../../../overlays/BottomSheetWithFlashList';
 import { overlaySheetStyles } from '../../../overlays/overlaySheetStyles';
@@ -44,6 +45,7 @@ type SearchResultsSheetProps<T> = {
   ListFooterComponent?: FlashListProps<T>['ListFooterComponent'];
   ListEmptyComponent?: FlashListProps<T>['ListEmptyComponent'];
   ItemSeparatorComponent?: FlashListProps<T>['ItemSeparatorComponent'];
+  flashListProps?: BottomSheetWithFlashListProps<T>['flashListProps'];
   headerComponent?: React.ReactNode;
   backgroundComponent?: React.ReactNode;
   overlayComponent?: React.ReactNode;
@@ -85,6 +87,7 @@ const SearchResultsSheet = <T,>({
   ListFooterComponent,
   ListEmptyComponent,
   ItemSeparatorComponent,
+  flashListProps,
   headerComponent,
   backgroundComponent,
   overlayComponent,
@@ -95,11 +98,9 @@ const SearchResultsSheet = <T,>({
   onSnapChange,
   style,
 }: SearchResultsSheetProps<T>): React.ReactElement | null => {
-  if (!visible) {
-    return null;
-  }
-
   const shouldLogPropChanges = searchPerfDebug.enabled && searchPerfDebug.logCommitInfo;
+  const shouldLogProfiler = searchPerfDebug.enabled && searchPerfDebug.logCommitInfo;
+  const profilerMinMs = searchPerfDebug.logCommitMinMs;
   const prevPropsRef = React.useRef<{
     listScrollEnabled: boolean;
     snapPointsKey: string;
@@ -123,6 +124,25 @@ const SearchResultsSheet = <T,>({
     resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
     onEndReached?: FlashListProps<T>['onEndReached'];
   } | null>(null);
+  const handleProfilerRender = React.useCallback(
+    (
+      id: string,
+      phase: 'mount' | 'update',
+      actualDuration: number,
+      baseDuration: number
+    ) => {
+      if (!shouldLogProfiler || actualDuration < profilerMinMs) {
+        return;
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SearchPerf] Profiler ${id} ${phase} actual=${actualDuration.toFixed(
+          1
+        )}ms base=${baseDuration.toFixed(1)}ms`
+      );
+    },
+    [profilerMinMs, shouldLogProfiler]
+  );
 
   React.useEffect(() => {
     if (!shouldLogPropChanges) {
@@ -225,6 +245,18 @@ const SearchResultsSheet = <T,>({
     }),
     [snapPoints.collapsed, snapPoints.expanded, snapPoints.hidden, snapPoints.middle]
   );
+  const resolvedFlashListProps = React.useMemo(
+    () => ({
+      ...flashListProps,
+      getItemType,
+      overrideItemLayout,
+      removeClippedSubviews: true,
+      overrideProps: {
+        ...(flashListProps?.overrideProps ?? {}),
+      },
+    }),
+    [flashListProps, getItemType, overrideItemLayout]
+  );
 
   return (
     <>
@@ -232,58 +264,56 @@ const SearchResultsSheet = <T,>({
         pointerEvents="none"
         style={[styles.resultsShadow, resultsContainerAnimatedStyle]}
       />
-      <BottomSheetWithFlashList
-        visible={visible}
-        listScrollEnabled={listScrollEnabled}
-        snapPoints={gestureSnapPoints}
-        initialSnapPoint={initialSnapPoint}
-        sheetYValue={sheetYValue}
-        scrollOffsetValue={scrollOffsetValue}
-        momentumFlag={momentumFlag}
-        snapTo={snapTo}
-        preventSwipeDismiss
-        onScrollOffsetChange={onScrollOffsetChange}
-        onScrollBeginDrag={onScrollBeginDrag}
-        onScrollEndDrag={onScrollEndDrag}
-        onMomentumBeginJS={onMomentumBeginJS}
-        onMomentumEndJS={onMomentumEndJS}
-        onDragStateChange={onDragStateChange}
-        onSettleStateChange={onSettleStateChange}
-        listKey={listKey}
-        onEndReached={onEndReached}
-        onEndReachedThreshold={0.2}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        bounces={false}
-        alwaysBounceVertical={false}
-        overScrollMode="never"
-        testID="search-results-flatlist"
-        extraData={extraData}
-        data={data}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        estimatedItemSize={estimatedItemSize}
-        ListHeaderComponent={ListHeaderComponent}
-        ListFooterComponent={ListFooterComponent}
-        ListEmptyComponent={ListEmptyComponent}
-        ItemSeparatorComponent={ItemSeparatorComponent}
-        contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
-        headerComponent={headerComponent}
-        backgroundComponent={backgroundComponent}
-        overlayComponent={overlayComponent}
-        listRef={listRef}
-        style={[overlaySheetStyles.container, style]}
-        surfaceStyle={[overlaySheetStyles.surface, styles.resultsSheetSurface]}
-        onHidden={onHidden}
-        onSnapChange={onSnapChange}
-        interactionEnabled={interactionEnabled}
-        flashListProps={{
-          getItemType,
-          overrideItemLayout,
-          removeClippedSubviews: true,
-        }}
-      />
+      <React.Profiler id="SearchResultsSheetCore" onRender={handleProfilerRender}>
+        <BottomSheetWithFlashList
+          visible={visible}
+          listScrollEnabled={listScrollEnabled}
+          snapPoints={gestureSnapPoints}
+          initialSnapPoint={initialSnapPoint}
+          sheetYValue={sheetYValue}
+          scrollOffsetValue={scrollOffsetValue}
+          momentumFlag={momentumFlag}
+          snapTo={snapTo}
+          preventSwipeDismiss
+          onScrollOffsetChange={onScrollOffsetChange}
+          onScrollBeginDrag={onScrollBeginDrag}
+          onScrollEndDrag={onScrollEndDrag}
+          onMomentumBeginJS={onMomentumBeginJS}
+          onMomentumEndJS={onMomentumEndJS}
+          onDragStateChange={onDragStateChange}
+          onSettleStateChange={onSettleStateChange}
+          listKey={listKey}
+          onEndReached={onEndReached}
+          onEndReachedThreshold={0.2}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          bounces={false}
+          alwaysBounceVertical={false}
+          overScrollMode="never"
+          testID="search-results-flatlist"
+          extraData={extraData}
+          data={data}
+          renderItem={renderItem}
+          keyExtractor={keyExtractor}
+          estimatedItemSize={estimatedItemSize}
+          ListHeaderComponent={ListHeaderComponent}
+          ListFooterComponent={ListFooterComponent}
+          ListEmptyComponent={ListEmptyComponent}
+          ItemSeparatorComponent={ItemSeparatorComponent}
+          contentContainerStyle={contentContainerStyle ?? { paddingBottom: RESULTS_BOTTOM_PADDING }}
+          headerComponent={headerComponent}
+          backgroundComponent={backgroundComponent}
+          overlayComponent={overlayComponent}
+          listRef={listRef}
+          style={[overlaySheetStyles.container, style]}
+          surfaceStyle={[overlaySheetStyles.surface, styles.resultsSheetSurface]}
+          onHidden={onHidden}
+          onSnapChange={onSnapChange}
+          interactionEnabled={interactionEnabled}
+          flashListProps={resolvedFlashListProps}
+        />
+      </React.Profiler>
     </>
   );
 };

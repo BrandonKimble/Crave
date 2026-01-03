@@ -152,9 +152,6 @@ const styles = StyleSheet.create({
     columnGap: 8,
     zIndex: 55,
   },
-  searchShortcutsRowSuggestion: {
-    marginBottom: 0,
-  },
   searchShortcutChip: {
     borderRadius: 12,
     borderWidth: 0,
@@ -169,12 +166,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.24,
     shadowRadius: 2,
     elevation: 2,
-  },
-  searchShortcutChipTransparent: {
-    backgroundColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
   },
   searchShortcutContent: {
     flexDirection: 'row',
@@ -569,6 +560,9 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
+  resultsHeaderSurfaceSolid: {
+    backgroundColor: '#ffffff',
+  },
   resultsHeaderHandle: {
     backgroundColor: 'transparent',
   },
@@ -606,6 +600,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 0,
+    backgroundColor: '#ffffff',
   },
   onDemandNotice: {
     alignSelf: 'stretch',

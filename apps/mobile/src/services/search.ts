@@ -55,15 +55,47 @@ export type RestaurantStatusPreview = {
 
 type RequestOptions = {
   signal?: AbortSignal;
+  debugParse?: boolean;
+  debugLabel?: string;
+  debugMinMs?: number;
 };
+
+const getPerfNow = () => {
+  if (typeof performance?.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
+const buildDebugTransform = (label: string, minMs: number) => [
+  (data: string | object) => {
+    if (typeof data !== 'string') {
+      return data;
+    }
+    const start = getPerfNow();
+    const parsed = JSON.parse(data);
+    const duration = getPerfNow() - start;
+    if (__DEV__ && duration >= minMs) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SearchPerf] parse ${label} ${duration.toFixed(1)}ms bytes=${data.length}`
+      );
+    }
+    return parsed;
+  },
+];
 
 export const searchService = {
   naturalSearch: async (
     payload: NaturalSearchRequest,
     options: RequestOptions = {}
   ): Promise<SearchResponse> => {
+    const transformResponse = options.debugParse
+      ? buildDebugTransform(options.debugLabel ?? 'natural', options.debugMinMs ?? 0)
+      : undefined;
     const { data } = await api.post<SearchResponse>('/search/natural', payload, {
       signal: options.signal,
+      transformResponse,
     });
     return data;
   },
@@ -71,8 +103,12 @@ export const searchService = {
     payload: StructuredSearchRequest,
     options: RequestOptions = {}
   ): Promise<SearchResponse> => {
+    const transformResponse = options.debugParse
+      ? buildDebugTransform(options.debugLabel ?? 'structured', options.debugMinMs ?? 0)
+      : undefined;
     const { data } = await api.post<SearchResponse>('/search/run', payload, {
       signal: options.signal,
+      transformResponse,
     });
     return data;
   },

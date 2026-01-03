@@ -54,7 +54,6 @@ type SearchHeaderProps = {
   editable?: boolean;
   showInactiveSearchIcon?: boolean;
   isSearchSessionActive?: boolean;
-  surfaceVariant?: 'solid' | 'transparent';
 };
 
 const SearchHeader: React.FC<SearchHeaderProps> = ({
@@ -79,18 +78,19 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
   editable = true,
   showInactiveSearchIcon = false,
   isSearchSessionActive = false,
-  surfaceVariant = 'solid',
 }) => {
   const hasLeadingIcon = showBack || showInactiveSearchIcon;
   const shouldCollapseLeadingSlot = !hasLeadingIcon;
+  const resolvedContainerStyle = React.useMemo(() => {
+    if (!containerAnimatedStyle) {
+      return [];
+    }
+    return Array.isArray(containerAnimatedStyle) ? containerAnimatedStyle : [containerAnimatedStyle];
+  }, [containerAnimatedStyle]);
   return (
     <View style={styles.wrapper} pointerEvents="box-none" onLayout={onLayout}>
       <Reanimated.View
-        style={[
-          styles.promptCard,
-          surfaceVariant === 'transparent' ? styles.promptCardTransparent : null,
-          containerAnimatedStyle,
-        ]}
+        style={[styles.promptCard, ...resolvedContainerStyle]}
       >
         <Pressable style={styles.promptRow} onPress={onPress ?? onFocus} onPressIn={onPressIn}>
           <View style={styles.promptInner}>
@@ -205,14 +205,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 1,
-  },
-  promptCardTransparent: {
-    backgroundColor: 'transparent',
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-    borderWidth: 0,
-    borderColor: 'transparent',
   },
   promptRow: {
     flexDirection: 'row',

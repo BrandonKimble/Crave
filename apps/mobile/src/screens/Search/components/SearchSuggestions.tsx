@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
   },
   autocompleteSectionSurface: {
     paddingHorizontal: 0,
-    paddingTop: 12,
+    paddingTop: 0,
     paddingBottom: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
@@ -315,7 +315,8 @@ const styles = StyleSheet.create({
   autocompleteLoadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingTop: 32,
+    paddingBottom: 20,
   },
   autocompleteItemRow: {
     paddingHorizontal: 0,

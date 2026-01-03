@@ -1,5 +1,12 @@
 import React from 'react';
 import { Animated, Image, Pressable, Text as RNText, View } from 'react-native';
+import Reanimated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withTiming,
+} from 'react-native-reanimated';
 
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -38,6 +45,56 @@ type CameraPadding = {
 
 const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
+const MARKER_ENTER_SCALE = 0.92;
+
+type MarkerPinProps = {
+  isSelected: boolean;
+  pinColor: string;
+  rank: number;
+  enterDelayMs: number;
+  enterDurationMs: number;
+};
+
+const MarkerPin: React.FC<MarkerPinProps> = React.memo(
+  ({ isSelected, pinColor, rank, enterDelayMs, enterDurationMs }) => {
+    const progress = useSharedValue(0);
+    React.useEffect(() => {
+      progress.value = 0;
+      progress.value = withDelay(
+        enterDelayMs,
+        withTiming(1, {
+          duration: enterDurationMs,
+          easing: Easing.out(Easing.cubic),
+        })
+      );
+    }, [enterDelayMs, enterDurationMs, progress]);
+    const animatedStyle = useAnimatedStyle(() => ({
+      opacity: progress.value,
+      transform: [
+        {
+          scale: MARKER_ENTER_SCALE + (1 - MARKER_ENTER_SCALE) * progress.value,
+        },
+      ],
+    }));
+    return (
+      <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
+        <Image source={pinAsset} style={styles.pinBase} />
+        <Image
+          source={pinFillAsset}
+          style={[
+            styles.pinFill,
+            {
+              tintColor: isSelected ? PRIMARY_COLOR : pinColor,
+            },
+          ]}
+        />
+        <View style={styles.pinRankWrapper}>
+          <RNText style={styles.pinRank}>{rank}</RNText>
+        </View>
+      </Reanimated.View>
+    );
+  }
+);
 
 type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
@@ -56,6 +113,9 @@ type SearchMapProps = {
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   markersRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+  markerRevealChunk?: number;
+  markerRevealStaggerMs?: number;
+  markerRevealAnimMs?: number;
   restaurantFeatures: FeatureCollection<Point, RestaurantFeatureProperties>;
   restaurantLabelStyle: MapboxGL.SymbolLayerStyle;
   isMapStyleReady: boolean;
@@ -63,6 +123,7 @@ type SearchMapProps = {
   locationPulse: Animated.Value;
   disableMarkers?: boolean;
   disableBlur?: boolean;
+  onProfilerRender?: React.ProfilerOnRenderCallback;
 };
 
 const SearchMap: React.FC<SearchMapProps> = ({
@@ -82,6 +143,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   sortedRestaurantMarkers,
   markersRenderKey,
   buildMarkerKey,
+  markerRevealChunk = 1,
+  markerRevealStaggerMs = 0,
+  markerRevealAnimMs = 160,
   restaurantFeatures,
   restaurantLabelStyle,
   isMapStyleReady,
@@ -89,10 +153,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
   locationPulse,
   disableMarkers = false,
   disableBlur = false,
+  onProfilerRender,
 }) => {
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
   const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
+  const profilerCallback =
+    onProfilerRender ??
+    ((() => {
+      // noop
+    }) as React.ProfilerOnRenderCallback);
   return (
     <MapboxGL.MapView
       ref={mapRef}
@@ -122,52 +192,50 @@ const SearchMap: React.FC<SearchMapProps> = ({
         pitch={32}
       />
       {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
-        <React.Fragment key={`markers-${markersRenderKey}`}>
-          {sortedRestaurantMarkers.map((feature) => {
-            const coordinates = feature.geometry.coordinates as [number, number];
-            const markerKey = buildMarkerKey(feature);
-            const zIndex = getMarkerZIndex(feature.properties.rank, sortedRestaurantMarkers.length);
-            return (
-              <MapboxGL.MarkerView
-                key={markerKey}
-                id={`restaurant-marker-${markerKey}`}
-                coordinate={coordinates}
-                anchor={{ x: 0.5, y: 1 }}
-                allowOverlap
-                style={[styles.markerView, { zIndex }]}
-              >
-                <Pressable
-                  onPress={() => onMarkerPress?.(feature.properties.restaurantId)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        <React.Profiler id="SearchMapMarkers" onRender={profilerCallback}>
+          <React.Fragment>
+            {sortedRestaurantMarkers.map((feature, index) => {
+              const coordinates = feature.geometry.coordinates as [number, number];
+              const markerKey = buildMarkerKey(feature);
+              const zIndex = getMarkerZIndex(feature.properties.rank, sortedRestaurantMarkers.length);
+              const revealChunk = Math.max(1, markerRevealChunk);
+              const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
+              const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
+              const enterDelayMs = withinChunkIndex * revealStaggerMs;
+              const isSelected = selectedRestaurantId === feature.properties.restaurantId;
+              return (
+                <MapboxGL.MarkerView
+                  key={markerKey}
+                  id={`restaurant-marker-${markerKey}`}
+                  coordinate={coordinates}
+                  anchor={{ x: 0.5, y: 1 }}
+                  allowOverlap
+                  style={[styles.markerView, { zIndex }]}
                 >
-                  <View style={[styles.pinWrapper, styles.pinShadow]}>
-                    <Image source={pinAsset} style={styles.pinBase} />
-                    <Image
-                      source={pinFillAsset}
-                      style={[
-                        styles.pinFill,
-                        {
-                          tintColor:
-                            selectedRestaurantId === feature.properties.restaurantId
-                              ? PRIMARY_COLOR
-                              : feature.properties.pinColor,
-                        },
-                      ]}
+                  <Pressable
+                    onPress={() => onMarkerPress?.(feature.properties.restaurantId)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <MarkerPin
+                      isSelected={isSelected}
+                      pinColor={feature.properties.pinColor}
+                      rank={feature.properties.rank}
+                      enterDelayMs={enterDelayMs}
+                      enterDurationMs={markerRevealAnimMs}
                     />
-                    <View style={styles.pinRankWrapper}>
-                      <RNText style={styles.pinRank}>{feature.properties.rank}</RNText>
-                    </View>
-                  </View>
-                </Pressable>
-              </MapboxGL.MarkerView>
-            );
-          })}
-        </React.Fragment>
+                  </Pressable>
+                </MapboxGL.MarkerView>
+              );
+            })}
+          </React.Fragment>
+        </React.Profiler>
       ) : null}
       {shouldRenderLabels ? (
-        <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
-          <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
-        </MapboxGL.ShapeSource>
+        <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
+          <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
+            <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
+          </MapboxGL.ShapeSource>
+        </React.Profiler>
       ) : null}
       {userLocation ? (
         <MapboxGL.MarkerView
@@ -282,10 +350,22 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.markersRenderKey !== next.markersRenderKey) {
     return false;
   }
+  if (prev.markerRevealChunk !== next.markerRevealChunk) {
+    return false;
+  }
+  if (prev.markerRevealStaggerMs !== next.markerRevealStaggerMs) {
+    return false;
+  }
+  if (prev.markerRevealAnimMs !== next.markerRevealAnimMs) {
+    return false;
+  }
   if (prev.disableMarkers !== next.disableMarkers) {
     return false;
   }
   if (prev.disableBlur !== next.disableBlur) {
+    return false;
+  }
+  if (prev.onProfilerRender !== next.onProfilerRender) {
     return false;
   }
   if (!areUserLocationsEqual(prev.userLocation, next.userLocation)) {

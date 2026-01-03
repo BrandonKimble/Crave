@@ -1,8 +1,9 @@
 import React from 'react';
-import { Keyboard } from 'react-native';
+import { InteractionManager, Keyboard, unstable_batchedUpdates } from 'react-native';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import { logger } from '../../../utils';
+import searchPerfDebug from '../search-perf-debug';
 import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from '../../../types';
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
@@ -102,6 +103,20 @@ type UseSearchSubmitResult = {
   cancelActiveSearchRequest: () => void;
 };
 
+const logSearchResponsePayload = (label: string, response: SearchResponse, enabled: boolean) => {
+  if (!enabled) {
+    return;
+  }
+  logger.debug(`${label} payload`, response);
+};
+
+const getPerfNow = () => {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+};
+
 const useSearchSubmit = ({
   query,
   isLoading,
@@ -145,12 +160,53 @@ const useSearchSubmit = ({
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
   const activeSearchRequestRef = React.useRef(0);
+  const shouldLogSearchResponsePayload = searchPerfDebug.logSearchResponsePayload;
+  const shouldLogSearchResponseTimings =
+    searchPerfDebug.enabled && searchPerfDebug.logSearchResponseTimings;
+  const searchResponseTimingMinMs = searchPerfDebug.logSearchResponseTimingMinMs;
+  const shouldDeferBestHereUi = searchPerfDebug.enabled && searchPerfDebug.deferBestHereUi;
+  const phaseStartRef = React.useRef<number | null>(null);
+  const logSearchResponseTiming = React.useCallback(
+    (label: string, durationMs: number) => {
+      if (!shouldLogSearchResponseTimings || durationMs < searchResponseTimingMinMs) {
+        return;
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[SearchPerf] ${label} ${durationMs.toFixed(1)}ms`);
+    },
+    [searchResponseTimingMinMs, shouldLogSearchResponseTimings]
+  );
+  const logSearchPhase = React.useCallback(
+    (label: string, options?: { reset?: boolean }) => {
+      if (!shouldLogSearchResponseTimings) {
+        return;
+      }
+      const now = getPerfNow();
+      if (options?.reset || phaseStartRef.current == null) {
+        phaseStartRef.current = now;
+      }
+      const start = phaseStartRef.current ?? now;
+      // eslint-disable-next-line no-console
+      console.log(`[SearchPerf] phase ${label} +${(now - start).toFixed(1)}ms`);
+    },
+    [shouldLogSearchResponseTimings]
+  );
+
+  React.useEffect(() => {
+    if (!shouldLogSearchResponseTimings) {
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log('[SearchPerf] response timing logs enabled');
+  }, [shouldLogSearchResponseTimings]);
 
   const cancelActiveSearchRequest = React.useCallback(() => {
     cancelSearch();
     activeSearchRequestRef.current = ++searchRequestSeqRef.current;
-    setIsLoading(false);
-    setIsLoadingMore(false);
+    unstable_batchedUpdates(() => {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    });
   }, [cancelSearch, setIsLoading, setIsLoadingMore]);
 
   const handleSearchResponse = React.useCallback(
@@ -162,86 +218,107 @@ const useSearchSubmit = ({
         submittedLabel?: string;
         pushToHistory?: boolean;
         submissionContext?: NaturalSearchRequest['submissionContext'];
+        showPanelOnResponse?: boolean;
       }
     ) => {
+      const handleStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
       const { append, targetPage, submittedLabel, pushToHistory } = options;
 
+      logSearchPhase('handleSearchResponse:start');
       let previousFoodCountSnapshot = 0;
       let previousRestaurantCountSnapshot = 0;
       let mergedFoodCount = response.food?.length ?? 0;
       let mergedRestaurantCount = response.restaurants?.length ?? 0;
 
-      setResults((prev) => {
-        const base = append ? prev : null;
-        previousFoodCountSnapshot = base?.food?.length ?? 0;
-        previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
-        const merged = mergeSearchResponses(base, response, append);
-        mergedFoodCount = merged.food?.length ?? 0;
-        mergedRestaurantCount = merged.restaurants?.length ?? 0;
-        return merged;
-      });
-
       const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
+      unstable_batchedUpdates(() => {
+        setResults((prev) => {
+          const base = append ? prev : null;
+          previousFoodCountSnapshot = base?.food?.length ?? 0;
+          previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
+          const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+          const merged = mergeSearchResponses(base, response, append);
+          if (shouldLogSearchResponseTimings) {
+            logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
+          }
+          mergedFoodCount = merged.food?.length ?? 0;
+          mergedRestaurantCount = merged.restaurants?.length ?? 0;
+          return merged;
+        });
 
-      if (!singleRestaurantCandidate) {
-        const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
-        const totalRestaurantAvailable =
-          response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
+        if (!singleRestaurantCandidate) {
+          const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
+          const totalRestaurantAvailable =
+            response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 
-        const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
-        const nextHasMoreRestaurants =
-          response.format === 'dual_list'
-            ? mergedRestaurantCount < totalRestaurantAvailable
-            : false;
+          const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
+          const nextHasMoreRestaurants =
+            response.format === 'dual_list'
+              ? mergedRestaurantCount < totalRestaurantAvailable
+              : false;
 
-        setHasMoreFood(nextHasMoreFood);
-        setHasMoreRestaurants(nextHasMoreRestaurants);
-        setCurrentPage(targetPage);
+          setHasMoreFood(nextHasMoreFood);
+          setHasMoreRestaurants(nextHasMoreRestaurants);
+          setCurrentPage(targetPage);
 
-        if (
-          append &&
-          (!(
-            mergedFoodCount > previousFoodCountSnapshot ||
-            mergedRestaurantCount > previousRestaurantCountSnapshot
-          ) ||
-            (!nextHasMoreFood && !nextHasMoreRestaurants))
-        ) {
-          setIsPaginationExhausted(true);
+          if (
+            append &&
+            (!(
+              mergedFoodCount > previousFoodCountSnapshot ||
+              mergedRestaurantCount > previousRestaurantCountSnapshot
+            ) ||
+              (!nextHasMoreFood && !nextHasMoreRestaurants))
+          ) {
+            setIsPaginationExhausted(true);
+          }
         }
+      });
+      logSearchPhase('handleSearchResponse:state-applied');
+      if (!append) {
+        requestAnimationFrame(() => {
+          unstable_batchedUpdates(() => {
+            lastSearchRequestIdRef.current = response.metadata.searchRequestId ?? null;
+            if (submittedLabel) {
+              setSubmittedQuery(submittedLabel);
+            } else {
+              setSubmittedQuery('');
+            }
+
+            if (!singleRestaurantCandidate) {
+              const hasFoodResults = response?.food?.length > 0;
+              const hasRestaurantsResults =
+                (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
+
+              setActiveTab((prevTab) => {
+                if (prevTab === 'dishes' && hasFoodResults) {
+                  return 'dishes';
+                }
+                if (prevTab === 'restaurants' && hasRestaurantsResults) {
+                  return 'restaurants';
+                }
+                return hasFoodResults ? 'dishes' : 'restaurants';
+              });
+            }
+
+            setIsPaginationExhausted(false);
+
+            if (singleRestaurantCandidate) {
+              resetSheetToHidden();
+            } else if (options.showPanelOnResponse) {
+              showPanel();
+            }
+          });
+          logSearchPhase('handleSearchResponse:ui-deferred');
+        });
       }
 
-      if (!append) {
-        lastSearchRequestIdRef.current = response.metadata.searchRequestId ?? null;
-        if (submittedLabel) {
-          setSubmittedQuery(submittedLabel);
-        } else {
-          setSubmittedQuery('');
-        }
+      if (!append && submittedLabel && pushToHistory) {
+        const hasEntityTargets = [
+          ...(response.plan?.restaurantFilters ?? []),
+          ...(response.plan?.connectionFilters ?? []),
+        ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
 
-        const singleRestaurant = resolveSingleRestaurantCandidate(response);
-
-        if (!singleRestaurant) {
-          const hasFoodResults = response?.food?.length > 0;
-          const hasRestaurantsResults =
-            (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
-
-          setActiveTab((prevTab) => {
-            if (prevTab === 'dishes' && hasFoodResults) {
-              return 'dishes';
-            }
-            if (prevTab === 'restaurants' && hasRestaurantsResults) {
-              return 'restaurants';
-            }
-            return hasFoodResults ? 'dishes' : 'restaurants';
-          });
-        }
-
-        if (submittedLabel && pushToHistory) {
-          const hasEntityTargets = [
-            ...(response.plan?.restaurantFilters ?? []),
-            ...(response.plan?.connectionFilters ?? []),
-          ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
-
+        const enqueueHistoryUpdate = () => {
           if (hasEntityTargets) {
             const contextRecord =
               options.submissionContext &&
@@ -263,22 +340,24 @@ const useSearchSubmit = ({
           }
 
           void loadRecentHistory({ force: true });
-        }
+        };
+        InteractionManager.runAfterInteractions(enqueueHistoryUpdate);
+        logSearchPhase('handleSearchResponse:history-deferred');
+      }
 
+      if (!append) {
         Keyboard.dismiss();
-        setIsPaginationExhausted(false);
         scrollResultsToTop();
-
-        if (singleRestaurant) {
-          resetSheetToHidden();
-        } else {
-          showPanel();
-        }
+      }
+      logSearchPhase('handleSearchResponse:done');
+      if (shouldLogSearchResponseTimings) {
+        logSearchResponseTiming('handleSearchResponse', getPerfNow() - handleStart);
       }
     },
     [
       lastSearchRequestIdRef,
       loadRecentHistory,
+      logSearchPhase,
       resetSheetToHidden,
       scrollResultsToTop,
       setActiveTab,
@@ -298,10 +377,12 @@ const useSearchSubmit = ({
       page: number,
       filters: StructuredSearchFilters = {}
     ): Promise<StructuredSearchRequest> => {
+      const buildStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
       const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
       const payload: StructuredSearchRequest = {
         entities: {},
         pagination,
+        includeSqlPreview: false,
       };
 
       const effectiveOpenNow = filters.openNow ?? openNow;
@@ -328,7 +409,8 @@ const useSearchSubmit = ({
       }
 
       const shouldCaptureBounds = page === 1 && mapRef.current?.getVisibleBounds;
-      if (shouldCaptureBounds) {
+      if (shouldCaptureBounds && !latestBoundsRef.current) {
+        const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
         try {
           const visibleBounds = await mapRef.current!.getVisibleBounds();
           if (
@@ -344,6 +426,10 @@ const useSearchSubmit = ({
           logger.warn('Unable to determine map bounds before submitting structured search', {
             message: boundsError instanceof Error ? boundsError.message : 'unknown error',
           });
+        } finally {
+          if (shouldLogSearchResponseTimings && boundsStart > 0) {
+            logSearchResponseTiming('getVisibleBounds:structured', getPerfNow() - boundsStart);
+          }
         }
       }
 
@@ -356,14 +442,19 @@ const useSearchSubmit = ({
         payload.userLocation = resolvedLocation;
       }
 
+      if (shouldLogSearchResponseTimings && buildStart > 0) {
+        logSearchResponseTiming('buildStructuredSearchPayload', getPerfNow() - buildStart);
+      }
       return payload;
     },
     [
       ensureUserLocation,
       latestBoundsRef,
+      logSearchResponseTiming,
       mapRef,
       openNow,
       priceLevels,
+      shouldLogSearchResponseTimings,
       userLocationRef,
       votes100Plus,
     ]
@@ -375,6 +466,7 @@ const useSearchSubmit = ({
       if (append && (isLoading || isLoadingMore)) {
         return;
       }
+      logSearchPhase('submitSearch:start', { reset: true });
       if (!append) {
         resetMapMoveFlag();
       }
@@ -398,18 +490,21 @@ const useSearchSubmit = ({
 
       if (!append) {
         const preserveSheetState = Boolean(options?.preserveSheetState);
+        unstable_batchedUpdates(() => {
         if (!preserveSheetState) {
           resetSheetToHidden();
         }
         setSearchMode('natural');
         setIsSearchSessionActive(true);
-        setIsAutocompleteSuppressed(true);
-        setShowSuggestions(false);
-        setHasMoreFood(false);
-        setHasMoreRestaurants(false);
+          setIsAutocompleteSuppressed(true);
+          setShowSuggestions(false);
+          setHasMoreFood(false);
+          setHasMoreRestaurants(false);
         setCurrentPage(targetPage);
-        lastAutoOpenKeyRef.current = null;
-      }
+      });
+      logSearchPhase('submitSearch:ui-prep');
+      lastAutoOpenKeyRef.current = null;
+    }
 
       const effectiveOpenNow = options?.openNow ?? openNow;
       const effectivePriceLevels =
@@ -424,20 +519,27 @@ const useSearchSubmit = ({
 
       try {
         if (append) {
-          setIsLoadingMore(true);
+          unstable_batchedUpdates(() => {
+            setIsLoadingMore(true);
+          });
+          logSearchPhase('submitSearch:loading-more');
         } else {
-          setIsLoading(true);
-          setError(null);
-          if (!options?.preserveSheetState) {
-            setResults(null);
-            setSubmittedQuery(trimmed);
-            showPanel();
-          }
+          unstable_batchedUpdates(() => {
+            setIsLoading(true);
+            setError(null);
+            if (!options?.preserveSheetState) {
+              setResults(null);
+              setSubmittedQuery(trimmed);
+              showPanel();
+            }
+          });
+          logSearchPhase('submitSearch:loading-state');
         }
 
         const payload: NaturalSearchRequest = {
           query: trimmed,
           pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
+          includeSqlPreview: false,
         };
 
         if (!append) {
@@ -458,9 +560,11 @@ const useSearchSubmit = ({
         if (typeof effectiveMinimumVotes === 'number' && effectiveMinimumVotes > 0) {
           payload.minimumVotes = effectiveMinimumVotes;
         }
+        logSearchPhase('submitSearch:payload-ready');
 
         const shouldCaptureBounds = !append && mapRef.current?.getVisibleBounds;
-        if (shouldCaptureBounds) {
+        if (shouldCaptureBounds && !latestBoundsRef.current) {
+          const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
           try {
             const visibleBounds = await mapRef.current!.getVisibleBounds();
             if (
@@ -476,6 +580,10 @@ const useSearchSubmit = ({
             logger.warn('Unable to determine map bounds before submitting search', {
               message: boundsError instanceof Error ? boundsError.message : 'unknown error',
             });
+          } finally {
+            if (shouldLogSearchResponseTimings && boundsStart > 0) {
+              logSearchResponseTiming('getVisibleBounds:natural', getPerfNow() - boundsStart);
+            }
           }
         }
 
@@ -488,10 +596,22 @@ const useSearchSubmit = ({
           payload.userLocation = resolvedLocation;
         }
 
-        const response = await runSearch({ kind: 'natural', payload });
+        logSearchPhase('submitSearch:runSearch');
+        const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        const response = await runSearch({
+          kind: 'natural',
+          payload,
+          debugParse: shouldLogSearchResponseTimings,
+          debugLabel: 'natural',
+          debugMinMs: searchResponseTimingMinMs,
+        });
+        if (shouldLogSearchResponseTimings) {
+          logSearchResponseTiming('runSearch:natural', getPerfNow() - requestStart);
+        }
+        logSearchPhase('submitSearch:response');
         if (response && requestId === activeSearchRequestRef.current) {
           useSystemStatusStore.getState().clearServiceIssue('search');
-          logger.info('Search response payload', response);
+          logSearchResponsePayload('Search response', response, shouldLogSearchResponsePayload);
           const submittedLabel = append ? undefined : trimmed;
           handleSearchResponse(response, {
             append,
@@ -499,13 +619,14 @@ const useSearchSubmit = ({
             submittedLabel,
             pushToHistory: !append,
             submissionContext: options?.submission?.context,
+            showPanelOnResponse: false,
           });
         }
       } catch (err) {
         logger.error('Search request failed', { message: (err as Error).message });
         if (requestId === activeSearchRequestRef.current) {
           if (!append) {
-            showPanel();
+            setError(null);
           } else {
             setError('Unable to load more results. Please try again.');
           }
@@ -527,6 +648,8 @@ const useSearchSubmit = ({
       isLoadingMore,
       lastAutoOpenKeyRef,
       latestBoundsRef,
+      logSearchPhase,
+      shouldLogSearchResponsePayload,
       mapRef,
       openNow,
       priceLevels,
@@ -560,6 +683,7 @@ const useSearchSubmit = ({
       typedPrefix?: string;
       preserveSheetState?: boolean;
     }) => {
+      logSearchPhase('runRestaurantEntitySearch:start', { reset: true });
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
 
@@ -579,6 +703,7 @@ const useSearchSubmit = ({
       setIsAutocompleteSuppressed(true);
       setShowSuggestions(false);
       Keyboard.dismiss();
+      logSearchPhase('runRestaurantEntitySearch:ui-prep');
 
       const trimmedName = params.restaurantName.trim();
       if (!trimmedName) {
@@ -590,6 +715,7 @@ const useSearchSubmit = ({
           setIsLoadingMore(false);
         }
         setIsLoading(true);
+        logSearchPhase('runRestaurantEntitySearch:loading-state');
         const payload = await buildStructuredSearchPayload(1, {
           openNow: false,
           priceLevels: [],
@@ -613,16 +739,33 @@ const useSearchSubmit = ({
           selectedEntityType: 'restaurant',
         };
         payload.submissionContext = submissionContext;
+        logSearchPhase('runRestaurantEntitySearch:runSearch');
 
-        const response = await runSearch({ kind: 'structured', payload });
+        const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        const response = await runSearch({
+          kind: 'structured',
+          payload,
+          debugParse: shouldLogSearchResponseTimings,
+          debugLabel: 'structured',
+          debugMinMs: searchResponseTimingMinMs,
+        });
+        if (shouldLogSearchResponseTimings) {
+          logSearchResponseTiming('runSearch:structured', getPerfNow() - requestStart);
+        }
+        logSearchPhase('runRestaurantEntitySearch:response');
         if (response && requestId === activeSearchRequestRef.current) {
-          logger.info('Structured restaurant search response payload', response);
+          logSearchResponsePayload(
+            'Structured restaurant search response',
+            response,
+            shouldLogSearchResponsePayload
+          );
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
             submittedLabel: trimmedName,
             pushToHistory: true,
             submissionContext,
+            showPanelOnResponse: false,
           });
         }
       } catch (err) {
@@ -631,7 +774,6 @@ const useSearchSubmit = ({
         });
         if (requestId === activeSearchRequestRef.current) {
           setError(null);
-          showPanel();
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
@@ -644,6 +786,8 @@ const useSearchSubmit = ({
       handleSearchResponse,
       isLoadingMore,
       lastAutoOpenKeyRef,
+      logSearchPhase,
+      shouldLogSearchResponsePayload,
       resetMapMoveFlag,
       resetSheetToHidden,
       runSearch,
@@ -659,6 +803,8 @@ const useSearchSubmit = ({
       setSearchMode,
       setShowSuggestions,
       showPanel,
+      logSearchResponseTiming,
+      shouldLogSearchResponseTimings,
     ]
   );
 
@@ -668,41 +814,92 @@ const useSearchSubmit = ({
       submittedLabel: string,
       options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
     ) => {
+      logSearchPhase('runBestHere:start', { reset: true });
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
 
       resetMapMoveFlag();
       const preserveSheetState = Boolean(options?.preserveSheetState);
-      setSearchMode('shortcut');
-      setIsSearchSessionActive(true);
-      setActiveTab(targetTab);
-      setError(null);
-      if (!preserveSheetState) {
-        resetSheetToHidden();
+      const suppressSuggestionsNow = () => {
+        unstable_batchedUpdates(() => {
+          setIsAutocompleteSuppressed(true);
+          setShowSuggestions(false);
+        });
+        lastAutoOpenKeyRef.current = null;
+      };
+      const applyBestHereUiState = () => {
+        unstable_batchedUpdates(() => {
+          setSearchMode('shortcut');
+          setIsSearchSessionActive(true);
+          setActiveTab(targetTab);
+          setError(null);
+          if (!preserveSheetState) {
+            resetSheetToHidden();
+          }
+          setHasMoreFood(false);
+          setHasMoreRestaurants(false);
+          setIsPaginationExhausted(false);
+          setCurrentPage(1);
+          setIsAutocompleteSuppressed(true);
+          setShowSuggestions(false);
+        });
+        lastAutoOpenKeyRef.current = null;
+        Keyboard.dismiss();
+      };
+      if (shouldDeferBestHereUi) {
+        suppressSuggestionsNow();
+        logSearchPhase('runBestHere:suppress-suggestions');
+      } else {
+        applyBestHereUiState();
+        logSearchPhase('runBestHere:ui-prep');
       }
-      setHasMoreFood(false);
-      setHasMoreRestaurants(false);
-      setIsPaginationExhausted(false);
-      setCurrentPage(1);
-      lastAutoOpenKeyRef.current = null;
-      setIsAutocompleteSuppressed(true);
-      setShowSuggestions(false);
-      Keyboard.dismiss();
 
       try {
         if (isLoadingMore) {
-          setIsLoadingMore(false);
+          unstable_batchedUpdates(() => {
+            setIsLoadingMore(false);
+          });
+          logSearchPhase('runBestHere:loading-more');
         }
-        setIsLoading(true);
+        if (!shouldDeferBestHereUi) {
+          unstable_batchedUpdates(() => {
+            setIsLoading(true);
+            if (!preserveSheetState) {
+              showPanel();
+            }
+          });
+          logSearchPhase('runBestHere:loading-state');
+        }
         const payload = await buildStructuredSearchPayload(1, options?.filters);
-        const response = await runSearch({ kind: 'structured', payload });
+        logSearchPhase('runBestHere:runSearch');
+        const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        const response = await runSearch({
+          kind: 'structured',
+          payload,
+          debugParse: shouldLogSearchResponseTimings,
+          debugLabel: 'bestHere',
+          debugMinMs: searchResponseTimingMinMs,
+        });
+        if (shouldLogSearchResponseTimings) {
+          logSearchResponseTiming('runSearch:bestHere', getPerfNow() - requestStart);
+        }
+        logSearchPhase('runBestHere:response');
         if (response && requestId === activeSearchRequestRef.current) {
-          logger.info('Structured search response payload', response);
+          if (shouldDeferBestHereUi) {
+            applyBestHereUiState();
+            logSearchPhase('runBestHere:ui-prep');
+          }
+          logSearchResponsePayload(
+            'Structured search response',
+            response,
+            shouldLogSearchResponsePayload
+          );
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
             submittedLabel,
             pushToHistory: false,
+            showPanelOnResponse: shouldDeferBestHereUi && !preserveSheetState,
           });
         }
       } catch (err) {
@@ -711,7 +908,6 @@ const useSearchSubmit = ({
         });
         if (requestId === activeSearchRequestRef.current) {
           setError(null);
-          showPanel();
         }
       } finally {
         if (requestId === activeSearchRequestRef.current) {
@@ -724,6 +920,8 @@ const useSearchSubmit = ({
       handleSearchResponse,
       isLoadingMore,
       lastAutoOpenKeyRef,
+      logSearchPhase,
+      shouldLogSearchResponsePayload,
       resetMapMoveFlag,
       resetSheetToHidden,
       runSearch,
@@ -740,6 +938,7 @@ const useSearchSubmit = ({
       setSearchMode,
       setShowSuggestions,
       showPanel,
+      shouldDeferBestHereUi,
     ]
   );
 
@@ -754,14 +953,29 @@ const useSearchSubmit = ({
       try {
         setIsLoadingMore(true);
         const payload = await buildStructuredSearchPayload(nextPage);
-        const response = await runSearch({ kind: 'structured', payload });
+        const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
+        const response = await runSearch({
+          kind: 'structured',
+          payload,
+          debugParse: shouldLogSearchResponseTimings,
+          debugLabel: 'pagination',
+          debugMinMs: searchResponseTimingMinMs,
+        });
+        if (shouldLogSearchResponseTimings) {
+          logSearchResponseTiming('runSearch:pagination', getPerfNow() - requestStart);
+        }
         if (response) {
-          logger.info('Structured search pagination payload', response);
+          logSearchResponsePayload(
+            'Structured search pagination',
+            response,
+            shouldLogSearchResponsePayload
+          );
           handleSearchResponse(response, {
             append: true,
             targetPage: nextPage,
             submittedLabel: submittedQuery || 'Best dishes here',
             pushToHistory: false,
+            showPanelOnResponse: false,
           });
         }
       } catch (err) {
@@ -779,14 +993,19 @@ const useSearchSubmit = ({
     buildStructuredSearchPayload,
     canLoadMore,
     currentPage,
+    getPerfNow,
     handleSearchResponse,
     isLoading,
     isLoadingMore,
     isPaginationExhausted,
+    logSearchResponseTiming,
     results,
     runSearch,
+    searchResponseTimingMinMs,
     setError,
     setIsLoadingMore,
+    shouldLogSearchResponsePayload,
+    shouldLogSearchResponseTimings,
     submittedQuery,
   ]);
 

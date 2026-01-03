@@ -68,6 +68,7 @@ export class SearchService {
   private readonly defaultPageSize: number;
   private readonly maxPageSize: number;
   private readonly perRestaurantLimit: number;
+  private readonly isDevEnvironment: boolean;
   private readonly alwaysIncludeSqlPreview: boolean;
   private readonly onDemandMinResults: number;
   private readonly openNowFetchMultiplier: number;
@@ -93,6 +94,7 @@ export class SearchService {
     this.defaultPageSize = this.resolveDefaultPageSize();
     this.maxPageSize = this.resolveMaxPageSize();
     this.perRestaurantLimit = this.resolvePerRestaurantLimit();
+    this.isDevEnvironment = this.resolveIsDevEnvironment();
     this.alwaysIncludeSqlPreview = this.resolveAlwaysIncludeSqlPreview();
     this.onDemandMinResults = this.resolveOnDemandMinResults();
     this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
@@ -459,7 +461,19 @@ export class SearchService {
   }
 
   private shouldIncludeSqlPreview(request: SearchQueryRequestDto): boolean {
-    return this.alwaysIncludeSqlPreview || Boolean(request.includeSqlPreview);
+    if (!this.isDevEnvironment) {
+      return false;
+    }
+    if (this.alwaysIncludeSqlPreview) {
+      return true;
+    }
+    if (request.includeSqlPreview === true) {
+      return true;
+    }
+    if (request.includeSqlPreview === false) {
+      return false;
+    }
+    return false;
   }
 
   private shouldTriggerOnDemand(
@@ -1357,9 +1371,22 @@ export class SearchService {
     return DEFAULT_RESULT_LIMIT;
   }
 
+  private resolveIsDevEnvironment(): boolean {
+    const appEnv = (process.env.APP_ENV || process.env.CRAVE_ENV || '').trim();
+    const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
+    const isProd = appEnv.toLowerCase() === 'prod' || nodeEnv === 'production';
+    return !isProd;
+  }
+
   private resolveAlwaysIncludeSqlPreview(): boolean {
+    if (!this.isDevEnvironment) {
+      return false;
+    }
     const raw = process.env.SEARCH_ALWAYS_INCLUDE_SQL_PREVIEW || '';
-    return raw.toLowerCase() === 'true';
+    if (raw) {
+      return raw.toLowerCase() === 'true';
+    }
+    return true;
   }
 
   private resolveSearchLogEnabled(): boolean {

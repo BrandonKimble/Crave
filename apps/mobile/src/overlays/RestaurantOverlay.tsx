@@ -1,5 +1,14 @@
 import React from 'react';
-import { Dimensions, Linking, Pressable, Share, StyleSheet, View } from 'react-native';
+import {
+  Dimensions,
+  Linking,
+  Pressable,
+  Share,
+  StyleSheet,
+  View,
+  type ViewStyle,
+} from 'react-native';
+import Reanimated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { Text } from '../components';
@@ -9,6 +18,7 @@ import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { colors as themeColors } from '../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
+import SquircleSpinner from '../components/SquircleSpinner';
 import { getPriceRangeLabel } from '../constants/pricing';
 import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
 import { useHeaderCloseCutout } from './useHeaderCloseCutout';
@@ -19,7 +29,10 @@ type RestaurantOverlayData = {
   dishes: FoodResult[];
   queryLabel: string;
   isFavorite: boolean;
+  isLoading?: boolean;
 };
+
+type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
 type RestaurantOverlayProps = {
   visible: boolean;
@@ -29,6 +42,8 @@ type RestaurantOverlayProps = {
   onToggleFavorite: (id: string) => void;
   navBarTop?: number;
   searchBarTop?: number;
+  interactionEnabled?: boolean;
+  containerStyle?: AnimatedStyle;
 };
 
 type RestaurantOverlayContentProps = {
@@ -39,6 +54,8 @@ type RestaurantOverlayContentProps = {
   onToggleFavorite: (id: string) => void;
   navBarTop?: number;
   searchBarTop?: number;
+  interactionEnabled?: boolean;
+  containerStyle?: AnimatedStyle;
 };
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -46,6 +63,7 @@ const PHONE_FALLBACK_SEARCH = 'phone';
 const WEBSITE_FALLBACK_SEARCH = 'website';
 
 const CARD_GAP = 4;
+const LOADING_SPINNER_OFFSET = 96;
 const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'sunday', label: 'Sun' },
   { key: 'monday', label: 'Mon' },
@@ -64,6 +82,8 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   onToggleFavorite,
   navBarTop = 0,
   searchBarTop = 0,
+  interactionEnabled = true,
+  containerStyle,
 }) => {
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
@@ -77,7 +97,8 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   );
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
 
-  const { restaurant, dishes, queryLabel, isFavorite } = data;
+  const { restaurant, dishes, queryLabel, isFavorite, isLoading = false } = data;
+  const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel =
     getPriceRangeLabel(restaurant.priceLevel) ??
     restaurant.priceText ??
@@ -127,11 +148,12 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   const shouldShowPerLocationWebsite = uniqueWebsiteUrls.length > 1;
   const primaryPhone =
     restaurant.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
+  const addressFallback = isLoading ? 'Loading details...' : 'Address unavailable';
   const primaryAddress =
     restaurant.displayLocation?.address ??
     restaurant.address ??
     locationCandidates[0]?.address ??
-    'Address unavailable';
+    addressFallback;
 
   const formatOperatingStatus = React.useCallback((status?: OperatingStatus | null) => {
     if (!status) {
@@ -274,7 +296,7 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
     </View>
   );
 
-  const listHeaderComponent = (
+  const listHeaderComponent = isLoading ? null : (
     <View>
       <View style={styles.metricsRow}>
         <View style={styles.metricCard}>
@@ -427,10 +449,31 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
     </View>
   );
 
-  const listEmptyComponent = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
-    </View>
+  const listEmptyComponent = () => {
+    if (isLoading) {
+      return (
+        <View
+          style={[
+            styles.emptyState,
+            styles.loadingEmptyState,
+            { minHeight: emptyAreaMinHeight, paddingTop: LOADING_SPINNER_OFFSET },
+          ]}
+        >
+          <SquircleSpinner size={22} color={themeColors.primary} />
+        </View>
+      );
+    }
+    return (
+      <View style={styles.emptyState}>
+        <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
+      </View>
+    );
+  };
+
+  const backgroundComponent = isLoading ? (
+    <View style={styles.loadingBackground} />
+  ) : (
+    <FrostedGlassBackground />
   );
 
   return (
@@ -450,12 +493,13 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
       ListHeaderComponent={listHeaderComponent}
       ListEmptyComponent={listEmptyComponent}
       keyboardShouldPersistTaps="handled"
-      backgroundComponent={<FrostedGlassBackground />}
+      backgroundComponent={backgroundComponent}
       headerComponent={headerComponent}
-      style={overlaySheetStyles.container}
+      style={[overlaySheetStyles.container, containerStyle]}
       onHidden={onDismiss}
       dismissThreshold={dismissThreshold}
       preventSwipeDismiss
+      interactionEnabled={interactionEnabled}
     />
   );
 };
@@ -676,6 +720,14 @@ const styles = StyleSheet.create({
   emptyState: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingVertical: 40,
+  },
+  loadingEmptyState: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  loadingBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#ffffff',
   },
   emptyStateText: {
     fontSize: FONT_SIZES.body,
