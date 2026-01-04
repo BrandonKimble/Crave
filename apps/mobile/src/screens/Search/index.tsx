@@ -1027,8 +1027,7 @@ const SearchScreen: React.FC = () => {
   }, [resetResultsSheetInteraction, shouldRenderSheet]);
   const shouldRenderResultsSheet = shouldRenderSheet;
   const shouldRenderRestaurantOverlay = Boolean(restaurantProfile);
-  const shouldShowRestaurantOverlay =
-    shouldRenderRestaurantOverlay && isRestaurantOverlayVisible;
+  const shouldShowRestaurantOverlay = shouldRenderRestaurantOverlay && isRestaurantOverlayVisible;
   const shouldSuspendResultsSheet =
     shouldShowRestaurantOverlay &&
     (profileTransitionStatus === 'opening' || profileTransitionStatus === 'open');
@@ -1782,8 +1781,7 @@ const SearchScreen: React.FC = () => {
     (isSuggestionPanelActive || !isSearchSessionActive) &&
     !hasSearchChromeRawQuery;
   const shouldRenderSearchShortcuts =
-    (shouldShowSearchShortcuts || shouldHoldShortcuts) &&
-    !shouldForceHideShortcuts;
+    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
   const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
   const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
@@ -1810,40 +1808,43 @@ const SearchScreen: React.FC = () => {
     }
     return {};
   }, [searchShortcutChipFrames, shouldUseSearchShortcutFrames]);
-  const captureSuggestionTransitionHold = React.useCallback((overrides?: {
-    holdAutocomplete?: boolean;
-    holdRecent?: boolean;
-    holdSuggestionPanel?: boolean;
-    holdSuggestionBackground?: boolean;
-    holdShortcuts?: boolean;
-  }) => {
-    if (!isSuggestionScreenVisible) {
-      return false;
-    }
-    const holdAutocomplete = overrides?.holdAutocomplete ?? shouldRenderAutocompleteSection;
-    const holdRecent = overrides?.holdRecent ?? shouldRenderRecentSection;
-    const holdSuggestionPanel = overrides?.holdSuggestionPanel ?? shouldRenderSuggestionPanel;
-    const holdSuggestionBackground =
-      overrides?.holdSuggestionBackground ?? shouldShowSuggestionBackground;
-    const holdShortcuts = overrides?.holdShortcuts ?? false;
-    submitTransitionHoldRef.current = {
-      active: true,
+  const captureSuggestionTransitionHold = React.useCallback(
+    (overrides?: {
+      holdAutocomplete?: boolean;
+      holdRecent?: boolean;
+      holdSuggestionPanel?: boolean;
+      holdSuggestionBackground?: boolean;
+      holdShortcuts?: boolean;
+    }) => {
+      if (!isSuggestionScreenVisible) {
+        return false;
+      }
+      const holdAutocomplete = overrides?.holdAutocomplete ?? shouldRenderAutocompleteSection;
+      const holdRecent = overrides?.holdRecent ?? shouldRenderRecentSection;
+      const holdSuggestionPanel = overrides?.holdSuggestionPanel ?? shouldRenderSuggestionPanel;
+      const holdSuggestionBackground =
+        overrides?.holdSuggestionBackground ?? shouldShowSuggestionBackground;
+      const holdShortcuts = overrides?.holdShortcuts ?? false;
+      submitTransitionHoldRef.current = {
+        active: true,
+        query,
+        holdShortcuts,
+        holdSuggestionPanel,
+        holdSuggestionBackground,
+        holdAutocomplete,
+        holdRecent,
+      };
+      return true;
+    },
+    [
+      isSuggestionScreenVisible,
       query,
-      holdShortcuts,
-      holdSuggestionPanel,
-      holdSuggestionBackground,
-      holdAutocomplete,
-      holdRecent,
-    };
-    return true;
-  }, [
-    isSuggestionScreenVisible,
-    query,
-    shouldRenderAutocompleteSection,
-    shouldRenderRecentSection,
-    shouldRenderSuggestionPanel,
-    shouldShowSuggestionBackground,
-  ]);
+      shouldRenderAutocompleteSection,
+      shouldRenderRecentSection,
+      shouldRenderSuggestionPanel,
+      shouldShowSuggestionBackground,
+    ]
+  );
   const beginSubmitTransition = React.useCallback(() => {
     const didHold = captureSuggestionTransitionHold({
       holdShortcuts: shouldShowSearchShortcuts,
@@ -2166,11 +2167,7 @@ const SearchScreen: React.FC = () => {
       opacity,
       transform: [{ scale: chromeScale }],
     };
-  }, [
-    searchTransitionVariant,
-    shouldLockSearchChromeTransform,
-    shouldRenderSearchShortcuts,
-  ]);
+  }, [searchTransitionVariant, shouldLockSearchChromeTransform, shouldRenderSearchShortcuts]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: 0 }],
   }));
@@ -3956,11 +3953,7 @@ const SearchScreen: React.FC = () => {
     clearSearchState({
       skipProfileDismissWait: true,
     });
-  }, [
-    clearSearchState,
-    isRestaurantOverlayVisible,
-    isSearchSessionActive,
-  ]);
+  }, [clearSearchState, isRestaurantOverlayVisible, isSearchSessionActive]);
 
   const handleSearchFocus = React.useCallback(() => {
     captureSearchSessionQuery();
@@ -3969,11 +3962,7 @@ const SearchScreen: React.FC = () => {
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
     setIsAutocompleteSuppressed(false);
-  }, [
-    captureSearchSessionQuery,
-    dismissTransientOverlays,
-    ensureSearchOverlay,
-  ]);
+  }, [captureSearchSessionQuery, dismissTransientOverlays, ensureSearchOverlay]);
 
   const handleSearchBlur = React.useCallback(() => {
     setIsSearchFocused(false);
@@ -5787,7 +5776,10 @@ const SearchScreen: React.FC = () => {
                             pointerEvents="none"
                             style={[
                               styles.searchSuggestionScrollBackground,
-                              { left: -CONTENT_HORIZONTAL_PADDING, right: -CONTENT_HORIZONTAL_PADDING },
+                              {
+                                left: -CONTENT_HORIZONTAL_PADDING,
+                                right: -CONTENT_HORIZONTAL_PADDING,
+                              },
                               { top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER },
                             ]}
                           />
