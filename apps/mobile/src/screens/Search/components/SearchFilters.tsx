@@ -208,7 +208,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     }
     return Math.max(...holes.map((hole) => hole.x + hole.width));
   }, [holes]);
-  const overscrollMargin = inset;
+  const overscrollMargin = Math.max(inset, viewportWidth);
   const maskWidth = Math.max(viewportWidth, maxHoleExtent + overscrollMargin * 2);
   const maskHeight = rowHeight > 0 ? rowHeight + TOGGLE_STACK_GAP + 1 : 0;
   const maskTopOffset = rowHeight > 0 ? -1 : 0;
