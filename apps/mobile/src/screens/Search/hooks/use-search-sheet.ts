@@ -41,6 +41,8 @@ const useSearchSheet = ({
 }: UseSearchSheetOptions): UseSearchSheetResult => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
+  const panelVisibleRef = React.useRef(false);
+  const sheetStateRef = React.useRef<SheetPosition>('hidden');
   const sheetTranslateY = useSharedValue(SCREEN_HEIGHT);
   const resultsScrollOffset = useSharedValue(0);
   const resultsMomentum = useSharedValue(false);
@@ -64,7 +66,17 @@ const useSearchSheet = ({
   const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
 
   React.useEffect(() => {
+    panelVisibleRef.current = panelVisible;
+  }, [panelVisible]);
+
+  React.useEffect(() => {
+    sheetStateRef.current = sheetState;
+  }, [sheetState]);
+
+  React.useEffect(() => {
     if (!isSearchOverlay) {
+      panelVisibleRef.current = false;
+      sheetStateRef.current = 'hidden';
       setPanelVisible(false);
       setSheetState('hidden');
       setSnapTo(null);
@@ -82,6 +94,8 @@ const useSearchSheet = ({
   const handleSheetSnapChange = React.useCallback(
     (nextSnap: SheetPosition | 'hidden') => {
       const nextState: SheetPosition = nextSnap === 'hidden' ? 'hidden' : nextSnap;
+      sheetStateRef.current = nextState;
+      panelVisibleRef.current = nextSnap !== 'hidden';
       setSheetState(nextState);
       setPanelVisible(nextSnap !== 'hidden');
       if (snapToRef.current) {
@@ -95,6 +109,7 @@ const useSearchSheet = ({
   const animateSheetTo = React.useCallback(
     (position: SheetPosition, _velocity = 0) => {
       if (position !== 'hidden') {
+        panelVisibleRef.current = true;
         setPanelVisible(true);
       }
       snapToRef.current = position;
@@ -104,6 +119,8 @@ const useSearchSheet = ({
   );
 
   const resetSheetToHidden = React.useCallback(() => {
+    panelVisibleRef.current = false;
+    sheetStateRef.current = 'hidden';
     setPanelVisible(false);
     setSheetState('hidden');
     setSnapTo(null);
@@ -112,19 +129,22 @@ const useSearchSheet = ({
   }, [sheetTranslateY, snapPoints.hidden]);
 
   const showPanel = React.useCallback(() => {
-    if (!panelVisible) {
+    if (!panelVisibleRef.current) {
+      panelVisibleRef.current = true;
       setPanelVisible(true);
     }
-    if (sheetState === 'middle') {
+    if (sheetStateRef.current === 'middle') {
       return;
     }
     requestAnimationFrame(() => {
       animateSheetTo('middle');
     });
-  }, [animateSheetTo, panelVisible, sheetState]);
+  }, [animateSheetTo]);
 
   const showPanelInstant = React.useCallback(
     (position: SheetPosition = 'middle') => {
+      panelVisibleRef.current = true;
+      sheetStateRef.current = position;
       setPanelVisible(true);
       setSheetState(position);
       setSnapTo(null);

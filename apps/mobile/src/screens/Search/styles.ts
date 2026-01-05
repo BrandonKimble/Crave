@@ -1053,7 +1053,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    marginTop: -4,
+    marginTop: -20,
   },
   emptyStateSubtitle: {
     alignSelf: 'stretch',

@@ -2176,7 +2176,8 @@ const SearchScreen: React.FC = () => {
     const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
     const progress = suggestionProgress.value;
     const backgroundAlpha = 1 - progress;
-    const revealOpacity = isSuggestionPanelActive ? 1 : backgroundAlpha;
+    const revealOpacity =
+      searchTransitionVariant === 'submitting' ? 1 : isSuggestionPanelActive ? 1 : backgroundAlpha;
     const opacity = searchChromeOpacity.value * visibility * submitOpacity * revealOpacity;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
@@ -3692,12 +3693,30 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
+
+    const trimmed = query.trim();
+    const normalized = trimmed.toLowerCase();
+    if (normalized === 'best dishes') {
+      void runBestHere('dishes', 'Best dishes');
+      return;
+    }
+    if (normalized === 'best restaurants') {
+      void runBestHere('restaurants', 'Best restaurants');
+      return;
+    }
+    if (normalized === 'food') {
+      void runBestHere('dishes', 'Food');
+      return;
+    }
+
     void submitSearch();
   }, [
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
+    query,
     resetFocusedMapState,
+    runBestHere,
     setRestaurantOnlyIntent,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
@@ -5570,8 +5589,7 @@ const SearchScreen: React.FC = () => {
       shouldDisableFiltersHeader,
     ]
   );
-  const shouldUseResultsHeaderBlur =
-    !shouldDisableSearchBlur && safeResultsData.length > 0 && !shouldShowResultsLoadingState;
+  const shouldUseResultsHeaderBlur = !shouldDisableSearchBlur && !shouldShowResultsLoadingState;
   const resultsHeaderComponent = React.useMemo(() => {
     if (shouldDisableResultsHeader) {
       return null;

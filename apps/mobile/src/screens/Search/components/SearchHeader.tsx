@@ -37,6 +37,12 @@ const SEARCH_ICON_OFFSET =
   SEARCH_ICON_EDGE_INSET - EDGE_INSET - (LEADING_SLOT_WIDTH - SEARCH_ICON_SIZE) / 2;
 const SUBMITTED_TEXT_INSET = 7;
 const TRAILING_SLOT_SIZE = 40;
+const INLINE_LOADING_TRAILING_ICON_GAP = 16;
+const TRAILING_ICON_INSET = TRAILING_SLOT_SIZE - CLEAR_ICON_SIZE;
+const TRAILING_CONTAINER_LOADING_MARGIN_LEFT = Math.max(
+  0,
+  INLINE_LOADING_TRAILING_ICON_GAP - TRAILING_ICON_INSET
+);
 const INLINE_LOADING_GAP = 16;
 const INLINE_LOADING_SIZE = 18;
 const INLINE_LOADING_PADDING_RIGHT = INLINE_LOADING_SIZE + INLINE_LOADING_GAP;
@@ -133,6 +139,15 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
     }
     return { left: desired, isClamped: false };
   }, [inputWidth, measuredTextWidth, shouldShowInlineLoading, textStartInset]);
+  const shouldTightenInlineLoadingGap = shouldShowInlineLoading && inlineLoadingPlacement.isClamped;
+  const trailingContainerStyle = React.useMemo(
+    () => [
+      styles.trailingContainer,
+      shouldTightenInlineLoadingGap ? styles.trailingContainerInlineLoading : null,
+      inputAnimatedStyle,
+    ],
+    [inputAnimatedStyle, shouldTightenInlineLoadingGap]
+  );
   const resolvedContainerStyle = React.useMemo(() => {
     if (!containerAnimatedStyle) {
       return [];
@@ -277,7 +292,7 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                   </View>
                 </View>
               </Reanimated.View>
-              <Reanimated.View style={[styles.trailingContainer, inputAnimatedStyle]}>
+              <Reanimated.View style={trailingContainerStyle}>
                 {value.length > 0 ? (
                   <Pressable
                     onPress={(event) => {
@@ -438,6 +453,9 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'center',
     height: 50,
+  },
+  trailingContainerInlineLoading: {
+    marginLeft: TRAILING_CONTAINER_LOADING_MARGIN_LEFT,
   },
   trailingButton: {
     width: TRAILING_SLOT_SIZE,
