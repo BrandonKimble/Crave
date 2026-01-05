@@ -219,13 +219,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const maskedHoles = React.useMemo(
     () =>
       holes.map((hole) => ({
-        x: hole.x + inset,
+        x: hole.x + inset + overscrollMargin,
         y: hole.y + 1,
         width: hole.width,
         height: hole.height,
         borderRadius: (hole.borderRadius ?? TOGGLE_BORDER_RADIUS) + HOLE_RADIUS_BOOST,
       })),
-    [holes, inset]
+    [holes, inset, overscrollMargin]
   );
   const highlightAnimatedStyle = useAnimatedStyle(() => ({
     opacity: highlightWidth.value > 0 ? 1 : 0,
@@ -402,7 +402,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               backgroundColor="#ffffff"
               style={[
                 styles.maskOverlay,
-                { width: maskWidth, height: maskHeight, top: maskTopOffset },
+                { width: maskWidth, height: maskHeight, top: maskTopOffset, left: -overscrollMargin },
                 maskAnimatedStyle,
               ]}
             />
