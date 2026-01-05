@@ -14,7 +14,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({ title, subtitle }) => (
     <Text variant="body" style={styles.textSlate900}>
       {title}
     </Text>
-    <Text variant="body" style={styles.textSlate900}>
+    <Text variant="body" style={[styles.textSlate900, styles.emptyStateSubtitle]}>
       {subtitle}
     </Text>
   </View>

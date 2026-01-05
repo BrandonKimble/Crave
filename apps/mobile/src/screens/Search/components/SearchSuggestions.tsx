@@ -17,12 +17,10 @@ import {
 } from 'lucide-react-native';
 
 import { Text } from '../../../components';
-import SquircleSpinner from '../../../components/SquircleSpinner';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
 import type { RecentSearch, RecentlyViewedRestaurant } from '../../../services/search';
-import { ACTIVE_TAB_COLOR } from '../constants/search';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -35,7 +33,6 @@ type SearchSuggestionsProps = {
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   hasRecentSearches: boolean;
   hasRecentlyViewedRestaurants: boolean;
-  isAutocompleteLoading: boolean;
   isRecentLoading: boolean;
   isRecentlyViewedLoading: boolean;
   onSelectSuggestion: (match: AutocompleteMatch) => void;
@@ -63,7 +60,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   recentlyViewedRestaurants,
   hasRecentSearches,
   hasRecentlyViewedRestaurants,
-  isAutocompleteLoading,
   isRecentLoading,
   isRecentlyViewedLoading,
   onSelectSuggestion,
@@ -84,8 +80,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       hasRecentSearches ||
       hasRecentlyViewedRestaurants);
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
-  const shouldShowAutocompleteSpinner =
-    showAutocomplete && isAutocompleteLoading && suggestions.length === 0;
   const recentSearchesToRender = recentSearches.slice(0, RECENT_SEARCH_PREVIEW_LIMIT);
   const recentlyViewedDeduped = React.useMemo(
     () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
@@ -189,11 +183,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
               </TouchableOpacity>
             );
           })}
-        </View>
-      ) : null}
-      {shouldShowAutocompleteSpinner ? (
-        <View style={styles.autocompleteLoadingContainer}>
-          <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
         </View>
       ) : null}
 
@@ -311,12 +300,6 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     borderRadius: 0,
     backgroundColor: 'transparent',
-  },
-  autocompleteLoadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingTop: 32,
-    paddingBottom: 20,
   },
   autocompleteItemRow: {
     paddingHorizontal: 0,

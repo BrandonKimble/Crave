@@ -29,6 +29,12 @@ const DEFAULT_DRAW_DISTANCE = 140;
 const DEFAULT_INITIAL_DRAW_BATCH_SIZE = 8;
 const DEFAULT_DISMISS_SLOP = 80;
 
+const AXIS_LOCK_SLOP_PX = 4;
+const AXIS_LOCK_RATIO = 1.15;
+const AXIS_LOCK_NONE = 0;
+const AXIS_LOCK_HORIZONTAL = 1;
+const AXIS_LOCK_VERTICAL = 2;
+
 type SheetSnapPoint = 'expanded' | 'middle' | 'collapsed';
 
 type SnapPoints = Record<SheetSnapPoint, number> & {
@@ -234,12 +240,18 @@ const BottomSheetWithFlashList = <T,>({
   const expandPanActive = useSharedValue(false);
   const expandDidHandoffToScroll = useSharedValue(false);
   const expandStartSheetY = useSharedValue(0);
+  const expandStartTouchX = useSharedValue(0);
   const expandStartTouchY = useSharedValue(0);
+  const expandLastTouchX = useSharedValue(0);
   const expandLastTouchY = useSharedValue(0);
+  const expandAxisLock = useSharedValue(AXIS_LOCK_NONE);
   const collapsePanActive = useSharedValue(false);
   const collapseStartSheetY = useSharedValue(0);
+  const collapseStartTouchX = useSharedValue(0);
   const collapseStartTouchY = useSharedValue(0);
+  const collapseLastTouchX = useSharedValue(0);
   const collapseLastTouchY = useSharedValue(0);
+  const collapseAxisLock = useSharedValue(AXIS_LOCK_NONE);
   const internalScrollOffset = useSharedValue(0);
   const scrollOffset = scrollOffsetValue ?? internalScrollOffset;
   const internalMomentum = useSharedValue(false);
@@ -548,8 +560,12 @@ const BottomSheetWithFlashList = <T,>({
         'worklet';
         expandPanActive.value = false;
         expandDidHandoffToScroll.value = false;
+        expandAxisLock.value = AXIS_LOCK_NONE;
+        const touchX = event.allTouches[0]?.absoluteX ?? 0;
         const touchY = event.allTouches[0]?.absoluteY ?? 0;
+        expandLastTouchX.value = touchX;
         expandLastTouchY.value = touchY;
+        expandStartTouchX.value = touchX;
         expandStartTouchY.value = touchY;
         expandStartSheetY.value = sheetY.value;
         expandTouchInHeader.value = touchY - sheetY.value <= headerHeight.value;
@@ -560,9 +576,35 @@ const BottomSheetWithFlashList = <T,>({
           return;
         }
 
+        const touchX = event.allTouches[0]?.absoluteX ?? expandLastTouchX.value;
         const touchY = event.allTouches[0]?.absoluteY ?? expandLastTouchY.value;
+        const dx = touchX - expandLastTouchX.value;
         const dy = touchY - expandLastTouchY.value;
+        expandLastTouchX.value = touchX;
         expandLastTouchY.value = touchY;
+
+        if (!expandPanActive.value && expandAxisLock.value !== AXIS_LOCK_VERTICAL) {
+          const totalDx = touchX - expandStartTouchX.value;
+          const totalDy = touchY - expandStartTouchY.value;
+          const absDx = Math.abs(totalDx);
+          const absDy = Math.abs(totalDy);
+          if (absDx + absDy >= AXIS_LOCK_SLOP_PX) {
+            if (absDx > absDy * AXIS_LOCK_RATIO) {
+              expandAxisLock.value = AXIS_LOCK_HORIZONTAL;
+              expandDidHandoffToScroll.value = true;
+              syncDragging();
+              stateManager.fail();
+              return;
+            }
+            if (absDy > absDx * AXIS_LOCK_RATIO) {
+              expandAxisLock.value = AXIS_LOCK_VERTICAL;
+            } else {
+              return;
+            }
+          } else if (dx !== 0 || dy !== 0) {
+            return;
+          }
+        }
 
         const goingUp = dy < 0;
         const goingDown = dy > 0;
@@ -647,6 +689,7 @@ const BottomSheetWithFlashList = <T,>({
         'worklet';
         expandPanActive.value = false;
         expandDidHandoffToScroll.value = false;
+        expandAxisLock.value = AXIS_LOCK_NONE;
         syncDragging();
       });
 
@@ -657,8 +700,12 @@ const BottomSheetWithFlashList = <T,>({
       .onTouchesDown((event) => {
         'worklet';
         collapsePanActive.value = false;
+        collapseAxisLock.value = AXIS_LOCK_NONE;
+        const touchX = event.allTouches[0]?.absoluteX ?? 0;
         const touchY = event.allTouches[0]?.absoluteY ?? 0;
+        collapseLastTouchX.value = touchX;
         collapseLastTouchY.value = touchY;
+        collapseStartTouchX.value = touchX;
         collapseStartTouchY.value = touchY;
         collapseStartSheetY.value = sheetY.value;
         collapseTouchInHeader.value = touchY - sheetY.value <= headerHeight.value;
@@ -672,9 +719,34 @@ const BottomSheetWithFlashList = <T,>({
           return;
         }
 
+        const touchX = event.allTouches[0]?.absoluteX ?? collapseLastTouchX.value;
         const touchY = event.allTouches[0]?.absoluteY ?? collapseLastTouchY.value;
+        const dx = touchX - collapseLastTouchX.value;
         const dy = touchY - collapseLastTouchY.value;
+        collapseLastTouchX.value = touchX;
         collapseLastTouchY.value = touchY;
+
+        if (collapseAxisLock.value !== AXIS_LOCK_VERTICAL) {
+          const totalDx = touchX - collapseStartTouchX.value;
+          const totalDy = touchY - collapseStartTouchY.value;
+          const absDx = Math.abs(totalDx);
+          const absDy = Math.abs(totalDy);
+          if (absDx + absDy >= AXIS_LOCK_SLOP_PX) {
+            if (absDx > absDy * AXIS_LOCK_RATIO) {
+              collapseAxisLock.value = AXIS_LOCK_HORIZONTAL;
+              syncDragging();
+              stateManager.fail();
+              return;
+            }
+            if (absDy > absDx * AXIS_LOCK_RATIO) {
+              collapseAxisLock.value = AXIS_LOCK_VERTICAL;
+            } else {
+              return;
+            }
+          } else if (dx !== 0 || dy !== 0) {
+            return;
+          }
+        }
 
         const goingDown = dy > 0;
         if (!goingDown) {
@@ -717,6 +789,7 @@ const BottomSheetWithFlashList = <T,>({
       .onFinalize(() => {
         'worklet';
         collapsePanActive.value = false;
+        collapseAxisLock.value = AXIS_LOCK_NONE;
         syncDragging();
       });
 
@@ -737,15 +810,21 @@ const BottomSheetWithFlashList = <T,>({
   }, [
     collapsedSnap,
     collapseLastTouchY,
+    collapseLastTouchX,
+    collapseAxisLock,
     collapsePanActive,
     collapseStartSheetY,
+    collapseStartTouchX,
     collapseStartTouchY,
     collapseTouchInHeader,
     expandedSnap,
     expandDidHandoffToScroll,
     expandLastTouchY,
+    expandLastTouchX,
+    expandAxisLock,
     expandPanActive,
     expandStartSheetY,
+    expandStartTouchX,
     expandStartTouchY,
     expandTouchInHeader,
     gestureEnabled,

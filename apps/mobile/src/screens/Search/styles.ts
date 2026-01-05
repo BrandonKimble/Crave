@@ -628,6 +628,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   submittedQueryLabel: {
+    flex: 1,
+    minWidth: 0,
     flexShrink: 1,
     marginRight: 12,
     color: '#0f172a',
@@ -1046,9 +1048,16 @@ const styles = StyleSheet.create({
   },
   emptyState: {
     paddingVertical: 0,
+    paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
+    marginTop: -4,
+  },
+  emptyStateSubtitle: {
+    alignSelf: 'stretch',
+    textAlign: 'center',
   },
   textSlate900: {
     color: themeColors.textPrimary,

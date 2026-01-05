@@ -17,6 +17,7 @@ import Reanimated, {
   Extrapolation,
   Easing,
   interpolate,
+  runOnUI,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -934,6 +935,7 @@ const SearchScreen: React.FC = () => {
   const inputRef = React.useRef<TextInput | null>(null);
   const ignoreNextSearchBlurRef = React.useRef(false);
   const cancelSearchEditOnBackRef = React.useRef(false);
+  const restoreHomeOnSearchBackRef = React.useRef(false);
   const suggestionLayoutHoldTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsScrollRef = React.useRef<FlashListRef<FoodResult | RestaurantResult> | null>(null);
   const resultsScrollingTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1714,10 +1716,20 @@ const SearchScreen: React.FC = () => {
     suggestionDisplayTrimmedQuery.length >= AUTOCOMPLETE_MIN_CHARS;
   const shouldRenderRecentSection =
     shouldHoldRecent || (!isSuggestionClosing && baseShouldRenderRecentSection);
+  const shouldSuppressAutocompletePanelWhileLoading =
+    !isSuggestionClosing &&
+    baseShouldRenderAutocompleteSection &&
+    isAutocompleteLoading &&
+    suggestions.length === 0;
   const shouldRenderAutocompleteSection =
-    shouldHoldAutocomplete || (!isSuggestionClosing && baseShouldRenderAutocompleteSection);
+    shouldHoldAutocomplete ||
+    (!isSuggestionClosing &&
+      baseShouldRenderAutocompleteSection &&
+      !shouldSuppressAutocompletePanelWhileLoading);
   const shouldRenderSuggestionPanel =
     shouldHoldSuggestionPanel || shouldRenderAutocompleteSection || shouldRenderRecentSection;
+  const shouldShowAutocompleteSpinnerInBar =
+    baseShouldRenderAutocompleteSection && isAutocompleteLoading;
   const shouldShowSuggestionBackground =
     shouldDriveSuggestionLayout || shouldHoldSuggestionBackground;
   const shouldShowSuggestionSurface = shouldDriveSuggestionLayout;
@@ -2131,6 +2143,7 @@ const SearchScreen: React.FC = () => {
     shadowOpacity: 0,
     elevation: 0,
   }));
+  const searchHeaderFocusProgress = useSharedValue(0);
   const searchBarContainerAnimatedStyle = useAnimatedStyle(() => {
     const progress = suggestionProgress.value;
     const backgroundAlpha = 1 - progress;
@@ -2161,13 +2174,21 @@ const SearchScreen: React.FC = () => {
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
     const visibility = shouldRenderSearchShortcuts ? 1 : 0;
     const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
-    const opacity = searchChromeOpacity.value * visibility * submitOpacity;
+    const progress = suggestionProgress.value;
+    const backgroundAlpha = 1 - progress;
+    const revealOpacity = isSuggestionPanelActive ? 1 : backgroundAlpha;
+    const opacity = searchChromeOpacity.value * visibility * submitOpacity * revealOpacity;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
       opacity,
       transform: [{ scale: chromeScale }],
     };
-  }, [searchTransitionVariant, shouldLockSearchChromeTransform, shouldRenderSearchShortcuts]);
+  }, [
+    isSuggestionPanelActive,
+    searchTransitionVariant,
+    shouldLockSearchChromeTransform,
+    shouldRenderSearchShortcuts,
+  ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: 0 }],
   }));
@@ -3642,9 +3663,15 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const dismissSearchKeyboard = React.useCallback(() => {
+    runOnUI(() => {
+      'worklet';
+      searchHeaderFocusProgress.value = 0;
+    })();
     Keyboard.dismiss();
-    inputRef.current?.blur?.();
-  }, [inputRef]);
+    requestAnimationFrame(() => {
+      inputRef.current?.blur?.();
+    });
+  }, [inputRef, searchHeaderFocusProgress]);
 
   const handleSuggestionInteractionStart = React.useCallback(() => {
     if (!isSearchFocused) {
@@ -3983,26 +4010,54 @@ const SearchScreen: React.FC = () => {
       ignoreNextSearchBlurRef.current = false;
       return;
     }
+    const shouldRestoreHome = restoreHomeOnSearchBackRef.current;
+    restoreHomeOnSearchBackRef.current = false;
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
       isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
     );
     setIsSuggestionPanelActive(false);
-    if (!shouldDeferSuggestionClear) {
+    if (!shouldDeferSuggestionClear && !shouldRestoreHome) {
       setShowSuggestions(false);
       setSuggestions([]);
     }
+    if (shouldRestoreHome && !isSearchSessionActive) {
+      cancelAutocomplete();
+      setIsAutocompleteSuppressed(false);
+      setQuery('');
+      setIsDockedPollsDismissed(false);
+      if (!showPollsOverlay && !isLoading && pollsSheetSnap === 'hidden') {
+        setPollsSnapRequest('collapsed');
+      }
+    }
   }, [
     beginSuggestionCloseHold,
+    cancelAutocomplete,
     isRestaurantOverlayVisible,
+    isLoading,
     isSearchSessionActive,
+    pollsSheetSnap,
     query,
+    setIsDockedPollsDismissed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
+    setPollsSnapRequest,
+    showPollsOverlay,
   ]);
 
   const handleSearchBack = React.useCallback(() => {
+    if (!isSearchSessionActive) {
+      ignoreNextSearchBlurRef.current = false;
+      cancelSearchEditOnBackRef.current = false;
+      restoreHomeOnSearchBackRef.current = true;
+      if (inputRef.current?.isFocused?.()) {
+        inputRef.current?.blur();
+        return;
+      }
+      handleSearchBlur();
+      return;
+    }
     ignoreNextSearchBlurRef.current = false;
     cancelSearchEditOnBackRef.current = true;
     if (inputRef.current?.isFocused?.()) {
@@ -4010,7 +4065,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     handleSearchBlur();
-  }, [handleSearchBlur]);
+  }, [handleSearchBlur, isSearchSessionActive]);
 
   const handleRecentSearchPress = React.useCallback(
     (entry: RecentSearch) => {
@@ -4123,8 +4178,7 @@ const SearchScreen: React.FC = () => {
 
   const handleMapPress = React.useCallback(() => {
     // Fully exit autocomplete: blur input, suppress suggestions, and clear loading state.
-    Keyboard.dismiss();
-    inputRef.current?.blur?.();
+    dismissSearchKeyboard();
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
       isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
     );
@@ -4139,6 +4193,7 @@ const SearchScreen: React.FC = () => {
   }, [
     beginSuggestionCloseHold,
     cancelAutocomplete,
+    dismissSearchKeyboard,
     isRestaurantOverlayVisible,
     isSearchSessionActive,
     setIsSuggestionPanelActive,
@@ -5792,7 +5847,6 @@ const SearchScreen: React.FC = () => {
                             recentlyViewedRestaurants={recentlyViewedRestaurants}
                             hasRecentSearches={hasRecentSearches}
                             hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                            isAutocompleteLoading={isAutocompleteLoading}
                             isRecentLoading={isRecentLoading}
                             isRecentlyViewedLoading={isRecentlyViewedLoading}
                             onSelectSuggestion={handleSuggestionPress}
@@ -5814,6 +5868,7 @@ const SearchScreen: React.FC = () => {
                   <SearchHeader
                     value={query}
                     placeholder="What are you craving?"
+                    loading={shouldShowAutocompleteSpinnerInBar}
                     onChangeText={handleQueryChange}
                     onSubmit={handleSubmit}
                     onFocus={handleSearchFocus}
@@ -5832,6 +5887,7 @@ const SearchScreen: React.FC = () => {
                     editable
                     showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
                     isSearchSessionActive={isSearchSessionActive && !isSuggestionPanelActive}
+                    focusProgress={searchHeaderFocusProgress}
                   />
                 </View>
                 {shouldRenderSearchShortcuts && (

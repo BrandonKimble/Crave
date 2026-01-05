@@ -264,6 +264,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
           <Reanimated.ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            directionalLockEnabled
             scrollEventThrottle={16}
             onScroll={onScroll}
             scrollEnabled={!isPriceSelectorVisible}
@@ -402,7 +403,12 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               backgroundColor="#ffffff"
               style={[
                 styles.maskOverlay,
-                { width: maskWidth, height: maskHeight, top: maskTopOffset, left: -overscrollMargin },
+                {
+                  width: maskWidth,
+                  height: maskHeight,
+                  top: maskTopOffset,
+                  left: -overscrollMargin,
+                },
                 maskAnimatedStyle,
               ]}
             />
