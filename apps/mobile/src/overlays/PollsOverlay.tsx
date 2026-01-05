@@ -14,6 +14,7 @@ import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, X as LucideX } from 'lucide-react-native';
 import Animated, {
+  useDerivedValue,
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
@@ -645,13 +646,23 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
 
   const internalSheetY = useSharedValue(snapPoints[initialSnap]);
   const observedSheetY = sheetYObserver ?? internalSheetY;
-  const plusRotationStyle = useAnimatedStyle(() => {
+  const headerActionProgress = useDerivedValue(() => {
     const range = snapPoints.collapsed - snapPoints.middle;
     const rawProgress = range !== 0 ? (observedSheetY.value - snapPoints.middle) / range : 0;
-    const clamped = Math.min(Math.max(rawProgress, 0), 1);
-    const rotation = 45 * clamped;
-    return { transform: [{ rotate: `${rotation}deg` }] };
+    return Math.min(Math.max(rawProgress, 0), 1);
   }, [observedSheetY, snapPoints.collapsed, snapPoints.middle]);
+  const plusRotationStyle = useAnimatedStyle(() => {
+    const rotation = 45 * headerActionProgress.value;
+    return { transform: [{ rotate: `${rotation}deg` }] };
+  }, [headerActionProgress]);
+  const plusAccentOpacityStyle = useAnimatedStyle(
+    () => ({ opacity: headerActionProgress.value }),
+    [headerActionProgress]
+  );
+  const closeBlackOpacityStyle = useAnimatedStyle(
+    () => ({ opacity: 1 - headerActionProgress.value }),
+    [headerActionProgress]
+  );
 
   useAnimatedReaction(
     () => observedSheetY.value,
@@ -753,7 +764,14 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
         >
           <View style={overlaySheetStyles.closeIcon}>
             <Animated.View style={plusRotationStyle}>
-              <LucideX size={20} color={ACCENT} strokeWidth={2.5} />
+              <View style={styles.headerActionIconStack} pointerEvents="none">
+                <Animated.View style={[styles.headerActionIcon, plusAccentOpacityStyle]}>
+                  <LucideX size={20} color={ACCENT} strokeWidth={2.5} />
+                </Animated.View>
+                <Animated.View style={[styles.headerActionIcon, closeBlackOpacityStyle]}>
+                  <LucideX size={20} color="#000000" strokeWidth={2.5} />
+                </Animated.View>
+              </View>
             </Animated.View>
           </View>
         </Pressable>
@@ -959,6 +977,18 @@ const styles = StyleSheet.create({
   headerRow: {
     justifyContent: 'flex-start',
     gap: 10,
+  },
+  headerActionIconStack: {
+    position: 'relative',
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActionIcon: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   liveBadgeShell: {
     height: LIVE_BADGE_HEIGHT,

@@ -1015,6 +1015,27 @@ const SearchScreen: React.FC = () => {
     isSearchOverlay,
     searchBarTop,
   });
+  const isSearchEditingRef = React.useRef(false);
+  const pendingResultsSheetRevealRef = React.useRef(false);
+  React.useEffect(() => {
+    isSearchEditingRef.current = isSuggestionPanelActive;
+  }, [isSuggestionPanelActive]);
+  const requestResultsSheetReveal = React.useCallback(() => {
+    if (isSearchEditingRef.current) {
+      pendingResultsSheetRevealRef.current = true;
+      return;
+    }
+    showPanel();
+  }, [showPanel]);
+  const flushPendingResultsSheetReveal = React.useCallback(() => {
+    if (!pendingResultsSheetRevealRef.current) {
+      return;
+    }
+    pendingResultsSheetRevealRef.current = false;
+    requestAnimationFrame(() => {
+      showPanel();
+    });
+  }, [showPanel]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -1608,7 +1629,8 @@ const SearchScreen: React.FC = () => {
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const trimmedQuery = query.trim();
-  const hasSearchChromeRawQuery = query.length > 0;
+  const searchChromeQuery = isSearchSessionActive ? submittedQuery || query : query;
+  const hasSearchChromeRawQuery = searchChromeQuery.length > 0;
   const isSuggestionScreenActive = isSearchOverlay && isSuggestionPanelActive;
   React.useEffect(() => {
     if (isSuggestionPanelActive) {
@@ -2177,7 +2199,7 @@ const SearchScreen: React.FC = () => {
     const progress = suggestionProgress.value;
     const backgroundAlpha = 1 - progress;
     const revealOpacity =
-      searchTransitionVariant === 'submitting' ? 1 : isSuggestionPanelActive ? 1 : backgroundAlpha;
+      searchTransitionVariant === 'submitting' || isSuggestionPanelVisible ? 1 : backgroundAlpha;
     const opacity = searchChromeOpacity.value * visibility * submitOpacity * revealOpacity;
     const chromeScale = shouldLockSearchChromeTransform ? 1 : searchChromeScale.value;
     return {
@@ -2185,7 +2207,7 @@ const SearchScreen: React.FC = () => {
       transform: [{ scale: chromeScale }],
     };
   }, [
-    isSuggestionPanelActive,
+    isSuggestionPanelVisible,
     searchTransitionVariant,
     shouldLockSearchChromeTransform,
     shouldRenderSearchShortcuts,
@@ -2332,6 +2354,7 @@ const SearchScreen: React.FC = () => {
     };
   }, [isSearchFocused, isSuggestionPanelActive, query, searchMode, setQuery, submittedQuery]);
   const focusSearchInput = React.useCallback(() => {
+    isSearchEditingRef.current = true;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
@@ -2355,6 +2378,7 @@ const SearchScreen: React.FC = () => {
     showCachedSuggestionsIfFresh,
   ]);
   const handleSearchPressIn = React.useCallback(() => {
+    isSearchEditingRef.current = true;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
@@ -3526,7 +3550,7 @@ const SearchScreen: React.FC = () => {
     setSearchMode,
     setIsAutocompleteSuppressed,
     setShowSuggestions,
-    showPanel,
+    showPanel: requestResultsSheetReveal,
     resetSheetToHidden,
     scrollResultsToTop,
     lastSearchRequestIdRef,
@@ -3635,7 +3659,8 @@ const SearchScreen: React.FC = () => {
     const nextValue = !currentVotes;
     setVotes100Plus(nextValue);
     const shouldRunShortcut = searchMode === 'shortcut';
-    const shouldRunNatural = !shouldRunShortcut && Boolean(query.trim());
+    const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+    const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
     if (!shouldRunShortcut && !shouldRunNatural) {
       return;
     }
@@ -3650,10 +3675,11 @@ const SearchScreen: React.FC = () => {
         });
         return;
       }
-      await submitSearch({ minimumVotes, preserveSheetState: true });
+      await submitSearch({ minimumVotes, preserveSheetState: true }, committedQuery);
     });
   }, [
     activeTab,
+    isSearchSessionActive,
     query,
     runBestHere,
     scheduleFilterToggleSearch,
@@ -3684,6 +3710,8 @@ const SearchScreen: React.FC = () => {
 
   const handleSubmit = React.useCallback(() => {
     ensureSearchOverlay();
+    isSearchEditingRef.current = false;
+    pendingResultsSheetRevealRef.current = false;
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3727,6 +3755,8 @@ const SearchScreen: React.FC = () => {
 
   const handleBestDishesHere = React.useCallback(() => {
     ensureSearchOverlay();
+    isSearchEditingRef.current = false;
+    pendingResultsSheetRevealRef.current = false;
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3750,6 +3780,8 @@ const SearchScreen: React.FC = () => {
 
   const handleBestRestaurantsHere = React.useCallback(() => {
     ensureSearchOverlay();
+    isSearchEditingRef.current = false;
+    pendingResultsSheetRevealRef.current = false;
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3785,11 +3817,14 @@ const SearchScreen: React.FC = () => {
       return;
     }
 
-    void submitSearch({ preserveSheetState: true });
+    const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+    void submitSearch({ preserveSheetState: true }, committedQuery);
   }, [
     activeTab,
     isLoading,
     isLoadingMore,
+    isSearchSessionActive,
+    query,
     results,
     resetFocusedMapState,
     runBestHere,
@@ -3801,6 +3836,8 @@ const SearchScreen: React.FC = () => {
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
+      isSearchEditingRef.current = false;
+      pendingResultsSheetRevealRef.current = false;
       dismissSearchKeyboard();
       const typedPrefix = query;
       const nextQuery = match.name;
@@ -4002,6 +4039,7 @@ const SearchScreen: React.FC = () => {
   }, [clearSearchState, isRestaurantOverlayVisible, isSearchSessionActive]);
 
   const handleSearchFocus = React.useCallback(() => {
+    isSearchEditingRef.current = true;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
@@ -4013,22 +4051,32 @@ const SearchScreen: React.FC = () => {
   const handleSearchBlur = React.useCallback(() => {
     setIsSearchFocused(false);
     if (cancelSearchEditOnBackRef.current) {
+      isSearchEditingRef.current = false;
       cancelSearchEditOnBackRef.current = false;
       ignoreNextSearchBlurRef.current = false;
+      const shouldDeferSuggestionClear = beginSuggestionCloseHold(
+        isSearchSessionActive || isRestaurantOverlayVisible ? 'submitting' : 'default'
+      );
+      setIsAutocompleteSuppressed(true);
+      setIsSuggestionPanelActive(false);
       const nextQuery = searchSessionQueryRef.current.trim();
       if (isSearchSessionActive && nextQuery && nextQuery !== query) {
         setQuery(nextQuery);
       }
-      setIsAutocompleteSuppressed(true);
-      setIsSuggestionPanelActive(false);
-      setShowSuggestions(false);
-      setSuggestions([]);
+      if (!shouldDeferSuggestionClear) {
+        setShowSuggestions(false);
+        setSuggestions([]);
+      }
+      if (isSearchSessionActive) {
+        flushPendingResultsSheetReveal();
+      }
       return;
     }
     if (ignoreNextSearchBlurRef.current) {
       ignoreNextSearchBlurRef.current = false;
       return;
     }
+    isSearchEditingRef.current = false;
     const shouldRestoreHome = restoreHomeOnSearchBackRef.current;
     restoreHomeOnSearchBackRef.current = false;
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
@@ -4047,16 +4095,23 @@ const SearchScreen: React.FC = () => {
       if (!showPollsOverlay && !isLoading && pollsSheetSnap === 'hidden') {
         setPollsSnapRequest('collapsed');
       }
+      pendingResultsSheetRevealRef.current = false;
+      return;
+    }
+    if (isSearchSessionActive) {
+      flushPendingResultsSheetReveal();
     }
   }, [
     beginSuggestionCloseHold,
     cancelAutocomplete,
+    flushPendingResultsSheetReveal,
     isRestaurantOverlayVisible,
     isLoading,
     isSearchSessionActive,
     pollsSheetSnap,
     query,
     setIsDockedPollsDismissed,
+    setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
@@ -4092,6 +4147,8 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      isSearchEditingRef.current = false;
+      pendingResultsSheetRevealRef.current = false;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       dismissSearchKeyboard();
       setQuery(trimmedValue);
@@ -4147,6 +4204,8 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      isSearchEditingRef.current = false;
+      pendingResultsSheetRevealRef.current = false;
       const shouldDeferSuggestionClear = beginSubmitTransition();
       dismissSearchKeyboard();
       setQuery(trimmedValue);
@@ -4372,7 +4431,8 @@ const SearchScreen: React.FC = () => {
     const nextValue = !currentOpenNow;
     setOpenNow(nextValue);
     const shouldRunShortcut = searchMode === 'shortcut';
-    const shouldRunNatural = !shouldRunShortcut && Boolean(query.trim());
+    const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+    const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
     if (!shouldRunShortcut && !shouldRunNatural) {
       return;
     }
@@ -4386,10 +4446,11 @@ const SearchScreen: React.FC = () => {
         });
         return;
       }
-      await submitSearch({ openNow: nextValue, preserveSheetState: true });
+      await submitSearch({ openNow: nextValue, preserveSheetState: true }, committedQuery);
     });
   }, [
     activeTab,
+    isSearchSessionActive,
     query,
     runBestHere,
     scheduleFilterToggleSearch,
@@ -4413,7 +4474,8 @@ const SearchScreen: React.FC = () => {
     }
     setPriceLevels(nextLevels);
     const shouldRunShortcut = searchMode === 'shortcut';
-    const shouldRunNatural = !shouldRunShortcut && Boolean(query.trim());
+    const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+    const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
     if (!shouldRunShortcut && !shouldRunNatural) {
       return;
     }
@@ -4431,10 +4493,11 @@ const SearchScreen: React.FC = () => {
         });
         return;
       }
-      void submitSearch({ priceLevels: nextLevels, page: 1, preserveSheetState: true });
+      void submitSearch({ priceLevels: nextLevels, page: 1, preserveSheetState: true }, committedQuery);
     }, 150);
   }, [
     activeTab,
+    isSearchSessionActive,
     pendingPriceRange,
     priceLevels,
     query,
