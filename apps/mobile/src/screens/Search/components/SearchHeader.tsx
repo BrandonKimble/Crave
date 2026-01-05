@@ -205,15 +205,15 @@ const SearchHeader: React.FC<SearchHeaderProps> = ({
                         styles.promptInput,
                         { paddingLeft: textStartInset },
                         shouldReserveInlineSpinnerSpace ? styles.promptInputInlineLoading : null,
-                    ]}
-                    returnKeyType="search"
-                    blurOnSubmit={false}
-                    onSubmitEditing={handleSubmitEditing}
-                    onFocus={() => {
-                      runOnUI(() => {
-                        'worklet';
-                        focusProgress.value = 1;
-                      })();
+                      ]}
+                      returnKeyType="search"
+                      blurOnSubmit={false}
+                      onSubmitEditing={handleSubmitEditing}
+                      onFocus={() => {
+                        runOnUI(() => {
+                          'worklet';
+                          focusProgress.value = 1;
+                        })();
                         onFocus();
                       }}
                       onBlur={() => {
