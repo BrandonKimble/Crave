@@ -94,11 +94,7 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
     }));
     return (
       <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
-        <Image
-          source={pinAsset}
-          style={styles.pinBase}
-          onLoadEnd={handleBaseLoadEnd}
-        />
+        <Image source={pinAsset} style={styles.pinBase} onLoadEnd={handleBaseLoadEnd} />
         <Image
           source={pinFillAsset}
           style={[

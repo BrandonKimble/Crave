@@ -1044,9 +1044,7 @@ const SearchScreen: React.FC = () => {
   const allowSearchBlurExitRef = React.useRef(false);
   const requestResultsSheetReveal = React.useCallback(() => {
     const isEditingNow =
-      Boolean(inputRef.current?.isFocused?.()) ||
-      isSearchEditingRef.current ||
-      isSearchFocused;
+      Boolean(inputRef.current?.isFocused?.()) || isSearchEditingRef.current || isSearchFocused;
     if (isEditingNow) {
       pendingResultsSheetRevealRef.current = true;
       return;
@@ -1070,19 +1068,12 @@ const SearchScreen: React.FC = () => {
       return;
     }
     const isEditingNow =
-      Boolean(inputRef.current?.isFocused?.()) ||
-      isSearchEditingRef.current ||
-      isSearchFocused;
+      Boolean(inputRef.current?.isFocused?.()) || isSearchEditingRef.current || isSearchFocused;
     if (isEditingNow) {
       return;
     }
     flushPendingResultsSheetReveal();
-  }, [
-    flushPendingResultsSheetReveal,
-    isLoading,
-    isSearchFocused,
-    isSearchSessionActive,
-  ]);
+  }, [flushPendingResultsSheetReveal, isLoading, isSearchFocused, isSearchSessionActive]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -2449,11 +2440,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     flushPendingRecentSearchUpserts();
-  }, [
-    flushPendingRecentSearchUpserts,
-    isSuggestionPanelActive,
-    isSuggestionPanelVisible,
-  ]);
+  }, [flushPendingRecentSearchUpserts, isSuggestionPanelActive, isSuggestionPanelVisible]);
   const deferRecentSearchUpsert = React.useCallback(
     (value: Parameters<typeof updateLocalRecentSearches>[0]) => {
       if (isSuggestionPanelActive || isSuggestionPanelVisible) {
@@ -4250,8 +4237,8 @@ const SearchScreen: React.FC = () => {
       setIsSearchSessionActive,
       setSearchMode,
       setSearchTransitionVariant,
-    scrollResultsToTop,
-    shortcutContentFadeMode,
+      scrollResultsToTop,
+      shortcutContentFadeMode,
     ]
   );
   clearSearchStateRef.current = clearSearchState;
@@ -4613,7 +4600,12 @@ const SearchScreen: React.FC = () => {
     resetSuggestionUiForExternalSubmit();
     navigation.setParams({ searchIntent: undefined });
     runViewMoreIntent(intentFromParams);
-  }, [navigation, resetSuggestionUiForExternalSubmit, route.params?.searchIntent, runViewMoreIntent]);
+  }, [
+    navigation,
+    resetSuggestionUiForExternalSubmit,
+    route.params?.searchIntent,
+    runViewMoreIntent,
+  ]);
 
   const handleRecentViewMorePress = React.useCallback(() => {
     resetSuggestionUiForExternalSubmit();
@@ -5415,7 +5407,14 @@ const SearchScreen: React.FC = () => {
     }
     openRestaurantProfile(targetRestaurant, results.food ?? [], 'auto_open_single_candidate');
     lastAutoOpenKeyRef.current = autoOpenKey;
-  }, [isSearchFocused, isSuggestionPanelActive, openRestaurantProfile, results, submittedQuery, trimmedQuery]);
+  }, [
+    isSearchFocused,
+    isSuggestionPanelActive,
+    openRestaurantProfile,
+    results,
+    submittedQuery,
+    trimmedQuery,
+  ]);
 
   const handleRestaurantSavePress = React.useCallback((restaurantId: string) => {
     setSaveSheetState({

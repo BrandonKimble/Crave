@@ -233,8 +233,8 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
       item.selectedEntityType === 'restaurant'
         ? renderStatusLine(item.statusPreview ?? null)
         : null;
-  const hasMetaLine = Boolean(statusLine);
-  return (
+    const hasMetaLine = Boolean(statusLine);
+    return (
       <TouchableOpacity
         key={`${item.queryText}-${item.lastSearchedAt}`}
         onPress={() => handleSelectRecentSearch(item)}
