@@ -152,17 +152,42 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  // Prefix all routes with /api
-  app.setGlobalPrefix('api', {
-    exclude: ['metrics', 'health', 'health/live', 'health/ready'],
+  // Prefix all routes with /api/v1 (API versioning for future-proofing)
+  // This allows us to introduce breaking changes in /api/v2 without affecting existing clients
+  app.setGlobalPrefix('api/v1', {
+    exclude: ['metrics', 'health', 'health/live', 'health/ready', 'privacy', 'terms'],
   });
+
+  // Enable graceful shutdown hooks
+  // This ensures:
+  // - Active connections finish gracefully during deployment
+  // - Database connections are properly closed
+  // - Bull queues are gracefully shut down
+  // - No dropped requests during Railway deployments
+  app.enableShutdownHooks();
 
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port, '0.0.0.0'); // Fastify needs the host specified
   console.log(`Application is running on: http://localhost:${port}/api`);
+  console.log('[GRACEFUL SHUTDOWN] Shutdown hooks enabled');
 }
 
 bootstrap().catch((err) => {
   console.error('[BOOTSTRAP] Fatal error during bootstrap:', err);
   process.exit(1);
+});
+
+// Handle uncaught errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[UNHANDLED REJECTION] Promise:', promise, 'Reason:', reason);
+  Sentry.captureException(reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[UNCAUGHT EXCEPTION]', error);
+  Sentry.captureException(error);
+  // Give Sentry time to send the event before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 2000);
 });

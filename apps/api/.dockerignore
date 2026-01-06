@@ -1,0 +1,65 @@
+# Docker ignore file for Crave API
+# Reduces build context size and speeds up Docker builds
+
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+.nyc_output/
+*.test.ts
+*.spec.ts
+test/
+
+# Development files
+.env
+.env.local
+.env.*.local
+*.log
+
+# Build artifacts
+dist/
+build/
+*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+.prettierrc
+.prettierignore
+.eslintrc*
+.editorconfig
+lefthook.yml

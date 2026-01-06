@@ -1,0 +1,72 @@
+# Docker ignore for monorepo root
+# When building from root context
+
+# Dependencies
+**/node_modules/
+**/.pnp
+**/.pnp.js
+
+# Testing
+**/coverage/
+**/.nyc_output/
+**/*.test.ts
+**/*.spec.ts
+**/test/
+
+# Environment files
+**/.env
+**/.env.local
+**/.env.*.local
+**/*.log
+
+# Build artifacts
+**/dist/
+**/build/
+**/*.tsbuildinfo
+
+# IDE
+.vscode/
+.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+README.md
+*.md
+docs/
+plans/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Docker
+**/Dockerfile*
+**/docker-compose*.yml
+**/.dockerignore
+
+# Mobile app (not needed for API build)
+apps/mobile/
+ios/
+android/
+
+# Development files
+**/.prettierrc
+**/.prettierignore
+**/.eslintrc*
+**/.editorconfig
+lefthook.yml
+Makefile
+
+# Observability config (for local dev only)
+observability/
+
+# OS files
+.DS_Store
+Thumbs.db
