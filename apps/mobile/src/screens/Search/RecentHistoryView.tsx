@@ -1,9 +1,16 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Clock, View as ViewIcon } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, StackActions, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 
 import { Text } from '../../components';
@@ -40,6 +47,7 @@ const ROW_HEIGHT = 60;
 const NAME_LINE_HEIGHT = FONT_SIZES.subtitle + 2;
 const META_LINE_HEIGHT = FONT_SIZES.body + 2;
 const META_LINE_SPACING = 4;
+const ROW_ACTIVE_OPACITY = 0.2;
 const SECTION_ORDER: HistorySectionKey[] = [
   'today',
   'yesterday',
@@ -171,6 +179,40 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     [insets.bottom]
   );
 
+  const handleSelectRecentSearch = React.useCallback(
+    (entry: RecentSearch) => {
+      const targetKey = navigation.getState().routes.find((route) => route.name === 'Main')?.key;
+      if (targetKey) {
+        navigation.dispatch({
+          ...CommonActions.setParams({ searchIntent: { type: 'recentSearch', entry } }),
+          source: targetKey,
+        });
+      }
+      requestAnimationFrame(() => {
+        navigation.dispatch(StackActions.pop(1));
+      });
+    },
+    [navigation]
+  );
+
+  const handleSelectRecentlyViewed = React.useCallback(
+    (restaurant: RecentlyViewedRestaurant) => {
+      const targetKey = navigation.getState().routes.find((route) => route.name === 'Main')?.key;
+      if (targetKey) {
+        navigation.dispatch({
+          ...CommonActions.setParams({
+            searchIntent: { type: 'recentlyViewed', restaurant },
+          }),
+          source: targetKey,
+        });
+      }
+      requestAnimationFrame(() => {
+        navigation.dispatch(StackActions.pop(1));
+      });
+    },
+    [navigation]
+  );
+
   const renderStatusLine = (statusPreview?: RecentSearch['statusPreview'] | null) => {
     const statusLine = renderMetaDetailLine(
       statusPreview?.operatingStatus ?? null,
@@ -191,9 +233,16 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
       item.selectedEntityType === 'restaurant'
         ? renderStatusLine(item.statusPreview ?? null)
         : null;
-    const hasMetaLine = Boolean(statusLine);
-    return (
-      <View key={`${item.queryText}-${item.lastSearchedAt}`} style={styles.recentRow}>
+  const hasMetaLine = Boolean(statusLine);
+  return (
+      <TouchableOpacity
+        key={`${item.queryText}-${item.lastSearchedAt}`}
+        onPress={() => handleSelectRecentSearch(item)}
+        activeOpacity={ROW_ACTIVE_OPACITY}
+        accessibilityRole="button"
+        accessibilityLabel={`Search ${item.queryText}`}
+        style={styles.recentRow}
+      >
         <View style={styles.recentIcon}>
           <Clock size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
@@ -205,7 +254,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
             {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -213,7 +262,14 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     const statusLine = renderStatusLine(item.statusPreview ?? null);
     const hasMetaLine = Boolean(statusLine);
     return (
-      <View key={item.restaurantId} style={styles.recentRow}>
+      <TouchableOpacity
+        key={item.restaurantId}
+        onPress={() => handleSelectRecentlyViewed(item)}
+        activeOpacity={ROW_ACTIVE_OPACITY}
+        accessibilityRole="button"
+        accessibilityLabel={`View ${item.restaurantName}`}
+        style={styles.recentRow}
+      >
         <View style={styles.recentIcon}>
           <ViewIcon size={18} color={ICON_COLOR} strokeWidth={2} />
         </View>
@@ -225,7 +281,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
             {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 

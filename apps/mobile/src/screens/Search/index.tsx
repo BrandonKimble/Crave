@@ -26,7 +26,8 @@ import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@clerk/clerk-expo';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import type { RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -58,7 +59,7 @@ import type {
   MapBounds,
   Coordinate,
 } from '../../types';
-import type { RootStackParamList } from '../../types/navigation';
+import type { MainSearchIntent, RootStackParamList } from '../../types/navigation';
 import * as Location from 'expo-location';
 import BookmarksOverlay from '../../overlays/BookmarksOverlay';
 import ProfileOverlay from '../../overlays/ProfileOverlay';
@@ -189,6 +190,9 @@ const MAP_GRID_MINOR_STROKE = 'rgba(15, 23, 42, 0.05)';
 const MAP_GRID_MAJOR_STROKE = 'rgba(15, 23, 42, 0.08)';
 const PROFILE_PIN_TARGET_CENTER_RATIO = 0.25;
 const PROFILE_PIN_MIN_VISIBLE_HEIGHT = 160;
+const SHORTCUT_CONTENT_FADE_DEFAULT = 0;
+const SHORTCUT_CONTENT_FADE_OUT = 1;
+const SHORTCUT_CONTENT_FADE_HOLD = 2;
 const PROFILE_CAMERA_ANIMATION_MS = 800;
 const PROFILE_RESTORE_ANIMATION_MS = 650;
 const PROFILE_TRANSITION_LOCK_MS = 750;
@@ -238,6 +242,7 @@ const SearchScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { isSignedIn } = useAuth();
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
+  const route = useRoute<RouteProp<RootStackParamList, 'Main'>>();
   const accessToken = React.useMemo(() => process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? '', []);
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
@@ -616,6 +621,15 @@ const SearchScreen: React.FC = () => {
   const lastAutocompleteQueryRef = React.useRef<string>('');
   const lastAutocompleteResultsRef = React.useRef<AutocompleteMatch[]>([]);
   const lastAutocompleteTimestampRef = React.useRef<number>(0);
+  const autocompleteRequestSeqRef = React.useRef(0);
+  const suppressAutocompleteResultsRef = React.useRef(false);
+  const suppressAutocompleteResults = React.useCallback(() => {
+    suppressAutocompleteResultsRef.current = true;
+    autocompleteRequestSeqRef.current += 1;
+  }, []);
+  const allowAutocompleteResults = React.useCallback(() => {
+    suppressAutocompleteResultsRef.current = false;
+  }, []);
   const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [bottomNavFrame, setBottomNavFrame] = React.useState({ top: 0, height: 0 });
@@ -657,12 +671,21 @@ const SearchScreen: React.FC = () => {
   const [isSearchFocused, setIsSearchFocused] = React.useState(false);
   const [isSuggestionPanelActive, setIsSuggestionPanelActive] = React.useState(false);
   const [isSuggestionLayoutWarm, setIsSuggestionLayoutWarm] = React.useState(false);
+  const [isSuggestionScrollDismissing, setIsSuggestionScrollDismissing] = React.useState(false);
+  const suggestionScrollDismissTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const [searchTransitionVariant, setSearchTransitionVariant] = React.useState<
     'default' | 'submitting'
   >('default');
   const submitTransitionHoldRef = React.useRef({
     active: false,
     query: '',
+    suggestions: [] as AutocompleteMatch[],
+    recentSearches: [] as RecentSearch[],
+    recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+    isRecentLoading: false,
+    isRecentlyViewedLoading: false,
     holdShortcuts: false,
     holdSuggestionPanel: false,
     holdSuggestionBackground: false,
@@ -928,6 +951,7 @@ const SearchScreen: React.FC = () => {
   const suggestionHeaderHeightValue = useSharedValue(0);
   const suggestionScrollTopValue = useSharedValue(0);
   const suggestionScrollMaxHeightValue = useSharedValue(0);
+  const shortcutContentFadeMode = useSharedValue(SHORTCUT_CONTENT_FADE_DEFAULT);
   const pollsSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const bookmarksSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const profileSheetY = useSharedValue(SCREEN_HEIGHT + 80);
@@ -1017,25 +1041,48 @@ const SearchScreen: React.FC = () => {
   });
   const isSearchEditingRef = React.useRef(false);
   const pendingResultsSheetRevealRef = React.useRef(false);
-  React.useEffect(() => {
-    isSearchEditingRef.current = isSuggestionPanelActive;
-  }, [isSuggestionPanelActive]);
+  const allowSearchBlurExitRef = React.useRef(false);
   const requestResultsSheetReveal = React.useCallback(() => {
-    if (isSearchEditingRef.current) {
+    const isEditingNow =
+      Boolean(inputRef.current?.isFocused?.()) ||
+      isSearchEditingRef.current ||
+      isSearchFocused;
+    if (isEditingNow) {
       pendingResultsSheetRevealRef.current = true;
       return;
     }
     showPanel();
-  }, [showPanel]);
+  }, [isSearchFocused, showPanel]);
   const flushPendingResultsSheetReveal = React.useCallback(() => {
     if (!pendingResultsSheetRevealRef.current) {
       return;
     }
     pendingResultsSheetRevealRef.current = false;
     requestAnimationFrame(() => {
-      showPanel();
+      requestResultsSheetReveal();
     });
-  }, [showPanel]);
+  }, [requestResultsSheetReveal]);
+  React.useEffect(() => {
+    if (!pendingResultsSheetRevealRef.current) {
+      return;
+    }
+    if (!isSearchSessionActive && !isLoading) {
+      return;
+    }
+    const isEditingNow =
+      Boolean(inputRef.current?.isFocused?.()) ||
+      isSearchEditingRef.current ||
+      isSearchFocused;
+    if (isEditingNow) {
+      return;
+    }
+    flushPendingResultsSheetReveal();
+  }, [
+    flushPendingResultsSheetReveal,
+    isLoading,
+    isSearchFocused,
+    isSearchSessionActive,
+  ]);
   React.useEffect(() => {
     if (sheetState !== 'hidden') {
       lastVisibleSheetStateRef.current = sheetState;
@@ -1642,6 +1689,11 @@ const SearchScreen: React.FC = () => {
         submitTransitionHoldRef.current = {
           active: false,
           query: '',
+          suggestions: [] as AutocompleteMatch[],
+          recentSearches: [] as RecentSearch[],
+          recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+          isRecentLoading: false,
+          isRecentlyViewedLoading: false,
           holdShortcuts: false,
           holdSuggestionPanel: false,
           holdSuggestionBackground: false,
@@ -1705,6 +1757,23 @@ const SearchScreen: React.FC = () => {
   }, [hasSearchChromeRawQuery]);
   const isSuggestionHoldActive = isSuggestionClosing && submitTransitionHold.active;
   const suggestionDisplayQuery = isSuggestionHoldActive ? submitTransitionHold.query : query;
+  const suggestionDisplaySuggestions = isSuggestionHoldActive
+    ? submitTransitionHold.suggestions
+    : suggestions;
+  const recentSearchesDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.recentSearches
+    : recentSearches;
+  const recentlyViewedRestaurantsDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.recentlyViewedRestaurants
+    : recentlyViewedRestaurants;
+  const isRecentLoadingDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.isRecentLoading
+    : isRecentLoading;
+  const isRecentlyViewedLoadingDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.isRecentlyViewedLoading
+    : isRecentlyViewedLoading;
+  const hasRecentSearchesDisplay = recentSearchesDisplay.length > 0;
+  const hasRecentlyViewedRestaurantsDisplay = recentlyViewedRestaurantsDisplay.length > 0;
   const suggestionDisplayTrimmedQuery = suggestionDisplayQuery.trim();
   const hasTypedQuery = suggestionDisplayTrimmedQuery.length > 0;
   const hasRawQuery = suggestionDisplayQuery.length > 0;
@@ -1757,6 +1826,11 @@ const SearchScreen: React.FC = () => {
   const shouldShowSuggestionSurface = shouldDriveSuggestionLayout;
   const shouldLockSearchChromeTransform = isSuggestionPanelActive || isSuggestionPanelVisible;
   React.useEffect(() => {
+    if (!isSuggestionPanelVisible) {
+      shortcutContentFadeMode.value = SHORTCUT_CONTENT_FADE_DEFAULT;
+    }
+  }, [isSuggestionPanelVisible, shortcutContentFadeMode]);
+  React.useEffect(() => {
     if (shouldDriveSuggestionLayout) {
       return;
     }
@@ -1764,6 +1838,11 @@ const SearchScreen: React.FC = () => {
       submitTransitionHoldRef.current = {
         active: false,
         query: '',
+        suggestions: [] as AutocompleteMatch[],
+        recentSearches: [] as RecentSearch[],
+        recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+        isRecentLoading: false,
+        isRecentlyViewedLoading: false,
         holdShortcuts: false,
         holdSuggestionPanel: false,
         holdSuggestionBackground: false,
@@ -1850,7 +1929,7 @@ const SearchScreen: React.FC = () => {
       holdSuggestionBackground?: boolean;
       holdShortcuts?: boolean;
     }) => {
-      if (!isSuggestionScreenVisible) {
+      if (!shouldDriveSuggestionLayout) {
         return false;
       }
       const holdAutocomplete = overrides?.holdAutocomplete ?? shouldRenderAutocompleteSection;
@@ -1862,6 +1941,11 @@ const SearchScreen: React.FC = () => {
       submitTransitionHoldRef.current = {
         active: true,
         query,
+        suggestions: suggestions.slice(),
+        recentSearches,
+        recentlyViewedRestaurants,
+        isRecentLoading,
+        isRecentlyViewedLoading,
         holdShortcuts,
         holdSuggestionPanel,
         holdSuggestionBackground,
@@ -1871,8 +1955,13 @@ const SearchScreen: React.FC = () => {
       return true;
     },
     [
-      isSuggestionScreenVisible,
+      shouldDriveSuggestionLayout,
       query,
+      suggestions,
+      recentSearches,
+      recentlyViewedRestaurants,
+      isRecentLoading,
+      isRecentlyViewedLoading,
       shouldRenderAutocompleteSection,
       shouldRenderRecentSection,
       shouldRenderSuggestionPanel,
@@ -1884,10 +1973,20 @@ const SearchScreen: React.FC = () => {
       holdShortcuts: shouldShowSearchShortcuts,
     });
     if (didHold) {
+      shortcutContentFadeMode.value = shouldShowSearchShortcuts
+        ? SHORTCUT_CONTENT_FADE_OUT
+        : SHORTCUT_CONTENT_FADE_DEFAULT;
       setSearchTransitionVariant('submitting');
+    } else {
+      shortcutContentFadeMode.value = SHORTCUT_CONTENT_FADE_DEFAULT;
     }
     return didHold;
-  }, [captureSuggestionTransitionHold, setSearchTransitionVariant, shouldShowSearchShortcuts]);
+  }, [
+    captureSuggestionTransitionHold,
+    setSearchTransitionVariant,
+    shouldShowSearchShortcuts,
+    shortcutContentFadeMode,
+  ]);
   const beginSuggestionCloseHold = React.useCallback(
     (variant: 'default' | 'submitting' = 'default') => {
       const didHold = captureSuggestionTransitionHold();
@@ -2193,6 +2292,21 @@ const SearchScreen: React.FC = () => {
       elevation: backgroundAlpha > 0 ? SEARCH_SHORTCUT_SHADOW_ELEVATION : 0,
     };
   }, [searchTransitionVariant]);
+  const searchShortcutContentAnimatedStyle = useAnimatedStyle(() => {
+    const progress = suggestionProgress.value;
+    if (isSuggestionClosing) {
+      if (shortcutContentFadeMode.value === SHORTCUT_CONTENT_FADE_OUT) {
+        return { opacity: progress };
+      }
+      if (shortcutContentFadeMode.value === SHORTCUT_CONTENT_FADE_HOLD) {
+        return { opacity: 1 };
+      }
+      return {
+        opacity: 1 - progress,
+      };
+    }
+    return { opacity: 1 };
+  }, [isSuggestionClosing]);
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
     const visibility = shouldRenderSearchShortcuts ? 1 : 0;
     const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
@@ -2320,6 +2434,65 @@ const SearchScreen: React.FC = () => {
     },
     [cancelAutocomplete]
   );
+  const pendingRecentSearchUpsertsRef = React.useRef<
+    Array<Parameters<typeof updateLocalRecentSearches>[0]>
+  >([]);
+  const flushPendingRecentSearchUpserts = React.useCallback(() => {
+    if (pendingRecentSearchUpsertsRef.current.length === 0) {
+      return;
+    }
+    const pending = pendingRecentSearchUpsertsRef.current.splice(0);
+    pending.forEach((value) => updateLocalRecentSearches(value));
+  }, [updateLocalRecentSearches]);
+  React.useEffect(() => {
+    if (isSuggestionPanelActive || isSuggestionPanelVisible) {
+      return;
+    }
+    flushPendingRecentSearchUpserts();
+  }, [
+    flushPendingRecentSearchUpserts,
+    isSuggestionPanelActive,
+    isSuggestionPanelVisible,
+  ]);
+  const deferRecentSearchUpsert = React.useCallback(
+    (value: Parameters<typeof updateLocalRecentSearches>[0]) => {
+      if (isSuggestionPanelActive || isSuggestionPanelVisible) {
+        pendingRecentSearchUpsertsRef.current.push(value);
+        return;
+      }
+      updateLocalRecentSearches(value);
+    },
+    [isSuggestionPanelActive, isSuggestionPanelVisible, updateLocalRecentSearches]
+  );
+
+  const pendingRecentlyViewedTrackRef = React.useRef<
+    Array<{ restaurantId: string; restaurantName: string }>
+  >([]);
+  const flushPendingRecentlyViewedTrack = React.useCallback(() => {
+    if (pendingRecentlyViewedTrackRef.current.length === 0) {
+      return;
+    }
+    const pending = pendingRecentlyViewedTrackRef.current.splice(0);
+    pending.forEach(({ restaurantId, restaurantName }) =>
+      trackRecentlyViewedRestaurant(restaurantId, restaurantName)
+    );
+  }, [trackRecentlyViewedRestaurant]);
+  React.useEffect(() => {
+    if (isSuggestionPanelActive || isSuggestionPanelVisible) {
+      return;
+    }
+    flushPendingRecentlyViewedTrack();
+  }, [flushPendingRecentlyViewedTrack, isSuggestionPanelActive, isSuggestionPanelVisible]);
+  const deferRecentlyViewedTrack = React.useCallback(
+    (restaurantId: string, restaurantName: string) => {
+      if (isSuggestionPanelActive || isSuggestionPanelVisible) {
+        pendingRecentlyViewedTrackRef.current.push({ restaurantId, restaurantName });
+        return;
+      }
+      trackRecentlyViewedRestaurant(restaurantId, restaurantName);
+    },
+    [isSuggestionPanelActive, isSuggestionPanelVisible, trackRecentlyViewedRestaurant]
+  );
   const captureSearchSessionQuery = React.useCallback(() => {
     if (!isSearchSessionActive || isSuggestionPanelActive) {
       return;
@@ -2355,9 +2528,11 @@ const SearchScreen: React.FC = () => {
   }, [isSearchFocused, isSuggestionPanelActive, query, searchMode, setQuery, submittedQuery]);
   const focusSearchInput = React.useCallback(() => {
     isSearchEditingRef.current = true;
+    allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
+    allowAutocompleteResults();
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
@@ -2370,6 +2545,7 @@ const SearchScreen: React.FC = () => {
     }
     inputRef.current?.focus();
   }, [
+    allowAutocompleteResults,
     captureSearchSessionQuery,
     cancelAutocomplete,
     dismissTransientOverlays,
@@ -2379,13 +2555,16 @@ const SearchScreen: React.FC = () => {
   ]);
   const handleSearchPressIn = React.useCallback(() => {
     isSearchEditingRef.current = true;
+    allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
+    allowAutocompleteResults();
     setIsAutocompleteSuppressed(false);
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
   }, [
+    allowAutocompleteResults,
     captureSearchSessionQuery,
     dismissTransientOverlays,
     ensureSearchOverlay,
@@ -2400,6 +2579,10 @@ const SearchScreen: React.FC = () => {
       }
       if (toggleFilterDebounceRef.current) {
         clearTimeout(toggleFilterDebounceRef.current);
+      }
+      if (suggestionScrollDismissTimeoutRef.current) {
+        clearTimeout(suggestionScrollDismissTimeoutRef.current);
+        suggestionScrollDismissTimeoutRef.current = null;
       }
     },
     []
@@ -3113,6 +3296,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
 
+    const requestSeq = (autocompleteRequestSeqRef.current += 1);
     let isActive = true;
     runAutocomplete(trimmed, {
       debounceMs: 250,
@@ -3123,6 +3307,12 @@ const SearchScreen: React.FC = () => {
         if (!isActive) {
           return;
         }
+        if (suppressAutocompleteResultsRef.current) {
+          return;
+        }
+        if (requestSeq !== autocompleteRequestSeqRef.current) {
+          return;
+        }
         setSuggestions(matches);
         setShowSuggestions(matches.length > 0);
         lastAutocompleteQueryRef.current = trimmed;
@@ -3131,6 +3321,12 @@ const SearchScreen: React.FC = () => {
       })
       .catch((err) => {
         if (!isActive) {
+          return;
+        }
+        if (suppressAutocompleteResultsRef.current) {
+          return;
+        }
+        if (requestSeq !== autocompleteRequestSeqRef.current) {
           return;
         }
         logger.warn('Autocomplete request failed', {
@@ -3553,6 +3749,7 @@ const SearchScreen: React.FC = () => {
     showPanel: requestResultsSheetReveal,
     resetSheetToHidden,
     scrollResultsToTop,
+    isSearchEditingRef,
     lastSearchRequestIdRef,
     lastAutoOpenKeyRef,
     openNow,
@@ -3566,7 +3763,7 @@ const SearchScreen: React.FC = () => {
     userLocationRef,
     resetMapMoveFlag,
     loadRecentHistory,
-    updateLocalRecentSearches,
+    updateLocalRecentSearches: deferRecentSearchUpsert,
   });
 
   const loadMoreResultsRef = React.useRef(loadMoreResults);
@@ -3690,28 +3887,74 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const dismissSearchKeyboard = React.useCallback(() => {
+    const shouldLog = searchPerfDebug.enabled;
     runOnUI(() => {
       'worklet';
       searchHeaderFocusProgress.value = 0;
     })();
-    Keyboard.dismiss();
+    const input = inputRef.current;
+    const wasFocused = Boolean(input?.isFocused?.());
+    if (shouldLog) {
+      // eslint-disable-next-line no-console
+      console.log(`[SearchPerf] dismissSearchKeyboard start focused=${wasFocused}`);
+    }
+    if (wasFocused) {
+      input.blur();
+    }
     requestAnimationFrame(() => {
-      inputRef.current?.blur?.();
+      const stillFocused = Boolean(inputRef.current?.isFocused?.());
+      if (shouldLog) {
+        // eslint-disable-next-line no-console
+        console.log(`[SearchPerf] dismissSearchKeyboard raf focused=${stillFocused}`);
+      }
+      if (stillFocused) {
+        Keyboard.dismiss();
+        if (shouldLog) {
+          // eslint-disable-next-line no-console
+          console.log('[SearchPerf] dismissSearchKeyboard forced Keyboard.dismiss()');
+        }
+      }
     });
   }, [inputRef, searchHeaderFocusProgress]);
 
   const handleSuggestionInteractionStart = React.useCallback(() => {
-    if (!isSearchFocused) {
+    const shouldLog = searchPerfDebug.enabled;
+    const focused = Boolean(inputRef.current?.isFocused?.());
+    if (shouldLog) {
+      // eslint-disable-next-line no-console
+      console.log(`[SearchPerf] suggestionInteractionStart focused=${focused}`);
+    }
+    if (!focused) {
       return;
     }
     ignoreNextSearchBlurRef.current = true;
+    setIsSearchFocused(false);
+    setIsSuggestionScrollDismissing(true);
+    if (suggestionScrollDismissTimeoutRef.current) {
+      clearTimeout(suggestionScrollDismissTimeoutRef.current);
+    }
     dismissSearchKeyboard();
-  }, [dismissSearchKeyboard, isSearchFocused]);
+    suggestionScrollDismissTimeoutRef.current = setTimeout(() => {
+      suggestionScrollDismissTimeoutRef.current = null;
+      setIsSuggestionScrollDismissing(false);
+    }, 450);
+  }, [dismissSearchKeyboard, inputRef, setIsSearchFocused]);
+
+  const handleSuggestionInteractionEnd = React.useCallback(() => {
+    if (suggestionScrollDismissTimeoutRef.current) {
+      clearTimeout(suggestionScrollDismissTimeoutRef.current);
+      suggestionScrollDismissTimeoutRef.current = null;
+    }
+    setIsSuggestionScrollDismissing(false);
+  }, []);
 
   const handleSubmit = React.useCallback(() => {
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
+    allowSearchBlurExitRef.current = true;
+    ignoreNextSearchBlurRef.current = true;
+    suppressAutocompleteResults();
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3750,6 +3993,7 @@ const SearchScreen: React.FC = () => {
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     beginSubmitTransition,
+    suppressAutocompleteResults,
     submitSearch,
   ]);
 
@@ -3757,6 +4001,7 @@ const SearchScreen: React.FC = () => {
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
+    allowSearchBlurExitRef.current = true;
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3782,6 +4027,7 @@ const SearchScreen: React.FC = () => {
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
+    allowSearchBlurExitRef.current = true;
     if (isSuggestionPanelActive) {
       beginSubmitTransition();
     }
@@ -3838,18 +4084,22 @@ const SearchScreen: React.FC = () => {
     (match: AutocompleteMatch) => {
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
-      dismissSearchKeyboard();
+      allowSearchBlurExitRef.current = true;
+      ignoreNextSearchBlurRef.current = true;
+      suppressAutocompleteResults();
       const typedPrefix = query;
       const nextQuery = match.name;
       const shouldDeferSuggestionClear = beginSubmitTransition();
+      cancelAutocomplete();
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
+      dismissSearchKeyboard();
       setQuery(nextQuery);
       if (!shouldDeferSuggestionClear) {
         setShowSuggestions(false);
         setSuggestions([]);
       }
-      setIsAutocompleteSuppressed(true);
-      setIsSearchFocused(false);
-      setIsSuggestionPanelActive(false);
       const matchType =
         match.matchType === 'query' || match.entityType === 'query' ? 'query' : 'entity';
       const submissionContext: Record<string, unknown> = {
@@ -3877,6 +4127,7 @@ const SearchScreen: React.FC = () => {
       );
     },
     [
+      cancelAutocomplete,
       dismissSearchKeyboard,
       query,
       submitSearch,
@@ -3885,6 +4136,7 @@ const SearchScreen: React.FC = () => {
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
+      suppressAutocompleteResults,
     ]
   );
 
@@ -3924,6 +4176,11 @@ const SearchScreen: React.FC = () => {
         submitTransitionHoldRef.current = {
           active: false,
           query: '',
+          suggestions: [] as AutocompleteMatch[],
+          recentSearches: [] as RecentSearch[],
+          recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+          isRecentLoading: false,
+          isRecentlyViewedLoading: false,
           holdShortcuts: false,
           holdSuggestionPanel: false,
           holdSuggestionBackground: false,
@@ -3966,6 +4223,7 @@ const SearchScreen: React.FC = () => {
       setRestaurantOnlyIntent(null);
       searchSessionQueryRef.current = '';
       setSearchTransitionVariant('default');
+      shortcutContentFadeMode.value = SHORTCUT_CONTENT_FADE_DEFAULT;
       profileDismissBehaviorRef.current = 'restore';
       shouldClearSearchOnProfileDismissRef.current = false;
       Keyboard.dismiss();
@@ -3992,7 +4250,8 @@ const SearchScreen: React.FC = () => {
       setIsSearchSessionActive,
       setSearchMode,
       setSearchTransitionVariant,
-      scrollResultsToTop,
+    scrollResultsToTop,
+    shortcutContentFadeMode,
     ]
   );
   clearSearchStateRef.current = clearSearchState;
@@ -4040,15 +4299,30 @@ const SearchScreen: React.FC = () => {
 
   const handleSearchFocus = React.useCallback(() => {
     isSearchEditingRef.current = true;
+    allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
     ensureSearchOverlay();
     dismissTransientOverlays();
+    allowAutocompleteResults();
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
     setIsAutocompleteSuppressed(false);
-  }, [captureSearchSessionQuery, dismissTransientOverlays, ensureSearchOverlay]);
+  }, [
+    allowAutocompleteResults,
+    captureSearchSessionQuery,
+    dismissTransientOverlays,
+    ensureSearchOverlay,
+  ]);
 
   const handleSearchBlur = React.useCallback(() => {
+    if (!allowSearchBlurExitRef.current && isSuggestionPanelActive) {
+      ignoreNextSearchBlurRef.current = true;
+      requestAnimationFrame(() => {
+        inputRef.current?.focus?.();
+      });
+      return;
+    }
+    allowSearchBlurExitRef.current = false;
     setIsSearchFocused(false);
     if (cancelSearchEditOnBackRef.current) {
       isSearchEditingRef.current = false;
@@ -4121,10 +4395,15 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const handleSearchBack = React.useCallback(() => {
+    suppressAutocompleteResults();
     if (!isSearchSessionActive) {
       ignoreNextSearchBlurRef.current = false;
       cancelSearchEditOnBackRef.current = false;
       restoreHomeOnSearchBackRef.current = true;
+      allowSearchBlurExitRef.current = true;
+      shortcutContentFadeMode.value = shouldShowSearchShortcuts
+        ? SHORTCUT_CONTENT_FADE_HOLD
+        : SHORTCUT_CONTENT_FADE_DEFAULT;
       if (inputRef.current?.isFocused?.()) {
         inputRef.current?.blur();
         return;
@@ -4134,12 +4413,19 @@ const SearchScreen: React.FC = () => {
     }
     ignoreNextSearchBlurRef.current = false;
     cancelSearchEditOnBackRef.current = true;
+    allowSearchBlurExitRef.current = true;
     if (inputRef.current?.isFocused?.()) {
       inputRef.current?.blur();
       return;
     }
     handleSearchBlur();
-  }, [handleSearchBlur, isSearchSessionActive]);
+  }, [
+    handleSearchBlur,
+    isSearchSessionActive,
+    shortcutContentFadeMode,
+    shouldShowSearchShortcuts,
+    suppressAutocompleteResults,
+  ]);
 
   const handleRecentSearchPress = React.useCallback(
     (entry: RecentSearch) => {
@@ -4149,16 +4435,20 @@ const SearchScreen: React.FC = () => {
       }
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
+      allowSearchBlurExitRef.current = true;
       const shouldDeferSuggestionClear = beginSubmitTransition();
+      ignoreNextSearchBlurRef.current = true;
+      suppressAutocompleteResults();
+      cancelAutocomplete();
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
       dismissSearchKeyboard();
       setQuery(trimmedValue);
       if (!shouldDeferSuggestionClear) {
         setShowSuggestions(false);
         setSuggestions([]);
       }
-      setIsAutocompleteSuppressed(true);
-      setIsSearchFocused(false);
-      setIsSuggestionPanelActive(false);
       resetFocusedMapState();
       const restaurantId =
         entry.selectedEntityType === 'restaurant' ? entry.selectedEntityId ?? null : null;
@@ -4166,7 +4456,7 @@ const SearchScreen: React.FC = () => {
         pendingRestaurantSelectionRef.current = { restaurantId };
         openRestaurantProfilePreviewRef.current?.(restaurantId, trimmedValue);
         setRestaurantOnlyIntent(restaurantId);
-        updateLocalRecentSearches({
+        deferRecentSearchUpsert({
           queryText: trimmedValue,
           selectedEntityId: restaurantId,
           selectedEntityType: 'restaurant',
@@ -4180,21 +4470,23 @@ const SearchScreen: React.FC = () => {
         });
         return;
       }
-      updateLocalRecentSearches(trimmedValue);
+      deferRecentSearchUpsert(trimmedValue);
       setRestaurantOnlyIntent(null);
       void submitSearch({ submission: { source: 'recent' } }, trimmedValue);
     },
     [
+      cancelAutocomplete,
+      deferRecentSearchUpsert,
       dismissSearchKeyboard,
       resetFocusedMapState,
       runRestaurantEntitySearch,
       submitSearch,
-      updateLocalRecentSearches,
       beginSubmitTransition,
       setRestaurantOnlyIntent,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
+      suppressAutocompleteResults,
     ]
   );
 
@@ -4206,21 +4498,25 @@ const SearchScreen: React.FC = () => {
       }
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
+      allowSearchBlurExitRef.current = true;
       const shouldDeferSuggestionClear = beginSubmitTransition();
+      ignoreNextSearchBlurRef.current = true;
+      suppressAutocompleteResults();
+      cancelAutocomplete();
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
       dismissSearchKeyboard();
       setQuery(trimmedValue);
       if (!shouldDeferSuggestionClear) {
         setShowSuggestions(false);
         setSuggestions([]);
       }
-      setIsAutocompleteSuppressed(true);
-      setIsSearchFocused(false);
-      setIsSuggestionPanelActive(false);
       resetFocusedMapState();
       pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
       openRestaurantProfilePreviewRef.current?.(item.restaurantId, trimmedValue);
       setRestaurantOnlyIntent(item.restaurantId);
-      updateLocalRecentSearches({
+      deferRecentSearchUpsert({
         queryText: trimmedValue,
         selectedEntityId: item.restaurantId,
         selectedEntityType: 'restaurant',
@@ -4234,27 +4530,104 @@ const SearchScreen: React.FC = () => {
       });
     },
     [
+      cancelAutocomplete,
+      deferRecentSearchUpsert,
       dismissSearchKeyboard,
       resetFocusedMapState,
       runRestaurantEntitySearch,
-      updateLocalRecentSearches,
       beginSubmitTransition,
       setRestaurantOnlyIntent,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
       setIsSuggestionPanelActive,
+      suppressAutocompleteResults,
     ]
   );
 
+  const resetSuggestionUiForExternalSubmit = React.useCallback(() => {
+    ignoreNextSearchBlurRef.current = true;
+    runOnUI(() => {
+      'worklet';
+      searchHeaderFocusProgress.value = 0;
+    })();
+    const input = inputRef.current;
+    if (input?.isFocused?.()) {
+      input.blur();
+    }
+    Keyboard.dismiss();
+
+    if (submitTransitionHoldRef.current.active) {
+      submitTransitionHoldRef.current = {
+        active: false,
+        query: '',
+        suggestions: [] as AutocompleteMatch[],
+        recentSearches: [] as RecentSearch[],
+        recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+        isRecentLoading: false,
+        isRecentlyViewedLoading: false,
+        holdShortcuts: false,
+        holdSuggestionPanel: false,
+        holdSuggestionBackground: false,
+        holdAutocomplete: false,
+        holdRecent: false,
+      };
+    }
+
+    setSearchTransitionVariant('default');
+    setIsAutocompleteSuppressed(true);
+    setIsSearchFocused(false);
+    setIsSuggestionPanelActive(false);
+    setIsSuggestionLayoutWarm(false);
+    setShowSuggestions(false);
+    setSuggestions([]);
+    cancelAutocomplete();
+  }, [
+    cancelAutocomplete,
+    setIsAutocompleteSuppressed,
+    setIsSearchFocused,
+    setIsSuggestionLayoutWarm,
+    setIsSuggestionPanelActive,
+    setSearchTransitionVariant,
+    setShowSuggestions,
+    setSuggestions,
+    searchHeaderFocusProgress,
+  ]);
+
+  const runViewMoreIntent = React.useCallback(
+    (intent: MainSearchIntent) => {
+      if (intent.type === 'recentSearch') {
+        handleRecentSearchPress(intent.entry);
+        return;
+      }
+      handleRecentlyViewedRestaurantPress(intent.restaurant);
+    },
+    [handleRecentSearchPress, handleRecentlyViewedRestaurantPress]
+  );
+
+  React.useLayoutEffect(() => {
+    const intentFromParams: MainSearchIntent | null = route.params?.searchIntent ?? null;
+    if (!intentFromParams) {
+      return;
+    }
+
+    resetSuggestionUiForExternalSubmit();
+    navigation.setParams({ searchIntent: undefined });
+    runViewMoreIntent(intentFromParams);
+  }, [navigation, resetSuggestionUiForExternalSubmit, route.params?.searchIntent, runViewMoreIntent]);
+
   const handleRecentViewMorePress = React.useCallback(() => {
+    resetSuggestionUiForExternalSubmit();
     navigation.navigate('RecentSearches', { userLocation });
-  }, [navigation, userLocation]);
+  }, [navigation, resetSuggestionUiForExternalSubmit, userLocation]);
 
   const handleRecentlyViewedMorePress = React.useCallback(() => {
+    resetSuggestionUiForExternalSubmit();
     navigation.navigate('RecentlyViewed', { userLocation });
-  }, [navigation, userLocation]);
+  }, [navigation, resetSuggestionUiForExternalSubmit, userLocation]);
 
   const handleMapPress = React.useCallback(() => {
+    allowSearchBlurExitRef.current = true;
+    suppressAutocompleteResults();
     // Fully exit autocomplete: blur input, suppress suggestions, and clear loading state.
     dismissSearchKeyboard();
     const shouldDeferSuggestionClear = beginSuggestionCloseHold(
@@ -4277,6 +4650,7 @@ const SearchScreen: React.FC = () => {
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
+    suppressAutocompleteResults,
   ]);
   const logMapEventRates = React.useCallback(() => {
     if (!shouldLogMapEventRates) {
@@ -4493,7 +4867,10 @@ const SearchScreen: React.FC = () => {
         });
         return;
       }
-      void submitSearch({ priceLevels: nextLevels, page: 1, preserveSheetState: true }, committedQuery);
+      void submitSearch(
+        { priceLevels: nextLevels, page: 1, preserveSheetState: true },
+        committedQuery
+      );
     }, 150);
   }, [
     activeTab,
@@ -4904,7 +5281,7 @@ const SearchScreen: React.FC = () => {
         isLoading: false,
       });
       setRestaurantOverlayVisible(true);
-      trackRecentlyViewedRestaurant(restaurant.restaurantId, restaurant.restaurantName);
+      deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
 
       void recordRestaurantView(restaurant.restaurantId, source);
     },
@@ -5004,6 +5381,9 @@ const SearchScreen: React.FC = () => {
     if (!results) {
       return;
     }
+    if (isSuggestionPanelActive || isSearchFocused) {
+      return;
+    }
     const pendingSelection = pendingRestaurantSelectionRef.current;
     if (pendingSelection) {
       const targetRestaurant = results.restaurants?.find(
@@ -5035,7 +5415,7 @@ const SearchScreen: React.FC = () => {
     }
     openRestaurantProfile(targetRestaurant, results.food ?? [], 'auto_open_single_candidate');
     lastAutoOpenKeyRef.current = autoOpenKey;
-  }, [openRestaurantProfile, results, submittedQuery, trimmedQuery]);
+  }, [isSearchFocused, isSuggestionPanelActive, openRestaurantProfile, results, submittedQuery, trimmedQuery]);
 
   const handleRestaurantSavePress = React.useCallback((restaurantId: string) => {
     setSaveSheetState({
@@ -5898,9 +6278,11 @@ const SearchScreen: React.FC = () => {
                         },
                       ]}
                       keyboardShouldPersistTaps="handled"
+                      keyboardDismissMode="on-drag"
                       onContentSizeChange={handleSuggestionContentSizeChange}
-                      onTouchStart={handleSuggestionInteractionStart}
                       onScrollBeginDrag={handleSuggestionInteractionStart}
+                      onScrollEndDrag={handleSuggestionInteractionEnd}
+                      onMomentumScrollEnd={handleSuggestionInteractionEnd}
                       scrollEnabled={Boolean(
                         isSuggestionScreenActive && shouldRenderSuggestionPanel
                       )}
@@ -5923,13 +6305,13 @@ const SearchScreen: React.FC = () => {
                             visible={shouldRenderSuggestionPanel}
                             showAutocomplete={shouldRenderAutocompleteSection}
                             showRecent={shouldRenderRecentSection}
-                            suggestions={suggestions}
-                            recentSearches={recentSearches}
-                            recentlyViewedRestaurants={recentlyViewedRestaurants}
-                            hasRecentSearches={hasRecentSearches}
-                            hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurants}
-                            isRecentLoading={isRecentLoading}
-                            isRecentlyViewedLoading={isRecentlyViewedLoading}
+                            suggestions={suggestionDisplaySuggestions}
+                            recentSearches={recentSearchesDisplay}
+                            recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
+                            hasRecentSearches={hasRecentSearchesDisplay}
+                            hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
+                            isRecentLoading={isRecentLoadingDisplay}
+                            isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
                             onSelectSuggestion={handleSuggestionPress}
                             onSelectRecent={handleRecentSearchPress}
                             onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
@@ -5965,7 +6347,7 @@ const SearchScreen: React.FC = () => {
                     inputRef={inputRef}
                     inputAnimatedStyle={searchBarInputAnimatedStyle}
                     containerAnimatedStyle={searchBarContainerAnimatedStyle}
-                    editable
+                    editable={!isSuggestionScrollDismissing}
                     showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
                     isSearchSessionActive={isSearchSessionActive && !isSuggestionPanelActive}
                     focusProgress={searchHeaderFocusProgress}
@@ -6020,7 +6402,9 @@ const SearchScreen: React.FC = () => {
                         });
                       }}
                     >
-                      <View style={styles.searchShortcutContent}>
+                      <Reanimated.View
+                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+                      >
                         <Store size={18} color="#0f172a" strokeWidth={2} />
                         <Text
                           variant="body"
@@ -6029,7 +6413,7 @@ const SearchScreen: React.FC = () => {
                         >
                           Best restaurants
                         </Text>
-                      </View>
+                      </Reanimated.View>
                     </AnimatedPressable>
                     <AnimatedPressable
                       onPress={handleBestDishesHere}
@@ -6060,7 +6444,9 @@ const SearchScreen: React.FC = () => {
                         });
                       }}
                     >
-                      <View style={styles.searchShortcutContent}>
+                      <Reanimated.View
+                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+                      >
                         <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
                         <Text
                           variant="body"
@@ -6069,7 +6455,7 @@ const SearchScreen: React.FC = () => {
                         >
                           Best dishes
                         </Text>
-                      </View>
+                      </Reanimated.View>
                     </AnimatedPressable>
                   </Reanimated.View>
                 )}

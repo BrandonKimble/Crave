@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  ActivityIndicator,
   StyleSheet,
   TouchableOpacity,
   View,
@@ -87,8 +86,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   );
   const recentlyViewedToRender = recentlyViewedDeduped.slice(0, RECENTLY_VIEWED_PREVIEW_LIMIT);
   const hasRecentlyViewedToRender = recentlyViewedDeduped.length > 0;
-  const shouldShowRecentViewMore =
-    !isRecentLoading && recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
+  const shouldShowRecentViewMore = recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
     !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
   const containerStyles = [styles.container, style];
@@ -124,9 +122,18 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       {shouldShowAutocompleteResults ? (
         <View style={styles.autocompleteSectionSurface}>
           {suggestions.map((match, index) => {
-            const itemKey = match.entityId
-              ? `${match.entityId}-${index}`
-              : `${match.name}-${index}`;
+            const normalizedEntityId = match.entityId?.trim?.() ?? '';
+            const normalizedName = match.name.trim().toLowerCase();
+            const confidenceKey = Number.isFinite(match.confidence)
+              ? match.confidence.toFixed(3)
+              : 'unknown';
+            const locationCountKey =
+              typeof match.locationCount === 'number' ? `${match.locationCount}` : 'unknown';
+            const itemKey = normalizedEntityId
+              ? `${match.entityType}:${normalizedEntityId}:${normalizedName}`
+              : `${match.entityType}:${match.matchType ?? 'unknown'}:${
+                  match.querySuggestionSource ?? 'unknown'
+                }:${normalizedName}:${confidenceKey}:${locationCountKey}`;
             const isQuery = match.matchType === 'query' || match.entityType === 'query';
             const locationCount =
               typeof match.locationCount === 'number'
@@ -190,7 +197,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
         <View style={recentSectionStyles}>
           <View style={styles.recentHeaderRow}>
             <Text style={styles.recentHeaderText}>Recent searches</Text>
-            {isRecentLoading && <ActivityIndicator size="small" color={themeColors.textBody} />}
           </View>
           {!isRecentLoading && !hasRecentSearches ? (
             <Text style={styles.recentEmptyText}>No recent searches yet</Text>
@@ -239,9 +245,6 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
 
           <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
             <Text style={styles.recentHeaderText}>Recently viewed</Text>
-            {isRecentlyViewedLoading && (
-              <ActivityIndicator size="small" color={themeColors.textBody} />
-            )}
           </View>
           {!isRecentlyViewedLoading && !hasRecentlyViewedToRender ? (
             <Text style={styles.recentEmptyText}>No restaurants viewed yet</Text>

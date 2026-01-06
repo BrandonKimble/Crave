@@ -62,6 +62,7 @@ type UseSearchSubmitOptions = {
   showPanel: () => void;
   resetSheetToHidden: () => void;
   scrollResultsToTop: () => void;
+  isSearchEditingRef?: React.MutableRefObject<boolean>;
   lastSearchRequestIdRef: React.MutableRefObject<string | null>;
   lastAutoOpenKeyRef: React.MutableRefObject<string | null>;
   openNow: boolean;
@@ -143,6 +144,7 @@ const useSearchSubmit = ({
   showPanel,
   resetSheetToHidden,
   scrollResultsToTop,
+  isSearchEditingRef,
   lastSearchRequestIdRef,
   lastAutoOpenKeyRef,
   openNow,
@@ -346,8 +348,10 @@ const useSearchSubmit = ({
       }
 
       if (!append) {
-        Keyboard.dismiss();
-        scrollResultsToTop();
+        if (!isSearchEditingRef?.current) {
+          Keyboard.dismiss();
+          scrollResultsToTop();
+        }
       }
       logSearchPhase('handleSearchResponse:done');
       if (shouldLogSearchResponseTimings) {
@@ -369,6 +373,7 @@ const useSearchSubmit = ({
       setSubmittedQuery,
       showPanel,
       updateLocalRecentSearches,
+      isSearchEditingRef,
     ]
   );
 

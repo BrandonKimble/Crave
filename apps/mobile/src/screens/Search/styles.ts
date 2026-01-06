@@ -128,6 +128,9 @@ const styles = StyleSheet.create({
     lineHeight: PIN_RANK_CONTAINER_HEIGHT, // iOS vertical centering fallback
     includeFontPadding: false, // Remove Android extra padding
   },
+  pinRankHidden: {
+    opacity: 0,
+  },
   overlay: {
     flex: 1,
     justifyContent: 'flex-start',
@@ -171,6 +174,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     columnGap: 6,
+    opacity: 0,
   },
   searchThisAreaContainer: {
     position: 'absolute',

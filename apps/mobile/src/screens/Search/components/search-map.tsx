@@ -58,6 +58,22 @@ type MarkerPinProps = {
 const MarkerPin: React.FC<MarkerPinProps> = React.memo(
   ({ isSelected, pinColor, rank, enterDelayMs, enterDurationMs }) => {
     const progress = useSharedValue(0);
+    const [pinImagesReady, setPinImagesReady] = React.useState(false);
+    const baseLoadedRef = React.useRef(false);
+    const fillLoadedRef = React.useRef(false);
+    const updatePinImagesReady = React.useCallback(() => {
+      if (baseLoadedRef.current && fillLoadedRef.current) {
+        setPinImagesReady(true);
+      }
+    }, []);
+    const handleBaseLoadEnd = React.useCallback(() => {
+      baseLoadedRef.current = true;
+      updatePinImagesReady();
+    }, [updatePinImagesReady]);
+    const handleFillLoadEnd = React.useCallback(() => {
+      fillLoadedRef.current = true;
+      updatePinImagesReady();
+    }, [updatePinImagesReady]);
     React.useEffect(() => {
       progress.value = 0;
       progress.value = withDelay(
@@ -78,7 +94,11 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
     }));
     return (
       <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
-        <Image source={pinAsset} style={styles.pinBase} />
+        <Image
+          source={pinAsset}
+          style={styles.pinBase}
+          onLoadEnd={handleBaseLoadEnd}
+        />
         <Image
           source={pinFillAsset}
           style={[
@@ -87,9 +107,12 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
               tintColor: isSelected ? PRIMARY_COLOR : pinColor,
             },
           ]}
+          onLoadEnd={handleFillLoadEnd}
         />
         <View style={styles.pinRankWrapper}>
-          <RNText style={styles.pinRank}>{rank}</RNText>
+          <RNText style={[styles.pinRank, pinImagesReady ? null : styles.pinRankHidden]}>
+            {rank}
+          </RNText>
         </View>
       </Reanimated.View>
     );
