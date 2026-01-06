@@ -26,6 +26,7 @@ type SearchPerfDebugFlags = {
   logSearchResponsePayload: boolean;
   logSearchResponseTimings: boolean;
   logSearchResponseTimingMinMs: number;
+  logResultsBlankArea: boolean;
 };
 
 const parseEnvBoolean = (value?: string | boolean): boolean | undefined => {
@@ -90,18 +91,42 @@ const overlayLogsEnabled = isDevEnvironment
 const searchResponsePayloadEnabled = isDevEnvironment
   ? resolveEnvFlag(['SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED'], true)
   : false;
+const disableMarkerViewsEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_MARKER_VIEWS'], false)
+  : false;
+const disableTopFoodMeasurementEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_TOP_FOOD_MEASUREMENT'], false)
+  : false;
+const usePlaceholderRowsEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_USE_PLACEHOLDER_ROWS'], false)
+  : false;
+const disableFiltersHeaderEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_FILTERS_HEADER'], false)
+  : false;
+const disableResultsHeaderEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_RESULTS_HEADER'], false)
+  : false;
+const disableSearchShortcutsEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_SEARCH_SHORTCUTS'], false)
+  : false;
+const deferBestHereUiEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_DEFER_BEST_HERE_UI'], false)
+  : false;
+const logResultsBlankAreaEnabled = isDevEnvironment
+  ? resolveEnvFlag(['SEARCH_PERF_LOG_RESULTS_BLANK_AREA'], perfLogsEnabled)
+  : false;
 
 // Dev-only perf toggles; flip env vars to enable logging.
 const searchPerfDebug: SearchPerfDebugFlags = {
   enabled: perfLogsEnabled,
   disableBlur: false,
-  disableMarkerViews: false,
-  disableTopFoodMeasurement: false,
-  usePlaceholderRows: false,
-  disableFiltersHeader: false,
-  disableResultsHeader: false,
-  disableSearchShortcuts: false,
-  deferBestHereUi: false,
+  disableMarkerViews: disableMarkerViewsEnabled,
+  disableTopFoodMeasurement: disableTopFoodMeasurementEnabled,
+  usePlaceholderRows: usePlaceholderRowsEnabled,
+  disableFiltersHeader: disableFiltersHeaderEnabled,
+  disableResultsHeader: disableResultsHeaderEnabled,
+  disableSearchShortcuts: disableSearchShortcutsEnabled,
+  deferBestHereUi: deferBestHereUiEnabled,
   logCommitInfo: perfLogsEnabled,
   logCommitMinMs: isDevEnvironment ? 5 : 8,
   logJsStalls: perfLogsEnabled,
@@ -118,6 +143,7 @@ const searchPerfDebug: SearchPerfDebugFlags = {
   logSearchResponsePayload: searchResponsePayloadEnabled,
   logSearchResponseTimings: perfLogsEnabled,
   logSearchResponseTimingMinMs: isDevEnvironment ? 0 : 5,
+  logResultsBlankArea: logResultsBlankAreaEnabled,
 };
 
 export type { SearchPerfDebugFlags };

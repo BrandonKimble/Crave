@@ -2682,12 +2682,17 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.food ?? EMPTY_DISHES;
-  const resultsHydrationKey =
+  const resultsHydrationCandidate =
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
   const [markerRestaurants, setMarkerRestaurants] =
     React.useState<RestaurantResult[]>(EMPTY_RESTAURANTS);
   const [markerRevealCount, setMarkerRevealCount] = React.useState(0);
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
+  const resultsHydrationKey = results
+    ? results.metadata.page === 1
+      ? resultsHydrationCandidate
+      : hydratedResultsKey
+    : null;
   const shouldHydrateResults =
     resultsHydrationKey != null && resultsHydrationKey !== hydratedResultsKey;
   const markerUpdateSeqRef = React.useRef(0);
@@ -2724,6 +2729,8 @@ const SearchScreen: React.FC = () => {
   const shouldLogSearchStateWhenSettlingOnly =
     isPerfDebugEnabled && searchPerfDebug.logSearchStateWhenSettlingOnly;
   const shouldLogSuggestionOverlayState = searchPerfDebug.logSuggestionOverlayState;
+  const shouldLogResultsBlankArea =
+    isPerfDebugEnabled && searchPerfDebug.logResultsBlankArea;
   const shouldLogProfiler = isPerfDebugEnabled && searchPerfDebug.logCommitInfo;
   const profilerMinMs = searchPerfDebug.logCommitMinMs;
   const getPerfNow = React.useCallback(() => {
@@ -3756,6 +3763,10 @@ const SearchScreen: React.FC = () => {
   const loadMoreResultsRef = React.useRef(loadMoreResults);
   const canLoadMoreRef = React.useRef(canLoadMore);
   const searchModeRef = React.useRef(searchMode);
+  const currentPageRef = React.useRef(currentPage);
+  const isLoadingRef = React.useRef(isLoading);
+  const isLoadingMoreRef = React.useRef(isLoadingMore);
+  const lastLoadMorePageRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     loadMoreResultsRef.current = loadMoreResults;
@@ -3769,12 +3780,47 @@ const SearchScreen: React.FC = () => {
     searchModeRef.current = searchMode;
   }, [searchMode]);
 
-  const handleResultsEndReached = React.useCallback(() => {
-    if (!canLoadMoreRef.current) {
+  React.useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  React.useEffect(() => {
+    isLoadingRef.current = isLoading;
+  }, [isLoading]);
+
+  React.useEffect(() => {
+    isLoadingMoreRef.current = isLoadingMore;
+  }, [isLoadingMore]);
+
+  React.useEffect(() => {
+    if (isLoadingMore) {
       return;
     }
+    const lastRequestedPage = lastLoadMorePageRef.current;
+    if (lastRequestedPage !== null && currentPage < lastRequestedPage) {
+      lastLoadMorePageRef.current = null;
+    }
+  }, [currentPage, isLoadingMore]);
+
+  const handleResultsEndReached = React.useCallback(() => {
+    if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
+      return;
+    }
+    const nextPage = currentPageRef.current + 1;
+    if (lastLoadMorePageRef.current === nextPage) {
+      return;
+    }
+    lastLoadMorePageRef.current = nextPage;
+    if (shouldLogSearchStateChanges) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SearchPerf] endReached page=${currentPageRef.current} next=${nextPage} mode=${
+          searchModeRef.current ?? 'none'
+        }`
+      );
+    }
     loadMoreResultsRef.current(searchModeRef.current);
-  }, []);
+  }, [shouldLogSearchStateChanges]);
 
   const shouldRetrySearchOnReconnectRef = React.useRef(false);
   React.useEffect(() => {
@@ -6104,14 +6150,50 @@ const SearchScreen: React.FC = () => {
     }),
     [safeResultsData.length]
   );
+  const resultsDrawDistance = shouldHydrateResults ? 60 : 100;
+  const resultsInitialDrawBatchSize = shouldHydrateResults ? 2 : 4;
+  const blankAreaLogIntervalMs = 250;
+  const lastResultsBlankLogRef = React.useRef(0);
+  const handleResultsBlankArea = React.useCallback(
+    (info: { blankArea: number; offsetStart: number; offsetEnd: number }) => {
+      if (!shouldLogResultsBlankArea || info.blankArea <= 0) {
+        return;
+      }
+      const now = Date.now();
+      if (now - lastResultsBlankLogRef.current < blankAreaLogIntervalMs) {
+        return;
+      }
+      lastResultsBlankLogRef.current = now;
+      // eslint-disable-next-line no-console
+      console.log(
+        `[SearchPerf] blank area size=${Math.round(info.blankArea)} start=${Math.round(
+          info.offsetStart
+        )} end=${Math.round(info.offsetEnd)} data=${safeResultsData.length} page=${currentPage} loading=${isLoading} loadingMore=${isLoadingMore} hydrate=${shouldHydrateResults}`
+      );
+    },
+    [
+      currentPage,
+      isLoading,
+      isLoadingMore,
+      safeResultsData.length,
+      shouldHydrateResults,
+      shouldLogResultsBlankArea,
+    ]
+  );
   const resultsFlashListProps = React.useMemo(
     () => ({
-      drawDistance: shouldHydrateResults ? 60 : 100,
+      drawDistance: resultsDrawDistance,
       overrideProps: {
-        initialDrawBatchSize: shouldHydrateResults ? 2 : 4,
+        initialDrawBatchSize: resultsInitialDrawBatchSize,
       },
+      ...(shouldLogResultsBlankArea ? { onBlankArea: handleResultsBlankArea } : null),
     }),
-    [shouldHydrateResults]
+    [
+      handleResultsBlankArea,
+      resultsDrawDistance,
+      resultsInitialDrawBatchSize,
+      shouldLogResultsBlankArea,
+    ]
   );
 
   return (

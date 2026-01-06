@@ -13,8 +13,11 @@ import Reanimated, {
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
+  withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import type { WithSpringConfig } from 'react-native-reanimated';
 import {
   CONTROL_HEIGHT,
   CONTROL_HORIZONTAL_PADDING,
@@ -36,8 +39,21 @@ const PRICE_TOGGLE_RIGHT_PADDING = Math.max(0, TOGGLE_HORIZONTAL_PADDING - 3);
 const STRIP_BACKGROUND_HEIGHT = 14;
 const DEFAULT_VIEWPORT_WIDTH = Dimensions.get('window').width;
 
-const SEGMENT_HIGHLIGHT_DURATION_MS = 180;
-const SEGMENT_HIGHLIGHT_EASING = Easing.out(Easing.cubic);
+const SEGMENT_HIGHLIGHT_SPRING: WithSpringConfig = {
+  damping: 28,
+  stiffness: 220,
+  mass: 1,
+  overshootClamping: false,
+  restDisplacementThreshold: 0.2,
+  restSpeedThreshold: 0.2,
+};
+const SEGMENT_HIGHLIGHT_WIDTH_SPRING: WithSpringConfig = {
+  ...SEGMENT_HIGHLIGHT_SPRING,
+  overshootClamping: true,
+};
+const SEGMENT_HIGHLIGHT_STRETCH_MS = 95;
+const SEGMENT_HIGHLIGHT_STRETCH_EASING = Easing.out(Easing.cubic);
+const SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX = 6;
 
 const SEGMENT_OPTIONS = [
   { label: 'Restaurants', value: 'restaurants' as const },
@@ -144,14 +160,37 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         return false;
       }
       if (animated) {
-        highlightTranslateX.value = withTiming(layout.x, {
-          duration: SEGMENT_HIGHLIGHT_DURATION_MS,
-          easing: SEGMENT_HIGHLIGHT_EASING,
-        });
-        highlightWidth.value = withTiming(layout.width, {
-          duration: SEGMENT_HIGHLIGHT_DURATION_MS,
-          easing: SEGMENT_HIGHLIGHT_EASING,
-        });
+        const currentX = highlightTranslateX.value;
+        const currentWidth = highlightWidth.value;
+
+        if (currentWidth <= 0 || Math.abs(currentX - layout.x) < 0.5) {
+          highlightTranslateX.value = withSpring(layout.x, SEGMENT_HIGHLIGHT_SPRING);
+          highlightWidth.value = withSpring(layout.width, SEGMENT_HIGHLIGHT_WIDTH_SPRING);
+          return true;
+        }
+
+        const currentRight = currentX + currentWidth;
+        const targetRight = layout.x + layout.width;
+        const movingRight = layout.x > currentX;
+        const stretchX = movingRight ? currentX : layout.x;
+        const stretchWidth = movingRight
+          ? targetRight - currentX + SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX
+          : currentRight - layout.x + SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX;
+
+        highlightTranslateX.value = withSequence(
+          withTiming(stretchX, {
+            duration: SEGMENT_HIGHLIGHT_STRETCH_MS,
+            easing: SEGMENT_HIGHLIGHT_STRETCH_EASING,
+          }),
+          withSpring(layout.x, SEGMENT_HIGHLIGHT_SPRING)
+        );
+        highlightWidth.value = withSequence(
+          withTiming(Math.max(layout.width, stretchWidth), {
+            duration: SEGMENT_HIGHLIGHT_STRETCH_MS,
+            easing: SEGMENT_HIGHLIGHT_STRETCH_EASING,
+          }),
+          withSpring(layout.width, SEGMENT_HIGHLIGHT_WIDTH_SPRING)
+        );
         return true;
       }
       highlightTranslateX.value = layout.x;
