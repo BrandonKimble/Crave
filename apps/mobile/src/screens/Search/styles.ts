@@ -92,6 +92,11 @@ const styles = StyleSheet.create({
   },
   pinShadow: {
     ...MARKER_SHADOW_STYLE,
+    shadowColor: '#000000',
+    shadowOpacity: 0.27,
+    shadowOffset: { width: 0, height: 1.25 },
+    shadowRadius: 1.25,
+    elevation: 3,
   },
   pinBase: {
     position: 'absolute',
