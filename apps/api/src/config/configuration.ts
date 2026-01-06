@@ -128,6 +128,30 @@ export default () => {
     bull: {
       prefix: process.env.BULL_PREFIX || `crave:${appEnv}`,
     },
+    sentry: {
+      dsn: process.env.SENTRY_DSN,
+      environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+      release: process.env.SENTRY_RELEASE,
+      tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1'),
+      profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1'),
+    },
+    throttler: {
+      // Short window: burst protection (1 second)
+      short: {
+        ttl: parseInt(process.env.THROTTLER_SHORT_TTL || '1000', 10),
+        limit: parseInt(process.env.THROTTLER_SHORT_LIMIT || '5', 10),
+      },
+      // Medium window: 10 seconds
+      medium: {
+        ttl: parseInt(process.env.THROTTLER_MEDIUM_TTL || '10000', 10),
+        limit: parseInt(process.env.THROTTLER_MEDIUM_LIMIT || '30', 10),
+      },
+      // Long window: 1 minute
+      long: {
+        ttl: parseInt(process.env.THROTTLER_LONG_TTL || '60000', 10),
+        limit: parseInt(process.env.THROTTLER_LONG_LIMIT || '100', 10),
+      },
+    },
     clerk: {
       secretKey: process.env.CLERK_SECRET_KEY,
       publishableKey: process.env.CLERK_PUBLISHABLE_KEY,

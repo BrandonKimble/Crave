@@ -1,4 +1,54 @@
 // src/main.ts
+// Sentry must be imported and initialized before all other imports
+import * as Sentry from '@sentry/nestjs';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
+
+// Initialize Sentry before anything else
+const sentryDsn = process.env.SENTRY_DSN;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+    release: process.env.SENTRY_RELEASE || `api@${process.env.npm_package_version || '1.0.0'}`,
+    
+    integrations: [
+      nodeProfilingIntegration(),
+    ],
+    
+    // Performance monitoring - sample 10% in prod, 100% in dev
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    
+    // Filter sensitive data before sending to Sentry
+    beforeSend(event) {
+      // Remove sensitive headers
+      if (event.request?.headers) {
+        delete event.request.headers.authorization;
+        delete event.request.headers.cookie;
+        delete event.request.headers['x-api-key'];
+      }
+      // Remove sensitive data from request body
+      if (event.request?.data) {
+        const data = event.request.data;
+        if (typeof data === 'object' && data !== null) {
+          const sanitized = { ...data } as Record<string, unknown>;
+          delete sanitized.password;
+          delete sanitized.token;
+          delete sanitized.secret;
+          event.request.data = sanitized;
+        }
+      }
+      return event;
+    },
+    
+    // Don't send errors in test environment
+    enabled: process.env.NODE_ENV !== 'test',
+  });
+  console.log('[SENTRY] Initialized successfully');
+} else if (process.env.NODE_ENV === 'production') {
+  console.warn('[SENTRY] SENTRY_DSN not set - error tracking disabled');
+}
+
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -104,7 +154,7 @@ async function bootstrap() {
 
   // Prefix all routes with /api
   app.setGlobalPrefix('api', {
-    exclude: ['metrics'],
+    exclude: ['metrics', 'health', 'health/live', 'health/ready'],
   });
 
   const port = configService.get<number>('PORT') || 3000;

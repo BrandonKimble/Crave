@@ -9,7 +9,6 @@ import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { RepositoryModule } from './repositories/repository.module';
 import { ExternalIntegrationsModule } from './modules/external-integrations/external-integrations.module';
-// import { SecurityModule } from './modules/infrastructure/security/security.module'; // TODO: Re-enable when validating security features
 import { RedditCollectorModule } from './modules/content-processing/reddit-collector/reddit-collector.module';
 import { AppController } from './app.controller';
 import { SharedModule } from './shared/shared.module';
@@ -23,6 +22,11 @@ import { ModerationModule } from './modules/moderation/moderation.module';
 import { PollsModule } from './modules/polls/polls.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { HistoryModule } from './modules/history/history.module';
+// Production readiness modules
+import { HealthModule } from './modules/health/health.module';
+import { SentryModule } from './sentry/sentry.module';
+import { CustomThrottlerModule } from './modules/infrastructure/throttler/throttler.module';
+import { DebugModule } from './modules/debug/debug.module';
 
 @Module({
   imports: [
@@ -32,9 +36,10 @@ import { HistoryModule } from './modules/history/history.module';
       load: [configuration],
     }),
     ScheduleModule.forRoot(),
-    DiscoveryModule, // Add DiscoveryModule for BullModule dependencies
+    DiscoveryModule,
     SharedModule,
-    // SecurityModule, // TODO: Re-enable when validating security features - currently causing ThrottlerGuard dependency issues
+    // Production readiness: Sentry for error tracking (must be early in imports)
+    SentryModule,
     RedisModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -72,6 +77,12 @@ import { HistoryModule } from './modules/history/history.module';
     PollsModule,
     FavoritesModule,
     HistoryModule,
+    // Production readiness: Health checks for Railway/container orchestration
+    HealthModule,
+    // Production readiness: Rate limiting to prevent abuse
+    CustomThrottlerModule,
+    // Debug module for testing integrations (disable in production)
+    DebugModule,
   ],
   controllers: [AppController],
   providers: [],
