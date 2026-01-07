@@ -1,12 +1,12 @@
-import { Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
 
 /**
  * Debug Controller for testing Sentry and other integrations
- * 
+ *
  * This controller is ONLY for development/testing purposes.
  * In production, these endpoints should be disabled or protected.
- * 
+ *
  * Endpoints:
  * - GET /debug/sentry-test - Triggers a test error to verify Sentry
  * - POST /debug/sentry-message - Sends a test message to Sentry
@@ -15,9 +15,9 @@ import * as Sentry from '@sentry/nestjs';
 export class DebugController {
   /**
    * Trigger a test error to verify Sentry is working
-   * 
+   *
    * Usage: curl http://localhost:3000/api/debug/sentry-test
-   * 
+   *
    * This will:
    * 1. Throw an error that gets captured by Sentry
    * 2. You should see it in Sentry dashboard within a few seconds
@@ -42,8 +42,13 @@ export class DebugController {
    * Useful for testing that messages are being captured
    */
   @Post('sentry-message')
-  sendSentryTestMessage(): { status: string; message: string } {
-    Sentry.captureMessage('Sentry Test Message - Integration verified! 🚀', {
+  async sendSentryTestMessage(
+    @Body() body?: { message?: string },
+  ): Promise<{ status: string; message: string; flushed: boolean }> {
+    const message =
+      body?.message?.trim() || 'Sentry Test Message - Integration verified!';
+
+    Sentry.captureMessage(message, {
       level: 'info',
       tags: {
         test: 'true',
@@ -51,9 +56,12 @@ export class DebugController {
       },
     });
 
+    const flushed = await Sentry.flush(2000);
+
     return {
       status: 'ok',
       message: 'Test message sent to Sentry. Check your Sentry dashboard!',
+      flushed,
     };
   }
 
@@ -87,8 +95,7 @@ export class DebugController {
     });
 
     // This mimics the myUndefinedFunction() test from Sentry docs
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const undefinedFn = undefined as any;
+    const undefinedFn = undefined as unknown as () => never;
     return undefinedFn();
   }
 }

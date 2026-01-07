@@ -1,5 +1,7 @@
 type RgbTuple = [number, number, number];
 
+const clamp01 = (value: number): number => Math.max(0, Math.min(1, value));
+
 const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
   { t: 0, color: [40, 186, 130] }, // crisp jade green (top rank)
   { t: 0.18, color: [68, 200, 120] }, // steady green, avoids minty drift
@@ -8,6 +10,32 @@ const QUALITY_GRADIENT_STOPS: Array<{ t: number; color: RgbTuple }> = [
   { t: 1, color: [255, 110, 82] }, // warm red-orange (lowest rank)
 ];
 
+const QUALITY_GRADIENT_STOPS_REVERSED = [...QUALITY_GRADIENT_STOPS].reverse();
+
+const getQualityColorForT = (t: number): string => {
+  const clampedT = clamp01(t);
+  const next =
+    QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= clampedT) ??
+    QUALITY_GRADIENT_STOPS[QUALITY_GRADIENT_STOPS.length - 1];
+  const prev =
+    QUALITY_GRADIENT_STOPS_REVERSED.find((stop) => stop.t <= clampedT) ?? QUALITY_GRADIENT_STOPS[0];
+  const span = Math.max(next.t - prev.t, 0.0001);
+  const localT = (clampedT - prev.t) / span;
+  const mix = prev.color.map((channel, channelIndex) =>
+    Math.round(channel + (next.color[channelIndex] - channel) * localT)
+  ) as RgbTuple;
+  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+};
+
+export const getQualityColorFromPercentile = (percentile?: number | null): string => {
+  const normalizedPercentile =
+    typeof percentile === 'number' && Number.isFinite(percentile) ? clamp01(percentile) : null;
+  if (normalizedPercentile === null) {
+    return getQualityColorForT(0.5);
+  }
+  return getQualityColorForT(1 - normalizedPercentile);
+};
+
 export const getQualityColor = (
   index: number,
   total: number,
@@ -15,22 +43,9 @@ export const getQualityColor = (
 ): string => {
   const normalizedPercentile =
     typeof percentile === 'number' && Number.isFinite(percentile)
-      ? Math.max(0, Math.min(1, percentile))
+      ? clamp01(percentile)
       : null;
   const tFromPercentile = normalizedPercentile === null ? null : 1 - normalizedPercentile;
-  const t = Math.max(
-    0,
-    Math.min(1, tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)))
-  );
-  const next =
-    QUALITY_GRADIENT_STOPS.find((stop) => stop.t >= t) ??
-    QUALITY_GRADIENT_STOPS[QUALITY_GRADIENT_STOPS.length - 1];
-  const prev =
-    [...QUALITY_GRADIENT_STOPS].reverse().find((stop) => stop.t <= t) ?? QUALITY_GRADIENT_STOPS[0];
-  const span = Math.max(next.t - prev.t, 0.0001);
-  const localT = (t - prev.t) / span;
-  const mix = prev.color.map((channel, channelIndex) =>
-    Math.round(channel + (next.color[channelIndex] - channel) * localT)
-  ) as RgbTuple;
-  return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+  const t = clamp01(tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)));
+  return getQualityColorForT(t);
 };

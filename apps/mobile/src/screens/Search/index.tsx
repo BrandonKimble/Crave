@@ -138,7 +138,12 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import { getQualityColor } from './utils/quality';
+import {
+  getMarkerColorForRestaurant,
+  isCoordinateWithinBounds,
+  padMapBounds,
+} from './utils/marker-lod';
+import { getQualityColorFromPercentile } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
 import {
@@ -178,11 +183,16 @@ const SUGGESTION_PANEL_KEYBOARD_DELAY_MS = 0;
 const SUGGESTION_PANEL_MIN_MS = 160;
 const SUGGESTION_PANEL_MAX_MS = 320;
 const FILTER_TOGGLE_DEBOUNCE_MS = 600;
-const MARKER_REVEAL_DELAY_MS = 0;
-const MARKER_REVEAL_STEP_MS = 30;
 const MARKER_REVEAL_CHUNK = 4;
 const MARKER_REVEAL_STAGGER_MS = 12;
 const MARKER_REVEAL_ANIM_MS = 160;
+const MARKER_VIEWPORT_PADDING_RATIO = 0.15;
+const MARKER_VIEWPORT_UPDATE_THROTTLE_MS = 200;
+const MARKER_DOT_HEAVY_ZOOM_ENTER = 12.0;
+const MARKER_DOT_HEAVY_ZOOM_EXIT = 12.4;
+const MARKER_DOT_HEAVY_COUNT_ENTER = 180;
+const MARKER_DOT_HEAVY_COUNT_EXIT = 150;
+const MAX_FULL_MARKERS = 100;
 const MAP_GRID_MINOR_SIZE = 32;
 const MAP_GRID_MAJOR_SIZE = 128;
 const SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER = SCREEN_HEIGHT;
@@ -335,6 +345,20 @@ const SearchScreen: React.FC = () => {
 
   const handleMapLoaded = React.useCallback(() => {
     setIsMapStyleReady(true);
+    void (async () => {
+      const rawBounds = await mapRef.current?.getVisibleBounds?.();
+      if (!rawBounds || rawBounds.length < 2) {
+        return;
+      }
+      const first = rawBounds[0] as unknown;
+      const second = rawBounds[1] as unknown;
+      if (!isLngLatTuple(first) || !isLngLatTuple(second)) {
+        return;
+      }
+      const bounds = boundsFromPairs(first, second);
+      latestBoundsRef.current = bounds;
+      setMarkerViewportBounds(bounds);
+    })();
   }, []);
 
   React.useEffect(() => {
@@ -748,6 +772,7 @@ const SearchScreen: React.FC = () => {
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [locationPermissionDenied, setLocationPermissionDenied] = React.useState(false);
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
+  const [markerViewportBounds, setMarkerViewportBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const resultsSheetDraggingRef = React.useRef(false);
   const resultsListScrollingRef = React.useRef(false);
@@ -762,6 +787,7 @@ const SearchScreen: React.FC = () => {
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const lastCameraChangedHandledRef = React.useRef(0);
+  const lastMarkerViewportUpdateRef = React.useRef(0);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollBoundsRef = React.useRef<MapBounds | null>(null);
   const pollBoundsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2686,7 +2712,7 @@ const SearchScreen: React.FC = () => {
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
   const [markerRestaurants, setMarkerRestaurants] =
     React.useState<RestaurantResult[]>(EMPTY_RESTAURANTS);
-  const [markerRevealCount, setMarkerRevealCount] = React.useState(0);
+  const [isMarkerDotHeavyMode, setIsMarkerDotHeavyMode] = React.useState(false);
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
   const resultsHydrationKey = results
     ? results.metadata.page === 1
@@ -2699,12 +2725,6 @@ const SearchScreen: React.FC = () => {
   const markerUpdateTaskRef = React.useRef<ReturnType<
     typeof InteractionManager.runAfterInteractions
   > | null>(null);
-  const markerRevealSeqRef = React.useRef(0);
-  const markerRevealTaskRef = React.useRef<ReturnType<
-    typeof InteractionManager.runAfterInteractions
-  > | null>(null);
-  const markerRevealRafRef = React.useRef<number | null>(null);
-  const markerRevealTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const resultsHydrationTaskRef = React.useRef<ReturnType<
     typeof InteractionManager.runAfterInteractions
   > | null>(null);
@@ -2713,7 +2733,9 @@ const SearchScreen: React.FC = () => {
   > | null>(null);
   const isPerfDebugEnabled = searchPerfDebug.enabled;
   const shouldDisableSearchBlur = isPerfDebugEnabled && searchPerfDebug.disableBlur;
-  const shouldDisableMarkerViews = isPerfDebugEnabled && searchPerfDebug.disableMarkerViews;
+  const forceDisableMarkerViews = __DEV__ && true;
+  const shouldDisableMarkerViews =
+    forceDisableMarkerViews || (isPerfDebugEnabled && searchPerfDebug.disableMarkerViews);
   const shouldUsePlaceholderRows =
     (isPerfDebugEnabled && searchPerfDebug.usePlaceholderRows) || shouldHydrateResults;
   const shouldDisableFiltersHeader = isPerfDebugEnabled && searchPerfDebug.disableFiltersHeader;
@@ -2729,8 +2751,8 @@ const SearchScreen: React.FC = () => {
   const shouldLogSearchStateWhenSettlingOnly =
     isPerfDebugEnabled && searchPerfDebug.logSearchStateWhenSettlingOnly;
   const shouldLogSuggestionOverlayState = searchPerfDebug.logSuggestionOverlayState;
-  const shouldLogResultsBlankArea =
-    isPerfDebugEnabled && searchPerfDebug.logResultsBlankArea;
+  const shouldLogResultsViewability =
+    isPerfDebugEnabled && searchPerfDebug.logResultsViewability;
   const shouldLogProfiler = isPerfDebugEnabled && searchPerfDebug.logCommitInfo;
   const profilerMinMs = searchPerfDebug.logCommitMinMs;
   const getPerfNow = React.useCallback(() => {
@@ -2760,18 +2782,6 @@ const SearchScreen: React.FC = () => {
     if (markerUpdateTaskRef.current) {
       markerUpdateTaskRef.current.cancel();
       markerUpdateTaskRef.current = null;
-    }
-    if (markerRevealRafRef.current !== null) {
-      cancelAnimationFrame(markerRevealRafRef.current);
-      markerRevealRafRef.current = null;
-    }
-    if (markerRevealTimeoutRef.current) {
-      clearTimeout(markerRevealTimeoutRef.current);
-      markerRevealTimeoutRef.current = null;
-    }
-    if (markerRevealTaskRef.current) {
-      markerRevealTaskRef.current.cancel();
-      markerRevealTaskRef.current = null;
     }
 
     const nextSeq = markerUpdateSeqRef.current + 1;
@@ -3167,20 +3177,31 @@ const SearchScreen: React.FC = () => {
       return;
     }
     const intervalMs = 100;
+    const logIntervalMs = 500;
     let lastTick = getPerfNow();
+    let lastLog = lastTick;
+    let maxDrift = 0;
+    let stallCount = 0;
     const handle = setInterval(() => {
       const now = getPerfNow();
       const drift = now - lastTick - intervalMs;
       if (drift > jsStallMinMs) {
+        maxDrift = Math.max(maxDrift, drift);
+        stallCount += 1;
+      }
+      if (stallCount > 0 && now - lastLog >= logIntervalMs) {
         const interactionState = searchInteractionRef.current;
         // eslint-disable-next-line no-console
         console.log(
-          `[SearchPerf] JS stall ${drift.toFixed(1)}ms drag=${
+          `[SearchPerf] JS stall max=${maxDrift.toFixed(1)}ms count=${stallCount} drag=${
             interactionState.isResultsSheetDragging
           } scroll=${interactionState.isResultsListScrolling} settle=${
             interactionState.isResultsSheetSettling
           }`
         );
+        lastLog = now;
+        maxDrift = 0;
+        stallCount = 0;
       }
       lastTick = now;
     }, intervalMs);
@@ -3423,17 +3444,12 @@ const SearchScreen: React.FC = () => {
       locationIndex: number;
     }> = [];
     let primaryCount = 0;
-    const restaurantCount = markerRestaurants.length;
     markerRestaurants.forEach((restaurant, restaurantIndex) => {
       if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
         return;
       }
       const rank = restaurantIndex + 1;
-      const pinColor = getQualityColor(
-        restaurantIndex,
-        restaurantCount,
-        restaurant.displayPercentile ?? null
-      );
+      const pinColor = getMarkerColorForRestaurant(restaurant);
       const locations = resolveRestaurantMapLocations(restaurant);
       locations.forEach((location) => {
         const featureId = `${restaurant.restaurantId}-${location.locationId}`;
@@ -3506,91 +3522,168 @@ const SearchScreen: React.FC = () => {
     shouldLogSearchComputes,
   ]);
   const markerCatalogEntries = markerCatalog.catalog;
-  const initialRevealCount = Math.min(MARKER_REVEAL_CHUNK, markerCatalogEntries.length);
-  const effectiveRevealCount =
-    markerRevealCount === 0 && initialRevealCount > 0 ? initialRevealCount : markerRevealCount;
+  const selectedRestaurantId = isRestaurantOverlayVisible
+    ? restaurantProfile?.restaurant.restaurantId ?? null
+    : null;
+  const effectiveMapZoom = mapZoom ?? USA_FALLBACK_ZOOM;
+
+  const paddedMarkerBounds = React.useMemo(() => {
+    if (!markerViewportBounds) {
+      return null;
+    }
+    return padMapBounds(markerViewportBounds, MARKER_VIEWPORT_PADDING_RATIO);
+  }, [markerViewportBounds]);
+
+  const visibleMarkerCandidates = React.useMemo(() => {
+    const start = shouldLogSearchComputes ? getPerfNow() : 0;
+    if (!paddedMarkerBounds) {
+      return [];
+    }
+    const visible = markerCatalogEntries.filter((entry) => {
+      const coordinates = entry.feature.geometry.coordinates as [number, number];
+      return isCoordinateWithinBounds(
+        { lat: coordinates[1], lng: coordinates[0] },
+        paddedMarkerBounds
+      );
+    });
+    if (shouldLogSearchComputes) {
+      logSearchCompute(`visibleMarkerCandidates count=${visible.length}`, getPerfNow() - start);
+    }
+    return visible;
+  }, [getPerfNow, logSearchCompute, markerCatalogEntries, paddedMarkerBounds, shouldLogSearchComputes]);
+
   React.useEffect(() => {
-    if (markerRevealRafRef.current !== null) {
-      cancelAnimationFrame(markerRevealRafRef.current);
-      markerRevealRafRef.current = null;
-    }
-    if (markerRevealTimeoutRef.current) {
-      clearTimeout(markerRevealTimeoutRef.current);
-      markerRevealTimeoutRef.current = null;
-    }
-    if (markerRevealTaskRef.current) {
-      markerRevealTaskRef.current.cancel();
-      markerRevealTaskRef.current = null;
-    }
-
-    const totalCount = markerCatalogEntries.length;
-    if (totalCount === 0) {
-      setMarkerRevealCount(0);
-      return;
-    }
-
-    const initialCount = Math.min(MARKER_REVEAL_CHUNK, totalCount);
-    setMarkerRevealCount(initialCount);
-
-    if (initialCount >= totalCount) {
-      return;
-    }
-
-    const nextSeq = markerRevealSeqRef.current + 1;
-    markerRevealSeqRef.current = nextSeq;
-
-    const step = () => {
-      if (markerRevealSeqRef.current !== nextSeq) {
-        return;
+    const visibleCount = visibleMarkerCandidates.length;
+    const zoom = effectiveMapZoom;
+    setIsMarkerDotHeavyMode((previous) => {
+      const shouldEnter =
+        zoom <= MARKER_DOT_HEAVY_ZOOM_ENTER || visibleCount >= MARKER_DOT_HEAVY_COUNT_ENTER;
+      const shouldExit =
+        zoom >= MARKER_DOT_HEAVY_ZOOM_EXIT && visibleCount <= MARKER_DOT_HEAVY_COUNT_EXIT;
+      if (previous) {
+        return shouldExit ? false : true;
       }
-      setMarkerRevealCount((prev) => {
-        const baseCount = Math.max(prev, initialCount);
-        const nextCount = Math.min(totalCount, baseCount + MARKER_REVEAL_CHUNK);
-        if (nextCount >= totalCount) {
-          markerRevealRafRef.current = null;
-          return totalCount;
-        }
-        markerRevealTimeoutRef.current = setTimeout(() => {
-          if (markerRevealSeqRef.current !== nextSeq) {
-            return;
-          }
-          markerRevealRafRef.current = requestAnimationFrame(step);
-        }, MARKER_REVEAL_STEP_MS);
-        return nextCount;
-      });
-    };
+      return shouldEnter ? true : false;
+    });
+  }, [effectiveMapZoom, visibleMarkerCandidates.length]);
 
-    const startReveal = () => {
-      markerRevealTimeoutRef.current = setTimeout(() => {
-        if (markerRevealSeqRef.current !== nextSeq) {
-          return;
-        }
-        markerRevealRafRef.current = requestAnimationFrame(step);
-      }, MARKER_REVEAL_DELAY_MS);
-    };
+  const fullMarkerCandidates = React.useMemo(() => {
+    const start = shouldLogSearchComputes ? getPerfNow() : 0;
+    const base = isMarkerDotHeavyMode
+      ? visibleMarkerCandidates.slice(0, MAX_FULL_MARKERS)
+      : visibleMarkerCandidates;
 
-    if (searchInteractionRef.current.isInteracting) {
-      markerRevealTaskRef.current = InteractionManager.runAfterInteractions(() => {
-        startReveal();
-      });
-      return;
+    if (!isMarkerDotHeavyMode || !selectedRestaurantId) {
+      if (shouldLogSearchComputes) {
+        logSearchCompute(
+          `fullMarkerCandidates count=${base.length} mode=${isMarkerDotHeavyMode ? 'lod' : 'full'}`,
+          getPerfNow() - start
+        );
+      }
+      return base;
     }
 
-    startReveal();
-  }, [initialRevealCount, markerCatalogEntries]);
+    const selectedAlreadyIncluded = base.some(
+      (entry) => entry.feature.properties.restaurantId === selectedRestaurantId
+    );
+    if (selectedAlreadyIncluded) {
+      if (shouldLogSearchComputes) {
+        logSearchCompute(
+          `fullMarkerCandidates count=${base.length} mode=lod+selected`,
+          getPerfNow() - start
+        );
+      }
+      return base;
+    }
 
-  const visibleMarkerCatalog = React.useMemo(
-    () => markerCatalogEntries.slice(0, effectiveRevealCount),
-    [effectiveRevealCount, markerCatalogEntries]
-  );
+    const selectedEntry =
+      visibleMarkerCandidates.find(
+        (entry) => entry.feature.properties.restaurantId === selectedRestaurantId
+      ) ?? null;
+    if (!selectedEntry) {
+      if (shouldLogSearchComputes) {
+        logSearchCompute(`fullMarkerCandidates count=${base.length} mode=lod`, getPerfNow() - start);
+      }
+      return base;
+    }
+
+    if (base.length < MAX_FULL_MARKERS) {
+      const next = [...base, selectedEntry];
+      if (shouldLogSearchComputes) {
+        logSearchCompute(
+          `fullMarkerCandidates count=${next.length} mode=lod+selected`,
+          getPerfNow() - start
+        );
+      }
+      return next;
+    }
+
+    const next = base.slice(0, Math.max(0, MAX_FULL_MARKERS - 1));
+    next.push(selectedEntry);
+    if (shouldLogSearchComputes) {
+      logSearchCompute(
+        `fullMarkerCandidates count=${next.length} mode=lod+selected`,
+        getPerfNow() - start
+      );
+    }
+    return next;
+  }, [
+    getPerfNow,
+    isMarkerDotHeavyMode,
+    logSearchCompute,
+    selectedRestaurantId,
+    shouldLogSearchComputes,
+    visibleMarkerCandidates,
+  ]);
+
   const sortedRestaurantMarkers = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    const sorted = visibleMarkerCatalog.map((entry) => entry.feature);
+    const sorted = fullMarkerCandidates.map((entry) => entry.feature);
     if (shouldLogSearchComputes) {
       logSearchCompute(`sortedRestaurantMarkers count=${sorted.length}`, getPerfNow() - start);
     }
     return sorted;
-  }, [getPerfNow, logSearchCompute, shouldLogSearchComputes, visibleMarkerCatalog]);
+  }, [fullMarkerCandidates, getPerfNow, logSearchCompute, shouldLogSearchComputes]);
+
+  const dotRestaurantMarkers = React.useMemo(() => {
+    const start = shouldLogSearchComputes ? getPerfNow() : 0;
+    if (!isMarkerDotHeavyMode) {
+      return [];
+    }
+    if (visibleMarkerCandidates.length === 0) {
+      return [];
+    }
+    if (sortedRestaurantMarkers.length === 0) {
+      return visibleMarkerCandidates.map((entry) => entry.feature);
+    }
+    const fullKeys = new Set(sortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)));
+    const dots = visibleMarkerCandidates
+      .filter((entry) => !fullKeys.has(buildMarkerKey(entry.feature)))
+      .map((entry) => entry.feature);
+    if (shouldLogSearchComputes) {
+      logSearchCompute(`dotRestaurantMarkers count=${dots.length}`, getPerfNow() - start);
+    }
+    return dots;
+  }, [
+    buildMarkerKey,
+    getPerfNow,
+    isMarkerDotHeavyMode,
+    logSearchCompute,
+    shouldLogSearchComputes,
+    sortedRestaurantMarkers,
+    visibleMarkerCandidates,
+  ]);
+  const dotRestaurantFeatures = React.useMemo<
+    FeatureCollection<Point, RestaurantFeatureProperties> | null
+  >(() => {
+    if (!isMarkerDotHeavyMode || dotRestaurantMarkers.length === 0) {
+      return null;
+    }
+    return {
+      type: 'FeatureCollection',
+      features: dotRestaurantMarkers,
+    };
+  }, [dotRestaurantMarkers, isMarkerDotHeavyMode]);
   const restaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
@@ -3767,6 +3860,7 @@ const SearchScreen: React.FC = () => {
   const isLoadingRef = React.useRef(isLoading);
   const isLoadingMoreRef = React.useRef(isLoadingMore);
   const lastLoadMorePageRef = React.useRef<number | null>(null);
+  const pendingEndReachedRef = React.useRef(false);
 
   React.useEffect(() => {
     loadMoreResultsRef.current = loadMoreResults;
@@ -3806,6 +3900,11 @@ const SearchScreen: React.FC = () => {
     if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
       return;
     }
+    if (searchInteractionRef.current.isResultsListScrolling || resultsMomentum.value) {
+      pendingEndReachedRef.current = true;
+      return;
+    }
+    pendingEndReachedRef.current = false;
     const nextPage = currentPageRef.current + 1;
     if (lastLoadMorePageRef.current === nextPage) {
       return;
@@ -3819,8 +3918,10 @@ const SearchScreen: React.FC = () => {
         }`
       );
     }
-    loadMoreResultsRef.current(searchModeRef.current);
-  }, [shouldLogSearchStateChanges]);
+    void InteractionManager.runAfterInteractions(() => {
+      loadMoreResultsRef.current(searchModeRef.current);
+    });
+  }, [resultsMomentum, searchInteractionRef, shouldLogSearchStateChanges]);
 
   const shouldRetrySearchOnReconnectRef = React.useRef(false);
   React.useEffect(() => {
@@ -4738,6 +4839,11 @@ const SearchScreen: React.FC = () => {
         return;
       }
 
+      if (now - lastMarkerViewportUpdateRef.current >= MARKER_VIEWPORT_UPDATE_THROTTLE_MS) {
+        lastMarkerViewportUpdateRef.current = now;
+        setMarkerViewportBounds(bounds);
+      }
+
       if (!latestBoundsRef.current) {
         latestBoundsRef.current = bounds;
       }
@@ -4787,6 +4893,7 @@ const SearchScreen: React.FC = () => {
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
         const previousBounds = latestBoundsRef.current;
+        setMarkerViewportBounds(bounds);
         if (shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
@@ -5650,8 +5757,6 @@ const SearchScreen: React.FC = () => {
     restoreSearchSheetState,
     setProfileTransitionStatusState,
   ]);
-  const dishesCount = dishes.length;
-  const restaurantsCount = restaurants.length;
   const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
   const hasCrossCoverage = React.useMemo(() => {
     const coverageKeys = new Set<string>();
@@ -5668,15 +5773,37 @@ const SearchScreen: React.FC = () => {
     return coverageKeys.size > 1;
   }, [dishes, restaurants]);
 
+  const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
+  const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
+  const restaurantQualityColorById = React.useMemo(() => {
+    const map = new Map<string, string>();
+    restaurants.forEach((restaurant) => {
+      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant));
+    });
+    return map;
+  }, [restaurants]);
+  const dishQualityColorByConnectionId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    dishes.forEach((dish) => {
+      map.set(dish.connectionId, getQualityColorFromPercentile(dish.displayPercentile));
+    });
+    return map;
+  }, [dishes]);
+  restaurantQualityColorByIdRef.current = restaurantQualityColorById;
+  dishQualityColorByConnectionIdRef.current = dishQualityColorByConnectionId;
+
   const renderDishCard = React.useCallback(
     (item: FoodResult, index: number) => {
       const restaurantForDish = restaurantsById.get(item.restaurantId);
       const isLiked = false;
+      const qualityColor =
+        dishQualityColorByConnectionIdRef.current.get(item.connectionId) ??
+        getQualityColorFromPercentile(item.displayPercentile);
       return (
         <DishResultCard
           item={item}
           index={index}
-          dishesCount={dishesCount}
+          qualityColor={qualityColor}
           isLiked={isLiked}
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
@@ -5688,7 +5815,6 @@ const SearchScreen: React.FC = () => {
       );
     },
     [
-      dishesCount,
       getDishSaveHandler,
       hasCrossCoverage,
       stableOpenRestaurantProfileFromResults,
@@ -5701,11 +5827,14 @@ const SearchScreen: React.FC = () => {
   const renderRestaurantCard = React.useCallback(
     (restaurant: RestaurantResult, index: number) => {
       const isLiked = false;
+      const qualityColor =
+        restaurantQualityColorByIdRef.current.get(restaurant.restaurantId) ??
+        getMarkerColorForRestaurant(restaurant);
       return (
         <RestaurantResultCard
           restaurant={restaurant}
           index={index}
-          restaurantsCount={restaurantsCount}
+          qualityColor={qualityColor}
           isLiked={isLiked}
           primaryCoverageKey={primaryCoverageKey}
           showCoverageLabel={hasCrossCoverage}
@@ -5723,7 +5852,6 @@ const SearchScreen: React.FC = () => {
       openScoreInfo,
       primaryFoodTerm,
       primaryCoverageKey,
-      restaurantsCount,
     ]
   );
 
@@ -5802,7 +5930,7 @@ const SearchScreen: React.FC = () => {
   const shouldShowResultsOverlay = isFilterTogglePending && safeResultsData.length > 0;
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
-  const estimatedItemSize = estimatedRestaurantItemSize;
+  const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
   const placeholderItemStyle = React.useMemo(
     () => ({ minHeight: estimatedItemSize }),
     [estimatedItemSize]
@@ -5831,11 +5959,14 @@ const SearchScreen: React.FC = () => {
     [estimatedDishItemSize, estimatedItemSize, estimatedRestaurantItemSize]
   );
 
-  const renderSafeItem = React.useCallback<
+  const renderPlaceholderFlashListItem = React.useCallback<
+    NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
+  >(({ index }) => renderPlaceholderItem(index), [renderPlaceholderItem]);
+  const renderResultsFlashListItem = React.useCallback<
     NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
   >(
-    ({ item, index }) => {
-      if (shouldUsePlaceholderRows) {
+    ({ item, index, target }) => {
+      if (target === 'Measurement') {
         return renderPlaceholderItem(index);
       }
       if (item === undefined || item === null) {
@@ -5846,8 +5977,11 @@ const SearchScreen: React.FC = () => {
         ? renderDishCard(item as FoodResult, index)
         : renderRestaurantCard(item as RestaurantResult, index);
     },
-    [renderDishCard, renderPlaceholderItem, renderRestaurantCard, shouldUsePlaceholderRows]
+    [renderDishCard, renderPlaceholderItem, renderRestaurantCard]
   );
+  const resultsRenderItem = shouldUsePlaceholderRows
+    ? renderPlaceholderFlashListItem
+    : renderResultsFlashListItem;
   const resultsListKey = React.useMemo(() => 'results', []);
   const resultsListData = React.useMemo(() => {
     if (!shouldHydrateResults) {
@@ -6150,34 +6284,45 @@ const SearchScreen: React.FC = () => {
     }),
     [safeResultsData.length]
   );
-  const resultsDrawDistance = shouldHydrateResults ? 60 : 100;
-  const resultsInitialDrawBatchSize = shouldHydrateResults ? 2 : 4;
-  const blankAreaLogIntervalMs = 250;
-  const lastResultsBlankLogRef = React.useRef(0);
-  const handleResultsBlankArea = React.useCallback(
-    (info: { blankArea: number; offsetStart: number; offsetEnd: number }) => {
-      if (!shouldLogResultsBlankArea || info.blankArea <= 0) {
+  const resultsDrawDistance = shouldHydrateResults ? 80 : 240;
+  const resultsInitialDrawBatchSize = shouldHydrateResults ? 2 : 8;
+  const viewabilityLogIntervalMs = 250;
+  const lastResultsViewabilityLogRef = React.useRef(0);
+  const resultsViewabilityConfig = React.useMemo(
+    () => ({ itemVisiblePercentThreshold: 1, minimumViewTime: 16 }),
+    []
+  );
+  const handleResultsViewableItemsChanged = React.useCallback<
+    NonNullable<FlashListProps<FoodResult | RestaurantResult>['onViewableItemsChanged']>
+  >(
+    (info) => {
+      if (!shouldLogResultsViewability || safeResultsData.length === 0) {
+        return;
+      }
+      const viewableCount = info.viewableItems.filter((token) => token.isViewable).length;
+      if (viewableCount > 0 || !searchInteractionRef.current.isResultsListScrolling) {
         return;
       }
       const now = Date.now();
-      if (now - lastResultsBlankLogRef.current < blankAreaLogIntervalMs) {
+      if (now - lastResultsViewabilityLogRef.current < viewabilityLogIntervalMs) {
         return;
       }
-      lastResultsBlankLogRef.current = now;
+      lastResultsViewabilityLogRef.current = now;
       // eslint-disable-next-line no-console
       console.log(
-        `[SearchPerf] blank area size=${Math.round(info.blankArea)} start=${Math.round(
-          info.offsetStart
-        )} end=${Math.round(info.offsetEnd)} data=${safeResultsData.length} page=${currentPage} loading=${isLoading} loadingMore=${isLoadingMore} hydrate=${shouldHydrateResults}`
+        `[SearchPerf] viewable=0 data=${safeResultsData.length} tab=${activeTab} page=${currentPage} loading=${isLoading} loadingMore=${isLoadingMore} hydrate=${shouldHydrateResults} offset=${Math.round(resultsScrollOffset.value)}`
       );
     },
     [
+      activeTab,
       currentPage,
       isLoading,
       isLoadingMore,
+      resultsScrollOffset,
       safeResultsData.length,
+      searchInteractionRef,
       shouldHydrateResults,
-      shouldLogResultsBlankArea,
+      shouldLogResultsViewability,
     ]
   );
   const resultsFlashListProps = React.useMemo(
@@ -6186,14 +6331,28 @@ const SearchScreen: React.FC = () => {
       overrideProps: {
         initialDrawBatchSize: resultsInitialDrawBatchSize,
       },
-      ...(shouldLogResultsBlankArea ? { onBlankArea: handleResultsBlankArea } : null),
+      ...(shouldLogResultsViewability
+        ? {
+            viewabilityConfig: resultsViewabilityConfig,
+            onViewableItemsChanged: handleResultsViewableItemsChanged,
+          }
+        : null),
     }),
     [
-      handleResultsBlankArea,
+      handleResultsViewableItemsChanged,
       resultsDrawDistance,
       resultsInitialDrawBatchSize,
-      shouldLogResultsBlankArea,
+      resultsViewabilityConfig,
+      shouldLogResultsViewability,
     ]
+  );
+  const resultsSheetContainerStyle = React.useMemo(
+    () => [styles.resultsSheetContainer, resultsSheetVisibilityAnimatedStyle],
+    [resultsSheetVisibilityAnimatedStyle]
+  );
+  const resultsSheetContainerAnimatedStyle = React.useMemo(
+    () => [resultsContainerAnimatedStyle, resultsSheetVisibilityAnimatedStyle],
+    [resultsContainerAnimatedStyle, resultsSheetVisibilityAnimatedStyle]
   );
 
   return (
@@ -6214,10 +6373,9 @@ const SearchScreen: React.FC = () => {
               onMapIdle={stableHandleMapIdle}
               onMapLoaded={stableHandleMapLoaded}
               onMarkerPress={stableHandleMarkerPress}
-              selectedRestaurantId={
-                isRestaurantOverlayVisible ? restaurantProfile?.restaurant.restaurantId : null
-              }
+              selectedRestaurantId={selectedRestaurantId}
               sortedRestaurantMarkers={sortedRestaurantMarkers}
+              dotRestaurantFeatures={dotRestaurantFeatures}
               markersRenderKey={markersRenderKey}
               buildMarkerKey={buildMarkerKey}
               markerRevealChunk={MARKER_REVEAL_CHUNK}
@@ -6587,7 +6745,7 @@ const SearchScreen: React.FC = () => {
                     interactionEnabled={!shouldDisableResultsSheetInteraction}
                     onEndReached={handleResultsEndReached}
                     data={resultsListData}
-                    renderItem={renderSafeItem}
+                    renderItem={resultsRenderItem}
                     keyExtractor={resultsKeyExtractor}
                     estimatedItemSize={estimatedItemSize}
                     getItemType={getResultItemType}
@@ -6602,14 +6760,11 @@ const SearchScreen: React.FC = () => {
                     backgroundComponent={resultsListBackground}
                     overlayComponent={resultsOverlayComponent}
                     listRef={resultsScrollRef}
-                    resultsContainerAnimatedStyle={[
-                      resultsContainerAnimatedStyle,
-                      resultsSheetVisibilityAnimatedStyle,
-                    ]}
+                    resultsContainerAnimatedStyle={resultsSheetContainerAnimatedStyle}
                     flashListProps={resultsFlashListProps}
                     onHidden={resetSheetToHidden}
                     onSnapChange={handleResultsSheetSnapChange}
-                    style={[styles.resultsSheetContainer, resultsSheetVisibilityAnimatedStyle]}
+                    style={resultsSheetContainerStyle}
                   />
                 ) : null}
               </React.Profiler>

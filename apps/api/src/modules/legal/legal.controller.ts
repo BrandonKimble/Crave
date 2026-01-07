@@ -2,11 +2,11 @@ import { Controller, Get, Header } from '@nestjs/common';
 
 /**
  * Legal/Compliance Controller
- * 
+ *
  * Provides endpoints for legal documents required by app stores:
  * - Privacy Policy (required by Apple App Store)
  * - Terms of Service (required by Google Play Store and Apple App Store)
- * 
+ *
  * These endpoints must be accessible without authentication and
  * should return HTML or plain text that can be displayed in web views.
  */
@@ -14,10 +14,10 @@ import { Controller, Get, Header } from '@nestjs/common';
 export class LegalController {
   /**
    * Privacy Policy endpoint
-   * 
+   *
    * Required by Apple App Store submission guidelines.
    * Must be publicly accessible URL.
-   * 
+   *
    * @returns HTML page with privacy policy
    */
   @Get('privacy')
@@ -295,10 +295,10 @@ export class LegalController {
 
   /**
    * Terms of Service endpoint
-   * 
+   *
    * Required by both Apple App Store and Google Play Store.
    * Must be publicly accessible URL.
-   * 
+   *
    * @returns HTML page with terms of service
    */
   @Get('terms')

@@ -130,10 +130,15 @@ export default () => {
     },
     sentry: {
       dsn: process.env.SENTRY_DSN,
-      environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+      environment:
+        process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
       release: process.env.SENTRY_RELEASE,
-      tracesSampleRate: parseFloat(process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1'),
-      profilesSampleRate: parseFloat(process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1'),
+      tracesSampleRate: parseFloat(
+        process.env.SENTRY_TRACES_SAMPLE_RATE || '0.1',
+      ),
+      profilesSampleRate: parseFloat(
+        process.env.SENTRY_PROFILES_SAMPLE_RATE || '0.1',
+      ),
     },
     throttler: {
       // Short window: burst protection (1 second)

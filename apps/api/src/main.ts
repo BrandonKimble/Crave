@@ -2,23 +2,46 @@
 // Sentry must be imported and initialized before all other imports
 import * as Sentry from '@sentry/nestjs';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
+import { config as dotenvConfig } from 'dotenv';
+import { join } from 'path';
 
 // Initialize Sentry before anything else
+// Load env vars early because ConfigModule loads `.env` later in the Nest lifecycle.
+dotenvConfig({ path: join(process.cwd(), '.env') });
+dotenvConfig({ path: join(__dirname, '..', '.env') });
+
 const sentryDsn = process.env.SENTRY_DSN;
 if (sentryDsn) {
+  const parseSampleRate = (value: string | undefined, fallback: number) => {
+    if (!value) return fallback;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const defaultSampleRate = process.env.NODE_ENV === 'production' ? 0.1 : 1.0;
+  const tracesSampleRate = parseSampleRate(
+    process.env.SENTRY_TRACES_SAMPLE_RATE,
+    defaultSampleRate,
+  );
+  const profilesSampleRate = parseSampleRate(
+    process.env.SENTRY_PROFILES_SAMPLE_RATE,
+    defaultSampleRate,
+  );
+
   Sentry.init({
     dsn: sentryDsn,
-    environment: process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
-    release: process.env.SENTRY_RELEASE || `api@${process.env.npm_package_version || '1.0.0'}`,
-    
-    integrations: [
-      nodeProfilingIntegration(),
-    ],
-    
-    // Performance monitoring - sample 10% in prod, 100% in dev
-    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    profilesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    
+    environment:
+      process.env.SENTRY_ENVIRONMENT || process.env.NODE_ENV || 'development',
+    release:
+      process.env.SENTRY_RELEASE ||
+      `api@${process.env.npm_package_version || '1.0.0'}`,
+
+    integrations: [nodeProfilingIntegration()],
+
+    // Performance monitoring - configured via env, with sane defaults
+    tracesSampleRate,
+    profilesSampleRate,
+
     // Filter sensitive data before sending to Sentry
     beforeSend(event) {
       // Remove sensitive headers
@@ -29,9 +52,9 @@ if (sentryDsn) {
       }
       // Remove sensitive data from request body
       if (event.request?.data) {
-        const data = event.request.data;
-        if (typeof data === 'object' && data !== null) {
-          const sanitized = { ...data } as Record<string, unknown>;
+        const requestData = event.request.data as unknown;
+        if (typeof requestData === 'object' && requestData !== null) {
+          const sanitized = { ...(requestData as Record<string, unknown>) };
           delete sanitized.password;
           delete sanitized.token;
           delete sanitized.secret;
@@ -40,7 +63,7 @@ if (sentryDsn) {
       }
       return event;
     },
-    
+
     // Don't send errors in test environment
     enabled: process.env.NODE_ENV !== 'test',
   });
@@ -155,7 +178,14 @@ async function bootstrap() {
   // Prefix all routes with /api/v1 (API versioning for future-proofing)
   // This allows us to introduce breaking changes in /api/v2 without affecting existing clients
   app.setGlobalPrefix('api/v1', {
-    exclude: ['metrics', 'health', 'health/live', 'health/ready', 'privacy', 'terms'],
+    exclude: [
+      'metrics',
+      'health',
+      'health/live',
+      'health/ready',
+      'privacy',
+      'terms',
+    ],
   });
 
   // Enable graceful shutdown hooks
@@ -168,7 +198,7 @@ async function bootstrap() {
 
   const port = configService.get<number>('PORT') || 3000;
   await app.listen(port, '0.0.0.0'); // Fastify needs the host specified
-  console.log(`Application is running on: http://localhost:${port}/api`);
+  console.log(`Application is running on: http://localhost:${port}/api/v1`);
   console.log('[GRACEFUL SHUTDOWN] Shutdown hooks enabled');
 }
 

@@ -10,7 +10,6 @@ import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
-import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { formatCoverageLabel } from '../utils/format';
@@ -26,7 +25,7 @@ type ScoreInfoPayload = {
 type DishResultCardProps = {
   item: FoodResult;
   index: number;
-  dishesCount: number;
+  qualityColor: string;
   isLiked: boolean;
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
@@ -43,7 +42,7 @@ type DishResultCardProps = {
 const DishResultCard: React.FC<DishResultCardProps> = ({
   item,
   index,
-  dishesCount,
+  qualityColor,
   isLiked,
   primaryCoverageKey = null,
   showCoverageLabel = false,
@@ -52,7 +51,6 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openRestaurantProfile,
   openScoreInfo,
 }) => {
-  const qualityColor = getQualityColor(index, dishesCount, item.displayPercentile ?? null);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const hasStatus = Boolean(item.restaurantOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(

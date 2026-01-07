@@ -6,18 +6,20 @@ import { RedisService } from '@liaoliaots/nestjs-redis';
 
 /**
  * Redis-based storage for rate limiting
- * 
+ *
  * This enables distributed rate limiting across multiple API instances.
  * Each rate limit is stored as a Redis key with TTL-based expiration.
  */
 @Injectable()
-export class ThrottlerRedisStorage implements ThrottlerStorage, OnModuleDestroy {
+export class ThrottlerRedisStorage
+  implements ThrottlerStorage, OnModuleDestroy
+{
   private readonly redis: Redis;
   private readonly prefix = 'throttler:';
   private readonly scanCount = 1000;
 
   constructor(private readonly redisService: RedisService) {
-    this.redis = this.redisService.getClient();
+    this.redis = this.redisService.getOrThrow();
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -36,35 +38,35 @@ export class ThrottlerRedisStorage implements ThrottlerStorage, OnModuleDestroy 
     throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
     const storageKey = this.getStorageKey(key, throttlerName);
-    
+
     // Use Redis transaction for atomic increment
     const multi = this.redis.multi();
     multi.incr(storageKey);
     multi.pttl(storageKey);
-    
+
     const results = await multi.exec();
-    
+
     if (!results) {
       throw new Error('Redis transaction failed');
     }
-    
+
     const [[incrErr, totalHits], [ttlErr, currentTtl]] = results as [
       [Error | null, number],
       [Error | null, number],
     ];
-    
+
     if (incrErr) throw incrErr;
     if (ttlErr) throw ttlErr;
-    
+
     // Set TTL on first request (when TTL is -1, key exists but has no expiry)
     if (currentTtl === -1 || currentTtl === -2) {
       await this.redis.pexpire(storageKey, ttl);
     }
-    
+
     // Check if blocked
     const isBlocked = totalHits > limit;
     const timeToBlockExpire = isBlocked ? blockDuration : 0;
-    
+
     return {
       totalHits,
       timeToExpire: Math.max(currentTtl, 0),
@@ -76,18 +78,21 @@ export class ThrottlerRedisStorage implements ThrottlerStorage, OnModuleDestroy 
   /**
    * Get current record for a key (used for checking status)
    */
-  async get(key: string, throttlerName: string): Promise<ThrottlerStorageRecord | undefined> {
+  async get(
+    key: string,
+    throttlerName: string,
+  ): Promise<ThrottlerStorageRecord | undefined> {
     const storageKey = this.getStorageKey(key, throttlerName);
-    
+
     const [hits, ttl] = await Promise.all([
       this.redis.get(storageKey),
       this.redis.pttl(storageKey),
     ]);
-    
+
     if (!hits || ttl < 0) {
       return undefined;
     }
-    
+
     return {
       totalHits: parseInt(hits, 10),
       timeToExpire: ttl,

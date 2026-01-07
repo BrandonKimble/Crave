@@ -702,7 +702,7 @@ async function onboardSubreddit() {
           console.warn(
             '   Skipping: unable to derive locality-based coverage key.',
           );
-          return null;
+          return;
         }
         resolvedCoverageKey = localityKey;
       }

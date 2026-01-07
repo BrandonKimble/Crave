@@ -5,6 +5,9 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "scripts": {
     "clean": "rm -rf dist tsconfig.app.tsbuildinfo tsconfig.build.tsbuildinfo",
     "prebuild": "yarn clean",

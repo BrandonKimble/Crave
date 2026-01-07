@@ -18,7 +18,7 @@ interface AuthenticatedRequest extends FastifyRequest {
 
 /**
  * Sentry Performance Interceptor
- * 
+ *
  * Creates spans for each HTTP request to track performance in Sentry.
  * This enables the Performance tab in Sentry with endpoint latency data.
  */
@@ -56,7 +56,8 @@ export class SentryInterceptor implements NestInterceptor {
                 message: `${method} ${url} failed`,
                 level: 'error',
                 data: {
-                  error: error instanceof Error ? error.message : 'Unknown error',
+                  error:
+                    error instanceof Error ? error.message : 'Unknown error',
                 },
               });
             },
@@ -73,7 +74,10 @@ export class SentryInterceptor implements NestInterceptor {
   private normalizeUrl(url: string): string {
     return url
       .split('?')[0] // Remove query params
-      .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '/:uuid') // UUIDs
+      .replace(
+        /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        '/:uuid',
+      ) // UUIDs
       .replace(/\/\d+/g, '/:id'); // Numeric IDs
   }
 }

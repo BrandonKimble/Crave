@@ -26,7 +26,7 @@ type SearchPerfDebugFlags = {
   logSearchResponsePayload: boolean;
   logSearchResponseTimings: boolean;
   logSearchResponseTimingMinMs: number;
-  logResultsBlankArea: boolean;
+  logResultsViewability: boolean;
 };
 
 const parseEnvBoolean = (value?: string | boolean): boolean | undefined => {
@@ -44,6 +44,18 @@ const parseEnvBoolean = (value?: string | boolean): boolean | undefined => {
     return false;
   }
   return undefined;
+};
+
+const parseEnvNumber = (value?: string | boolean): number | undefined => {
+  if (value == null || typeof value === 'boolean') {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (!normalized) {
+    return undefined;
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
 };
 
 const getExtraValue = (key: string): string | boolean | undefined => {
@@ -81,6 +93,16 @@ const resolveEnvFlag = (keys: string[], fallback: boolean): boolean => {
   return fallback;
 };
 
+const resolveEnvNumber = (keys: string[], fallback: number): number => {
+  for (const key of keys) {
+    const value = parseEnvNumber(getEnvValue(key));
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return fallback;
+};
+
 const isDevEnvironment = __DEV__;
 const perfLogsEnabled = isDevEnvironment
   ? resolveEnvFlag(['SEARCH_PERF_DEBUG_ENABLED'], false)
@@ -89,7 +111,10 @@ const overlayLogsEnabled = isDevEnvironment
   ? resolveEnvFlag(['SEARCH_OVERLAY_DEBUG_ENABLED'], false)
   : false;
 const searchResponsePayloadEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED'], true)
+  ? resolveEnvFlag(
+      ['EXPO_PUBLIC_SEARCH_LOG_RESPONSE_PAYLOAD', 'SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED'],
+      false
+    )
   : false;
 const disableMarkerViewsEnabled = isDevEnvironment
   ? resolveEnvFlag(['SEARCH_PERF_DISABLE_MARKER_VIEWS'], false)
@@ -112,9 +137,29 @@ const disableSearchShortcutsEnabled = isDevEnvironment
 const deferBestHereUiEnabled = isDevEnvironment
   ? resolveEnvFlag(['SEARCH_PERF_DEFER_BEST_HERE_UI'], false)
   : false;
-const logResultsBlankAreaEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_LOG_RESULTS_BLANK_AREA'], perfLogsEnabled)
+const logResultsViewabilityEnabled = isDevEnvironment
+  ? resolveEnvFlag(
+      ['SEARCH_PERF_LOG_RESULTS_VIEWABILITY', 'SEARCH_PERF_LOG_RESULTS_BLANK_AREA'],
+      false
+    )
   : false;
+const logCommitMinMs = resolveEnvNumber(['SEARCH_PERF_LOG_COMMIT_MIN_MS'], isDevEnvironment ? 20 : 8);
+const logJsStallMinMs = resolveEnvNumber(
+  ['SEARCH_PERF_LOG_JS_STALL_MIN_MS'],
+  isDevEnvironment ? 40 : 32
+);
+const logSearchComputeMinMs = resolveEnvNumber(
+  ['SEARCH_PERF_LOG_SEARCH_COMPUTE_MIN_MS'],
+  isDevEnvironment ? 8 : 8
+);
+const logTopFoodMeasurementMinMs = resolveEnvNumber(
+  ['SEARCH_PERF_LOG_TOP_FOOD_MIN_MS'],
+  isDevEnvironment ? 8 : 8
+);
+const logSearchResponseTimingMinMs = resolveEnvNumber(
+  ['SEARCH_PERF_LOG_RESPONSE_TIMING_MIN_MS'],
+  isDevEnvironment ? 20 : 5
+);
 
 // Dev-only perf toggles; flip env vars to enable logging.
 const searchPerfDebug: SearchPerfDebugFlags = {
@@ -128,22 +173,22 @@ const searchPerfDebug: SearchPerfDebugFlags = {
   disableSearchShortcuts: disableSearchShortcutsEnabled,
   deferBestHereUi: deferBestHereUiEnabled,
   logCommitInfo: perfLogsEnabled,
-  logCommitMinMs: isDevEnvironment ? 5 : 8,
+  logCommitMinMs,
   logJsStalls: perfLogsEnabled,
-  logJsStallMinMs: isDevEnvironment ? 20 : 32,
+  logJsStallMinMs,
   logMapEventRates: perfLogsEnabled,
   logMapEventIntervalMs: 1000,
   logSearchComputes: perfLogsEnabled,
-  logSearchComputeMinMs: isDevEnvironment ? 0 : 8,
+  logSearchComputeMinMs,
   logTopFoodMeasurement: perfLogsEnabled,
-  logTopFoodMeasurementMinMs: isDevEnvironment ? 1 : 8,
+  logTopFoodMeasurementMinMs,
   logSearchStateChanges: perfLogsEnabled,
   logSearchStateWhenSettlingOnly: !isDevEnvironment,
   logSuggestionOverlayState: overlayLogsEnabled,
   logSearchResponsePayload: searchResponsePayloadEnabled,
   logSearchResponseTimings: perfLogsEnabled,
-  logSearchResponseTimingMinMs: isDevEnvironment ? 0 : 5,
-  logResultsBlankArea: logResultsBlankAreaEnabled,
+  logSearchResponseTimingMinMs,
+  logResultsViewability: logResultsViewabilityEnabled,
 };
 
 export type { SearchPerfDebugFlags };

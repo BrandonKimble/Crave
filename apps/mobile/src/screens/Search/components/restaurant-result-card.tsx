@@ -17,7 +17,6 @@ import {
   TOP_FOOD_RENDER_LIMIT,
 } from '../constants/search';
 import { capitalizeFirst, formatCoverageLabel, formatDistanceMiles } from '../utils/format';
-import { getQualityColor } from '../utils/quality';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
@@ -35,7 +34,7 @@ type ScoreInfoPayload = {
 type RestaurantResultCardProps = {
   restaurant: RestaurantResult;
   index: number;
-  restaurantsCount: number;
+  qualityColor: string;
   isLiked: boolean;
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
@@ -52,7 +51,7 @@ type RestaurantResultCardProps = {
 const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   restaurant,
   index,
-  restaurantsCount,
+  qualityColor,
   isLiked,
   primaryCoverageKey = null,
   showCoverageLabel = false,
@@ -67,11 +66,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   const disableTopFoodMeasurement =
     searchPerfDebug.enabled && searchPerfDebug.disableTopFoodMeasurement;
 
-  const qualityColor = getQualityColor(
-    index,
-    restaurantsCount,
-    restaurant.displayPercentile ?? null
-  );
   const priceRangeLabel = getPriceRangeLabel(restaurant.priceLevel);
   const hasStatus =
     restaurant.operatingStatus?.isOpen === true || restaurant.operatingStatus?.isOpen === false;

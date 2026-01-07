@@ -10,7 +10,7 @@
 # =============================================================================
 # STAGE 1: Base - Install dependencies
 # =============================================================================
-FROM node:18-alpine AS base
+FROM node:22-alpine AS base
 
 # Install system dependencies needed for Prisma and native modules
 RUN apk add --no-cache \
@@ -57,7 +57,7 @@ RUN yarn workspace api build
 # =============================================================================
 # STAGE 3: Production - Final runtime image
 # =============================================================================
-FROM node:18-alpine AS production
+FROM node:22-alpine AS production
 
 # Install runtime system dependencies (OpenSSL for Prisma)
 RUN apk add --no-cache openssl libc6-compat

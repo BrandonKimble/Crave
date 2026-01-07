@@ -3,10 +3,9 @@ import {
   Catch,
   ArgumentsHost,
   HttpException,
-  HttpStatus,
 } from '@nestjs/common';
 import * as Sentry from '@sentry/nestjs';
-import type { FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyRequest } from 'fastify';
 
 interface AuthenticatedRequest extends FastifyRequest {
   user?: {
@@ -17,7 +16,7 @@ interface AuthenticatedRequest extends FastifyRequest {
 
 /**
  * Sentry Exception Filter
- * 
+ *
  * Captures all exceptions and sends them to Sentry with rich context.
  * This filter runs BEFORE the GlobalExceptionFilter to capture the error,
  * then re-throws so GlobalExceptionFilter can format the response.
@@ -27,11 +26,10 @@ export class SentryExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const request = ctx.getRequest<AuthenticatedRequest>();
-    const response = ctx.getResponse<FastifyReply>();
 
     // Don't capture 4xx client errors (they're expected)
     if (exception instanceof HttpException) {
-      const status = (exception as HttpException).getStatus();
+      const status = exception.getStatus();
       if (status >= 400 && status < 500) {
         // Still throw so GlobalExceptionFilter handles response
         throw exception;

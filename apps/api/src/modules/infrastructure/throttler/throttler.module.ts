@@ -1,22 +1,23 @@
-import { Module } from '@nestjs/common';
+import { Module, type ExecutionContext } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { RedisService } from '@liaoliaots/nestjs-redis';
 import { ThrottlerRedisStorage } from './throttler-redis.storage';
 
 /**
  * Custom Throttler Module with Redis Storage
- * 
+ *
  * Provides distributed rate limiting using Redis as the backing store.
  * This ensures rate limits work correctly across multiple API instances.
- * 
+ *
  * Rate Limit Tiers:
  * - short: 3 requests per 1 second (burst protection)
- * - medium: 20 requests per 10 seconds  
+ * - medium: 20 requests per 10 seconds
  * - long: 100 requests per 60 seconds
- * 
+ *
  * Endpoints can override these defaults using @Throttle() or @SkipThrottle()
- * 
+ *
  * Excluded from rate limiting:
  * - /health/* - Health check endpoints
  * - /metrics - Prometheus metrics
@@ -26,10 +27,10 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
   imports: [
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
-      inject: [ConfigService, ThrottlerRedisStorage],
+      inject: [ConfigService, RedisService],
       useFactory: (
         configService: ConfigService,
-        storage: ThrottlerRedisStorage,
+        redisService: RedisService,
       ) => ({
         throttlers: [
           {
@@ -48,21 +49,21 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
             limit: configService.get<number>('throttler.long.limit') || 100,
           },
         ],
-        storage,
+        storage: new ThrottlerRedisStorage(redisService),
         // Skip rate limiting for these routes
-        skipIf: (context) => {
-          const request = context.switchToHttp().getRequest();
-          const url = request.url || '';
-          
+        skipIf: (context: ExecutionContext) => {
+          const request = context.switchToHttp().getRequest<{ url?: string }>();
+          const url = request.url ?? '';
+
           // Skip health checks
           if (url.startsWith('/health')) return true;
-          
-          // Skip metrics endpoint  
+
+          // Skip metrics endpoint
           if (url.startsWith('/metrics')) return true;
-          
+
           // Skip webhooks (they have their own auth)
           if (url.includes('/webhooks/')) return true;
-          
+
           return false;
         },
         // Custom error message
@@ -71,12 +72,10 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
     }),
   ],
   providers: [
-    ThrottlerRedisStorage,
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
   ],
-  exports: [ThrottlerRedisStorage],
 })
 export class CustomThrottlerModule {}

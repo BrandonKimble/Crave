@@ -27,7 +27,7 @@ import { HealthModule } from './modules/health/health.module';
 import { SentryModule } from './sentry/sentry.module';
 import { CustomThrottlerModule } from './modules/infrastructure/throttler/throttler.module';
 import { LegalModule } from './modules/legal/legal.module';
-// import { DebugModule } from './modules/debug/debug.module'; // ⚠️ DISABLED FOR PRODUCTION
+import { DebugModule } from './modules/debug/debug.module';
 
 @Module({
   imports: [
@@ -84,8 +84,8 @@ import { LegalModule } from './modules/legal/legal.module';
     CustomThrottlerModule,
     // Legal/compliance: Privacy policy and terms of service (required for app stores)
     LegalModule,
-    // Debug module DISABLED for production security
-    // DebugModule, // ⚠️ Uncomment only for local testing, never in production
+    // Debug module enabled only outside production
+    ...(process.env.NODE_ENV === 'production' ? [] : [DebugModule]),
   ],
   controllers: [AppController],
   providers: [],

@@ -8,7 +8,7 @@ import Reanimated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
+import MapboxGL, { type MapState as MapboxMapState, type OnPressEvent } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
@@ -46,6 +46,26 @@ type CameraPadding = {
 const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const MARKER_ENTER_SCALE = 0.92;
+const DOT_SOURCE_ID = 'restaurant-dot-source';
+const DOT_LAYER_ID = 'restaurant-dot-layer';
+const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
+  circleColor: ['get', 'pinColor'],
+  circleOpacity: 1,
+  circleRadius: [
+    'interpolate',
+    ['linear'],
+    ['zoom'],
+    8,
+    2,
+    12,
+    3,
+    16,
+    4,
+    20,
+    6,
+  ],
+  circleStrokeWidth: 0,
+};
 
 type MarkerPinProps = {
   isSelected: boolean;
@@ -130,6 +150,7 @@ type SearchMapProps = {
   onMarkerPress?: (restaurantId: string) => void;
   selectedRestaurantId?: string | null;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
+  dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
   markersRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   markerRevealChunk?: number;
@@ -160,6 +181,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMarkerPress,
   selectedRestaurantId,
   sortedRestaurantMarkers,
+  dotRestaurantFeatures,
   markersRenderKey: _markersRenderKey,
   buildMarkerKey,
   markerRevealChunk = 1,
@@ -177,6 +199,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
   const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
+  const shouldRenderDots =
+    !shouldDisableMarkers &&
+    dotRestaurantFeatures != null &&
+    dotRestaurantFeatures.features.length > 0;
+  const handleDotPress = React.useCallback(
+    (event: OnPressEvent) => {
+      const feature = event?.features?.[0];
+      const restaurantId = feature?.properties?.restaurantId;
+      if (typeof restaurantId !== 'string') {
+        return;
+      }
+      onMarkerPress?.(restaurantId);
+    },
+    [onMarkerPress]
+  );
   const profilerCallback =
     onProfilerRender ??
     ((() => {
@@ -210,6 +247,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
         animationDuration={0}
         pitch={32}
       />
+      {shouldRenderDots ? (
+        <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
+          <MapboxGL.ShapeSource
+            id={DOT_SOURCE_ID}
+            shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
+            onPress={handleDotPress}
+          >
+            <MapboxGL.CircleLayer id={DOT_LAYER_ID} style={DOT_LAYER_STYLE} />
+          </MapboxGL.ShapeSource>
+        </React.Profiler>
+      ) : null}
       {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
         <React.Profiler id="SearchMapMarkers" onRender={profilerCallback}>
           <React.Fragment>
@@ -367,6 +415,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.selectedRestaurantId !== next.selectedRestaurantId) {
+    return false;
+  }
+  if (prev.dotRestaurantFeatures !== next.dotRestaurantFeatures) {
     return false;
   }
   if (prev.markersRenderKey !== next.markersRenderKey) {

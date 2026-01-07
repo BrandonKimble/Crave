@@ -30,7 +30,7 @@ export class HealthService {
     private readonly redisService: RedisService,
   ) {
     this.startTime = Date.now();
-    this.redis = this.redisService.getClient();
+    this.redis = this.redisService.getOrThrow();
   }
 
   async check(): Promise<HealthCheckResult> {
@@ -39,8 +39,10 @@ export class HealthService {
       this.checkRedis(),
     ]);
 
-    const allHealthy = database.status === 'healthy' && redis.status === 'healthy';
-    const allUnhealthy = database.status === 'unhealthy' && redis.status === 'unhealthy';
+    const allHealthy =
+      database.status === 'healthy' && redis.status === 'healthy';
+    const allUnhealthy =
+      database.status === 'unhealthy' && redis.status === 'unhealthy';
 
     let overallStatus: 'healthy' | 'unhealthy' | 'degraded';
     if (allHealthy) {
@@ -76,7 +78,8 @@ export class HealthService {
       return {
         status: 'unhealthy',
         latencyMs: Date.now() - start,
-        error: error instanceof Error ? error.message : 'Unknown database error',
+        error:
+          error instanceof Error ? error.message : 'Unknown database error',
       };
     }
   }
