@@ -1,4 +1,4 @@
-# Query Analytics + User Interaction Signals (SearchLog-only)
+ry Analytics + User Interaction Signals (SearchLog-only)
 
 ## Summary
 

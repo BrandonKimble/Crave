@@ -67,7 +67,7 @@ export const useSearchRequests = () => {
   const runAutocomplete = React.useCallback(
     (query: string, options: RunAutocompleteOptions = {}) =>
       new Promise<AutocompleteMatch[]>((resolve) => {
-        const debounceMs = options.debounceMs ?? 250;
+        const debounceMs = options.debounceMs ?? 0; // Instant autocomplete like Google
         cancelAutocomplete();
 
         autocompleteDebounceRef.current = setTimeout(async () => {

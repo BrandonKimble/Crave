@@ -30,7 +30,7 @@ const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
 @Injectable()
 export class AutocompleteService {
   private readonly logger: LoggerService;
-  private readonly cacheTtlMs = 10000;
+  private readonly cacheTtlMs = 60000; // 60s - covers typical search session refinements
   private readonly sessionCache = new Map<string, CacheEntry>();
   private readonly weightConfidence: number;
   private readonly weightGlobalPopularity: number;
@@ -192,40 +192,10 @@ export class AutocompleteService {
       limit,
     });
 
-    let onDemandQueued = false;
-    if (dto.enableOnDemand && !hadEntityMatches) {
-      const viewportEligible = this.isViewportEligibleForOnDemand(dto.bounds);
-      const onDemandLocationKey = dto.bounds ? locationKey : null;
-      const requests = [
-        {
-          term: normalizedQuery,
-          entityType: primaryEntityType,
-          reason: OnDemandReason.unresolved,
-          locationKey: onDemandLocationKey ?? 'global',
-          metadata: { source: 'autocomplete' },
-        },
-      ];
-
-      if (viewportEligible && onDemandLocationKey) {
-        await this.onDemandRequestService.recordRequests(requests, {
-          source: 'autocomplete',
-        });
-        onDemandQueued = true;
-      } else if (!onDemandLocationKey) {
-        await this.onDemandRequestService.recordRequests(requests, {
-          source: 'autocomplete',
-        });
-        onDemandQueued = true;
-      }
-
-      if (onDemandQueued) {
-        this.logger.debug('Queued on-demand request from autocomplete', {
-          normalizedQuery,
-          entityType: primaryEntityType,
-          locationKey: onDemandLocationKey ?? 'global',
-        });
-      }
-    }
+    // NOTE: On-demand recording removed from autocomplete typing.
+    // Demand is now recorded only on actual search submission (search.service.ts)
+    // to prevent DB overload from exploratory typing (90% reduction in writes).
+    const onDemandQueued = false;
 
     const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
     const matchesWithStatus =
@@ -234,8 +204,8 @@ export class AutocompleteService {
       matches: matchesWithStatus,
       query: dto.query,
       normalizedQuery,
-      onDemandQueued,
-      onDemandReason: onDemandQueued ? OnDemandReason.unresolved : undefined,
+      onDemandQueued: false,
+      onDemandReason: undefined,
       querySuggestions: ranked.querySuggestionTexts,
     };
 
