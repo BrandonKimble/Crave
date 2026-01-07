@@ -42,9 +42,7 @@ export const getQualityColor = (
   percentile?: number | null
 ): string => {
   const normalizedPercentile =
-    typeof percentile === 'number' && Number.isFinite(percentile)
-      ? clamp01(percentile)
-      : null;
+    typeof percentile === 'number' && Number.isFinite(percentile) ? clamp01(percentile) : null;
   const tFromPercentile = normalizedPercentile === null ? null : 1 - normalizedPercentile;
   const t = clamp01(tFromPercentile ?? (total <= 1 ? 0 : index / Math.max(total - 1, 1)));
   return getQualityColorForT(t);

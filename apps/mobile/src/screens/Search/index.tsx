@@ -2751,8 +2751,7 @@ const SearchScreen: React.FC = () => {
   const shouldLogSearchStateWhenSettlingOnly =
     isPerfDebugEnabled && searchPerfDebug.logSearchStateWhenSettlingOnly;
   const shouldLogSuggestionOverlayState = searchPerfDebug.logSuggestionOverlayState;
-  const shouldLogResultsViewability =
-    isPerfDebugEnabled && searchPerfDebug.logResultsViewability;
+  const shouldLogResultsViewability = isPerfDebugEnabled && searchPerfDebug.logResultsViewability;
   const shouldLogProfiler = isPerfDebugEnabled && searchPerfDebug.logCommitInfo;
   const profilerMinMs = searchPerfDebug.logCommitMinMs;
   const getPerfNow = React.useCallback(() => {
@@ -3550,7 +3549,13 @@ const SearchScreen: React.FC = () => {
       logSearchCompute(`visibleMarkerCandidates count=${visible.length}`, getPerfNow() - start);
     }
     return visible;
-  }, [getPerfNow, logSearchCompute, markerCatalogEntries, paddedMarkerBounds, shouldLogSearchComputes]);
+  }, [
+    getPerfNow,
+    logSearchCompute,
+    markerCatalogEntries,
+    paddedMarkerBounds,
+    shouldLogSearchComputes,
+  ]);
 
   React.useEffect(() => {
     const visibleCount = visibleMarkerCandidates.length;
@@ -3602,7 +3607,10 @@ const SearchScreen: React.FC = () => {
       ) ?? null;
     if (!selectedEntry) {
       if (shouldLogSearchComputes) {
-        logSearchCompute(`fullMarkerCandidates count=${base.length} mode=lod`, getPerfNow() - start);
+        logSearchCompute(
+          `fullMarkerCandidates count=${base.length} mode=lod`,
+          getPerfNow() - start
+        );
       }
       return base;
     }
@@ -3673,9 +3681,10 @@ const SearchScreen: React.FC = () => {
     sortedRestaurantMarkers,
     visibleMarkerCandidates,
   ]);
-  const dotRestaurantFeatures = React.useMemo<
-    FeatureCollection<Point, RestaurantFeatureProperties> | null
-  >(() => {
+  const dotRestaurantFeatures = React.useMemo<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(() => {
     if (!isMarkerDotHeavyMode || dotRestaurantMarkers.length === 0) {
       return null;
     }
@@ -6310,7 +6319,11 @@ const SearchScreen: React.FC = () => {
       lastResultsViewabilityLogRef.current = now;
       // eslint-disable-next-line no-console
       console.log(
-        `[SearchPerf] viewable=0 data=${safeResultsData.length} tab=${activeTab} page=${currentPage} loading=${isLoading} loadingMore=${isLoadingMore} hydrate=${shouldHydrateResults} offset=${Math.round(resultsScrollOffset.value)}`
+        `[SearchPerf] viewable=0 data=${
+          safeResultsData.length
+        } tab=${activeTab} page=${currentPage} loading=${isLoading} loadingMore=${isLoadingMore} hydrate=${shouldHydrateResults} offset=${Math.round(
+          resultsScrollOffset.value
+        )}`
       );
     },
     [

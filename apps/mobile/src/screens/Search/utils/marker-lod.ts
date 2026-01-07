@@ -5,7 +5,8 @@ import { getQualityColorFromPercentile } from './quality';
 export const getMarkerColorForRestaurant = (restaurant: RestaurantResult): string =>
   getQualityColorFromPercentile(restaurant.displayPercentile);
 
-const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(max, value));
+const clamp = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
 
 export const padMapBounds = (bounds: MapBounds, padRatio: number): MapBounds => {
   const clampedPadRatio = clamp(padRatio, 0, 1);

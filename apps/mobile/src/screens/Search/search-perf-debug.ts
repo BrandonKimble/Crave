@@ -143,7 +143,10 @@ const logResultsViewabilityEnabled = isDevEnvironment
       false
     )
   : false;
-const logCommitMinMs = resolveEnvNumber(['SEARCH_PERF_LOG_COMMIT_MIN_MS'], isDevEnvironment ? 20 : 8);
+const logCommitMinMs = resolveEnvNumber(
+  ['SEARCH_PERF_LOG_COMMIT_MIN_MS'],
+  isDevEnvironment ? 20 : 8
+);
 const logJsStallMinMs = resolveEnvNumber(
   ['SEARCH_PERF_LOG_JS_STALL_MIN_MS'],
   isDevEnvironment ? 40 : 32

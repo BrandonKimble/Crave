@@ -51,19 +51,7 @@ const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleColor: ['get', 'pinColor'],
   circleOpacity: 1,
-  circleRadius: [
-    'interpolate',
-    ['linear'],
-    ['zoom'],
-    8,
-    2,
-    12,
-    3,
-    16,
-    4,
-    20,
-    6,
-  ],
+  circleRadius: ['interpolate', ['linear'], ['zoom'], 8, 2, 12, 3, 16, 4, 20, 6],
   circleStrokeWidth: 0,
 };
 

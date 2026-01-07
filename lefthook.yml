@@ -4,18 +4,18 @@ pre-commit:
     # Package-specific linting - only runs when files in that package change
     api-lint:
       glob: 'apps/api/**/*.{ts,tsx}'
-      run: cd apps/api && yarn lint
+      run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/api && yarn lint"
     mobile-lint:
       glob: 'apps/mobile/**/*.{ts,tsx,js,jsx}'
-      run: cd apps/mobile && yarn lint
+      run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/mobile && yarn lint"
     shared-lint:
       glob: 'packages/shared/**/*.{ts,tsx}'
-      run: cd packages/shared && yarn lint
+      run: bash ./.lefthook/with-node-22.sh bash -c "cd packages/shared && yarn lint"
 
     # Global formatting for all staged files
     prettier:
       glob: '*.{js,jsx,ts,tsx,json,md,yml,yaml}'
-      run: yarn prettier --write {staged_files}
+      run: bash ./.lefthook/with-node-22.sh yarn prettier --write {staged_files}
 
     # Root-level linting for config files (skip for now - no root ESLint config)
     # root-lint:
