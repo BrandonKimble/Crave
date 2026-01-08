@@ -254,13 +254,16 @@ export class OnDemandProcessingService {
 
     // Unresolved entities require multiple occurrences to prevent spam from typos
     if (record.reason === 'unresolved' && record.occurrenceCount < 3) {
-      this.logger.debug('Deferring unresolved entity - insufficient occurrences', {
-        requestId: record.requestId,
-        term: record.term,
-        entityType: record.entityType,
-        occurrenceCount: record.occurrenceCount,
-        threshold: 3,
-      });
+      this.logger.debug(
+        'Deferring unresolved entity - insufficient occurrences',
+        {
+          requestId: record.requestId,
+          term: record.term,
+          entityType: record.entityType,
+          occurrenceCount: record.occurrenceCount,
+          threshold: 3,
+        },
+      );
       return {
         requestId: record.requestId,
         term: record.term,

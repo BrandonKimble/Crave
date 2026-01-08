@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
+import { EntityType, Prisma } from '@prisma/client';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { EntityResolutionService } from '../content-processing/entity-resolver/entity-resolution.service';
 import {
@@ -174,8 +174,6 @@ export class AutocompleteService {
       );
     }
 
-    const hadEntityMatches = matches.length > 0;
-
     const injected = await injectedPromise;
 
     const candidateMatches = this.mergeEntityMatches(matches, [
@@ -191,11 +189,6 @@ export class AutocompleteService {
       user,
       limit,
     });
-
-    // NOTE: On-demand recording removed from autocomplete typing.
-    // Demand is now recorded only on actual search submission (search.service.ts)
-    // to prevent DB overload from exploratory typing (90% reduction in writes).
-    const onDemandQueued = false;
 
     const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
     const matchesWithStatus =

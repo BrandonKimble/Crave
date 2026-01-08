@@ -115,7 +115,6 @@ import {
   RESULTS_BOTTOM_PADDING,
   SCORE_INFO_MAX_HEIGHT,
   SCREEN_HEIGHT,
-  SCREEN_WIDTH,
   SEARCH_CONTAINER_PADDING_TOP,
   SEARCH_BAR_HOLE_PADDING,
   SEARCH_BAR_HOLE_RADIUS,
@@ -3484,7 +3483,8 @@ const SearchScreen: React.FC = () => {
     : null;
   const effectiveMapZoom = mapZoom ?? USA_FALLBACK_ZOOM;
 
-  // Use all catalog entries - Mapbox MarkerView handles viewport culling automatically
+  // Pass all markers through - no viewport culling
+  // Mapbox MarkerView renders all markers; native culling is disabled by keeping all in React tree
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
     if (shouldLogSearchComputes) {

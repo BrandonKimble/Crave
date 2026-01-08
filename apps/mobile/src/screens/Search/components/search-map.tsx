@@ -270,6 +270,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
                   coordinate={coordinates}
                   anchor={{ x: 0.5, y: 1 }}
                   allowOverlap
+                  isSelected={true}
                   style={[styles.markerView, { zIndex }]}
                 >
                   <Pressable
