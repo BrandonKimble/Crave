@@ -1544,8 +1544,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-        ? error
-        : '';
+          ? error
+          : '';
     if (!message) {
       return false;
     }
@@ -1591,8 +1591,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
       error instanceof Error
         ? error.message
         : typeof error === 'string'
-        ? error
-        : '';
+          ? error
+          : '';
     if (!message) {
       return false;
     }
@@ -1729,7 +1729,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
     const maxRetries =
       typeof options.maxRetries === 'number' && options.maxRetries >= 0
         ? options.maxRetries
-        : this.llmConfig.retryOptions?.maxRetries ?? 3;
+        : (this.llmConfig.retryOptions?.maxRetries ?? 3);
     const baseDelay = this.llmConfig.retryOptions?.retryDelay ?? 1000;
     const backoff = this.llmConfig.retryOptions?.retryBackoffFactor ?? 2.0;
 
@@ -1836,14 +1836,14 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
           typeof secondsRaw === 'number'
             ? secondsRaw
             : typeof secondsRaw === 'string'
-            ? Number.parseFloat(secondsRaw)
-            : undefined;
+              ? Number.parseFloat(secondsRaw)
+              : undefined;
         const nanos =
           typeof nanosRaw === 'number'
             ? nanosRaw
             : typeof nanosRaw === 'string'
-            ? Number.parseFloat(nanosRaw)
-            : undefined;
+              ? Number.parseFloat(nanosRaw)
+              : undefined;
         if (
           !Number.isFinite(seconds ?? NaN) &&
           !Number.isFinite(nanos ?? NaN)
@@ -2190,7 +2190,7 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         options.cacheName ??
         (options.systemInstruction
           ? null
-          : this.systemInstructionCache?.name ?? null);
+          : (this.systemInstructionCache?.name ?? null));
       try {
         this.logger.debug('Making LLM API request via @google/genai', {
           correlationId: CorrelationUtils.getCorrelationId(),
@@ -2649,8 +2649,8 @@ OUTPUT FORMAT: Return valid JSON matching the LLMOutputStructure exactly.`;
         typeof input === 'string'
           ? input
           : input instanceof URL
-          ? input.toString()
-          : input?.url ?? '';
+            ? input.toString()
+            : (input?.url ?? '');
       try {
         return await originalFetch(input as RequestInfo, init);
       } catch (error) {

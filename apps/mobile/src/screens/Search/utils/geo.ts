@@ -137,8 +137,8 @@ export const calculateFullScreenBounds = (
   // Calculate the span in degrees with padding multiplier
   // Add pin dimensions to prevent culling when anchor crosses screen edge
   const lngPadding = paddingMultiplier * 1.5; // 50% extra for horizontal
-  const lngSpan = ((screenWidth / 2) * degreesPerPixelLng) * lngPadding + pinHalfWidthDegrees;
-  const latSpan = ((screenHeight / 2) * degreesPerPixelLat) * paddingMultiplier + pinHeightDegrees;
+  const lngSpan = (screenWidth / 2) * degreesPerPixelLng * lngPadding + pinHalfWidthDegrees;
+  const latSpan = (screenHeight / 2) * degreesPerPixelLat * paddingMultiplier + pinHeightDegrees;
 
   // Build bounds
   const west = lng - lngSpan;

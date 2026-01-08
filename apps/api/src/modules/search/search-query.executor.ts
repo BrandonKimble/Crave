@@ -1354,8 +1354,8 @@ export class SearchQueryExecutor {
         typeof record.timeZone === 'string'
           ? record.timeZone
           : typeof record.time_zone === 'string'
-          ? record.time_zone
-          : null;
+            ? record.time_zone
+            : null;
       const operatingMetadata = this.buildOperatingMetadataFromLocation(
         hours,
         utcOffsetMinutes,
@@ -1603,10 +1603,10 @@ export class SearchQueryExecutor {
       typeof priceRangeRecord.formattedText === 'string'
         ? priceRangeRecord.formattedText
         : typeof priceRangeRecord.rawText === 'string'
-        ? priceRangeRecord.rawText
-        : typeof priceRangeRecord.text === 'string'
-        ? priceRangeRecord.text
-        : null;
+          ? priceRangeRecord.rawText
+          : typeof priceRangeRecord.text === 'string'
+            ? priceRangeRecord.text
+            : null;
 
     return rawText?.trim() || null;
   }

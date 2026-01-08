@@ -145,7 +145,7 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import { getMarkerColorForRestaurant, isCoordinateWithinBounds } from './utils/marker-lod';
+import { getMarkerColorForRestaurant } from './utils/marker-lod';
 import { getQualityColorFromPercentile } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
@@ -154,7 +154,6 @@ import {
   hasBoundsMovedSignificantly,
   isLngLatTuple,
   mapStateBoundsToMapBounds,
-  mapStateToFullScreenBounds,
 } from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
@@ -3489,15 +3488,13 @@ const SearchScreen: React.FC = () => {
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
     if (shouldLogSearchComputes) {
-      logSearchCompute(`visibleMarkerCandidates count=${markerCatalogEntries.length}`, getPerfNow() - start);
+      logSearchCompute(
+        `visibleMarkerCandidates count=${markerCatalogEntries.length}`,
+        getPerfNow() - start
+      );
     }
     return markerCatalogEntries;
-  }, [
-    getPerfNow,
-    logSearchCompute,
-    markerCatalogEntries,
-    shouldLogSearchComputes,
-  ]);
+  }, [getPerfNow, logSearchCompute, markerCatalogEntries, shouldLogSearchComputes]);
 
   React.useEffect(() => {
     const visibleCount = visibleMarkerCandidates.length;
@@ -4836,7 +4833,6 @@ const SearchScreen: React.FC = () => {
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
         const previousBounds = latestBoundsRef.current;
-        updateMarkerViewportBounds(state);
         if (shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
@@ -4884,7 +4880,6 @@ const SearchScreen: React.FC = () => {
       schedulePollBoundsUpdate,
       shouldShowPollsSheet,
       shouldLogMapEventRates,
-      updateMarkerViewportBounds,
     ]
   );
 

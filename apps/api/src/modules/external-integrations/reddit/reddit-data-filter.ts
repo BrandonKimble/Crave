@@ -277,8 +277,8 @@ function formatTimestamp(timestamp: unknown): string {
       typeof timestamp === 'number'
         ? timestamp
         : typeof timestamp === 'string'
-        ? parseFloat(timestamp)
-        : null;
+          ? parseFloat(timestamp)
+          : null;
 
     if (numericValue === null || Number.isNaN(numericValue)) {
       return new Date().toISOString();

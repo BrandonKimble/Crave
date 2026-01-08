@@ -15,9 +15,8 @@ export class ClerkAuthGuard implements CanActivate {
     const token = this.clerkAuthService.extractBearerToken(
       request.headers?.authorization,
     );
-    const claims: ClerkJwtClaims = await this.clerkAuthService.verifyToken(
-      token,
-    );
+    const claims: ClerkJwtClaims =
+      await this.clerkAuthService.verifyToken(token);
     const user = await this.userService.syncFromClerkClaims(claims);
     request.user = user;
     return true;

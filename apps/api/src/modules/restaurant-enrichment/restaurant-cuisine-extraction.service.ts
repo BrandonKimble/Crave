@@ -120,9 +120,8 @@ export class RestaurantCuisineExtractionService {
     let source: CuisineExtractionSource = rawCuisines.length ? 'types' : 'none';
 
     if (!rawCuisines.length && summaryText) {
-      const llmResult = await this.llmService.extractCuisineFromSummary(
-        summaryText,
-      );
+      const llmResult =
+        await this.llmService.extractCuisineFromSummary(summaryText);
       rawCuisines = llmResult.cuisines ?? [];
       source = rawCuisines.length ? 'llm' : 'none';
     }

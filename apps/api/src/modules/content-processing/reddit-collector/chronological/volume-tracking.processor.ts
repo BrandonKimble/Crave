@@ -76,9 +76,8 @@ export class VolumeTrackingProcessor implements OnModuleInit {
       }
 
       // Calculate volumes for all active subreddits
-      const volumes = await volumeTrackingService.calculateAllActiveVolumes(
-        sampleDays,
-      );
+      const volumes =
+        await volumeTrackingService.calculateAllActiveVolumes(sampleDays);
 
       const result: VolumeTrackingJobResult = {
         success: true,

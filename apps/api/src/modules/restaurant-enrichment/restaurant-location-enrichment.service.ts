@@ -1220,8 +1220,8 @@ export class RestaurantLocationEnrichmentService {
     const targets: string[] = Array.isArray(metaTarget)
       ? (metaTarget as string[])
       : typeof metaTarget === 'string'
-      ? [metaTarget]
-      : [];
+        ? [metaTarget]
+        : [];
     const normalizedTargets = targets.map((value) => value.toLowerCase());
     return (
       normalizedTargets.includes('name') && normalizedTargets.includes('type')
@@ -1639,8 +1639,8 @@ export class RestaurantLocationEnrichmentService {
       typeof configured === 'number'
         ? configured
         : typeof configured === 'string'
-        ? Number(configured)
-        : NaN;
+          ? Number(configured)
+          : NaN;
 
     if (Number.isFinite(numeric) && numeric >= 0 && numeric <= 1) {
       return Number(numeric.toFixed(3));
@@ -1666,8 +1666,8 @@ export class RestaurantLocationEnrichmentService {
       typeof details.nationalPhoneNumber === 'string'
         ? details.nationalPhoneNumber
         : typeof details.internationalPhoneNumber === 'string'
-        ? details.internationalPhoneNumber
-        : null;
+          ? details.internationalPhoneNumber
+          : null;
     if (!raw) {
       return null;
     }
@@ -3359,10 +3359,10 @@ export class RestaurantLocationEnrichmentService {
       typeof details.timeZone === 'string'
         ? details.timeZone
         : typeof sourceRecord.timeZone === 'string'
-        ? sourceRecord.timeZone
-        : typeof sourceRecord.timezone === 'string'
-        ? sourceRecord.timezone
-        : undefined;
+          ? sourceRecord.timeZone
+          : typeof sourceRecord.timezone === 'string'
+            ? sourceRecord.timezone
+            : undefined;
 
     if (timezoneCandidate) {
       normalized.timezone = timezoneCandidate;
@@ -3736,10 +3736,10 @@ export class RestaurantLocationEnrichmentService {
       min !== null && max !== null
         ? `$${min}-${max}`
         : max !== null
-        ? `<$${max}`
-        : min !== null
-        ? `$${min}+`
-        : rawText;
+          ? `<$${max}`
+          : min !== null
+            ? `$${min}+`
+            : rawText;
 
     return {
       min,

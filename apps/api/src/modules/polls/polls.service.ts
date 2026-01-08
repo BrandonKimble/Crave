@@ -422,9 +422,8 @@ export class PollsService {
           })
           .trim()
       : '';
-    const moderationDecision = await this.moderation.moderateText(
-      sanitizedLabel,
-    );
+    const moderationDecision =
+      await this.moderation.moderateText(sanitizedLabel);
     if (!moderationDecision.allowed) {
       throw new BadRequestException(
         `Option rejected by moderation: ${moderationDecision.reason}`,
@@ -919,7 +918,7 @@ export class PollsService {
         fallbackCoverageKey ??
         null;
       const key = typeof rawKey === 'string' ? rawKey.trim().toLowerCase() : '';
-      const coverageName = key ? labelByKey.get(key) ?? null : null;
+      const coverageName = key ? (labelByKey.get(key) ?? null) : null;
       return {
         ...poll,
         coverageName,
