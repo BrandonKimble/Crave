@@ -85,6 +85,7 @@ export function createWinstonConfig(
   const forceJson =
     (process.env.LOG_FORMAT || '').toLowerCase() === 'json' ? true : false;
   const useJsonFormat = forceJson || !isDevelopment;
+  const enableFileLogs = process.env.LOG_FILES === 'true';
   const allowedLevels = [
     'error',
     'warn',
@@ -104,7 +105,11 @@ export function createWinstonConfig(
   const transports: winston.transport[] = [];
 
   // Console transport (always enabled in development, optional in production)
-  if (isDevelopment || process.env.LOG_CONSOLE === 'true') {
+  const enableConsoleLogs =
+    isDevelopment ||
+    process.env.LOG_CONSOLE === 'true' ||
+    (!isDevelopment && process.env.LOG_CONSOLE !== 'false');
+  if (enableConsoleLogs) {
     transports.push(
       new winston.transports.Console({
         level: resolvedLevel,
@@ -114,7 +119,7 @@ export function createWinstonConfig(
   }
 
   // File transports for production and testing
-  if (!isDevelopment || process.env.LOG_FILES === 'true') {
+  if (enableFileLogs) {
     // Error log file
     transports.push(
       new DailyRotateFile({
@@ -166,29 +171,31 @@ export function createWinstonConfig(
     },
     transports,
     // Handle uncaught exceptions
-    exceptionHandlers: isProduction
-      ? [
-          new DailyRotateFile({
-            filename: 'logs/exceptions-%DATE%.log',
-            datePattern: 'YYYY-MM-DD',
-            format: jsonFormat,
-            maxSize: '20m',
-            maxFiles: '30d',
-          }),
-        ]
-      : [],
+    exceptionHandlers:
+      enableFileLogs && isProduction
+        ? [
+            new DailyRotateFile({
+              filename: 'logs/exceptions-%DATE%.log',
+              datePattern: 'YYYY-MM-DD',
+              format: jsonFormat,
+              maxSize: '20m',
+              maxFiles: '30d',
+            }),
+          ]
+        : [],
     // Handle unhandled promise rejections
-    rejectionHandlers: isProduction
-      ? [
-          new DailyRotateFile({
-            filename: 'logs/rejections-%DATE%.log',
-            datePattern: 'YYYY-MM-DD',
-            format: jsonFormat,
-            maxSize: '20m',
-            maxFiles: '30d',
-          }),
-        ]
-      : [],
+    rejectionHandlers:
+      enableFileLogs && isProduction
+        ? [
+            new DailyRotateFile({
+              filename: 'logs/rejections-%DATE%.log',
+              datePattern: 'YYYY-MM-DD',
+              format: jsonFormat,
+              maxSize: '20m',
+              maxFiles: '30d',
+            }),
+          ]
+        : [],
     // Exit on error is false to keep the process running
     exitOnError: false,
   };

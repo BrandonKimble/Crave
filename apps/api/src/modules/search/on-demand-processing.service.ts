@@ -910,8 +910,8 @@ export class OnDemandProcessingService {
         const timeFilter = isFirstRun
           ? 'year'
           : safeIntervalDays <= SHORT_SAFE_INTERVAL_DAYS
-            ? 'month'
-            : 'year';
+          ? 'month'
+          : 'year';
         plan.push({
           sort,
           timeFilter,

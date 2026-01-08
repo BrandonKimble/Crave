@@ -66,6 +66,22 @@ function resolveScopedEnv(
   return selected || values.fallback || undefined;
 }
 
+function resolveSecretEnv(appEnv: string, name: string): string | undefined {
+  const primary = process.env[name];
+  if (primary && primary.trim()) {
+    return primary.trim();
+  }
+
+  const normalized = appEnv.toLowerCase();
+  const legacyName = normalized === 'prod' ? `${name}_PROD` : `${name}_DEV`;
+  const legacyValue = process.env[legacyName];
+  if (legacyValue && legacyValue.trim()) {
+    return legacyValue.trim();
+  }
+
+  return undefined;
+}
+
 export default () => {
   const appEnv = resolveAppEnv();
 
@@ -192,26 +208,10 @@ export default () => {
       trialDays: parseInt(process.env.BILLING_TRIAL_DAYS || '0', 10),
     },
     reddit: {
-      clientId: resolveScopedEnv(appEnv, {
-        dev: process.env.REDDIT_CLIENT_ID_DEV,
-        prod: process.env.REDDIT_CLIENT_ID_PROD,
-        fallback: process.env.REDDIT_CLIENT_ID,
-      }),
-      clientSecret: resolveScopedEnv(appEnv, {
-        dev: process.env.REDDIT_CLIENT_SECRET_DEV,
-        prod: process.env.REDDIT_CLIENT_SECRET_PROD,
-        fallback: process.env.REDDIT_CLIENT_SECRET,
-      }),
-      username: resolveScopedEnv(appEnv, {
-        dev: process.env.REDDIT_USERNAME_DEV,
-        prod: process.env.REDDIT_USERNAME_PROD,
-        fallback: process.env.REDDIT_USERNAME,
-      }),
-      password: resolveScopedEnv(appEnv, {
-        dev: process.env.REDDIT_PASSWORD_DEV,
-        prod: process.env.REDDIT_PASSWORD_PROD,
-        fallback: process.env.REDDIT_PASSWORD,
-      }),
+      clientId: resolveSecretEnv(appEnv, 'REDDIT_CLIENT_ID'),
+      clientSecret: resolveSecretEnv(appEnv, 'REDDIT_CLIENT_SECRET'),
+      username: resolveSecretEnv(appEnv, 'REDDIT_USERNAME'),
+      password: resolveSecretEnv(appEnv, 'REDDIT_PASSWORD'),
       userAgent: process.env.REDDIT_USER_AGENT || 'CraveSearch/1.0.0',
       timeout: parseInt(process.env.REDDIT_TIMEOUT || '10000', 10),
       requestsPerMinute: parseInt(
@@ -227,11 +227,7 @@ export default () => {
       },
     },
     llm: {
-      apiKey: resolveScopedEnv(appEnv, {
-        dev: process.env.LLM_API_KEY_DEV,
-        prod: process.env.LLM_API_KEY_PROD,
-        fallback: process.env.LLM_API_KEY,
-      }),
+      apiKey: resolveSecretEnv(appEnv, 'LLM_API_KEY'),
       model: process.env.LLM_MODEL || 'gemini-2.5-flash-preview-09-2025',
       queryModel: process.env.LLM_QUERY_MODEL || 'gemini-2.5-flash',
       queryTimeout: parseInt(process.env.LLM_QUERY_TIMEOUT || '0', 10),
@@ -323,11 +319,7 @@ export default () => {
       },
     },
     googlePlaces: {
-      apiKey: resolveScopedEnv(appEnv, {
-        dev: process.env.GOOGLE_PLACES_API_KEY_DEV,
-        prod: process.env.GOOGLE_PLACES_API_KEY_PROD,
-        fallback: process.env.GOOGLE_PLACES_API_KEY,
-      }),
+      apiKey: resolveSecretEnv(appEnv, 'GOOGLE_PLACES_API_KEY'),
       timeout: parseInt(process.env.GOOGLE_PLACES_TIMEOUT || '10000', 10),
       requestsPerSecond: parseInt(
         process.env.GOOGLE_PLACES_REQUESTS_PER_SECOND || '50',
@@ -387,10 +379,7 @@ export default () => {
       },
     },
     moderation: {
-      apiKey: resolveScopedEnv(appEnv, {
-        dev: process.env.GOOGLE_MODERATION_API_KEY_DEV,
-        prod: process.env.GOOGLE_MODERATION_API_KEY_PROD,
-      }),
+      apiKey: resolveSecretEnv(appEnv, 'GOOGLE_MODERATION_API_KEY'),
       endpoint:
         process.env.GOOGLE_MODERATION_ENDPOINT ||
         'https://contentmoderation.googleapis.com/v1beta/moderations:moderateText',

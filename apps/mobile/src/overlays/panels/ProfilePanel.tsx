@@ -14,39 +14,31 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import { Feather } from '@expo/vector-icons';
-import type { SharedValue } from 'react-native-reanimated';
-import { Text } from '../components';
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import { colors as themeColors } from '../constants/theme';
-import { useOnboardingStore } from '../store/onboardingStore';
-import { useNotificationStore } from '../store/notificationStore';
-import { useOverlayStore } from '../store/overlayStore';
-import { logger } from '../utils';
-import { notificationsService } from '../services/notifications';
-import { usersService } from '../services/users';
-import { fetchUserPolls, type Poll } from '../services/polls';
-import { useFavoriteLists } from '../hooks/use-favorite-lists';
-import type { FavoriteListSummary } from '../services/favorite-lists';
-import type { RootStackParamList } from '../types/navigation';
-import {
-  overlaySheetStyles,
-  OVERLAY_HORIZONTAL_PADDING,
-  OVERLAY_STACK_ZINDEX,
-} from './overlaySheetStyles';
-import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { calculateSnapPoints } from './sheetUtils';
-import { useHeaderCloseCutout } from './useHeaderCloseCutout';
+import { Text } from '../../components';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import { colors as themeColors } from '../../constants/theme';
+import { useOnboardingStore } from '../../store/onboardingStore';
+import { useNotificationStore } from '../../store/notificationStore';
+import { useOverlayStore } from '../../store/overlayStore';
+import { logger } from '../../utils';
+import { notificationsService } from '../../services/notifications';
+import { usersService } from '../../services/users';
+import { fetchUserPolls, type Poll } from '../../services/polls';
+import { useFavoriteLists } from '../../hooks/use-favorite-lists';
+import type { FavoriteListSummary } from '../../services/favorite-lists';
+import type { RootStackParamList } from '../../types/navigation';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import { calculateSnapPoints } from '../sheetUtils';
+import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
 
-type ProfileOverlayProps = {
+type UseProfilePanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
-  navBarHeight?: number;
   searchBarTop?: number;
-  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-  sheetYObserver?: SharedValue<number>;
+  onSnapChange?: (snap: OverlaySheetSnap) => void;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -70,15 +62,12 @@ const resolveRankColor = (score?: number | null) => {
   return '#fb7185';
 };
 
-const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
+export const useProfilePanelSpec = ({
   visible,
   navBarTop = 0,
-  navBarHeight = 0,
   searchBarTop = 0,
   onSnapChange,
-  onDragStateChange,
-  sheetYObserver,
-}) => {
+}: UseProfilePanelSpecOptions): OverlayContentSpec<unknown> => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
@@ -291,10 +280,9 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
   const closeCutout = useHeaderCloseCutout();
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
-  const navBarInset = Math.max(navBarHeight, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 140, 160);
-  const snapPoints = React.useMemo<SnapPoints>(
+  const snapPoints = React.useMemo(
     () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
@@ -479,40 +467,27 @@ const ProfileOverlay: React.FC<ProfileOverlayProps> = ({
     </View>
   );
 
-  return (
-    <View
-      pointerEvents="box-none"
-      style={[styles.sheetClip, navBarInset > 0 ? { bottom: navBarInset } : null]}
-    >
-      <BottomSheetWithFlashList
-        visible={visible}
-        snapPoints={snapPoints}
-        initialSnapPoint="expanded"
-        data={[]}
-        renderItem={() => null}
-        estimatedItemSize={720}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
-        ListHeaderComponent={listHeaderComponent}
-        backgroundComponent={<FrostedGlassBackground />}
-        headerComponent={headerComponent}
-        style={overlaySheetStyles.container}
-        onHidden={handleHidden}
-        onSnapChange={onSnapChange}
-        onDragStateChange={onDragStateChange}
-        sheetYObserver={sheetYObserver}
-        dismissThreshold={dismissThreshold}
-        preventSwipeDismiss
-      />
-    </View>
-  );
+  return {
+    overlayKey: 'profile',
+    snapPoints,
+    initialSnapPoint: 'expanded',
+    data: [],
+    renderItem: () => null,
+    estimatedItemSize: 720,
+    contentContainerStyle: [styles.scrollContent, { paddingBottom: contentBottomPadding }],
+    ListHeaderComponent: listHeaderComponent,
+    backgroundComponent: <FrostedGlassBackground />,
+    headerComponent: headerComponent,
+    onHidden: handleHidden,
+    onSnapChange,
+    dismissThreshold,
+    preventSwipeDismiss: true,
+    keyboardShouldPersistTaps: 'handled',
+    style: overlaySheetStyles.container,
+  };
 };
 
 const styles = StyleSheet.create({
-  sheetClip: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    zIndex: OVERLAY_STACK_ZINDEX,
-  },
   scrollContent: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
     paddingTop: 16,
@@ -682,5 +657,3 @@ const styles = StyleSheet.create({
     color: themeColors.textBody,
   },
 });
-
-export default ProfileOverlay;

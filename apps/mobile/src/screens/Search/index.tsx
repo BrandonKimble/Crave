@@ -38,8 +38,9 @@ import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
 import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
-import RestaurantOverlay, { type RestaurantOverlayData } from '../../overlays/RestaurantOverlay';
-import SecondaryBottomSheet from '../../overlays/SecondaryBottomSheet';
+import OverlaySheetShell from '../../overlays/OverlaySheetShell';
+import OverlayModalSheet from '../../overlays/OverlayModalSheet';
+import { createOverlayRegistry } from '../../overlays/OverlayRegistry';
 import { useHeaderCloseCutout } from '../../overlays/useHeaderCloseCutout';
 import { calculateSnapPoints, resolveExpandedTop } from '../../overlays/sheetUtils';
 import { logger } from '../../utils';
@@ -61,10 +62,16 @@ import type {
 } from '../../types';
 import type { MainSearchIntent, RootStackParamList } from '../../types/navigation';
 import * as Location from 'expo-location';
-import BookmarksOverlay from '../../overlays/BookmarksOverlay';
-import ProfileOverlay from '../../overlays/ProfileOverlay';
-import SaveListOverlay from '../../overlays/SaveListOverlay';
-import PollsOverlay from '../../overlays/PollsOverlay';
+import { useBookmarksPanelSpec } from '../../overlays/panels/BookmarksPanel';
+import { usePollCreationPanelSpec } from '../../overlays/panels/PollCreationPanel';
+import { usePollsPanelSpec } from '../../overlays/panels/PollsPanel';
+import { useProfilePanelSpec } from '../../overlays/panels/ProfilePanel';
+import {
+  useRestaurantPanelSpec,
+  type RestaurantOverlayData,
+} from '../../overlays/panels/RestaurantPanel';
+import { useSaveListPanelSpec } from '../../overlays/panels/SaveListPanel';
+import { useSearchPanelSpec } from '../../overlays/panels/SearchPanel';
 import { buildMapStyleURL } from '../../constants/map';
 import { useOverlayStore, type OverlayKey } from '../../store/overlayStore';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
@@ -85,7 +92,6 @@ import SearchMap, {
   type MapboxMapRef,
   type RestaurantFeatureProperties,
 } from './components/search-map';
-import SearchResultsSheet from './components/search-results-sheet';
 import useSearchChromeTransition from './hooks/use-search-chrome-transition';
 import useSearchHistory from './hooks/use-search-history';
 import useSearchSheet from './hooks/use-search-sheet';
@@ -109,6 +115,7 @@ import {
   RESULTS_BOTTOM_PADDING,
   SCORE_INFO_MAX_HEIGHT,
   SCREEN_HEIGHT,
+  SCREEN_WIDTH,
   SEARCH_CONTAINER_PADDING_TOP,
   SEARCH_BAR_HOLE_PADDING,
   SEARCH_BAR_HOLE_RADIUS,
@@ -138,11 +145,7 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import {
-  getMarkerColorForRestaurant,
-  isCoordinateWithinBounds,
-  padMapBounds,
-} from './utils/marker-lod';
+import { getMarkerColorForRestaurant, isCoordinateWithinBounds } from './utils/marker-lod';
 import { getQualityColorFromPercentile } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
@@ -151,6 +154,7 @@ import {
   hasBoundsMovedSignificantly,
   isLngLatTuple,
   mapStateBoundsToMapBounds,
+  mapStateToFullScreenBounds,
 } from './utils/geo';
 
 MapboxGL.setTelemetryEnabled(false);
@@ -160,12 +164,7 @@ const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 const memoizeHiddenOverlay = <P extends { visible: boolean }>(Component: React.ComponentType<P>) =>
   React.memo(Component, (prev, next) => !prev.visible && !next.visible);
 
-const MemoBookmarksOverlay = memoizeHiddenOverlay(BookmarksOverlay);
-const MemoProfileOverlay = memoizeHiddenOverlay(ProfileOverlay);
-const MemoSaveListOverlay = memoizeHiddenOverlay(SaveListOverlay);
-const MemoPollsOverlay = memoizeHiddenOverlay(PollsOverlay);
-const MemoRestaurantOverlay = memoizeHiddenOverlay(RestaurantOverlay);
-const MemoSecondaryBottomSheet = memoizeHiddenOverlay(SecondaryBottomSheet);
+const MemoOverlayModalSheet = memoizeHiddenOverlay(OverlayModalSheet);
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 const PIXEL_SCALE = PixelRatio.get();
@@ -186,8 +185,6 @@ const FILTER_TOGGLE_DEBOUNCE_MS = 600;
 const MARKER_REVEAL_CHUNK = 4;
 const MARKER_REVEAL_STAGGER_MS = 12;
 const MARKER_REVEAL_ANIM_MS = 160;
-const MARKER_VIEWPORT_PADDING_RATIO = 0.15;
-const MARKER_VIEWPORT_UPDATE_THROTTLE_MS = 200;
 const MARKER_DOT_HEAVY_ZOOM_ENTER = 12.0;
 const MARKER_DOT_HEAVY_ZOOM_EXIT = 12.4;
 const MARKER_DOT_HEAVY_COUNT_ENTER = 180;
@@ -345,20 +342,6 @@ const SearchScreen: React.FC = () => {
 
   const handleMapLoaded = React.useCallback(() => {
     setIsMapStyleReady(true);
-    void (async () => {
-      const rawBounds = await mapRef.current?.getVisibleBounds?.();
-      if (!rawBounds || rawBounds.length < 2) {
-        return;
-      }
-      const first = rawBounds[0] as unknown;
-      const second = rawBounds[1] as unknown;
-      if (!isLngLatTuple(first) || !isLngLatTuple(second)) {
-        return;
-      }
-      const bounds = boundsFromPairs(first, second);
-      latestBoundsRef.current = bounds;
-      setMarkerViewportBounds(bounds);
-    })();
   }, []);
 
   React.useEffect(() => {
@@ -772,22 +755,16 @@ const SearchScreen: React.FC = () => {
   const [userLocation, setUserLocation] = React.useState<Coordinate | null>(null);
   const [locationPermissionDenied, setLocationPermissionDenied] = React.useState(false);
   const [pollBounds, setPollBounds] = React.useState<MapBounds | null>(null);
-  const [markerViewportBounds, setMarkerViewportBounds] = React.useState<MapBounds | null>(null);
   const [mapMovedSinceSearch, setMapMovedSinceSearch] = React.useState(false);
   const resultsSheetDraggingRef = React.useRef(false);
   const resultsListScrollingRef = React.useRef(false);
   const resultsSheetSettlingRef = React.useRef(false);
   const pendingResultsSheetSnapRef = React.useRef<OverlaySheetSnap | null>(null);
-  const [isPollsSheetDragging, setIsPollsSheetDragging] = React.useState(false);
-  const [isBookmarksSheetDragging, setIsBookmarksSheetDragging] = React.useState(false);
-  const [isProfileSheetDragging, setIsProfileSheetDragging] = React.useState(false);
-  const [isSaveSheetDragging, setIsSaveSheetDragging] = React.useState(false);
   const searchThisAreaVisibility = useSharedValue(0);
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
   const lastCameraChangedHandledRef = React.useRef(0);
-  const lastMarkerViewportUpdateRef = React.useRef(0);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollBoundsRef = React.useRef<MapBounds | null>(null);
   const pollBoundsTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -796,12 +773,7 @@ const SearchScreen: React.FC = () => {
     mapIdle: 0,
     lastLog: 0,
   });
-  const isAnySheetDragging =
-    isPollsSheetDragging ||
-    isBookmarksSheetDragging ||
-    isProfileSheetDragging ||
-    isSaveSheetDragging;
-  const anySheetDraggingRef = React.useRef(isAnySheetDragging);
+  const anySheetDraggingRef = React.useRef(false);
 
   const searchInteractionRef = React.useRef({
     isInteracting: false,
@@ -809,9 +781,6 @@ const SearchScreen: React.FC = () => {
     isResultsListScrolling: false,
     isResultsSheetSettling: false,
   });
-  React.useEffect(() => {
-    anySheetDraggingRef.current = resultsSheetDraggingRef.current || isAnySheetDragging;
-  }, [isAnySheetDragging]);
   const updateSearchInteractionRef = React.useCallback(
     (next: Partial<typeof searchInteractionRef.current>) => {
       const current = searchInteractionRef.current;
@@ -848,12 +817,12 @@ const SearchScreen: React.FC = () => {
       }
       resultsSheetDraggingRef.current = isDragging;
       updateSearchInteractionRef({ isResultsSheetDragging: isDragging });
-      anySheetDraggingRef.current = isDragging || isAnySheetDragging;
+      anySheetDraggingRef.current = isDragging;
       if (isDragging) {
         cancelMapUpdateTimeouts();
       }
     },
-    [cancelMapUpdateTimeouts, isAnySheetDragging, updateSearchInteractionRef]
+    [cancelMapUpdateTimeouts, updateSearchInteractionRef]
   );
   const setResultsListScrolling = React.useCallback(
     (isScrolling: boolean) => {
@@ -894,9 +863,9 @@ const SearchScreen: React.FC = () => {
       isResultsListScrolling: false,
       isResultsSheetSettling: false,
     });
-    anySheetDraggingRef.current = isAnySheetDragging;
+    anySheetDraggingRef.current = false;
     cancelMapUpdateTimeouts();
-  }, [cancelMapUpdateTimeouts, isAnySheetDragging, updateSearchInteractionRef]);
+  }, [cancelMapUpdateTimeouts, updateSearchInteractionRef]);
 
   // Stable context value so list items don't re-render on drag state changes
   const searchInteractionContextValue = React.useMemo(
@@ -978,10 +947,6 @@ const SearchScreen: React.FC = () => {
   const suggestionScrollTopValue = useSharedValue(0);
   const suggestionScrollMaxHeightValue = useSharedValue(0);
   const shortcutContentFadeMode = useSharedValue(SHORTCUT_CONTENT_FADE_DEFAULT);
-  const pollsSheetY = useSharedValue(SCREEN_HEIGHT + 80);
-  const bookmarksSheetY = useSharedValue(SCREEN_HEIGHT + 80);
-  const profileSheetY = useSharedValue(SCREEN_HEIGHT + 80);
-  const saveSheetY = useSharedValue(SCREEN_HEIGHT + 80);
   const inputRef = React.useRef<TextInput | null>(null);
   const ignoreNextSearchBlurRef = React.useRef(false);
   const cancelSearchEditOnBackRef = React.useRef(false);
@@ -1014,14 +979,19 @@ const SearchScreen: React.FC = () => {
   const toggleFilterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterToggleRequestRef = React.useRef(0);
   const activeOverlay = useOverlayStore((state) => state.activeOverlay);
+  const overlayStack = useOverlayStore((state) => state.overlayStack);
   const overlayParams = useOverlayStore((state) => state.overlayParams);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const setOverlayParams = useOverlayStore((state) => state.setOverlayParams);
+  const popOverlay = useOverlayStore((state) => state.popOverlay);
+  const popToRootOverlay = useOverlayStore((state) => state.popToRootOverlay);
   const registerTransientDismissor = useOverlayStore((state) => state.registerTransientDismissor);
   const dismissTransientOverlays = useOverlayStore((state) => state.dismissTransientOverlays);
-  const isSearchOverlay = activeOverlay === 'search';
-  const showBookmarksOverlay = activeOverlay === 'bookmarks';
-  const showPollsOverlay = activeOverlay === 'polls';
-  const showProfileOverlay = activeOverlay === 'profile';
+  const rootOverlay = overlayStack[0] ?? activeOverlay;
+  const isSearchOverlay = rootOverlay === 'search';
+  const showBookmarksOverlay = rootOverlay === 'bookmarks';
+  const showPollsOverlay = rootOverlay === 'polls';
+  const showProfileOverlay = rootOverlay === 'profile';
   const showSaveListOverlay = saveSheetState.visible;
   const pollOverlayParams = overlayParams.polls;
   const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
@@ -1042,10 +1012,14 @@ const SearchScreen: React.FC = () => {
     return Math.max(rawTop, 0);
   }, [searchBarFrame, searchLayout.top]);
   const ensureSearchOverlay = React.useCallback(() => {
-    if (activeOverlay !== 'search') {
+    if (rootOverlay !== 'search') {
       setOverlay('search');
+      return;
     }
-  }, [activeOverlay, setOverlay]);
+    if (activeOverlay !== 'search') {
+      popToRootOverlay();
+    }
+  }, [activeOverlay, popToRootOverlay, rootOverlay, setOverlay]);
   const {
     panelVisible,
     sheetState,
@@ -1173,28 +1147,28 @@ const SearchScreen: React.FC = () => {
   const chromeTransitionConfig = React.useMemo(() => {
     if (showSaveListOverlay) {
       return {
-        sheetY: saveSheetY,
+        sheetY: sheetTranslateY,
         expanded: saveChromeSnaps.expanded,
         middle: saveChromeSnaps.middle,
       };
     }
     if (showProfileOverlay) {
       return {
-        sheetY: profileSheetY,
+        sheetY: sheetTranslateY,
         expanded: profileChromeSnaps.expanded,
         middle: profileChromeSnaps.middle,
       };
     }
     if (showBookmarksOverlay) {
       return {
-        sheetY: bookmarksSheetY,
+        sheetY: sheetTranslateY,
         expanded: bookmarksChromeSnaps.expanded,
         middle: bookmarksChromeSnaps.middle,
       };
     }
     if (shouldUsePollsChrome) {
       return {
-        sheetY: pollsSheetY,
+        sheetY: sheetTranslateY,
         expanded: pollsChromeSnaps.expanded,
         middle: pollsChromeSnaps.middle,
       };
@@ -1207,16 +1181,12 @@ const SearchScreen: React.FC = () => {
   }, [
     bookmarksChromeSnaps.expanded,
     bookmarksChromeSnaps.middle,
-    bookmarksSheetY,
     profileChromeSnaps.expanded,
     profileChromeSnaps.middle,
-    profileSheetY,
     saveChromeSnaps.expanded,
     saveChromeSnaps.middle,
-    saveSheetY,
     pollsChromeSnaps.expanded,
     pollsChromeSnaps.middle,
-    pollsSheetY,
     shouldUsePollsChrome,
     sheetTranslateY,
     showBookmarksOverlay,
@@ -1346,18 +1316,6 @@ const SearchScreen: React.FC = () => {
     },
     [applyResultsSheetSnapChange, setResultsSheetSettlingState]
   );
-  const handlePollsSheetDragStateChange = React.useCallback((isDragging: boolean) => {
-    setIsPollsSheetDragging(isDragging);
-  }, []);
-  const handleBookmarksSheetDragStateChange = React.useCallback((isDragging: boolean) => {
-    setIsBookmarksSheetDragging(isDragging);
-  }, []);
-  const handleProfileSheetDragStateChange = React.useCallback((isDragging: boolean) => {
-    setIsProfileSheetDragging(isDragging);
-  }, []);
-  const handleSaveSheetDragStateChange = React.useCallback((isDragging: boolean) => {
-    setIsSaveSheetDragging(isDragging);
-  }, []);
   const handleSearchFiltersLayoutCache = React.useCallback(
     (cache: SearchFiltersLayoutCache) => {
       searchFiltersLayoutCacheRef.current = cache;
@@ -1472,14 +1430,14 @@ const SearchScreen: React.FC = () => {
       if (snap === 'hidden') {
         setIsDockedPollsDismissed(true);
         // Immediately switch to search when polls overlay is dismissed
-        if (activeOverlay === 'polls') {
+        if (rootOverlay === 'polls') {
           setOverlay('search');
         }
       }
     },
     [
-      activeOverlay,
       pollsSnapRequest,
+      rootOverlay,
       setIsDockedPollsDismissed,
       setOverlay,
       setPollsSheetSnap,
@@ -1495,24 +1453,24 @@ const SearchScreen: React.FC = () => {
       }
       if (snap === 'hidden') {
         // Immediately switch to search when bookmarks overlay is dismissed
-        if (activeOverlay === 'bookmarks') {
+        if (rootOverlay === 'bookmarks') {
           setOverlay('search');
         }
       }
     },
-    [activeOverlay, bookmarksSnapRequest, setOverlay]
+    [bookmarksSnapRequest, rootOverlay, setOverlay]
   );
   const handleProfileSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
       setProfileSheetSnap(snap);
       if (snap === 'hidden') {
         // Immediately switch to search when profile overlay is dismissed
-        if (activeOverlay === 'profile') {
+        if (rootOverlay === 'profile') {
           setOverlay('search');
         }
       }
     },
-    [activeOverlay, setOverlay]
+    [rootOverlay, setOverlay]
   );
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
     useSearchRequests();
@@ -1522,15 +1480,16 @@ const SearchScreen: React.FC = () => {
   const navItems = React.useMemo(
     () =>
       [
-        { key: 'search' as OverlayKey, label: 'Search' },
-        { key: 'polls' as OverlayKey, label: 'Polls' },
-        { key: 'bookmarks' as OverlayKey, label: 'Favorites' },
-        { key: 'profile' as OverlayKey, label: 'Profile' },
+        { key: 'search', label: 'Search' },
+        { key: 'polls', label: 'Polls' },
+        { key: 'bookmarks', label: 'Favorites' },
+        { key: 'profile', label: 'Profile' },
       ] as const,
     []
   );
+  type NavItemKey = (typeof navItems)[number]['key'];
   const navIconRenderers = React.useMemo<
-    Record<OverlayKey, (color: string, active: boolean) => React.ReactNode>
+    Record<NavItemKey, (color: string, active: boolean) => React.ReactNode>
   >(
     () => ({
       search: (color: string, active: boolean) => {
@@ -2733,7 +2692,7 @@ const SearchScreen: React.FC = () => {
   > | null>(null);
   const isPerfDebugEnabled = searchPerfDebug.enabled;
   const shouldDisableSearchBlur = isPerfDebugEnabled && searchPerfDebug.disableBlur;
-  const forceDisableMarkerViews = __DEV__ && true;
+  const forceDisableMarkerViews = false;
   const shouldDisableMarkerViews =
     forceDisableMarkerViews || (isPerfDebugEnabled && searchPerfDebug.disableMarkerViews);
   const shouldUsePlaceholderRows =
@@ -3526,34 +3485,17 @@ const SearchScreen: React.FC = () => {
     : null;
   const effectiveMapZoom = mapZoom ?? USA_FALLBACK_ZOOM;
 
-  const paddedMarkerBounds = React.useMemo(() => {
-    if (!markerViewportBounds) {
-      return null;
-    }
-    return padMapBounds(markerViewportBounds, MARKER_VIEWPORT_PADDING_RATIO);
-  }, [markerViewportBounds]);
-
+  // Use all catalog entries - Mapbox MarkerView handles viewport culling automatically
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    if (!paddedMarkerBounds) {
-      return [];
-    }
-    const visible = markerCatalogEntries.filter((entry) => {
-      const coordinates = entry.feature.geometry.coordinates as [number, number];
-      return isCoordinateWithinBounds(
-        { lat: coordinates[1], lng: coordinates[0] },
-        paddedMarkerBounds
-      );
-    });
     if (shouldLogSearchComputes) {
-      logSearchCompute(`visibleMarkerCandidates count=${visible.length}`, getPerfNow() - start);
+      logSearchCompute(`visibleMarkerCandidates count=${markerCatalogEntries.length}`, getPerfNow() - start);
     }
-    return visible;
+    return markerCatalogEntries;
   }, [
     getPerfNow,
     logSearchCompute,
     markerCatalogEntries,
-    paddedMarkerBounds,
     shouldLogSearchComputes,
   ]);
 
@@ -4830,9 +4772,6 @@ const SearchScreen: React.FC = () => {
       }
       const isGestureActive = Boolean(state?.gestures?.isGestureActive);
       mapGestureActiveRef.current = isGestureActive;
-      if (!isGestureActive) {
-        return;
-      }
       const now = Date.now();
       const throttleMs = 120;
       if (now - lastCameraChangedHandledRef.current < throttleMs) {
@@ -4846,11 +4785,6 @@ const SearchScreen: React.FC = () => {
       const bounds = mapStateBoundsToMapBounds(state);
       if (!bounds) {
         return;
-      }
-
-      if (now - lastMarkerViewportUpdateRef.current >= MARKER_VIEWPORT_UPDATE_THROTTLE_MS) {
-        lastMarkerViewportUpdateRef.current = now;
-        setMarkerViewportBounds(bounds);
       }
 
       if (!latestBoundsRef.current) {
@@ -4902,7 +4836,7 @@ const SearchScreen: React.FC = () => {
       const bounds = mapStateBoundsToMapBounds(state);
       if (bounds) {
         const previousBounds = latestBoundsRef.current;
-        setMarkerViewportBounds(bounds);
+        updateMarkerViewportBounds(state);
         if (shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
         }
@@ -4950,6 +4884,7 @@ const SearchScreen: React.FC = () => {
       schedulePollBoundsUpdate,
       shouldShowPollsSheet,
       shouldLogMapEventRates,
+      updateMarkerViewportBounds,
     ]
   );
 
@@ -5671,20 +5606,6 @@ const SearchScreen: React.FC = () => {
     }
     transition.savedSheetSnap = null;
   }, [animateSheetTo, sheetState]);
-  const restoreResultsScrollOffset = React.useCallback(() => {
-    const transition = profileTransitionRef.current;
-    const offset = transition.savedResultsScrollOffset;
-    transition.savedResultsScrollOffset = null;
-    if (offset === null) {
-      return;
-    }
-    resultsScrollOffset.value = offset;
-    const applyOffset = () => {
-      resultsScrollRef.current?.scrollToOffset({ offset, animated: false });
-    };
-    requestAnimationFrame(applyOffset);
-    setTimeout(applyOffset, 80);
-  }, [resultsScrollOffset]);
 
   const closeRestaurantProfile = React.useCallback(() => {
     // Guard against calling close when already closed or nothing to close
@@ -5736,9 +5657,6 @@ const SearchScreen: React.FC = () => {
       setSaveSheetState(previousSaveSheetStateRef.current);
     }
     previousSaveSheetStateRef.current = null;
-    if (shouldRestoreSearchSheet) {
-      restoreResultsScrollOffset();
-    }
     hasRestoredProfileMapRef.current = false;
     profileTransitionRef.current = {
       status: 'idle',
@@ -5762,7 +5680,6 @@ const SearchScreen: React.FC = () => {
     clearProfileTransitionLock,
     isSearchOverlay,
     restoreRestaurantProfileMap,
-    restoreResultsScrollOffset,
     restoreSearchSheetState,
     setProfileTransitionStatusState,
   ]);
@@ -6368,6 +6285,190 @@ const SearchScreen: React.FC = () => {
     [resultsContainerAnimatedStyle, resultsSheetVisibilityAnimatedStyle]
   );
 
+  const pollCreationParams = overlayParams.pollCreation;
+  const shouldShowPollCreationPanel = activeOverlay === 'pollCreation';
+  const handleClosePollCreation = React.useCallback(() => {
+    popOverlay();
+  }, [popOverlay]);
+  const handlePollCreated = React.useCallback(
+    (poll: { pollId: string; coverageKey?: string | null }) => {
+      setOverlayParams('polls', {
+        pollId: poll.pollId,
+        coverageKey: poll.coverageKey ?? pollCreationParams?.coverageKey ?? null,
+      });
+      popOverlay();
+    },
+    [pollCreationParams?.coverageKey, popOverlay, setOverlayParams]
+  );
+
+  const pollCreationPanelSpec = usePollCreationPanelSpec({
+    visible: shouldShowPollCreationPanel,
+    coverageKey: pollCreationParams?.coverageKey ?? null,
+    coverageName: pollCreationParams?.coverageName ?? null,
+    searchBarTop,
+    onClose: handleClosePollCreation,
+    onCreated: handlePollCreated,
+  });
+
+  const searchPanelSpec = useSearchPanelSpec<FoodResult | RestaurantResult>({
+    visible: shouldRenderResultsSheet,
+    listScrollEnabled:
+      !isPriceSelectorVisible && !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
+    snapPoints,
+    initialSnapPoint: sheetState === 'hidden' ? 'collapsed' : sheetState,
+    snapTo: resultsSheetSnapTo,
+    onScrollBeginDrag: handleResultsListScrollBegin,
+    onScrollEndDrag: handleResultsListScrollEnd,
+    onMomentumBeginJS: handleResultsListMomentumBegin,
+    onMomentumEndJS: handleResultsListMomentumEnd,
+    onDragStateChange: handleResultsSheetDragStateChange,
+    onSettleStateChange: handleResultsSheetSettlingChange,
+    interactionEnabled: !shouldDisableResultsSheetInteraction,
+    onEndReached: handleResultsEndReached,
+    data: resultsListData,
+    renderItem: resultsRenderItem,
+    keyExtractor: resultsKeyExtractor,
+    estimatedItemSize,
+    getItemType: getResultItemType,
+    overrideItemLayout: overrideResultItemLayout,
+    listKey: resultsListKey,
+    contentContainerStyle: resultsContentContainerStyle,
+    ListHeaderComponent: listHeader,
+    ListFooterComponent: resultsListFooterComponent,
+    ListEmptyComponent: resultsListEmptyComponent,
+    ItemSeparatorComponent: ResultItemSeparator,
+    headerComponent: resultsHeaderComponent,
+    backgroundComponent: resultsListBackground,
+    overlayComponent: resultsOverlayComponent,
+    listRef: resultsScrollRef,
+    resultsContainerAnimatedStyle: resultsSheetContainerAnimatedStyle,
+    flashListProps: resultsFlashListProps,
+    onHidden: resetSheetToHidden,
+    onSnapChange: handleResultsSheetSnapChange,
+    style: resultsSheetContainerStyle,
+  });
+
+  const pollsPanelSpec = usePollsPanelSpec({
+    visible: shouldShowPollsSheet,
+    bounds: pollBounds,
+    params: pollOverlayParams,
+    initialSnapPoint: pollsOverlaySnapPoint,
+    mode: pollsOverlayMode,
+    navBarTop: bottomNavFrame.top,
+    navBarHeight: bottomNavFrame.height,
+    searchBarTop,
+    onSnapChange: handlePollsSnapChange,
+    snapTo: pollsSnapRequest,
+    sheetY: sheetTranslateY,
+    interactionRef: searchInteractionRef,
+  });
+
+  const bookmarksPanelSpec = useBookmarksPanelSpec({
+    visible: showBookmarksOverlay,
+    navBarTop: bottomNavFrame.top,
+    searchBarTop,
+    onSnapChange: handleBookmarksSnapChange,
+    snapTo: bookmarksSnapRequest,
+  });
+
+  const profilePanelSpec = useProfilePanelSpec({
+    visible: showProfileOverlay,
+    navBarTop: bottomNavFrame.top,
+    searchBarTop,
+    onSnapChange: handleProfileSnapChange,
+  });
+
+  const restaurantPanelSpec = useRestaurantPanelSpec({
+    data: restaurantProfile,
+    onDismiss: handleRestaurantOverlayDismissed,
+    onRequestClose: handleRestaurantOverlayRequestClose,
+    onToggleFavorite: handleRestaurantSavePress,
+    navBarTop: bottomNavFrame.top,
+    searchBarTop,
+    interactionEnabled: shouldEnableRestaurantOverlayInteraction,
+    containerStyle: restaurantOverlayAnimatedStyle,
+  });
+
+  const saveListPanelSpec = useSaveListPanelSpec({
+    visible: saveSheetState.visible,
+    listType: saveSheetState.listType,
+    target: saveSheetState.target,
+    searchBarTop,
+    onClose: handleCloseSaveSheet,
+    onSnapChange: setSaveSheetSnap,
+  });
+
+  const overlayRegistry = React.useMemo(
+    () =>
+      createOverlayRegistry({
+        search: searchPanelSpec,
+        polls: pollsPanelSpec,
+        bookmarks: bookmarksPanelSpec,
+        profile: profilePanelSpec,
+        restaurant: restaurantPanelSpec,
+        saveList: saveListPanelSpec,
+        price: null,
+        scoreInfo: null,
+        pollCreation: pollCreationPanelSpec,
+      }),
+    [
+      bookmarksPanelSpec,
+      pollCreationPanelSpec,
+      pollsPanelSpec,
+      profilePanelSpec,
+      restaurantPanelSpec,
+      saveListPanelSpec,
+      searchPanelSpec,
+    ]
+  );
+
+  const activeOverlayKey = React.useMemo<OverlayKey | null>(() => {
+    if (shouldShowPollCreationPanel) {
+      return 'pollCreation';
+    }
+    if (showSaveListOverlay) {
+      return 'saveList';
+    }
+    if (shouldShowRestaurantOverlay && restaurantPanelSpec) {
+      return 'restaurant';
+    }
+    if (showProfileOverlay) {
+      return 'profile';
+    }
+    if (showBookmarksOverlay) {
+      return 'bookmarks';
+    }
+    if (shouldShowPollsSheet) {
+      return 'polls';
+    }
+    if (shouldRenderResultsSheet) {
+      return 'search';
+    }
+    return null;
+  }, [
+    restaurantPanelSpec,
+    shouldRenderResultsSheet,
+    shouldShowPollCreationPanel,
+    shouldShowPollsSheet,
+    shouldShowRestaurantOverlay,
+    showBookmarksOverlay,
+    showProfileOverlay,
+    showSaveListOverlay,
+  ]);
+
+  const overlaySheetKey = activeOverlayKey;
+  const overlaySheetSpecBase = overlaySheetKey ? overlayRegistry[overlaySheetKey] : null;
+  const overlaySheetSpec = overlaySheetSpecBase
+    ? {
+        ...overlaySheetSpecBase,
+        onDragStateChange: handleResultsSheetDragStateChange,
+        onSettleStateChange: handleResultsSheetSettlingChange,
+      }
+    : null;
+  const overlaySheetVisible = Boolean(overlaySheetSpec && overlaySheetKey);
+  const overlaySheetApplyNavBarCutout =
+    overlaySheetKey === 'polls' || overlaySheetKey === 'profile';
+
   return (
     <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
       <View style={styles.container}>
@@ -6735,49 +6836,16 @@ const SearchScreen: React.FC = () => {
             </React.Profiler>
             <SearchInteractionProvider value={searchInteractionContextValue}>
               <React.Profiler id="SearchResultsSheetTree" onRender={handleProfilerRender}>
-                {shouldRenderResultsSheet ? (
-                  <SearchResultsSheet
-                    visible={shouldRenderResultsSheet}
-                    listScrollEnabled={
-                      !isPriceSelectorVisible &&
-                      !isFilterTogglePending &&
-                      !shouldDisableResultsSheetInteraction
-                    }
-                    snapPoints={snapPoints}
-                    initialSnapPoint={sheetState === 'hidden' ? 'collapsed' : sheetState}
-                    sheetYValue={sheetTranslateY}
-                    snapTo={resultsSheetSnapTo}
-                    scrollOffsetValue={resultsScrollOffset}
+                {overlaySheetSpec && overlaySheetKey ? (
+                  <OverlaySheetShell
+                    visible={overlaySheetVisible}
+                    activeOverlayKey={overlaySheetKey}
+                    spec={overlaySheetSpec}
+                    sheetY={sheetTranslateY}
+                    scrollOffset={resultsScrollOffset}
                     momentumFlag={resultsMomentum}
-                    onScrollBeginDrag={handleResultsListScrollBegin}
-                    onScrollEndDrag={handleResultsListScrollEnd}
-                    onMomentumBeginJS={handleResultsListMomentumBegin}
-                    onMomentumEndJS={handleResultsListMomentumEnd}
-                    onDragStateChange={handleResultsSheetDragStateChange}
-                    onSettleStateChange={handleResultsSheetSettlingChange}
-                    interactionEnabled={!shouldDisableResultsSheetInteraction}
-                    onEndReached={handleResultsEndReached}
-                    data={resultsListData}
-                    renderItem={resultsRenderItem}
-                    keyExtractor={resultsKeyExtractor}
-                    estimatedItemSize={estimatedItemSize}
-                    getItemType={getResultItemType}
-                    overrideItemLayout={overrideResultItemLayout}
-                    listKey={resultsListKey}
-                    contentContainerStyle={resultsContentContainerStyle}
-                    ListHeaderComponent={listHeader}
-                    ListFooterComponent={resultsListFooterComponent}
-                    ListEmptyComponent={resultsListEmptyComponent}
-                    ItemSeparatorComponent={ResultItemSeparator}
-                    headerComponent={resultsHeaderComponent}
-                    backgroundComponent={resultsListBackground}
-                    overlayComponent={resultsOverlayComponent}
-                    listRef={resultsScrollRef}
-                    resultsContainerAnimatedStyle={resultsSheetContainerAnimatedStyle}
-                    flashListProps={resultsFlashListProps}
-                    onHidden={resetSheetToHidden}
-                    onSnapChange={handleResultsSheetSnapChange}
-                    style={resultsSheetContainerStyle}
+                    navBarHeight={bottomNavFrame.height}
+                    applyNavBarCutout={overlaySheetApplyNavBarCutout}
                   />
                 ) : null}
               </React.Profiler>
@@ -6795,7 +6863,7 @@ const SearchScreen: React.FC = () => {
                   {!shouldDisableSearchBlur && <FrostedGlassBackground />}
                 </View>
                 {navItems.map((item) => {
-                  const active = activeOverlay === item.key;
+                  const active = rootOverlay === item.key;
                   const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
                   const renderIcon = navIconRenderers[item.key];
                   if (item.key === 'profile') {
@@ -6839,73 +6907,8 @@ const SearchScreen: React.FC = () => {
         )}
         <React.Profiler id="Overlays" onRender={handleProfilerRender}>
           <>
-            <React.Profiler id="BookmarksOverlay" onRender={handleProfilerRender}>
-              <MemoBookmarksOverlay
-                visible={showBookmarksOverlay}
-                navBarTop={bottomNavFrame.top}
-                searchBarTop={searchBarTop}
-                onSnapChange={handleBookmarksSnapChange}
-                onDragStateChange={handleBookmarksSheetDragStateChange}
-                sheetYObserver={bookmarksSheetY}
-                snapTo={bookmarksSnapRequest}
-              />
-            </React.Profiler>
-            <React.Profiler id="ProfileOverlay" onRender={handleProfilerRender}>
-              <MemoProfileOverlay
-                visible={showProfileOverlay}
-                navBarTop={bottomNavFrame.top}
-                navBarHeight={bottomNavFrame.height}
-                searchBarTop={searchBarTop}
-                onSnapChange={handleProfileSnapChange}
-                onDragStateChange={handleProfileSheetDragStateChange}
-                sheetYObserver={profileSheetY}
-              />
-            </React.Profiler>
-            <React.Profiler id="SaveListOverlay" onRender={handleProfilerRender}>
-              <MemoSaveListOverlay
-                visible={saveSheetState.visible}
-                listType={saveSheetState.listType}
-                target={saveSheetState.target}
-                searchBarTop={searchBarTop}
-                onClose={handleCloseSaveSheet}
-                onSnapChange={setSaveSheetSnap}
-                onDragStateChange={handleSaveSheetDragStateChange}
-                sheetYObserver={saveSheetY}
-              />
-            </React.Profiler>
-            <React.Profiler id="PollsOverlay" onRender={handleProfilerRender}>
-              <MemoPollsOverlay
-                visible={shouldShowPollsSheet}
-                bounds={pollBounds}
-                params={pollOverlayParams}
-                initialSnapPoint={pollsOverlaySnapPoint}
-                mode={pollsOverlayMode}
-                navBarTop={bottomNavFrame.top}
-                navBarHeight={bottomNavFrame.height}
-                searchBarTop={searchBarTop}
-                onSnapChange={handlePollsSnapChange}
-                onDragStateChange={handlePollsSheetDragStateChange}
-                sheetYObserver={pollsSheetY}
-                snapTo={pollsSnapRequest}
-              />
-            </React.Profiler>
-            <React.Profiler id="RestaurantOverlay" onRender={handleProfilerRender}>
-              {shouldRenderRestaurantOverlay ? (
-                <MemoRestaurantOverlay
-                  visible={shouldShowRestaurantOverlay}
-                  data={restaurantProfile}
-                  onRequestClose={handleRestaurantOverlayRequestClose}
-                  onDismiss={handleRestaurantOverlayDismissed}
-                  onToggleFavorite={handleRestaurantSavePress}
-                  navBarTop={bottomNavFrame.top}
-                  searchBarTop={searchBarTop}
-                  interactionEnabled={shouldEnableRestaurantOverlayInteraction}
-                  containerStyle={restaurantOverlayAnimatedStyle}
-                />
-              ) : null}
-            </React.Profiler>
             <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
-              <MemoSecondaryBottomSheet
+              <MemoOverlayModalSheet
                 visible={isPriceSelectorVisible}
                 onRequestClose={closePriceSelector}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
@@ -6939,10 +6942,10 @@ const SearchScreen: React.FC = () => {
                     onRangeCommit={setPendingPriceRange}
                   />
                 </View>
-              </MemoSecondaryBottomSheet>
+              </MemoOverlayModalSheet>
             </React.Profiler>
             <React.Profiler id="ScoreInfoSheet" onRender={handleProfilerRender}>
-              <MemoSecondaryBottomSheet
+              <MemoOverlayModalSheet
                 visible={Boolean(isScoreInfoVisible && scoreInfo)}
                 onRequestClose={closeScoreInfo}
                 onDismiss={() => setScoreInfo(null)}
@@ -7015,7 +7018,7 @@ const SearchScreen: React.FC = () => {
                     </Text>
                   </View>
                 ) : null}
-              </MemoSecondaryBottomSheet>
+              </MemoOverlayModalSheet>
             </React.Profiler>
           </>
         </React.Profiler>

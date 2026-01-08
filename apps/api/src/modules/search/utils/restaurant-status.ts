@@ -134,12 +134,12 @@ export const buildOperatingMetadataFromRestaurantMetadata = (
     typeof metadataRecord.timezone === 'string'
       ? metadataRecord.timezone
       : typeof metadataRecord.timeZone === 'string'
-        ? metadataRecord.timeZone
-        : typeof metadataRecord.time_zone === 'string'
-          ? metadataRecord.time_zone
-          : typeof metadataRecord.tz === 'string'
-            ? metadataRecord.tz
-            : null;
+      ? metadataRecord.timeZone
+      : typeof metadataRecord.time_zone === 'string'
+      ? metadataRecord.time_zone
+      : typeof metadataRecord.tz === 'string'
+      ? metadataRecord.tz
+      : null;
 
   return buildOperatingMetadataFromLocation(
     hoursValue,

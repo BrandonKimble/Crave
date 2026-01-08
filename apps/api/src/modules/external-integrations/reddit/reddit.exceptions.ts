@@ -24,20 +24,14 @@ export class RedditConfigurationError extends RedditApiError {
 }
 
 export class RedditRateLimitError extends RedditApiError {
-  constructor(
-    message: string,
-    public readonly retryAfter?: number,
-  ) {
+  constructor(message: string, public readonly retryAfter?: number) {
     super(message, 429);
     this.name = 'RedditRateLimitError';
   }
 }
 
 export class RedditNetworkError extends RedditApiError {
-  constructor(
-    message: string,
-    public readonly originalError?: Error,
-  ) {
+  constructor(message: string, public readonly originalError?: Error) {
     super(message);
     this.name = 'RedditNetworkError';
   }

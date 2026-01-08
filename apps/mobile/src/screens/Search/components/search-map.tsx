@@ -66,6 +66,8 @@ type MarkerPinProps = {
 const MarkerPin: React.FC<MarkerPinProps> = React.memo(
   ({ isSelected, pinColor, rank, enterDelayMs, enterDurationMs }) => {
     const progress = useSharedValue(0);
+    const initialEnterDelayMsRef = React.useRef(enterDelayMs);
+    const initialEnterDurationMsRef = React.useRef(enterDurationMs);
     const [pinImagesReady, setPinImagesReady] = React.useState(false);
     const baseLoadedRef = React.useRef(false);
     const fillLoadedRef = React.useRef(false);
@@ -85,13 +87,13 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
     React.useEffect(() => {
       progress.value = 0;
       progress.value = withDelay(
-        enterDelayMs,
+        Math.max(0, initialEnterDelayMsRef.current),
         withTiming(1, {
-          duration: enterDurationMs,
+          duration: Math.max(0, initialEnterDurationMsRef.current),
           easing: Easing.out(Easing.cubic),
         })
       );
-    }, [enterDelayMs, enterDurationMs, progress]);
+    }, [progress]);
     const animatedStyle = useAnimatedStyle(() => ({
       opacity: progress.value,
       transform: [

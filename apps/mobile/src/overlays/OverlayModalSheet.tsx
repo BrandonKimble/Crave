@@ -15,7 +15,7 @@ import { OVERLAY_TIMING_CONFIG } from './sheetUtils';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-type SecondaryBottomSheetProps = {
+type OverlayModalSheetProps = {
   visible: boolean;
   onRequestClose: () => void;
   onDismiss?: () => void;
@@ -29,7 +29,7 @@ type SecondaryBottomSheetProps = {
   backdropColor?: string;
 };
 
-const SecondaryBottomSheet: React.FC<SecondaryBottomSheetProps> = ({
+const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
   visible,
   onRequestClose,
   onDismiss,
@@ -139,4 +139,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SecondaryBottomSheet;
+export default OverlayModalSheet;

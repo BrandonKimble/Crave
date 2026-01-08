@@ -7,21 +7,25 @@ This module provides comprehensive Reddit API integration for the Crave Search a
 ## Features
 
 ### 🔐 Authentication
+
 - **OAuth2 Flow**: Secure authentication using client credentials and user account
 - **Token Management**: Automatic token refresh with buffer time for safety
 - **Error Handling**: Comprehensive error handling for authentication failures
 
 ### ⚡ Rate Limiting
+
 - **100 requests/minute limit**: Enforced through RateLimitCoordinatorService integration
 - **Proactive checking**: Rate limit validation before making API calls
 - **Graceful degradation**: Handles rate limit errors with appropriate retry-after delays
 
 ### 💰 Cost Monitoring
+
 - **Free tier tracking**: Monitors usage within Reddit's free tier limits
 - **Daily/monthly metrics**: Tracks request counts and estimated costs
 - **Budget alerts**: Provides cost metrics and warnings
 
 ### 📊 Real-Time Collection Methods
+
 - **Chronological Collection**: Fetch recent posts using `/r/subreddit/new`
 - **Keyword Entity Search**: Search for specific entities using `/r/subreddit/search`
 - **Batch Operations**: Collect from multiple subreddits efficiently
@@ -100,9 +104,9 @@ Fetch recent posts chronologically (PRD Section 5.1.2):
 
 ```typescript
 const result = await this.redditService.getChronologicalPosts(
-  'austinfood',           // subreddit
-  1640995200,            // lastProcessedTimestamp (optional)
-  100                    // limit (optional, max 100)
+  'austinfood', // subreddit
+  1640995200, // lastProcessedTimestamp (optional)
+  100, // limit (optional, max 100)
 );
 
 console.log(result);
@@ -128,13 +132,13 @@ Search for specific entities (PRD Section 5.1.2):
 
 ```typescript
 const result = await this.redditService.searchByKeyword(
-  'austinfood',          // subreddit
-  'tacos',              // keyword
+  'austinfood', // subreddit
+  'tacos', // keyword
   {
-    sort: 'relevance',   // 'relevance' | 'new' | 'top'
-    limit: 100,          // max 100
-    timeframe: 'month'   // 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'
-  }
+    sort: 'relevance', // 'relevance' | 'new' | 'top'
+    limit: 100, // max 100
+    timeframe: 'month', // 'hour' | 'day' | 'week' | 'month' | 'year' | 'all'
+  },
 );
 ```
 
@@ -144,13 +148,13 @@ Collect from multiple subreddits efficiently:
 
 ```typescript
 const results = await this.redditService.batchCollectFromSubreddits(
-  ['austinfood', 'FoodNYC'],    // subreddits
-  'chronological',              // 'chronological' | 'keyword'
+  ['austinfood', 'FoodNYC'], // subreddits
+  'chronological', // 'chronological' | 'keyword'
   {
-    keyword: 'pizza',           // required for keyword method
+    keyword: 'pizza', // required for keyword method
     lastProcessedTimestamp: 1640995200,
-    limit: 25
-  }
+    limit: 25,
+  },
 );
 
 // Returns: { [subreddit: string]: CollectionMethodResult }
@@ -249,7 +253,9 @@ try {
 const result = await this.redditService.getChronologicalPosts('austinfood');
 if (result.performance.rateLimitHit) {
   console.log('Rate limited - returned empty results');
-  console.log(`Retry after: ${result.metadata.rateLimitStatus.retryAfter} seconds`);
+  console.log(
+    `Retry after: ${result.metadata.rateLimitStatus.retryAfter} seconds`,
+  );
 }
 ```
 
@@ -265,6 +271,7 @@ The service includes comprehensive test coverage for:
 - Network error scenarios
 
 Run tests:
+
 ```bash
 npm test reddit.service.spec.ts
 ```
@@ -301,16 +308,19 @@ This implementation fully satisfies PRD Section 5.1.2 requirements:
 ### Common Issues
 
 1. **Authentication Failures**
+
    - Check Reddit API credentials in environment variables
    - Ensure bot account has proper permissions
    - Verify user agent string is set correctly
 
 2. **Rate Limit Errors**
+
    - Monitor daily usage with `getCostMetrics()`
    - Check `getRateLimitStatus()` for current limits
    - Implement exponential backoff for retries
 
 3. **Network Timeouts**
+
    - Increase `REDDIT_TIMEOUT` environment variable
    - Check network connectivity to reddit.com
    - Review retry configuration settings

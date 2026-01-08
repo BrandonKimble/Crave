@@ -376,65 +376,65 @@ Check items off as we implement to keep scope and regressions visible.
 
 ### Shell + Registry (Base)
 
-- [ ] Add `apps/mobile/src/overlays/OverlaySheetShell.tsx` wrapping `BottomSheetWithFlashList`.
-- [ ] Add `apps/mobile/src/overlays/OverlayRegistry.ts` and map `OverlayKey` -> panel spec.
-- [ ] Move nav‑bar cutout mask logic into shell (derived from Polls).
-- [ ] Centralize drag/settle notifications; remove per‑panel `runOnJS` during drag.
-- [ ] Preserve `searchInteractionRef` updates from the shell.
-- [ ] Store/restore scroll offsets per overlay key in `overlayStore`.
-- [ ] Clamp or animate to valid snap points when overlay switches.
-- [ ] Preserve existing transition timings/curves and visibility rules (no UI behavior changes).
+- [x] Add `apps/mobile/src/overlays/OverlaySheetShell.tsx` wrapping `BottomSheetWithFlashList`.
+- [x] Add `apps/mobile/src/overlays/OverlayRegistry.ts` and map `OverlayKey` -> panel spec.
+- [x] Move nav‑bar cutout mask logic into shell (derived from Polls).
+- [x] Centralize drag/settle notifications; remove per‑panel `runOnJS` during drag.
+- [x] Preserve `searchInteractionRef` updates from the shell.
+- [x] Store/restore scroll offsets per overlay key in `overlayStore`.
+- [x] Clamp or animate to valid snap points when overlay switches.
+- [x] Preserve snap-key alignment when snap profiles change (prevents expanded/middle drift when `searchBarTop` updates).
+- [x] Preserve existing transition timings/curves and visibility rules (no UI behavior changes).
 
 ### Search Panel
 
-- [ ] Extract search list content into a `SearchPanel` content spec (no sheet wrapper).
-- [ ] Keep marker reveal, list hydration, and profiler logs intact.
-- [ ] Ensure `searchInteractionRef` is still used by list rows/measurement hooks.
-- [ ] Confirm results sheet remains animated via shell `sheetY`.
-- [ ] Preserve search bar + suggestions/autocomplete behavior exactly (no transition changes).
+- [x] Extract search list content into a `SearchPanel` content spec (no sheet wrapper).
+- [x] Keep marker reveal, list hydration, and profiler logs intact.
+- [x] Ensure `searchInteractionRef` is still used by list rows/measurement hooks.
+- [x] Confirm results sheet remains animated via shell `sheetY`.
+- [x] Preserve search bar + suggestions/autocomplete behavior exactly (no transition changes).
 
 ### Polls Panel
 
-- [ ] Extract `PollsOverlay` content into `PollsPanel` spec (remove sheet wrapper).
-- [ ] Port docked/overlay behavior to snap profile + shell nav‑bar cutout.
-- [ ] Gate socket updates + autocomplete while interacting.
-- [ ] Ensure poll creation flow becomes a panel state (no `SecondaryBottomSheet`).
-- [ ] Preserve any existing poll header transitions and state-driven UI changes.
+- [x] Extract `PollsOverlay` content into `PollsPanel` spec (remove sheet wrapper).
+- [x] Port docked/overlay behavior to snap profile + shell nav‑bar cutout.
+- [x] Gate socket updates + autocomplete while interacting.
+- [x] Ensure poll creation flow becomes a panel state (no `SecondaryBottomSheet`).
+- [x] Preserve any existing poll header transitions and state-driven UI changes.
 
 ### Bookmarks Panel
 
-- [ ] Extract `BookmarksOverlay` content into `BookmarksPanel` spec.
-- [ ] Memoize tile grid and callbacks; avoid inline closures.
-- [ ] Restore scroll offset on tab switch.
-- [ ] Preserve existing header/segment transitions and layout.
+- [x] Extract `BookmarksOverlay` content into `BookmarksPanel` spec.
+- [x] Memoize tile grid and callbacks; avoid inline closures.
+- [x] Restore scroll offset on tab switch.
+- [x] Preserve existing header/segment transitions and layout.
 
 ### Profile Panel
 
-- [ ] Extract `ProfileOverlay` content into `ProfilePanel` spec.
-- [ ] Memoize header/body; gate layout measurement while interacting.
-- [ ] Restore scroll offset on tab switch.
-- [ ] Preserve existing profile transitions and overlay dismissal behavior.
+- [x] Extract `ProfileOverlay` content into `ProfilePanel` spec.
+- [x] Memoize header/body; gate layout measurement while interacting.
+- [x] Restore scroll offset on tab switch.
+- [x] Preserve existing profile transitions and overlay dismissal behavior.
 
 ### Restaurant Panel
 
-- [ ] Extract `RestaurantOverlay` content into `RestaurantPanel` spec.
-- [ ] Freeze heavy sections while interacting (details, hours, lists).
-- [ ] Preserve per‑location expand/collapse state.
-- [ ] Restore scroll offset on tab switch.
-- [ ] Preserve existing open/close transitions and map camera behavior.
+- [x] Extract `RestaurantOverlay` content into `RestaurantPanel` spec.
+- [x] Freeze heavy sections while interacting (details, hours, lists).
+- [x] Preserve per‑location expand/collapse state.
+- [x] Restore scroll offset on tab switch.
+- [x] Preserve existing open/close transitions and map camera behavior.
 
 ### Save List Panel
 
-- [ ] Extract `SaveListOverlay` content into `SaveListPanel` spec.
-- [ ] Memoize form sections + list rows.
-- [ ] Restore scroll offset on tab switch.
-- [ ] Preserve existing form/validation flow and transitions.
+- [x] Extract `SaveListOverlay` content into `SaveListPanel` spec.
+- [x] Memoize form sections + list rows.
+- [x] Restore scroll offset on tab switch.
+- [x] Preserve existing form/validation flow and transitions.
 
 ### Secondary Sheets (Price / Score / Poll Creation)
 
-- [ ] Replace `SecondaryBottomSheet` usage with shell panel states.
-- [ ] If modal behavior required, use `preventSwipeDismiss` and a restricted snap profile.
-- [ ] Preserve existing open/close animation timing and interactive behavior.
+- [x] Remove `SecondaryBottomSheet` (poll creation moved into the unified shell; price/score remain modal overlays).
+- [x] Keep Price / Score as modal overlays (per decision) while preserving their current open/close behavior.
 
 ### Validation
 

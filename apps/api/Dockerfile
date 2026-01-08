@@ -51,6 +51,9 @@ COPY packages/shared ./packages/shared
 COPY tsconfig.json ./
 COPY turbo.json ./
 
+# Build shared first (Nest build uses packages/shared/dist via tsconfig.build.json)
+RUN yarn workspace @crave-search/shared build
+
 # Build the API
 RUN yarn workspace api build
 

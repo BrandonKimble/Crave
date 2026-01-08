@@ -301,7 +301,7 @@ export class ArchiveIngestionService implements OnModuleInit {
     const effectiveMaxPosts =
       typeof options.maxPosts === 'number'
         ? options.maxPosts
-        : (envMaxPosts ?? null);
+        : envMaxPosts ?? null;
 
     const posts =
       typeof effectiveMaxPosts === 'number' && effectiveMaxPosts > 0

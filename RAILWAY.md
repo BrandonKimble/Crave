@@ -20,6 +20,7 @@ curl https://your-app.up.railway.app/health
 ## 📦 First-Time Setup
 
 ### Install Railway CLI
+
 ```bash
 # macOS/Linux
 brew install railway
@@ -29,6 +30,7 @@ npm i -g @railway/cli
 ```
 
 ### Link to Your Project
+
 ```bash
 # Login to Railway
 railway login
@@ -43,6 +45,7 @@ railway status
 ## 🗄️ Migration Commands
 
 ### Production Migrations (via Railway CLI)
+
 ```bash
 # Run pending migrations in production database
 railway run yarn workspace api db:migrate:deploy
@@ -52,6 +55,7 @@ railway run yarn workspace api prisma:studio
 ```
 
 ### Local Development Migrations
+
 ```bash
 # Create a new migration
 yarn workspace api db:migrate:create
@@ -66,6 +70,7 @@ yarn workspace api prisma:generate
 ## 🔍 Debugging Production
 
 ### View Logs
+
 ```bash
 # Tail logs in real-time
 railway logs --tail
@@ -78,6 +83,7 @@ railway logs --lines 100
 ```
 
 ### Run One-Off Commands
+
 ```bash
 # Access production database via psql
 railway run psql
@@ -90,6 +96,7 @@ railway run node scripts/your-script.js
 ```
 
 ### Environment Variables
+
 ```bash
 # View all environment variables
 railway variables
@@ -104,12 +111,14 @@ railway variables delete KEY
 ## ⚠️ Important Reminders
 
 ### Before Each Deploy
+
 - [ ] Test locally: `yarn workspace api test`
 - [ ] Run linting: `yarn workspace api lint`
 - [ ] Check migrations: `yarn workspace api prisma:migrate status`
 - [ ] If migrations exist: Run `railway run yarn workspace api db:migrate:deploy` FIRST
 
 ### Migration Safety
+
 - ✅ **DO**: Run migrations before deploying code
 - ✅ **DO**: Test migrations locally first
 - ✅ **DO**: Keep migration files in version control
@@ -118,16 +127,16 @@ railway variables delete KEY
 
 ## 🎯 Quick Commands Reference
 
-| Task | Command |
-|------|---------|
-| Deploy code | `git push origin main` |
-| Run migrations | `railway run yarn workspace api db:migrate:deploy` |
-| View logs | `railway logs --tail` |
-| Check status | `railway status` |
-| Open dashboard | `railway open` |
-| Restart service | `railway restart` |
-| Shell access | `railway shell` |
-| List projects | `railway list` |
+| Task            | Command                                            |
+| --------------- | -------------------------------------------------- |
+| Deploy code     | `git push origin main`                             |
+| Run migrations  | `railway run yarn workspace api db:migrate:deploy` |
+| View logs       | `railway logs --tail`                              |
+| Check status    | `railway status`                                   |
+| Open dashboard  | `railway open`                                     |
+| Restart service | `railway restart`                                  |
+| Shell access    | `railway shell`                                    |
+| List projects   | `railway list`                                     |
 
 ## 🚨 Rollback Strategy
 
@@ -148,11 +157,13 @@ railway run yarn workspace api prisma:migrate resolve --rolled-back MIGRATION_NA
 ## 📊 Monitoring Production
 
 ### Check Health
+
 ```bash
 curl https://your-app.up.railway.app/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "healthy",
@@ -166,6 +177,7 @@ Expected response:
 ```
 
 ### Check Sentry Dashboard
+
 - New errors should appear within 10 seconds
 - Alerts configured to Discord
 - Performance metrics tracked
@@ -173,6 +185,7 @@ Expected response:
 ## 🔐 Security Checklist
 
 Before going to production:
+
 - [ ] Remove `DebugModule` from `app.module.ts`
 - [ ] Set `SENTRY_TRACES_SAMPLE_RATE=0.1` (not 1.0)
 - [ ] Set `SENTRY_PROFILES_SAMPLE_RATE=0.1` (not 1.0)

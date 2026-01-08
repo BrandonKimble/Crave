@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
-import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
+import {
+  FastifyAdapter,
+  NestFastifyApplication,
+} from '@nestjs/platform-fastify';
 import { getQueueToken } from '@nestjs/bull';
 import type { Queue } from 'bull';
 import { AppModule } from '../src/app.module';
@@ -119,8 +122,7 @@ async function main() {
     try {
       result = await job.finished();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       console.error('❌ Archive collection failed:', message);
       throw error;
     }

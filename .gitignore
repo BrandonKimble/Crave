@@ -2,6 +2,13 @@
 node_modules/
 .pnpm-store/
 
+# Railway CLI deploy packaging (prevents huge `railway up` archives)
+.git/
+apps/api/data/
+ios/Pods/
+ios/build/
+ios/DerivedData/
+
 # Build outputs
 dist/
 build/

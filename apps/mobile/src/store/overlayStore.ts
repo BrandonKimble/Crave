@@ -1,37 +1,111 @@
 import { create } from 'zustand';
 
-export type OverlayKey = 'search' | 'bookmarks' | 'polls' | 'profile';
+import type { OverlayKey } from '../overlays/types';
+export type { OverlayKey } from '../overlays/types';
 
 type OverlayParamsMap = {
   search?: undefined;
   bookmarks?: undefined;
   polls?: { coverageKey?: string | null; pollId?: string | null };
   profile?: undefined;
+  restaurant?: undefined;
+  saveList?: undefined;
+  price?: undefined;
+  scoreInfo?: undefined;
+  pollCreation?: { coverageKey: string | null; coverageName?: string | null };
 };
 
 type DismissHandler = () => void;
 
 interface OverlayState {
   activeOverlay: OverlayKey;
+  overlayStack: OverlayKey[];
   overlayParams: OverlayParamsMap;
+  overlayScrollOffsets: Partial<Record<OverlayKey, number>>;
   transientDismissors: DismissHandler[];
   setOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
+  setOverlayParams: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
+  pushOverlay: <K extends OverlayKey>(overlay: K, params?: OverlayParamsMap[K]) => void;
+  popOverlay: () => void;
+  popToRootOverlay: () => void;
+  setOverlayScrollOffset: (overlay: OverlayKey, offset: number) => void;
   registerTransientDismissor: (handler: DismissHandler) => () => void;
   dismissTransientOverlays: () => void;
 }
 
 export const useOverlayStore = create<OverlayState>((set, get) => ({
   activeOverlay: 'search',
+  overlayStack: ['search'],
   overlayParams: {},
+  overlayScrollOffsets: {},
   transientDismissors: [],
   setOverlay: (overlay, params) =>
     set((state) => ({
       activeOverlay: overlay,
+      overlayStack: [overlay],
       overlayParams: {
         ...state.overlayParams,
         [overlay]: params,
       },
     })),
+  setOverlayParams: (overlay, params) =>
+    set((state) => ({
+      overlayParams: {
+        ...state.overlayParams,
+        [overlay]: params,
+      },
+    })),
+  pushOverlay: (overlay, params) =>
+    set((state) => {
+      const currentTop = state.overlayStack[state.overlayStack.length - 1];
+      const nextStack =
+        currentTop === overlay ? state.overlayStack : [...state.overlayStack, overlay];
+      return {
+        activeOverlay: overlay,
+        overlayStack: nextStack,
+        overlayParams: {
+          ...state.overlayParams,
+          [overlay]: params,
+        },
+      };
+    }),
+  popOverlay: () =>
+    set((state) => {
+      if (state.overlayStack.length <= 1) {
+        return state;
+      }
+      const nextStack = state.overlayStack.slice(0, -1);
+      const nextActive = nextStack[nextStack.length - 1] ?? 'search';
+      return {
+        activeOverlay: nextActive,
+        overlayStack: nextStack,
+      };
+    }),
+  popToRootOverlay: () =>
+    set((state) => {
+      const root = state.overlayStack[0] ?? 'search';
+      if (state.overlayStack.length <= 1 && state.activeOverlay === root) {
+        return state;
+      }
+      return {
+        activeOverlay: root,
+        overlayStack: [root],
+      };
+    }),
+  setOverlayScrollOffset: (overlay, offset) =>
+    set((state) => {
+      const next = Math.max(0, offset);
+      const existing = state.overlayScrollOffsets[overlay];
+      if (existing != null && Math.abs(existing - next) < 1) {
+        return state;
+      }
+      return {
+        overlayScrollOffsets: {
+          ...state.overlayScrollOffsets,
+          [overlay]: next,
+        },
+      };
+    }),
   registerTransientDismissor: (handler) => {
     set((state) => ({
       transientDismissors: [...state.transientDismissors, handler],

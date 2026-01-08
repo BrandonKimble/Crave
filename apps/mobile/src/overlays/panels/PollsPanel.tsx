@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  InteractionManager,
   View,
   TextInput,
   TouchableOpacity,
@@ -15,47 +16,42 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus, X as LucideX } from 'lucide-react-native';
 import Animated, {
   useDerivedValue,
-  runOnJS,
-  useAnimatedReaction,
   useAnimatedStyle,
-  useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
-import { Text } from '../components';
-import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../services/polls';
-import { resolveCoverage } from '../services/coverage';
-import { API_BASE_URL } from '../services/api';
-import { logger } from '../utils';
-import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
-import { useCityStore } from '../store/cityStore';
-import { useSystemStatusStore } from '../store/systemStatusStore';
-import { colors as themeColors } from '../constants/theme';
-import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
-import { useOverlayStore } from '../store/overlayStore';
+import { Text } from '../../components';
+import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../../services/polls';
+import { resolveCoverage } from '../../services/coverage';
+import { API_BASE_URL } from '../../services/api';
+import { logger } from '../../utils';
+import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import { useCityStore } from '../../store/cityStore';
+import { useSystemStatusStore } from '../../store/systemStatusStore';
+import { colors as themeColors } from '../../constants/theme';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
+import { useOverlayStore } from '../../store/overlayStore';
 import {
   overlaySheetStyles,
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
-  OVERLAY_STACK_ZINDEX,
-} from './overlaySheetStyles';
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import SquircleSpinner from '../components/SquircleSpinner';
-import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { calculateSnapPoints } from './sheetUtils';
-import { useHeaderCloseCutout } from './useHeaderCloseCutout';
-import PollCreationSheet from './PollCreationSheet';
-import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../screens/Search/constants/ui';
-import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../screens/Search/constants/search';
-import type { MapBounds } from '../types';
+} from '../overlaySheetStyles';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import SquircleSpinner from '../../components/SquircleSpinner';
+import type { SnapPoints } from '../BottomSheetWithFlashList';
+import { calculateSnapPoints } from '../sheetUtils';
+import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
+import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../screens/Search/constants/search';
+import type { MapBounds } from '../../types';
+import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const OPTION_COLORS = ['#f97316', '#fb7185', '#c084fc', '#38bdf8', '#facc15', '#34d399'] as const;
 const CARD_GAP = 4;
-const CLOSE_ACTION_EPSILON = 2;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 const NAV_ICON_SIZE = 24;
 const NAV_ICON_LABEL_GAP = 2;
-type PollsOverlayProps = {
+type UsePollsPanelSpecOptions = {
   visible: boolean;
   bounds?: MapBounds | null;
   params?: { coverageKey?: string | null; pollId?: string | null };
@@ -64,10 +60,10 @@ type PollsOverlayProps = {
   navBarTop?: number;
   navBarHeight?: number;
   searchBarTop?: number;
-  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-  sheetYObserver?: SharedValue<number>;
-  snapTo?: 'expanded' | 'middle' | 'collapsed' | 'hidden' | null;
+  onSnapChange?: (snap: OverlaySheetSnap) => void;
+  snapTo?: OverlaySheetSnap | null;
+  sheetY: SharedValue<number>;
+  interactionRef?: React.MutableRefObject<{ isInteracting: boolean }>;
 };
 
 const ACCENT = themeColors.primary;
@@ -75,7 +71,7 @@ const ACCENT_DARK = themeColors.primaryDark;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
-const PollsOverlay: React.FC<PollsOverlayProps> = ({
+export const usePollsPanelSpec = ({
   visible,
   bounds,
   params,
@@ -85,12 +81,13 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   navBarHeight = 0,
   searchBarTop = 0,
   onSnapChange,
-  onDragStateChange,
-  sheetYObserver,
   snapTo,
-}) => {
+  sheetY,
+  interactionRef,
+}: UsePollsPanelSpecOptions): OverlayContentSpec<Poll> => {
   const insets = useSafeAreaInsets();
   const setOverlay = useOverlayStore((state) => state.setOverlay);
+  const pushOverlay = useOverlayStore((state) => state.pushOverlay);
   const setPersistedCity = useCityStore((state) => state.setSelectedCity);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -126,7 +123,6 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
   const [restaurantLoading, setRestaurantLoading] = useState(false);
   const [dishLoading, setDishLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [showCreateSheet, setShowCreateSheet] = useState(false);
   const [snapRequest, setSnapRequest] = useState<
     'expanded' | 'middle' | 'collapsed' | 'hidden' | null
   >(null);
@@ -347,17 +343,38 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     if (!baseUrl) {
       return;
     }
-    const base = baseUrl.replace(/\/api$/, '');
+    const base = baseUrl.replace(/\/api(?:\/v\d+)?$/, '');
     socketRef.current = io(`${base}/polls`, {
       transports: ['websocket'],
     });
-    socketRef.current.on('poll:update', () => {
+    const socketTaskRef: {
+      current: ReturnType<typeof InteractionManager.runAfterInteractions> | null;
+    } = { current: null };
+
+    const handleSocketUpdate = () => {
+      if (interactionRef?.current.isInteracting) {
+        if (socketTaskRef.current) {
+          return;
+        }
+        socketTaskRef.current = InteractionManager.runAfterInteractions(() => {
+          socketTaskRef.current = null;
+          if (!visible) {
+            return;
+          }
+          void loadPolls({ skipSpinner: true });
+        });
+        return;
+      }
+
       void loadPolls({ skipSpinner: true });
-    });
+    };
+
+    socketRef.current.on('poll:update', handleSocketUpdate);
     return () => {
       socketRef.current?.disconnect();
+      socketTaskRef.current?.cancel();
     };
-  }, [loadPolls, visible]);
+  }, [interactionRef, loadPolls, visible]);
 
   useEffect(() => {
     if (!activePoll || !needsRestaurantInput) {
@@ -371,6 +388,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       setShowRestaurantSuggestions(false);
       setRestaurantSuggestions([]);
       setRestaurantLoading(false);
+      return;
+    }
+
+    if (interactionRef?.current.isInteracting) {
       return;
     }
 
@@ -409,7 +430,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       isActive = false;
       clearTimeout(handle);
     };
-  }, [activePoll, needsRestaurantInput, restaurantQuery]);
+  }, [activePoll, interactionRef, needsRestaurantInput, restaurantQuery]);
 
   useEffect(() => {
     if (!activePoll || !needsDishInput) {
@@ -423,6 +444,10 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       setShowDishSuggestions(false);
       setDishSuggestions([]);
       setDishLoading(false);
+      return;
+    }
+
+    if (interactionRef?.current.isInteracting) {
       return;
     }
 
@@ -461,7 +486,7 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       isActive = false;
       clearTimeout(handle);
     };
-  }, [activePoll, dishQuery, needsDishInput]);
+  }, [activePoll, dishQuery, interactionRef, needsDishInput]);
 
   const handleVote = async (pollId: string, optionId: string) => {
     try {
@@ -594,23 +619,26 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     </View>
   );
 
-  const renderPoll = ({ item }: { item: Poll }) => (
-    <TouchableOpacity
-      style={[styles.pollCard, item.pollId === selectedPollId && styles.pollCardActive]}
-      onPress={() => setSelectedPollId(item.pollId)}
-    >
-      <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
-        {item.question}
-      </Text>
-      {item.topic?.description ? (
-        <Text variant="body" style={styles.pollDescription}>
-          {item.topic.description}
+  const renderPoll = useCallback(
+    ({ item }: { item: Poll }) => (
+      <TouchableOpacity
+        style={[styles.pollCard, item.pollId === selectedPollId && styles.pollCardActive]}
+        onPress={() => setSelectedPollId(item.pollId)}
+      >
+        <Text variant="subtitle" weight="semibold" style={styles.pollQuestion}>
+          {item.question}
         </Text>
-      ) : null}
-      <Text variant="body" style={styles.pollMeta}>
-        {item.options.length} options
-      </Text>
-    </TouchableOpacity>
+        {item.topic?.description ? (
+          <Text variant="body" style={styles.pollDescription}>
+            {item.topic.description}
+          </Text>
+        ) : null}
+        <Text variant="body" style={styles.pollMeta}>
+          {item.options.length} options
+        </Text>
+      </TouchableOpacity>
+    ),
+    [selectedPollId]
   );
 
   const handleClose = useCallback(() => {
@@ -633,24 +661,17 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
       Alert.alert('Pick a city', 'Move the map to a city before creating a poll.');
       return;
     }
-    setShowCreateSheet(true);
-  }, [coverageKey, coverageOverride]);
+    pushOverlay('pollCreation', {
+      coverageKey: coverageOverride ?? coverageKey ?? null,
+      coverageName: coverageName ?? null,
+    });
+  }, [coverageKey, coverageName, coverageOverride, pushOverlay]);
 
-  const handlePollCreated = useCallback(
-    async (poll: Poll) => {
-      setShowCreateSheet(false);
-      await loadPolls({ focusPollId: poll.pollId });
-    },
-    [loadPolls]
-  );
-
-  const internalSheetY = useSharedValue(snapPoints[initialSnap]);
-  const observedSheetY = sheetYObserver ?? internalSheetY;
   const headerActionProgress = useDerivedValue(() => {
     const range = snapPoints.collapsed - snapPoints.middle;
-    const rawProgress = range !== 0 ? (observedSheetY.value - snapPoints.middle) / range : 0;
+    const rawProgress = range !== 0 ? (sheetY.value - snapPoints.middle) / range : 0;
     return Math.min(Math.max(rawProgress, 0), 1);
-  }, [observedSheetY, snapPoints.collapsed, snapPoints.middle]);
+  }, [sheetY, snapPoints.collapsed, snapPoints.middle]);
   const plusRotationStyle = useAnimatedStyle(() => {
     const rotation = 45 * headerActionProgress.value;
     return { transform: [{ rotate: `${rotation}deg` }] };
@@ -664,47 +685,15 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     [headerActionProgress]
   );
 
-  useAnimatedReaction(
-    () => observedSheetY.value,
-    (value, previous) => {
-      const threshold = snapPoints.middle + CLOSE_ACTION_EPSILON;
-      const shouldClose = value <= threshold;
-      const previousShouldClose = previous == null ? shouldClose : previous <= threshold;
-      if (previous == null || shouldClose !== previousShouldClose) {
-        runOnJS(setHeaderAction)(shouldClose ? 'close' : 'create');
-      }
-    },
-    [observedSheetY, snapPoints.middle]
-  );
-
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
       onSnapChange?.(snap);
+      setHeaderAction(snap === 'collapsed' || snap === 'hidden' ? 'create' : 'close');
       if (snapRequest && snapRequest === snap) {
         setSnapRequest(null);
       }
-      if (!sheetYObserver) {
-        const target =
-          snap === 'expanded'
-            ? snapPoints.expanded
-            : snap === 'middle'
-            ? snapPoints.middle
-            : snap === 'collapsed'
-            ? snapPoints.collapsed
-            : snapPoints.hidden ?? snapPoints.collapsed;
-        internalSheetY.value = target;
-      }
     },
-    [
-      internalSheetY,
-      onSnapChange,
-      sheetYObserver,
-      snapPoints.collapsed,
-      snapPoints.expanded,
-      snapPoints.hidden,
-      snapPoints.middle,
-      snapRequest,
-    ]
+    [onSnapChange, snapRequest]
   );
 
   const headerComponent = (
@@ -922,47 +911,31 @@ const PollsOverlay: React.FC<PollsOverlayProps> = ({
     </View>
   ) : null;
 
-  return (
-    <>
-      <View
-        pointerEvents="box-none"
-        style={[styles.sheetClip, navBarInset > 0 ? { bottom: navBarInset } : null]}
-      >
-        <BottomSheetWithFlashList
-          visible={visible}
-          snapPoints={snapPoints}
-          initialSnapPoint={initialSnap}
-          snapTo={activeSnapRequest}
-          data={polls}
-          renderItem={renderPoll}
-          keyExtractor={(item) => item.pollId}
-          estimatedItemSize={108}
-          ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: contentBottomPadding }]}
-          ListHeaderComponent={listHeaderComponent}
-          ListFooterComponent={listFooterComponent}
-          ListEmptyComponent={listEmptyComponent}
-          keyboardShouldPersistTaps="handled"
-          backgroundComponent={<FrostedGlassBackground />}
-          headerComponent={headerComponent}
-          style={overlaySheetStyles.container}
-          onHidden={handleHidden}
-          onSnapChange={handleSnapChange}
-          onDragStateChange={onDragStateChange}
-          sheetYObserver={sheetYObserver}
-          dismissThreshold={dismissThreshold}
-          preventSwipeDismiss={mode === 'overlay'}
-        />
-      </View>
-      <PollCreationSheet
-        visible={showCreateSheet}
-        coverageKey={coverageOverride ?? coverageKey}
-        coverageName={coverageName ?? null}
-        onClose={() => setShowCreateSheet(false)}
-        onCreated={handlePollCreated}
-      />
-    </>
-  );
+  const itemSeparator = useCallback(() => <View style={{ height: CARD_GAP }} />, []);
+
+  return {
+    overlayKey: 'polls',
+    snapPoints,
+    initialSnapPoint: initialSnap,
+    snapTo: activeSnapRequest,
+    data: polls,
+    renderItem: renderPoll,
+    keyExtractor: (item) => item.pollId,
+    estimatedItemSize: 108,
+    ItemSeparatorComponent: itemSeparator,
+    contentContainerStyle: [styles.scrollContent, { paddingBottom: contentBottomPadding }],
+    ListHeaderComponent: listHeaderComponent,
+    ListFooterComponent: listFooterComponent,
+    ListEmptyComponent: listEmptyComponent,
+    keyboardShouldPersistTaps: 'handled',
+    backgroundComponent: <FrostedGlassBackground />,
+    headerComponent,
+    style: overlaySheetStyles.container,
+    onHidden: handleHidden,
+    onSnapChange: handleSnapChange,
+    dismissThreshold,
+    preventSwipeDismiss: mode === 'overlay',
+  };
 };
 
 const styles = StyleSheet.create({
@@ -1013,11 +986,6 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingBottom: 32,
     paddingTop: 16,
-  },
-  sheetClip: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: 'hidden',
-    zIndex: OVERLAY_STACK_ZINDEX,
   },
   listHeader: {
     paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
@@ -1193,5 +1161,3 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
 });
-
-export default PollsOverlay;

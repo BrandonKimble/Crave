@@ -28,7 +28,7 @@ export class ModerationService {
     const apiKey = this.configService.get<string>('moderation.apiKey');
     if (!apiKey) {
       this.logger.warn(
-        'GOOGLE_MODERATION_API_KEY_DEV/PROD not configured, allowing text by default',
+        'GOOGLE_MODERATION_API_KEY not configured, allowing text by default',
       );
       return { allowed: true, reason: 'missing_api_key' };
     }

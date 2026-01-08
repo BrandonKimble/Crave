@@ -198,8 +198,9 @@ export class AutocompleteService {
     const onDemandQueued = false;
 
     const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
-    const matchesWithStatus =
-      await this.attachStatusPreviews(matchesWithCounts);
+    const matchesWithStatus = await this.attachStatusPreviews(
+      matchesWithCounts,
+    );
     const response: AutocompleteResponseDto = {
       matches: matchesWithStatus,
       query: dto.query,

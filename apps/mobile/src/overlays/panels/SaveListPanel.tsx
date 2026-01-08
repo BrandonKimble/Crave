@@ -2,22 +2,22 @@ import React from 'react';
 import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import type { SharedValue } from 'react-native-reanimated';
 import { useQueryClient } from '@tanstack/react-query';
-import { Text } from '../components';
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import { colors as themeColors } from '../constants/theme';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
-import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { resolveExpandedTop } from './sheetUtils';
-import { useHeaderCloseCutout } from './useHeaderCloseCutout';
+import { Text } from '../../components';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import { colors as themeColors } from '../../constants/theme';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import type { SnapPoints } from '../BottomSheetWithFlashList';
+import { resolveExpandedTop } from '../sheetUtils';
+import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import {
   favoriteListsService,
   type FavoriteListSummary,
   type FavoriteListType,
   type FavoriteListVisibility,
-} from '../services/favorite-lists';
-import { useFavoriteLists, favoriteListKeys } from '../hooks/use-favorite-lists';
+} from '../../services/favorite-lists';
+import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
+import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -45,15 +45,13 @@ const resolveRankColor = (score?: number | null) => {
   return '#fb7185';
 };
 
-type SaveListOverlayProps = {
+type UseSaveListPanelSpecOptions = {
   visible: boolean;
   listType: FavoriteListType;
   target: { restaurantId?: string; connectionId?: string } | null;
   onClose: () => void;
   searchBarTop?: number;
-  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-  sheetYObserver?: SharedValue<number>;
+  onSnapChange?: (snap: OverlaySheetSnap) => void;
 };
 
 type ListFormState = {
@@ -63,16 +61,14 @@ type ListFormState = {
   visibility: FavoriteListVisibility;
 };
 
-const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
+export const useSaveListPanelSpec = ({
   visible,
   listType,
   target,
   onClose,
   searchBarTop = 0,
   onSnapChange,
-  onDragStateChange,
-  sheetYObserver,
-}) => {
+}: UseSaveListPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [formState, setFormState] = React.useState<ListFormState>({
@@ -107,6 +103,22 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
       description: '',
       visibility: 'private',
     });
+  }, []);
+
+  const handleNameChange = React.useCallback((value: string) => {
+    setFormState((prev) => ({ ...prev, name: value }));
+  }, []);
+
+  const handleDescriptionChange = React.useCallback((value: string) => {
+    setFormState((prev) => ({ ...prev, description: value }));
+  }, []);
+
+  const handleVisibilityChange = React.useCallback((value: FavoriteListVisibility) => {
+    setFormState((prev) => ({ ...prev, visibility: value }));
+  }, []);
+
+  const handleOpenCreateForm = React.useCallback(() => {
+    setFormState((prev) => ({ ...prev, mode: 'create' }));
   }, []);
 
   const handleCreateList = React.useCallback(async () => {
@@ -177,13 +189,10 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
     [handlePickList, renderPreviewRow]
   );
 
-  const renderFormPanel = () => {
+  const renderFormPanel = React.useCallback(() => {
     if (formState.mode === 'hidden') {
       return (
-        <Pressable
-          onPress={() => setFormState((prev) => ({ ...prev, mode: 'create' }))}
-          style={styles.newListCard}
-        >
+        <Pressable onPress={handleOpenCreateForm} style={styles.newListCard}>
           <View style={styles.newListIcon}>
             <Feather name="plus" size={20} color={TILE_SUBTEXT} />
           </View>
@@ -201,14 +210,14 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
         </Text>
         <TextInput
           value={formState.name}
-          onChangeText={(value) => setFormState((prev) => ({ ...prev, name: value }))}
+          onChangeText={handleNameChange}
           placeholder="List name"
           placeholderTextColor={FORM_PLACEHOLDER}
           style={styles.formInput}
         />
         <TextInput
           value={formState.description}
-          onChangeText={(value) => setFormState((prev) => ({ ...prev, description: value }))}
+          onChangeText={handleDescriptionChange}
           placeholder="Description (optional)"
           placeholderTextColor={FORM_PLACEHOLDER}
           style={[styles.formInput, styles.formInputMultiline]}
@@ -224,12 +233,7 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
               return (
                 <Pressable
                   key={value}
-                  onPress={() =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      visibility: value,
-                    }))
-                  }
+                  onPress={() => handleVisibilityChange(value)}
                   style={[styles.visibilityOption, isActive && styles.visibilityOptionActive]}
                 >
                   <Text
@@ -261,96 +265,130 @@ const SaveListOverlay: React.FC<SaveListOverlayProps> = ({
         </View>
       </View>
     );
-  };
+  }, [
+    formState.description,
+    formState.mode,
+    formState.name,
+    formState.visibility,
+    handleCreateList,
+    handleDescriptionChange,
+    handleNameChange,
+    handleOpenCreateForm,
+    handleVisibilityChange,
+    resetForm,
+  ]);
 
-  const headerComponent = (
-    <View
-      style={[
-        overlaySheetStyles.header,
-        overlaySheetStyles.headerTransparent,
-        { paddingTop: headerPaddingTop },
-      ]}
-      onLayout={closeCutout.onHeaderLayout}
-    >
-      {closeCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
-        <Pressable
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close save sheet"
-          hitSlop={10}
-        >
-          <View style={overlaySheetStyles.grabHandle} />
-        </Pressable>
-      </View>
+  const headerComponent = React.useMemo(
+    () => (
       <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-        onLayout={closeCutout.onHeaderRowLayout}
+        style={[
+          overlaySheetStyles.header,
+          overlaySheetStyles.headerTransparent,
+          { paddingTop: headerPaddingTop },
+        ]}
+        onLayout={closeCutout.onHeaderLayout}
       >
-        <View style={styles.headerTextGroup}>
-          <Text
-            variant="title"
-            weight="semibold"
-            style={styles.headerTitle}
-            numberOfLines={1}
-            ellipsizeMode="tail"
+        {closeCutout.background}
+        <View style={overlaySheetStyles.grabHandleWrapper}>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close save sheet"
+            hitSlop={10}
           >
-            Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
-          </Text>
+            <View style={overlaySheetStyles.grabHandle} />
+          </Pressable>
         </View>
-        <Pressable
-          onPress={onClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close save sheet"
-          style={overlaySheetStyles.closeButton}
-          onLayout={closeCutout.onCloseLayout}
-          hitSlop={8}
+        <View
+          style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+          onLayout={closeCutout.onHeaderRowLayout}
         >
-          <View style={overlaySheetStyles.closeIcon}>
-            <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+          <View style={styles.headerTextGroup}>
+            <Text
+              variant="title"
+              weight="semibold"
+              style={styles.headerTitle}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
+            </Text>
           </View>
-        </Pressable>
+          <Pressable
+            onPress={onClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close save sheet"
+            style={overlaySheetStyles.closeButton}
+            onLayout={closeCutout.onCloseLayout}
+            hitSlop={8}
+          >
+            <View style={overlaySheetStyles.closeIcon}>
+              <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
+            </View>
+          </Pressable>
+        </View>
+        <View style={overlaySheetStyles.headerDivider} />
       </View>
-      <View style={overlaySheetStyles.headerDivider} />
-    </View>
+    ),
+    [
+      closeCutout.background,
+      closeCutout.onCloseLayout,
+      closeCutout.onHeaderLayout,
+      closeCutout.onHeaderRowLayout,
+      headerPaddingTop,
+      listType,
+      onClose,
+    ]
   );
 
-  return (
-    <BottomSheetWithFlashList
-      visible={visible}
-      snapPoints={snapPoints}
-      initialSnapPoint="expanded"
-      data={lists}
-      renderItem={renderListTile}
-      keyExtractor={(item) => item.listId}
-      estimatedItemSize={200}
-      contentContainerStyle={[
-        styles.scrollContent,
-        {
-          paddingBottom: contentBottomPadding,
-        },
-      ]}
-      ListHeaderComponent={renderFormPanel}
-      ListEmptyComponent={
-        <View style={styles.emptyState}>
-          <Text variant="body" style={styles.emptyText}>
-            No lists yet
-          </Text>
-        </View>
-      }
-      backgroundComponent={<FrostedGlassBackground />}
-      headerComponent={headerComponent}
-      style={overlaySheetStyles.container}
-      onHidden={onClose}
-      onSnapChange={onSnapChange}
-      onDragStateChange={onDragStateChange}
-      sheetYObserver={sheetYObserver}
-      flashListProps={{
-        numColumns: 2,
-        columnWrapperStyle: styles.columnWrapper,
-      }}
-    />
+  const contentContainerStyle = React.useMemo(
+    () => [
+      styles.scrollContent,
+      {
+        paddingBottom: contentBottomPadding,
+      },
+    ],
+    [contentBottomPadding]
   );
+
+  const listEmptyComponent = React.useMemo(
+    () => (
+      <View style={styles.emptyState}>
+        <Text variant="body" style={styles.emptyText}>
+          No lists yet
+        </Text>
+      </View>
+    ),
+    []
+  );
+
+  const resolvedFlashListProps = React.useMemo(
+    () => ({
+      numColumns: 2,
+      columnWrapperStyle: styles.columnWrapper,
+    }),
+    []
+  );
+
+  return {
+    overlayKey: 'saveList',
+    snapPoints,
+    initialSnapPoint: 'expanded',
+    data: lists,
+    renderItem: renderListTile,
+    keyExtractor: (item) => item.listId,
+    estimatedItemSize: 200,
+    contentContainerStyle,
+    ListHeaderComponent: renderFormPanel,
+    ListEmptyComponent: listEmptyComponent,
+    backgroundComponent: <FrostedGlassBackground />,
+    headerComponent,
+    style: overlaySheetStyles.container,
+    onHidden: onClose,
+    onSnapChange,
+    keyboardShouldPersistTaps: 'handled',
+    flashListProps: resolvedFlashListProps,
+  };
 };
 
 const styles = StyleSheet.create({
@@ -518,5 +556,3 @@ const styles = StyleSheet.create({
     color: TILE_SUBTEXT,
   },
 });
-
-export default SaveListOverlay;

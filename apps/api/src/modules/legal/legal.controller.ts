@@ -270,7 +270,7 @@ export class LegalController {
         <h2>11. Contact Us</h2>
         <p>If you have questions or concerns about this Privacy Policy or our data practices, please contact us at:</p>
         <p>
-            <strong>Email:</strong> privacy@cravesearch.com<br>
+            <strong>Email:</strong> cravesearch.app@gmail.com<br>
             <strong>Support:</strong> Via the in-app "Help & Support" section
         </p>
     </div>
@@ -286,7 +286,7 @@ export class LegalController {
             <li>Right to opt-out of the sale of personal information (we do not sell your information)</li>
             <li>Right to non-discrimination for exercising your privacy rights</li>
         </ul>
-        <p>To exercise these rights, contact us at privacy@cravesearch.com</p>
+        <p>To exercise these rights, contact us at cravesearch.app@gmail.com</p>
     </div>
 </body>
 </html>
@@ -546,13 +546,13 @@ export class LegalController {
     <div class="section">
         <h2>14. Dispute Resolution</h2>
         <p>
-            Any disputes arising from these Terms or the Service shall be governed by the laws of [Your State/Country], 
+            Any disputes arising from these Terms or the Service shall be governed by the laws of Texas, United States, 
             without regard to conflict of law principles. You agree to submit to the exclusive jurisdiction of courts 
-            located in [Your Jurisdiction].
+            located in Travis County, Texas.
         </p>
         <p>
             Before filing a lawsuit, you agree to try to resolve disputes informally by contacting us at 
-            support@cravesearch.com. We'll try to resolve the dispute informally within 30 days.
+            cravesearch.app@gmail.com. We'll try to resolve the dispute informally within 30 days.
         </p>
     </div>
 
@@ -573,7 +573,7 @@ export class LegalController {
         <h2>16. Contact Us</h2>
         <p>If you have questions about these Terms, please contact us at:</p>
         <p>
-            <strong>Email:</strong> support@cravesearch.com<br>
+            <strong>Email:</strong> cravesearch.app@gmail.com<br>
             <strong>Support:</strong> Via the in-app "Help & Support" section
         </p>
     </div>

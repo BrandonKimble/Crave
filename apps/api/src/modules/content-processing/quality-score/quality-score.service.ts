@@ -247,8 +247,9 @@ export class QualityScoreService implements IQualityScoreService {
       }
 
       // Calculate quality components
-      const qualityComponents =
-        await this.calculateRestaurantQualityComponents(connections);
+      const qualityComponents = await this.calculateRestaurantQualityComponents(
+        connections,
+      );
 
       // Fetch restaurant context for general praise component
       const restaurantEntity = await this.getRestaurantEntity(restaurantId);
@@ -489,8 +490,9 @@ export class QualityScoreService implements IQualityScoreService {
 
       for (const restaurantId of updatedRestaurants) {
         try {
-          const restaurantScore =
-            await this.calculateRestaurantQualityScore(restaurantId);
+          const restaurantScore = await this.calculateRestaurantQualityScore(
+            restaurantId,
+          );
 
           await this.entityRepository.update(restaurantId, {
             restaurantQualityScore: restaurantScore,

@@ -280,6 +280,7 @@ export class RedditService implements OnModuleInit {
   private accessToken: string | null = null;
   private tokenExpiresAt: Date | null = null;
   private redditConfig!: RedditConfig;
+  private enabled = true;
   private performanceMetrics: PerformanceMetrics = {
     requestCount: 0,
     totalResponseTime: 0,
@@ -347,6 +348,19 @@ export class RedditService implements OnModuleInit {
     }
   }
 
+  private shouldRequireCredentials(): boolean {
+    const collectionSchedulerEnabled =
+      (this.configService.get<string>('COLLECTION_SCHEDULER_ENABLED') ||
+        process.env.COLLECTION_SCHEDULER_ENABLED ||
+        '') === 'true';
+    const keywordSearchEnabled =
+      (this.configService.get<string>('KEYWORD_SEARCH_ENABLED') ||
+        process.env.KEYWORD_SEARCH_ENABLED ||
+        '') === 'true';
+
+    return collectionSchedulerEnabled || keywordSearchEnabled;
+  }
+
   private validateConfig(): void {
     const missingFields: string[] = [];
     if (!this.redditConfig.clientId) missingFields.push('reddit.clientId');
@@ -357,13 +371,40 @@ export class RedditService implements OnModuleInit {
     if (!this.redditConfig.userAgent) missingFields.push('reddit.userAgent');
 
     if (missingFields.length > 0) {
+      const requireCredentials = this.shouldRequireCredentials();
+      this.enabled = false;
+
+      if (this.logger) {
+        this.logger.warn(
+          requireCredentials
+            ? 'Missing required Reddit configuration'
+            : 'Reddit integration disabled (missing configuration)',
+          {
+            correlationId: CorrelationUtils.getCorrelationId(),
+            operation: 'validate_config',
+            missingFields,
+          },
+        );
+      }
+
+      if (requireCredentials) {
+        throw new RedditConfigurationError(
+          `Missing required Reddit configuration: ${missingFields.join(', ')}`,
+        );
+      }
+    }
+  }
+
+  private assertEnabled(): void {
+    if (!this.enabled) {
       throw new RedditConfigurationError(
-        `Missing required Reddit configuration: ${missingFields.join(', ')}`,
+        'Reddit integration is disabled (missing configuration)',
       );
     }
   }
 
   async authenticate(): Promise<void> {
+    this.assertEnabled();
     this.logger.info('Authenticating with Reddit API', {
       correlationId: CorrelationUtils.getCorrelationId(),
       operation: 'authenticate',
@@ -441,6 +482,7 @@ export class RedditService implements OnModuleInit {
   }
 
   async validateAuthentication(): Promise<boolean> {
+    this.assertEnabled();
     try {
       if (!this.isTokenValid()) {
         await this.authenticate();
@@ -490,6 +532,7 @@ export class RedditService implements OnModuleInit {
   }
 
   async getAuthenticatedHeaders(): Promise<Record<string, string>> {
+    this.assertEnabled();
     if (!this.isTokenValid()) {
       await this.authenticate();
     }
@@ -514,6 +557,7 @@ export class RedditService implements OnModuleInit {
     status: string;
     details: ConnectionStabilityMetrics;
   }> {
+    this.assertEnabled();
     const startTime = Date.now();
     let status = 'healthy';
 

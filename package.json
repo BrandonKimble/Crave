@@ -18,7 +18,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:refresh": "IOS_DEVICE_UDID= IOS_DEVICE_NAME= IOS_SIMULATOR_UDID= IOS_SIMULATOR_NAME= bash ./scripts/ios-refresh.sh",
-    "ios:device": "IP=$(ipconfig getifaddr en0) && EXPO_PACKAGER_HOSTNAME=$IP EXPO_PUBLIC_API_URL=http://$IP:3000/api bash ./scripts/ios-refresh.sh",
+    "ios:device": "IP=$(ipconfig getifaddr en0) && EXPO_PACKAGER_HOSTNAME=$IP EXPO_PUBLIC_API_URL=http://$IP:3000/api/v1 bash ./scripts/ios-refresh.sh",
     "postinstall": "patch-package"
   },
   "devDependencies": {
@@ -32,8 +32,7 @@
     "prettier": "^2.8.8",
     "turbo": "^1.10.0",
     "typescript": "^5.1.0",
-    "@babel/core": "^7.20.0",
-    "patch-package": "^8.0.0"
+    "@babel/core": "^7.20.0"
   },
   "workspaces": [
     "apps/*",
@@ -45,6 +44,7 @@
     "expo": "~54.0.0",
     "expo-splash-screen": "~31.0.8",
     "expo-status-bar": "~3.0.7",
+    "patch-package": "^8.0.0",
     "react": "19.1.0",
     "react-native": "0.81.5"
   }

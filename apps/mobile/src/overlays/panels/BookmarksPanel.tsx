@@ -2,27 +2,27 @@ import React from 'react';
 import { Alert, Dimensions, Pressable, Share, StyleSheet, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import type { SharedValue } from 'react-native-reanimated';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
-import { Text } from '../components';
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import { colors as themeColors } from '../constants/theme';
-import { useOverlayStore } from '../store/overlayStore';
-import { useSystemStatusStore } from '../store/systemStatusStore';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
-import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { calculateSnapPoints } from './sheetUtils';
-import { useHeaderCloseCutout } from './useHeaderCloseCutout';
+import { Text } from '../../components';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import { colors as themeColors } from '../../constants/theme';
+import { useOverlayStore } from '../../store/overlayStore';
+import { useSystemStatusStore } from '../../store/systemStatusStore';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import type { SnapPoints } from '../BottomSheetWithFlashList';
+import { calculateSnapPoints } from '../sheetUtils';
+import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import {
   favoriteListsService,
   type FavoriteListSummary,
   type FavoriteListType,
   type FavoriteListVisibility,
-} from '../services/favorite-lists';
-import { useFavoriteLists, favoriteListKeys } from '../hooks/use-favorite-lists';
-import type { RootStackParamList } from '../types/navigation';
+} from '../../services/favorite-lists';
+import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
+import type { RootStackParamList } from '../../types/navigation';
+import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -57,14 +57,12 @@ const resolveRankColor = (score?: number | null) => {
   return '#fb7185';
 };
 
-type BookmarksOverlayProps = {
+type UseBookmarksPanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
   searchBarTop?: number;
-  onSnapChange?: (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-  sheetYObserver?: SharedValue<number>;
-  snapTo?: 'expanded' | 'middle' | 'collapsed' | 'hidden' | null;
+  onSnapChange?: (snap: OverlaySheetSnap) => void;
+  snapTo?: OverlaySheetSnap | null;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -77,15 +75,13 @@ type ListFormState = {
   visibility: FavoriteListVisibility;
 };
 
-const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
+export const useBookmarksPanelSpec = ({
   visible,
   navBarTop = 0,
   searchBarTop = 0,
   onSnapChange,
-  onDragStateChange,
-  sheetYObserver,
   snapTo,
-}) => {
+}: UseBookmarksPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
   const queryClient = useQueryClient();
@@ -446,45 +442,41 @@ const BookmarksOverlay: React.FC<BookmarksOverlayProps> = ({
     </View>
   );
 
-  return (
-    <BottomSheetWithFlashList
-      visible={visible}
-      snapPoints={snapPoints}
-      initialSnapPoint="expanded"
-      data={lists}
-      renderItem={renderListTile}
-      keyExtractor={(item) => item.listId}
-      estimatedItemSize={220}
-      contentContainerStyle={[
-        styles.scrollContent,
-        {
-          paddingBottom: contentBottomPadding,
-        },
-      ]}
-      ListHeaderComponent={renderFormPanel}
-      ListEmptyComponent={
-        <View style={styles.emptyState}>
-          <Text variant="body" style={styles.emptyText}>
-            No lists yet
-          </Text>
-        </View>
-      }
-      backgroundComponent={<FrostedGlassBackground />}
-      headerComponent={headerComponent}
-      style={overlaySheetStyles.container}
-      onHidden={handleHidden}
-      onSnapChange={onSnapChange}
-      onDragStateChange={onDragStateChange}
-      sheetYObserver={sheetYObserver}
-      snapTo={snapTo}
-      dismissThreshold={dismissThreshold}
-      preventSwipeDismiss
-      flashListProps={{
-        numColumns: 2,
-        columnWrapperStyle: styles.columnWrapper,
-      }}
-    />
-  );
+  return {
+    overlayKey: 'bookmarks',
+    snapPoints,
+    initialSnapPoint: 'expanded',
+    snapTo,
+    data: lists,
+    renderItem: renderListTile,
+    keyExtractor: (item) => item.listId,
+    estimatedItemSize: 220,
+    contentContainerStyle: [
+      styles.scrollContent,
+      {
+        paddingBottom: contentBottomPadding,
+      },
+    ],
+    ListHeaderComponent: renderFormPanel,
+    ListEmptyComponent: (
+      <View style={styles.emptyState}>
+        <Text variant="body" style={styles.emptyText}>
+          No lists yet
+        </Text>
+      </View>
+    ),
+    backgroundComponent: <FrostedGlassBackground />,
+    headerComponent: headerComponent,
+    style: overlaySheetStyles.container,
+    onHidden: handleHidden,
+    onSnapChange,
+    dismissThreshold,
+    preventSwipeDismiss: true,
+    flashListProps: {
+      numColumns: 2,
+      columnWrapperStyle: styles.columnWrapper,
+    },
+  };
 };
 
 const styles = StyleSheet.create({
@@ -683,5 +675,3 @@ const styles = StyleSheet.create({
     color: TILE_SUBTEXT,
   },
 });
-
-export default BookmarksOverlay;

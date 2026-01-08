@@ -93,6 +93,7 @@ type BottomSheetWithFlashListProps<T> = {
   listScrollEnabled?: boolean;
   snapPoints: SnapPoints;
   initialSnapPoint?: SheetSnapPoint;
+  preservePositionOnSnapPointsChange?: boolean;
   data: ReadonlyArray<T>;
   renderItem: FlashListProps<T>['renderItem'];
   keyExtractor?: FlashListProps<T>['keyExtractor'];
@@ -165,6 +166,7 @@ const BottomSheetWithFlashList = <T,>({
   listScrollEnabled = true,
   snapPoints,
   initialSnapPoint = 'middle',
+  preservePositionOnSnapPointsChange = false,
   data,
   renderItem,
   keyExtractor,
@@ -492,6 +494,9 @@ const BottomSheetWithFlashList = <T,>({
     if (sheetYValue) {
       return;
     }
+    if (preservePositionOnSnapPointsChange) {
+      return;
+    }
     if (currentSnapKeyRef.current === 'hidden') {
       return;
     }
@@ -503,7 +508,7 @@ const BottomSheetWithFlashList = <T,>({
       return;
     }
     startSpringOnJS(target, 0, false);
-  }, [resolveSnapValue, sheetY, sheetYValue, startSpringOnJS]);
+  }, [preservePositionOnSnapPointsChange, resolveSnapValue, sheetY, sheetYValue, startSpringOnJS]);
 
   React.useEffect(() => {
     if (!snapTo) {

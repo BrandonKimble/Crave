@@ -11,20 +11,20 @@ import {
 import Reanimated from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
-import { Text } from '../components';
 import type { OperatingStatus } from '@crave-search/shared';
-import type { FoodResult, RestaurantResult } from '../types';
-import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
-import { colors as themeColors } from '../constants/theme';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
-import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
-import SquircleSpinner from '../components/SquircleSpinner';
-import { getPriceRangeLabel } from '../constants/pricing';
-import BottomSheetWithFlashList, { type SnapPoints } from './BottomSheetWithFlashList';
-import { useHeaderCloseCutout } from './useHeaderCloseCutout';
-import { calculateSnapPoints } from './sheetUtils';
+import { Text } from '../../components';
+import type { FoodResult, RestaurantResult } from '../../types';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
+import { colors as themeColors } from '../../constants/theme';
+import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
+import SquircleSpinner from '../../components/SquircleSpinner';
+import { getPriceRangeLabel } from '../../constants/pricing';
+import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import { calculateSnapPoints } from '../sheetUtils';
+import type { OverlayContentSpec } from '../types';
 
-type RestaurantOverlayData = {
+export type RestaurantOverlayData = {
   restaurant: RestaurantResult;
   dishes: FoodResult[];
   queryLabel: string;
@@ -34,21 +34,8 @@ type RestaurantOverlayData = {
 
 type AnimatedStyle = Reanimated.AnimatedStyleProp<ViewStyle>;
 
-type RestaurantOverlayProps = {
-  visible: boolean;
+type UseRestaurantPanelSpecOptions = {
   data: RestaurantOverlayData | null;
-  onDismiss: () => void;
-  onRequestClose: () => void;
-  onToggleFavorite: (id: string) => void;
-  navBarTop?: number;
-  searchBarTop?: number;
-  interactionEnabled?: boolean;
-  containerStyle?: AnimatedStyle;
-};
-
-type RestaurantOverlayContentProps = {
-  visible: boolean;
-  data: RestaurantOverlayData;
   onDismiss: () => void;
   onRequestClose: () => void;
   onToggleFavorite: (id: string) => void;
@@ -74,8 +61,7 @@ const DAY_LABELS: Array<{ key: string; label: string }> = [
   { key: 'saturday', label: 'Sat' },
 ];
 
-const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
-  visible,
+export const useRestaurantPanelSpec = ({
   data,
   onDismiss,
   onRequestClose,
@@ -84,14 +70,18 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
   searchBarTop = 0,
   interactionEnabled = true,
   containerStyle,
-}) => {
+}: UseRestaurantPanelSpecOptions): OverlayContentSpec<FoodResult> | null => {
+  if (!data) {
+    return null;
+  }
+
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const closeCutout = useHeaderCloseCutout();
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
-  const snapPoints = React.useMemo<SnapPoints>(
+  const snapPoints = React.useMemo(
     () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
@@ -204,25 +194,25 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
     return trimmed || 'Location';
   }, []);
 
-  const handleWebsitePress = () => {
+  const handleWebsitePress = React.useCallback(() => {
     if (sharedWebsiteUrl) {
       void Linking.openURL(sharedWebsiteUrl);
       return;
     }
     const query = `${restaurant.restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  };
+  }, [queryLabel, restaurant.restaurantName, sharedWebsiteUrl]);
 
-  const handleCallPress = () => {
+  const handleCallPress = React.useCallback(() => {
     if (primaryPhone) {
       void Linking.openURL(`tel:${primaryPhone}`);
       return;
     }
     const query = `${restaurant.restaurantName} ${PHONE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  };
+  }, [primaryPhone, restaurant.restaurantName]);
 
-  const handleShare = async () => {
+  const handleShare = React.useCallback(async () => {
     try {
       await Share.share({
         message: `${restaurant.restaurantName} · ${primaryAddress}`,
@@ -230,226 +220,280 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
     } catch (error) {
       // no-op
     }
-  };
+  }, [primaryAddress, restaurant.restaurantName]);
 
   const hoursSummary =
     formatOperatingStatus(restaurant.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
 
-  const headerComponent = (
-    <View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
-      onLayout={closeCutout.onHeaderLayout}
-    >
-      {closeCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
-        <View style={overlaySheetStyles.grabHandle} />
-      </View>
+  const handleToggleFavorite = React.useCallback(() => {
+    onToggleFavorite(restaurant.restaurantId);
+  }, [onToggleFavorite, restaurant.restaurantId]);
+
+  const headerComponent = React.useMemo(
+    () => (
       <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, styles.headerRow]}
-        onLayout={closeCutout.onHeaderRowLayout}
+        style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
+        onLayout={closeCutout.onHeaderLayout}
       >
-        <View style={styles.headerTextGroup}>
-          <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
-            {restaurant.restaurantName}
-          </Text>
-          <Text style={styles.restaurantAddress} numberOfLines={1}>
-            {primaryAddress}
-          </Text>
+        {closeCutout.background}
+        <View style={overlaySheetStyles.grabHandleWrapper}>
+          <View style={overlaySheetStyles.grabHandle} />
         </View>
-        <View style={styles.headerActions}>
-          <Pressable
-            onPress={() => onToggleFavorite(restaurant.restaurantId)}
-            style={styles.headerIconButton}
-            accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
-          >
-            <Feather
-              name="heart"
-              size={20}
-              color={isFavorite ? '#ef4444' : '#1f2937'}
-              {...(isFavorite ? { fill: '#ef4444' } : {})}
-            />
-          </Pressable>
-          <Pressable
-            onPress={handleShare}
-            style={styles.headerIconButton}
-            accessibilityLabel="Share"
-          >
-            <Feather name="share-2" size={18} color="#1f2937" />
-          </Pressable>
-        </View>
-        <Pressable
-          onPress={onRequestClose}
-          accessibilityLabel="Close"
-          accessibilityRole="button"
-          style={[overlaySheetStyles.closeButton, styles.headerCloseButton]}
-          onLayout={closeCutout.onCloseLayout}
-          hitSlop={8}
+        <View
+          style={[
+            overlaySheetStyles.headerRow,
+            overlaySheetStyles.headerRowSpaced,
+            styles.headerRow,
+          ]}
+          onLayout={closeCutout.onHeaderRowLayout}
         >
-          <View style={overlaySheetStyles.closeIcon}>
-            <Feather name="x" size={20} color="#1f2937" />
+          <View style={styles.headerTextGroup}>
+            <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
+              {restaurant.restaurantName}
+            </Text>
+            <Text style={styles.restaurantAddress} numberOfLines={1}>
+              {primaryAddress}
+            </Text>
           </View>
-        </Pressable>
-      </View>
-      <View style={overlaySheetStyles.headerDivider} />
-    </View>
-  );
-
-  const listHeaderComponent = isLoading ? null : (
-    <View>
-      <View style={styles.metricsRow}>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>Restaurant score</Text>
-          <Text style={styles.metricValue}>
-            {restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}
-          </Text>
-        </View>
-        <View style={styles.metricCard}>
-          <Text style={styles.metricLabel}>
-            {queryLabel ? `${queryLabel} score` : 'Query score'}
-          </Text>
-          <Text style={styles.metricValue}>{restaurant.contextualScore.toFixed(1)}</Text>
-        </View>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailText}>Price</Text>
-        <Text style={styles.detailValue}>{priceLabel ?? '—'}</Text>
-      </View>
-      <View style={styles.detailRow}>
-        <Text style={styles.detailText}>Hours</Text>
-        <Text style={styles.detailValue}>{hoursSummary}</Text>
-      </View>
-      <View style={styles.actionsRow}>
-        {sharedWebsiteUrl ? (
-          <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
-            <Feather name="globe" size={18} color="#0f172a" />
-            <Text style={styles.primaryActionText}>Website</Text>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={handleToggleFavorite}
+              style={styles.headerIconButton}
+              accessibilityLabel={isFavorite ? 'Unsave restaurant' : 'Save restaurant'}
+            >
+              <Feather
+                name="heart"
+                size={20}
+                color={isFavorite ? '#ef4444' : '#1f2937'}
+                {...(isFavorite ? { fill: '#ef4444' } : {})}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => void handleShare()}
+              style={styles.headerIconButton}
+              accessibilityLabel="Share"
+            >
+              <Feather name="share-2" size={18} color="#1f2937" />
+            </Pressable>
+          </View>
+          <Pressable
+            onPress={onRequestClose}
+            accessibilityLabel="Back"
+            accessibilityRole="button"
+            style={[overlaySheetStyles.closeButton, styles.headerCloseButton]}
+            onLayout={closeCutout.onCloseLayout}
+            hitSlop={8}
+          >
+            <View style={overlaySheetStyles.closeIcon}>
+              <Feather name="chevron-left" size={22} color="#1f2937" />
+            </View>
           </Pressable>
-        ) : null}
-        <Pressable style={styles.primaryAction} onPress={handleCallPress}>
-          <Feather name="phone" size={18} color="#0f172a" />
-          <Text style={styles.primaryActionText}>Call</Text>
-        </Pressable>
+        </View>
+        <View style={overlaySheetStyles.headerDivider} />
       </View>
-      {locationCandidates.length > 0 ? (
-        <View style={styles.locationsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Locations</Text>
-            <Text style={styles.sectionSubtitle}>{locationsLabel}</Text>
+    ),
+    [
+      closeCutout.background,
+      closeCutout.onCloseLayout,
+      closeCutout.onHeaderLayout,
+      closeCutout.onHeaderRowLayout,
+      handleShare,
+      handleToggleFavorite,
+      isFavorite,
+      onRequestClose,
+      primaryAddress,
+      restaurant.restaurantName,
+    ]
+  );
+
+  const listHeaderComponent = React.useMemo(() => {
+    if (isLoading) {
+      return null;
+    }
+    return (
+      <View>
+        <View style={styles.metricsRow}>
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>Restaurant score</Text>
+            <Text style={styles.metricValue}>
+              {restaurant.restaurantQualityScore?.toFixed(1) ?? '—'}
+            </Text>
           </View>
-          {locationCandidates.map((location, index) => {
-            const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
-            const isExpanded = Boolean(expandedLocations[locationId]);
-            const statusLabel = formatOperatingStatus(location.operatingStatus);
-            const hoursRows = formatHoursRows(location.hours ?? null);
-            const locationWebsite = normalizeWebsiteUrl(location.websiteUrl);
-            const locationPhone = location.phoneNumber;
-            return (
-              <View key={locationId} style={styles.locationCard}>
-                <Pressable
-                  style={styles.locationRow}
-                  onPress={() => toggleLocationExpanded(locationId)}
-                >
-                  <Text style={styles.locationTitle} numberOfLines={1}>
-                    {resolveLocationLabel(location.address ?? null)}
-                  </Text>
-                  <View style={styles.locationRowRight}>
-                    {statusLabel ? (
-                      <Text style={styles.locationStatus} numberOfLines={1}>
-                        {statusLabel}
-                      </Text>
-                    ) : null}
-                    <Feather
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={themeColors.textBody}
-                    />
-                  </View>
-                </Pressable>
-                {isExpanded ? (
-                  <View style={styles.locationDetails}>
-                    <Text style={styles.locationDetailLabel}>Address</Text>
-                    <Text style={styles.locationDetailValue}>
-                      {location.address ?? 'Address unavailable'}
+          <View style={styles.metricCard}>
+            <Text style={styles.metricLabel}>
+              {queryLabel ? `${queryLabel} score` : 'Query score'}
+            </Text>
+            <Text style={styles.metricValue}>{restaurant.contextualScore.toFixed(1)}</Text>
+          </View>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={styles.detailText}>Price</Text>
+          <Text style={styles.detailValue}>{priceLabel ?? '—'}</Text>
+        </View>
+        <View style={styles.detailRow}>
+          <Text style={styles.detailText}>Hours</Text>
+          <Text style={styles.detailValue}>{hoursSummary}</Text>
+        </View>
+        <View style={styles.actionsRow}>
+          {sharedWebsiteUrl ? (
+            <Pressable style={styles.primaryAction} onPress={handleWebsitePress}>
+              <Feather name="globe" size={18} color="#0f172a" />
+              <Text style={styles.primaryActionText}>Website</Text>
+            </Pressable>
+          ) : null}
+          <Pressable style={styles.primaryAction} onPress={handleCallPress}>
+            <Feather name="phone" size={18} color="#0f172a" />
+            <Text style={styles.primaryActionText}>Call</Text>
+          </Pressable>
+        </View>
+        {locationCandidates.length > 0 ? (
+          <View style={styles.locationsSection}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Locations</Text>
+              <Text style={styles.sectionSubtitle}>{locationsLabel}</Text>
+            </View>
+            {locationCandidates.map((location, index) => {
+              const locationId = location.locationId ?? `${restaurant.restaurantId}-${index}`;
+              const isExpanded = Boolean(expandedLocations[locationId]);
+              const statusLabel = formatOperatingStatus(location.operatingStatus);
+              const hoursRows = formatHoursRows(location.hours ?? null);
+              const locationWebsite = normalizeWebsiteUrl(location.websiteUrl);
+              const locationPhone = location.phoneNumber;
+              return (
+                <View key={locationId} style={styles.locationCard}>
+                  <Pressable
+                    style={styles.locationRow}
+                    onPress={() => toggleLocationExpanded(locationId)}
+                  >
+                    <Text style={styles.locationTitle} numberOfLines={1}>
+                      {resolveLocationLabel(location.address ?? null)}
                     </Text>
-                    {locationPhone ? (
-                      <Pressable
-                        style={styles.locationDetailRow}
-                        onPress={() => void Linking.openURL(`tel:${locationPhone}`)}
-                      >
-                        <Text style={styles.locationDetailLabel}>Phone</Text>
-                        <Text style={styles.locationDetailLink}>{locationPhone}</Text>
-                      </Pressable>
-                    ) : null}
-                    <View style={styles.locationDetailRow}>
-                      <Text style={styles.locationDetailLabel}>Hours</Text>
-                      {hoursRows.length ? (
-                        <View style={styles.locationHoursList}>
-                          {hoursRows.map((entry) => (
-                            <View key={entry.label} style={styles.locationHoursRow}>
-                              <Text style={styles.locationHoursDay}>{entry.label}</Text>
-                              <Text style={styles.locationHoursValue}>{entry.value}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : (
-                        <Text style={styles.locationDetailValue}>Hours unavailable</Text>
-                      )}
-                    </View>
-                    {shouldShowPerLocationWebsite && locationWebsite ? (
-                      <Pressable
-                        style={styles.locationDetailRow}
-                        onPress={() => void Linking.openURL(locationWebsite)}
-                      >
-                        <Text style={styles.locationDetailLabel}>Website</Text>
-                        <Text style={styles.locationDetailLink} numberOfLines={1}>
-                          {locationWebsite.replace(/^https?:\/\//, '')}
+                    <View style={styles.locationRowRight}>
+                      {statusLabel ? (
+                        <Text style={styles.locationStatus} numberOfLines={1}>
+                          {statusLabel}
                         </Text>
-                      </Pressable>
-                    ) : null}
-                  </View>
-                ) : null}
-              </View>
-            );
-          })}
+                      ) : null}
+                      <Feather
+                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={themeColors.textBody}
+                      />
+                    </View>
+                  </Pressable>
+                  {isExpanded ? (
+                    <View style={styles.locationDetails}>
+                      <Text style={styles.locationDetailLabel}>Address</Text>
+                      <Text style={styles.locationDetailValue}>
+                        {location.address ?? 'Address unavailable'}
+                      </Text>
+                      {locationPhone ? (
+                        <Pressable
+                          style={styles.locationDetailRow}
+                          onPress={() => void Linking.openURL(`tel:${locationPhone}`)}
+                        >
+                          <Text style={styles.locationDetailLabel}>Phone</Text>
+                          <Text style={styles.locationDetailLink}>{locationPhone}</Text>
+                        </Pressable>
+                      ) : null}
+                      <View style={styles.locationDetailRow}>
+                        <Text style={styles.locationDetailLabel}>Hours</Text>
+                        {hoursRows.length ? (
+                          <View style={styles.locationHoursList}>
+                            {hoursRows.map((entry) => (
+                              <View key={entry.label} style={styles.locationHoursRow}>
+                                <Text style={styles.locationHoursDay}>{entry.label}</Text>
+                                <Text style={styles.locationHoursValue}>{entry.value}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        ) : (
+                          <Text style={styles.locationDetailValue}>Hours unavailable</Text>
+                        )}
+                      </View>
+                      {shouldShowPerLocationWebsite && locationWebsite ? (
+                        <Pressable
+                          style={styles.locationDetailRow}
+                          onPress={() => void Linking.openURL(locationWebsite)}
+                        >
+                          <Text style={styles.locationDetailLabel}>Website</Text>
+                          <Text style={styles.locationDetailLink} numberOfLines={1}>
+                            {locationWebsite.replace(/^https?:\/\//, '')}
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Menu highlights</Text>
+          <Text style={styles.sectionSubtitle}>Ranked by dish score</Text>
         </View>
-      ) : null}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Menu highlights</Text>
-        <Text style={styles.sectionSubtitle}>Ranked by dish score</Text>
       </View>
-    </View>
+    );
+  }, [
+    expandedLocations,
+    formatOperatingStatus,
+    formatHoursRows,
+    handleCallPress,
+    handleWebsitePress,
+    hoursSummary,
+    isLoading,
+    locationCandidates,
+    locationsLabel,
+    normalizeWebsiteUrl,
+    priceLabel,
+    queryLabel,
+    resolveLocationLabel,
+    restaurant.contextualScore,
+    restaurant.restaurantId,
+    restaurant.restaurantQualityScore,
+    sharedWebsiteUrl,
+    shouldShowPerLocationWebsite,
+    toggleLocationExpanded,
+  ]);
+
+  const renderDish = React.useCallback(
+    ({ item, index }: { item: FoodResult; index: number }) => (
+      <View style={styles.dishCard}>
+        <View style={styles.dishHeader}>
+          <View style={styles.dishRank}>
+            <Text style={styles.dishRankText}>{index + 1}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.dishName}>{item.foodName}</Text>
+            <Text style={styles.dishMeta}>
+              Dish score: {(item.displayScore ?? item.qualityScore).toFixed(1)}
+            </Text>
+          </View>
+          <Text style={styles.dishActivity}>{item.activityLevel}</Text>
+        </View>
+        <View style={styles.dishStatsRow}>
+          <View style={styles.dishStat}>
+            <Text style={styles.dishStatLabel}>Poll count</Text>
+            <Text style={styles.dishStatValue}>{item.mentionCount}</Text>
+          </View>
+          <View style={styles.dishStat}>
+            <Text style={styles.dishStatLabel}>Total votes</Text>
+            <Text style={styles.dishStatValue}>{item.totalUpvotes}</Text>
+          </View>
+        </View>
+      </View>
+    ),
+    []
   );
 
-  const renderDish = ({ item, index }: { item: FoodResult; index: number }) => (
-    <View style={styles.dishCard}>
-      <View style={styles.dishHeader}>
-        <View style={styles.dishRank}>
-          <Text style={styles.dishRankText}>{index + 1}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.dishName}>{item.foodName}</Text>
-          <Text style={styles.dishMeta}>
-            Dish score: {(item.displayScore ?? item.qualityScore).toFixed(1)}
-          </Text>
-        </View>
-        <Text style={styles.dishActivity}>{item.activityLevel}</Text>
-      </View>
-      <View style={styles.dishStatsRow}>
-        <View style={styles.dishStat}>
-          <Text style={styles.dishStatLabel}>Poll count</Text>
-          <Text style={styles.dishStatValue}>{item.mentionCount}</Text>
-        </View>
-        <View style={styles.dishStat}>
-          <Text style={styles.dishStatLabel}>Total votes</Text>
-          <Text style={styles.dishStatValue}>{item.totalUpvotes}</Text>
-        </View>
-      </View>
-    </View>
-  );
+  const keyExtractor = React.useCallback((item: FoodResult) => item.connectionId, []);
 
-  const listEmptyComponent = () => {
+  const renderSeparator = React.useCallback(() => <View style={{ height: CARD_GAP }} />, []);
+
+  const listEmptyComponent = React.useCallback(() => {
     if (isLoading) {
       return (
         <View
@@ -468,48 +512,37 @@ const RestaurantOverlayContent: React.FC<RestaurantOverlayContentProps> = ({
         <Text style={styles.emptyStateText}>No dishes found for this restaurant.</Text>
       </View>
     );
+  }, [emptyAreaMinHeight, isLoading]);
+
+  const backgroundComponent = React.useMemo(
+    () => (isLoading ? <View style={styles.loadingBackground} /> : <FrostedGlassBackground />),
+    [isLoading]
+  );
+
+  return {
+    overlayKey: 'restaurant',
+    snapPoints,
+    initialSnapPoint: 'middle',
+    animateOnMount: true,
+    data: dishes,
+    renderItem: renderDish,
+    keyExtractor,
+    estimatedItemSize: 136,
+    ItemSeparatorComponent: renderSeparator,
+    contentContainerStyle: {
+      paddingBottom: contentBottomPadding,
+    },
+    ListHeaderComponent: listHeaderComponent,
+    ListEmptyComponent: listEmptyComponent,
+    keyboardShouldPersistTaps: 'handled',
+    backgroundComponent: backgroundComponent,
+    headerComponent: headerComponent,
+    style: [overlaySheetStyles.container, containerStyle],
+    onHidden: onDismiss,
+    dismissThreshold,
+    preventSwipeDismiss: true,
+    interactionEnabled,
   };
-
-  const backgroundComponent = isLoading ? (
-    <View style={styles.loadingBackground} />
-  ) : (
-    <FrostedGlassBackground />
-  );
-
-  return (
-    <BottomSheetWithFlashList
-      visible={visible}
-      animateOnMount
-      snapPoints={snapPoints}
-      initialSnapPoint="middle"
-      data={dishes}
-      renderItem={renderDish}
-      keyExtractor={(item) => item.connectionId}
-      estimatedItemSize={136}
-      ItemSeparatorComponent={() => <View style={{ height: CARD_GAP }} />}
-      contentContainerStyle={{
-        paddingBottom: contentBottomPadding,
-      }}
-      ListHeaderComponent={listHeaderComponent}
-      ListEmptyComponent={listEmptyComponent}
-      keyboardShouldPersistTaps="handled"
-      backgroundComponent={backgroundComponent}
-      headerComponent={headerComponent}
-      style={[overlaySheetStyles.container, containerStyle]}
-      onHidden={onDismiss}
-      dismissThreshold={dismissThreshold}
-      preventSwipeDismiss
-      interactionEnabled={interactionEnabled}
-    />
-  );
-};
-
-const RestaurantOverlay: React.FC<RestaurantOverlayProps> = ({ data, searchBarTop, ...rest }) => {
-  if (!data) {
-    return null;
-  }
-
-  return <RestaurantOverlayContent {...rest} data={data} searchBarTop={searchBarTop} />;
 };
 
 const styles = StyleSheet.create({
@@ -795,6 +828,3 @@ const styles = StyleSheet.create({
     color: '#0f172a',
   },
 });
-
-export type { RestaurantOverlayData };
-export default RestaurantOverlay;

@@ -17,8 +17,8 @@ export class BillingWebhookController {
     const rawBody = request.rawBody
       ? request.rawBody
       : typeof request.body === 'string'
-        ? request.body
-        : JSON.stringify(request.body ?? {});
+      ? request.body
+      : JSON.stringify(request.body ?? {});
     await this.billingService.handleStripeWebhook(signature, rawBody);
     return { received: true };
   }

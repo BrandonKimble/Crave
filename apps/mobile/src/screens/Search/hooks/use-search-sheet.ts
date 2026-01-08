@@ -74,18 +74,6 @@ const useSearchSheet = ({
   }, [sheetState]);
 
   React.useEffect(() => {
-    if (!isSearchOverlay) {
-      panelVisibleRef.current = false;
-      sheetStateRef.current = 'hidden';
-      setPanelVisible(false);
-      setSheetState('hidden');
-      setSnapTo(null);
-      snapToRef.current = null;
-      sheetTranslateY.value = snapPoints.hidden;
-    }
-  }, [isSearchOverlay, sheetTranslateY, snapPoints.hidden]);
-
-  React.useEffect(() => {
     if (!panelVisible) {
       sheetTranslateY.value = snapPoints.hidden;
     }

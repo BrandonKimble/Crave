@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  Dimensions,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,29 +9,36 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 import { Feather } from '@expo/vector-icons';
 import { HandPlatter, Sparkles, Store, Utensils } from 'lucide-react-native';
-import { Text } from '../components';
-import { autocompleteService, type AutocompleteMatch } from '../services/autocomplete';
+
+import { Text } from '../../components';
+import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
 import {
   createPoll,
   type CreatePollPayload,
   type Poll,
   type PollTopicType,
-} from '../services/polls';
-import { colors as themeColors } from '../constants/theme';
-import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
-import SecondaryBottomSheet from './SecondaryBottomSheet';
-import { OVERLAY_HORIZONTAL_PADDING } from './overlaySheetStyles';
+} from '../../services/polls';
+import { colors as themeColors } from '../../constants/theme';
+import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
+import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetStyles';
+import { resolveExpandedTop } from '../sheetUtils';
+import type { OverlayContentSpec } from '../types';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const ACCENT = themeColors.primary;
 const BORDER = themeColors.border;
 const SURFACE = themeColors.surface;
 
-type PollCreationSheetProps = {
+type UsePollCreationPanelSpecOptions = {
   visible: boolean;
   coverageKey: string | null;
   coverageName?: string | null;
+  searchBarTop?: number;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
 };
@@ -160,26 +168,31 @@ const useAutocompleteField = (entityType: string, enabled: boolean): Autocomplet
   };
 };
 
-const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
+export const usePollCreationPanelSpec = ({
   visible,
   coverageKey,
   coverageName,
+  searchBarTop = 0,
   onClose,
   onCreated,
-}) => {
+}: UsePollCreationPanelSpecOptions): OverlayContentSpec<unknown> => {
+  const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState<PollTopicType | null>(null);
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const dishField = useAutocompleteField('food', selectedType === 'best_dish');
-  const restaurantField = useAutocompleteField('restaurant', selectedType === 'what_to_order');
+  const dishField = useAutocompleteField('food', visible && selectedType === 'best_dish');
+  const restaurantField = useAutocompleteField(
+    'restaurant',
+    visible && selectedType === 'what_to_order'
+  );
   const foodAttributeField = useAutocompleteField(
     'food_attribute',
-    selectedType === 'best_dish_attribute'
+    visible && selectedType === 'best_dish_attribute'
   );
   const restaurantAttributeField = useAutocompleteField(
     'restaurant_attribute',
-    selectedType === 'best_restaurant_attribute'
+    visible && selectedType === 'best_restaurant_attribute'
   );
 
   const selectedTemplate = useMemo(
@@ -258,73 +271,42 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
       Alert.alert('Select a poll type', 'Choose a template to continue.');
       return;
     }
-    if (!description.trim()) {
-      Alert.alert('Add a description', 'Tell people what you are looking for.');
-      return;
-    }
 
     const payload: CreatePollPayload = {
       topicType: selectedType,
-      description: description.trim(),
       coverageKey,
+      description: description.trim() || undefined,
     };
 
     if (selectedType === 'best_dish') {
-      const dishName = dishField.query.trim();
-      if (!dishField.selection && !dishName) {
-        Alert.alert('Pick a dish', 'Select or enter a dish.');
-        return;
-      }
-      if (dishField.selection?.entityId) {
-        payload.targetDishId = dishField.selection.entityId;
-      } else {
-        payload.targetDishName = dishName;
-      }
+      payload.topicEntityId = dishField.selection?.entityId;
+      payload.topicEntityName = dishField.selection?.name ?? dishField.query.trim();
+      payload.topicEntityType = 'food';
+    } else if (selectedType === 'what_to_order') {
+      payload.topicEntityId = restaurantField.selection?.entityId;
+      payload.topicEntityName = restaurantField.selection?.name ?? restaurantField.query.trim();
+      payload.topicEntityType = 'restaurant';
+    } else if (selectedType === 'best_dish_attribute') {
+      payload.topicEntityId = foodAttributeField.selection?.entityId;
+      payload.topicEntityName =
+        foodAttributeField.selection?.name ?? foodAttributeField.query.trim();
+      payload.topicEntityType = 'food_attribute';
+    } else if (selectedType === 'best_restaurant_attribute') {
+      payload.topicEntityId = restaurantAttributeField.selection?.entityId;
+      payload.topicEntityName =
+        restaurantAttributeField.selection?.name ?? restaurantAttributeField.query.trim();
+      payload.topicEntityType = 'restaurant_attribute';
     }
 
-    if (selectedType === 'what_to_order') {
-      const restaurantName = restaurantField.query.trim();
-      if (!restaurantField.selection && !restaurantName) {
-        Alert.alert('Pick a restaurant', 'Select or enter a restaurant.');
-        return;
-      }
-      if (restaurantField.selection?.entityId) {
-        payload.targetRestaurantId = restaurantField.selection.entityId;
-      } else {
-        payload.targetRestaurantName = restaurantName;
-      }
+    if (!payload.topicEntityName) {
+      Alert.alert('Add a topic', 'Pick an item from suggestions or type a value.');
+      return;
     }
 
-    if (selectedType === 'best_dish_attribute') {
-      const attributeName = foodAttributeField.query.trim();
-      if (!foodAttributeField.selection && !attributeName) {
-        Alert.alert('Pick a dish attribute', 'Select or enter a dish attribute.');
-        return;
-      }
-      if (foodAttributeField.selection?.entityId) {
-        payload.targetFoodAttributeId = foodAttributeField.selection.entityId;
-      } else {
-        payload.targetFoodAttributeName = attributeName;
-      }
-    }
-
-    if (selectedType === 'best_restaurant_attribute') {
-      const attributeName = restaurantAttributeField.query.trim();
-      if (!restaurantAttributeField.selection && !attributeName) {
-        Alert.alert('Pick a restaurant attribute', 'Select or enter a restaurant attribute.');
-        return;
-      }
-      if (restaurantAttributeField.selection?.entityId) {
-        payload.targetRestaurantAttributeId = restaurantAttributeField.selection.entityId;
-      } else {
-        payload.targetRestaurantAttributeName = attributeName;
-      }
-    }
-
-    setSubmitting(true);
     try {
-      const created = await createPoll(payload);
-      onCreated(created);
+      setSubmitting(true);
+      const poll = await createPoll(payload);
+      onCreated(poll);
     } catch (error) {
       Alert.alert(
         'Unable to create poll',
@@ -354,13 +336,21 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
     field.setShowSuggestions(false);
   };
 
-  return (
-    <SecondaryBottomSheet
-      visible={visible}
-      onRequestClose={onClose}
-      paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
-      paddingTop={16}
-    >
+  const contentBottomPadding = Math.max(insets.bottom, 12);
+  const expanded = resolveExpandedTop(searchBarTop, insets.top);
+  const hidden = SCREEN_HEIGHT + 80;
+  const snapPoints = useMemo(
+    () => ({
+      expanded,
+      middle: expanded,
+      collapsed: expanded,
+      hidden,
+    }),
+    [expanded, hidden]
+  );
+
+  const listHeaderComponent = (
+    <View>
       <View style={styles.headerRow}>
         <View>
           <Text variant="title" weight="semibold" style={styles.headerTitle}>
@@ -529,7 +519,7 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
       ) : null}
 
       <TouchableOpacity
-        onPress={handleSubmit}
+        onPress={() => void handleSubmit()}
         style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
         disabled={submitting}
       >
@@ -537,11 +527,34 @@ const PollCreationSheet: React.FC<PollCreationSheetProps> = ({
           {submitting ? 'Publishing…' : 'Publish poll'}
         </Text>
       </TouchableOpacity>
-    </SecondaryBottomSheet>
+    </View>
   );
+
+  return {
+    overlayKey: 'pollCreation',
+    snapPoints,
+    initialSnapPoint: 'expanded',
+    preventSwipeDismiss: true,
+    data: [],
+    renderItem: () => null,
+    estimatedItemSize: 880,
+    contentContainerStyle: {
+      paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
+      paddingTop: 16,
+      paddingBottom: contentBottomPadding,
+    },
+    ListHeaderComponent: listHeaderComponent,
+    keyboardShouldPersistTaps: 'handled',
+    surfaceStyle: [overlaySheetStyles.surface, styles.surface],
+    style: overlaySheetStyles.container,
+    onHidden: onClose,
+  };
 };
 
 const styles = StyleSheet.create({
+  surface: {
+    backgroundColor: '#ffffff',
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -662,5 +675,3 @@ const styles = StyleSheet.create({
     textTransform: 'capitalize',
   },
 });
-
-export default PollCreationSheet;
