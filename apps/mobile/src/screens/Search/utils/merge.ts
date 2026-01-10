@@ -30,9 +30,9 @@ export const mergeSearchResponses = (
     return incoming;
   }
 
-  const mergedFood = mergeById(
-    previous.food ?? [],
-    incoming.food ?? [],
+  const mergedDishes = mergeById(
+    previous.dishes ?? [],
+    incoming.dishes ?? [],
     (item) => item.connectionId
   );
   const mergedRestaurants = mergeById(
@@ -43,7 +43,7 @@ export const mergeSearchResponses = (
 
   return {
     ...incoming,
-    food: mergedFood,
+    dishes: mergedDishes,
     restaurants: mergedRestaurants,
     metadata: {
       ...previous.metadata,

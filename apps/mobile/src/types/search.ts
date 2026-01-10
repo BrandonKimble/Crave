@@ -1,6 +1,9 @@
 export type {
   ActivityLevel,
   Coordinate,
+  DishRestaurantData,
+  DishRestaurantLocation,
+  DishResult,
   EntityScope,
   FilterClause,
   FoodResult,

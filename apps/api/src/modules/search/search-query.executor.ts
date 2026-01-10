@@ -116,6 +116,86 @@ interface QueryResultRow {
   food_aliases: string[];
 }
 
+/**
+ * Row type for restaurant query (Query A) - restaurants with top dishes
+ */
+interface RestaurantQueryRow {
+  restaurant_id: string;
+  restaurant_name: string;
+  restaurant_aliases: string[];
+  restaurant_quality_score?: Prisma.Decimal | number | string | null;
+  location_key?: string | null;
+  restaurant_metadata?: Prisma.JsonValue | null;
+  price_level?: Prisma.Decimal | number | string | null;
+  price_level_updated_at?: Date | null;
+  display_score?: Prisma.Decimal | number | string | null;
+  display_percentile?: Prisma.Decimal | number | string | null;
+  total_upvotes?: Prisma.Decimal | number | string | null;
+  total_mentions?: Prisma.Decimal | number | string | null;
+  location_id: string;
+  google_place_id?: string | null;
+  latitude?: Prisma.Decimal | number | string | null;
+  longitude?: Prisma.Decimal | number | string | null;
+  address?: string | null;
+  city?: string | null;
+  region?: string | null;
+  country?: string | null;
+  postal_code?: string | null;
+  phone_number?: string | null;
+  website_url?: string | null;
+  hours?: Prisma.JsonValue | null;
+  utc_offset_minutes?: Prisma.Decimal | number | string | null;
+  time_zone?: string | null;
+  is_primary?: boolean;
+  last_polled_at?: Date | null;
+  location_created_at?: Date | null;
+  location_updated_at?: Date | null;
+  locations_json?: Prisma.JsonValue | null;
+  location_count?: Prisma.Decimal | number | string | null;
+  top_dishes?: Prisma.JsonValue | null;
+  total_dish_count?: number | null;
+}
+
+/**
+ * Row type for dish query (Query B) - dishes with restaurant data for map pins
+ */
+interface DishQueryRow {
+  connection_id: string;
+  restaurant_id: string;
+  food_id: string;
+  categories: string[];
+  food_attributes: string[];
+  mention_count: number;
+  total_upvotes: number;
+  recent_mention_count: number;
+  last_mentioned_at: Date | null;
+  activity_level: ActivityLevel;
+  food_quality_score: Prisma.Decimal | number | string;
+  connection_display_score?: Prisma.Decimal | number | string | null;
+  connection_display_percentile?: Prisma.Decimal | number | string | null;
+  food_name: string;
+  food_aliases: string[];
+  coverage_key?: string | null;
+  // Restaurant data for map pins
+  restaurant_entity_id: string;
+  restaurant_name: string;
+  restaurant_aliases: string[];
+  restaurant_display_score?: Prisma.Decimal | number | string | null;
+  restaurant_display_percentile?: Prisma.Decimal | number | string | null;
+  restaurant_price_level?: Prisma.Decimal | number | string | null;
+  restaurant_price_level_updated_at?: Date | null;
+  // Location data for map pins
+  location_id: string;
+  google_place_id?: string | null;
+  latitude?: Prisma.Decimal | number | string | null;
+  longitude?: Prisma.Decimal | number | string | null;
+  address?: string | null;
+  city?: string | null;
+  hours?: Prisma.JsonValue | null;
+  utc_offset_minutes?: Prisma.Decimal | number | string | null;
+  time_zone?: string | null;
+}
+
 interface UserLocationInput {
   lat: number;
   lng: number;
@@ -143,6 +223,33 @@ interface ExecuteResult {
   restaurantResults: RestaurantResultDto[];
   totalFoodCount: number;
   totalRestaurantCount: number;
+  metadata: {
+    boundsApplied: boolean;
+    openNowApplied: boolean;
+    openNowSupportedRestaurants: number;
+    openNowUnsupportedRestaurants: number;
+    openNowUnsupportedRestaurantIds?: string[];
+    openNowFilteredOut: number;
+    priceFilterApplied: boolean;
+    minimumVotesApplied: boolean;
+  };
+  sqlPreview?: string | null;
+  timings?: Record<string, number>;
+}
+
+interface ExecuteDualParams {
+  plan: QueryPlan;
+  request: SearchQueryRequestDto;
+  pagination: { skip: number; take: number };
+  topDishesLimit?: number;
+  includeSqlPreview?: boolean;
+}
+
+interface ExecuteDualResult {
+  restaurants: RestaurantResultDto[];
+  dishes: FoodResultDto[];
+  totalRestaurantCount: number;
+  totalDishCount: number;
   metadata: {
     boundsApplied: boolean;
     openNowApplied: boolean;
@@ -322,6 +429,202 @@ export class SearchQueryExecutor {
         minimumVotesApplied: query.metadata.minimumVotesApplied,
       },
       sqlPreview: includeSqlPreview ? query.preview : null,
+      timings,
+    };
+  }
+
+  /**
+   * Execute dual parallel queries - one for restaurants, one for dishes
+   * This returns independent lists that don't share the same limit.
+   */
+  async executeDual(params: ExecuteDualParams): Promise<ExecuteDualResult> {
+    const {
+      plan,
+      request,
+      pagination,
+      topDishesLimit = 3,
+      includeSqlPreview,
+    } = params;
+
+    const executeStart = performance.now();
+    const searchCenter = this.resolveSearchCenter(request);
+
+    // Build both queries in parallel
+    const buildStart = performance.now();
+    const restaurantQuery = this.queryBuilder.buildRestaurantQuery({
+      plan,
+      pagination,
+      searchCenter,
+      topDishesLimit,
+    });
+    const dishQuery = this.queryBuilder.buildDishQuery({
+      plan,
+      pagination,
+      searchCenter,
+    });
+    const buildSqlMs = performance.now() - buildStart;
+
+    const referenceDate = new Date();
+    const userLocation = this.normalizeUserLocation(request.userLocation);
+
+    // Execute both queries in parallel
+    const dbStart = performance.now();
+    const [
+      [restaurantRows, restaurantCountResult],
+      [dishRows, dishCountResult],
+    ] = await Promise.all([
+      Promise.all([
+        this.prisma.$queryRaw<RestaurantQueryRow[]>(restaurantQuery.dataSql),
+        this.prisma.$queryRaw<Array<{ total_restaurants: bigint }>>(
+          restaurantQuery.countSql,
+        ),
+      ]),
+      Promise.all([
+        this.prisma.$queryRaw<DishQueryRow[]>(dishQuery.dataSql),
+        this.prisma.$queryRaw<
+          Array<{ total_connections: bigint; total_restaurants: bigint }>
+        >(dishQuery.countSql),
+      ]),
+    ]);
+    const dbQueryMs = performance.now() - dbStart;
+
+    const postProcessStart = performance.now();
+
+    // Build restaurant contexts from both result sets for open now filtering
+    const allRestaurantContexts = this.buildRestaurantContextsFromDual(
+      restaurantRows,
+      dishRows,
+      referenceDate,
+      userLocation,
+    );
+
+    const needsOpenFilter = Boolean(request.openNow);
+    let openNowFilterMs = 0;
+    let filteredRestaurantRows = restaurantRows;
+    let filteredDishRows = dishRows;
+    let openNowApplied = false;
+    let openNowSupportedCount = 0;
+    let openNowUnsupportedCount = 0;
+    let openNowUnsupportedIds: string[] = [];
+    let openNowFilteredOut = 0;
+
+    if (needsOpenFilter) {
+      const openFilterStart = performance.now();
+
+      // Filter restaurants
+      const restaurantFilter = this.filterRestaurantRowsByOpenNow(
+        restaurantRows,
+        allRestaurantContexts,
+      );
+      filteredRestaurantRows = restaurantFilter.rows;
+
+      // Filter dishes
+      const dishFilter = this.filterDishRowsByOpenNow(
+        dishRows,
+        allRestaurantContexts,
+      );
+      filteredDishRows = dishFilter.rows;
+
+      openNowApplied = restaurantFilter.applied || dishFilter.applied;
+      openNowSupportedCount =
+        restaurantFilter.supportedCount + dishFilter.supportedCount;
+      openNowUnsupportedCount =
+        restaurantFilter.unsupportedCount + dishFilter.unsupportedCount;
+      openNowUnsupportedIds = [
+        ...new Set([
+          ...restaurantFilter.unsupportedIds,
+          ...dishFilter.unsupportedIds,
+        ]),
+      ];
+      openNowFilteredOut =
+        restaurantRows.length -
+        filteredRestaurantRows.length +
+        (dishRows.length - filteredDishRows.length);
+
+      openNowFilterMs = performance.now() - openFilterStart;
+    }
+
+    // Map results
+    const mapRestaurantStart = performance.now();
+    const restaurants = this.mapRestaurantQueryResults(
+      filteredRestaurantRows,
+      allRestaurantContexts,
+      referenceDate,
+      userLocation,
+    );
+    const mapRestaurantMs = performance.now() - mapRestaurantStart;
+
+    const mapDishStart = performance.now();
+    const dishes = this.mapDishQueryResults(
+      filteredDishRows,
+      allRestaurantContexts,
+      referenceDate,
+    );
+    const mapDishMs = performance.now() - mapDishStart;
+
+    const postProcessMs = performance.now() - postProcessStart;
+    const executeMs = performance.now() - executeStart;
+
+    const timings = {
+      buildSqlMs: Math.round(buildSqlMs),
+      dbQueryMs: Math.round(dbQueryMs),
+      openNowFilterMs: Math.round(openNowFilterMs),
+      mapRestaurantMs: Math.round(mapRestaurantMs),
+      mapDishMs: Math.round(mapDishMs),
+      postProcessMs: Math.round(postProcessMs),
+      executeMs: Math.round(executeMs),
+    };
+
+    if (this.includePhaseTimings) {
+      this.logger.debug('Search dual executor timings', { timings });
+    }
+
+    if (this.diagnosticLogging) {
+      this.logger.debug('Search dual executor diagnostics', {
+        planFormat: plan.format,
+        restaurantRowCount: restaurantRows.length,
+        dishRowCount: dishRows.length,
+        filteredRestaurantCount: filteredRestaurantRows.length,
+        filteredDishCount: filteredDishRows.length,
+        openNowApplied,
+        openNowSupportedCount,
+        openNowUnsupportedCount,
+        openNowFilteredOut,
+      });
+    }
+
+    const totalRestaurantCount = Number(
+      restaurantCountResult[0]?.total_restaurants ?? 0,
+    );
+    const totalDishCount = Number(dishCountResult[0]?.total_connections ?? 0);
+
+    // Combine SQL previews if requested
+    const sqlPreview = includeSqlPreview
+      ? `-- Restaurant Query:\n${restaurantQuery.preview}\n\n-- Dish Query:\n${dishQuery.preview}`
+      : null;
+
+    return {
+      restaurants,
+      dishes,
+      totalRestaurantCount,
+      totalDishCount,
+      metadata: {
+        boundsApplied:
+          restaurantQuery.metadata.boundsApplied ||
+          dishQuery.metadata.boundsApplied,
+        openNowApplied,
+        openNowSupportedRestaurants: openNowSupportedCount,
+        openNowUnsupportedRestaurants: openNowUnsupportedCount,
+        openNowUnsupportedRestaurantIds: openNowUnsupportedIds,
+        openNowFilteredOut,
+        priceFilterApplied:
+          restaurantQuery.metadata.priceFilterApplied ||
+          dishQuery.metadata.priceFilterApplied,
+        minimumVotesApplied:
+          restaurantQuery.metadata.minimumVotesApplied ||
+          dishQuery.metadata.minimumVotesApplied,
+      },
+      sqlPreview,
       timings,
     };
   }
@@ -975,6 +1278,7 @@ export class SearchQueryExecutor {
                 return scoreB - scoreA;
               })
               .slice(0, TOP_RESTAURANT_FOOD_SNIPPETS),
+            totalDishCount: count,
           };
         },
       );
@@ -1672,5 +1976,390 @@ export class SearchQueryExecutor {
       symbol: PRICE_SYMBOLS[clamped],
       text: PRICE_DESCRIPTORS[clamped],
     };
+  }
+
+  // ==========================================================================
+  // Dual Query Helper Methods
+  // ==========================================================================
+
+  private buildRestaurantContextsFromDual(
+    restaurantRows: RestaurantQueryRow[],
+    dishRows: DishQueryRow[],
+    referenceDate: Date,
+    userLocation: UserLocationInput | null,
+  ): Map<string, RestaurantContext> {
+    const contexts = new Map<string, RestaurantContext>();
+
+    // Process restaurant rows first
+    for (const row of restaurantRows) {
+      const restaurantId = row.restaurant_id;
+      if (!restaurantId) continue;
+
+      const latitude = this.toOptionalNumber(row.latitude);
+      const longitude = this.toOptionalNumber(row.longitude);
+      const parsedPrice = this.toOptionalNumber(row.price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingMetadata = this.buildOperatingMetadataFromLocation(
+        row.hours,
+        row.utc_offset_minutes,
+        row.time_zone,
+      );
+      const operatingStatus = operatingMetadata
+        ? this.evaluateOperatingStatus(operatingMetadata, referenceDate)
+        : null;
+      const distanceMiles =
+        latitude !== null && longitude !== null && userLocation
+          ? this.computeDistanceMiles(userLocation, latitude, longitude)
+          : null;
+
+      contexts.set(restaurantId, {
+        locationId: row.location_id,
+        operatingStatus,
+        priceLevel: parsedPrice ?? null,
+        priceSymbol: priceDetails.symbol ?? null,
+        distanceMiles: distanceMiles ?? null,
+      });
+    }
+
+    // Add any restaurants from dish rows that aren't already in contexts
+    for (const row of dishRows) {
+      const restaurantId = row.restaurant_id;
+      if (!restaurantId || contexts.has(restaurantId)) continue;
+
+      const latitude = this.toOptionalNumber(row.latitude);
+      const longitude = this.toOptionalNumber(row.longitude);
+      const parsedPrice = this.toOptionalNumber(row.restaurant_price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingMetadata = this.buildOperatingMetadataFromLocation(
+        row.hours,
+        row.utc_offset_minutes,
+        row.time_zone,
+      );
+      const operatingStatus = operatingMetadata
+        ? this.evaluateOperatingStatus(operatingMetadata, referenceDate)
+        : null;
+      const distanceMiles =
+        latitude !== null && longitude !== null && userLocation
+          ? this.computeDistanceMiles(userLocation, latitude, longitude)
+          : null;
+
+      contexts.set(restaurantId, {
+        locationId: row.location_id,
+        operatingStatus,
+        priceLevel: parsedPrice ?? null,
+        priceSymbol: priceDetails.symbol ?? null,
+        distanceMiles: distanceMiles ?? null,
+      });
+    }
+
+    return contexts;
+  }
+
+  private filterRestaurantRowsByOpenNow(
+    rows: RestaurantQueryRow[],
+    contexts: Map<string, RestaurantContext>,
+  ): {
+    rows: RestaurantQueryRow[];
+    applied: boolean;
+    supportedCount: number;
+    unsupportedCount: number;
+    unsupportedIds: string[];
+  } {
+    const filtered: RestaurantQueryRow[] = [];
+    let applied = false;
+    let supported = 0;
+    let unsupported = 0;
+    const unsupportedIds: string[] = [];
+
+    for (const row of rows) {
+      const status = contexts.get(row.restaurant_id)?.operatingStatus;
+
+      if (!status) {
+        unsupported += 1;
+        unsupportedIds.push(row.restaurant_id);
+        continue;
+      }
+
+      applied = true;
+      supported += 1;
+
+      if (status.isOpen) {
+        filtered.push(row);
+      }
+    }
+
+    if (!applied) {
+      return {
+        rows,
+        applied: false,
+        supportedCount: 0,
+        unsupportedCount: unsupported,
+        unsupportedIds,
+      };
+    }
+
+    return {
+      rows: filtered,
+      applied: true,
+      supportedCount: supported,
+      unsupportedCount: unsupported,
+      unsupportedIds,
+    };
+  }
+
+  private filterDishRowsByOpenNow(
+    rows: DishQueryRow[],
+    contexts: Map<string, RestaurantContext>,
+  ): {
+    rows: DishQueryRow[];
+    applied: boolean;
+    supportedCount: number;
+    unsupportedCount: number;
+    unsupportedIds: string[];
+  } {
+    const filtered: DishQueryRow[] = [];
+    let applied = false;
+    let supported = 0;
+    let unsupported = 0;
+    const unsupportedIds: string[] = [];
+
+    for (const row of rows) {
+      const status = contexts.get(row.restaurant_id)?.operatingStatus;
+
+      if (!status) {
+        unsupported += 1;
+        unsupportedIds.push(row.restaurant_id);
+        continue;
+      }
+
+      applied = true;
+      supported += 1;
+
+      if (status.isOpen) {
+        filtered.push(row);
+      }
+    }
+
+    if (!applied) {
+      return {
+        rows,
+        applied: false,
+        supportedCount: 0,
+        unsupportedCount: unsupported,
+        unsupportedIds,
+      };
+    }
+
+    return {
+      rows: filtered,
+      applied: true,
+      supportedCount: supported,
+      unsupportedCount: unsupported,
+      unsupportedIds,
+    };
+  }
+
+  private mapRestaurantQueryResults(
+    rows: RestaurantQueryRow[],
+    contexts: Map<string, RestaurantContext>,
+    referenceDate: Date,
+    userLocation: UserLocationInput | null,
+  ): RestaurantResultDto[] {
+    return rows.map((row) => {
+      const context = contexts.get(row.restaurant_id);
+      const parsedPrice =
+        context?.priceLevel ?? this.toOptionalNumber(row.price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const latitude = this.toOptionalNumber(row.latitude);
+      const longitude = this.toOptionalNumber(row.longitude);
+      const distanceMiles =
+        context?.distanceMiles ??
+        (latitude !== null && longitude !== null && userLocation
+          ? this.computeDistanceMiles(userLocation, latitude, longitude)
+          : null);
+      const operatingMetadata = this.buildOperatingMetadataFromLocation(
+        row.hours,
+        row.utc_offset_minutes,
+        row.time_zone,
+      );
+      const operatingStatus =
+        context?.operatingStatus ??
+        (operatingMetadata
+          ? this.evaluateOperatingStatus(operatingMetadata, referenceDate)
+          : null);
+
+      // Parse top_dishes JSON
+      const topDishes = this.parseTopDishesJson(row.top_dishes);
+
+      // Parse locations JSON
+      const locations = this.parseLocationsJson(
+        row.locations_json,
+        referenceDate,
+      );
+
+      const displayLocation = {
+        locationId: row.location_id,
+        googlePlaceId: row.google_place_id ?? null,
+        latitude,
+        longitude,
+        address: row.address ?? null,
+        city: row.city ?? null,
+        region: row.region ?? null,
+        country: row.country ?? null,
+        postalCode: row.postal_code ?? null,
+        phoneNumber: row.phone_number ?? null,
+        websiteUrl: row.website_url ?? null,
+        hours: this.coerceRecord(row.hours),
+        utcOffsetMinutes: this.toOptionalNumber(row.utc_offset_minutes) ?? null,
+        timeZone: row.time_zone ?? null,
+        operatingStatus,
+        isPrimary: Boolean(row.is_primary),
+        lastPolledAt: row.last_polled_at?.toISOString() ?? null,
+        createdAt: row.location_created_at?.toISOString() ?? null,
+        updatedAt: row.location_updated_at?.toISOString() ?? null,
+      };
+
+      if (!locations.length) {
+        locations.push(displayLocation);
+      }
+
+      const locationCount =
+        this.toOptionalNumber(row.location_count) ?? locations.length;
+      const totalUpvotes = this.toNumber(row.total_upvotes);
+      const totalMentions = this.toNumber(row.total_mentions);
+
+      return {
+        restaurantId: row.restaurant_id,
+        restaurantName: row.restaurant_name,
+        restaurantAliases: row.restaurant_aliases || [],
+        contextualScore: 0, // Not applicable for dual query
+        restaurantQualityScore: this.toOptionalNumber(
+          row.restaurant_quality_score,
+        ),
+        displayScore: this.toOptionalNumber(row.display_score),
+        displayPercentile: this.toOptionalNumber(row.display_percentile),
+        coverageKey: row.location_key ?? undefined,
+        mentionCount: totalMentions,
+        totalUpvotes,
+        latitude,
+        longitude,
+        address: row.address ?? null,
+        restaurantLocationId: row.location_id,
+        priceLevel: parsedPrice ?? null,
+        priceSymbol: priceDetails.symbol ?? null,
+        priceText: priceDetails.text ?? null,
+        priceLevelUpdatedAt: row.price_level_updated_at?.toISOString() ?? null,
+        operatingStatus,
+        distanceMiles,
+        displayLocation,
+        locations,
+        locationCount,
+        topFood: topDishes,
+        totalDishCount: row.total_dish_count ?? 0,
+      };
+    });
+  }
+
+  private mapDishQueryResults(
+    rows: DishQueryRow[],
+    contexts: Map<string, RestaurantContext>,
+    referenceDate: Date,
+  ): FoodResultDto[] {
+    return rows.map((row) => {
+      const context = contexts.get(row.restaurant_id);
+      const parsedPrice =
+        context?.priceLevel ??
+        this.toOptionalNumber(row.restaurant_price_level);
+      const priceDetails = this.describePriceLevel(parsedPrice);
+      const operatingMetadata = this.buildOperatingMetadataFromLocation(
+        row.hours,
+        row.utc_offset_minutes,
+        row.time_zone,
+      );
+      const operatingStatus =
+        context?.operatingStatus ??
+        (operatingMetadata
+          ? this.evaluateOperatingStatus(operatingMetadata, referenceDate)
+          : null);
+      const latitude = this.toOptionalNumber(row.latitude);
+      const longitude = this.toOptionalNumber(row.longitude);
+
+      // Return flat FoodResult-compatible structure
+      return {
+        connectionId: row.connection_id,
+        foodId: row.food_id,
+        foodName: row.food_name,
+        foodAliases: row.food_aliases || [],
+        restaurantId: row.restaurant_entity_id,
+        restaurantName: row.restaurant_name,
+        restaurantAliases: row.restaurant_aliases || [],
+        restaurantLocationId: row.location_id,
+        qualityScore: this.toNumber(row.food_quality_score),
+        displayScore: this.toOptionalNumber(row.connection_display_score),
+        displayPercentile: this.toOptionalNumber(
+          row.connection_display_percentile,
+        ),
+        coverageKey: row.coverage_key ?? undefined,
+        activityLevel: row.activity_level,
+        mentionCount: row.mention_count,
+        totalUpvotes: row.total_upvotes,
+        recentMentionCount: row.recent_mention_count,
+        lastMentionedAt: row.last_mentioned_at?.toISOString() ?? null,
+        categories: row.categories || [],
+        foodAttributes: row.food_attributes || [],
+        restaurantPriceLevel: parsedPrice ?? null,
+        restaurantPriceSymbol: priceDetails.symbol ?? null,
+        restaurantDistanceMiles: context?.distanceMiles ?? null,
+        restaurantOperatingStatus: operatingStatus,
+        // Additional fields for map pins
+        restaurantDisplayScore: this.toOptionalNumber(
+          row.restaurant_display_score,
+        ),
+        restaurantDisplayPercentile: this.toOptionalNumber(
+          row.restaurant_display_percentile,
+        ),
+        restaurantLatitude: latitude,
+        restaurantLongitude: longitude,
+      };
+    });
+  }
+
+  private parseTopDishesJson(
+    value: Prisma.JsonValue | null | undefined,
+  ): RestaurantFoodSnippetDto[] {
+    if (!value || !Array.isArray(value)) {
+      return [];
+    }
+
+    const results: RestaurantFoodSnippetDto[] = [];
+
+    for (const entry of value) {
+      if (!entry || typeof entry !== 'object') continue;
+
+      const record = entry as Record<string, unknown>;
+      const connectionId = record.connectionId as string | null;
+      const foodId = record.foodId as string | null;
+      const foodName = record.foodName as string | null;
+
+      if (!connectionId || !foodId || !foodName) continue;
+
+      results.push({
+        connectionId,
+        foodId,
+        foodName,
+        qualityScore: this.toNumber(
+          record.qualityScore as Prisma.Decimal | number | string | null,
+        ),
+        displayScore: this.toOptionalNumber(
+          record.displayScore as Prisma.Decimal | number | string | null,
+        ),
+        displayPercentile: this.toOptionalNumber(
+          record.displayPercentile as Prisma.Decimal | number | string | null,
+        ),
+        activityLevel: (record.activityLevel as ActivityLevel) || 'normal',
+      });
+    }
+
+    return results;
   }
 }

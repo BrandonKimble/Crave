@@ -106,6 +106,7 @@ import {
   AUTOCOMPLETE_MIN_CHARS,
   CAMERA_STORAGE_KEY,
   CONTENT_HORIZONTAL_PADDING,
+  DEFAULT_SEGMENT,
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
   LABEL_TRANSLATE_Y,
@@ -150,7 +151,9 @@ import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
 import {
   boundsFromPairs,
+  getBoundsCenter,
   hasBoundsMovedSignificantly,
+  haversineDistanceMiles,
   isLngLatTuple,
   mapStateBoundsToMapBounds,
 } from './utils/geo';
@@ -182,7 +185,9 @@ const SUGGESTION_PANEL_MAX_MS = 320;
 const FILTER_TOGGLE_DEBOUNCE_MS = 600;
 const MARKER_REVEAL_CHUNK = 4;
 const MARKER_REVEAL_STAGGER_MS = 12;
-const MARKER_REVEAL_ANIM_MS = 160;
+const MARKER_REVEAL_ANIM_MS = 2000;
+const MARKER_REVEAL_WINDOW_MS =
+  MARKER_REVEAL_ANIM_MS + (MARKER_REVEAL_CHUNK - 1) * MARKER_REVEAL_STAGGER_MS + 60;
 const MARKER_DOT_HEAVY_ZOOM_ENTER = 12.0;
 const MARKER_DOT_HEAVY_ZOOM_EXIT = 12.4;
 const MARKER_DOT_HEAVY_COUNT_ENTER = 180;
@@ -252,6 +257,7 @@ const SearchScreen: React.FC = () => {
   const cameraRef = React.useRef<MapboxGL.Camera>(null);
   const mapRef = React.useRef<MapboxMapRef | null>(null);
   const latestBoundsRef = React.useRef<MapBounds | null>(null);
+  const hasPrimedInitialBoundsRef = React.useRef(false);
   const [mapCenter, setMapCenter] = React.useState<[number, number] | null>(null);
   const [mapZoom, setMapZoom] = React.useState<number | null>(null);
   const [mapCameraPadding, setMapCameraPadding] = React.useState<MapCameraPadding | null>(null);
@@ -340,6 +346,33 @@ const SearchScreen: React.FC = () => {
 
   const handleMapLoaded = React.useCallback(() => {
     setIsMapStyleReady(true);
+    if (hasPrimedInitialBoundsRef.current) {
+      return;
+    }
+    hasPrimedInitialBoundsRef.current = true;
+    void InteractionManager.runAfterInteractions(() => {
+      void (async () => {
+        if (latestBoundsRef.current) {
+          return;
+        }
+        if (!mapRef.current?.getVisibleBounds) {
+          return;
+        }
+        try {
+          const visibleBounds = await mapRef.current.getVisibleBounds();
+          if (
+            Array.isArray(visibleBounds) &&
+            visibleBounds.length >= 2 &&
+            isLngLatTuple(visibleBounds[0]) &&
+            isLngLatTuple(visibleBounds[1])
+          ) {
+            latestBoundsRef.current = boundsFromPairs(visibleBounds[0], visibleBounds[1]);
+          }
+        } catch {
+          // ignore
+        }
+      })();
+    });
   }, []);
 
   React.useEffect(() => {
@@ -589,8 +622,26 @@ const SearchScreen: React.FC = () => {
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const radialEm = LABEL_RADIAL_OFFSET_EM;
+    const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
     return {
-      textField: ['coalesce', ['get', 'restaurantName'], ''],
+      // For dish pins: show dish name + restaurant name on two lines
+      // For restaurant pins: show just restaurant name
+      textField: [
+        'case',
+        ['==', ['get', 'isDishPin'], true],
+        // Dish pin: two-line label using format for different sizes
+        [
+          'format',
+          ['coalesce', ['get', 'dishName'], ''],
+          { 'font-scale': 1.0 },
+          '\n',
+          {},
+          ['coalesce', ['get', 'restaurantName'], ''],
+          { 'font-scale': secondaryTextSize / LABEL_TEXT_SIZE },
+        ],
+        // Restaurant pin: single line
+        ['coalesce', ['get', 'restaurantName'], ''],
+      ],
       textVariableAnchor: ['literal', ['top', 'right', 'left', 'bottom']],
       textAnchor: 'center',
       textRadialOffset: radialEm,
@@ -635,7 +686,7 @@ const SearchScreen: React.FC = () => {
   const allowAutocompleteResults = React.useCallback(() => {
     suppressAutocompleteResultsRef.current = false;
   }, []);
-  const [activeTab, setActiveTab] = React.useState<SegmentValue>('dishes');
+  const [activeTab, setActiveTab] = React.useState<SegmentValue>(DEFAULT_SEGMENT);
   const [searchLayout, setSearchLayout] = React.useState({ top: 0, height: 0 });
   const [bottomNavFrame, setBottomNavFrame] = React.useState({ top: 0, height: 0 });
   const [searchContainerFrame, setSearchContainerFrame] = React.useState<LayoutRectangle | null>(
@@ -762,6 +813,13 @@ const SearchScreen: React.FC = () => {
   const lastAutoOpenKeyRef = React.useRef<string | null>(null);
   const mapMovedSinceSearchRef = React.useRef(false);
   const mapGestureActiveRef = React.useRef(false);
+  const mapTouchActiveRef = React.useRef(false);
+  const mapGestureSessionRef = React.useRef<{
+    startBounds: MapBounds;
+    startZoom: number | null;
+    eventCount: number;
+    didCollapse: boolean;
+  } | null>(null);
   const lastCameraChangedHandledRef = React.useRef(0);
   const mapIdleTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollBoundsRef = React.useRef<MapBounds | null>(null);
@@ -791,6 +849,7 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
+
   const cancelMapUpdateTimeouts = React.useCallback(() => {
     if (mapIdleTimeoutRef.current) {
       clearTimeout(mapIdleTimeoutRef.current);
@@ -1650,8 +1709,7 @@ const SearchScreen: React.FC = () => {
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const trimmedQuery = query.trim();
-  const searchChromeQuery = isSearchSessionActive ? submittedQuery || query : query;
-  const hasSearchChromeRawQuery = searchChromeQuery.length > 0;
+  const hasSearchChromeRawQuery = trimmedQuery.length > 0;
   const isSuggestionScreenActive = isSearchOverlay && isSuggestionPanelActive;
   React.useEffect(() => {
     if (isSuggestionPanelActive) {
@@ -2664,9 +2722,38 @@ const SearchScreen: React.FC = () => {
     setQuery(value);
   }, []);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
-  const dishes = results?.food ?? EMPTY_DISHES;
+  const dishes = results?.dishes ?? EMPTY_DISHES;
   const resultsHydrationCandidate =
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
+  const [shouldAnimateMarkerReveal, setShouldAnimateMarkerReveal] = React.useState(false);
+  const lastMarkerRevealKeyRef = React.useRef<string | null>(null);
+  const markerRevealTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => {
+    if (!results) {
+      setShouldAnimateMarkerReveal(false);
+      lastMarkerRevealKeyRef.current = null;
+      if (markerRevealTimeoutRef.current) {
+        clearTimeout(markerRevealTimeoutRef.current);
+        markerRevealTimeoutRef.current = null;
+      }
+      return;
+    }
+    if (results.metadata.page !== 1) {
+      return;
+    }
+    if (
+      !resultsHydrationCandidate ||
+      lastMarkerRevealKeyRef.current === resultsHydrationCandidate
+    ) {
+      return;
+    }
+    lastMarkerRevealKeyRef.current = resultsHydrationCandidate;
+    setShouldAnimateMarkerReveal(true);
+    if (markerRevealTimeoutRef.current) {
+      clearTimeout(markerRevealTimeoutRef.current);
+      markerRevealTimeoutRef.current = null;
+    }
+  }, [results, resultsHydrationCandidate]);
   const [markerRestaurants, setMarkerRestaurants] =
     React.useState<RestaurantResult[]>(EMPTY_RESTAURANTS);
   const [isMarkerDotHeavyMode, setIsMarkerDotHeavyMode] = React.useState(false);
@@ -2693,8 +2780,7 @@ const SearchScreen: React.FC = () => {
   const forceDisableMarkerViews = false;
   const shouldDisableMarkerViews =
     forceDisableMarkerViews || (isPerfDebugEnabled && searchPerfDebug.disableMarkerViews);
-  const shouldUsePlaceholderRows =
-    (isPerfDebugEnabled && searchPerfDebug.usePlaceholderRows) || shouldHydrateResults;
+  const shouldUsePlaceholderRows = isPerfDebugEnabled && searchPerfDebug.usePlaceholderRows;
   const shouldDisableFiltersHeader = isPerfDebugEnabled && searchPerfDebug.disableFiltersHeader;
   const shouldDisableResultsHeader = isPerfDebugEnabled && searchPerfDebug.disableResultsHeader;
   const shouldDisableSearchShortcuts = isPerfDebugEnabled && searchPerfDebug.disableSearchShortcuts;
@@ -3230,8 +3316,15 @@ const SearchScreen: React.FC = () => {
     });
 
     dishes.forEach((dish) => {
-      if (!map.has(dish.restaurantId)) {
-        logger.error('Dish references restaurant without coordinates', {
+      // With dual queries, dishes may reference restaurants not in top 20 restaurants list.
+      // Dishes now have their own coordinates (restaurantLatitude/restaurantLongitude).
+      // Only log if the dish itself lacks coordinates.
+      if (
+        !map.has(dish.restaurantId) &&
+        (typeof dish.restaurantLatitude !== 'number' ||
+          typeof dish.restaurantLongitude !== 'number')
+      ) {
+        logger.warn('Dish lacks restaurant coordinates', {
           dishId: dish.connectionId,
           restaurantId: dish.restaurantId,
           restaurantName: dish.restaurantName,
@@ -3400,40 +3493,102 @@ const SearchScreen: React.FC = () => {
       locationIndex: number;
     }> = [];
     let primaryCount = 0;
-    markerRestaurants.forEach((restaurant, restaurantIndex) => {
-      if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
-        return;
-      }
-      const rank = restaurantIndex + 1;
-      const pinColor = getMarkerColorForRestaurant(restaurant);
-      const locations = resolveRestaurantMapLocations(restaurant);
-      locations.forEach((location) => {
-        const featureId = `${restaurant.restaurantId}-${location.locationId}`;
+    const isDishesTab = activeTab === 'dishes';
+
+    if (isDishesTab) {
+      // Dish mode: generate pins from dishes, grouped by restaurant location
+      // Each restaurant location shows only the highest-ranked dish
+      const dishesByLocation = new Map<string, { dish: FoodResult; rank: number }>();
+
+      dishes.forEach((dish, dishIndex) => {
+        if (restaurantOnlyId && dish.restaurantId !== restaurantOnlyId) {
+          return;
+        }
+        // Skip dishes without coordinates
+        if (
+          typeof dish.restaurantLatitude !== 'number' ||
+          typeof dish.restaurantLongitude !== 'number'
+        ) {
+          return;
+        }
+
+        const locationKey = `${dish.restaurantId}-${dish.restaurantLatitude.toFixed(
+          6
+        )}-${dish.restaurantLongitude.toFixed(6)}`;
+        const rank = dishIndex + 1;
+
+        // Keep only the highest-ranked dish at each location
+        if (!dishesByLocation.has(locationKey)) {
+          dishesByLocation.set(locationKey, { dish, rank });
+        }
+      });
+
+      // Convert grouped dishes to features
+      dishesByLocation.forEach(({ dish, rank }, _locationKey) => {
+        const pinColor = getQualityColorFromPercentile(dish.displayPercentile);
+        const featureId = `dish-${dish.connectionId}`;
         const feature: Feature<Point, RestaurantFeatureProperties> = {
           type: 'Feature',
           id: featureId,
           geometry: {
             type: 'Point',
-            coordinates: [location.longitude, location.latitude],
+            coordinates: [dish.restaurantLongitude!, dish.restaurantLatitude!],
           },
           properties: {
-            restaurantId: restaurant.restaurantId,
-            restaurantName: restaurant.restaurantName,
-            contextualScore: restaurant.contextualScore,
+            restaurantId: dish.restaurantId,
+            restaurantName: dish.restaurantName,
+            contextualScore: dish.qualityScore,
             rank,
             pinColor,
+            isDishPin: true,
+            dishName: dish.foodName,
+            connectionId: dish.connectionId,
           },
         };
         entries.push({
           feature,
           rank,
-          locationIndex: location.locationIndex,
+          locationIndex: 0, // All dish pins are primary
         });
-        if (location.isPrimary) {
-          primaryCount += 1;
-        }
+        primaryCount += 1;
       });
-    });
+    } else {
+      // Restaurant mode: existing logic
+      markerRestaurants.forEach((restaurant, restaurantIndex) => {
+        if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
+          return;
+        }
+        const rank = restaurantIndex + 1;
+        const pinColor = getMarkerColorForRestaurant(restaurant);
+        const locations = resolveRestaurantMapLocations(restaurant);
+        locations.forEach((location) => {
+          const featureId = `${restaurant.restaurantId}-${location.locationId}`;
+          const feature: Feature<Point, RestaurantFeatureProperties> = {
+            type: 'Feature',
+            id: featureId,
+            geometry: {
+              type: 'Point',
+              coordinates: [location.longitude, location.latitude],
+            },
+            properties: {
+              restaurantId: restaurant.restaurantId,
+              restaurantName: restaurant.restaurantName,
+              contextualScore: restaurant.contextualScore,
+              rank,
+              pinColor,
+            },
+          };
+          entries.push({
+            feature,
+            rank,
+            locationIndex: location.locationIndex,
+          });
+          if (location.isPrimary) {
+            primaryCount += 1;
+          }
+        });
+      });
+    }
 
     const orderByRank = (
       left: {
@@ -3464,12 +3619,16 @@ const SearchScreen: React.FC = () => {
     const catalog = entries;
     if (shouldLogSearchComputes) {
       logSearchCompute(
-        `markerCatalog total=${catalog.length} primary=${primaryCount}`,
+        `markerCatalog total=${catalog.length} primary=${primaryCount} mode=${
+          isDishesTab ? 'dishes' : 'restaurants'
+        }`,
         getPerfNow() - start
       );
     }
     return { catalog, primaryCount };
   }, [
+    activeTab,
+    dishes,
     getPerfNow,
     logSearchCompute,
     markerRestaurants,
@@ -3483,8 +3642,6 @@ const SearchScreen: React.FC = () => {
     : null;
   const effectiveMapZoom = mapZoom ?? USA_FALLBACK_ZOOM;
 
-  // Pass all markers through - no viewport culling
-  // Mapbox MarkerView renders all markers; native culling is disabled by keeping all in React tree
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
     if (shouldLogSearchComputes) {
@@ -3666,6 +3823,34 @@ const SearchScreen: React.FC = () => {
     }
     return key;
   }, [getPerfNow, logSearchCompute, shouldLogSearchComputes, sortedRestaurantMarkers]);
+
+  React.useEffect(() => {
+    return () => {
+      if (markerRevealTimeoutRef.current) {
+        clearTimeout(markerRevealTimeoutRef.current);
+        markerRevealTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!shouldAnimateMarkerReveal) {
+      return;
+    }
+    if (!results || results.metadata.page !== 1) {
+      return;
+    }
+    if (sortedRestaurantMarkers.length === 0) {
+      return;
+    }
+    if (markerRevealTimeoutRef.current) {
+      return;
+    }
+    markerRevealTimeoutRef.current = setTimeout(() => {
+      markerRevealTimeoutRef.current = null;
+      setShouldAnimateMarkerReveal(false);
+    }, MARKER_REVEAL_WINDOW_MS);
+  }, [results, shouldAnimateMarkerReveal, sortedRestaurantMarkers.length]);
 
   // No sticky anchors; keep labels relative to pin geometry only.
 
@@ -4769,12 +4954,14 @@ const SearchScreen: React.FC = () => {
       }
       const isGestureActive = Boolean(state?.gestures?.isGestureActive);
       mapGestureActiveRef.current = isGestureActive;
+
       const now = Date.now();
       const throttleMs = 120;
       if (now - lastCameraChangedHandledRef.current < throttleMs) {
         return;
       }
       lastCameraChangedHandledRef.current = now;
+
       if (searchInteractionRef.current.isInteracting || anySheetDraggingRef.current) {
         cancelMapUpdateTimeouts();
         return;
@@ -4783,25 +4970,66 @@ const SearchScreen: React.FC = () => {
       if (!bounds) {
         return;
       }
+      const zoomCandidate = state?.properties?.zoom as unknown;
+      const zoom =
+        typeof zoomCandidate === 'number' && Number.isFinite(zoomCandidate) ? zoomCandidate : null;
 
-      if (!latestBoundsRef.current) {
-        latestBoundsRef.current = bounds;
-      }
+      latestBoundsRef.current = bounds;
 
       if (!isSearchOverlay || !results || !isSearchSessionActive) {
         return;
       }
 
-      if (suppressMapMovedRef.current && !isGestureActive) {
+      if (suppressMapMovedRef.current) {
         latestBoundsRef.current = bounds;
+        mapGestureSessionRef.current = null;
         return;
       }
 
       if (isGestureActive) {
+        if (!mapTouchActiveRef.current) {
+          mapGestureSessionRef.current = null;
+          return;
+        }
+        const session = mapGestureSessionRef.current;
+        if (!session) {
+          mapGestureSessionRef.current = {
+            startBounds: bounds,
+            startZoom: zoom,
+            eventCount: 1,
+            didCollapse: false,
+          };
+          return;
+        }
+
+        session.eventCount += 1;
+        const startCenter = getBoundsCenter(session.startBounds);
+        const nextCenter = getBoundsCenter(bounds);
+        const movedMiles = haversineDistanceMiles(startCenter, nextCenter);
+        const zoomDelta =
+          zoom !== null && session.startZoom !== null ? Math.abs(zoom - session.startZoom) : 0;
+
+        const didMoveEnoughForGesture = movedMiles >= 0.0015 || zoomDelta >= 0.01;
+        if (session.eventCount < 2 || !didMoveEnoughForGesture) {
+          return;
+        }
+
+        if (
+          !session.didCollapse &&
+          sheetState !== 'hidden' &&
+          sheetState !== 'collapsed' &&
+          !shouldDisableResultsSheetInteraction
+        ) {
+          animateSheetTo('collapsed');
+          session.didCollapse = true;
+        }
+
         markMapMoved();
         scheduleMapIdleReveal();
         return;
       }
+
+      mapGestureSessionRef.current = null;
 
       if (hasBoundsMovedSignificantly(latestBoundsRef.current, bounds)) {
         markMapMoved();
@@ -4809,6 +5037,7 @@ const SearchScreen: React.FC = () => {
       scheduleMapIdleReveal();
     },
     [
+      animateSheetTo,
       cancelMapUpdateTimeouts,
       isSearchOverlay,
       isSearchSessionActive,
@@ -4816,7 +5045,9 @@ const SearchScreen: React.FC = () => {
       markMapMoved,
       results,
       scheduleMapIdleReveal,
+      sheetState,
       shouldLogMapEventRates,
+      shouldDisableResultsSheetInteraction,
     ]
   );
 
@@ -5422,6 +5653,15 @@ const SearchScreen: React.FC = () => {
     []
   );
 
+  const handleMapTouchStart = React.useCallback(() => {
+    mapTouchActiveRef.current = true;
+  }, []);
+
+  const handleMapTouchEnd = React.useCallback(() => {
+    mapTouchActiveRef.current = false;
+    mapGestureSessionRef.current = null;
+  }, []);
+
   const handleMarkerPress = React.useCallback(
     (restaurantId: string) => {
       const restaurant = restaurants.find((r) => r.restaurantId === restaurantId);
@@ -5461,6 +5701,11 @@ const SearchScreen: React.FC = () => {
     handleMarkerPressRef.current(restaurantId);
   }, []);
 
+  const getShouldDeferMarkerMount = React.useCallback(() => {
+    const interactionState = searchInteractionRef.current;
+    return interactionState.isInteracting || isLoadingRef.current || isLoadingMoreRef.current;
+  }, []);
+
   React.useEffect(() => {
     if (!results) {
       return;
@@ -5478,7 +5723,7 @@ const SearchScreen: React.FC = () => {
         return;
       }
       pendingRestaurantSelectionRef.current = null;
-      openRestaurantProfile(targetRestaurant, results.food ?? [], 'results_sheet');
+      openRestaurantProfile(targetRestaurant, results.dishes ?? [], 'results_sheet');
       const queryKey = (submittedQuery || trimmedQuery).trim();
       if (queryKey) {
         lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
@@ -5497,7 +5742,7 @@ const SearchScreen: React.FC = () => {
     if (lastAutoOpenKeyRef.current === autoOpenKey) {
       return;
     }
-    openRestaurantProfile(targetRestaurant, results.food ?? [], 'auto_open_single_candidate');
+    openRestaurantProfile(targetRestaurant, results.dishes ?? [], 'auto_open_single_candidate');
     lastAutoOpenKeyRef.current = autoOpenKey;
   }, [
     isSearchFocused,
@@ -6310,7 +6555,7 @@ const SearchScreen: React.FC = () => {
     listScrollEnabled:
       !isPriceSelectorVisible && !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
     snapPoints,
-    initialSnapPoint: sheetState === 'hidden' ? 'collapsed' : sheetState,
+    initialSnapPoint: sheetState === 'hidden' ? 'middle' : sheetState,
     snapTo: resultsSheetSnapTo,
     onScrollBeginDrag: handleResultsListScrollBegin,
     onScrollEndDrag: handleResultsListScrollEnd,
@@ -6478,6 +6723,9 @@ const SearchScreen: React.FC = () => {
               cameraPadding={mapCameraPadding}
               isFollowingUser={isFollowingUser}
               onPress={stableHandleMapPress}
+              onTouchStart={handleMapTouchStart}
+              onTouchEnd={handleMapTouchEnd}
+              getShouldDeferMarkerMount={getShouldDeferMarkerMount}
               onCameraChanged={stableHandleCameraChanged}
               onMapIdle={stableHandleMapIdle}
               onMapLoaded={stableHandleMapLoaded}
@@ -6487,6 +6735,7 @@ const SearchScreen: React.FC = () => {
               dotRestaurantFeatures={dotRestaurantFeatures}
               markersRenderKey={markersRenderKey}
               buildMarkerKey={buildMarkerKey}
+              shouldAnimateMarkerReveal={shouldAnimateMarkerReveal}
               markerRevealChunk={MARKER_REVEAL_CHUNK}
               markerRevealStaggerMs={MARKER_REVEAL_STAGGER_MS}
               markerRevealAnimMs={MARKER_REVEAL_ANIM_MS}

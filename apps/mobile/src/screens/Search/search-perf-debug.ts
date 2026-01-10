@@ -1,5 +1,3 @@
-import Constants from 'expo-constants';
-
 type SearchPerfDebugFlags = {
   enabled: boolean;
   disableBlur: boolean;
@@ -29,169 +27,87 @@ type SearchPerfDebugFlags = {
   logResultsViewability: boolean;
 };
 
-const parseEnvBoolean = (value?: string | boolean): boolean | undefined => {
-  if (value == null) {
-    return undefined;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
-    return true;
-  }
-  if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
-    return false;
-  }
-  return undefined;
-};
-
-const parseEnvNumber = (value?: string | boolean): number | undefined => {
-  if (value == null || typeof value === 'boolean') {
-    return undefined;
-  }
-  const normalized = value.trim();
-  if (!normalized) {
-    return undefined;
-  }
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : undefined;
-};
-
-const getExtraValue = (key: string): string | boolean | undefined => {
-  const extra =
-    Constants.expoConfig?.extra ??
-    (Constants.manifest2 as { extra?: Record<string, unknown> } | undefined)?.extra ??
-    (Constants.manifest as { extra?: Record<string, unknown> } | undefined)?.extra;
-  if (!extra || typeof extra !== 'object') {
-    return undefined;
-  }
-  const value = (extra as Record<string, unknown>)[key];
-  if (typeof value === 'string' || typeof value === 'boolean') {
-    return value;
-  }
-  return undefined;
-};
-
-const getEnvValue = (key: string): string | boolean | undefined => {
-  if (typeof process !== 'undefined' && process.env && key in process.env) {
-    const value = process.env[key];
-    if (typeof value === 'string') {
-      return value;
-    }
-  }
-  return getExtraValue(key);
-};
-
-const resolveEnvFlag = (keys: string[], fallback: boolean): boolean => {
-  for (const key of keys) {
-    const value = parseEnvBoolean(getEnvValue(key));
-    if (value !== undefined) {
-      return value;
-    }
-  }
-  return fallback;
-};
-
-const resolveEnvNumber = (keys: string[], fallback: number): number => {
-  for (const key of keys) {
-    const value = parseEnvNumber(getEnvValue(key));
-    if (value !== undefined) {
-      return value;
-    }
-  }
-  return fallback;
-};
-
 const isDevEnvironment = __DEV__;
-const perfLogsEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DEBUG_ENABLED'], false)
-  : false;
-const overlayLogsEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_OVERLAY_DEBUG_ENABLED'], false)
-  : false;
-const searchResponsePayloadEnabled = isDevEnvironment
-  ? resolveEnvFlag(
-      ['EXPO_PUBLIC_SEARCH_LOG_RESPONSE_PAYLOAD', 'SEARCH_LOG_RESPONSE_PAYLOAD_ENABLED'],
-      false
-    )
-  : false;
-const disableMarkerViewsEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_MARKER_VIEWS'], false)
-  : false;
-const disableTopFoodMeasurementEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_TOP_FOOD_MEASUREMENT'], false)
-  : false;
-const usePlaceholderRowsEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_USE_PLACEHOLDER_ROWS'], false)
-  : false;
-const disableFiltersHeaderEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_FILTERS_HEADER'], false)
-  : false;
-const disableResultsHeaderEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_RESULTS_HEADER'], false)
-  : false;
-const disableSearchShortcutsEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DISABLE_SEARCH_SHORTCUTS'], false)
-  : false;
-const deferBestHereUiEnabled = isDevEnvironment
-  ? resolveEnvFlag(['SEARCH_PERF_DEFER_BEST_HERE_UI'], false)
-  : false;
-const logResultsViewabilityEnabled = isDevEnvironment
-  ? resolveEnvFlag(
-      ['SEARCH_PERF_LOG_RESULTS_VIEWABILITY', 'SEARCH_PERF_LOG_RESULTS_BLANK_AREA'],
-      false
-    )
-  : false;
-const logCommitMinMs = resolveEnvNumber(
-  ['SEARCH_PERF_LOG_COMMIT_MIN_MS'],
-  isDevEnvironment ? 20 : 8
-);
-const logJsStallMinMs = resolveEnvNumber(
-  ['SEARCH_PERF_LOG_JS_STALL_MIN_MS'],
-  isDevEnvironment ? 40 : 32
-);
-const logSearchComputeMinMs = resolveEnvNumber(
-  ['SEARCH_PERF_LOG_SEARCH_COMPUTE_MIN_MS'],
-  isDevEnvironment ? 8 : 8
-);
-const logTopFoodMeasurementMinMs = resolveEnvNumber(
-  ['SEARCH_PERF_LOG_TOP_FOOD_MIN_MS'],
-  isDevEnvironment ? 8 : 8
-);
-const logSearchResponseTimingMinMs = resolveEnvNumber(
-  ['SEARCH_PERF_LOG_RESPONSE_TIMING_MIN_MS'],
-  isDevEnvironment ? 20 : 5
-);
 
-// Dev-only perf toggles; flip env vars to enable logging.
+// =============================================================================
+// HOT-TOGGLEABLE DEBUG FLAGS
+// Flip these to true/false and save - hot reload will pick up the change.
+// All flags are disabled in production regardless of values here.
+// =============================================================================
+
+const DEV_FLAGS = {
+  // Master toggle for perf logging (commit info, js stalls, map events, etc.)
+  perfLogsEnabled: true,
+  // Overlay state logging
+  overlayLogsEnabled: false,
+  // Log full search response payloads
+  logResponsePayload: false,
+  // Disable marker views for perf testing
+  disableMarkerViews: false,
+  // Disable top food measurement
+  disableTopFoodMeasurement: false,
+  // Use placeholder rows
+  usePlaceholderRows: false,
+  // Disable filters header
+  disableFiltersHeader: false,
+  // Disable results header
+  disableResultsHeader: false,
+  // Disable search shortcuts
+  disableSearchShortcuts: false,
+  // Defer best here UI
+  deferBestHereUi: false,
+  // Log results viewability
+  logResultsViewability: false,
+};
+
+// Timing thresholds (ms)
+const DEV_THRESHOLDS = {
+  logCommitMinMs: 20,
+  logJsStallMinMs: 40,
+  logSearchComputeMinMs: 8,
+  logTopFoodMeasurementMinMs: 8,
+  logSearchResponseTimingMinMs: 20,
+};
+
+const PROD_THRESHOLDS = {
+  logCommitMinMs: 8,
+  logJsStallMinMs: 32,
+  logSearchComputeMinMs: 8,
+  logTopFoodMeasurementMinMs: 8,
+  logSearchResponseTimingMinMs: 5,
+};
+
+// =============================================================================
+
+const thresholds = isDevEnvironment ? DEV_THRESHOLDS : PROD_THRESHOLDS;
+
 const searchPerfDebug: SearchPerfDebugFlags = {
-  enabled: perfLogsEnabled,
+  enabled: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
   disableBlur: false,
-  disableMarkerViews: disableMarkerViewsEnabled,
-  disableTopFoodMeasurement: disableTopFoodMeasurementEnabled,
-  usePlaceholderRows: usePlaceholderRowsEnabled,
-  disableFiltersHeader: disableFiltersHeaderEnabled,
-  disableResultsHeader: disableResultsHeaderEnabled,
-  disableSearchShortcuts: disableSearchShortcutsEnabled,
-  deferBestHereUi: deferBestHereUiEnabled,
-  logCommitInfo: perfLogsEnabled,
-  logCommitMinMs,
-  logJsStalls: perfLogsEnabled,
-  logJsStallMinMs,
-  logMapEventRates: perfLogsEnabled,
+  disableMarkerViews: isDevEnvironment && DEV_FLAGS.disableMarkerViews,
+  disableTopFoodMeasurement: isDevEnvironment && DEV_FLAGS.disableTopFoodMeasurement,
+  usePlaceholderRows: isDevEnvironment && DEV_FLAGS.usePlaceholderRows,
+  disableFiltersHeader: isDevEnvironment && DEV_FLAGS.disableFiltersHeader,
+  disableResultsHeader: isDevEnvironment && DEV_FLAGS.disableResultsHeader,
+  disableSearchShortcuts: isDevEnvironment && DEV_FLAGS.disableSearchShortcuts,
+  deferBestHereUi: isDevEnvironment && DEV_FLAGS.deferBestHereUi,
+  logCommitInfo: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
+  logCommitMinMs: thresholds.logCommitMinMs,
+  logJsStalls: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
+  logJsStallMinMs: thresholds.logJsStallMinMs,
+  logMapEventRates: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
   logMapEventIntervalMs: 1000,
-  logSearchComputes: perfLogsEnabled,
-  logSearchComputeMinMs,
-  logTopFoodMeasurement: perfLogsEnabled,
-  logTopFoodMeasurementMinMs,
-  logSearchStateChanges: perfLogsEnabled,
+  logSearchComputes: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
+  logSearchComputeMinMs: thresholds.logSearchComputeMinMs,
+  logTopFoodMeasurement: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
+  logTopFoodMeasurementMinMs: thresholds.logTopFoodMeasurementMinMs,
+  logSearchStateChanges: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
   logSearchStateWhenSettlingOnly: !isDevEnvironment,
-  logSuggestionOverlayState: overlayLogsEnabled,
-  logSearchResponsePayload: searchResponsePayloadEnabled,
-  logSearchResponseTimings: perfLogsEnabled,
-  logSearchResponseTimingMinMs,
-  logResultsViewability: logResultsViewabilityEnabled,
+  logSuggestionOverlayState: isDevEnvironment && DEV_FLAGS.overlayLogsEnabled,
+  logSearchResponsePayload: isDevEnvironment && DEV_FLAGS.logResponsePayload,
+  logSearchResponseTimings: isDevEnvironment && DEV_FLAGS.perfLogsEnabled,
+  logSearchResponseTimingMinMs: thresholds.logSearchResponseTimingMinMs,
+  logResultsViewability: isDevEnvironment && DEV_FLAGS.logResultsViewability,
 };
 
 export type { SearchPerfDebugFlags };

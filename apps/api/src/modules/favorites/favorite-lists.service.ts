@@ -672,6 +672,7 @@ export class FavoriteListsService {
         priceLevelUpdatedAt:
           restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
         topFood: topFoodSnippets,
+        totalDishCount: topFoodSnippets.length,
         operatingStatus: null,
         distanceMiles: null,
         displayLocation: locationResult,

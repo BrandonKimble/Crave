@@ -24,6 +24,7 @@ import {
   CONTROL_RADIUS,
   CONTROL_VERTICAL_PADDING,
 } from '../constants/ui';
+import { SEGMENT_OPTIONS } from '../constants/search';
 
 import { Text } from '../../../components';
 import MaskedHoleOverlay, { type MaskedHole } from '../../../components/MaskedHoleOverlay';
@@ -54,11 +55,6 @@ const SEGMENT_HIGHLIGHT_WIDTH_SPRING: WithSpringConfig = {
 const SEGMENT_HIGHLIGHT_STRETCH_MS = 95;
 const SEGMENT_HIGHLIGHT_STRETCH_EASING = Easing.out(Easing.cubic);
 const SEGMENT_HIGHLIGHT_STRETCH_OVERSHOOT_PX = 6;
-
-const SEGMENT_OPTIONS = [
-  { label: 'Restaurants', value: 'restaurants' as const },
-  { label: 'Dishes', value: 'dishes' as const },
-] as const;
 
 const HOLE_RADIUS_BOOST = 1;
 

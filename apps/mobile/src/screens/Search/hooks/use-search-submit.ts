@@ -229,21 +229,21 @@ const useSearchSubmit = ({
       logSearchPhase('handleSearchResponse:start');
       let previousFoodCountSnapshot = 0;
       let previousRestaurantCountSnapshot = 0;
-      let mergedFoodCount = response.food?.length ?? 0;
+      let mergedFoodCount = response.dishes?.length ?? 0;
       let mergedRestaurantCount = response.restaurants?.length ?? 0;
 
       const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
       unstable_batchedUpdates(() => {
         setResults((prev) => {
           const base = append ? prev : null;
-          previousFoodCountSnapshot = base?.food?.length ?? 0;
+          previousFoodCountSnapshot = base?.dishes?.length ?? 0;
           previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
           const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
           const merged = mergeSearchResponses(base, response, append);
           if (shouldLogSearchResponseTimings) {
             logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
           }
-          mergedFoodCount = merged.food?.length ?? 0;
+          mergedFoodCount = merged.dishes?.length ?? 0;
           mergedRestaurantCount = merged.restaurants?.length ?? 0;
           return merged;
         });
@@ -287,9 +287,8 @@ const useSearchSubmit = ({
             }
 
             if (!singleRestaurantCandidate) {
-              const hasFoodResults = response?.food?.length > 0;
-              const hasRestaurantsResults =
-                (response?.restaurants?.length ?? 0) > 0 || response?.format === 'single_list';
+              const hasFoodResults = response?.dishes?.length > 0;
+              const hasRestaurantsResults = (response?.restaurants?.length ?? 0) > 0;
 
               setActiveTab((prevTab) => {
                 if (prevTab === 'dishes' && hasFoodResults) {
@@ -413,8 +412,10 @@ const useSearchSubmit = ({
         payload.minimumVotes = effectiveMinimumVotes;
       }
 
-      const shouldCaptureBounds = page === 1 && mapRef.current?.getVisibleBounds;
-      if (shouldCaptureBounds && !latestBoundsRef.current) {
+      // Only fetch bounds from the map instance if we don't already have recent bounds from map events.
+      const shouldCaptureBounds =
+        page === 1 && !latestBoundsRef.current && mapRef.current?.getVisibleBounds;
+      if (shouldCaptureBounds) {
         const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
         try {
           const visibleBounds = await mapRef.current!.getVisibleBounds();
@@ -438,6 +439,7 @@ const useSearchSubmit = ({
         }
       }
 
+      // Fall back to cached bounds if fresh fetch failed or we're paginating
       if (!payload.bounds && latestBoundsRef.current) {
         payload.bounds = latestBoundsRef.current;
       }
@@ -567,8 +569,10 @@ const useSearchSubmit = ({
         }
         logSearchPhase('submitSearch:payload-ready');
 
-        const shouldCaptureBounds = !append && mapRef.current?.getVisibleBounds;
-        if (shouldCaptureBounds && !latestBoundsRef.current) {
+        // Only fetch bounds from the map instance if we don't already have recent bounds from map events.
+        const shouldCaptureBounds =
+          !append && !latestBoundsRef.current && mapRef.current?.getVisibleBounds;
+        if (shouldCaptureBounds) {
           const boundsStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
           try {
             const visibleBounds = await mapRef.current!.getVisibleBounds();
@@ -592,6 +596,7 @@ const useSearchSubmit = ({
           }
         }
 
+        // Fall back to cached bounds if fresh fetch failed or we're paginating
         if (!payload.bounds && latestBoundsRef.current) {
           payload.bounds = latestBoundsRef.current;
         }
@@ -689,6 +694,10 @@ const useSearchSubmit = ({
       preserveSheetState?: boolean;
     }) => {
       logSearchPhase('runRestaurantEntitySearch:start', { reset: true });
+      const trimmedName = params.restaurantName.trim();
+      if (!trimmedName) {
+        return;
+      }
       const requestId = ++searchRequestSeqRef.current;
       activeSearchRequestRef.current = requestId;
 
@@ -699,6 +708,9 @@ const useSearchSubmit = ({
       setError(null);
       if (!preserveSheetState) {
         resetSheetToHidden();
+        setResults(null);
+        setSubmittedQuery(trimmedName);
+        showPanel();
       }
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
@@ -709,11 +721,6 @@ const useSearchSubmit = ({
       setShowSuggestions(false);
       Keyboard.dismiss();
       logSearchPhase('runRestaurantEntitySearch:ui-prep');
-
-      const trimmedName = params.restaurantName.trim();
-      if (!trimmedName) {
-        return;
-      }
 
       try {
         if (isLoadingMore) {
@@ -840,6 +847,8 @@ const useSearchSubmit = ({
           setError(null);
           if (!preserveSheetState) {
             resetSheetToHidden();
+            setResults(null);
+            setSubmittedQuery(submittedLabel);
           }
           setHasMoreFood(false);
           setHasMoreRestaurants(false);

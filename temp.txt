@@ -1,0 +1,1708 @@
+User: Instead, scheduled keyword collection uses EntityPrioritySelectionService.selectTopPriorityEntities() which scores entities based on:
+
+Data Recency (40%) - days since last update
+Data Quality (35%) - connections, mentions, upvotes
+User Demand (25%) - composed of:
+Connection Demand (60%): recent activity, mentions
+App Demand (40%): from EntityPriorityMetric table:
+queryImpressions (55%) - bumped when entities appear in search results
+autocompleteSelections (15%) - bumped when non-restaurant entities are selected from autocomplete
+viewImpressions (20%) - restaurant profile views
+favoriteCount (10%) - i want to do a deep dive into what you think about our current weighting and general approach to key word collection. then after well go into how we deside the poll topics but thats is for later. for now. i feel worried since i dont think weve sat down and carefully thought through the implication of these weighting and what we want the behavior to be like it terms of what kind of keywords we want to be prioritized or what makes our sort of "perfect keyword" where we are like "these keywords are exactly what we need to be running collections on and theyre more important than any other keywords we have signal for these specific reasons ___ which reflect what will be most beneficial to the user experience and to the data we have". Right now we seem to taking into account a lot of different signals from different services that may or may not be important signals and we added in just to make sure we are covered, but now i want you to actually think through was each signal from each service or system actually is telling us or revealing to us and how and why we should use and how things should play out given an ideal balance of these signals helping us to identity our signals behing our ideal kind of keywords to prioritize. The second part that is sort of related and explains why i was interested in the potential redundancy between on_demand_requests and search_query_log is I want you to help me understand the necessity and difference in signal between each one, why they need to be seperate, why or why not they should be included in the priority equation - like i understand on_demand_requests is for collection trigger i'm guessing since it accumulates searched (we just made that change i believe), but does the EntityPriorityMetric.queryImpressions do something super similar and so does search_query_log but are we not using it for the entity priority equation at all - so can you figure all of that out and explain it to me - i really curious as to why we need each of these separately and how they play into the equation and whether you think they play a correct role in the equation or we could combine them at all since they seem similar and why or why not.
+
+GitHub Copilot: Let me gather comprehensive context on all the systems involved to give you a thorough analysis. 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/repositories/entity-priority-metrics.repository.ts)
+
+Searched for text `selectTopPriorityEntities`, 2 results
+
+Searched for text `EntityPrioritySelectionService`, 9 results
+
+Searched for files matching `**/prisma/schema.prisma`, 1 match
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts#1-1), lines 1 to 300
+
+Searched for regex `model (EntityPriorityMetric|OnDemandRequest|SearchQueryLog)` (`**/schema.prisma`), 2 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts#300-300), lines 300 to 600
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/prisma/schema.prisma#220-220), lines 220 to 310
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/prisma/schema.prisma#775-775), lines 775 to 850
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts#570-570), lines 570 to 855
+
+Searched for text `search_query_log`, 2 results
+
+Searched for text `SearchQueryLog`, no results
+
+Searched for text `user_search_logs`, 20 results
+
+Searched for text `queryImpressions`, 18 results
+
+Searched for text `OnDemandRequest`, 20 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/on-demand-request.service.ts#1-1), lines 1 to 150
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search.service.ts#660-660), lines 660 to 750
+
+Searched for text `user_search_logs` (`**/schema.prisma`), 1 result
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/prisma/schema.prisma#400-400), lines 400 to 460
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/plans/autocomplete.md)
+
+Let me also look at how OnDemandRequest is consumed for collection: 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/on-demand-request.service.ts#150-150), lines 150 to 303
+
+Searched for text `on-demand-request`, 5 results
+
+Searched for text `OnDemandRequest` (`**/keyword-search-scheduler.service.ts`), no results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/on-demand-processing.service.ts#1-1), lines 1 to 100
+
+Now I have a comprehensive picture. Let me provide you with a thorough analysis:
+
+---
+
+## Deep Dive Analysis: Entity Priority Scoring & Signal Taxonomy
+
+### Part 1: Understanding the Current Architecture
+
+You have **three distinct data stores** that capture user search/demand signals:
+
+| Store | Table | Purpose | Trigger | Granularity |
+|-------|-------|---------|---------|-------------|
+| **EntityPriorityMetric** | `collection_entity_priority_metrics` | Collection priority scoring | Entity appears in search results, autocomplete selection, view, favorite | Per-entity aggregates (`queryImpressions`, `viewImpressions`, etc.) |
+| **OnDemandRequest** | `collection_on_demand_requests` | On-demand collection queue | Low-result or unresolved search queries | Per-term + entityType + reason + locationKey |
+| **SearchLog** | `user_search_logs` | Search analytics / history | Search submitted with entity targets | Per-entity per search (N rows per search) |
+
+---
+
+### Part 2: What Each Signal Actually Tells Us
+
+Let me break down each signal by what **user behavior** it captures and what it **reveals about demand**:
+
+#### A. EntityPriorityMetric Signals (Used in Priority Equation)
+
+| Signal | Weight | What It Captures | What It Reveals | Strengths | Weaknesses |
+|--------|--------|------------------|-----------------|-----------|------------|
+| **queryImpressions** | 55% of appDemand (≈5.5% of total demand, ≈1.4% of overall score) | Entity appeared as a resolved target in search results | Users are searching for terms that resolve to this entity | Direct demand signal; frequent = popular | Conflates "I searched for X" with "search matched X" - doesn't distinguish intentional vs. incidental |
+| **autocompleteSelections** | 15% of appDemand (≈1.5% of demand) | User explicitly tapped a non-restaurant entity in autocomplete | User proactively chose this entity from suggestions | High intent signal - user saw options and chose this one | Only fires for non-restaurants (dishes/attributes), small sample |
+| **viewImpressions** | 20% of appDemand (≈2% of demand, restaurants only) | User opened restaurant overlay | User cared enough to tap into details | Engagement beyond search; shows depth of interest | Only for restaurants; doesn't distinguish "opened and bounced" vs. "read thoroughly" |
+| **favoriteCount** | 10% of appDemand (≈1% of demand) | User favorited the entity | Durable preference signal - user wants to revisit | Strongest intent signal; very low noise | Rare event; slow to accumulate; doesn't decay |
+
+#### B. OnDemandRequest Signals (Used for Collection Trigger, NOT Priority)
+
+| Field | What It Captures | What It Reveals |
+|-------|------------------|-----------------|
+| **term** | The search query text that triggered low/unresolved results | What users are looking for that we **can't currently serve** |
+| **occurrenceCount** | How many times this exact term+reason+location was searched | Repeated searches = persistent unmet demand |
+| **reason** | `low_result` or `unresolved` | Whether we have *some* data (low) vs. *none* (unresolved) |
+| **resultRestaurantCount/resultFoodCount** | How many results we had when this triggered | Context for how "bad" the coverage is |
+
+#### C. SearchLog Signals (Currently NOT Used in Priority Equation)
+
+| Field | What It Captures | What It Reveals |
+|-------|------------------|-----------------|
+| **Per-entity rows** | Which entities were targets of a search | Entity-level search frequency (similar to `queryImpressions`) |
+| **queryText** | The actual search string | What users type (useful for query suggestions) |
+| **searchRequestId** | Groups rows from the same search | Enables deduplication for query-level analytics |
+| **totalResults** | How many results the search returned | Search satisfaction proxy |
+
+---
+
+### Part 3: The Redundancy Question
+
+You're right to be concerned. Here's the overlap:
+
+| Concept | EntityPriorityMetric.queryImpressions | OnDemandRequest.occurrenceCount | SearchLog rows |
+|---------|---------------------------------------|----------------------------------|----------------|
+| **Counts** | Per-entity, incremented when entity is a resolved target | Per-term, incremented on each low/unresolved search | Per-entity per search |
+| **Fires when** | Entity appears in search results | Search has low or unresolved results | Search submitted with targets |
+| **Used for** | Priority scoring (scheduled collection) | On-demand collection queue | Analytics, recents, query suggestions |
+
+**Key insight**: These are **not redundant** - they serve different purposes:
+
+1. **`queryImpressions`** = "This entity is being found" (success signal for scheduled enrichment)
+2. **`OnDemandRequest`** = "This query is NOT finding enough" (failure signal for on-demand collection)
+3. **`SearchLog`** = "What did the user search and what did we show them?" (analytics/UX)
+
+However, there IS hidden redundancy between `queryImpressions` and `SearchLog` - both count entity appearances in search results. The difference is:
+- `queryImpressions` is an **aggregate counter** (fast to read, loses history)
+- `SearchLog` is an **event log** (full history, slower to aggregate)
+
+---
+
+### Part 4: Critique of the Current Weighting
+
+Now let me address your core question: **Are these weights well-reasoned?**
+
+#### Current Weight Structure
+
+```
+Total Score = 
+  40% Data Recency (days since update) 
++ 35% Data Quality (connections, mentions, upvotes)
++ 25% User Demand
+       └── 60% Connection Demand (recent activity, mentions)
+       └── 40% App Demand
+              └── 55% queryImpressions
+              └── 15% autocompleteSelections  
+              └── 20% viewImpressions (restaurants only)
+              └── 10% favoriteCount
+```
+
+Effective weights on total score:
+- Data Recency: **40%**
+- Data Quality: **35%**
+- Connection Demand: **15%** (0.25 × 0.60)
+- queryImpressions: **5.5%** (0.25 × 0.40 × 0.55)
+- viewImpressions: **2%** (restaurants only)
+- autocompleteSelections: **1.5%** (non-restaurants only)
+- favoriteCount: **1%**
+
+#### Problems I See
+
+**1. Data Recency (40%) may be misaligned with goals**
+
+Currently, entities that were **recently updated** get HIGH recency scores (0.8-1.0 for 0-7 days). This means:
+- Entities we JUST enriched are most likely to be enriched again
+- Stale entities (30+ days) get LOW scores and are deprioritized
+
+**Is this what you want?** I think you actually want the **inverse** for recency:
+- Entities that are **stale** should have **higher priority** for collection
+- Entities that are **fresh** should be skipped
+
+Looking at your code, I see you use `calculateDataRecencyScore()` which gives **higher scores to fresher entities**. This seems backwards for a "priority for collection" system. Unless the intention is: "we should keep enriching things that are already good" (a rich-get-richer approach).
+
+**2. User Demand (25%) might be too small**
+
+If you want to prioritize keywords based on **what users are actually searching for**, 25% total seems low. The app demand signals (favorites, views, queries) have very small effective weights (1-5.5%).
+
+**3. queryImpressions conflates "searched for" with "matched"**
+
+From search.service.ts, `queryImpressions` increments for every entity that **appears as a resolved target** in search results. This means:
+- Searching "pizza" might increment `queryImpressions` for 10 different pizza-related entities
+- It doesn't distinguish: did the user search FOR this entity, or was it just a side-effect of matching?
+
+This dilutes the signal. An entity that's a specific search target is more valuable than one that incidentally appears in broad searches.
+
+**4. autocompleteSelections is too narrow**
+
+This only fires when users select **non-restaurant entities** from autocomplete. This means:
+- It captures explicit dish/attribute interest
+- But restaurants (your primary content) don't get this signal at all
+
+This creates an imbalance where dishes can accumulate this high-intent signal but restaurants cannot.
+
+**5. favoriteCount should probably be higher**
+
+Favorites are your **strongest intent signal** - a user explicitly said "I want to remember this." At only 1% of total score, it's nearly meaningless. A user could favorite an entity 100 times (if possible) and it would barely move the needle.
+
+---
+
+### Part 5: What Makes an "Ideal Keyword" for Collection?
+
+Let me propose a framework for thinking about this:
+
+**The Ideal Keyword for Scheduled Collection is one where:**
+
+1. **High User Interest** - Users are actively searching for it (queries, views, favorites)
+2. **Stale Data** - We haven't enriched it recently, so new data would be valuable
+3. **Good Foundation** - It has enough existing data that enrichment adds value (not a ghost entity)
+4. **Coverage Gap Potential** - Enriching it would improve user experience
+
+**The Ideal Keyword for On-Demand Collection is one where:**
+
+1. **Explicit Unmet Need** - User searched, we couldn't deliver (low/unresolved)
+2. **Repeated Demand** - Multiple users or repeated searches for the same thing
+3. **Actionable** - We can actually find data for it (not a nonsense query)
+
+These are **different selection criteria** - scheduled should prioritize "what to make better", on-demand should prioritize "what to fill gaps for".
+
+---
+
+### Part 6: Recommendations
+
+#### A. Consider Inverting Recency for Scheduled Collection
+
+```typescript
+// Current: Higher score = more recently updated (fresh)
+// Proposed: Higher score = more stale (needs refresh)
+private calculateDataRecencyScore(lastUpdated: Date, now: Date): number {
+  const daysSinceUpdate = (now.getTime() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+  
+  // Stale entities get HIGH scores (need collection)
+  // Fresh entities get LOW scores (already covered)
+  if (daysSinceUpdate >= 30) {
+    return 1.0; // Very stale - high priority
+  } else if (daysSinceUpdate >= 14) {
+    return 0.7 + (0.3 * (daysSinceUpdate - 14) / 16); // 0.7-1.0
+  } else if (daysSinceUpdate >= 7) {
+    return 0.4 + (0.3 * (daysSinceUpdate - 7) / 7); // 0.4-0.7
+  } else {
+    return 0.1 + (0.3 * daysSinceUpdate / 7); // 0.1-0.4
+  }
+}
+```
+
+**Or** rename the current approach to be clear: "We're prioritizing entities with fresh, active data for continued enrichment (rich-get-richer)."
+
+#### B. Increase User Demand Weight, Decrease Quality Weight
+
+If user behavior should drive what you collect, consider:
+
+```
+Total Score = 
+  35% Data Recency (inverted: stale = higher)
++ 25% Data Quality (keep as validation that entity is real)
++ 40% User Demand (increased)
+```
+
+#### C. Rethink App Demand Weights
+
+Consider these adjusted weights:
+
+| Signal | Current | Proposed | Rationale |
+|--------|---------|----------|-----------|
+| queryImpressions | 55% | 40% | Still important, but diluted by incidental matches |
+| autocompleteSelections | 15% | 15% | Keep as-is; high intent but narrow |
+| viewImpressions | 20% | 25% | Increase - engagement beyond search is valuable |
+| favoriteCount | 10% | 20% | Increase - strongest intent signal |
+
+#### D. Add Explicit Targeting Boost to queryImpressions
+
+When a user selects an entity from autocomplete and then searches, that entity should get a **bigger** `queryImpressions` bump than entities that just happened to match. You could:
+
+1. Track `selectedEntityId` in the search request
+2. Give that entity 2-3x the impression increment
+
+#### E. Do NOT Merge OnDemandRequest into Priority Equation
+
+Keep them separate because they serve different purposes:
+- **Priority** = "What should we enrich from our existing entities?"
+- **On-Demand** = "What NEW things should we create entities for?"
+
+On-demand is about **gap-filling**, priority is about **maintenance and improvement**.
+
+However, you COULD use `OnDemandRequest.occurrenceCount` as an **input to priority** for entities that DO exist but triggered low-result searches. This would be: "Users are searching for this, and we have it, but results are poor - prioritize enrichment."
+
+#### F. Consider Using SearchLog Instead of queryImpressions
+
+You could replace the aggregate `queryImpressions` counter with a query against `SearchLog`:
+
+```sql
+SELECT entity_id, COUNT(DISTINCT search_request_id) as unique_queries
+FROM user_search_logs 
+WHERE logged_at > NOW() - INTERVAL '30 days'
+GROUP BY entity_id
+```
+
+Pros:
+- More accurate (deduped by search request)
+- Already have the data
+- Can apply time-based decay without losing history
+
+Cons:
+- Slower to compute (not a simple counter)
+- Requires more complex query at selection time
+
+---
+
+### Summary Table: Signal Purposes
+
+| Signal Source | Purpose | Used In Priority? | Should Be Used? |
+|---------------|---------|-------------------|-----------------|
+| `EntityPriorityMetric.queryImpressions` | Aggregate search appearances | ✅ Yes (5.5%) | Yes, but consider deduplication |
+| `EntityPriorityMetric.autocompleteSelections` | Explicit entity selection | ✅ Yes (1.5%) | Yes, consider extending to restaurants |
+| `EntityPriorityMetric.viewImpressions` | Restaurant engagement | ✅ Yes (2%) | Yes, weight seems reasonable |
+| `EntityPriorityMetric.favoriteCount` | Durable preference | ✅ Yes (1%) | Yes, increase weight |
+| `OnDemandRequest.occurrenceCount` | Unmet demand | ❌ No | Consider for existing entities with low results |
+| `SearchLog` rows | Full search history | ❌ No | Could replace queryImpressions with more accuracy |
+
+---
+
+Would you like me to dive deeper into any of these areas, or would you like to discuss specific implementation changes to the weighting?
+
+User: Currently, entities that were recently updated get HIGH recency scores (0.8-1.0 for 0-7 days). This means:
+
+Entities we JUST enriched are most likely to be enriched again - i intended for this to be the inverse can you check to make sure that isnt the case already?
+
+GitHub Copilot: 
+
+User: Currently, entities that were recently updated get HIGH recency scores (0.8-1.0 for 0-7 days). This means: Entities we JUST enriched are most likely to be enriched again - i intended for this to be the inverse can you check to make sure that isnt the case already?
+I agree with User Damand being too small.
+From search.service.ts:402, queryImpressions increments for every entity that appears as a resolved target in search results. - by this area you saying that if a user types something in the search but does not click search it will increment query impressions for all autocomplete options that come up? or do you mean the uset has to actually search something like pizza which might match on many different queryimpression records that contain pizza and same for if the user click pizza as a recent search suggestion item or an autocomplete suggestion item? - can you look into how this working exactly and reasses. also if a low results triggers the ondemand request stuff to increment that same search would also increament the queryImpressions right? 
+autocompleteSelections is too narrow - I think we did this since non-restaurant entities dont have something like viewImpressions which has to be only for restaurants but im open to other approaches. do you think we should make autocompleteSelections all entities while keeping viewImpressions or just make both equal in weight. Technically an autocomplete click on a restaurant automatically opens a restuarant profile so i think we also did not want to double count that. also clicking an autocoplete or recently searched/recently viewed automatically searches that item for you in the ui so user will only click if they intend to search. 
+I agree with favorites being higher.
+I also want to think about how to make better use of the on demand collection data since we originally had it to where if a single user searched something we didnt have or had low results we would queue a job, but due to scale concerns with these we gated it by requiring the same demand has to occur at least 3 time before we queue on demand collection, but i think even that is a bit to fragile or optimal, perhaps it would be better if it was gated across users so a singel user could not spam but even that seem a bit rudimentary. I like the idea of picking the ones with the highest occurance to run them or feeding that into the keyword collection like you suggested
+I also quite open to using search log instead especially if we explore what the benefits or use cases could be more.
+overall i agree we need to overhaul the weight and approach in areas and i like your suggestions but lets continue to plan and discuss these questions first
+
+GitHub Copilot: Let me verify the recency calculation and investigate how queryImpressions actually works: 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts#430-430), lines 430 to 480
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search.service.ts#380-380), lines 380 to 450
+
+Now let me look at how `gatherEntityImpressionTargets` determines which entities get their `queryImpressions` incremented: 
+
+Searched for text `gatherEntityImpressionTargets`, 2 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search.service.ts#745-745), lines 745 to 850
+
+Now I understand. Let me also check how the search request gets its entity targets populated - specifically whether it comes from autocomplete or actual search submission: 
+
+Searched for text `request.entities.restaurants`, 8 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search-query-interpretation.service.ts#180-180), lines 180 to 250
+
+Now let me understand what triggers `recordQueryImpressions` - specifically whether it's only on actual search submission: 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search.service.ts#300-300), lines 300 to 380
+
+Searched for text `runQuery` (`**/search.service.ts`), 1 result
+
+Let me also check the autocomplete service to understand if it triggers impressions: 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/autocomplete/autocomplete.service.ts#1-1), lines 1 to 150
+
+I see that autocomplete doesn't call `recordQueryImpressions`. Let me search for where that's called to confirm it's only on actual search: 
+
+Searched for text `recordQueryImpressions`, 3 results
+
+Now I have a clear picture. Let me provide you with a comprehensive answer:
+
+---
+
+## Findings
+
+### 1. Recency Score - CONFIRMED: It's Currently Inverted (Needs Fix)
+
+Looking at entity-priority-selection.service.ts:
+
+```typescript
+// Current behavior:
+// Fresh entities (0-7 days) get high scores (0.8-1.0)
+// Stale entities (30+ days) get low scores (0.0-0.3)
+if (daysSinceUpdate <= 7) {
+  return 0.8 + (0.2 * (7 - daysSinceUpdate)) / 7; // 0.8-1.0
+} else if (daysSinceUpdate <= 30) {
+  return 0.3 + (0.5 * (30 - daysSinceUpdate)) / 23; // 0.3-0.8
+} else {
+  return Math.max(0.0, 0.3 * Math.exp(-(daysSinceUpdate - 30) / 30)); // 0.0-0.3
+}
+```
+
+**This is backwards from your intention.** Entities you just enriched yesterday get 0.95+ recency score, while entities you haven't touched in 60 days get nearly 0. Since recency is 40% of the total score, this means **freshly-enriched entities dominate the selection** - a rich-get-richer problem.
+
+The comment even says "Recency score (0-1 scale, higher = more recent)" - this is the logic for "show fresh content to users", not "prioritize stale content for collection."
+
+---
+
+### 2. queryImpressions - How It Actually Works
+
+After tracing the code:
+
+**`queryImpressions` only increments on actual search submission, NOT autocomplete display.**
+
+Here's the flow:
+
+1. **User types in autocomplete** → `AutocompleteService.autocompleteEntities()` is called
+   - This does NOT call `recordQueryImpressions`
+   - No queryImpressions incremented just from suggestions appearing
+
+2. **User submits search** (manual submit, taps autocomplete suggestion, taps recent, etc.) → `SearchService.runQuery()` is called
+   - Line 402: `await this.recordQueryImpressions(request, {...})`
+   - `gatherEntityImpressionTargets()` collects all entity IDs from `request.entities` (restaurants, food, foodAttributes, restaurantAttributes)
+   - Each target entity gets `queryImpressions` incremented by 1
+
+**Key clarifications:**
+
+| Action | queryImpressions? | Which entities? |
+|--------|-------------------|-----------------|
+| User types "pizza" and sees autocomplete suggestions | ❌ No | N/A |
+| User taps "pizza" autocomplete suggestion (triggers search) | ✅ Yes | All resolved target entities from that search (could be 1 or many) |
+| User submits "pizza" manually | ✅ Yes | All resolved target entities |
+| User taps a recent search suggestion | ✅ Yes | All resolved target entities |
+
+**So if user searches "pizza" and it resolves to 3 food entities + 2 food_attributes, all 5 entities get +1 queryImpression.**
+
+---
+
+### 3. Does OnDemandRequest Trigger Also Increment queryImpressions?
+
+**Yes, a low-result search increments BOTH:**
+
+From search.service.ts and search.service.ts:
+
+1. Search executes
+2. If low results → `onDemandRequestService.recordRequests()` is called (increments `occurrenceCount` for the TERM)
+3. Then later on line 402: `recordQueryImpressions()` is called (increments `queryImpressions` for each resolved ENTITY)
+
+**These are not redundant** because they track different things:
+- `OnDemandRequest.occurrenceCount` = "How many times was THIS TERM searched with low results?"
+- `EntityPriorityMetric.queryImpressions` = "How many times did THIS ENTITY appear as a search target?"
+
+A search for "authentic szechuan pork" might:
+- Create/increment OnDemandRequest for term="authentic szechuan pork" (unresolved)
+- Increment queryImpressions for "szechuan" food entity (if that resolved)
+- Increment queryImpressions for "pork" food entity (if that resolved)
+
+---
+
+### 4. autocompleteSelections for All Entities vs. Restaurants
+
+Your current logic from search.service.ts:
+
+```typescript
+if (
+  request.submissionSource === 'autocomplete' &&
+  selected?.entityId &&
+  selected.entityType &&
+  selected.entityType !== 'restaurant'  // <-- Only non-restaurants
+) {
+  await this.entityPriorityMetricsRepository.upsertMetrics(
+    { entityId: selected.entityId },
+    { autocompleteSelections: 1 },
+    { autocompleteSelections: { increment: 1 } },
+  );
+}
+```
+
+**Your reasoning was correct:**
+- Restaurant autocomplete selection → immediately opens profile → triggers `viewImpressions`
+- Non-restaurant autocomplete selection → no profile view possible → needs `autocompleteSelections`
+
+**So you're already avoiding double-counting.** The question is: are the weights correct given this asymmetry?
+
+| Entity Type | Gets autocompleteSelections | Gets viewImpressions |
+|-------------|---------------------------|---------------------|
+| Restaurant | ❌ No (would double-count with view) | ✅ Yes |
+| Food | ✅ Yes | ❌ No (no profile) |
+| Attributes | ✅ Yes | ❌ No (no profile) |
+
+**Current effective weights per entity type:**
+
+| Signal | Restaurant | Dish/Attribute |
+|--------|------------|----------------|
+| queryImpressions (55%) | ✅ | ✅ |
+| autocompleteSelections (15%) | ❌ | ✅ |
+| viewImpressions (20%) | ✅ | ❌ |
+| favoriteCount (10%) | ✅ | ✅ |
+
+This means:
+- **Restaurants** can earn from: queryImpressions (55%) + viewImpressions (20%) + favorites (10%) = **85%**
+- **Dishes** can earn from: queryImpressions (55%) + autocompleteSelections (15%) + favorites (10%) = **80%**
+
+The weights are roughly comparable, which seems intentional and reasonable.
+
+---
+
+### 5. On-Demand Collection Gating Ideas
+
+Your current approach (gate by `occurrenceCount >= 3`) has problems:
+- A single user can trigger collection by searching 3 times
+- Doesn't prioritize by demand volume
+- Binary threshold (3 or nothing)
+
+**Better approaches to consider:**
+
+#### Option A: User-Distinct Counting
+Track unique users per on-demand request:
+
+```prisma
+model OnDemandRequest {
+  // ... existing fields
+  uniqueUserHashes  String[]  @default([]) @map("unique_user_hashes")  // hashed userIds or IP fingerprints
+}
+```
+
+Gate by: `uniqueUserHashes.length >= 3` instead of `occurrenceCount >= 3`
+
+#### Option B: Feed High-Occurrence Requests into Priority Selection
+Instead of a binary "queue at 3" threshold:
+
+1. Keep recording all on-demand requests with occurrences
+2. In `selectTopPriorityEntities()`, also consider entities linked to high-occurrence on-demand requests:
+   ```typescript
+   // For entities with linked OnDemandRequests, add demand bonus
+   const linkedDemandBonus = calculateOnDemandBonus(entityId);
+   ```
+
+This lets you prioritize organically rather than queue everything above a threshold.
+
+#### Option C: Budget-Based Selection
+Instead of immediate queueing:
+1. Accumulate all on-demand requests
+2. Run a periodic job (hourly/daily) that selects top-N by `occurrenceCount`
+3. Queue only those top-N for collection
+
+This prevents spam (even 1000 searches from one user just means 1000 occurrences on one row) and prioritizes actual demand.
+
+#### Option D: Rate-Limited Per-User + Global Top-K
+Combine:
+1. Per-user rate limit: each user can only contribute +1 occurrence per term per hour
+2. Global selection: queue the top-K by total occurrence hourly
+
+---
+
+### 6. SearchLog vs. queryImpressions - Potential Benefits
+
+**SearchLog advantages:**
+
+| Capability | queryImpressions | SearchLog |
+|------------|------------------|-----------|
+| Total count | ✅ Aggregate counter | ✅ Can `COUNT(*)` |
+| Dedupe by search session | ❌ No | ✅ `COUNT(DISTINCT searchRequestId)` |
+| Per-user breakdown | ❌ No | ✅ Has `userId` |
+| Time-based queries | ❌ Only `lastQueryAt` | ✅ `loggedAt` per row |
+| Query text analysis | ❌ No | ✅ `queryText` stored |
+| Filter by location | ❌ No | ✅ `locationKey` stored |
+| Result quality context | ❌ No | ✅ `totalResults`, `coverageStatus` |
+
+**Potential use cases if you used SearchLog for priority:**
+
+1. **Deduplicated demand**: "Count unique searches, not total entity impressions"
+   ```sql
+   SELECT entity_id, COUNT(DISTINCT search_request_id) as unique_searches
+   FROM user_search_logs
+   WHERE logged_at > NOW() - INTERVAL '30 days'
+   GROUP BY entity_id
+   ```
+
+2. **User-weighted demand**: "An entity searched by 10 different users is higher priority than one searched 10 times by 1 user"
+   ```sql
+   SELECT entity_id, COUNT(DISTINCT user_id) as unique_users
+   FROM user_search_logs
+   WHERE logged_at > NOW() - INTERVAL '30 days'
+   GROUP BY entity_id
+   ```
+
+3. **Low-result entity detection**: "Entities that appear in searches with poor results"
+   ```sql
+   SELECT entity_id, AVG(total_results) as avg_results
+   FROM user_search_logs
+   WHERE logged_at > NOW() - INTERVAL '30 days'
+   GROUP BY entity_id
+   HAVING AVG(total_results) < 20
+   ```
+
+4. **Location-specific demand**: "What's popular in Austin vs. NYC?"
+
+**Tradeoff**: Reading from SearchLog is slower (aggregation query) vs. reading a single counter.
+
+---
+
+## Discussion Points for Next Steps
+
+1. **Recency inversion**: Should I draft the fix to make stale entities score higher?
+
+2. **User Demand weight increase**: What percentage feels right? 35%? 40%?
+
+3. **autocompleteSelections**: Are you comfortable with the current asymmetry, or do you want to:
+   - Add it for restaurants too (and reduce viewImpressions weight)?
+   - Increase its weight for non-restaurants to compensate for no viewImpressions?
+
+4. **favoriteCount weight increase**: From 10% → 20%? Higher?
+
+5. **On-Demand gating**: Which approach appeals most?
+   - A: User-distinct counting
+   - B: Feed into priority equation
+   - C: Budget-based top-K selection
+   - D: Combination
+
+6. **SearchLog migration**: Worth the performance tradeoff for richer signals? Could run the aggregation periodically (hourly) and cache results.
+
+User: So if user searches "pizza" and it resolves to 3 food entities + 2 food_attributes, all 5 entities get +1 queryImpression. - one thing i just thought of it that since collection does not happen by entity type and only by text then each entity getting incremented wont matter immediately but if the entity priority system will actual rank them differently like "pizza (food) rank 12 but pizza (attribute) rank 460" then maybe we need some sort of dedup by text before we use the entity priority results and have just the highest rank entity type of each text item be the actual one we use - i thinking this might make sure the same entity text isnt taking up more spots that could be saved for other entity items (but this is only if it does work like this; lmk).
+So you're already avoiding double-counting. The question is: are the weights correct given this asymmetry? - i would prefer to make these equal in our weighting overhaul.
+On-Demand Collection Gating Ideas - I really like option B and C
+Also the User-Distinct Counting is an interesting concept overall and im curious if you think we should incorporate that sort of thing broadly across all of the factors that influence entity priority and demand. Perhaps a switch to utilizing the search logs could help with this or maybe there an even better way to do it
+
+GitHub Copilot: Let me investigate how the priority selection handles entity names/text and whether there's deduplication: 
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts#138-138), lines 138 to 200
+
+Searched for text `selectTopPriorityEntities` (`**/keyword-search-scheduler.service.ts`), 1 result
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/keyword-search-scheduler.service.ts#190-190), lines 190 to 270
+
+Now let me check how these entities are used for keyword collection - specifically whether the entity name is used for the Reddit search: 
+
+Searched for text `entityName` (`**/keyword-search*.ts`), 20 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/keyword-search-scheduler.service.ts#80-80), lines 80 to 150
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/content-processing/reddit-collector/keyword-search-orchestrator.service.ts#130-130), lines 130 to 180
+
+Now I understand the full picture. Let me provide a comprehensive response:
+
+---
+
+## Findings & Analysis
+
+### 1. Entity Name Deduplication - CONFIRMED: You're Right, This Is a Problem
+
+Looking at the flow:
+
+1. **`selectTopPriorityEntities()`** returns an array of `EntityPriorityScore[]` with `entityId`, `entityName`, `entityType`, `score`
+2. **keyword-search-orchestrator.service.ts** line 140: `const entityNames = entities.map((entity) => entity.entityName);`
+3. The Reddit search uses **just the entity names** (text strings) to search
+
+**The problem:**
+
+If you have:
+- Entity A: `{ entityId: "abc", entityName: "pizza", entityType: "food", score: 0.85 }`
+- Entity B: `{ entityId: "xyz", entityName: "pizza", entityType: "food_attribute", score: 0.42 }`
+
+Both get selected (if both are in top N), but when you extract names:
+```typescript
+entityNames = ["pizza", "pizza", ...]  // Duplicate!
+```
+
+**You're wasting a slot** - the Reddit search for "pizza" will happen twice (or the same query sent twice), returning the same results, while another unique entity term like "birria" could have had that slot.
+
+**Current code does NOT dedupe by name before searching.** This needs to be fixed.
+
+---
+
+### 2. Proposed Solution: Dedupe by Text, Keep Highest-Scoring Entity Type
+
+Add a deduplication step after sorting but before returning:
+
+```typescript
+// In selectTopPriorityEntities(), after sorting:
+const topEntities = entityScores
+  .sort((a, b) => b.score - a.score)
+  .slice(0, finalConfig.maxEntities);
+
+// Dedupe by normalized entity name, keeping highest score per name
+const deduped = this.dedupeByEntityName(topEntities);
+```
+
+Where:
+
+```typescript
+private dedupeByEntityName(entities: EntityPriorityScore[]): EntityPriorityScore[] {
+  const byName = new Map<string, EntityPriorityScore>();
+  
+  for (const entity of entities) {
+    const normalizedName = entity.entityName.trim().toLowerCase();
+    const existing = byName.get(normalizedName);
+    
+    // Keep the higher-scoring entity for this name
+    if (!existing || entity.score > existing.score) {
+      byName.set(normalizedName, entity);
+    }
+  }
+  
+  return Array.from(byName.values());
+}
+```
+
+**Result**: If "pizza (food)" scores 0.85 and "pizza (attribute)" scores 0.42, only "pizza (food)" is kept, freeing that slot for another unique term.
+
+---
+
+### 3. Equal Weighting for autocompleteSelections and viewImpressions
+
+You want these equal. Current:
+- `autocompleteSelections`: 15%
+- `viewImpressions`: 20%
+
+**Options:**
+
+| Approach | autocomplete | view | Notes |
+|----------|-------------|------|-------|
+| Meet in middle | 17.5% | 17.5% | Simple, equal |
+| Slight bump both | 20% | 20% | More weight to explicit engagement signals |
+| Leave room for growth | 18% | 18% | Room to add other signals later |
+
+**Recommendation**: Go with **20% each**. These are both strong engagement signals and the slight increase from current totals is justified.
+
+This would require adjusting `queryImpressions` down from 55% to 50% (or lower) to maintain 100% total for app demand.
+
+New proposed app demand weights:
+| Signal | Current | Proposed |
+|--------|---------|----------|
+| queryImpressions | 55% | 45% |
+| autocompleteSelections | 15% | 20% |
+| viewImpressions | 20% | 20% |
+| favoriteCount | 10% | 15% |
+| **Total** | 100% | 100% |
+
+---
+
+### 4. On-Demand Integration: Combining Options B + C
+
+You liked Option B (feed into priority) and Option C (budget-based top-K). Here's how they could work together:
+
+#### Combined Approach: "On-Demand Boost + Periodic Selection"
+
+**Phase 1: Record all on-demand requests (current behavior)**
+- Every low-result or unresolved search increments `occurrenceCount`
+- No immediate queueing
+
+**Phase 2: Periodic selection job (new)**
+Run hourly or every few hours:
+
+```typescript
+async selectTopOnDemandRequests(limit: number): Promise<OnDemandRequest[]> {
+  // Get pending requests with high occurrence, ordered by demand
+  return this.prisma.onDemandRequest.findMany({
+    where: {
+      status: 'pending',
+      occurrenceCount: { gte: 2 },  // Minimum threshold
+      // Optional: exclude recently attempted
+      OR: [
+        { lastAttemptAt: null },
+        { lastAttemptAt: { lt: subHours(new Date(), 24) } }
+      ]
+    },
+    orderBy: [
+      { occurrenceCount: 'desc' },
+      { lastSeenAt: 'desc' }
+    ],
+    take: limit
+  });
+}
+```
+
+Queue only the top-K highest-occurrence requests.
+
+**Phase 3: Feed linked on-demand demand into entity priority (Option B)**
+
+For entities that DO exist but triggered low-result searches, boost their priority:
+
+```typescript
+// In calculateUserDemandScore(), add:
+private async calculateOnDemandBoost(entityId: string): Promise<number> {
+  // Find on-demand requests linked to this entity
+  const linkedRequests = await this.prisma.onDemandRequest.findMany({
+    where: {
+      entityId,
+      reason: 'low_result',  // Entity exists but results were poor
+      status: 'pending',
+      lastSeenAt: { gte: subDays(new Date(), 30) }
+    }
+  });
+  
+  if (!linkedRequests.length) return 0;
+  
+  // Sum occurrences, normalize
+  const totalOccurrences = linkedRequests.reduce(
+    (sum, req) => sum + req.occurrenceCount, 0
+  );
+  
+  // Normalize: 10+ occurrences = max boost
+  return Math.min(1, totalOccurrences / 10);
+}
+```
+
+Then incorporate into the demand score:
+```typescript
+const onDemandBoost = await this.calculateOnDemandBoost(entityId);
+
+// Add as additional component (e.g., 10% of app demand)
+const appDemand = 
+  querySignal * 0.40 +           // reduced
+  autocompleteSignal * 0.18 +    // reduced slightly
+  viewSignal * 0.18 +            // reduced slightly
+  favoriteSignal * 0.14 +        // reduced slightly
+  onDemandBoost * 0.10;          // NEW
+```
+
+---
+
+### 5. User-Distinct Counting: Broad Application
+
+You asked if user-distinct counting should be applied broadly. **Yes, this is a best practice** for demand signals. Here's how it could work:
+
+#### Current State: Count-Based Signals
+
+| Signal | Currently Counts | Problem |
+|--------|------------------|---------|
+| `queryImpressions` | Total impressions | 1 user searching 100x = 100 |
+| `OnDemandRequest.occurrenceCount` | Total searches | 1 user retrying 10x = 10 |
+| `viewImpressions` | Total views | 1 user reopening 50x = 50 |
+
+All of these can be gamed/skewed by a single power user.
+
+#### Proposed State: Hybrid Count + Distinct Users
+
+**Option A: Add distinct user tracking to EntityPriorityMetric**
+
+```prisma
+model EntityPriorityMetric {
+  // ... existing
+  queryImpressions         Int       @default(0)
+  queryDistinctUsers       Int       @default(0)  // NEW
+  viewImpressions          Int       @default(0)
+  viewDistinctUsers        Int       @default(0)  // NEW
+  // Store hashes for dedup (optional, for real-time updates)
+  recentQueryUserHashes    String[]  @default([])  // Rolling window
+}
+```
+
+Then score using **both**:
+```typescript
+const queryCountSignal = this.normalizeLog(queryImpressions, 200);
+const queryUserSignal = this.normalizeLog(queryDistinctUsers, 50);
+const querySignal = queryCountSignal * 0.4 + queryUserSignal * 0.6;
+```
+
+This means: 50 queries from 50 different users scores higher than 100 queries from 1 user.
+
+**Option B: Derive from SearchLog (your preference)**
+
+SearchLog already has `userId`. You can compute distinct users on-demand:
+
+```sql
+SELECT 
+  entity_id,
+  COUNT(*) as total_impressions,
+  COUNT(DISTINCT user_id) as distinct_users
+FROM user_search_logs
+WHERE logged_at > NOW() - INTERVAL '30 days'
+GROUP BY entity_id
+```
+
+**Pros of SearchLog approach:**
+- No new columns needed on EntityPriorityMetric
+- Full flexibility in how you aggregate (time windows, user segments, etc.)
+- Can recompute historical data
+
+**Cons:**
+- Slower (aggregation query vs. reading counters)
+- Need to run periodically and cache results
+
+**Recommended hybrid:**
+1. Use SearchLog as source of truth
+2. Run a periodic job (hourly) that computes aggregates and writes to EntityPriorityMetric
+3. Priority selection reads the cached metrics (fast)
+
+```typescript
+// Periodic job
+async refreshEntityDemandMetrics(): Promise<void> {
+  const metrics = await this.prisma.$queryRaw`
+    SELECT 
+      entity_id,
+      entity_type,
+      COUNT(*) as query_impressions,
+      COUNT(DISTINCT user_id) as query_distinct_users,
+      COUNT(DISTINCT search_request_id) as unique_searches,
+      MAX(logged_at) as last_query_at
+    FROM user_search_logs
+    WHERE logged_at > NOW() - INTERVAL '30 days'
+    GROUP BY entity_id, entity_type
+  `;
+  
+  // Batch upsert to EntityPriorityMetric
+  for (const row of metrics) {
+    await this.prisma.entityPriorityMetric.upsert({
+      where: { entityId: row.entity_id },
+      create: { ... },
+      update: {
+        queryImpressions: row.query_impressions,
+        queryDistinctUsers: row.query_distinct_users,
+        lastQueryAt: row.last_query_at,
+      }
+    });
+  }
+}
+```
+
+---
+
+### 6. Updated Weight Proposal
+
+Incorporating all feedback:
+
+#### Top-Level Weights
+
+| Factor | Current | Proposed | Rationale |
+|--------|---------|----------|-----------|
+| Data Recency | 40% | 35% | Still important, but inverted (stale = higher) |
+| Data Quality | 35% | 25% | Reduced; mostly validation signal |
+| User Demand | 25% | 40% | Increased; drive by actual usage |
+
+#### User Demand Breakdown
+
+| Component | Current | Proposed |
+|-----------|---------|----------|
+| Connection Demand | 60% | 50% |
+| App Demand | 40% | 50% |
+
+#### App Demand Sub-Weights
+
+| Signal | Current | Proposed | Notes |
+|--------|---------|----------|-------|
+| queryImpressions | 55% | 40% | Reduced; add distinct-user weighting |
+| autocompleteSelections | 15% | 20% | Equal to views |
+| viewImpressions | 20% | 20% | Kept same |
+| favoriteCount | 10% | 15% | Increased; strong intent |
+| onDemandBoost | 0% | 5% | NEW: entities with unmet demand |
+
+---
+
+## Summary of Action Items (Draft Plan)
+
+1. **Fix recency inversion**: Stale entities should score higher
+2. **Add entity name deduplication**: Before using priority results for collection
+3. **Equalize autocomplete/view weights**: Both at 20%
+4. **Increase favorite weight**: From 10% → 15%
+5. **Add on-demand boost**: Feed low-result occurrence data into priority equation
+6. **Switch to periodic selection for on-demand**: Top-K by occurrence instead of threshold
+7. **Add distinct-user tracking**: Either via SearchLog aggregation or new columns
+8. **Increase overall User Demand weight**: From 25% → 40%
+
+Would you like me to formalize this into an implementation plan, or do you want to discuss/adjust any of these further?
+
+User: Yes we should fix the recency inversion, entity name dedup, weight adjustments. for on demand boost do you think we should continue to record ondemand requests but transition it to user distict counting (that we dont have to worry about any sort of per user rate limit and things are stronger signals). And one of my main questions is do you think we should get rid of the on demand in the traditional sense and even on demand  periodic jobs and instead feed ondemand data into priority selection and perhaps just plan on running keyword collection more often than we orginally planned (more than weekly, maybe even everyday) - a big consideration im curious on where you stand on is only running keyword selection more frequently better than having both ondemand and keyword collection running ondemand and weekly respectively especially for what it would be like for scaling. for user distinct counting, i agree with applying it broadly but they you talked about it seemes to be different than i was expecting, i was thinking you would recommend to bake the user distinct aspect into each of the factors and entity priority metrics that influence the entity priority instead of making it a sort of multiplier, though i dont know if its possible to do that - im curious if you think it might be better to just have queryImpressions actually mean how many different users submitted rather then bake the user count i after the fact. for using the search log, would it only be a replacement for the queryImpressions entity priority metric, and if we do plan on using it what would we be the benefits if we plan on baking in the distinct user aspect into the rest of the entity priority metrics anyway?
+
+GitHub Copilot: These are great architectural questions. Let me think through each one carefully:
+
+---
+
+## 1. On-Demand → User-Distinct Counting
+
+**Yes, switching to user-distinct counting eliminates the rate-limiting complexity.**
+
+If `OnDemandRequest` tracks distinct users instead of raw occurrence count:
+- User A searches "szechuan noodles" 50 times → contributes 1 to distinct count
+- User B searches "szechuan noodles" 3 times → contributes 1 to distinct count  
+- Total distinct = 2 (true demand signal)
+
+No per-user rate limiting needed because by definition, each user can only contribute once. The signal becomes "how many different people want this" which is exactly what matters.
+
+---
+
+## 2. Eliminate Traditional On-Demand? Run Keyword Collection More Frequently?
+
+**My recommendation: Yes, consolidate into one system.**
+
+### Arguments for Elimination
+
+| Aspect | Two Systems (Current) | One System (Proposed) |
+|--------|----------------------|----------------------|
+| **Complexity** | Two codepaths, queue management, cooldowns, immediate triggers | Single priority-based selection, predictable |
+| **Scaling** | Reactive spikes (unpredictable load), plus scheduled load | Predictable, tunable workload |
+| **Maintenance** | More code to maintain, more edge cases | Simpler, fewer failure modes |
+| **Latency** | Immediate response to demand | Max 24h delay (if daily) |
+
+### Is the Latency Acceptable?
+
+The key question: **Does a user searching for "birria tacos" today need us to collect that data TODAY?**
+
+Honestly, probably not:
+- Reddit posts aren't created in real-time response to user searches
+- The posts that mention "birria tacos" already exist
+- Whether we collect them today or tomorrow doesn't change the underlying data
+- Users aren't waiting on hold for the data - they continue using the app
+
+**Exception case**: If there's truly viral/trending demand, you could have a "hot list" threshold (e.g., 50+ distinct users in 24 hours triggers immediate collection). But this would be rare and could be a simple addition later.
+
+### Proposed Approach
+
+1. **Keep recording on-demand requests** (with user-distinct counting)
+2. **Eliminate immediate queueing logic** - no more `enqueueRequests()`, cooldowns, etc.
+3. **Run keyword collection daily** (or every 12 hours for higher-demand areas)
+4. **Feed on-demand signal into priority selection** as one of the demand factors
+
+This is simpler, more predictable, and easier to scale. One system to tune instead of two.
+
+---
+
+## 3. User-Distinct Counting: Baked In vs. Multiplier
+
+**You're right - baking it in directly is cleaner.**
+
+What I proposed earlier (having both `queryImpressions` + `queryDistinctUsers` as separate signals) adds complexity. Your instinct is correct: just make each metric MEAN distinct users.
+
+### Revised Approach: Each Metric = Distinct Users
+
+| Metric | Current Meaning | Proposed Meaning |
+|--------|----------------|------------------|
+| `queryImpressions` | Total times entity appeared in search results | **Distinct users** who searched with this entity as target |
+| `viewImpressions` | Total profile opens | **Distinct users** who opened this restaurant profile |
+| `autocompleteSelections` | Total autocomplete taps | **Distinct users** who selected from autocomplete |
+| `favoriteCount` | Count of favorites | Already distinct (can't favorite twice) |
+
+**Benefits:**
+- One number per signal, not two
+- Directly measures "how many people care"
+- Cleaner mental model
+- Naturally spam-resistant
+
+**What we lose (but probably don't need):**
+- Intensity signal (10 users × 1 search vs. 10 users × 10 searches each)
+- But is that valuable? If someone searches 10 times, they're probably frustrated, not more interested
+
+### How to Implement Distinct-User Counting
+
+**Option A: Real-time dedup at write time**
+- Store a rolling set of user hashes per entity
+- Before incrementing, check if user already contributed
+- Complex, requires additional storage
+
+**Option B: Periodic aggregation from source tables**
+- SearchLog, RestaurantView, UserFavorite are sources of truth
+- Run a job periodically that computes `COUNT(DISTINCT user_id)` and updates EntityPriorityMetric
+- Simple, accurate, no real-time complexity
+
+**Recommendation: Option B (periodic aggregation)**
+
+The metrics in EntityPriorityMetric become **cached aggregates**, not real-time counters. A job runs (hourly, or before each keyword collection run) and refreshes them from the source tables.
+
+---
+
+## 4. SearchLog: What's the Benefit?
+
+Given that we're baking distinct-user counting into metrics, here's how the architecture shakes out:
+
+### Source Tables (Event Logs)
+
+| Source Table | Events | Feeds Into |
+|--------------|--------|-----------|
+| `user_search_logs` (SearchLog) | Every search submission with entity targets | `queryImpressions`, `autocompleteSelections` |
+| `user_restaurant_views` (RestaurantView) | Restaurant profile opens | `viewImpressions` |
+| `user_favorites` (UserFavorite) | Favorites | `favoriteCount` |
+| `collection_on_demand_requests` (OnDemandRequest) | Low/unresolved searches | `onDemandBoost` (for entities with unmet demand) |
+
+### EntityPriorityMetric = Cached Aggregates
+
+```typescript
+// Periodic job: refreshEntityPriorityMetrics()
+async refreshEntityPriorityMetrics(): Promise<void> {
+  const thirtyDaysAgo = subDays(new Date(), 30);
+  
+  // Query impressions from SearchLog
+  const queryMetrics = await this.prisma.$queryRaw`
+    SELECT 
+      entity_id,
+      COUNT(DISTINCT user_id) as query_impressions,
+      MAX(logged_at) as last_query_at
+    FROM user_search_logs
+    WHERE logged_at > ${thirtyDaysAgo}
+    GROUP BY entity_id
+  `;
+  
+  // View impressions from RestaurantView
+  const viewMetrics = await this.prisma.$queryRaw`
+    SELECT 
+      restaurant_id as entity_id,
+      COUNT(DISTINCT user_id) as view_impressions,
+      MAX(last_viewed_at) as last_view_at
+    FROM user_restaurant_views
+    WHERE last_viewed_at > ${thirtyDaysAgo}
+    GROUP BY restaurant_id
+  `;
+  
+  // Favorites from UserFavorite
+  const favoriteMetrics = await this.prisma.$queryRaw`
+    SELECT 
+      entity_id,
+      COUNT(DISTINCT user_id) as favorite_count
+    FROM user_favorites
+    GROUP BY entity_id
+  `;
+  
+  // Autocomplete selections from SearchLog (where submissionSource='autocomplete')
+  const autocompleteMetrics = await this.prisma.$queryRaw`
+    SELECT 
+      (metadata->>'submissionContext'->>'selectedEntityId')::uuid as entity_id,
+      COUNT(DISTINCT user_id) as autocomplete_selections
+    FROM user_search_logs
+    WHERE logged_at > ${thirtyDaysAgo}
+      AND metadata->>'submissionSource' = 'autocomplete'
+      AND metadata->'submissionContext'->>'selectedEntityId' IS NOT NULL
+    GROUP BY entity_id
+  `;
+  
+  // Batch upsert all metrics...
+}
+```
+
+### So What's the Real Benefit of SearchLog?
+
+If we're using periodic aggregation anyway, SearchLog's benefit is:
+
+1. **Single source of truth** for all query-related signals
+   - No need to update counters in real-time at multiple points
+   - Just log the event, aggregate later
+
+2. **Flexibility** 
+   - Change time windows without losing data (30 days → 14 days? just change the query)
+   - Add new derived metrics without schema changes
+
+3. **Queryable for analytics**
+   - "What are the most common searches with zero results?"
+   - "Which entities have declining search interest?"
+
+4. **Audit trail**
+   - Can trace back exactly what happened
+
+5. **Decouples logging from computation**
+   - Write path is simple (append to log)
+   - Read path computes what's needed when needed
+
+**Could we NOT use SearchLog?**
+
+Yes, you could maintain real-time distinct-user counters directly, but:
+- You'd need to store user hashes per entity to detect duplicates
+- Rolling window cleanup becomes complex
+- Harder to recompute or change parameters
+
+SearchLog-based periodic aggregation is cleaner for your scale.
+
+---
+
+## 5. Revised Complete Architecture
+
+### Data Flow
+
+```
+User Actions
+    │
+    ▼
+┌─────────────────────────────────────────────────────────┐
+│                    Source Tables                         │
+│                                                          │
+│  user_search_logs    user_restaurant_views  user_favorites│
+│       │                      │                    │      │
+│  (query events)        (view events)        (favorites)  │
+│                                                          │
+│  collection_on_demand_requests                           │
+│       │                                                  │
+│  (unmet demand signals)                                  │
+└─────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+        ┌────────────────────┐
+        │  Periodic Job       │
+        │  (hourly or before  │
+        │   collection run)   │
+        └────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────┐
+│           EntityPriorityMetric (cached)                  │
+│                                                          │
+│  - queryImpressions (distinct users from SearchLog)      │
+│  - viewImpressions (distinct users from RestaurantView)  │
+│  - autocompleteSelections (distinct from SearchLog)      │
+│  - favoriteCount (count from UserFavorite)               │
+│  - onDemandBoost (derived from OnDemandRequest)          │
+│  - dataRecencyScore, dataQualityScore (computed)         │
+└─────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+        ┌────────────────────┐
+        │  Priority Selection │
+        │  (daily collection) │
+        └────────────────────┘
+                    │
+                    ▼
+        ┌────────────────────┐
+        │  Keyword Collection │
+        │  (Reddit searches)  │
+        └────────────────────┘
+```
+
+### What Changes
+
+| Component | Current | Proposed |
+|-----------|---------|----------|
+| On-demand queueing | Immediate trigger at threshold | **Eliminated** |
+| On-demand requests | Raw occurrence count | **Distinct users** |
+| On-demand processing | Separate job, immediate | **Merged into scheduled collection** |
+| Keyword collection frequency | Monthly/weekly | **Daily** |
+| queryImpressions write | Real-time increment | **Periodic aggregation from SearchLog** |
+| queryImpressions meaning | Total impressions | **Distinct users** |
+| viewImpressions write | Real-time increment | **Periodic aggregation from RestaurantView** |
+| viewImpressions meaning | Total views | **Distinct users** |
+
+### OnDemandRequest Changes
+
+Since we're not immediately queueing, the table becomes simpler:
+
+```prisma
+model OnDemandRequest {
+  requestId             String         @id @default(dbgenerated("gen_random_uuid()"))
+  term                  String         @db.VarChar(255)
+  entityType            EntityType     @map("entity_type")
+  locationKey           String         @default("global")
+  reason                OnDemandReason  // low_result | unresolved
+  
+  // User-distinct tracking
+  distinctUserCount     Int            @default(1) @map("distinct_user_count")
+  userHashes            String[]       @default([]) @map("user_hashes")  // For dedup
+  
+  // Metadata
+  lastSeenAt            DateTime       @default(now())
+  createdAt             DateTime       @default(now())
+  
+  // Link to entity (for low_result on existing entities)
+  entityId              String?        @db.Uuid
+  entity                Entity?        @relation(...)
+
+  // NO MORE: status, lastEnqueuedAt, attemptedSubreddits, deferredAttempts, etc.
+  
+  @@unique([term, entityType, reason, locationKey])
+}
+```
+
+Recording becomes:
+```typescript
+async recordOnDemandRequest(
+  term: string, 
+  entityType: EntityType, 
+  reason: OnDemandReason,
+  userId: string,
+  locationKey: string = 'global'
+): Promise<void> {
+  const userHash = this.hashUserId(userId);
+  
+  await this.prisma.onDemandRequest.upsert({
+    where: { term_entityType_reason_locationKey: { term, entityType, reason, locationKey } },
+    create: {
+      term,
+      entityType,
+      reason,
+      locationKey,
+      distinctUserCount: 1,
+      userHashes: [userHash],
+    },
+    update: {
+      lastSeenAt: new Date(),
+      // Only increment if user not already counted
+      distinctUserCount: {
+        increment: Prisma.sql`CASE WHEN NOT ${userHash} = ANY(user_hashes) THEN 1 ELSE 0 END`
+      },
+      userHashes: {
+        push: userHash  // Add to array (we'll dedupe in a cleanup job)
+      }
+    }
+  });
+}
+```
+
+(Or simpler: just log to a separate table and aggregate periodically, like we're doing with SearchLog.)
+
+---
+
+## 6. Final Weight Proposal
+
+### Top-Level Weights (Revised)
+
+| Factor | Current | Proposed | Notes |
+|--------|---------|----------|-------|
+| Data Recency | 40% | 35% | **Inverted**: stale = higher priority |
+| Data Quality | 35% | 25% | Validation that entity has real data |
+| User Demand | 25% | 40% | **Increased**: drive by actual user behavior |
+
+### User Demand Breakdown
+
+| Component | Current | Proposed |
+|-----------|---------|----------|
+| Connection Demand | 60% | 45% |
+| App Demand | 40% | 55% |
+
+### App Demand Sub-Weights (All Distinct-User Based)
+
+| Signal | Current | Proposed | Notes |
+|--------|---------|----------|-------|
+| queryImpressions | 55% | 35% | Now means distinct users |
+| autocompleteSelections | 15% | 20% | Equal engagement signal with views |
+| viewImpressions | 20% | 20% | Kept same |
+| favoriteCount | 10% | 15% | Increased (strong intent) |
+| onDemandBoost | 0% | 10% | **NEW**: unmet demand for existing entities |
+
+---
+
+## Summary: Implementation Plan
+
+1. **Fix recency inversion** - Make stale entities score higher
+2. **Add entity name deduplication** - Keep highest-scoring entity per unique name text
+3. **Switch all metrics to distinct-user meaning** - Periodic aggregation from source tables
+4. **Simplify OnDemandRequest** - Just track distinct users, no queueing logic
+5. **Eliminate on-demand processing job** - Feed signal into priority selection instead
+6. **Increase keyword collection frequency** - Daily instead of weekly/monthly
+7. **Adjust weights** - More weight to user demand, equal autocomplete/view weights
+
+Would you like me to start implementing these changes, beginning with the recency inversion fix and entity name deduplication?
+
+User: so are you saying we can get rid of the logic that currently feeds the real-time EntityPriorityMetric counters? do you know why we even had those counter if we had those source tables and how it currently works? What the difference between queryImpressions and autocompleteSelections? would cached aggregates be better or a materialized view - and if we went with the view could we just get rid of the entity_priority_table? Can you look into whether the other tables already have what we need would you recommend turning each metric table more into a log like the search log table but or just add the distint user hashes and stuff?
+
+GitHub Copilot: Let me investigate the current architecture to answer these questions: 
+
+Searched for text `entityPriorityMetricsRepository.upsertMetrics`, 3 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/prisma/schema.prisma#440-440), lines 440 to 500
+
+Searched for text `viewImpressions`, 20 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/search/search.service.ts#680-680), lines 680 to 760
+
+Now let me check where `viewImpressions` is incremented: 
+
+Searched for text `viewImpressions: { increment`, no results
+
+Searched for text `RestaurantView`, 20 results
+
+Read [](file:///c%3A/Users/CZQZTP/PersonalProjects/Crave/apps/api/src/modules/history/history.service.ts#1-1), lines 1 to 120
+
+Now let me check where favoriteCount is updated: 
+
+Searched for text `favoriteCount: { increment`, 2 results
+
+Searched for text `favoriteCount:`, 12 results
+
+Now I have a complete picture. Let me answer all your questions:
+
+---
+
+## Complete Analysis: Current Architecture & Recommendations
+
+### 1. Why Do We Have Real-Time Counters If We Have Source Tables?
+
+**Answer: The counters are a performance optimization (denormalization) to avoid aggregation at read time.**
+
+Current write flow:
+
+| Event | Source Table Written | EntityPriorityMetric Updated |
+|-------|---------------------|------------------------------|
+| Search submitted | `user_search_logs` (1 row per target entity) | `queryImpressions: { increment: 1 }` for each target |
+| Autocomplete selection (non-restaurant) | `user_search_logs` (via search) | `autocompleteSelections: { increment: 1 }` |
+| Restaurant profile opened | `user_restaurant_views` (upsert) | `viewImpressions: { increment: 1 }` |
+| Favorite toggled | `user_favorites` (create/delete) | `favoriteCount: { increment/decrement: 1 }` |
+
+**Why it was done this way:**
+- Priority selection runs periodically and needs fast reads
+- Aggregating `COUNT(*)` from large tables at selection time would be slow
+- The counters provide O(1) reads vs. O(n) aggregation queries
+
+**The problem:**
+- **Dual writes** - every event writes to 2 places, increasing complexity and failure risk
+- **No distinct-user tracking** - counters just increment, no dedup
+- **Harder to change time windows** - counters don't have history, can't say "last 30 days"
+
+---
+
+### 2. Difference Between queryImpressions and autocompleteSelections
+
+| Metric | When It Fires | What It Means |
+|--------|---------------|---------------|
+| `queryImpressions` | Every search submission, for EVERY entity that appears as a resolved target | "This entity was relevant to a search query" |
+| `autocompleteSelections` | User tapped an autocomplete suggestion for a **non-restaurant** entity | "User explicitly chose this entity from the suggestion list" |
+
+**Key differences:**
+
+1. **Trigger granularity:**
+   - `queryImpressions`: Fires for ALL resolved entities in a search (if you search "pizza", 5 entities might get +1)
+   - `autocompleteSelections`: Fires for ONE entity - the one the user tapped
+
+2. **Explicitness:**
+   - `queryImpressions`: Implicit - entity matched the query
+   - `autocompleteSelections`: Explicit - user saw options and chose this one
+
+3. **Entity types:**
+   - `queryImpressions`: All entity types
+   - `autocompleteSelections`: Non-restaurants only (to avoid double-counting with `viewImpressions`)
+
+---
+
+### 3. Materialized View vs. Cached Aggregates
+
+**Materialized View Pros:**
+- Database manages refresh automatically
+- Single source of truth (view definition IS the logic)
+- Can be refreshed incrementally (Postgres `REFRESH MATERIALIZED VIEW CONCURRENTLY`)
+
+**Materialized View Cons:**
+- Postgres materialized views don't support incremental refresh out of the box (full refresh only)
+- `REFRESH CONCURRENTLY` requires a unique index and still does significant work
+- Complex queries with multiple source tables can be slow to refresh
+- Less flexibility for different refresh schedules per metric
+
+**Cached Aggregates (current hybrid approach) Pros:**
+- More control over when/how refresh happens
+- Can have different refresh schedules for different metrics
+- Can include computed scores (not just raw counts)
+
+**Could we use a materialized view AND eliminate EntityPriorityMetric table?**
+
+Technically yes, but there are challenges:
+
+```sql
+CREATE MATERIALIZED VIEW entity_priority_metrics_mv AS
+SELECT 
+  e.entity_id,
+  e.type as entity_type,
+  
+  -- Query impressions (distinct users from search logs)
+  COALESCE(sl.query_impressions, 0) as query_impressions,
+  COALESCE(sl.autocomplete_selections, 0) as autocomplete_selections,
+  sl.last_query_at,
+  
+  -- View impressions (distinct users from restaurant views)
+  COALESCE(rv.view_impressions, 0) as view_impressions,
+  rv.last_view_at,
+  
+  -- Favorites (count from user_favorites)
+  COALESCE(f.favorite_count, 0) as favorite_count
+
+FROM core_entities e
+LEFT JOIN (
+  SELECT 
+    entity_id,
+    COUNT(DISTINCT user_id) as query_impressions,
+    COUNT(DISTINCT CASE 
+      WHEN metadata->>'submissionSource' = 'autocomplete' 
+      AND (metadata->'submissionContext'->>'selectedEntityId')::uuid = entity_id
+      THEN user_id 
+    END) as autocomplete_selections,
+    MAX(logged_at) as last_query_at
+  FROM user_search_logs
+  WHERE logged_at > NOW() - INTERVAL '30 days'
+  GROUP BY entity_id
+) sl ON e.entity_id = sl.entity_id
+LEFT JOIN (
+  SELECT 
+    restaurant_id as entity_id,
+    COUNT(DISTINCT user_id) as view_impressions,
+    MAX(last_viewed_at) as last_view_at
+  FROM user_restaurant_views
+  WHERE last_viewed_at > NOW() - INTERVAL '30 days'
+  GROUP BY restaurant_id
+) rv ON e.entity_id = rv.entity_id
+LEFT JOIN (
+  SELECT entity_id, COUNT(*) as favorite_count
+  FROM user_favorites
+  GROUP BY entity_id
+) f ON e.entity_id = f.entity_id;
+
+CREATE UNIQUE INDEX ON entity_priority_metrics_mv (entity_id);
+
+-- Refresh before priority selection
+REFRESH MATERIALIZED VIEW CONCURRENTLY entity_priority_metrics_mv;
+```
+
+**Problems:**
+1. The autocomplete_selections subquery is complex (JSON parsing)
+2. Full refresh of a view joining 3+ large tables can be slow
+3. Priority selection also needs computed scores (recency, quality), not just raw counts
+
+**My recommendation: Hybrid approach is better**
+- Keep EntityPriorityMetric table as the "cached aggregate" store
+- Run a refresh job before each priority selection
+- The job queries source tables and updates EntityPriorityMetric
+- Priority selection reads from EntityPriorityMetric (fast)
+
+---
+
+### 4. Do Source Tables Already Have What We Need?
+
+Let me check each source table:
+
+| Source Table | Has user_id? | Has entity_id? | Has timestamp? | Can derive distinct users? |
+|--------------|--------------|----------------|----------------|---------------------------|
+| `user_search_logs` | ✅ Yes | ✅ Yes | ✅ `logged_at` | ✅ Yes |
+| `user_restaurant_views` | ✅ Yes (PK) | ✅ Yes (PK) | ✅ `last_viewed_at` | ✅ Already per-user-per-entity |
+| `user_favorites` | ✅ Yes | ✅ Yes | ✅ `created_at` | ✅ Already distinct (one row per user-entity) |
+| `collection_on_demand_requests` | ❌ No | ⚠️ Optional | ✅ `last_seen_at` | ❌ No - needs changes |
+
+**user_search_logs (SearchLog):** ✅ Perfect - already a log with user_id, entity_id, timestamps. Can `COUNT(DISTINCT user_id)` directly.
+
+**user_restaurant_views (RestaurantView):** ⚠️ Almost there - it's already an aggregate table (one row per user-restaurant), not a log. It has `viewCount` but that's per-user total views of that restaurant, not a global count.
+- To get distinct users: `COUNT(*)` on this table grouped by restaurant_id = distinct users who ever viewed
+- Time-bounded: `COUNT(*) WHERE last_viewed_at > 30 days ago`
+
+**user_favorites:** ✅ Perfect - one row per user-entity, can `COUNT(*)` for total distinct users who favorited.
+
+**collection_on_demand_requests:** ❌ Needs changes - has `occurrenceCount` but no user tracking.
+
+---
+
+### 5. Should We Convert Tables to Logs or Add User Hashes?
+
+**For user_search_logs:** Already a log ✅ - no changes needed
+
+**For user_restaurant_views:** 
+
+Currently it's an **aggregate table** (one row per user-restaurant pair), not a log. 
+
+Two options:
+
+**Option A: Keep as aggregate table (current)**
+- Already naturally distinct per user
+- `COUNT(*) WHERE restaurant_id = X AND last_viewed_at > 30 days` = distinct users in 30 days
+- ✅ Efficient reads
+- ❌ Loses individual view events (can't see "user viewed 5 times on Jan 1, 3 times on Jan 5")
+
+**Option B: Convert to log table**
+```prisma
+model RestaurantViewEvent {
+  viewId       String   @id @default(uuid())
+  userId       String
+  restaurantId String
+  viewedAt     DateTime @default(now())
+  source       String?
+  // ... 
+}
+```
+- ✅ Full history
+- ❌ More rows, slower aggregation
+- ❌ Would need to migrate existing data
+
+**Recommendation: Keep as aggregate table** - for priority scoring, we only care about "did this user view this restaurant recently?" not "how many times exactly". The aggregate table is simpler and sufficient.
+
+**For user_favorites:** Already perfect - one row per user-entity. Favorites don't need a log because you either have it favorited or you don't.
+
+**For collection_on_demand_requests:**
+
+This one DOES need changes for user-distinct counting. Options:
+
+**Option A: Add user tracking to existing table**
+```prisma
+model OnDemandRequest {
+  // ... existing
+  distinctUserCount  Int      @default(1)
+  userHashes         String[] @default([])  // For dedup
+}
+```
+
+**Option B: Create a separate log table**
+```prisma
+model OnDemandRequestEvent {
+  eventId    String   @id @default(uuid())
+  term       String
+  entityType EntityType
+  reason     OnDemandReason
+  userId     String   // or userHash
+  locationKey String
+  createdAt  DateTime @default(now())
+}
+```
+
+Then the main OnDemandRequest becomes an aggregate that's refreshed from events.
+
+**Recommendation: Option A (add to existing table)** is simpler. We don't need full event history for on-demand requests, just the count.
+
+---
+
+## Final Recommended Architecture
+
+### Eliminate Real-Time Counter Updates
+
+**Yes, remove the dual-write logic.** The source tables become the only write target.
+
+| Event | Current Writes | Proposed Writes |
+|-------|----------------|-----------------|
+| Search submitted | SearchLog + EntityPriorityMetric | SearchLog only |
+| Restaurant opened | RestaurantView + EntityPriorityMetric | RestaurantView only |
+| Favorite toggled | UserFavorite + EntityPriorityMetric | UserFavorite only |
+| On-demand triggered | OnDemandRequest | OnDemandRequest (with user hash) |
+
+### Refresh Job (runs before each priority selection)
+
+```typescript
+async refreshEntityPriorityMetrics(): Promise<void> {
+  const thirtyDaysAgo = subDays(new Date(), 30);
+  
+  // Single query that aggregates all sources
+  await this.prisma.$executeRaw`
+    INSERT INTO collection_entity_priority_metrics (
+      entity_id,
+      entity_type,
+      query_impressions,
+      autocomplete_selections,
+      last_query_at,
+      view_impressions,
+      last_view_at,
+      favorite_count,
+      last_calculated_at
+    )
+    SELECT 
+      e.entity_id,
+      e.type,
+      COALESCE(sl.query_impressions, 0),
+      COALESCE(sl.autocomplete_selections, 0),
+      sl.last_query_at,
+      COALESCE(rv.view_impressions, 0),
+      rv.last_view_at,
+      COALESCE(f.favorite_count, 0),
+      NOW()
+    FROM core_entities e
+    LEFT JOIN (
+      SELECT 
+        entity_id,
+        COUNT(DISTINCT user_id) as query_impressions,
+        COUNT(DISTINCT CASE 
+          WHEN metadata->>'submissionSource' = 'autocomplete' 
+          AND (metadata->'submissionContext'->>'selectedEntityId')::uuid = entity_id
+          THEN user_id 
+        END) as autocomplete_selections,
+        MAX(logged_at) as last_query_at
+      FROM user_search_logs
+      WHERE logged_at > ${thirtyDaysAgo}
+      GROUP BY entity_id
+    ) sl ON e.entity_id = sl.entity_id
+    LEFT JOIN (
+      SELECT 
+        restaurant_id,
+        COUNT(*) as view_impressions,  -- Already distinct per user
+        MAX(last_viewed_at) as last_view_at
+      FROM user_restaurant_views
+      WHERE last_viewed_at > ${thirtyDaysAgo}
+      GROUP BY restaurant_id
+    ) rv ON e.entity_id = rv.restaurant_id
+    LEFT JOIN (
+      SELECT entity_id, COUNT(*) as favorite_count
+      FROM user_favorites
+      GROUP BY entity_id
+    ) f ON e.entity_id = f.entity_id
+    ON CONFLICT (entity_id) DO UPDATE SET
+      entity_type = EXCLUDED.entity_type,
+      query_impressions = EXCLUDED.query_impressions,
+      autocomplete_selections = EXCLUDED.autocomplete_selections,
+      last_query_at = EXCLUDED.last_query_at,
+      view_impressions = EXCLUDED.view_impressions,
+      last_view_at = EXCLUDED.last_view_at,
+      favorite_count = EXCLUDED.favorite_count,
+      last_calculated_at = NOW()
+  `;
+}
+```
+
+### Summary of Changes
+
+| Component | Current | Proposed |
+|-----------|---------|----------|
+| EntityPriorityMetric | Real-time counters, updated on every event | **Cached aggregates, refreshed before priority selection** |
+| queryImpressions meaning | Total impressions | **Distinct users (last 30 days)** |
+| viewImpressions meaning | Total views (with cooldown) | **Distinct users (last 30 days)** |
+| autocompleteSelections meaning | Total selections | **Distinct users (last 30 days)** |
+| favoriteCount meaning | Current count | Already distinct (no time window needed) |
+| Write path | Dual writes (source table + counter) | **Single write to source table** |
+| Read path (priority selection) | Read counters | Read cached aggregates (same speed) |
+| OnDemandRequest | occurrenceCount (raw) | **distinctUserCount + userHashes** |
+
+### Code to Remove (Dual-Write Elimination)
+
+1. **search.service.ts lines 686-702** - Remove direct `queryImpressions` increment
+2. **search.service.ts lines 714-728** - Remove direct `autocompleteSelections` increment  
+3. **history.service.ts lines 88-101** - Remove direct `viewImpressions` increment
+4. **favorites.service.ts** - Remove `favoriteCount` increment/decrement calls
+5. **favorite-lists.service.ts** - Remove `favoriteCount` increment/decrement calls
+
+Would you like me to start implementing these changes? I'd suggest this order:
+
+1. Fix recency inversion (quick win, independent)
+2. Add entity name deduplication (quick win, independent)
+3. Add user tracking to OnDemandRequest
+4. Create the refresh job
+5. Remove dual-write logic
+6. Update weights

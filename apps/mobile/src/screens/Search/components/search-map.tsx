@@ -1,6 +1,14 @@
 import React from 'react';
-import { Animated, Image, Pressable, Text as RNText, View } from 'react-native';
+import {
+  Animated,
+  Image,
+  type LayoutChangeEvent,
+  Pressable,
+  Text as RNText,
+  View,
+} from 'react-native';
 import Reanimated, {
+  cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
@@ -15,11 +23,21 @@ import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
-import { USA_FALLBACK_CENTER } from '../constants/search';
+import { PIN_MARKER_RENDER_SIZE, USA_FALLBACK_CENTER } from '../constants/search';
+
 import styles from '../styles';
 import { getMarkerZIndex } from '../utils/map';
 
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
+const MARKER_REENTRY_HOLD_MS = 120;
+const MARKER_VISIBILITY_REFRESH_MS_IDLE = 120;
+const MARKER_VISIBILITY_REFRESH_MS_MOVING = 200;
+const MARKER_MOUNT_INITIAL_BATCH = 4;
+const MARKER_MOUNT_BATCH_SIZE = 2;
+const MARKER_MOUNT_DEFER_CHECK_MS = 100;
+const MARKER_ANCHOR = { x: 0.5, y: 1 } as const;
+const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
+const MARKER_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
 
 export type RestaurantFeatureProperties = {
   restaurantId: string;
@@ -28,12 +46,17 @@ export type RestaurantFeatureProperties = {
   rank: number;
   pinColor: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
+  // Dish-specific fields (populated when rendering dish pins)
+  isDishPin?: boolean;
+  dishName?: string;
+  connectionId?: string;
 };
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
   getCenter?: () => Promise<[number, number]>;
   getZoom?: () => Promise<number>;
+  getCoordinateFromView?: (point: [number, number]) => Promise<[number, number]>;
 };
 
 type CameraPadding = {
@@ -45,7 +68,6 @@ type CameraPadding = {
 
 const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
-const MARKER_ENTER_SCALE = 0.92;
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
@@ -55,73 +77,270 @@ const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleStrokeWidth: 0,
 };
 
+const MARKER_VIEW_OVERSCAN_LEFT_PX = Math.max(0, Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 1);
+const MARKER_VIEW_OVERSCAN_RIGHT_PX = MARKER_VIEW_OVERSCAN_LEFT_PX;
+const MARKER_VIEW_OVERSCAN_TOP_PX = 2;
+const MARKER_VIEW_OVERSCAN_BOTTOM_PX = Math.max(0, Math.ceil(PIN_MARKER_RENDER_SIZE) + 2);
+const MARKER_VIEW_OVERSCAN_STYLE = {
+  left: -MARKER_VIEW_OVERSCAN_LEFT_PX,
+  right: -MARKER_VIEW_OVERSCAN_RIGHT_PX,
+  top: -MARKER_VIEW_OVERSCAN_TOP_PX,
+  bottom: -MARKER_VIEW_OVERSCAN_BOTTOM_PX,
+};
+
+const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
+  if (left === right) {
+    return true;
+  }
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+const projectToMercator = (coordinate: [number, number]): [number, number] => {
+  const lng = coordinate[0];
+  const lat = Math.max(-85.05112878, Math.min(85.05112878, coordinate[1]));
+  const lngRadians = (lng * Math.PI) / 180;
+  const latRadians = (lat * Math.PI) / 180;
+  const x = lngRadians;
+  const y = Math.log(Math.tan(Math.PI / 4 + latRadians / 2));
+  return [x, y];
+};
+
+const isPointInPolygon = (point: [number, number], polygon: Array<[number, number]>): boolean => {
+  const x = point[0];
+  const y = point[1];
+  let isInside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0];
+    const yi = polygon[i][1];
+    const xj = polygon[j][0];
+    const yj = polygon[j][1];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersects) {
+      isInside = !isInside;
+    }
+  }
+  return isInside;
+};
+
 type MarkerPinProps = {
+  markerKey: string;
+  getIsFirstReveal: (markerKey: string) => boolean;
+  getIsMapMoving: () => boolean;
+  isVisible: boolean;
   isSelected: boolean;
   pinColor: string;
   rank: number;
+  shouldAnimateOnMount: boolean;
   enterDelayMs: number;
   enterDurationMs: number;
 };
 
+/**
+ * MarkerPin - Fade in whenever a marker becomes visible in the viewport. Mapbox view annotations
+ * can be hidden/shown without React unmounting, and can also appear with slight native delay
+ * during fast pans. Driving opacity off viewport visibility prevents pop-in.
+ */
 const MarkerPin: React.FC<MarkerPinProps> = React.memo(
-  ({ isSelected, pinColor, rank, enterDelayMs, enterDurationMs }) => {
-    const progress = useSharedValue(0);
-    const initialEnterDelayMsRef = React.useRef(enterDelayMs);
-    const initialEnterDurationMsRef = React.useRef(enterDurationMs);
-    const [pinImagesReady, setPinImagesReady] = React.useState(false);
-    const baseLoadedRef = React.useRef(false);
-    const fillLoadedRef = React.useRef(false);
-    const updatePinImagesReady = React.useCallback(() => {
-      if (baseLoadedRef.current && fillLoadedRef.current) {
-        setPinImagesReady(true);
-      }
-    }, []);
-    const handleBaseLoadEnd = React.useCallback(() => {
-      baseLoadedRef.current = true;
-      updatePinImagesReady();
-    }, [updatePinImagesReady]);
-    const handleFillLoadEnd = React.useCallback(() => {
-      fillLoadedRef.current = true;
-      updatePinImagesReady();
-    }, [updatePinImagesReady]);
+  ({
+    markerKey,
+    getIsFirstReveal,
+    getIsMapMoving,
+    isVisible,
+    isSelected,
+    pinColor,
+    rank,
+    shouldAnimateOnMount,
+    enterDelayMs,
+    enterDurationMs,
+  }) => {
+    const shouldAnimateOnMountRef = React.useRef(shouldAnimateOnMount);
+    const enterDelayMsRef = React.useRef(enterDelayMs);
+    const enterDurationMsRef = React.useRef(enterDurationMs);
+
+    shouldAnimateOnMountRef.current = shouldAnimateOnMount;
+    enterDelayMsRef.current = enterDelayMs;
+    enterDurationMsRef.current = enterDurationMs;
+
+    const opacity = useSharedValue(0);
+    const previousVisibilityRef = React.useRef<boolean | null>(null);
+
     React.useEffect(() => {
-      progress.value = 0;
-      progress.value = withDelay(
-        Math.max(0, initialEnterDelayMsRef.current),
+      const wasVisible = previousVisibilityRef.current === true;
+      previousVisibilityRef.current = isVisible;
+
+      cancelAnimation(opacity);
+
+      if (!isVisible) {
+        opacity.value = 0;
+        return;
+      }
+
+      if (wasVisible) {
+        return;
+      }
+
+      const shouldUseReveal = shouldAnimateOnMountRef.current && getIsFirstReveal(markerKey);
+      const shouldHoldForReentry = !shouldUseReveal && getIsMapMoving();
+      let delayMs = 0;
+      if (shouldUseReveal) {
+        delayMs = Math.max(0, enterDelayMsRef.current);
+      } else if (shouldHoldForReentry) {
+        delayMs = MARKER_REENTRY_HOLD_MS;
+      }
+      const durationMs = Math.max(0, enterDurationMsRef.current);
+      const easing = Easing.out(Easing.cubic);
+
+      opacity.value = 0;
+      opacity.value = withDelay(
+        delayMs,
         withTiming(1, {
-          duration: Math.max(0, initialEnterDurationMsRef.current),
-          easing: Easing.out(Easing.cubic),
+          duration: durationMs,
+          easing,
         })
       );
-    }, [progress]);
+    }, [getIsFirstReveal, getIsMapMoving, isVisible, markerKey, opacity]);
+
     const animatedStyle = useAnimatedStyle(() => ({
-      opacity: progress.value,
-      transform: [
-        {
-          scale: MARKER_ENTER_SCALE + (1 - MARKER_ENTER_SCALE) * progress.value,
-        },
-      ],
+      opacity: opacity.value,
     }));
+
     return (
       <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
-        <Image source={pinAsset} style={styles.pinBase} onLoadEnd={handleBaseLoadEnd} />
+        <Image source={pinAsset} style={styles.pinBase} fadeDuration={0} />
         <Image
           source={pinFillAsset}
-          style={[
-            styles.pinFill,
-            {
-              tintColor: isSelected ? PRIMARY_COLOR : pinColor,
-            },
-          ]}
-          onLoadEnd={handleFillLoadEnd}
+          style={[styles.pinFill, { tintColor: isSelected ? PRIMARY_COLOR : pinColor }]}
+          fadeDuration={0}
         />
         <View style={styles.pinRankWrapper}>
-          <RNText style={[styles.pinRank, pinImagesReady ? null : styles.pinRankHidden]}>
-            {rank}
-          </RNText>
+          <RNText style={styles.pinRank}>{rank}</RNText>
         </View>
       </Reanimated.View>
     );
+  }
+);
+
+type MarkerItemProps = {
+  markerKey: string;
+  restaurantId: string;
+  coordinate: [number, number];
+  zIndex: number;
+  rank: number;
+  pinColor: string;
+  isVisible: boolean;
+  isSelected: boolean;
+  onMarkerPress?: (restaurantId: string) => void;
+  getIsFirstReveal: (markerKey: string) => boolean;
+  getIsMapMoving: () => boolean;
+  shouldAnimateOnMount: boolean;
+  enterDelayMs: number;
+  enterDurationMs: number;
+};
+
+const MarkerItem: React.FC<MarkerItemProps> = React.memo(
+  ({
+    markerKey,
+    restaurantId,
+    coordinate,
+    zIndex,
+    rank,
+    pinColor,
+    isVisible,
+    isSelected,
+    onMarkerPress,
+    getIsFirstReveal,
+    getIsMapMoving,
+    shouldAnimateOnMount,
+    enterDelayMs,
+    enterDurationMs,
+  }) => {
+    const markerViewStyle = React.useMemo(() => [styles.markerView, { zIndex }], [zIndex]);
+    const handlePress = React.useCallback(() => {
+      onMarkerPress?.(restaurantId);
+    }, [onMarkerPress, restaurantId]);
+
+    return (
+      <MapboxGL.MarkerView
+        id={`restaurant-marker-${markerKey}`}
+        coordinate={coordinate}
+        anchor={MARKER_ANCHOR}
+        allowOverlap
+        isSelected={true}
+        style={markerViewStyle}
+      >
+        <Pressable
+          onPress={handlePress}
+          hitSlop={MARKER_HIT_SLOP}
+          pointerEvents={isVisible ? 'auto' : 'none'}
+        >
+          <MarkerPin
+            markerKey={markerKey}
+            getIsFirstReveal={getIsFirstReveal}
+            getIsMapMoving={getIsMapMoving}
+            isVisible={isVisible}
+            isSelected={isSelected}
+            pinColor={pinColor}
+            rank={rank}
+            shouldAnimateOnMount={shouldAnimateOnMount}
+            enterDelayMs={enterDelayMs}
+            enterDurationMs={enterDurationMs}
+          />
+        </Pressable>
+      </MapboxGL.MarkerView>
+    );
+  },
+  (prev, next) => {
+    if (prev.markerKey !== next.markerKey) {
+      return false;
+    }
+    if (prev.restaurantId !== next.restaurantId) {
+      return false;
+    }
+    if (prev.coordinate[0] !== next.coordinate[0] || prev.coordinate[1] !== next.coordinate[1]) {
+      return false;
+    }
+    if (prev.zIndex !== next.zIndex) {
+      return false;
+    }
+    if (prev.rank !== next.rank) {
+      return false;
+    }
+    if (prev.pinColor !== next.pinColor) {
+      return false;
+    }
+    if (prev.isVisible !== next.isVisible) {
+      return false;
+    }
+    if (prev.isSelected !== next.isSelected) {
+      return false;
+    }
+    if (prev.onMarkerPress !== next.onMarkerPress) {
+      return false;
+    }
+    if (prev.getIsFirstReveal !== next.getIsFirstReveal) {
+      return false;
+    }
+    if (prev.getIsMapMoving !== next.getIsMapMoving) {
+      return false;
+    }
+    if (prev.shouldAnimateOnMount !== next.shouldAnimateOnMount) {
+      return false;
+    }
+    if (prev.enterDelayMs !== next.enterDelayMs) {
+      return false;
+    }
+    if (prev.enterDurationMs !== next.enterDurationMs) {
+      return false;
+    }
+    return true;
   }
 );
 
@@ -134,6 +353,9 @@ type SearchMapProps = {
   cameraPadding?: CameraPadding | null;
   isFollowingUser: boolean;
   onPress: () => void;
+  onTouchStart?: () => void;
+  onTouchEnd?: () => void;
+  getShouldDeferMarkerMount?: () => boolean;
   onCameraChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
@@ -143,6 +365,7 @@ type SearchMapProps = {
   dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
   markersRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
+  shouldAnimateMarkerReveal?: boolean;
   markerRevealChunk?: number;
   markerRevealStaggerMs?: number;
   markerRevealAnimMs?: number;
@@ -165,6 +388,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   cameraPadding,
   isFollowingUser,
   onPress,
+  onTouchStart,
+  onTouchEnd,
+  getShouldDeferMarkerMount,
   onCameraChanged,
   onMapIdle,
   onMapLoaded,
@@ -172,11 +398,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   selectedRestaurantId,
   sortedRestaurantMarkers,
   dotRestaurantFeatures,
-  markersRenderKey: _markersRenderKey,
+  markersRenderKey,
   buildMarkerKey,
+  shouldAnimateMarkerReveal = false,
   markerRevealChunk = 1,
   markerRevealStaggerMs = 0,
-  markerRevealAnimMs = 160,
+  markerRevealAnimMs = 2000,
   restaurantFeatures,
   restaurantLabelStyle,
   isMapStyleReady,
@@ -193,6 +420,293 @@ const SearchMap: React.FC<SearchMapProps> = ({
     !shouldDisableMarkers &&
     dotRestaurantFeatures != null &&
     dotRestaurantFeatures.features.length > 0;
+  const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+  const [visibleMarkerKeys, setVisibleMarkerKeys] = React.useState<Set<string>>(() => new Set());
+  const [markerRenderCount, setMarkerRenderCount] = React.useState(0);
+  const markerRevealRegistryRef = React.useRef<Set<string>>(new Set());
+  const previousShouldAnimateMarkerRevealRef = React.useRef(false);
+  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
+  const markerRenderCountRef = React.useRef(0);
+  const markerMountRafRef = React.useRef<number | null>(null);
+  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibilityRefreshSeqRef = React.useRef(0);
+  const visibilityRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibilityRefreshInFlightRef = React.useRef(false);
+  const visibilityRefreshQueuedRef = React.useRef(false);
+  const isMapMovingRef = React.useRef(false);
+  const mapLastMovedAtRef = React.useRef(0);
+
+  const markerMercatorEntries = React.useMemo(
+    () =>
+      sortedRestaurantMarkers.map((feature) => {
+        const markerKey = buildMarkerKey(feature);
+        const coordinate = feature.geometry.coordinates as [number, number];
+        return { markerKey, mercatorPoint: projectToMercator(coordinate) };
+      }),
+    [buildMarkerKey, sortedRestaurantMarkers]
+  );
+
+  React.useEffect(() => {
+    markerRenderCountRef.current = markerRenderCount;
+  }, [markerRenderCount]);
+
+  React.useEffect(() => {
+    if (shouldDisableMarkers) {
+      if (markerMountRafRef.current != null) {
+        cancelAnimationFrame(markerMountRafRef.current);
+        markerMountRafRef.current = null;
+      }
+      if (markerMountDeferTimeoutRef.current) {
+        clearTimeout(markerMountDeferTimeoutRef.current);
+        markerMountDeferTimeoutRef.current = null;
+      }
+      markerRenderCountRef.current = 0;
+      setMarkerRenderCount(0);
+      previousMarkersRenderKeyRef.current = markersRenderKey;
+      return;
+    }
+
+    const targetCount = sortedRestaurantMarkers.length;
+    const previousKey = previousMarkersRenderKeyRef.current;
+    const isAppend =
+      typeof previousKey === 'string' &&
+      previousKey.length > 0 &&
+      markersRenderKey.startsWith(previousKey);
+    const shouldDeferMarkerMount = getShouldDeferMarkerMount?.() === true;
+
+    previousMarkersRenderKeyRef.current = markersRenderKey;
+
+    if (markerMountRafRef.current != null) {
+      cancelAnimationFrame(markerMountRafRef.current);
+      markerMountRafRef.current = null;
+    }
+    if (markerMountDeferTimeoutRef.current) {
+      clearTimeout(markerMountDeferTimeoutRef.current);
+      markerMountDeferTimeoutRef.current = null;
+    }
+
+    const initialCount = isAppend
+      ? Math.min(markerRenderCountRef.current, targetCount)
+      : shouldDeferMarkerMount
+      ? 0
+      : Math.min(targetCount, MARKER_MOUNT_INITIAL_BATCH);
+
+    if (markerRenderCountRef.current !== initialCount) {
+      markerRenderCountRef.current = initialCount;
+      setMarkerRenderCount(initialCount);
+    }
+
+    if (markerRenderCountRef.current >= targetCount) {
+      return;
+    }
+
+    const tick = () => {
+      if (getShouldDeferMarkerMount?.() === true) {
+        if (markerMountDeferTimeoutRef.current) {
+          return;
+        }
+        markerMountDeferTimeoutRef.current = setTimeout(() => {
+          markerMountDeferTimeoutRef.current = null;
+          tick();
+        }, MARKER_MOUNT_DEFER_CHECK_MS);
+        return;
+      }
+      const nextCount = Math.min(
+        targetCount,
+        markerRenderCountRef.current + MARKER_MOUNT_BATCH_SIZE
+      );
+      if (nextCount === markerRenderCountRef.current) {
+        markerMountRafRef.current = null;
+        return;
+      }
+      markerRenderCountRef.current = nextCount;
+      setMarkerRenderCount(nextCount);
+      if (nextCount < targetCount) {
+        markerMountRafRef.current = requestAnimationFrame(tick);
+      } else {
+        markerMountRafRef.current = null;
+      }
+    };
+
+    markerMountRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (markerMountRafRef.current != null) {
+        cancelAnimationFrame(markerMountRafRef.current);
+        markerMountRafRef.current = null;
+      }
+      if (markerMountDeferTimeoutRef.current) {
+        clearTimeout(markerMountDeferTimeoutRef.current);
+        markerMountDeferTimeoutRef.current = null;
+      }
+    };
+  }, [
+    getShouldDeferMarkerMount,
+    markersRenderKey,
+    shouldDisableMarkers,
+    sortedRestaurantMarkers.length,
+  ]);
+
+  React.useEffect(() => {
+    if (shouldAnimateMarkerReveal && !previousShouldAnimateMarkerRevealRef.current) {
+      markerRevealRegistryRef.current.clear();
+    }
+    previousShouldAnimateMarkerRevealRef.current = shouldAnimateMarkerReveal;
+  }, [shouldAnimateMarkerReveal]);
+
+  React.useEffect(() => {
+    return () => {
+      visibilityRefreshQueuedRef.current = false;
+      if (visibilityRefreshTimeoutRef.current) {
+        clearTimeout(visibilityRefreshTimeoutRef.current);
+        visibilityRefreshTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleMapViewportLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const { width, height } = event.nativeEvent.layout;
+    setMapViewportSize((previous) => {
+      if (previous.width === width && previous.height === height) {
+        return previous;
+      }
+      return { width, height };
+    });
+  }, []);
+
+  const getIsFirstMarkerReveal = React.useCallback((markerKey: string) => {
+    const registry = markerRevealRegistryRef.current;
+    const isFirstReveal = !registry.has(markerKey);
+    if (isFirstReveal) {
+      registry.add(markerKey);
+    }
+    return isFirstReveal;
+  }, []);
+
+  const refreshVisibleMarkerKeys = React.useCallback(async () => {
+    if (shouldDisableMarkers) {
+      return;
+    }
+    if (!markerMercatorEntries.length) {
+      return;
+    }
+    if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
+      return;
+    }
+    const mapInstance = mapRef.current;
+    if (!mapInstance?.getCoordinateFromView) {
+      return;
+    }
+
+    const refreshSeq = ++visibilityRefreshSeqRef.current;
+    const mapViewWidth =
+      mapViewportSize.width + MARKER_VIEW_OVERSCAN_LEFT_PX + MARKER_VIEW_OVERSCAN_RIGHT_PX;
+    const mapViewHeight =
+      mapViewportSize.height + MARKER_VIEW_OVERSCAN_TOP_PX + MARKER_VIEW_OVERSCAN_BOTTOM_PX;
+    const rightEdge = Math.max(0, mapViewWidth - 1);
+    const bottomEdge = Math.max(0, mapViewHeight - 1);
+
+    try {
+      const [topLeft, topRight, bottomRight, bottomLeft] = await Promise.all([
+        mapInstance.getCoordinateFromView([0, 0]),
+        mapInstance.getCoordinateFromView([rightEdge, 0]),
+        mapInstance.getCoordinateFromView([rightEdge, bottomEdge]),
+        mapInstance.getCoordinateFromView([0, bottomEdge]),
+      ]);
+
+      if (refreshSeq !== visibilityRefreshSeqRef.current) {
+        return;
+      }
+
+      const polygon: Array<[number, number]> = [topLeft, topRight, bottomRight, bottomLeft].filter(
+        (value): value is [number, number] => Array.isArray(value) && value.length === 2
+      );
+      if (polygon.length !== 4) {
+        return;
+      }
+
+      const nextVisibleKeys = new Set<string>();
+      const mercatorPolygon = polygon.map(projectToMercator);
+      for (const entry of markerMercatorEntries) {
+        if (isPointInPolygon(entry.mercatorPoint, mercatorPolygon)) {
+          nextVisibleKeys.add(entry.markerKey);
+        }
+      }
+
+      setVisibleMarkerKeys((previous) =>
+        areStringSetsEqual(previous, nextVisibleKeys) ? previous : nextVisibleKeys
+      );
+    } catch {
+      // Ignore: Mapbox can transiently reject view->coordinate conversions during load/teardown.
+    }
+  }, [
+    mapRef,
+    mapViewportSize.height,
+    mapViewportSize.width,
+    markerMercatorEntries,
+    shouldDisableMarkers,
+  ]);
+
+  const getIsMapMoving = React.useCallback(
+    () => isMapMovingRef.current || Date.now() - mapLastMovedAtRef.current < MARKER_REENTRY_HOLD_MS,
+    []
+  );
+
+  const runVisibleMarkerRefreshRef = React.useRef<() => void>(() => undefined);
+  const runVisibleMarkerRefresh = React.useCallback(() => {
+    if (visibilityRefreshInFlightRef.current) {
+      return;
+    }
+    if (!visibilityRefreshQueuedRef.current) {
+      return;
+    }
+
+    visibilityRefreshQueuedRef.current = false;
+    visibilityRefreshInFlightRef.current = true;
+
+    void refreshVisibleMarkerKeys().finally(() => {
+      visibilityRefreshInFlightRef.current = false;
+      if (visibilityRefreshQueuedRef.current && !visibilityRefreshTimeoutRef.current) {
+        visibilityRefreshTimeoutRef.current = setTimeout(
+          () => {
+            visibilityRefreshTimeoutRef.current = null;
+            runVisibleMarkerRefreshRef.current();
+          },
+          isMapMovingRef.current
+            ? MARKER_VISIBILITY_REFRESH_MS_MOVING
+            : MARKER_VISIBILITY_REFRESH_MS_IDLE
+        );
+      }
+    });
+  }, [refreshVisibleMarkerKeys]);
+  runVisibleMarkerRefreshRef.current = runVisibleMarkerRefresh;
+
+  const scheduleVisibleMarkerRefresh = React.useCallback(() => {
+    visibilityRefreshQueuedRef.current = true;
+    if (visibilityRefreshTimeoutRef.current || visibilityRefreshInFlightRef.current) {
+      return;
+    }
+    const delayMs = isMapMovingRef.current
+      ? MARKER_VISIBILITY_REFRESH_MS_MOVING
+      : MARKER_VISIBILITY_REFRESH_MS_IDLE;
+    visibilityRefreshTimeoutRef.current = setTimeout(() => {
+      visibilityRefreshTimeoutRef.current = null;
+      runVisibleMarkerRefreshRef.current();
+    }, delayMs);
+  }, []);
+
+  React.useEffect(() => {
+    scheduleVisibleMarkerRefresh();
+  }, [
+    markerMercatorEntries,
+    mapViewportSize.height,
+    mapViewportSize.width,
+    scheduleVisibleMarkerRefresh,
+  ]);
+
   const handleDotPress = React.useCallback(
     (event: OnPressEvent) => {
       const feature = event?.features?.[0];
@@ -209,148 +723,219 @@ const SearchMap: React.FC<SearchMapProps> = ({
     ((() => {
       // noop
     }) as React.ProfilerOnRenderCallback);
+
+  const handleCameraChanged = React.useCallback(
+    (state: MapboxMapState) => {
+      isMapMovingRef.current = true;
+      mapLastMovedAtRef.current = Date.now();
+      scheduleVisibleMarkerRefresh();
+      onCameraChanged(state);
+    },
+    [onCameraChanged, scheduleVisibleMarkerRefresh]
+  );
+
+  const handleMapIdle = React.useCallback(
+    (state: MapboxMapState) => {
+      isMapMovingRef.current = false;
+      mapLastMovedAtRef.current = Date.now();
+      if (visibilityRefreshTimeoutRef.current) {
+        clearTimeout(visibilityRefreshTimeoutRef.current);
+        visibilityRefreshTimeoutRef.current = null;
+      }
+      visibilityRefreshQueuedRef.current = true;
+      runVisibleMarkerRefreshRef.current();
+      onMapIdle(state);
+    },
+    [onMapIdle]
+  );
+
+  const handleMapLoaded = React.useCallback(() => {
+    visibilityRefreshQueuedRef.current = true;
+    runVisibleMarkerRefreshRef.current();
+    onMapLoaded();
+  }, [onMapLoaded]);
+
+  const handleTouchStart = React.useCallback(() => {
+    onTouchStart?.();
+  }, [onTouchStart]);
+
+  const handleTouchEnd = React.useCallback(() => {
+    onTouchEnd?.();
+  }, [onTouchEnd]);
+
+  const resolvedMarkerRenderCount = React.useMemo(() => {
+    const targetCount = sortedRestaurantMarkers.length;
+    if (targetCount === 0) {
+      return 0;
+    }
+    if (shouldDisableMarkers) {
+      return 0;
+    }
+
+    const previousKey = previousMarkersRenderKeyRef.current;
+    const isRenderKeyStale = previousKey !== markersRenderKey;
+    if (!isRenderKeyStale) {
+      return Math.min(markerRenderCount, targetCount);
+    }
+
+    const isAppend =
+      typeof previousKey === 'string' &&
+      previousKey.length > 0 &&
+      markersRenderKey.startsWith(previousKey);
+    if (isAppend) {
+      return Math.min(markerRenderCount, targetCount);
+    }
+    if (getShouldDeferMarkerMount?.() === true) {
+      return 0;
+    }
+    return Math.min(targetCount, MARKER_MOUNT_INITIAL_BATCH);
+  }, [
+    getShouldDeferMarkerMount,
+    markerRenderCount,
+    markersRenderKey,
+    shouldDisableMarkers,
+    sortedRestaurantMarkers.length,
+  ]);
+
   return (
-    <MapboxGL.MapView
-      ref={mapRef}
-      style={styles.map}
-      styleURL={styleURL}
-      logoEnabled={false}
-      attributionEnabled={false}
-      scaleBarEnabled={false}
-      gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
-      onPress={onPress}
-      onCameraChanged={onCameraChanged}
-      onMapIdle={onMapIdle}
-      onDidFinishLoadingStyle={onMapLoaded}
-      onDidFinishLoadingMap={onMapLoaded}
-    >
-      <MapboxGL.Camera
-        ref={cameraRef}
-        centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
-        zoomLevel={mapZoom}
-        padding={cameraPadding ?? ZERO_CAMERA_PADDING}
-        followUserLocation={isFollowingUser}
-        followZoomLevel={13}
-        followPitch={0}
-        followHeading={0}
-        animationMode="none"
-        animationDuration={0}
-        pitch={32}
-      />
-      {shouldRenderDots ? (
-        <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
-          <MapboxGL.ShapeSource
-            id={DOT_SOURCE_ID}
-            shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
-            onPress={handleDotPress}
+    <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
+      <MapboxGL.MapView
+        ref={mapRef}
+        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
+        styleURL={styleURL}
+        logoEnabled={false}
+        attributionEnabled={false}
+        scaleBarEnabled={false}
+        gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
+        onPress={onPress}
+        onTouchStartCapture={handleTouchStart}
+        onTouchEndCapture={handleTouchEnd}
+        onTouchCancelCapture={handleTouchEnd}
+        onCameraChanged={handleCameraChanged}
+        onMapIdle={handleMapIdle}
+        onDidFinishLoadingStyle={handleMapLoaded}
+        onDidFinishLoadingMap={handleMapLoaded}
+      >
+        <MapboxGL.Camera
+          ref={cameraRef}
+          centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
+          zoomLevel={mapZoom}
+          padding={cameraPadding ?? ZERO_CAMERA_PADDING}
+          followUserLocation={isFollowingUser}
+          followZoomLevel={13}
+          followPitch={0}
+          followHeading={0}
+          animationMode="none"
+          animationDuration={0}
+        />
+        {shouldRenderDots ? (
+          <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
+            <MapboxGL.ShapeSource
+              id={DOT_SOURCE_ID}
+              shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
+              onPress={handleDotPress}
+            >
+              <MapboxGL.CircleLayer id={DOT_LAYER_ID} style={DOT_LAYER_STYLE} />
+            </MapboxGL.ShapeSource>
+          </React.Profiler>
+        ) : null}
+        {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
+          <React.Profiler id="SearchMapMarkers" onRender={profilerCallback}>
+            <React.Fragment>
+              {sortedRestaurantMarkers.slice(0, resolvedMarkerRenderCount).map((feature, index) => {
+                const coordinates = feature.geometry.coordinates as [number, number];
+                const markerKey = buildMarkerKey(feature);
+                const zIndex = getMarkerZIndex(feature.properties.rank);
+                const revealChunk = Math.max(1, markerRevealChunk);
+                const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
+                const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
+                const enterDelayMs = withinChunkIndex * revealStaggerMs;
+                const isSelected = selectedRestaurantId === feature.properties.restaurantId;
+                const isMarkerVisible = visibleMarkerKeys.has(markerKey);
+                return (
+                  <MarkerItem
+                    key={markerKey}
+                    markerKey={markerKey}
+                    restaurantId={feature.properties.restaurantId}
+                    coordinate={coordinates}
+                    zIndex={zIndex}
+                    rank={feature.properties.rank}
+                    pinColor={feature.properties.pinColor}
+                    isVisible={isMarkerVisible}
+                    isSelected={isSelected}
+                    onMarkerPress={onMarkerPress}
+                    getIsFirstReveal={getIsFirstMarkerReveal}
+                    getIsMapMoving={getIsMapMoving}
+                    shouldAnimateOnMount={shouldAnimateMarkerReveal}
+                    enterDelayMs={enterDelayMs}
+                    enterDurationMs={markerRevealAnimMs}
+                  />
+                );
+              })}
+            </React.Fragment>
+          </React.Profiler>
+        ) : null}
+        {shouldRenderLabels ? (
+          <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
+            <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
+              <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
+            </MapboxGL.ShapeSource>
+          </React.Profiler>
+        ) : null}
+        {userLocation ? (
+          <MapboxGL.MarkerView
+            id="user-location"
+            coordinate={[userLocation.lng, userLocation.lat]}
+            anchor={USER_LOCATION_ANCHOR}
+            allowOverlap
+            isSelected
+            style={[styles.markerView, styles.userLocationMarkerView]}
           >
-            <MapboxGL.CircleLayer id={DOT_LAYER_ID} style={DOT_LAYER_STYLE} />
-          </MapboxGL.ShapeSource>
-        </React.Profiler>
-      ) : null}
-      {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
-        <React.Profiler id="SearchMapMarkers" onRender={profilerCallback}>
-          <React.Fragment>
-            {sortedRestaurantMarkers.map((feature, index) => {
-              const coordinates = feature.geometry.coordinates as [number, number];
-              const markerKey = buildMarkerKey(feature);
-              const zIndex = getMarkerZIndex(
-                feature.properties.rank,
-                sortedRestaurantMarkers.length
-              );
-              const revealChunk = Math.max(1, markerRevealChunk);
-              const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
-              const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
-              const enterDelayMs = withinChunkIndex * revealStaggerMs;
-              const isSelected = selectedRestaurantId === feature.properties.restaurantId;
-              return (
-                <MapboxGL.MarkerView
-                  key={markerKey}
-                  id={`restaurant-marker-${markerKey}`}
-                  coordinate={coordinates}
-                  anchor={{ x: 0.5, y: 1 }}
-                  allowOverlap
-                  isSelected={true}
-                  style={[styles.markerView, { zIndex }]}
-                >
-                  <Pressable
-                    onPress={() => onMarkerPress?.(feature.properties.restaurantId)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <MarkerPin
-                      isSelected={isSelected}
-                      pinColor={feature.properties.pinColor}
-                      rank={feature.properties.rank}
-                      enterDelayMs={enterDelayMs}
-                      enterDurationMs={markerRevealAnimMs}
+            <View style={styles.userLocationWrapper}>
+              <View style={styles.userLocationShadow}>
+                {shouldDisableBlur ? (
+                  <View style={styles.userLocationHaloWrapper}>
+                    <Animated.View
+                      style={[
+                        styles.userLocationDot,
+                        {
+                          transform: [
+                            {
+                              scale: locationPulse.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1.4, 1.8],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
                     />
-                  </Pressable>
-                </MapboxGL.MarkerView>
-              );
-            })}
-          </React.Fragment>
-        </React.Profiler>
-      ) : null}
-      {shouldRenderLabels ? (
-        <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
-          <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
-            <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
-          </MapboxGL.ShapeSource>
-        </React.Profiler>
-      ) : null}
-      {userLocation ? (
-        <MapboxGL.MarkerView
-          id="user-location"
-          coordinate={[userLocation.lng, userLocation.lat]}
-          anchor={{ x: 0.5, y: 0.5 }}
-          allowOverlap
-          isSelected
-          style={[styles.markerView, styles.userLocationMarkerView]}
-        >
-          <View style={styles.userLocationWrapper}>
-            <View style={styles.userLocationShadow}>
-              {shouldDisableBlur ? (
-                <View style={styles.userLocationHaloWrapper}>
-                  <Animated.View
-                    style={[
-                      styles.userLocationDot,
-                      {
-                        transform: [
-                          {
-                            scale: locationPulse.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1.4, 1.8],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </View>
-              ) : (
-                <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
-                  <Animated.View
-                    style={[
-                      styles.userLocationDot,
-                      {
-                        transform: [
-                          {
-                            scale: locationPulse.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [1.4, 1.8],
-                            }),
-                          },
-                        ],
-                      },
-                    ]}
-                  />
-                </AppBlurView>
-              )}
+                  </View>
+                ) : (
+                  <AppBlurView intensity={25} tint="light" style={styles.userLocationHaloWrapper}>
+                    <Animated.View
+                      style={[
+                        styles.userLocationDot,
+                        {
+                          transform: [
+                            {
+                              scale: locationPulse.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [1.4, 1.8],
+                              }),
+                            },
+                          ],
+                        },
+                      ]}
+                    />
+                  </AppBlurView>
+                )}
+              </View>
             </View>
-          </View>
-        </MapboxGL.MarkerView>
-      ) : null}
-    </MapboxGL.MapView>
+          </MapboxGL.MarkerView>
+        ) : null}
+      </MapboxGL.MapView>
+    </View>
   );
 };
 
@@ -414,6 +999,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.markersRenderKey !== next.markersRenderKey) {
     return false;
   }
+  if (prev.shouldAnimateMarkerReveal !== next.shouldAnimateMarkerReveal) {
+    return false;
+  }
   if (prev.markerRevealChunk !== next.markerRevealChunk) {
     return false;
   }
@@ -445,6 +1033,15 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.onPress !== next.onPress) {
+    return false;
+  }
+  if (prev.onTouchStart !== next.onTouchStart) {
+    return false;
+  }
+  if (prev.onTouchEnd !== next.onTouchEnd) {
+    return false;
+  }
+  if (prev.getShouldDeferMarkerMount !== next.getShouldDeferMarkerMount) {
     return false;
   }
   if (prev.onCameraChanged !== next.onCameraChanged) {

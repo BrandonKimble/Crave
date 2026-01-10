@@ -2,7 +2,7 @@ export type ActivityLevel = 'trending' | 'active' | 'normal';
 
 export type EntityScope = 'restaurant' | 'food' | 'food_attribute' | 'restaurant_attribute';
 
-export type QueryFormat = 'single_list' | 'dual_list';
+export type QueryFormat = 'dual_list';
 
 export type FilterStage = 'restaurant' | 'connection';
 
@@ -59,6 +59,11 @@ export interface FoodResult {
   restaurantPriceSymbol?: string | null;
   restaurantDistanceMiles?: number | null;
   restaurantOperatingStatus?: OperatingStatus | null;
+  // Additional fields for map pins in dishes tab
+  restaurantDisplayScore?: number | null;
+  restaurantDisplayPercentile?: number | null;
+  restaurantLatitude?: number | null;
+  restaurantLongitude?: number | null;
 }
 
 export interface RestaurantFoodSnippet {
@@ -113,11 +118,52 @@ export interface RestaurantResult {
   priceText?: string | null;
   priceLevelUpdatedAt?: string | null;
   topFood: RestaurantFoodSnippet[];
+  totalDishCount: number;
   operatingStatus?: OperatingStatus | null;
   distanceMiles?: number | null;
   displayLocation?: RestaurantLocationResult | null;
   locations?: RestaurantLocationResult[];
   locationCount?: number;
+}
+
+export interface DishRestaurantLocation {
+  locationId: string;
+  latitude: number;
+  longitude: number;
+  address?: string | null;
+  city?: string | null;
+  googlePlaceId?: string | null;
+}
+
+export interface DishRestaurantData {
+  restaurantId: string;
+  restaurantName: string;
+  restaurantAliases: string[];
+  displayScore?: number | null;
+  displayPercentile?: number | null;
+  priceLevel?: number | null;
+  priceSymbol?: string | null;
+  operatingStatus?: OperatingStatus | null;
+  location: DishRestaurantLocation;
+}
+
+export interface DishResult {
+  connectionId: string;
+  foodId: string;
+  foodName: string;
+  foodAliases: string[];
+  qualityScore: number;
+  displayScore?: number | null;
+  displayPercentile?: number | null;
+  coverageKey?: string;
+  activityLevel: ActivityLevel;
+  mentionCount: number;
+  totalUpvotes: number;
+  recentMentionCount: number;
+  lastMentionedAt?: string | null;
+  categories: string[];
+  foodAttributes: string[];
+  restaurant: DishRestaurantData;
 }
 
 export interface SearchResponseMetadata {
@@ -151,6 +197,16 @@ export interface SearchResponseMetadata {
 }
 
 export interface SearchResponse {
+  format: QueryFormat;
+  plan: QueryPlan;
+  dishes: FoodResult[];
+  restaurants: RestaurantResult[];
+  sqlPreview?: string | null;
+  metadata: SearchResponseMetadata;
+}
+
+/** @deprecated Use SearchResponse with dishes instead */
+export interface LegacySearchResponse {
   format: QueryFormat;
   plan: QueryPlan;
   food: FoodResult[];

@@ -126,4 +126,7 @@ export const SEGMENT_OPTIONS = [
   { label: 'Dishes', value: 'dishes' as const },
 ] as const;
 
+// Default segment for first launch
+export const DEFAULT_SEGMENT: SegmentValue = 'dishes';
+
 export type SegmentValue = (typeof SEGMENT_OPTIONS)[number]['value'];

@@ -19,6 +19,9 @@ import {
 } from 'class-validator';
 import { EntityType } from '@prisma/client';
 import type {
+  DishResult as SharedDishResult,
+  DishRestaurantData as SharedDishRestaurantData,
+  DishRestaurantLocation as SharedDishRestaurantLocation,
   FilterClause as SharedFilterClause,
   FoodResult as SharedFoodResult,
   QueryFormat as SharedQueryFormat,
@@ -200,14 +203,22 @@ export interface SearchPlanResponseDto {
   sqlPreview?: string | null;
 }
 
+/** @deprecated Use DishResultDto instead */
 export interface FoodResultDto extends SharedFoodResult {
   restaurantLocationId?: string;
   restaurantDistanceMiles?: number | null;
 }
+
 export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
+
 export interface RestaurantResultDto extends SharedRestaurantResult {
   distanceMiles?: number | null;
 }
+
+export type DishRestaurantLocationDto = SharedDishRestaurantLocation;
+export type DishRestaurantDataDto = SharedDishRestaurantData;
+export type DishResultDto = SharedDishResult;
+
 export type SearchResponseMetadataDto = SharedSearchResponseMetadata;
 export type SearchResponseDto = SharedSearchResponse;
 

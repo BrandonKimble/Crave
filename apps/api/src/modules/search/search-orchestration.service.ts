@@ -91,7 +91,7 @@ export class SearchOrchestrationService {
     }
 
     const totalResults =
-      (response.food?.length ?? 0) + (response.restaurants?.length ?? 0);
+      (response.dishes?.length ?? 0) + (response.restaurants?.length ?? 0);
     const hasQueryTargets = Boolean(
       interpretation.structuredRequest.entities.food?.length ||
         interpretation.structuredRequest.entities.foodAttributes?.length ||

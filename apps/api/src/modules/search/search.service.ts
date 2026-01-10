@@ -109,13 +109,8 @@ export class SearchService {
     const minimumVotes = this.normalizeMinimumVotes(request.minimumVotes);
     request.minimumVotes = minimumVotes ?? undefined;
 
-    const format: QueryPlan['format'] =
-      presence.restaurants > 0 &&
-      presence.food === 0 &&
-      presence.foodAttributes === 0 &&
-      presence.restaurantAttributes === 0
-        ? 'single_list'
-        : 'dual_list';
+    // Always use dual_list format - restaurants and dishes are independent lists
+    const format: QueryPlan['format'] = 'dual_list';
 
     const restaurantFilters = this.buildRestaurantFilters(request, priceLevels);
     const connectionFilters = this.buildConnectionFilters(
@@ -129,8 +124,7 @@ export class SearchService {
       connectionFilters,
       ranking: {
         foodOrder: 'display_rank DESC',
-        restaurantOrder:
-          format === 'single_list' ? 'display_rank DESC' : 'display_rank DESC',
+        restaurantOrder: 'display_rank DESC',
       },
       diagnostics: {
         missingEntities: this.getMissingScopes(presence),
@@ -174,8 +168,7 @@ export class SearchService {
 
     const { plan, sqlPreview } = this.buildPlanResponse(request);
     const pagination = this.resolvePagination(request.pagination);
-    const perRestaurantLimit =
-      plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
+    const perRestaurantLimit = this.perRestaurantLimit;
 
     const primaryFoodTermRaw =
       request.entities.food?.[0]?.originalText ??
@@ -188,7 +181,7 @@ export class SearchService {
     return {
       format: plan.format,
       plan,
-      food: [],
+      dishes: [],
       restaurants: [],
       sqlPreview,
       metadata: {
@@ -227,17 +220,14 @@ export class SearchService {
       phaseTimings.queryPlanMs = Math.round(performance.now() - planStart);
       const pagination = this.resolvePagination(request.pagination);
       const includeSqlPreview = this.shouldIncludeSqlPreview(request);
-      const dbPagination = this.resolveDbPagination(pagination, request);
-      const perRestaurantLimit =
-        plan.format === 'single_list' ? 0 : this.perRestaurantLimit;
+      const perRestaurantLimit = this.perRestaurantLimit;
 
       const executeStart = performance.now();
-      const execution = await this.queryExecutor.execute({
+      const execution = await this.queryExecutor.executeDual({
         plan,
         request,
         pagination,
-        dbPagination,
-        perRestaurantLimit,
+        topDishesLimit: 3,
         includeSqlPreview,
       });
       phaseTimings.queryExecuteMs = Math.round(
@@ -247,11 +237,8 @@ export class SearchService {
         Object.assign(phaseTimings, execution.timings);
       }
 
-      const totalRestaurantResults =
-        plan.format === 'dual_list'
-          ? execution.totalRestaurantCount
-          : execution.restaurantResults.length;
-      const totalFoodResults = execution.totalFoodCount;
+      const totalRestaurantResults = execution.totalRestaurantCount;
+      const totalFoodResults = execution.totalDishCount;
       const totalResults = totalFoodResults + totalRestaurantResults;
       const primaryFoodTermRaw =
         request.entities.food?.[0]?.originalText ??
@@ -264,8 +251,8 @@ export class SearchService {
       const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
         request,
         plan.format,
-        execution.restaurantResults.length,
-        execution.totalFoodCount,
+        execution.restaurants.length,
+        execution.totalDishCount,
       );
 
       const resolvedLocationKey = await this.resolveLocationKey(request);
@@ -285,8 +272,8 @@ export class SearchService {
           if (lowResultRequests.length) {
             const context: Record<string, unknown> = {
               source: 'low_result',
-              restaurantCount: execution.restaurantResults.length,
-              foodCount: execution.foodResults.length,
+              restaurantCount: execution.restaurants.length,
+              dishCount: execution.dishes.length,
               planFormat: plan.format,
               bounds: request.bounds,
               openNow: request.openNow,
@@ -346,7 +333,7 @@ export class SearchService {
       });
 
       const metadata: SearchResponseMetadataDto = {
-        totalFoodResults: execution.totalFoodCount,
+        totalFoodResults,
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
@@ -418,8 +405,8 @@ export class SearchService {
       }
 
       this.logger.debug('Search query executed', {
-        foodCount: execution.foodResults.length,
-        restaurantCount: execution.restaurantResults.length,
+        dishCount: execution.dishes.length,
+        restaurantCount: execution.restaurants.length,
         metadata,
       });
 
@@ -427,15 +414,15 @@ export class SearchService {
         format: plan.format,
         openNow: Boolean(request.openNow),
         durationMs: metadata.queryExecutionTimeMs,
-        totalFoodResults: execution.totalFoodCount,
+        totalFoodResults,
         openNowFilteredOut: execution.metadata.openNowFilteredOut ?? 0,
       });
 
       return {
         format: plan.format,
         plan,
-        food: execution.foodResults,
-        restaurants: execution.restaurantResults,
+        dishes: execution.dishes,
+        restaurants: execution.restaurants,
         sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
         metadata,
       };
@@ -478,11 +465,12 @@ export class SearchService {
 
   private shouldTriggerOnDemand(
     request: SearchQueryRequestDto,
-    format: QueryPlan['format'],
+    _format: QueryPlan['format'],
     restaurantCount: number,
-    foodCount: number,
+    dishCount: number,
   ): boolean {
-    const primaryCount = format === 'single_list' ? foodCount : restaurantCount;
+    // Trigger on-demand if either restaurants or dishes is below minimum
+    const primaryCount = Math.min(restaurantCount, dishCount);
 
     if (primaryCount >= this.onDemandMinResults) {
       return false;

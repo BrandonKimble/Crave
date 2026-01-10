@@ -53,6 +53,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
   map: StyleSheet.absoluteFillObject,
+  mapViewport: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+  },
   mapPlaceholder: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: themeColors.surface,
