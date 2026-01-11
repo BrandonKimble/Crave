@@ -164,4 +164,3 @@ Add Loki drill-down panels / saved queries:
 2. Add Prometheus metrics with careful label hygiene.
 3. Add dashboards and a small set of alerts.
 4. Iterate: expand value metrics (connections/enrichments) and LLM cost attribution once stable.
-
