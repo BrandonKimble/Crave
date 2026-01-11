@@ -1,5 +1,16 @@
 # Keyword Collection Priority Overhaul (Daily Slices + Distinct Users + Cached Aggregates)
 
+## Implementation Handoff (for a new agent/session)
+
+If you are picking this up in a fresh chat: treat this plan as the source of truth and implement it end-to-end.
+
+- Read `plans/keyword-collection-priority-overhaul.md` and `plans/keyword-collection-observability-overhaul.md` first.
+- Follow all “Decisions (Locked)” exactly; do not re-open them unless a real blocker appears.
+- We are intentionally skipping unit/integration/smoke tests; rely on the “Minimum Observability Safety Net” + manual validation steps.
+- Data is non-production/test-only: prefer the simplest cutover (truncate/backfill) and aggressively delete legacy fields/code once replaced.
+- Make schema changes via Prisma migrations and update all call sites (scheduler, demand service, search logging, on-demand).
+- Keep scope tight: implement only what this plan requires.
+
 ## Summary
 
 Keyword collection currently selects entities via `EntityPrioritySelectionService.selectTopPriorityEntities()` and then searches Reddit using **entity name text only**. This overhaul makes keyword selection:
@@ -141,6 +152,21 @@ This table becomes the single source of truth for:
 - “this term repeatedly yields nothing” (no_results backoff),
 - refresh staleness (days since last successful attempt).
 
+#### Attempt outcome policy (v1 constants)
+
+We will use the same attempt history for all slices, but set outcome-based cooldowns so daily cycles don’t re-run the same keywords excessively.
+
+- `success`:
+  - `cooldownUntil = now + 7 days`
+- `no_results`:
+  - `cooldownUntil = now + max(60 days, safeIntervalDays * 3)` (per coverageKey)
+- `error`:
+  - `cooldownUntil = now + 1 day` (short backoff; prevents tight retry loops)
+- `deferred` (e.g., skipped due to budget/time/rate-limit):
+  - `cooldownUntil = now + 6 hours`
+
+Hot-spike runs may override cooldown (see “hot spike” thresholds below).
+
 ### 4) Distinct-user demand everywhere (windowed)
 
 All “demand” signals are interpreted as **count of distinct users in a window** (e.g., last 30d), not raw counts.
@@ -169,11 +195,52 @@ We will maintain one shared “generic token list” used in:
 - keyword candidate eligibility,
 - downstream LLM/analysis (filter out these tokens).
 
-Behaviors:
+#### Generic tokens list (v1)
+
+The intent is to strip tokens that do not change the underlying search semantics for Crave (they mostly mean “rank it” or “location context” which we already have).
+
+Initial list (single tokens and short phrases):
+
+- rank words: `best`, `top`, `good`, `great`, `favorite`, `favourite`, `popular`
+- location filler: `near`, `nearby`, `around`, `closest`, `close`
+- “generic object” words (only when the query is otherwise empty): `food`, `dish`, `dishes`, `restaurant`, `restaurants`, `place`, `places`
+
+Rules:
+
+- Strip rank/location filler tokens anywhere in the query (conservatively: whole-word matches).
+- Strip “generic object” tokens only if they are the entire remaining query after other stripping (we do not want to delete “food” inside real phrases).
+
+#### Shortcut routing (v1)
+
+If the query becomes empty after stripping:
+
+- default shortcut uses the current UI tab:
+  - dishes tab → “Best dishes here”
+  - restaurants tab → “Best restaurants here”
+- if the UI tab is unavailable (server-only context), default to “Best dishes here”.
+
+#### Behavior guarantees
+
+These apply across the system:
+
+- Generic tokens never become keyword candidates.
+- The same generic list is not considered by LLM analysis or downstream entity targeting (e.g., “best ramen” is treated as “ramen”).
+
+#### Examples
 
 - `"best ramen"` → normalized query `"ramen"`; only `"ramen"` participates in entity resolution, logging, on-demand, and keyword candidacy.
-- `"best"` (generic-only) → route to existing shortcut query behavior (best dish / best restaurant) and do **not** generate keyword/on-demand artifacts.
-- Any candidate term that normalizes to a generic token (or generic phrase) is **ineligible** for keyword collection.
+- `"best"` (generic-only) → route to shortcut behavior and do **not** generate keyword/on-demand artifacts.
+- Any candidate term that normalizes to a generic token (or generic-only phrase) is **ineligible** for keyword collection.
+
+#### Term normalization (v1)
+
+- For `normalizedTerm` (dedupe/cooldowns):
+  - `trim`, `lowercase`, collapse whitespace.
+  - strip punctuation to spaces (e.g., `tacos-al-pastor` → `tacos al pastor`).
+  - strip diacritics via unicode normalization (e.g., `phở` → `pho`) to prevent accidental duplicates and improve Reddit matching.
+- For execution term:
+  - prefer the original display term (for readability), but allow the executor to use an ASCII-fallback form when diacritics are present.
+- Do **not** generate extra keyword candidates from `entity.aliases` in v1 (keep candidate surfaces small and predictable). Aliases can be used later as “execution variants” if we see poor recall.
 
 ### 7) Demand attribution: prefer explicit/most-specific (prevent dilution)
 
@@ -210,6 +277,20 @@ Practical flow (high level):
 4. Search logging and keyword-collection demand use `collectionCoverageKey`.
 5. Poll demand analytics use `uiCoverageKey`.
 6. If `uiCoverageKey` has no `collectionCoverageKey`, we can still accumulate poll-topic demand and later attach a subreddit mapping without losing history.
+
+#### Concrete storage decision (v1)
+
+We will store both keys in `user_search_logs` so demand can be used by both poll-topic generation and keyword collection:
+
+- Keep `user_search_logs.location_key` as `uiCoverageKey` (preserves current poll behavior and poll-only demand).
+- Add `user_search_logs.collection_coverage_key` as `collectionCoverageKey` (used by keyword collection + collection-demand queries).
+
+Then:
+
+- PollScheduler continues to use UI keys (poll-only supported).
+- Keyword collection uses collection keys (collectable-only).
+
+This prevents poll-only demand from “leaking” into other areas while still preserving the data for polls and potential future subreddit onboarding.
 
 ## Recommended Starting Numbers (Budgets + Weights)
 
@@ -257,6 +338,16 @@ Define, per term/entity in a coverageKey:
 - `queryUsersPrimary` (distinct users whose searches primarily attributed to this term/target)
 
 Normalize each with a log-style cap (diminishing returns).
+
+Normalization (v1):
+
+- `normalizeLog(x, cap) = clamp01( ln(1 + x) / ln(1 + cap) )`
+
+Caps (v1):
+
+- `favoriteUsersCap = 10`
+- `highIntentUsersCap = 25`
+- `queryUsersPrimaryCap = 50`
 
 Starting weights inside the Demand slice:
 
@@ -376,6 +467,10 @@ These are safe, incremental fixes we should do even before the larger slice/cach
 2. Add term normalization + dedupe as a last line of defense in the orchestrator
 
 - Even after slice-level dedupe, ensure we never execute the same `normalizedTerm` twice in one cycle.
+- Add `KEYWORD_COLLECTION_DRY_RUN=true`:
+  - selection runs + logs/metrics emit,
+  - no Reddit calls,
+  - no attempt-history writes (so dry runs can’t block real execution).
 
 ### Phase 1 — Data model changes (attempt history + distinct unmet demand)
 
@@ -392,6 +487,11 @@ These are safe, incremental fixes we should do even before the larger slice/cach
 - `OnDemandRequest` becomes an aggregate with:
   - `distinctUserCount` (optionally windowed rollups),
   - `lastSeenAt`, `reason`, `result counts`, and location keys.
+
+Retention (v1):
+
+- Keep `on_demand_request_users` rows for **90 days**.
+- Add a daily cleanup job to delete older rows (keeps growth bounded).
 
 3. Delete legacy on-demand execution columns (after migration)
 
@@ -432,6 +532,12 @@ Notes:
 
 - Keep columns but change meaning: values represent “distinct users in window” (not lifetime raw increments).
 - Ensure merges (`restaurant-entity-merge.service.ts`) remain correct (may need to switch to max/merge-by-window instead of sum).
+
+Rollout (v1; simple because data is non-production):
+
+- No feature flags or compare mode required.
+- Run a one-time backfill (or truncate + repopulate) of the metrics table after the refresh job exists.
+- Remove real-time counter writes immediately after cutover.
 
 3. Remove dual-write paths (delete legacy code)
 
@@ -474,6 +580,11 @@ Notes:
 - Delete `OnDemandProcessingService` enqueue/queue loop as a default path.
 - Keep a minimal hot spike mechanism that schedules an early attempt for a term if its distinct-user demand spikes within 24h.
 
+Hot spike thresholds (v1):
+
+- Trigger a hot-spike attempt if `distinctUsersLast24h >= 25` for `(collectionCoverageKey, normalizedTerm)`.
+- Additionally trigger if `distinctUsersLast24h >= 10` AND `distinctUsersLast24h >= 3x distinctUsersPrev24h` (trend-based override).
+
 ### Phase 6 — Location correctness (uiCoverageKey vs collectionCoverageKey)
 
 1. Implement dual-key resolution
@@ -483,8 +594,12 @@ Notes:
 
 2. Logging + demand aggregation changes
 
-- Search logging for keyword-collection demand should use `collectionCoverageKey`.
-- Preserve `uiCoverageKey` for polls and future onboarding (schema or metadata as appropriate).
+- Search logging writes both:
+  - `uiCoverageKey` → `user_search_logs.location_key`
+  - `collectionCoverageKey` → `user_search_logs.collection_coverage_key`
+- Demand queries/services:
+  - Poll demand uses `location_key`.
+  - Keyword collection demand uses `collection_coverage_key`.
 
 3. Scheduler target set
 
@@ -496,6 +611,8 @@ Notes:
 - Remove legacy plan references and outdated assumptions.
 - Ensure there is no “old path” still writing/reading deprecated fields.
 - Update dashboards/alerts where relevant (full work is in observability plan).
+- Drop unused legacy columns once the slice model is fully in place:
+  - in `collection_entity_priority_metrics`: `priority_score`, `data_recency_score`, `data_quality_score`, `user_demand_score`, `is_new_entity`, and `last_selected_at` (attempt history becomes the source of truth).
 
 ## Minimal Observability Safety Net (Ship With This Plan)
 
@@ -524,15 +641,7 @@ We are skipping tests, so validation is operational:
 
 ## Open Items (Only What’s Truly Unresolved)
 
-- Finalize the initial generic token/phrase list (stopwords) and shortcut routing rules.
-- Confirm the exact schema location for `uiCoverageKey` (new column vs metadata) based on query needs for polls.
-- Decide initial hot-spike thresholds (e.g., distinct users in 24h) after seeing baseline demand distributions.
-- Decide cooldown/backoff constants in `keyword_attempt_history` (success vs `no_results` vs error), including whether to mirror `max(safeIntervalDays*3, 60 days)` for `no_results`.
-- Decide whether to ship an explicit “dry run” execution mode (selection runs + logs, no Reddit calls) as an operational safety lever during rollout.
-- Decide the rollout strategy for cached aggregates replacing real-time counters (e.g., feature flag + “compare refreshed vs legacy counters” period) before deleting legacy code/fields.
-- Decide whether term dedupe/normalization should consider entity `aliases` (or only canonical `name`), and whether we need stronger normalization (punctuation/diacritics).
-- Decide which legacy columns in `collection_entity_priority_metrics` remain vs are deleted under the slice model (`priorityScore`, `dataRecencyScore`, `dataQualityScore`, `userDemandScore`, `isNewEntity`, etc.).
-- Decide retention/cleanup policy for per-user on-demand contribution rows (e.g., keep 30–90 days) to avoid unbounded growth.
+- Reassess slice budgets, caps, and scoring weights after real usage (production data), using yield metrics per slice (posts/comments/connections created per term) and cost metrics (Reddit API calls and no-results rates).
 
 ## References (Code Touchpoints)
 
@@ -541,6 +650,8 @@ We are skipping tests, so validation is operational:
 - Current selection service: `apps/api/src/modules/content-processing/reddit-collector/entity-priority-selection.service.ts`
 - Search logging + metadata: `apps/api/src/modules/search/search.service.ts`
 - Demand aggregation: `apps/api/src/modules/analytics/search-demand.service.ts`
+- Poll topics from search demand: `apps/api/src/modules/polls/poll-scheduler.service.ts`
 - Coverage key resolution: `apps/api/src/modules/coverage-key/coverage-key-resolver.service.ts`
 - On-demand requests (legacy): `apps/api/src/modules/search/on-demand-request.service.ts`, `apps/api/prisma/schema.prisma` (`OnDemandRequest`)
+- Search UI shortcuts (mobile): `apps/mobile/src/screens/Search/index.tsx`
 - Observability plan: `plans/keyword-collection-observability-overhaul.md`
