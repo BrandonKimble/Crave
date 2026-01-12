@@ -13,7 +13,11 @@ import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
-import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../../services/search';
+import type {
+  RecentSearch,
+  RecentlyViewedFood,
+  RecentlyViewedRestaurant,
+} from '../../../services/search';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -271,7 +275,9 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
             <Text style={styles.recentHeaderText}>Recently viewed</Text>
           </View>
-          {!isRecentlyViewedLoading && !isRecentlyViewedFoodsLoading && !hasRecentlyViewedToRender ? (
+          {!isRecentlyViewedLoading &&
+          !isRecentlyViewedFoodsLoading &&
+          !hasRecentlyViewedToRender ? (
             <Text style={styles.recentEmptyText}>No recently viewed items yet</Text>
           ) : (
             <>

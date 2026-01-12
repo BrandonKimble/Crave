@@ -71,10 +71,6 @@ export const useRestaurantPanelSpec = ({
   interactionEnabled = true,
   containerStyle,
 }: UseRestaurantPanelSpecOptions): OverlayContentSpec<FoodResult> | null => {
-  if (!data) {
-    return null;
-  }
-
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const closeCutout = useHeaderCloseCutout();
@@ -87,14 +83,30 @@ export const useRestaurantPanelSpec = ({
   );
   const [expandedLocations, setExpandedLocations] = React.useState<Record<string, boolean>>({});
 
-  const { restaurant, dishes, queryLabel, isFavorite, isLoading = false } = data;
+  const restaurant = data?.restaurant ?? null;
+  const dishes = data?.dishes ?? [];
+  const queryLabel = data?.queryLabel ?? '';
+  const isFavorite = data?.isFavorite ?? false;
+  const isLoading = data?.isLoading ?? false;
+  const restaurantName = restaurant?.restaurantName ?? '';
+  const restaurantId = restaurant?.restaurantId ?? '';
+
+  React.useEffect(() => {
+    setExpandedLocations({});
+  }, [restaurantId]);
+
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
   const priceLabel =
-    getPriceRangeLabel(restaurant.priceLevel) ??
-    restaurant.priceText ??
-    restaurant.priceSymbol ??
-    null;
+    restaurant
+      ? getPriceRangeLabel(restaurant.priceLevel) ??
+        restaurant.priceText ??
+        restaurant.priceSymbol ??
+        null
+      : null;
   const locationCandidates = React.useMemo(() => {
+    if (!restaurant) {
+      return [];
+    }
     const source =
       Array.isArray(restaurant.locations) && restaurant.locations.length > 0
         ? restaurant.locations
@@ -137,11 +149,11 @@ export const useRestaurantPanelSpec = ({
   const sharedWebsiteUrl = uniqueWebsiteUrls.length === 1 ? uniqueWebsiteUrls[0] : null;
   const shouldShowPerLocationWebsite = uniqueWebsiteUrls.length > 1;
   const primaryPhone =
-    restaurant.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
+    restaurant?.displayLocation?.phoneNumber ?? locationCandidates[0]?.phoneNumber ?? null;
   const addressFallback = isLoading ? 'Loading details...' : 'Address unavailable';
   const primaryAddress =
-    restaurant.displayLocation?.address ??
-    restaurant.address ??
+    restaurant?.displayLocation?.address ??
+    restaurant?.address ??
     locationCandidates[0]?.address ??
     addressFallback;
 
@@ -199,37 +211,40 @@ export const useRestaurantPanelSpec = ({
       void Linking.openURL(sharedWebsiteUrl);
       return;
     }
-    const query = `${restaurant.restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
+    const query = `${restaurantName} ${queryLabel} ${WEBSITE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  }, [queryLabel, restaurant.restaurantName, sharedWebsiteUrl]);
+  }, [queryLabel, restaurantName, sharedWebsiteUrl]);
 
   const handleCallPress = React.useCallback(() => {
     if (primaryPhone) {
       void Linking.openURL(`tel:${primaryPhone}`);
       return;
     }
-    const query = `${restaurant.restaurantName} ${PHONE_FALLBACK_SEARCH}`.trim();
+    const query = `${restaurantName} ${PHONE_FALLBACK_SEARCH}`.trim();
     void Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-  }, [primaryPhone, restaurant.restaurantName]);
+  }, [primaryPhone, restaurantName]);
 
   const handleShare = React.useCallback(async () => {
     try {
       await Share.share({
-        message: `${restaurant.restaurantName} · ${primaryAddress}`,
+        message: `${restaurantName} · ${primaryAddress}`,
       });
     } catch (error) {
       // no-op
     }
-  }, [primaryAddress, restaurant.restaurantName]);
+  }, [primaryAddress, restaurantName]);
 
   const hoursSummary =
-    formatOperatingStatus(restaurant.displayLocation?.operatingStatus) ?? 'Hours unavailable';
+    formatOperatingStatus(restaurant?.displayLocation?.operatingStatus) ?? 'Hours unavailable';
   const locationsLabel =
     locationCandidates.length === 1 ? '1 location' : `${locationCandidates.length} locations`;
 
   const handleToggleFavorite = React.useCallback(() => {
-    onToggleFavorite(restaurant.restaurantId);
-  }, [onToggleFavorite, restaurant.restaurantId]);
+    if (!restaurantId) {
+      return;
+    }
+    onToggleFavorite(restaurantId);
+  }, [onToggleFavorite, restaurantId]);
 
   const headerComponent = React.useMemo(
     () => (
@@ -251,7 +266,7 @@ export const useRestaurantPanelSpec = ({
         >
           <View style={styles.headerTextGroup}>
             <Text style={styles.restaurantName} numberOfLines={1} ellipsizeMode="tail">
-              {restaurant.restaurantName}
+              {restaurantName}
             </Text>
             <Text style={styles.restaurantAddress} numberOfLines={1}>
               {primaryAddress}
@@ -304,12 +319,12 @@ export const useRestaurantPanelSpec = ({
       isFavorite,
       onRequestClose,
       primaryAddress,
-      restaurant.restaurantName,
+      restaurantName,
     ]
   );
 
   const listHeaderComponent = React.useMemo(() => {
-    if (isLoading) {
+    if (!restaurant || isLoading) {
       return null;
     }
     return (
@@ -451,9 +466,9 @@ export const useRestaurantPanelSpec = ({
     priceLabel,
     queryLabel,
     resolveLocationLabel,
-    restaurant.contextualScore,
-    restaurant.restaurantId,
-    restaurant.restaurantQualityScore,
+    restaurant?.contextualScore,
+    restaurant?.restaurantId,
+    restaurant?.restaurantQualityScore,
     sharedWebsiteUrl,
     shouldShowPerLocationWebsite,
     toggleLocationExpanded,
@@ -518,6 +533,10 @@ export const useRestaurantPanelSpec = ({
     () => (isLoading ? <View style={styles.loadingBackground} /> : <FrostedGlassBackground />),
     [isLoading]
   );
+
+  if (!data) {
+    return null;
+  }
 
   return {
     overlayKey: 'restaurant',

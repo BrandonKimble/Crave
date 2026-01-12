@@ -1,6 +1,10 @@
 import { create } from 'zustand';
 
-import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../services/search';
+import type {
+  RecentSearch,
+  RecentlyViewedFood,
+  RecentlyViewedRestaurant,
+} from '../services/search';
 import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../constants/searchHistory';
 
 type SearchHistoryState = {
@@ -110,7 +114,9 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
     }),
   trackRecentlyViewedFood: (value) =>
     set((state) => {
-      const existing = state.recentlyViewedFoods.find((item) => item.connectionId === value.connectionId);
+      const existing = state.recentlyViewedFoods.find(
+        (item) => item.connectionId === value.connectionId
+      );
       const next: RecentlyViewedFood = {
         connectionId: value.connectionId,
         foodId: value.foodId,
@@ -121,7 +127,9 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
         viewCount: existing ? existing.viewCount + 1 : 1,
         statusPreview: value.statusPreview ?? existing?.statusPreview ?? null,
       };
-      const withoutMatch = state.recentlyViewedFoods.filter((item) => item.connectionId !== value.connectionId);
+      const withoutMatch = state.recentlyViewedFoods.filter(
+        (item) => item.connectionId !== value.connectionId
+      );
       return {
         ...state,
         recentlyViewedFoods: [next, ...withoutMatch].slice(0, RECENTLY_VIEWED_LIMIT),

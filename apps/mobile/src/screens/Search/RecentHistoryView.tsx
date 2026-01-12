@@ -16,7 +16,11 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
-import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../services/search';
+import type {
+  RecentSearch,
+  RecentlyViewedFood,
+  RecentlyViewedRestaurant,
+} from '../../services/search';
 import type { RootStackParamList } from '../../types/navigation';
 import type { Coordinate } from '../../types';
 import useSearchHistory from './hooks/use-search-history';
@@ -156,7 +160,9 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
   } = useSearchHistory({ isSignedIn: Boolean(isSignedIn), autoLoad: false });
 
   const isRecentMode = mode === 'recentSearches';
-  const isLoading = isRecentMode ? isRecentLoading : isRecentlyViewedLoading || isRecentlyViewedFoodsLoading;
+  const isLoading = isRecentMode
+    ? isRecentLoading
+    : isRecentlyViewedLoading || isRecentlyViewedFoodsLoading;
   const previousLabel = isRecentMode ? 'Previous searches' : 'Previous views';
 
   React.useEffect(() => {

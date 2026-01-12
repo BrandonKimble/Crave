@@ -5309,24 +5309,20 @@ const SearchScreen: React.FC = () => {
     commitPriceSelection();
   }, [commitPriceSelection]);
 
-	  const recordRestaurantView = React.useCallback(
-	    async (
-	      restaurantId: string,
-	      source:
-	        | 'results_sheet'
-	        | 'auto_open_single_candidate'
-	        | 'autocomplete'
-	        | 'dish_card'
-	    ) => {
-	      if (!isSignedIn) {
-	        return;
-	      }
-	      if (source === 'autocomplete' || source === 'dish_card') {
-	        return;
-	      }
-	      try {
-	        await searchService.recordRestaurantView({
-	          restaurantId,
+  const recordRestaurantView = React.useCallback(
+    async (
+      restaurantId: string,
+      source: 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete' | 'dish_card'
+    ) => {
+      if (!isSignedIn) {
+        return;
+      }
+      if (source === 'autocomplete' || source === 'dish_card') {
+        return;
+      }
+      try {
+        await searchService.recordRestaurantView({
+          restaurantId,
           searchRequestId: lastSearchRequestIdRef.current ?? undefined,
           source,
         });
@@ -5593,16 +5589,16 @@ const SearchScreen: React.FC = () => {
   );
   openRestaurantProfilePreviewRef.current = openRestaurantProfilePreview;
 
-	  const openRestaurantProfile = React.useCallback(
-	    (
-	      restaurant: RestaurantResult,
-	      foodResultsOverride?: FoodResult[],
-	      source:
-	        | 'results_sheet'
-	        | 'auto_open_single_candidate'
-	        | 'autocomplete'
-	        | 'dish_card' = 'results_sheet'
-	    ) => {
+  const openRestaurantProfile = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      foodResultsOverride?: FoodResult[],
+      source:
+        | 'results_sheet'
+        | 'auto_open_single_candidate'
+        | 'autocomplete'
+        | 'dish_card' = 'results_sheet'
+    ) => {
       const transition = profileTransitionRef.current;
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
@@ -5687,20 +5683,20 @@ const SearchScreen: React.FC = () => {
         }
       }
 
-	      setRestaurantProfile({
-	        restaurant,
-	        dishes: restaurantDishes,
-	        queryLabel: label,
-	        isFavorite: false,
-	        isLoading: false,
-	      });
-	      setRestaurantOverlayVisible(true);
+      setRestaurantProfile({
+        restaurant,
+        dishes: restaurantDishes,
+        queryLabel: label,
+        isFavorite: false,
+        isLoading: false,
+      });
+      setRestaurantOverlayVisible(true);
 
-	      if (source !== 'autocomplete' && source !== 'dish_card') {
-	        deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
-	        void recordRestaurantView(restaurant.restaurantId, source);
-	      }
-	    },
+      if (source !== 'autocomplete' && source !== 'dish_card') {
+        deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
+        void recordRestaurantView(restaurant.restaurantId, source);
+      }
+    },
     [
       animateSheetTo,
       commitCameraState,
@@ -5727,32 +5723,32 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
-	  const openRestaurantProfileFromResults = React.useCallback(
-	    (
-	      restaurant: RestaurantResult,
-	      foodResultsOverride?: FoodResult[],
-	      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
-	    ) => {
-	      openRestaurantProfile(restaurant, foodResultsOverride, source ?? 'results_sheet');
-	    },
-	    [openRestaurantProfile]
-	  );
+  const openRestaurantProfileFromResults = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      foodResultsOverride?: FoodResult[],
+      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
+    ) => {
+      openRestaurantProfile(restaurant, foodResultsOverride, source ?? 'results_sheet');
+    },
+    [openRestaurantProfile]
+  );
 
   // Stable wrapper for openRestaurantProfileFromResults using ref pattern
   // This prevents render callback dependencies from changing when openRestaurantProfile changes
   const openRestaurantProfileFromResultsRef = React.useRef(openRestaurantProfileFromResults);
   openRestaurantProfileFromResultsRef.current = openRestaurantProfileFromResults;
 
-	  const stableOpenRestaurantProfileFromResults = React.useCallback(
-	    (
-	      restaurant: RestaurantResult,
-	      foodResultsOverride?: FoodResult[],
-	      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
-	    ) => {
-	      openRestaurantProfileFromResultsRef.current(restaurant, foodResultsOverride, source);
-	    },
-	    []
-	  );
+  const stableOpenRestaurantProfileFromResults = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      foodResultsOverride?: FoodResult[],
+      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
+    ) => {
+      openRestaurantProfileFromResultsRef.current(restaurant, foodResultsOverride, source);
+    },
+    []
+  );
 
   const handleMapTouchStart = React.useCallback(() => {
     mapTouchActiveRef.current = true;

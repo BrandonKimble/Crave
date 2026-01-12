@@ -224,7 +224,13 @@ const useSearchHistory = ({
     void loadRecentHistory();
     void loadRecentlyViewedRestaurants();
     void loadRecentlyViewedFoods();
-  }, [autoLoad, isSignedIn, loadRecentHistory, loadRecentlyViewedFoods, loadRecentlyViewedRestaurants]);
+  }, [
+    autoLoad,
+    isSignedIn,
+    loadRecentHistory,
+    loadRecentlyViewedFoods,
+    loadRecentlyViewedRestaurants,
+  ]);
 
   return {
     recentSearches,

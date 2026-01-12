@@ -682,7 +682,7 @@ export class KeywordSliceSelectionService {
         ? normalizeKeywordTerm(stripped.text)
         : '';
       const unmetDistinctUsers = normalized.length
-        ? (unmetByNormalizedTerm.get(normalized) ?? 0)
+        ? unmetByNormalizedTerm.get(normalized) ?? 0
         : 0;
 
       const signalFloorMet =
@@ -934,16 +934,22 @@ export class KeywordSliceSelectionService {
     >(Prisma.sql`
       SELECT
         entity_id AS "entityId",
-        COUNT(DISTINCT user_id) FILTER (WHERE logged_at >= ${params.trendSince})::int AS "queryUsers7d",
+        COUNT(DISTINCT user_id) FILTER (WHERE logged_at >= ${
+          params.trendSince
+        })::int AS "queryUsers7d",
         COUNT(DISTINCT user_id) FILTER (
-          WHERE logged_at >= ${params.since} AND logged_at < ${params.trendSince}
+          WHERE logged_at >= ${params.since} AND logged_at < ${
+      params.trendSince
+    }
         )::int AS "queryUsersPrev7d"
       FROM user_search_logs
       WHERE logged_at >= ${params.since}
         AND source = 'search'
         AND user_id IS NOT NULL
         AND collection_coverage_key IS NOT NULL
-        AND LOWER(collection_coverage_key) = LOWER(${params.collectionCoverageKey})
+        AND LOWER(collection_coverage_key) = LOWER(${
+          params.collectionCoverageKey
+        })
         AND entity_id IN (${Prisma.join(params.entityIds)})
       GROUP BY entity_id
     `);
