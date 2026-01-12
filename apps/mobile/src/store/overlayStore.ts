@@ -43,7 +43,8 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
   transientDismissors: [],
   setOverlay: (overlay, params) =>
     set((state) => ({
-      previousOverlay: state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay,
+      previousOverlay:
+        state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay,
       activeOverlay: overlay,
       overlayStack: [overlay],
       overlayParams: {

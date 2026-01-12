@@ -491,18 +491,24 @@ const BottomSheetWithFlashList = <T,>({
     [collapsedSnap, expandedSnap, hiddenSnap, middleSnap]
   );
 
-  const resolveProgrammaticSnapVelocity = React.useCallback((fromValue: number, toValue: number) => {
-    const delta = toValue - fromValue;
-    if (Math.abs(delta) < 0.5) {
-      return 0;
-    }
-    const direction = delta > 0 ? 1 : -1;
-    const magnitude = Math.min(
-      PROGRAMMATIC_SNAP_MAX_VELOCITY,
-      Math.max(PROGRAMMATIC_SNAP_MIN_VELOCITY, Math.abs(delta) * PROGRAMMATIC_SNAP_VELOCITY_PER_PX)
-    );
-    return direction * magnitude;
-  }, []);
+  const resolveProgrammaticSnapVelocity = React.useCallback(
+    (fromValue: number, toValue: number) => {
+      const delta = toValue - fromValue;
+      if (Math.abs(delta) < 0.5) {
+        return 0;
+      }
+      const direction = delta > 0 ? 1 : -1;
+      const magnitude = Math.min(
+        PROGRAMMATIC_SNAP_MAX_VELOCITY,
+        Math.max(
+          PROGRAMMATIC_SNAP_MIN_VELOCITY,
+          Math.abs(delta) * PROGRAMMATIC_SNAP_VELOCITY_PER_PX
+        )
+      );
+      return direction * magnitude;
+    },
+    []
+  );
 
   React.useEffect(() => {
     if (sheetYValue) {

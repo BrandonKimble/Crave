@@ -760,21 +760,24 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsDockedSnapRequest, setPollsDockedSnapRequest] =
     React.useState<OverlaySheetSnap | null>(null);
-  const [pollsOverlaySnapRequest, setPollsOverlaySnapRequest] = React.useState<
-    Exclude<OverlaySheetSnap, 'hidden'> | null
-  >(null);
+  const [pollsOverlaySnapRequest, setPollsOverlaySnapRequest] = React.useState<Exclude<
+    OverlaySheetSnap,
+    'hidden'
+  > | null>(null);
   const [isDockedPollsDismissed, setIsDockedPollsDismissed] = React.useState(false);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [bookmarksSnapRequest, setBookmarksSnapRequest] = React.useState<OverlaySheetSnap | null>(
     null
   );
   const [profileSheetSnap, setProfileSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
-  const [profileSnapRequest, setProfileSnapRequest] = React.useState<
-    Exclude<OverlaySheetSnap, 'hidden'> | null
-  >(null);
-  const [tabSheetSnap, setTabSheetSnap] = React.useState<
-    Exclude<OverlaySheetSnap, 'hidden'> | null
-  >(null);
+  const [profileSnapRequest, setProfileSnapRequest] = React.useState<Exclude<
+    OverlaySheetSnap,
+    'hidden'
+  > | null>(null);
+  const [tabSheetSnap, setTabSheetSnap] = React.useState<Exclude<
+    OverlaySheetSnap,
+    'hidden'
+  > | null>(null);
   const tabSheetHiddenRef = React.useRef(true);
   const overlaySwitchInFlightRef = React.useRef(false);
   const ignoreDockedPollsHiddenUntilMsRef = React.useRef(0);
@@ -1101,13 +1104,7 @@ const SearchScreen: React.FC = () => {
       return;
     }
     requestDockedPollsRestore();
-  }, [
-    isLoading,
-    isSearchSessionActive,
-    rootOverlay,
-    setTabSheetSnap,
-    requestDockedPollsRestore,
-  ]);
+  }, [isLoading, isSearchSessionActive, rootOverlay, setTabSheetSnap, requestDockedPollsRestore]);
   const pollOverlayParams = overlayParams.polls;
   const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
     {
@@ -1767,8 +1764,7 @@ const SearchScreen: React.FC = () => {
         });
       }
 
-      const isUsableLayout =
-        layout.width > 0 && layout.height > SEARCH_CONTAINER_PADDING_TOP + 0.5;
+      const isUsableLayout = layout.width > 0 && layout.height > SEARCH_CONTAINER_PADDING_TOP + 0.5;
       if (isUsableLayout) {
         searchContainerLayoutCacheRef.current = layout;
         setSearchContainerFrame((prev) => {
@@ -2027,55 +2023,55 @@ const SearchScreen: React.FC = () => {
     },
     [shouldDriveSuggestionLayout, shouldRenderSuggestionPanel]
   );
-	  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
-	  const shouldHideBottomNav =
-	    isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isLoading);
-	  const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(null);
-	  const handleBottomNavLayout = React.useCallback((event: LayoutChangeEvent) => {
-	    const layout = event.nativeEvent.layout;
-	    setBottomNavFrame((prev) => {
-	      if (
-	        prev &&
-	        Math.abs(prev.x - layout.x) < 0.5 &&
-	        Math.abs(prev.y - layout.y) < 0.5 &&
-	        Math.abs(prev.width - layout.width) < 0.5 &&
-	        Math.abs(prev.height - layout.height) < 0.5
-	      ) {
-	        return prev;
-	      }
-	      return layout;
-	    });
-	  }, []);
-	  const ESTIMATED_NAV_ICON_SIZE = 24;
-	  const ESTIMATED_NAV_ICON_LABEL_GAP = 2;
-	  const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
-	    NAV_TOP_PADDING +
-	      ESTIMATED_NAV_ICON_SIZE +
-	      ESTIMATED_NAV_ICON_LABEL_GAP +
-	      LINE_HEIGHTS.body +
-	      bottomInset +
-	      NAV_BOTTOM_PADDING
-	  );
-	  const fallbackNavBarHeight =
-	    bottomNavFrame?.height && bottomNavFrame.height > 0
-	      ? bottomNavFrame.height
-	      : estimatedNavBarHeight;
-	  const navBarTop = shouldHideBottomNav
-	    ? SCREEN_HEIGHT
-	    : bottomNavFrame?.y && bottomNavFrame.y > 0
-	      ? bottomNavFrame.y
-	      : SCREEN_HEIGHT - fallbackNavBarHeight;
-	  // Keep nav bar height consistent with nav bar top to avoid 1px seams/gaps.
-	  const navBarHeight = shouldHideBottomNav ? 0 : Math.max(SCREEN_HEIGHT - navBarTop, 0);
-	  const showDockedPolls =
-	    isSearchOverlay &&
-	    !isSuggestionPanelActive &&
-	    !isSearchSessionActive &&
+  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
+  const shouldHideBottomNav =
+    isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isLoading);
+  const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(null);
+  const handleBottomNavLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setBottomNavFrame((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.x - layout.x) < 0.5 &&
+        Math.abs(prev.y - layout.y) < 0.5 &&
+        Math.abs(prev.width - layout.width) < 0.5 &&
+        Math.abs(prev.height - layout.height) < 0.5
+      ) {
+        return prev;
+      }
+      return layout;
+    });
+  }, []);
+  const ESTIMATED_NAV_ICON_SIZE = 24;
+  const ESTIMATED_NAV_ICON_LABEL_GAP = 2;
+  const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
+    NAV_TOP_PADDING +
+      ESTIMATED_NAV_ICON_SIZE +
+      ESTIMATED_NAV_ICON_LABEL_GAP +
+      LINE_HEIGHTS.body +
+      bottomInset +
+      NAV_BOTTOM_PADDING
+  );
+  const fallbackNavBarHeight =
+    bottomNavFrame?.height && bottomNavFrame.height > 0
+      ? bottomNavFrame.height
+      : estimatedNavBarHeight;
+  const navBarTop = shouldHideBottomNav
+    ? SCREEN_HEIGHT
+    : bottomNavFrame?.y && bottomNavFrame.y > 0
+    ? bottomNavFrame.y
+    : SCREEN_HEIGHT - fallbackNavBarHeight;
+  // Keep nav bar height consistent with nav bar top to avoid 1px seams/gaps.
+  const navBarHeight = shouldHideBottomNav ? 0 : Math.max(SCREEN_HEIGHT - navBarTop, 0);
+  const showDockedPolls =
+    isSearchOverlay &&
+    !isSuggestionPanelActive &&
+    !isSearchSessionActive &&
     !isLoading &&
     !isDockedPollsDismissed;
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
-  const pollsOverlaySnapPoint = showPollsOverlay ? (tabSheetSnap ?? 'expanded') : 'collapsed';
+  const pollsOverlaySnapPoint = showPollsOverlay ? tabSheetSnap ?? 'expanded' : 'collapsed';
   const shouldRenderSearchOverlay =
     isSearchOverlay ||
     shouldShowPollsSheet ||
@@ -2407,7 +2403,9 @@ const SearchScreen: React.FC = () => {
     const y =
       resolvedSearchContainerFrame.y + SEARCH_CONTAINER_PADDING_TOP - SEARCH_BAR_HOLE_PADDING;
     const width =
-      resolvedSearchContainerFrame.width - SEARCH_HORIZONTAL_PADDING * 2 + SEARCH_BAR_HOLE_PADDING * 2;
+      resolvedSearchContainerFrame.width -
+      SEARCH_HORIZONTAL_PADDING * 2 +
+      SEARCH_BAR_HOLE_PADDING * 2;
     const height = resolvedSearchContainerFrame.height - SEARCH_CONTAINER_PADDING_TOP;
 
     if (width <= 0 || height <= 0) {
@@ -5316,7 +5314,11 @@ const SearchScreen: React.FC = () => {
             console.log(
               `[SearchPerf] AutoSnap collapsed reason=mapGesture movedMiles=${movedMiles.toFixed(
                 4
-              )} zoomDelta=${zoomDelta.toFixed(3)} eventCount=${session.eventCount} sheetState=${sheetState} touchActive=${mapTouchActiveRef.current} startedOpen=${session.startedWithResultsSheetOpen}`
+              )} zoomDelta=${zoomDelta.toFixed(3)} eventCount=${
+                session.eventCount
+              } sheetState=${sheetState} touchActive=${mapTouchActiveRef.current} startedOpen=${
+                session.startedWithResultsSheetOpen
+              }`
             );
           }
           animateSheetTo('collapsed');
@@ -5651,13 +5653,7 @@ const SearchScreen: React.FC = () => {
   }, [captureCameraSnapshot, sheetState]);
 
   const resolveProfileCameraPadding = React.useCallback((): MapCameraPadding => {
-    const snaps = calculateSnapPoints(
-      SCREEN_HEIGHT,
-      searchBarTop,
-      insets.top,
-      navBarTop,
-      0
-    );
+    const snaps = calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarTop, 0);
     const topPadding = Math.max(searchBarTop + (searchBarFrame?.height ?? 0), snaps.expanded);
     const desiredCenter = SCREEN_HEIGHT * PROFILE_PIN_TARGET_CENTER_RATIO;
     const minCenter = topPadding + PROFILE_PIN_MIN_VISIBLE_HEIGHT / 2;
@@ -7013,9 +7009,9 @@ const SearchScreen: React.FC = () => {
         onSettleStateChange: handleResultsSheetSettlingChange,
       }
     : null;
-	  const overlaySheetVisible = Boolean(overlaySheetSpec && overlaySheetKey);
-	  const overlaySheetApplyNavBarCutout = overlaySheetVisible && !shouldHideBottomNav;
-	  const navBarTintOpacity = 0.55;
+  const overlaySheetVisible = Boolean(overlaySheetSpec && overlaySheetKey);
+  const overlaySheetApplyNavBarCutout = overlaySheetVisible && !shouldHideBottomNav;
+  const navBarTintOpacity = 0.55;
 
   return (
     <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
@@ -7392,38 +7388,38 @@ const SearchScreen: React.FC = () => {
             </React.Profiler>
             <SearchInteractionProvider value={searchInteractionContextValue}>
               <React.Profiler id="SearchResultsSheetTree" onRender={handleProfilerRender}>
-	                {overlaySheetSpec && overlaySheetKey ? (
-	                  <OverlaySheetShell
-	                    visible={overlaySheetVisible}
-	                    activeOverlayKey={overlaySheetKey}
-	                    spec={overlaySheetSpec}
-	                    sheetY={sheetTranslateY}
-	                    scrollOffset={resultsScrollOffset}
-	                    momentumFlag={resultsMomentum}
-	                    navBarHeight={navBarHeight}
-	                    applyNavBarCutout={overlaySheetApplyNavBarCutout}
-	                  />
-	                ) : null}
-	              </React.Profiler>
+                {overlaySheetSpec && overlaySheetKey ? (
+                  <OverlaySheetShell
+                    visible={overlaySheetVisible}
+                    activeOverlayKey={overlaySheetKey}
+                    spec={overlaySheetSpec}
+                    sheetY={sheetTranslateY}
+                    scrollOffset={resultsScrollOffset}
+                    momentumFlag={resultsMomentum}
+                    navBarHeight={navBarHeight}
+                    applyNavBarCutout={overlaySheetApplyNavBarCutout}
+                  />
+                ) : null}
+              </React.Profiler>
             </SearchInteractionProvider>
           </>
         )}
         {!shouldHideBottomNav && (
           <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
-	            <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-	              <View
-	                style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
-	                onLayout={handleBottomNavLayout}
-	              >
-	                <View style={styles.bottomNavBackground} pointerEvents="none">
-	                  {!shouldDisableSearchBlur && (
-	                    <>
-	                      <FrostedGlassBackground tintOpacity={navBarTintOpacity} />
-	                      <FrostedGlassBackground intensity={18} tintOpacity={navBarTintOpacity} />
-	                    </>
-	                  )}
-	                </View>
-	                {navItems.map((item) => {
+            <View style={styles.bottomNavWrapper} pointerEvents="box-none">
+              <View
+                style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
+                onLayout={handleBottomNavLayout}
+              >
+                <View style={styles.bottomNavBackground} pointerEvents="none">
+                  {!shouldDisableSearchBlur && (
+                    <>
+                      <FrostedGlassBackground tintOpacity={navBarTintOpacity} />
+                      <FrostedGlassBackground intensity={18} tintOpacity={navBarTintOpacity} />
+                    </>
+                  )}
+                </View>
+                {navItems.map((item) => {
                   const active = rootOverlay === item.key;
                   const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
                   const renderIcon = navIconRenderers[item.key];

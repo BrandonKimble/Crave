@@ -1,5 +1,11 @@
 import React from 'react';
-import { Pressable, View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  Pressable,
+  View,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 
 import { overlaySheetStyles } from './overlaySheetStyles';
 

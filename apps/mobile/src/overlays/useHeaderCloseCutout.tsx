@@ -1,8 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type LayoutRectangle } from 'react-native';
-import Svg, {
-  Path as SvgPath,
-} from 'react-native-svg';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { OVERLAY_HEADER_CLOSE_BUTTON_SIZE } from './overlaySheetStyles';
 
 type HeaderCloseCutoutOptions = {
@@ -32,9 +30,9 @@ const DEFAULT_BADGE_PADDING = 0;
 const DEFAULT_BADGE_Y_OFFSET = 0;
 
 const circlePath = (cx: number, cy: number, radius: number) =>
-  `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${radius * 2},0 a ${radius},${radius} 0 1,0 -${
+  `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${
     radius * 2
-  },0`;
+  },0 a ${radius},${radius} 0 1,0 -${radius * 2},0`;
 
 const roundedRectPath = (x: number, y: number, width: number, height: number, radius: number) => {
   const r = Math.max(0, Math.min(radius, width / 2, height / 2));

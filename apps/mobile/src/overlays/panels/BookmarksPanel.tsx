@@ -423,11 +423,11 @@ export const useBookmarksPanelSpec = ({
     );
   };
 
-	  const headerComponent = (
-	    <OverlaySheetHeader
-	      cutoutBackground={closeCutout.background}
-	      onHeaderLayout={closeCutout.onHeaderLayout}
-	      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+  const headerComponent = (
+    <OverlaySheetHeader
+      cutoutBackground={closeCutout.background}
+      onHeaderLayout={closeCutout.onHeaderLayout}
+      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
       onGrabHandlePress={handleClose}
       grabHandleAccessibilityLabel="Close favorites"
       paddingTop={headerPaddingTop}
@@ -451,37 +451,37 @@ export const useBookmarksPanelSpec = ({
           accessibilityLabel="Close favorites"
           accentColor={ACTIVE_TAB_COLOR}
           closeColor="#000000"
-	          onLayout={closeCutout.onCloseLayout}
-	        />
-	      }
-	    />
-	  );
+          onLayout={closeCutout.onCloseLayout}
+        />
+      }
+    />
+  );
 
-	  const listHeaderComponent = (
-	    <View>
-	      <View style={styles.segmentRow}>
-	        {(['restaurant', 'dish'] as FavoriteListType[]).map((value) => {
-	          const isActive = listType === value;
-	          return (
-	            <Pressable
-	              key={value}
-	              onPress={() => setListType(value)}
-	              style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
-	            >
-	              <Text
-	                variant="caption"
-	                weight="semibold"
-	                style={[styles.segmentText, isActive && styles.segmentTextActive]}
-	              >
-	                {value === 'restaurant' ? 'Restaurants' : 'Dishes'}
-	              </Text>
-	            </Pressable>
-	          );
-	        })}
-	      </View>
-	      {renderFormPanel()}
-	    </View>
-	  );
+  const listHeaderComponent = (
+    <View>
+      <View style={styles.segmentRow}>
+        {(['restaurant', 'dish'] as FavoriteListType[]).map((value) => {
+          const isActive = listType === value;
+          return (
+            <Pressable
+              key={value}
+              onPress={() => setListType(value)}
+              style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
+            >
+              <Text
+                variant="caption"
+                weight="semibold"
+                style={[styles.segmentText, isActive && styles.segmentTextActive]}
+              >
+                {value === 'restaurant' ? 'Restaurants' : 'Dishes'}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {renderFormPanel()}
+    </View>
+  );
 
   return {
     overlayKey: 'bookmarks',
@@ -497,12 +497,12 @@ export const useBookmarksPanelSpec = ({
       {
         paddingBottom: contentBottomPadding,
       },
-	    ],
-	    ListHeaderComponent: listHeaderComponent,
-	    ListEmptyComponent: (
-	      <View style={styles.emptyState}>
-	        <Text variant="body" style={styles.emptyText}>
-	          No lists yet
+    ],
+    ListHeaderComponent: listHeaderComponent,
+    ListEmptyComponent: (
+      <View style={styles.emptyState}>
+        <Text variant="body" style={styles.emptyText}>
+          No lists yet
         </Text>
       </View>
     ),
@@ -531,14 +531,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#0f172a',
   },
-	  segmentRow: {
-	    flexDirection: 'row',
-	    backgroundColor: SEGMENT_BG,
-	    borderRadius: 999,
-	    padding: 4,
-	    marginTop: 8,
-	    marginBottom: 12,
-	  },
+  segmentRow: {
+    flexDirection: 'row',
+    backgroundColor: SEGMENT_BG,
+    borderRadius: 999,
+    padding: 4,
+    marginTop: 8,
+    marginBottom: 12,
+  },
   segmentButton: {
     flex: 1,
     alignItems: 'center',

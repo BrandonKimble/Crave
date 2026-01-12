@@ -79,7 +79,9 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
       return;
     }
 
-    const snapPointsKey = `${spec.snapPoints.expanded}:${spec.snapPoints.middle}:${spec.snapPoints.collapsed}:${spec.snapPoints.hidden ?? ''}`;
+    const snapPointsKey = `${spec.snapPoints.expanded}:${spec.snapPoints.middle}:${
+      spec.snapPoints.collapsed
+    }:${spec.snapPoints.hidden ?? ''}`;
     const overlayChanged = lastSnapOverlayKeyRef.current !== activeOverlayKey;
     const snapPointsChanged = lastSnapPointsKeyRef.current !== snapPointsKey;
     if (!overlayChanged && !snapPointsChanged) {
@@ -95,10 +97,10 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
 
     const desiredSnap: OverlaySheetSnap =
       currentSnapRef.current === 'hidden'
-        ? (spec.initialSnapPoint ?? 'middle')
+        ? spec.initialSnapPoint ?? 'middle'
         : overlayChanged && previousOverlay === 'search'
-          ? (spec.initialSnapPoint ?? 'middle')
-          : currentSnapRef.current;
+        ? spec.initialSnapPoint ?? 'middle'
+        : currentSnapRef.current;
 
     if (shellSnapToRef.current === desiredSnap) {
       return;

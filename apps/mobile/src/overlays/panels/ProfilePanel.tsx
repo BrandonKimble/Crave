@@ -513,8 +513,7 @@ export const useProfilePanelSpec = ({
         </View>
       ) : (
         <View style={styles.section}>
-          {profileQuery.isLoading ||
-          isActivePollListLoading ? (
+          {profileQuery.isLoading || isActivePollListLoading ? (
             <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
           ) : activePolls.length ? (
             <View style={styles.pollList}>{activePolls.map(renderPollCard)}</View>

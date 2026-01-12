@@ -652,7 +652,6 @@ export const usePollsPanelSpec = ({
     }
   }, [mode, setOverlay]);
 
-
   const handleOpenCreate = useCallback(() => {
     if (!coverageKey && !coverageOverride) {
       Alert.alert('Pick a city', 'Move the map to a city before creating a poll.');
