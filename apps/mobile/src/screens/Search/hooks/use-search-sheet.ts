@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { PixelRatio } from 'react-native';
 import {
   Extrapolation,
   interpolate,
@@ -9,12 +10,16 @@ import {
 } from 'react-native-reanimated';
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
-import { resolveExpandedTop, type SheetPosition } from '../../../overlays/sheetUtils';
-import { SCREEN_HEIGHT } from '../constants/search';
+import { calculateSnapPoints, type SheetPosition } from '../../../overlays/sheetUtils';
+import { LINE_HEIGHTS } from '../../../constants/typography';
+import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING, SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
   searchBarTop: number;
+  insetTop: number;
+  insetBottom: number;
+  headerHeight?: number;
 };
 
 type UseSearchSheetResult = {
@@ -38,6 +43,9 @@ type UseSearchSheetResult = {
 const useSearchSheet = ({
   isSearchOverlay,
   searchBarTop,
+  insetTop,
+  insetBottom,
+  headerHeight,
 }: UseSearchSheetOptions): UseSearchSheetResult => {
   const [panelVisible, setPanelVisible] = React.useState(false);
   const [sheetState, setSheetState] = React.useState<SheetPosition>('hidden');
@@ -49,19 +57,26 @@ const useSearchSheet = ({
   const [snapTo, setSnapTo] = React.useState<SheetPosition | null>(null);
   const snapToRef = React.useRef<SheetPosition | null>(null);
 
+  // The search results sheet intentionally uses the same snap-point math as other overlays,
+  // even when the bottom nav is hidden (we still align collapsed as if it were present).
+  const estimatedNavBarTop = React.useMemo(() => {
+    const clampedInsetBottom = Math.max(insetBottom, 12);
+    const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
+      NAV_TOP_PADDING + 24 + 2 + LINE_HEIGHTS.body + clampedInsetBottom + NAV_BOTTOM_PADDING
+    );
+    return SCREEN_HEIGHT - estimatedNavBarHeight;
+  }, [insetBottom]);
+
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const expanded = resolveExpandedTop(searchBarTop);
-    const rawMiddle = SCREEN_HEIGHT * 0.4;
-    const middle = Math.max(expanded + 96, rawMiddle);
-    const collapsed = SCREEN_HEIGHT - 130;
-    const hidden = SCREEN_HEIGHT + 80;
-    return {
-      expanded,
-      middle: Math.min(middle, hidden - 120),
-      collapsed,
-      hidden,
-    };
-  }, [searchBarTop]);
+    const resolvedHeaderHeight = Math.max(headerHeight ?? 0, 96);
+    return calculateSnapPoints(
+      SCREEN_HEIGHT,
+      searchBarTop,
+      insetTop,
+      estimatedNavBarTop,
+      resolvedHeaderHeight
+    );
+  }, [estimatedNavBarTop, headerHeight, insetTop, searchBarTop]);
 
   const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
 

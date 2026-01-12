@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(git rev-parse --show-toplevel)"
+
+"$repo_root/scripts/agent-log/ensure-agent-log.sh"
+
+log_file="$repo_root/plans/agent-log.md"
+
+has_entry="$(
+  awk '
+    BEGIN { in_entries=0; found=0 }
+    /^## Entries[[:space:]]*$/ { in_entries=1; next }
+    /^##[[:space:]]+/ { in_entries=0 }
+    in_entries && $0 ~ /^- / { found=1 }
+    END { print found }
+  ' "$log_file"
+)"
+
+if [[ "$has_entry" != "1" ]]; then
+  echo "ERROR: Missing required coordination entry in plans/agent-log.md" >&2
+  echo "Add at least one bullet under the '## Entries' section before committing." >&2
+  exit 1
+fi
+
+if command -v lefthook >/dev/null 2>&1; then
+  lefthook run pre-commit
+fi
+

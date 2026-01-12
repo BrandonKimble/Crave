@@ -62,6 +62,10 @@ web-build/
 # macOS
 .DS_Store
 
+# Local-only coordination (multi-agent)
+plans/agent-log.md
+.worktrees/
+
 # TypeScript compilation outputs
 *.tsbuildinfo
 *.d.ts

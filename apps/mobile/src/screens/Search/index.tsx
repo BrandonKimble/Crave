@@ -1132,6 +1132,7 @@ const SearchScreen: React.FC = () => {
       popToRootOverlay();
     }
   }, [activeOverlay, popToRootOverlay, rootOverlay, setOverlay]);
+  const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
   const {
     panelVisible,
     sheetState,
@@ -1150,6 +1151,9 @@ const SearchScreen: React.FC = () => {
   } = useSearchSheet({
     isSearchOverlay,
     searchBarTop,
+    insetTop: insets.top,
+    insetBottom: insets.bottom,
+    headerHeight: resultsSheetHeaderHeight,
   });
   const isSearchEditingRef = React.useRef(false);
   const pendingResultsSheetRevealRef = React.useRef(false);
@@ -1326,7 +1330,6 @@ const SearchScreen: React.FC = () => {
     polls: number | null | undefined;
   } | null>(null);
   const [isScoreInfoVisible, setScoreInfoVisible] = React.useState(false);
-  const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
   const [filtersHeaderHeight, setFiltersHeaderHeight] = React.useState(0);
   const {
     layout: resultsHeaderLayout,

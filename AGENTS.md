@@ -2,17 +2,45 @@
 
 This file is intentionally front-loaded because Codex loads the repo-root `AGENTS.md` as session context.
 
-## Worktree-First Workflow (Non-Negotiable)
+## Shared-Checkout Workflow (Multi-Session Friendly)
 
-- If the task involves editing files, do the work inside a dedicated task `git worktree` (unless already in one).
-- Default to a dedicated `git worktree` + branch per task (unless already in one):
-  - Pick base branch (default: current branch)
-  - Create branch: `ai/<task>-<yyyymmdd-hhmm>`
-  - Create worktree: `mkdir -p ../.worktrees && git worktree add -b <branch> ../.worktrees/<task>-<yyyymmdd-hhmm> <base-branch>`
-  - Implement only inside the worktree; commit there
-  - Merge back only if the integration checkout is clean; stop on conflicts
-- Do not run git commands that modify/revert the working tree (`git restore`, `git checkout`, `git reset`) unless the user explicitly asks.
-- Prefer read-only git commands (`git diff`, `git status`, `git log`, `git show`, `git blame`) to inspect changes.
+We frequently run multiple Codex chat sessions in parallel on the same repo. Treat the working tree as a shared space.
+
+- Default to editing files directly in the current checkout (no `git worktree` requirement).
+- Assume any existing staged/unstaged changes were made by another session and are intentional.
+- Never delete, revert, “clean up”, or overwrite someone else’s changes just because they’re out of scope.
+- Before editing any file:
+  - Check `git status --porcelain` and identify which files are already modified.
+  - If the file you need is already modified, inspect the diff and merge your change into the current state (preserve both).
+- Minimize accidental clobbering:
+  - Avoid large refactors/renames/reformatting unless explicitly requested.
+  - Prefer additive changes over rewrites, especially in files already modified.
+  - If you must touch the same area as an existing change, merge carefully; if intent is ambiguous, stop and ask.
+- Git safety:
+  - Do not run git commands that modify/revert history or the working tree (`git restore`, `git checkout`, `git reset`, `git clean`) unless explicitly asked.
+  - Prefer read-only git commands (`git diff`, `git status`, `git log`, `git show`, `git blame`) to understand context.
+- When done:
+  - Re-check `git diff` and ensure only the intended files/lines changed.
+
+## Coordination Plan (Required)
+
+Goal: multiple Codex chat sessions can safely work in the same checkout without deleting/overwriting each other’s work.
+
+One-time setup (developer machine):
+- Run `bash scripts/install-agent-hooks.sh` (enables `.githooks/` and enforces the log at commit time).
+
+For every task (every session):
+1) Claim the work:
+   - Append a bullet under `plans/agent-log.md` → `## Entries` describing your task + the files/areas you expect to touch.
+2) Before editing each file:
+   - Run `git status --porcelain` and inspect existing diffs for that file (assume they’re intentional from another session).
+   - Merge your change into the current state; do not revert or delete others’ changes.
+   - Update your log bullet if you start touching new files/areas.
+3) Before finishing:
+   - Re-check `git diff` and confirm you didn’t accidentally clobber unrelated work.
+4) When committing:
+   - `plans/agent-log.md` must contain at least one bullet under `## Entries` (pre-commit hook enforces this).
+   - After a successful commit, the log is automatically reset (post-commit hook).
 
 ## Principles (Leave It Better Than You Found It)
 
