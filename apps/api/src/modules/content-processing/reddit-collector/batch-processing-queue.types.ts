@@ -17,6 +17,9 @@ export interface BatchJob {
   /** Parent collection job that created this batch */
   parentJobId: string;
 
+  /** Correlation id for a keyword collection cycle (optional) */
+  cycleId?: string;
+
   /** Type of collection this batch belongs to */
   collectionType: 'chronological' | 'archive' | 'keyword' | 'on-demand';
 

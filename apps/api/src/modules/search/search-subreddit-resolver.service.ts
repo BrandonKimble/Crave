@@ -29,4 +29,14 @@ export class SearchSubredditResolverService {
   async resolvePrimary(options: ResolveOptions = {}): Promise<string | null> {
     return this.coverageKeyResolver.resolvePrimary(options);
   }
+
+  async resolveCollectable(options: ResolveOptions = {}): Promise<string[]> {
+    return this.coverageKeyResolver.resolveCollectable(options);
+  }
+
+  async resolvePrimaryCollectable(
+    options: ResolveOptions = {},
+  ): Promise<string | null> {
+    return this.coverageKeyResolver.resolvePrimaryCollectable(options);
+  }
 }

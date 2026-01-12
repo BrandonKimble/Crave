@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { CoverageSourceType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const COVERAGE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -50,11 +50,21 @@ export class CoverageKeyResolverService {
     expiresAt: number;
   } | null = null;
   private coverageCacheRequest: Promise<CoverageAreaLookupRow[]> | null = null;
+  private collectableCoverageCache: {
+    rows: CoverageAreaLookupRow[];
+    expiresAt: number;
+  } | null = null;
+  private collectableCoverageCacheRequest: Promise<
+    CoverageAreaLookupRow[]
+  > | null = null;
 
   constructor(private readonly prisma: PrismaService) {}
 
   async resolve(options: CoverageResolveOptions = {}): Promise<string[]> {
-    return this.resolveInternal(options, { fallbackToAll: true });
+    return this.resolveInternal(options, {
+      fallbackToAll: true,
+      collectableOnly: false,
+    });
   }
 
   async resolvePrimary(
@@ -62,15 +72,37 @@ export class CoverageKeyResolverService {
   ): Promise<string | null> {
     const matches = await this.resolveInternal(options, {
       fallbackToAll: false,
+      collectableOnly: false,
+    });
+    return matches[0] ?? null;
+  }
+
+  async resolveCollectable(
+    options: CoverageResolveOptions = {},
+  ): Promise<string[]> {
+    return this.resolveInternal(options, {
+      fallbackToAll: true,
+      collectableOnly: true,
+    });
+  }
+
+  async resolvePrimaryCollectable(
+    options: CoverageResolveOptions = {},
+  ): Promise<string | null> {
+    const matches = await this.resolveInternal(options, {
+      fallbackToAll: false,
+      collectableOnly: true,
     });
     return matches[0] ?? null;
   }
 
   private async resolveInternal(
     options: CoverageResolveOptions,
-    settings: { fallbackToAll: boolean },
+    settings: { fallbackToAll: boolean; collectableOnly: boolean },
   ): Promise<string[]> {
-    const coverageAreas = await this.loadCoverageAreas();
+    const coverageAreas = await this.loadCoverageAreas(
+      settings.collectableOnly,
+    );
 
     if (!coverageAreas.length) {
       return [];
@@ -187,18 +219,32 @@ export class CoverageKeyResolverService {
     return null;
   }
 
-  private async loadCoverageAreas(): Promise<CoverageAreaLookupRow[]> {
+  private async loadCoverageAreas(
+    collectableOnly: boolean,
+  ): Promise<CoverageAreaLookupRow[]> {
     const now = Date.now();
-    if (this.coverageCache && this.coverageCache.expiresAt > now) {
-      return this.coverageCache.rows;
+
+    const cache = collectableOnly
+      ? this.collectableCoverageCache
+      : this.coverageCache;
+    const cacheRequest = collectableOnly
+      ? this.collectableCoverageCacheRequest
+      : this.coverageCacheRequest;
+
+    if (cache && cache.expiresAt > now) {
+      return cache.rows;
     }
-    if (this.coverageCacheRequest) {
-      return this.coverageCacheRequest;
+    if (cacheRequest) {
+      return cacheRequest;
     }
+
+    const where = collectableOnly
+      ? { isActive: true, sourceType: CoverageSourceType.all }
+      : { isActive: true };
 
     const request = this.prisma.coverageArea
       .findMany({
-        where: { isActive: true },
+        where,
         select: {
           name: true,
           coverageKey: true,
@@ -212,23 +258,36 @@ export class CoverageKeyResolverService {
       })
       .then((rows) => {
         const normalized = rows as CoverageAreaLookupRow[];
-        this.coverageCache = {
+        const entry = {
           rows: normalized,
           expiresAt: Date.now() + COVERAGE_CACHE_TTL_MS,
         };
+        if (collectableOnly) {
+          this.collectableCoverageCache = entry;
+        } else {
+          this.coverageCache = entry;
+        }
         return normalized;
       })
       .catch((error) => {
-        if (this.coverageCache) {
-          return this.coverageCache.rows;
+        if (cache) {
+          return cache.rows;
         }
         throw error;
       })
       .finally(() => {
-        this.coverageCacheRequest = null;
+        if (collectableOnly) {
+          this.collectableCoverageCacheRequest = null;
+        } else {
+          this.coverageCacheRequest = null;
+        }
       });
 
-    this.coverageCacheRequest = request;
+    if (collectableOnly) {
+      this.collectableCoverageCacheRequest = request;
+    } else {
+      this.coverageCacheRequest = request;
+    }
     return request;
   }
 

@@ -5,7 +5,9 @@ import { CurrentUser } from '../../shared';
 import { HistoryService } from './history.service';
 import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
+import { RecordFoodViewDto } from './dto/record-food-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
+import { ListFoodViewsDto } from './dto/list-food-views.dto';
 
 @Controller('history')
 @UseGuards(ClerkAuthGuard)
@@ -18,6 +20,15 @@ export class HistoryController {
     @CurrentUser() user: User,
   ): Promise<{ status: 'ok' }> {
     await this.historyService.recordRestaurantView(user.userId, dto);
+    return { status: 'ok' };
+  }
+
+  @Post('foods/viewed')
+  async recordFoodView(
+    @Body() dto: RecordFoodViewDto,
+    @CurrentUser() user: User,
+  ): Promise<{ status: 'ok' }> {
+    await this.historyService.recordFoodView(user.userId, dto);
     return { status: 'ok' };
   }
 
@@ -40,5 +51,24 @@ export class HistoryController {
       user.userId,
       query,
     );
+  }
+
+  @Get('foods/viewed')
+  listRecentlyViewedFoods(
+    @Query() query: ListFoodViewsDto,
+    @CurrentUser() user: User,
+  ): Promise<
+    Array<{
+      connectionId: string;
+      foodId: string;
+      foodName: string;
+      restaurantId: string;
+      restaurantName: string;
+      lastViewedAt: Date;
+      viewCount: number;
+      statusPreview?: RestaurantStatusPreviewDto | null;
+    }>
+  > {
+    return this.historyService.listRecentlyViewedFoods(user.userId, query);
   }
 }

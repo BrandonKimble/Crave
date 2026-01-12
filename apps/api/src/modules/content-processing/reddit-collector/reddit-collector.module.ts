@@ -17,7 +17,9 @@ import { ChronologicalCollectionWorker } from './chronological/chronological-col
 import { ContentRetrievalMonitoringService } from './chronological/content-retrieval-monitoring.service';
 import { CollectionJobSchedulerService } from './chronological/collection-job-scheduler.service';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
-import { EntityPrioritySelectionService } from './entity-priority-selection.service';
+import { EntityPriorityMetricsRefreshService } from './entity-priority-metrics-refresh.service';
+import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
+import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 import { KeywordSearchOrchestratorService } from './keyword-search-orchestrator.service';
 import { UnifiedProcessingService } from './unified-processing.service';
 import { SubredditVolumeTrackingService } from './chronological/subreddit-volume-tracking.service';
@@ -131,7 +133,9 @@ import { BullQueueMetricsService } from './bull-queue-metrics.service';
     CollectionJobSchedulerService,
     KeywordSearchSchedulerService,
     // Keyword Entity Search components (PRD Section 5.1.2)
-    EntityPrioritySelectionService,
+    EntityPriorityMetricsRefreshService,
+    KeywordSliceSelectionService,
+    KeywordAttemptHistoryService,
     KeywordSearchOrchestratorService,
     // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
     UnifiedProcessingService,
@@ -160,7 +164,6 @@ import { BullQueueMetricsService } from './bull-queue-metrics.service';
     CollectionJobSchedulerService,
     KeywordSearchSchedulerService,
     // Export keyword entity search components
-    EntityPrioritySelectionService,
     KeywordSearchOrchestratorService,
     // Export unified processing integration components
     UnifiedProcessingService,

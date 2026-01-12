@@ -389,38 +389,33 @@ export class RestaurantEntityMergeService {
       await tx.entityPriorityMetric.update({
         where: { entityId: canonicalId },
         data: {
-          priorityScore: this.maxDecimal(
-            canonicalPriority.priorityScore,
-            duplicatePriority.priorityScore,
-          ),
-          dataRecencyScore: this.maxDecimal(
-            canonicalPriority.dataRecencyScore,
-            duplicatePriority.dataRecencyScore,
-          ),
-          dataQualityScore: this.maxDecimal(
-            canonicalPriority.dataQualityScore,
-            duplicatePriority.dataQualityScore,
-          ),
-          userDemandScore: this.maxDecimal(
-            canonicalPriority.userDemandScore,
-            duplicatePriority.userDemandScore,
-          ),
-          queryImpressions:
-            canonicalPriority.queryImpressions +
+          queryImpressions: Math.max(
+            canonicalPriority.queryImpressions,
             duplicatePriority.queryImpressions,
-          isNewEntity:
-            canonicalPriority.isNewEntity || duplicatePriority.isNewEntity,
+          ),
+          viewImpressions: Math.max(
+            canonicalPriority.viewImpressions,
+            duplicatePriority.viewImpressions,
+          ),
+          favoriteCount: Math.max(
+            canonicalPriority.favoriteCount,
+            duplicatePriority.favoriteCount,
+          ),
+          autocompleteSelections: Math.max(
+            canonicalPriority.autocompleteSelections,
+            duplicatePriority.autocompleteSelections,
+          ),
           lastCalculatedAt: this.maxDate(
             canonicalPriority.lastCalculatedAt,
             duplicatePriority.lastCalculatedAt,
           ),
-          lastSelectedAt: this.maxDate(
-            canonicalPriority.lastSelectedAt,
-            duplicatePriority.lastSelectedAt,
-          ),
           lastQueryAt: this.maxDate(
             canonicalPriority.lastQueryAt,
             duplicatePriority.lastQueryAt,
+          ),
+          lastViewAt: this.maxDate(
+            canonicalPriority.lastViewAt,
+            duplicatePriority.lastViewAt,
           ),
         },
       });

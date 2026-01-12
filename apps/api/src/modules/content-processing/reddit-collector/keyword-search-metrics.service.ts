@@ -6,7 +6,7 @@ import { JobCounts } from 'bull';
 
 interface ScheduledEnqueueSummary {
   subreddit: string;
-  entityCount: number;
+  termCount: number;
 }
 
 @Injectable()
@@ -111,17 +111,14 @@ export class KeywordSearchMetricsService implements OnModuleInit {
       this.scheduledCounter.inc({ subreddit: job.subreddit });
       this.scheduledEntitiesHistogram.observe(
         { subreddit: job.subreddit },
-        job.entityCount,
+        job.termCount,
       );
     });
 
     this.logger.info('Enqueued scheduled keyword searches', {
       totalScheduledJobs: enqueuedJobs.length,
       subreddits: enqueuedJobs.map((job) => job.subreddit),
-      totalEntities: enqueuedJobs.reduce(
-        (sum, job) => sum + job.entityCount,
-        0,
-      ),
+      totalTerms: enqueuedJobs.reduce((sum, job) => sum + job.termCount, 0),
       cumulativeScheduledJobs: this.counters.scheduledEnqueued,
     });
   }
@@ -129,7 +126,7 @@ export class KeywordSearchMetricsService implements OnModuleInit {
   recordJobCompletion(options: {
     source: string;
     subreddit: string;
-    processedEntities: number;
+    processedTerms: number;
   }): void {
     this.counters.jobsCompleted += 1;
     this.jobCompletionCounter.inc({
@@ -139,7 +136,7 @@ export class KeywordSearchMetricsService implements OnModuleInit {
     this.logger.info('Keyword search job completed', {
       source: options.source,
       subreddit: options.subreddit,
-      processedEntities: options.processedEntities,
+      processedTerms: options.processedTerms,
       jobsCompleted: this.counters.jobsCompleted,
     });
   }

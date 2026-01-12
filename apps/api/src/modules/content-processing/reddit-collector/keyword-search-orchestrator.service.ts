@@ -15,12 +15,15 @@ import {
   RedditComment,
 } from '../../external-integrations/reddit/reddit.service';
 import { RateLimitResponse } from '../../external-integrations/shared/external-integrations.types';
+import { EntityType, KeywordAttemptOutcome } from '@prisma/client';
 import { KeywordSearchSchedulerService } from './keyword-search-scheduler.service';
-import { EntityPriorityScore } from './entity-priority-selection.service';
 import { BatchJob } from './batch-processing-queue.types';
 import { ConfigService } from '@nestjs/config';
 import { KeywordSearchMetricsService } from './keyword-search-metrics.service';
 import { ProcessingResult } from './unified-processing.types';
+import { normalizeKeywordTerm } from './keyword-term-normalization';
+import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
+import { KeywordAttemptHistoryService } from './keyword-attempt-history.service';
 
 export type KeywordSearchSort =
   | 'relevance'
@@ -34,6 +37,15 @@ export interface KeywordSearchSortPlan {
   timeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   fallbackTimeFilter?: 'hour' | 'day' | 'week' | 'month' | 'year' | 'all';
   minResultsForFallback?: number;
+}
+
+export interface KeywordSearchTerm {
+  term: string;
+  normalizedTerm?: string;
+  slice?: string;
+  score?: number;
+  entityType?: EntityType;
+  origin?: Record<string, unknown>;
 }
 
 /**
@@ -57,6 +69,7 @@ export class KeywordSearchOrchestratorService
     private readonly keywordScheduler: KeywordSearchSchedulerService,
     @Inject(LoggerService) private readonly logger: LoggerService,
     private readonly configService: ConfigService,
+    private readonly keywordAttemptHistory: KeywordAttemptHistoryService,
     @InjectQueue('keyword-batch-processing-queue')
     private readonly keywordQueue: Queue<BatchJob>,
     @InjectQueue('keyword-search-execution')
@@ -84,244 +97,538 @@ export class KeywordSearchOrchestratorService
    * Implements PRD 5.1.2 complete keyword search cycle
    *
    * @param subreddit - Target subreddit for searches
-   * @param entities - Priority entities to search for
+   * @param terms - Keyword terms to search for
    * @returns Promise<KeywordSearchExecutionResult> - Execution results with processing metrics
    */
   async executeKeywordSearchCycle(
     subreddit: string,
-    entities: EntityPriorityScore[],
-    options: { sortPlan?: KeywordSearchSortPlan[] } = {},
+    terms: KeywordSearchTerm[],
+    options: {
+      sortPlan?: KeywordSearchSortPlan[];
+      source?: KeywordSearchJobData['source'] | 'manual';
+      collectionCoverageKey?: string;
+      safeIntervalDays?: number;
+    } = {},
   ): Promise<KeywordSearchExecutionResult> {
-    const startTime = Date.now();
-    const correlationId = CorrelationUtils.getCorrelationId();
+    const existingCorrelationId = CorrelationUtils.getCorrelationId();
+    const cycleId =
+      existingCorrelationId ?? CorrelationUtils.generateCorrelationId();
 
-    this.logger.info('Starting keyword search cycle execution', {
-      correlationId,
-      operation: 'execute_keyword_search_cycle',
-      subreddit,
-      entityCount: entities.length,
-      topEntities: entities.slice(0, 5).map((e) => ({
-        name: e.entityName,
-        type: e.entityType,
-        score: e.score,
-      })),
-    });
+    const runCycle = async (): Promise<KeywordSearchExecutionResult> => {
+      const startTime = Date.now();
+      const source = options.source ?? 'manual';
+      const dryRun = this.keywordCollectionDryRunEnabled();
+      const collectionCoverageKey =
+        options.collectionCoverageKey ?? subreddit.trim().toLowerCase();
+      const safeIntervalDays =
+        typeof options.safeIntervalDays === 'number' &&
+        Number.isFinite(options.safeIntervalDays) &&
+        options.safeIntervalDays > 0
+          ? options.safeIntervalDays
+          : 7;
+      const selection = this.dedupeTermsForKeywordSearch(terms);
+      const selectedTerms = selection.selectedTerms;
+      const termNames = selectedTerms.map((term) => term.term);
 
-    const results: KeywordSearchExecutionResult = {
-      subreddit,
-      entities,
-      searchResults: {},
-      processingResults: {},
-      metadata: {
-        totalEntities: entities.length,
-        successfulSearches: 0,
-        failedSearches: 0,
-        processedEntities: 0,
-        processingErrors: 0,
-        executionStartTime: new Date(startTime),
-        executionEndTime: new Date(), // Will be updated
-        totalPosts: 0,
-        totalComments: 0,
-        totalItems: 0,
-        sortsAttempted: [],
-        sortSummaries: [],
-      },
-      performance: {
-        searchDuration: 0,
-        processingDuration: 0,
-        totalDuration: 0,
-        totalApiCalls: 0,
-        averageEntityProcessingTime: 0,
-      },
-    };
-
-    try {
-      // Extract entity names for batch search
-      const entityNames = entities.map((entity) => entity.entityName);
-      const configuredSorts =
-        this.keywordSearchSorts.length > 0
-          ? this.keywordSearchSorts
-          : (['relevance'] as KeywordSearchSort[]);
-      const sortPlanEntries: KeywordSearchSortPlan[] =
-        options.sortPlan && options.sortPlan.length
-          ? options.sortPlan
-          : configuredSorts.map((sort) => ({ sort }));
-      const sortsToExecute = sortPlanEntries.map((entry) => entry.sort);
-
-      this.logger.debug('Executing batch keyword searches', {
-        correlationId,
+      this.logger.info('Starting keyword search cycle execution', {
+        cycleId,
+        correlationId: cycleId,
+        operation: 'execute_keyword_search_cycle',
         subreddit,
-        entityNames: entityNames.slice(0, 10), // Log first 10 entities
-        totalCount: entityNames.length,
-        sorts: sortsToExecute,
+        source,
+        dryRun,
+        collectionCoverageKey,
+        safeIntervalDays,
+        requestedTermCount: terms.length,
+        selectedTermCount: termNames.length,
+        dedupedCount: selection.dedupedCount,
+        skippedInvalidCount: selection.skippedInvalidCount,
+        topTerms: selectedTerms.slice(0, 5).map((entry) => ({
+          term: entry.term,
+          normalizedTerm: entry.normalizedTerm,
+          slice: entry.input.slice ?? null,
+          score: entry.input.score ?? null,
+          entityType: entry.input.entityType ?? null,
+        })),
       });
 
-      const aggregateResults = new Map<string, AggregatedKeywordEntity>();
-      const sortSummaries: SortSummary[] = [];
-      let cumulativeSuccessfulSearches = 0;
-      let cumulativeFailedSearches = 0;
-      let cumulativeApiCalls = 0;
+      const results: KeywordSearchExecutionResult = {
+        subreddit,
+        terms: selectedTerms.map((entry) => ({
+          ...entry.input,
+          term: entry.term,
+          normalizedTerm: entry.normalizedTerm,
+        })),
+        searchResults: {},
+        processingResults: {},
+        metadata: {
+          totalTerms: termNames.length,
+          successfulSearches: 0,
+          failedSearches: 0,
+          processedTerms: 0,
+          processingErrors: 0,
+          executionStartTime: new Date(startTime),
+          executionEndTime: new Date(), // Will be updated
+          totalPosts: 0,
+          totalComments: 0,
+          totalItems: 0,
+          sortsAttempted: [],
+          sortSummaries: [],
+        },
+        performance: {
+          searchDuration: 0,
+          processingDuration: 0,
+          totalDuration: 0,
+          totalApiCalls: 0,
+          averageTermProcessingTime: 0,
+        },
+      };
 
-      const searchStartTime = Date.now();
+      try {
+        const configuredSorts =
+          this.keywordSearchSorts.length > 0
+            ? this.keywordSearchSorts
+            : (['relevance'] as KeywordSearchSort[]);
+        const sortPlanEntries: KeywordSearchSortPlan[] =
+          options.sortPlan && options.sortPlan.length
+            ? options.sortPlan
+            : configuredSorts.map((sort) => ({ sort }));
+        const sortsToExecute = sortPlanEntries.map((entry) => entry.sort);
+        results.metadata.sortsAttempted = sortsToExecute;
 
-      for (const planEntry of sortPlanEntries) {
-        const { sort, timeFilter, fallbackTimeFilter, minResultsForFallback } =
-          planEntry;
-        const resolvedTimeFilter = this.normalizeTimeFilter(timeFilter);
-        const resolvedFallbackTimeFilter =
-          this.normalizeTimeFilter(fallbackTimeFilter);
-        const batchSearchResult =
-          await this.redditService.batchEntityKeywordSearch(
+        if (dryRun) {
+          const totalDuration = Date.now() - startTime;
+          results.performance.totalDuration = totalDuration;
+          results.metadata.executionEndTime = new Date();
+
+          this.logger.info('keyword_cycle_summary', {
+            event: 'keyword_cycle_summary',
+            cycleId,
+            source,
             subreddit,
-            entityNames,
-            {
-              sort,
-              timeFilter: resolvedTimeFilter,
-              limit: this.keywordSearchLimit,
-              batchDelay: 1200, // 1.2 seconds between searches for rate limiting
+            startedAt: results.metadata.executionStartTime,
+            finishedAt: results.metadata.executionEndTime,
+            durationMs: totalDuration,
+            dryRun,
+            selection: {
+              requestedTerms: terms.length,
+              selectedTerms: termNames.length,
+              dedupedTerms: selection.dedupedCount,
+              skippedInvalid: selection.skippedInvalidCount,
+              dedupeSample: selection.duplicatesSample,
             },
-          );
+            execution: {
+              redditApiCalls: 0,
+              sortsAttemptedTotal: sortsToExecute.length,
+              sortsAttempted: sortsToExecute,
+            },
+            results: {
+              postsFound: 0,
+              commentsFound: 0,
+              connectionsCreated: 0,
+              entitiesCreatedOrEnriched: 0,
+            },
+            failures: {
+              termsErrored: 0,
+              termsNoResults: 0,
+              errorKindsTop: [],
+            },
+          });
 
-        cumulativeSuccessfulSearches +=
-          batchSearchResult.metadata.successfulSearches;
-        cumulativeFailedSearches += batchSearchResult.metadata.failedSearches;
-        cumulativeApiCalls += batchSearchResult.performance.totalApiCalls;
+          selectedTerms.forEach((entry, index) => {
+            this.logger.info('keyword_term_summary', {
+              event: 'keyword_term_summary',
+              cycleId,
+              source,
+              subreddit,
+              term: entry.term,
+              normalizedTerm: entry.normalizedTerm,
+              slice: entry.input.slice ?? undefined,
+              origin: {
+                entityType: entry.input.entityType ?? null,
+                ...(entry.input.origin ?? {}),
+              },
+              scores: { selectionScore: entry.input.score ?? null },
+              rankOverall: index + 1,
+              execution: { sortsAttempted: sortsToExecute, apiCalls: 0 },
+              results: { posts: 0, comments: 0, connectionsCreated: 0 },
+              outcome: 'skipped',
+              reason: 'dry_run',
+            });
+          });
 
-        sortSummaries.push({
-          sort,
-          timeFilter: resolvedTimeFilter,
-          totalPosts: batchSearchResult.metadata.totalPosts,
-          totalComments: batchSearchResult.metadata.totalComments,
-          successfulSearches: batchSearchResult.metadata.successfulSearches,
-          failedSearches: batchSearchResult.metadata.failedSearches,
-          apiCalls: batchSearchResult.performance.totalApiCalls,
-          durationMs: batchSearchResult.performance.batchDuration,
+          return results;
+        }
+
+        this.logger.debug('Executing batch keyword searches', {
+          cycleId,
+          correlationId: cycleId,
+          subreddit,
+          source,
+          terms: termNames.slice(0, 10),
+          totalCount: termNames.length,
+          sorts: sortsToExecute,
         });
 
-        this.mergeBatchKeywordResults(
-          aggregateResults,
-          batchSearchResult,
-          sort,
-        );
+        const aggregateResults = new Map<string, AggregatedKeywordEntity>();
+        const sortSummaries: SortSummary[] = [];
+        const termErrors = new Map<string, string[]>();
+        let cumulativeSuccessfulSearches = 0;
+        let cumulativeFailedSearches = 0;
+        let cumulativeApiCalls = 0;
 
-        const totalItems =
-          batchSearchResult.metadata.totalPosts +
-          batchSearchResult.metadata.totalComments;
-        if (
-          resolvedFallbackTimeFilter &&
-          typeof minResultsForFallback === 'number' &&
-          totalItems < minResultsForFallback
-        ) {
-          const fallbackResult =
+        const searchStartTime = Date.now();
+
+        for (const planEntry of sortPlanEntries) {
+          const {
+            sort,
+            timeFilter,
+            fallbackTimeFilter,
+            minResultsForFallback,
+          } = planEntry;
+          const resolvedTimeFilter = this.normalizeTimeFilter(timeFilter);
+          const resolvedFallbackTimeFilter =
+            this.normalizeTimeFilter(fallbackTimeFilter);
+          const batchSearchResult =
             await this.redditService.batchEntityKeywordSearch(
               subreddit,
-              entityNames,
+              termNames,
               {
                 sort,
-                timeFilter: resolvedFallbackTimeFilter,
+                timeFilter: resolvedTimeFilter,
                 limit: this.keywordSearchLimit,
                 batchDelay: 1200,
               },
             );
 
+          Object.entries(batchSearchResult.errors).forEach(
+            ([entityName, message]) => {
+              const existing = termErrors.get(entityName);
+              if (existing) {
+                existing.push(message);
+              } else {
+                termErrors.set(entityName, [message]);
+              }
+            },
+          );
+
           cumulativeSuccessfulSearches +=
-            fallbackResult.metadata.successfulSearches;
-          cumulativeFailedSearches += fallbackResult.metadata.failedSearches;
-          cumulativeApiCalls += fallbackResult.performance.totalApiCalls;
+            batchSearchResult.metadata.successfulSearches;
+          cumulativeFailedSearches += batchSearchResult.metadata.failedSearches;
+          cumulativeApiCalls += batchSearchResult.performance.totalApiCalls;
 
           sortSummaries.push({
             sort,
-            timeFilter: resolvedFallbackTimeFilter,
-            fallbackUsed: true,
-            totalPosts: fallbackResult.metadata.totalPosts,
-            totalComments: fallbackResult.metadata.totalComments,
-            successfulSearches: fallbackResult.metadata.successfulSearches,
-            failedSearches: fallbackResult.metadata.failedSearches,
-            apiCalls: fallbackResult.performance.totalApiCalls,
-            durationMs: fallbackResult.performance.batchDuration,
+            timeFilter: resolvedTimeFilter,
+            totalPosts: batchSearchResult.metadata.totalPosts,
+            totalComments: batchSearchResult.metadata.totalComments,
+            successfulSearches: batchSearchResult.metadata.successfulSearches,
+            failedSearches: batchSearchResult.metadata.failedSearches,
+            apiCalls: batchSearchResult.performance.totalApiCalls,
+            durationMs: batchSearchResult.performance.batchDuration,
           });
 
-          this.mergeBatchKeywordResults(aggregateResults, fallbackResult, sort);
+          this.mergeBatchKeywordResults(
+            aggregateResults,
+            batchSearchResult,
+            sort,
+          );
+
+          const totalItems =
+            batchSearchResult.metadata.totalPosts +
+            batchSearchResult.metadata.totalComments;
+          if (
+            resolvedFallbackTimeFilter &&
+            typeof minResultsForFallback === 'number' &&
+            totalItems < minResultsForFallback
+          ) {
+            const fallbackResult =
+              await this.redditService.batchEntityKeywordSearch(
+                subreddit,
+                termNames,
+                {
+                  sort,
+                  timeFilter: resolvedFallbackTimeFilter,
+                  limit: this.keywordSearchLimit,
+                  batchDelay: 1200,
+                },
+              );
+
+            Object.entries(fallbackResult.errors).forEach(
+              ([entityName, message]) => {
+                const existing = termErrors.get(entityName);
+                if (existing) {
+                  existing.push(message);
+                } else {
+                  termErrors.set(entityName, [message]);
+                }
+              },
+            );
+
+            cumulativeSuccessfulSearches +=
+              fallbackResult.metadata.successfulSearches;
+            cumulativeFailedSearches += fallbackResult.metadata.failedSearches;
+            cumulativeApiCalls += fallbackResult.performance.totalApiCalls;
+
+            sortSummaries.push({
+              sort,
+              timeFilter: resolvedFallbackTimeFilter,
+              fallbackUsed: true,
+              totalPosts: fallbackResult.metadata.totalPosts,
+              totalComments: fallbackResult.metadata.totalComments,
+              successfulSearches: fallbackResult.metadata.successfulSearches,
+              failedSearches: fallbackResult.metadata.failedSearches,
+              apiCalls: fallbackResult.performance.totalApiCalls,
+              durationMs: fallbackResult.performance.batchDuration,
+            });
+
+            this.mergeBatchKeywordResults(
+              aggregateResults,
+              fallbackResult,
+              sort,
+            );
+          }
         }
+
+        const {
+          results: aggregatedResults,
+          totalPosts,
+          totalComments,
+        } = this.finalizeAggregatedResults(aggregateResults, sortsToExecute);
+
+        const searchDuration = Date.now() - searchStartTime;
+        results.performance.searchDuration = searchDuration;
+        results.performance.totalApiCalls = cumulativeApiCalls;
+        results.metadata.successfulSearches = cumulativeSuccessfulSearches;
+        results.metadata.failedSearches = cumulativeFailedSearches;
+        results.metadata.sortSummaries = sortSummaries;
+        results.metadata.totalPosts = totalPosts;
+        results.metadata.totalComments = totalComments;
+        results.metadata.totalItems = totalPosts + totalComments;
+        results.searchResults = aggregatedResults;
+
+        this.logger.info('Batch keyword searches completed', {
+          cycleId,
+          correlationId: cycleId,
+          subreddit,
+          source,
+          sorts: sortsToExecute,
+          searchDuration,
+          successfulSearches: cumulativeSuccessfulSearches,
+          failedSearches: cumulativeFailedSearches,
+          uniquePosts: totalPosts,
+          uniqueComments: totalComments,
+          apiCalls: cumulativeApiCalls,
+        });
+
+        await this.enqueueKeywordBatches(
+          subreddit,
+          results.searchResults,
+          cycleId,
+        );
+
+        const totalDuration = Date.now() - startTime;
+        results.performance.totalDuration = totalDuration;
+        results.performance.averageTermProcessingTime =
+          results.metadata.processedTerms > 0
+            ? results.performance.processingDuration /
+              results.metadata.processedTerms
+            : 0;
+        results.metadata.executionEndTime = new Date();
+
+        let termsNoResults = 0;
+        let termsErrored = 0;
+
+        for (const [index, entry] of selectedTerms.entries()) {
+          const termResult = results.searchResults[entry.term];
+          const termErrorMessages = termErrors.get(entry.term) ?? [];
+          const posts = termResult?.posts.length ?? 0;
+          const comments = termResult?.comments.length ?? 0;
+          const hasResults = posts + comments > 0;
+
+          const outcome = (() => {
+            if (termResult) {
+              return hasResults ? 'success' : 'no_results';
+            }
+            if (termErrorMessages.length > 0) {
+              return 'error';
+            }
+            return 'skipped';
+          })();
+
+          if (outcome === 'no_results') {
+            termsNoResults += 1;
+          }
+          if (outcome === 'error') {
+            termsErrored += 1;
+          }
+
+          this.logger.info('keyword_term_summary', {
+            event: 'keyword_term_summary',
+            cycleId,
+            source,
+            subreddit,
+            term: entry.term,
+            normalizedTerm: entry.normalizedTerm,
+            slice: entry.input.slice ?? undefined,
+            origin: {
+              entityType: entry.input.entityType ?? null,
+              ...(entry.input.origin ?? {}),
+            },
+            scores: { selectionScore: entry.input.score ?? null },
+            rankOverall: index + 1,
+            execution: {
+              sortsAttempted:
+                termResult?.metadata.collectedSorts ?? sortsToExecute,
+              apiCalls: termResult?.performance.apiCallsUsed ?? 0,
+            },
+            results: { posts, comments, connectionsCreated: 0 },
+            outcome,
+            errorMessages:
+              termErrorMessages.length > 0
+                ? termErrorMessages.slice(0, 3)
+                : undefined,
+          });
+
+          const attemptOutcome: KeywordAttemptOutcome =
+            outcome === 'success'
+              ? 'success'
+              : outcome === 'no_results'
+                ? 'no_results'
+                : outcome === 'error'
+                  ? 'error'
+                  : 'deferred';
+
+          await this.keywordAttemptHistory.recordAttempt({
+            collectionCoverageKey,
+            normalizedTerm: entry.normalizedTerm,
+            outcome: attemptOutcome,
+            safeIntervalDays,
+          });
+        }
+
+        this.logger.info('keyword_cycle_summary', {
+          event: 'keyword_cycle_summary',
+          cycleId,
+          source,
+          subreddit,
+          startedAt: results.metadata.executionStartTime,
+          finishedAt: results.metadata.executionEndTime,
+          durationMs: totalDuration,
+          dryRun: false,
+          selection: {
+            requestedTerms: terms.length,
+            selectedTerms: termNames.length,
+            dedupedTerms: selection.dedupedCount,
+            skippedInvalid: selection.skippedInvalidCount,
+            dedupeSample: selection.duplicatesSample,
+          },
+          execution: {
+            redditApiCalls: cumulativeApiCalls,
+            sortsAttemptedTotal: sortSummaries.length,
+            sortsAttempted: sortsToExecute,
+          },
+          results: {
+            postsFound: totalPosts,
+            commentsFound: totalComments,
+            connectionsCreated: 0,
+            entitiesCreatedOrEnriched: 0,
+          },
+          failures: {
+            termsErrored,
+            termsNoResults,
+            errorKindsTop: [],
+          },
+        });
+
+        this.logger.info('Keyword search cycle execution completed', {
+          cycleId,
+          correlationId: cycleId,
+          subreddit,
+          source,
+          totalDuration,
+          searchDuration,
+          processingDuration: results.performance.processingDuration,
+          termsProcessed: results.metadata.processedTerms,
+          successRate:
+            results.metadata.totalTerms > 0
+              ? (results.metadata.processedTerms /
+                  results.metadata.totalTerms) *
+                100
+              : 0,
+        });
+
+        return results;
+      } catch (error: unknown) {
+        const totalDuration = Date.now() - startTime;
+        results.performance.totalDuration = totalDuration;
+        results.metadata.executionEndTime = new Date();
+
+        this.logger.info('keyword_cycle_summary', {
+          event: 'keyword_cycle_summary',
+          cycleId,
+          source,
+          subreddit,
+          startedAt: results.metadata.executionStartTime,
+          finishedAt: results.metadata.executionEndTime,
+          durationMs: totalDuration,
+          dryRun,
+          selection: {
+            requestedTerms: terms.length,
+            selectedTerms: termNames.length,
+            dedupedTerms: selection.dedupedCount,
+            skippedInvalid: selection.skippedInvalidCount,
+            dedupeSample: selection.duplicatesSample,
+          },
+          execution: {
+            redditApiCalls: results.performance.totalApiCalls,
+            sortsAttemptedTotal: results.metadata.sortsAttempted.length,
+            sortsAttempted: results.metadata.sortsAttempted,
+          },
+          results: {
+            postsFound: results.metadata.totalPosts,
+            commentsFound: results.metadata.totalComments,
+            connectionsCreated: 0,
+            entitiesCreatedOrEnriched: 0,
+          },
+          failures: {
+            termsErrored: 0,
+            termsNoResults: 0,
+            errorKindsTop: [
+              error instanceof Error ? error.name : 'UnknownError',
+            ],
+          },
+          error:
+            error instanceof Error
+              ? { message: error.message, name: error.name, stack: error.stack }
+              : { message: String(error) },
+        });
+
+        this.logger.error('Keyword search cycle execution failed', {
+          cycleId,
+          correlationId: cycleId,
+          subreddit,
+          source,
+          totalDuration,
+          error:
+            error instanceof Error
+              ? { message: error.message, name: error.name, stack: error.stack }
+              : { message: String(error) },
+          termCount: terms.length,
+        });
+
+        throw error;
       }
+    };
 
-      const {
-        results: aggregatedResults,
-        totalPosts,
-        totalComments,
-      } = this.finalizeAggregatedResults(aggregateResults, sortsToExecute);
-
-      const searchDuration = Date.now() - searchStartTime;
-      results.performance.searchDuration = searchDuration;
-      results.performance.totalApiCalls = cumulativeApiCalls;
-      results.metadata.successfulSearches = cumulativeSuccessfulSearches;
-      results.metadata.failedSearches = cumulativeFailedSearches;
-      results.metadata.sortsAttempted = sortsToExecute;
-      results.metadata.sortSummaries = sortSummaries;
-      results.metadata.totalPosts = totalPosts;
-      results.metadata.totalComments = totalComments;
-      results.metadata.totalItems = totalPosts + totalComments;
-      results.searchResults = aggregatedResults;
-
-      this.logger.info('Batch keyword searches completed', {
-        correlationId,
-        subreddit,
-        sorts: sortsToExecute,
-        searchDuration,
-        successfulSearches: cumulativeSuccessfulSearches,
-        failedSearches: cumulativeFailedSearches,
-        uniquePosts: totalPosts,
-        uniqueComments: totalComments,
-        apiCalls: cumulativeApiCalls,
-      });
-
-      // Enqueue keyword search results as batches to async worker (mirrors chronological flow)
-      await this.enqueueKeywordBatches(
-        subreddit,
-        results.searchResults,
-        correlationId || 'keyword-search',
-      );
-
-      const totalDuration = Date.now() - startTime;
-      results.performance.totalDuration = totalDuration;
-      results.performance.averageEntityProcessingTime =
-        results.metadata.processedEntities > 0
-          ? results.performance.processingDuration /
-            results.metadata.processedEntities
-          : 0;
-      results.metadata.executionEndTime = new Date();
-
-      this.logger.info('Keyword search cycle execution completed', {
-        correlationId,
-        subreddit,
-        totalDuration,
-        searchDuration,
-        processingDuration: results.performance.processingDuration,
-        entitiesProcessed: results.metadata.processedEntities,
-        successRate:
-          results.metadata.totalEntities > 0
-            ? (results.metadata.processedEntities /
-                results.metadata.totalEntities) *
-              100
-            : 0,
-      });
-
-      return results;
-    } catch (error: unknown) {
-      const totalDuration = Date.now() - startTime;
-      results.performance.totalDuration = totalDuration;
-      results.metadata.executionEndTime = new Date();
-
-      this.logger.error('Keyword search cycle execution failed', {
-        correlationId,
-        subreddit,
-        totalDuration,
-        error: error instanceof Error ? error.message : String(error),
-        entityCount: entities.length,
-      });
-
-      throw error;
+    if (existingCorrelationId) {
+      return runCycle();
     }
+
+    return CorrelationUtils.runWithContext(
+      { correlationId: cycleId, startTime: Date.now() },
+      runCycle,
+    );
   }
 
   private mergeBatchKeywordResults(
@@ -718,13 +1025,98 @@ export class KeywordSearchOrchestratorService
       : undefined;
   }
 
+  private keywordCollectionDryRunEnabled(): boolean {
+    const raw =
+      this.configService.get<string>('KEYWORD_COLLECTION_DRY_RUN') ??
+      process.env.KEYWORD_COLLECTION_DRY_RUN;
+
+    if (typeof raw !== 'string') {
+      return false;
+    }
+
+    return raw.trim().toLowerCase() === 'true';
+  }
+
+  private dedupeTermsForKeywordSearch(terms: KeywordSearchTerm[]): {
+    selectedTerms: Array<{
+      term: string;
+      normalizedTerm: string;
+      input: KeywordSearchTerm;
+    }>;
+    dedupedCount: number;
+    skippedInvalidCount: number;
+    duplicatesSample: Array<{
+      normalizedTerm: string;
+      keptTerm: string;
+      keptSlice: string | null;
+      droppedTerm: string;
+      droppedSlice: string | null;
+    }>;
+  } {
+    const selectedTerms: Array<{
+      term: string;
+      normalizedTerm: string;
+      input: KeywordSearchTerm;
+    }> = [];
+    const seen = new Map<
+      string,
+      { term: string; normalizedTerm: string; input: KeywordSearchTerm }
+    >();
+
+    let dedupedCount = 0;
+    let skippedInvalidCount = 0;
+    const duplicatesSample: Array<{
+      normalizedTerm: string;
+      keptTerm: string;
+      keptSlice: string | null;
+      droppedTerm: string;
+      droppedSlice: string | null;
+    }> = [];
+
+    for (const input of terms) {
+      const stripped = stripGenericTokens(input.term);
+      const term = stripped.text;
+      const normalizedTerm = normalizeKeywordTerm(term);
+      if (!normalizedTerm || stripped.isGenericOnly) {
+        skippedInvalidCount += 1;
+        continue;
+      }
+
+      const existing = seen.get(normalizedTerm);
+      if (existing) {
+        dedupedCount += 1;
+        if (duplicatesSample.length < 10) {
+          duplicatesSample.push({
+            normalizedTerm,
+            keptTerm: existing.term,
+            keptSlice: existing.input.slice ?? null,
+            droppedTerm: term,
+            droppedSlice: input.slice ?? null,
+          });
+        }
+        continue;
+      }
+
+      const entry = { term, normalizedTerm, input };
+      selectedTerms.push(entry);
+      seen.set(normalizedTerm, entry);
+    }
+
+    return {
+      selectedTerms,
+      dedupedCount,
+      skippedInvalidCount,
+      duplicatesSample,
+    };
+  }
+
   /**
    * Enqueue keyword search post IDs in batches for async processing.
    */
   private async enqueueKeywordBatches(
     subreddit: string,
     searchResults: Record<string, KeywordSearchResponse>,
-    correlationId: string,
+    cycleId: string,
   ): Promise<void> {
     const BATCH_SIZE = 25;
     const postIdSet = new Set<string>();
@@ -743,18 +1135,20 @@ export class KeywordSearchOrchestratorService
     }
 
     this.logger.info('Enqueuing keyword batches', {
-      correlationId,
+      cycleId,
+      correlationId: cycleId,
       subreddit,
       totalPosts: postIds.length,
       batches: batches.length,
     });
 
-    const jobGroupId = `${subreddit}-keyword-${Date.now()}`;
+    const jobGroupId = `${subreddit}-keyword-${cycleId}-${Date.now()}`;
     const enqueuePromises: Array<Promise<Job<BatchJob>>> = [];
     batches.forEach((ids, idx) => {
       const job: BatchJob = {
         batchId: `${jobGroupId}-${idx + 1}`,
         parentJobId: jobGroupId,
+        cycleId,
         collectionType: 'keyword',
         subreddit,
         postIds: ids,
@@ -850,7 +1244,7 @@ export class KeywordSearchOrchestratorService
           processingTime: processingResult.processingTimeMs,
         };
 
-        results.metadata.processedEntities++;
+        results.metadata.processedTerms += 1;
 
         this.logger.debug(`Successfully processed entity: ${entityName}`, {
           correlationId,
@@ -893,7 +1287,7 @@ export class KeywordSearchOrchestratorService
     this.logger.info('Search results processing completed', {
       correlationId,
       processingDuration,
-      processedEntities: results.metadata.processedEntities,
+      processedTerms: results.metadata.processedTerms,
       processingErrors: results.metadata.processingErrors,
       totalSearchResults: Object.keys(results.searchResults).length,
     });
@@ -967,9 +1361,11 @@ export class KeywordSearchOrchestratorService
 
     try {
       // Check scheduler for due searches
-      const dueSchedules = this.keywordScheduler.checkDueSearches();
+      const dueSchedules = await this.keywordScheduler.checkDueSearches();
+      const hotSpikeCandidates =
+        await this.keywordScheduler.findHotSpikeCandidates();
 
-      if (dueSchedules.length === 0) {
+      if (dueSchedules.length === 0 && hotSpikeCandidates.length === 0) {
         this.logger.debug('No keyword searches are currently due', {
           correlationId,
         });
@@ -984,38 +1380,110 @@ export class KeywordSearchOrchestratorService
         };
       }
 
-      this.logger.info('Found due keyword searches, executing', {
-        correlationId,
-        dueCount: dueSchedules.length,
-        subreddits: dueSchedules.map((s) => s.subreddit),
-      });
+      if (dueSchedules.length > 0) {
+        this.logger.info('Found due keyword searches, executing', {
+          correlationId,
+          dueCount: dueSchedules.length,
+          subreddits: dueSchedules.map((s) => s.subreddit),
+        });
+      }
 
-      const enqueuedJobs: Array<{ subreddit: string; entityCount: number }> =
-        [];
+      const scheduledEnqueuedJobs: Array<{
+        subreddit: string;
+        termCount: number;
+      }> = [];
+      const hotSpikeEnqueuedJobs: Array<{
+        subreddit: string;
+        termCount: number;
+      }> = [];
 
       for (const schedule of dueSchedules) {
         await this.enqueueKeywordSearchJob({
+          cycleId: CorrelationUtils.generateCorrelationId(),
           subreddit: schedule.subreddit,
-          entities: schedule.entities,
+          collectionCoverageKey: schedule.collectionCoverageKey,
+          safeIntervalDays: schedule.safeIntervalDays,
+          sortPlan: schedule.sortPlan,
+          terms: schedule.terms,
           source: 'scheduled',
           trackCompletion: true,
         });
-        enqueuedJobs.push({
+        scheduledEnqueuedJobs.push({
           subreddit: schedule.subreddit,
-          entityCount: schedule.entities.length,
+          termCount: schedule.terms.length,
+        });
+      }
+
+      for (const candidate of hotSpikeCandidates) {
+        const jobId =
+          `hot_spike-${candidate.collectionCoverageKey}:${candidate.normalizedTerm}`
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 180);
+
+        await this.enqueueKeywordSearchJob({
+          jobId,
+          cycleId: CorrelationUtils.generateCorrelationId(),
+          subreddit: candidate.subreddit,
+          collectionCoverageKey: candidate.collectionCoverageKey,
+          safeIntervalDays: candidate.safeIntervalDays,
+          sortPlan: candidate.sortPlan,
+          terms: [
+            {
+              term: candidate.term,
+              normalizedTerm: candidate.normalizedTerm,
+              slice: 'hot_spike',
+              score: candidate.distinctUsersLast24h,
+              origin: {
+                trigger: candidate.trigger,
+                distinctUsersLast24h: candidate.distinctUsersLast24h,
+                distinctUsersPrev24h: candidate.distinctUsersPrev24h,
+                lastSeenAt: candidate.lastSeenAt.toISOString(),
+              },
+            },
+          ],
+          source: 'hot_spike',
+          trackCompletion: false,
+        });
+
+        hotSpikeEnqueuedJobs.push({
+          subreddit: candidate.subreddit,
+          termCount: 1,
         });
       }
 
       const totalDuration = Date.now() - startTime;
 
-      this.logger.info('Enqueued due keyword searches', {
+      if (scheduledEnqueuedJobs.length > 0) {
+        this.logger.info('Enqueued due keyword searches', {
+          correlationId,
+          totalDuration,
+          totalSchedules: dueSchedules.length,
+          subreddits: scheduledEnqueuedJobs.map((entry) => entry.subreddit),
+        });
+      }
+
+      if (hotSpikeEnqueuedJobs.length > 0) {
+        this.logger.info('Enqueued hot spike keyword searches', {
+          correlationId,
+          totalDuration,
+          hotSpikeCount: hotSpikeEnqueuedJobs.length,
+          subreddits: hotSpikeEnqueuedJobs.map((entry) => entry.subreddit),
+        });
+      }
+
+      const enqueuedJobs = [...scheduledEnqueuedJobs, ...hotSpikeEnqueuedJobs];
+
+      this.logger.info('Enqueued keyword searches', {
         correlationId,
         totalDuration,
-        totalSchedules: dueSchedules.length,
-        subreddits: enqueuedJobs.map((entry) => entry.subreddit),
+        scheduledCount: scheduledEnqueuedJobs.length,
+        hotSpikeCount: hotSpikeEnqueuedJobs.length,
+        totalJobs: enqueuedJobs.length,
       });
 
-      this.keywordSearchMetrics.recordScheduledEnqueue(enqueuedJobs);
+      this.keywordSearchMetrics.recordScheduledEnqueue(scheduledEnqueuedJobs);
 
       return {
         executedSearches: [],
@@ -1030,7 +1498,10 @@ export class KeywordSearchOrchestratorService
       this.logger.error('Failed to execute due keyword searches', {
         correlationId,
         totalDuration,
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? { message: error.message, name: error.name, stack: error.stack }
+            : { message: String(error) },
       });
 
       throw error;
@@ -1056,13 +1527,13 @@ export class KeywordSearchOrchestratorService
           .filter((s) => s.status === 'pending')
           .sort((a, b) => a.nextRun.getTime() - b.nextRun.getTime())[0]
           ?.nextRun,
-        totalEntitiesScheduled: schedules.reduce(
-          (sum, s) => sum + s.entities.length,
+        totalTermsScheduled: schedules.reduce(
+          (sum, s) => sum + s.terms.length,
           0,
         ),
-        averageEntitiesPerSchedule:
+        averageTermsPerSchedule:
           schedules.length > 0
-            ? schedules.reduce((sum, s) => sum + s.entities.length, 0) /
+            ? schedules.reduce((sum, s) => sum + s.terms.length, 0) /
               schedules.length
             : 0,
         schedulesBySubreddit: schedules.reduce(
@@ -1071,7 +1542,8 @@ export class KeywordSearchOrchestratorService
               status: s.status,
               nextRun: s.nextRun,
               lastRun: s.lastRun,
-              entityCount: s.entities.length,
+              collectionCoverageKey: s.collectionCoverageKey,
+              termCount: s.terms.length,
             };
             return acc;
           },
@@ -1082,28 +1554,35 @@ export class KeywordSearchOrchestratorService
       return metrics;
     } catch (error: unknown) {
       this.logger.error('Failed to get keyword search metrics', {
-        error: error instanceof Error ? error.message : String(error),
+        error:
+          error instanceof Error
+            ? { message: error.message, name: error.name, stack: error.stack }
+            : { message: String(error) },
       });
       throw error;
     }
   }
 
   async enqueueKeywordSearchJob(data: KeywordSearchJobData): Promise<void> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
+    const cycleId = data.cycleId ?? CorrelationUtils.generateCorrelationId();
+    const payload: KeywordSearchJobData = { ...data, cycleId };
 
-    await this.keywordSearchQueue.add('run-keyword-search', data, {
+    await this.keywordSearchQueue.add('run-keyword-search', payload, {
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 },
       removeOnComplete: true,
       removeOnFail: false,
-      jobId: data.jobId || `${data.source}-${data.subreddit}-${Date.now()}`,
+      jobId: data.jobId || `${data.source}-${data.subreddit}-${cycleId}`,
     });
 
     this.logger.debug('Queued keyword search job', {
-      correlationId,
+      cycleId,
+      correlationId: cycleId,
       subreddit: data.subreddit,
+      collectionCoverageKey: data.collectionCoverageKey ?? null,
       source: data.source,
-      entityCount: data.entities.length,
+      termCount: data.terms.length,
+      sortsPlanned: data.sortPlan?.map((entry) => entry.sort) ?? undefined,
     });
 
     await this.safeUpdateQueueMetrics();
@@ -1167,7 +1646,10 @@ export class KeywordSearchOrchestratorService
     this.autoExecutionTimer = setInterval(() => {
       this.executeDueKeywordSearches().catch((error) => {
         this.logger.error('Auto keyword execution failed', {
-          error: error instanceof Error ? error.message : String(error),
+          error:
+            error instanceof Error
+              ? { message: error.message, name: error.name, stack: error.stack }
+              : { message: String(error) },
         });
       });
     }, this.autoIntervalMs);
@@ -1273,14 +1755,14 @@ interface SortSummary {
  */
 export interface KeywordSearchExecutionResult {
   subreddit: string;
-  entities: EntityPriorityScore[];
+  terms: KeywordSearchTerm[];
   searchResults: Record<string, KeywordSearchResponse>;
-  processingResults: Record<string, EntityProcessingResult>;
+  processingResults: Record<string, TermProcessingResult>;
   metadata: {
-    totalEntities: number;
+    totalTerms: number;
     successfulSearches: number;
     failedSearches: number;
-    processedEntities: number;
+    processedTerms: number;
     processingErrors: number;
     executionStartTime: Date;
     executionEndTime: Date;
@@ -1295,14 +1777,14 @@ export interface KeywordSearchExecutionResult {
     processingDuration: number;
     totalDuration: number;
     totalApiCalls: number;
-    averageEntityProcessingTime: number;
+    averageTermProcessingTime: number;
   };
 }
 
 /**
  * Entity Processing Result
  */
-export interface EntityProcessingResult {
+export interface TermProcessingResult {
   success: boolean;
   error?: string;
   processingTime: number;
@@ -1315,7 +1797,7 @@ export interface EntityProcessingResult {
  */
 export interface KeywordSearchBatchResult {
   executedSearches: KeywordSearchExecutionResult[];
-  enqueuedJobs: Array<{ subreddit: string; entityCount: number }>;
+  enqueuedJobs: Array<{ subreddit: string; termCount: number }>;
   totalSchedules: number;
   successfulExecutions: number;
   failedExecutions: number;
@@ -1331,16 +1813,20 @@ export interface KeywordSearchMetrics {
   completedSchedules: number;
   failedSchedules: number;
   nextDueSearch?: Date;
-  totalEntitiesScheduled: number;
-  averageEntitiesPerSchedule: number;
+  totalTermsScheduled: number;
+  averageTermsPerSchedule: number;
   schedulesBySubreddit: Record<string, any>;
 }
 
 export interface KeywordSearchJobData {
   jobId?: string;
+  cycleId?: string;
   subreddit: string;
-  entities: EntityPriorityScore[];
-  source: 'scheduled' | 'on_demand';
+  collectionCoverageKey?: string;
+  safeIntervalDays?: number;
+  sortPlan?: KeywordSearchSortPlan[];
+  terms: KeywordSearchTerm[];
+  source: 'scheduled' | 'hot_spike';
   trackCompletion: boolean;
 }
 

@@ -1,9 +1,10 @@
 import type { Coordinate } from './search';
-import type { RecentSearch, RecentlyViewedRestaurant } from '../services/search';
+import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../services/search';
 
 export type MainSearchIntent =
   | { type: 'recentSearch'; entry: RecentSearch }
-  | { type: 'recentlyViewed'; restaurant: RecentlyViewedRestaurant };
+  | { type: 'recentlyViewed'; restaurant: RecentlyViewedRestaurant }
+  | { type: 'recentlyViewedFood'; food: RecentlyViewedFood };
 
 export type RootStackParamList = {
   Onboarding: undefined;

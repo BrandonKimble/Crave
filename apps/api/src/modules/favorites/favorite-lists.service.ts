@@ -398,21 +398,6 @@ export class FavoriteListsService {
     });
     await this.userStats.applyDelta(userId, { favoritesTotalCount: 1 });
 
-    if (dto.restaurantId) {
-      await this.prisma.entityPriorityMetric.upsert({
-        where: { entityId: dto.restaurantId },
-        create: {
-          entity: { connect: { entityId: dto.restaurantId } },
-          entityType: 'restaurant',
-          favoriteCount: 1,
-        },
-        update: {
-          entityType: 'restaurant',
-          favoriteCount: { increment: 1 },
-        },
-      });
-    }
-
     return item;
   }
 
@@ -448,11 +433,6 @@ export class FavoriteListsService {
     if (!list) {
       throw new NotFoundException('Favorite list not found');
     }
-
-    const existing = await this.prisma.favoriteListItem.findUnique({
-      where: { itemId },
-      select: { restaurantId: true },
-    });
     const result = await this.prisma.favoriteListItem.deleteMany({
       where: { itemId, listId },
     });
@@ -465,21 +445,6 @@ export class FavoriteListsService {
       data: { itemCount: { decrement: 1 } },
     });
     await this.userStats.applyDelta(userId, { favoritesTotalCount: -1 });
-
-    if (existing?.restaurantId) {
-      await this.prisma.entityPriorityMetric.upsert({
-        where: { entityId: existing.restaurantId },
-        create: {
-          entity: { connect: { entityId: existing.restaurantId } },
-          entityType: 'restaurant',
-          favoriteCount: 0,
-        },
-        update: {
-          entityType: 'restaurant',
-          favoriteCount: { decrement: 1 },
-        },
-      });
-    }
   }
 
   async enableShare(userId: string, listId: string, dto: ShareFavoriteListDto) {

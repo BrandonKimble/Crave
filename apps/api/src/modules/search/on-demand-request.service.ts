@@ -1,12 +1,8 @@
 import { Injectable, Inject } from '@nestjs/common';
-import {
-  EntityType,
-  OnDemandOutcome,
-  OnDemandReason,
-  Prisma,
-} from '@prisma/client';
+import { EntityType, OnDemandReason, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
+import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 
 export interface OnDemandRequestInput {
   term: string;
@@ -15,6 +11,11 @@ export interface OnDemandRequestInput {
   entityId?: string | null;
   locationKey?: string | null;
   metadata?: Record<string, unknown>;
+}
+
+export interface OnDemandRequestRecordOptions {
+  userId?: string | null;
+  seenAt?: Date;
 }
 
 @Injectable()
@@ -30,6 +31,7 @@ export class OnDemandRequestService {
 
   async recordRequests(
     requests: OnDemandRequestInput[],
+    options: OnDemandRequestRecordOptions = {},
     context: Record<string, unknown> = {},
   ): Promise<OnDemandRequestInput[]> {
     const deduped = this.deduplicateRequests(requests);
@@ -37,70 +39,107 @@ export class OnDemandRequestService {
       return [];
     }
 
-    const operations = deduped.map((request) => {
-      const resultRestaurantCount = this.extractInteger(
-        context.restaurantCount,
-      );
-      const resultFoodCount = this.extractInteger(context.foodCount);
-      const locationKey = this.normalizeLocationKey(request.locationKey);
+    const userId = this.normalizeUserId(options.userId);
+    const seenAt =
+      options.seenAt instanceof Date && !Number.isNaN(options.seenAt.getTime())
+        ? options.seenAt
+        : new Date();
 
-      const createData: Prisma.OnDemandRequestCreateInput = {
-        term: request.term,
-        entityType: request.entityType,
-        reason: request.reason,
-        locationKey,
-        metadata: this.buildMetadata(request.metadata, context),
-        attemptedSubreddits: [],
-        deferredAttempts: 0,
-      };
+    await this.prisma.$transaction(async (tx) => {
+      for (const request of deduped) {
+        const resultRestaurantCount = this.extractInteger(
+          context.restaurantCount,
+        );
+        const resultFoodCount = this.extractInteger(context.foodCount);
+        const locationKey = this.normalizeLocationKey(request.locationKey);
+        const metadata = this.buildMetadata(request.metadata, context);
 
-      if (request.entityId) {
-        createData.entity = {
-          connect: { entityId: request.entityId },
+        const createData: Prisma.OnDemandRequestCreateInput = {
+          term: request.term,
+          entityType: request.entityType,
+          reason: request.reason,
+          locationKey,
+          lastSeenAt: seenAt,
+          metadata,
         };
-      }
 
-      if (resultRestaurantCount !== null) {
-        createData.resultRestaurantCount = resultRestaurantCount;
-      }
-      if (resultFoodCount !== null) {
-        createData.resultFoodCount = resultFoodCount;
-      }
+        if (request.entityId) {
+          createData.entity = {
+            connect: { entityId: request.entityId },
+          };
+        }
 
-      const updateData: Prisma.OnDemandRequestUpdateInput = {
-        occurrenceCount: { increment: 1 },
-        lastSeenAt: new Date(),
-        locationKey,
-        metadata: this.buildMetadata(request.metadata, context),
-      };
+        if (resultRestaurantCount !== null) {
+          createData.resultRestaurantCount = resultRestaurantCount;
+        }
+        if (resultFoodCount !== null) {
+          createData.resultFoodCount = resultFoodCount;
+        }
 
-      if (request.entityId !== undefined) {
-        updateData.entity = request.entityId
-          ? { connect: { entityId: request.entityId } }
-          : { disconnect: true };
-      }
-      if (resultRestaurantCount !== null) {
-        updateData.resultRestaurantCount = resultRestaurantCount;
-      }
-      if (resultFoodCount !== null) {
-        updateData.resultFoodCount = resultFoodCount;
-      }
+        const updateData: Prisma.OnDemandRequestUpdateInput = {
+          lastSeenAt: seenAt,
+          locationKey,
+        };
 
-      return this.prisma.onDemandRequest.upsert({
-        where: {
-          term_entityType_reason_locationKey: {
-            term: request.term,
-            entityType: request.entityType,
-            reason: request.reason,
-            locationKey,
+        if (metadata) {
+          updateData.metadata = metadata;
+        }
+
+        if (request.entityId !== undefined) {
+          updateData.entity = request.entityId
+            ? { connect: { entityId: request.entityId } }
+            : { disconnect: true };
+        }
+        if (resultRestaurantCount !== null) {
+          updateData.resultRestaurantCount = resultRestaurantCount;
+        }
+        if (resultFoodCount !== null) {
+          updateData.resultFoodCount = resultFoodCount;
+        }
+
+        const record = await tx.onDemandRequest.upsert({
+          where: {
+            term_entityType_reason_locationKey: {
+              term: request.term,
+              entityType: request.entityType,
+              reason: request.reason,
+              locationKey,
+            },
           },
-        },
-        create: createData,
-        update: updateData,
-      });
-    });
+          create: createData,
+          update: updateData,
+          select: { requestId: true },
+        });
 
-    await this.prisma.$transaction(operations);
+        if (userId) {
+          await tx.onDemandRequestUser.upsert({
+            where: {
+              requestId_userId: {
+                requestId: record.requestId,
+                userId,
+              },
+            },
+            create: {
+              requestId: record.requestId,
+              userId,
+              createdAt: seenAt,
+            },
+            update: {
+              createdAt: seenAt,
+            },
+          });
+
+          const distinctUserCount = await tx.onDemandRequestUser.count({
+            where: { requestId: record.requestId },
+          });
+
+          await tx.onDemandRequest.update({
+            where: { requestId: record.requestId },
+            data: { distinctUserCount },
+          });
+        }
+      }
+    });
 
     this.logger.debug('Recorded on-demand requests', {
       requests: deduped.map((request) => ({
@@ -108,6 +147,7 @@ export class OnDemandRequestService {
         entityType: request.entityType,
         reason: request.reason,
       })),
+      userId: userId ?? undefined,
     });
 
     return deduped;
@@ -150,8 +190,14 @@ export class OnDemandRequestService {
     return normalized.length ? normalized : 'global';
   }
 
+  private normalizeUserId(userId?: string | null): string | null {
+    const normalized = typeof userId === 'string' ? userId.trim() : '';
+    return normalized.length ? normalized : null;
+  }
+
   private sanitizeTerm(term: string): string {
-    return term.trim().replace(/\s+/g, ' ');
+    const stripped = stripGenericTokens(term);
+    return stripped.isGenericOnly ? '' : stripped.text;
   }
 
   private buildMetadata(
@@ -170,121 +216,6 @@ export class OnDemandRequestService {
       };
     }
     return Object.keys(base).length ? (base as Prisma.JsonObject) : undefined;
-  }
-
-  async markQueuedById(
-    requestId: string,
-    update: { lastEnqueuedAt?: Date; status?: 'queued' | 'processing' } = {},
-  ): Promise<boolean> {
-    const { count } = await this.prisma.onDemandRequest.updateMany({
-      where: {
-        requestId,
-        status: 'pending',
-      },
-      data: {
-        status: update.status ?? 'queued',
-        lastEnqueuedAt: update.lastEnqueuedAt ?? new Date(),
-      },
-    });
-
-    if (count === 0) {
-      this.logger.debug('On-demand request already queued or processed', {
-        requestId,
-      });
-      return false;
-    }
-
-    return true;
-  }
-
-  async markProcessingById(requestId: string): Promise<void> {
-    await this.prisma.onDemandRequest.updateMany({
-      where: {
-        requestId,
-        status: 'queued',
-      },
-      data: {
-        status: 'processing',
-      },
-    });
-  }
-
-  async markCompletedById(
-    requestId: string,
-    update: {
-      entityId?: string | null;
-      outcome: OnDemandOutcome;
-      completedAt?: Date;
-      attemptedSubreddits?: string[];
-      metadata?: Record<string, unknown>;
-    },
-  ): Promise<void> {
-    await this.prisma.onDemandRequest.updateMany({
-      where: { requestId },
-      data: {
-        status: 'completed',
-        entityId: update.entityId ?? null,
-        lastOutcome: update.outcome,
-        lastCompletedAt: update.completedAt ?? new Date(),
-        lastAttemptAt: update.completedAt ?? new Date(),
-        deferredAttempts: 0,
-        attemptedSubreddits: update.attemptedSubreddits ?? [],
-        metadata: update.metadata
-          ? (update.metadata as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-      },
-    });
-  }
-
-  async resetToPendingById(
-    requestId: string,
-    update: {
-      outcome: OnDemandOutcome;
-      attemptedAt?: Date;
-      cooldownUntil?: Date;
-      deferredAttempts?: number;
-      attemptedSubreddits?: string[];
-      metadata?: Record<string, unknown>;
-    },
-  ): Promise<void> {
-    const metadata: Record<string, unknown> = {
-      ...(update.metadata ?? {}),
-    };
-
-    if (update.cooldownUntil) {
-      metadata.instantCooldownUntil = update.cooldownUntil.toISOString();
-    }
-
-    await this.prisma.onDemandRequest.updateMany({
-      where: { requestId },
-      data: {
-        status: 'pending',
-        lastOutcome: update.outcome,
-        lastAttemptAt: update.attemptedAt ?? new Date(),
-        deferredAttempts: update.deferredAttempts ?? 0,
-        attemptedSubreddits: update.attemptedSubreddits ?? [],
-        metadata: Object.keys(metadata).length
-          ? (metadata as Prisma.InputJsonValue)
-          : Prisma.JsonNull,
-      },
-    });
-  }
-
-  async markDeferredById(
-    requestId: string,
-    update: {
-      metadata: Record<string, unknown>;
-      deferredAttempts: number;
-    },
-  ): Promise<void> {
-    await this.prisma.onDemandRequest.updateMany({
-      where: { requestId },
-      data: {
-        metadata: update.metadata as Prisma.InputJsonValue,
-        deferredAttempts: update.deferredAttempts,
-        lastOutcome: OnDemandOutcome.deferred,
-      },
-    });
   }
 
   private extractInteger(value: unknown): number | null {

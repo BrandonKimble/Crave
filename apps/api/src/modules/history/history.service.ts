@@ -7,7 +7,9 @@ import { EntityType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService } from '../../shared';
 import { RecordRestaurantViewDto } from './dto/record-restaurant-view.dto';
+import { RecordFoodViewDto } from './dto/record-food-view.dto';
 import { ListRestaurantViewsDto } from './dto/list-restaurant-views.dto';
+import { ListFoodViewsDto } from './dto/list-food-views.dto';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from '../search/dto/restaurant-status-preview.dto';
 
@@ -90,24 +92,95 @@ export class HistoryService {
       },
     });
 
-    await this.prisma.entityPriorityMetric.upsert({
-      where: { entityId: restaurant.entityId },
-      create: {
-        entity: { connect: { entityId: restaurant.entityId } },
-        entityType: EntityType.restaurant,
-        viewImpressions: shouldIncrement ? 1 : 0,
-        lastViewAt: now,
-      },
-      update: {
-        entityType: EntityType.restaurant,
-        viewImpressions: shouldIncrement ? { increment: 1 } : undefined,
-        lastViewAt: now,
-      },
-    });
-
     this.logger.debug('Recorded restaurant view', {
       userId,
       restaurantId: restaurant.entityId,
+      shouldIncrement,
+      source: dto.source,
+    });
+  }
+
+  async recordFoodView(userId: string, dto: RecordFoodViewDto): Promise<void> {
+    const connection = await this.prisma.connection.findUnique({
+      where: { connectionId: dto.connectionId },
+      select: { connectionId: true, foodId: true },
+    });
+
+    if (!connection) {
+      throw new NotFoundException('Connection not found');
+    }
+
+    if (dto.foodId && dto.foodId !== connection.foodId) {
+      throw new BadRequestException('Connection does not match food');
+    }
+
+    const food = await this.prisma.entity.findUnique({
+      where: { entityId: connection.foodId },
+      select: { entityId: true, type: true },
+    });
+
+    if (!food) {
+      throw new NotFoundException('Food not found');
+    }
+
+    if (food.type !== EntityType.food) {
+      throw new BadRequestException('Entity is not a food');
+    }
+
+    const now = new Date();
+    const existing = await this.prisma.foodView.findUnique({
+      where: {
+        userId_connectionId: {
+          userId,
+          connectionId: connection.connectionId,
+        },
+      },
+      select: {
+        lastViewedAt: true,
+        viewCount: true,
+        metadata: true,
+      },
+    });
+
+    const shouldIncrement =
+      !existing ||
+      now.getTime() - existing.lastViewedAt.getTime() >= this.viewCooldownMs;
+
+    const metadata = {
+      ...(typeof existing?.metadata === 'object' && existing?.metadata
+        ? (existing.metadata as Record<string, unknown>)
+        : {}),
+      lastSource: dto.source ?? null,
+      lastSearchRequestId: dto.searchRequestId ?? null,
+    };
+
+    await this.prisma.foodView.upsert({
+      where: {
+        userId_connectionId: {
+          userId,
+          connectionId: connection.connectionId,
+        },
+      },
+      create: {
+        userId,
+        connectionId: connection.connectionId,
+        foodId: food.entityId,
+        lastViewedAt: now,
+        viewCount: 1,
+        metadata,
+      },
+      update: {
+        foodId: food.entityId,
+        lastViewedAt: now,
+        viewCount: shouldIncrement ? { increment: 1 } : undefined,
+        metadata,
+      },
+    });
+
+    this.logger.debug('Recorded food view', {
+      userId,
+      foodId: food.entityId,
+      connectionId: connection.connectionId,
       shouldIncrement,
       source: dto.source,
     });
@@ -176,6 +249,84 @@ export class HistoryService {
       lastViewedAt: row.lastViewedAt,
       viewCount: row.viewCount,
       statusPreview: previewMap.get(row.restaurant.entityId) ?? null,
+    }));
+  }
+
+  async listRecentlyViewedFoods(
+    userId: string,
+    query: ListFoodViewsDto,
+  ): Promise<
+    Array<{
+      connectionId: string;
+      foodId: string;
+      foodName: string;
+      restaurantId: string;
+      restaurantName: string;
+      lastViewedAt: Date;
+      viewCount: number;
+      statusPreview?: RestaurantStatusPreviewDto | null;
+    }>
+  > {
+    const take = Math.max(1, Math.min(query.limit ?? 10, 50));
+    const prefix = query.prefix?.trim();
+
+    const rows = await this.prisma.foodView.findMany({
+      where: {
+        userId,
+        ...(prefix
+          ? {
+              food: {
+                is: {
+                  name: { startsWith: prefix, mode: 'insensitive' },
+                },
+              },
+            }
+          : {}),
+      },
+      orderBy: { lastViewedAt: 'desc' },
+      take,
+      include: {
+        food: {
+          select: {
+            entityId: true,
+            name: true,
+          },
+        },
+        connection: {
+          select: {
+            connectionId: true,
+            restaurantId: true,
+            restaurant: {
+              select: {
+                entityId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const restaurantIds = rows.map((row) => row.connection.restaurantId);
+    const previews =
+      restaurantIds.length > 0
+        ? await this.restaurantStatusService.getStatusPreviews({
+            restaurantIds,
+          })
+        : [];
+    const previewMap = new Map(
+      previews.map((preview) => [preview.restaurantId, preview]),
+    );
+
+    return rows.map((row) => ({
+      connectionId: row.connection.connectionId,
+      foodId: row.food.entityId,
+      foodName: row.food.name,
+      restaurantId: row.connection.restaurantId,
+      restaurantName: row.connection.restaurant.name,
+      lastViewedAt: row.lastViewedAt,
+      viewCount: row.viewCount,
+      statusPreview: previewMap.get(row.connection.restaurantId) ?? null,
     }));
   }
 

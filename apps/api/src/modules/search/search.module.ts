@@ -16,9 +16,9 @@ import { SearchMetricsService } from './search-metrics.service';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { OnDemandPlaceholderCleanupService } from './on-demand-placeholder-cleanup.service';
+import { OnDemandRequestUsersCleanupService } from './on-demand-request-users-cleanup.service';
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
 import { SearchPopularityService } from './search-popularity.service';
 import { RestaurantStatusService } from './restaurant-status.service';
@@ -43,10 +43,10 @@ import { RestaurantStatusService } from './restaurant-status.service';
     SearchMetricsService,
     SearchQueryInterpretationService,
     OnDemandRequestService,
-    OnDemandProcessingService,
     SearchOrchestrationService,
     SearchSubredditResolverService,
     OnDemandPlaceholderCleanupService,
+    OnDemandRequestUsersCleanupService,
     SearchQuerySuggestionService,
     SearchPopularityService,
     RestaurantStatusService,
@@ -55,7 +55,6 @@ import { RestaurantStatusService } from './restaurant-status.service';
     SearchService,
     SearchOrchestrationService,
     OnDemandRequestService,
-    OnDemandProcessingService,
     SearchSubredditResolverService,
     SearchQuerySuggestionService,
     SearchPopularityService,

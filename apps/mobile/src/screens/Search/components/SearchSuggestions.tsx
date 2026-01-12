@@ -13,7 +13,7 @@ import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../../constants/typography';
 import type { AutocompleteMatch } from '../../../services/autocomplete';
-import type { RecentSearch, RecentlyViewedRestaurant } from '../../../services/search';
+import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../../services/search';
 import { filterRecentlyViewedByRecentSearches } from '../utils/history';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
@@ -24,13 +24,17 @@ type SearchSuggestionsProps = {
   suggestions: AutocompleteMatch[];
   recentSearches: RecentSearch[];
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
+  recentlyViewedFoods: RecentlyViewedFood[];
   hasRecentSearches: boolean;
   hasRecentlyViewedRestaurants: boolean;
+  hasRecentlyViewedFoods: boolean;
   isRecentLoading: boolean;
   isRecentlyViewedLoading: boolean;
+  isRecentlyViewedFoodsLoading: boolean;
   onSelectSuggestion: (match: AutocompleteMatch) => void;
   onSelectRecent: (term: RecentSearch) => void;
   onSelectRecentlyViewed: (restaurant: RecentlyViewedRestaurant) => void;
+  onSelectRecentlyViewedFood: (food: RecentlyViewedFood) => void;
   onPressRecentViewMore: () => void;
   onPressRecentlyViewedMore: () => void;
   style?: StyleProp<ViewStyle>;
@@ -51,13 +55,17 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
   suggestions,
   recentSearches,
   recentlyViewedRestaurants,
+  recentlyViewedFoods,
   hasRecentSearches,
   hasRecentlyViewedRestaurants,
+  hasRecentlyViewedFoods,
   isRecentLoading,
   isRecentlyViewedLoading,
+  isRecentlyViewedFoodsLoading,
   onSelectSuggestion,
   onSelectRecent,
   onSelectRecentlyViewed,
+  onSelectRecentlyViewedFood,
   onPressRecentViewMore,
   onPressRecentlyViewedMore,
   style,
@@ -70,19 +78,42 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
     showRecent &&
     (isRecentLoading ||
       isRecentlyViewedLoading ||
+      isRecentlyViewedFoodsLoading ||
       hasRecentSearches ||
-      hasRecentlyViewedRestaurants);
+      hasRecentlyViewedRestaurants ||
+      hasRecentlyViewedFoods);
   const shouldShowAutocompleteResults = showAutocomplete && suggestions.length > 0;
   const recentSearchesToRender = recentSearches.slice(0, RECENT_SEARCH_PREVIEW_LIMIT);
   const recentlyViewedDeduped = React.useMemo(
     () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
     [recentlyViewedRestaurants, recentSearches]
   );
-  const recentlyViewedToRender = recentlyViewedDeduped.slice(0, RECENTLY_VIEWED_PREVIEW_LIMIT);
-  const hasRecentlyViewedToRender = recentlyViewedDeduped.length > 0;
+  const recentlyViewedItems = React.useMemo(() => {
+    const items: Array<
+      | { type: 'food'; item: RecentlyViewedFood }
+      | { type: 'restaurant'; item: RecentlyViewedRestaurant }
+    > = [
+      ...recentlyViewedFoods.map((item) => ({ type: 'food' as const, item })),
+      ...recentlyViewedDeduped.map((item) => ({ type: 'restaurant' as const, item })),
+    ];
+
+    items.sort((left, right) => {
+      const leftTs = Date.parse(left.item.lastViewedAt);
+      const rightTs = Date.parse(right.item.lastViewedAt);
+      const leftValue = Number.isFinite(leftTs) ? leftTs : 0;
+      const rightValue = Number.isFinite(rightTs) ? rightTs : 0;
+      return rightValue - leftValue;
+    });
+
+    return items;
+  }, [recentlyViewedFoods, recentlyViewedDeduped]);
+  const recentlyViewedToRender = recentlyViewedItems.slice(0, RECENTLY_VIEWED_PREVIEW_LIMIT);
+  const hasRecentlyViewedToRender = recentlyViewedItems.length > 0;
   const shouldShowRecentViewMore = recentSearches.length > RECENT_SEARCH_PREVIEW_LIMIT;
   const shouldShowRecentlyViewedMore =
-    !isRecentlyViewedLoading && recentlyViewedDeduped.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
+    !isRecentlyViewedLoading &&
+    !isRecentlyViewedFoodsLoading &&
+    recentlyViewedItems.length > RECENTLY_VIEWED_PREVIEW_LIMIT;
   const containerStyles = [styles.container, style];
   const recentSectionStyles = [
     styles.recentSection,
@@ -240,11 +271,47 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
           <View style={[styles.recentHeaderRow, styles.recentHeaderRowSpaced]}>
             <Text style={styles.recentHeaderText}>Recently viewed</Text>
           </View>
-          {!isRecentlyViewedLoading && !hasRecentlyViewedToRender ? (
-            <Text style={styles.recentEmptyText}>No restaurants viewed yet</Text>
+          {!isRecentlyViewedLoading && !isRecentlyViewedFoodsLoading && !hasRecentlyViewedToRender ? (
+            <Text style={styles.recentEmptyText}>No recently viewed items yet</Text>
           ) : (
             <>
-              {recentlyViewedToRender.map((item, index) => {
+              {recentlyViewedToRender.map((entry, index) => {
+                if (entry.type === 'food') {
+                  const item = entry.item;
+                  const statusLine = renderMetaDetailLine(
+                    item.statusPreview?.operatingStatus ?? null,
+                    null,
+                    null,
+                    'left',
+                    item.restaurantName,
+                    false,
+                    false,
+                    null,
+                    styles.metaLineText
+                  );
+                  const hasMetaLine = Boolean(statusLine);
+                  return (
+                    <TouchableOpacity
+                      key={`${item.connectionId}-${index}`}
+                      onPress={() => onSelectRecentlyViewedFood(item)}
+                      style={styles.recentRow}
+                    >
+                      <View style={styles.recentIcon}>
+                        <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
+                      </View>
+                      <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
+                        <View style={styles.recentRowTextGroup}>
+                          <Text style={styles.recentText} numberOfLines={1}>
+                            {item.foodName}
+                          </Text>
+                          {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                }
+
+                const item = entry.item;
                 const statusLine = renderStatusLine(item.statusPreview ?? null);
                 const hasMetaLine = Boolean(statusLine);
                 return (
@@ -272,7 +339,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                   onPress={onPressRecentlyViewedMore}
                   style={[styles.recentViewMore, styles.recentViewMoreLast]}
                   accessibilityRole="button"
-                  accessibilityLabel="View more recently viewed restaurants"
+                  accessibilityLabel="View more recently viewed items"
                 >
                   <Text variant="body" weight="semibold" style={styles.recentViewMoreText}>
                     View more

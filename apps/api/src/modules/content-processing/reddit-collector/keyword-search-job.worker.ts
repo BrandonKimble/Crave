@@ -25,61 +25,99 @@ export class KeywordSearchJobWorker {
 
   @Process('run-keyword-search')
   async handle(job: Job<KeywordSearchJobData>): Promise<void> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-    const { subreddit, entities, source } = job.data;
-
-    this.logger.info('Executing keyword search job', {
-      correlationId,
-      jobId: job.id,
+    const {
       subreddit,
+      terms,
       source,
-      entityCount: entities.length,
-    });
+      collectionCoverageKey,
+      safeIntervalDays,
+      sortPlan,
+    } = job.data;
+    const scheduleKey = (collectionCoverageKey ?? subreddit)
+      .trim()
+      .toLowerCase();
+    const cycleId =
+      job.data.cycleId ?? CorrelationUtils.generateCorrelationId();
 
-    try {
-      const result = await this.orchestrator.executeKeywordSearchCycle(
-        subreddit,
-        entities,
-      );
-
-      if (job.data.trackCompletion) {
-        await this.keywordScheduler.markSearchCompleted(
+    return CorrelationUtils.runWithContext(
+      { correlationId: cycleId, startTime: Date.now() },
+      async () => {
+        this.logger.info('Executing keyword search job', {
+          cycleId,
+          correlationId: cycleId,
+          jobId: job.id,
           subreddit,
-          true,
-          result.metadata.processedEntities,
-        );
-      }
+          collectionCoverageKey,
+          source,
+          termCount: terms.length,
+          sortsPlanned: sortPlan?.map((entry) => entry.sort) ?? undefined,
+        });
 
-      this.keywordSearchMetrics.recordJobCompletion({
-        source,
-        subreddit,
-        processedEntities: result.metadata.processedEntities,
-      });
+        try {
+          const result = await this.orchestrator.executeKeywordSearchCycle(
+            subreddit,
+            terms,
+            { source, collectionCoverageKey, safeIntervalDays, sortPlan },
+          );
 
-      this.logger.info('Keyword search job completed', {
-        correlationId,
-        jobId: job.id,
-        subreddit,
-        processedEntities: result.metadata.processedEntities,
-      });
-    } catch (error) {
-      if (job.data.trackCompletion) {
-        await this.keywordScheduler.markSearchCompleted(subreddit, false, 0);
-      }
+          if (job.data.trackCompletion) {
+            await this.keywordScheduler.markSearchCompleted(
+              scheduleKey,
+              true,
+              result.metadata.processedTerms,
+            );
+          }
 
-      this.keywordSearchMetrics.recordJobFailure({
-        source,
-        subreddit,
-        error: error instanceof Error ? error.message : String(error),
-      });
+          const ranHeavySorts =
+            sortPlan?.some(
+              (entry) => entry.sort === 'top' || entry.sort === 'relevance',
+            ) ?? false;
 
-      this.logger.error('Keyword search job failed', {
-        correlationId,
-        jobId: job.id,
-        subreddit,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+          if (source === 'hot_spike' && ranHeavySorts) {
+            this.keywordScheduler.recordTopRelevanceRun(
+              scheduleKey,
+              result.metadata.executionStartTime,
+            );
+          }
+
+          this.keywordSearchMetrics.recordJobCompletion({
+            source,
+            subreddit,
+            processedTerms: result.metadata.processedTerms,
+          });
+
+          this.logger.info('Keyword search job completed', {
+            cycleId,
+            correlationId: cycleId,
+            jobId: job.id,
+            subreddit,
+            processedTerms: result.metadata.processedTerms,
+          });
+        } catch (error) {
+          if (job.data.trackCompletion) {
+            await this.keywordScheduler.markSearchCompleted(
+              scheduleKey,
+              false,
+              0,
+            );
+          }
+
+          this.keywordSearchMetrics.recordJobFailure({
+            source,
+            subreddit,
+            error: error instanceof Error ? error.message : String(error),
+          });
+
+          this.logger.error('Keyword search job failed', {
+            cycleId,
+            correlationId: cycleId,
+            jobId: job.id,
+            subreddit,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      },
+    );
   }
 }

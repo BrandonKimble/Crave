@@ -13,6 +13,8 @@ import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { formatCoverageLabel } from '../utils/format';
+import { searchService } from '../../../services/search';
+import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
@@ -34,7 +36,7 @@ type DishResultCardProps = {
   openRestaurantProfile: (
     restaurant: RestaurantResult,
     foodResultsOverride?: FoodResult[],
-    source?: 'results_sheet' | 'auto_open_single_candidate'
+    source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
   ) => void;
   openScoreInfo: (payload: ScoreInfoPayload) => void;
 };
@@ -51,6 +53,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   openRestaurantProfile,
   openScoreInfo,
 }) => {
+  const trackRecentlyViewedFood = useSearchHistoryStore((state) => state.trackRecentlyViewedFood);
   const dishPriceLabel = getPriceRangeLabel(item.restaurantPriceLevel);
   const hasStatus = Boolean(item.restaurantOperatingStatus);
   const dishMetaPrimaryLine = renderMetaDetailLine(
@@ -83,10 +86,43 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   }, [item.foodName, item.restaurantName]);
 
   const handleDishPress = React.useCallback(() => {
-    if (restaurantForDish) {
-      openRestaurantProfile(restaurantForDish, undefined, 'results_sheet');
+    if (!restaurantForDish) {
+      return;
     }
-  }, [openRestaurantProfile, restaurantForDish]);
+
+    void searchService
+      .recordFoodView({
+        connectionId: item.connectionId,
+        foodId: item.foodId,
+        source: 'results_sheet',
+      })
+      .catch(() => undefined);
+
+    trackRecentlyViewedFood({
+      connectionId: item.connectionId,
+      foodId: item.foodId,
+      foodName: item.foodName,
+      restaurantId: restaurantForDish.restaurantId,
+      restaurantName: restaurantForDish.restaurantName,
+      statusPreview: {
+        restaurantId: restaurantForDish.restaurantId,
+        operatingStatus: item.restaurantOperatingStatus ?? null,
+        distanceMiles: item.restaurantDistanceMiles ?? null,
+        locationCount: null,
+      },
+    });
+
+    openRestaurantProfile(restaurantForDish, undefined, 'dish_card');
+  }, [
+    item.connectionId,
+    item.foodId,
+    item.foodName,
+    item.restaurantDistanceMiles,
+    item.restaurantOperatingStatus,
+    openRestaurantProfile,
+    restaurantForDish,
+    trackRecentlyViewedFood,
+  ]);
 
   const handleDishInfoPress = React.useCallback(() => {
     openScoreInfo({

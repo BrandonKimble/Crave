@@ -38,50 +38,61 @@ export class KeywordBatchProcessingWorker implements OnModuleInit {
   async processKeywordBatch(
     job: Job<BatchJob>,
   ): Promise<BatchProcessingResult> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
     const batch = job.data;
+    const cycleId = batch.cycleId ?? CorrelationUtils.generateCorrelationId();
 
-    if (batch.collectionType !== 'keyword') {
-      return this.buildNoopResult(
-        batch,
-        0,
-        batch.postIds?.length ?? 0,
-        'Unsupported collection type',
-      );
-    }
+    return CorrelationUtils.runWithContext(
+      {
+        correlationId: cycleId,
+        startTime: Date.now(),
+      },
+      async () => {
+        if (batch.collectionType !== 'keyword') {
+          return this.buildNoopResult(
+            batch,
+            0,
+            batch.postIds?.length ?? 0,
+            'Unsupported collection type',
+          );
+        }
 
-    this.logger.info('Collection batch started', {
-      correlationId,
-      batchId: batch.batchId,
-      subreddit: batch.subreddit,
-      collectionType: batch.collectionType,
-      batch: `${batch.batchNumber}/${batch.totalBatches}`,
-      posts: batch.postIds?.length ?? 0,
-    });
+        this.logger.info('Collection batch started', {
+          cycleId,
+          correlationId: cycleId,
+          batchId: batch.batchId,
+          subreddit: batch.subreddit,
+          collectionType: batch.collectionType,
+          batch: `${batch.batchNumber}/${batch.totalBatches}`,
+          posts: batch.postIds?.length ?? 0,
+        });
 
-    try {
-      const result = await this.redditBatchProcessingService.processBatch(
-        batch,
-        correlationId,
-      );
-      this.logger.info('Collection batch completed', {
-        correlationId,
-        batchId: batch.batchId,
-        collectionType: batch.collectionType,
-        subreddit: batch.subreddit,
-        postsProcessed: result.metrics.postsProcessed,
-        mentionsExtracted: result.metrics.mentionsExtracted,
-      });
-      return result;
-    } catch (error) {
-      this.logger.error('Collection batch failed', {
-        correlationId,
-        batchId: batch.batchId,
-        collectionType: batch.collectionType,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    }
+        try {
+          const result = await this.redditBatchProcessingService.processBatch(
+            batch,
+            cycleId,
+          );
+          this.logger.info('Collection batch completed', {
+            cycleId,
+            correlationId: cycleId,
+            batchId: batch.batchId,
+            collectionType: batch.collectionType,
+            subreddit: batch.subreddit,
+            postsProcessed: result.metrics.postsProcessed,
+            mentionsExtracted: result.metrics.mentionsExtracted,
+          });
+          return result;
+        } catch (error) {
+          this.logger.error('Collection batch failed', {
+            cycleId,
+            correlationId: cycleId,
+            batchId: batch.batchId,
+            collectionType: batch.collectionType,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          throw error;
+        }
+      },
+    );
   }
 
   private buildNoopResult(

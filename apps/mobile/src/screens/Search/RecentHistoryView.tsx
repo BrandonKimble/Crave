@@ -8,7 +8,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Clock, View as ViewIcon } from 'lucide-react-native';
+import { ChevronLeft, Clock, HandPlatter, View as ViewIcon } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { CommonActions, StackActions, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -16,7 +16,7 @@ import type { StackNavigationProp } from '@react-navigation/stack';
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
-import type { RecentSearch, RecentlyViewedRestaurant } from '../../services/search';
+import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../../services/search';
 import type { RootStackParamList } from '../../types/navigation';
 import type { Coordinate } from '../../types';
 import useSearchHistory from './hooks/use-search-history';
@@ -33,6 +33,10 @@ type HistorySection<T> = {
   title: string;
   items: T[];
 };
+
+type RecentlyViewedHistoryItem =
+  | { type: 'restaurant'; item: RecentlyViewedRestaurant }
+  | { type: 'food'; item: RecentlyViewedFood };
 
 type RecentHistoryViewProps = {
   mode: HistoryMode;
@@ -142,14 +146,17 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
   const {
     recentSearches,
     recentlyViewedRestaurants,
+    recentlyViewedFoods,
     isRecentLoading,
     isRecentlyViewedLoading,
+    isRecentlyViewedFoodsLoading,
     loadRecentHistory,
     loadRecentlyViewedRestaurants,
+    loadRecentlyViewedFoods,
   } = useSearchHistory({ isSignedIn: Boolean(isSignedIn), autoLoad: false });
 
   const isRecentMode = mode === 'recentSearches';
-  const isLoading = isRecentMode ? isRecentLoading : isRecentlyViewedLoading;
+  const isLoading = isRecentMode ? isRecentLoading : isRecentlyViewedLoading || isRecentlyViewedFoodsLoading;
   const previousLabel = isRecentMode ? 'Previous searches' : 'Previous views';
 
   React.useEffect(() => {
@@ -158,22 +165,40 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
       return;
     }
     void loadRecentlyViewedRestaurants();
-  }, [isRecentMode, loadRecentHistory, loadRecentlyViewedRestaurants]);
+    void loadRecentlyViewedFoods();
+  }, [isRecentMode, loadRecentHistory, loadRecentlyViewedFoods, loadRecentlyViewedRestaurants]);
 
   const dedupedRecentlyViewed = React.useMemo(
     () => filterRecentlyViewedByRecentSearches(recentlyViewedRestaurants, recentSearches),
     [recentlyViewedRestaurants, recentSearches]
   );
 
+  const recentlyViewedItems = React.useMemo(() => {
+    const items: RecentlyViewedHistoryItem[] = [
+      ...recentlyViewedFoods.map((item) => ({ type: 'food' as const, item })),
+      ...dedupedRecentlyViewed.map((item) => ({ type: 'restaurant' as const, item })),
+    ];
+
+    items.sort((left, right) => {
+      const leftTs = Date.parse(left.item.lastViewedAt);
+      const rightTs = Date.parse(right.item.lastViewedAt);
+      const leftValue = Number.isFinite(leftTs) ? leftTs : 0;
+      const rightValue = Number.isFinite(rightTs) ? rightTs : 0;
+      return rightValue - leftValue;
+    });
+
+    return items;
+  }, [dedupedRecentlyViewed, recentlyViewedFoods]);
+
   const sections = React.useMemo(() => {
     if (isRecentMode) {
       return buildSections(recentSearches, (item) => item.lastSearchedAt, previousLabel);
     }
-    return buildSections(dedupedRecentlyViewed, (item) => item.lastViewedAt, previousLabel);
-  }, [isRecentMode, recentSearches, dedupedRecentlyViewed, previousLabel]);
+    return buildSections(recentlyViewedItems, (item) => item.item.lastViewedAt, previousLabel);
+  }, [isRecentMode, recentSearches, recentlyViewedItems, previousLabel]);
 
   const hasSections = sections.length > 0;
-  const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No restaurants viewed yet';
+  const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No recently viewed items yet';
   const contentStyle = React.useMemo(
     () => [styles.content, { paddingBottom: 32 + insets.bottom }],
     [insets.bottom]
@@ -202,6 +227,24 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
         navigation.dispatch({
           ...CommonActions.setParams({
             searchIntent: { type: 'recentlyViewed', restaurant },
+          }),
+          source: targetKey,
+        });
+      }
+      requestAnimationFrame(() => {
+        navigation.dispatch(StackActions.pop(1));
+      });
+    },
+    [navigation]
+  );
+
+  const handleSelectRecentlyViewedFood = React.useCallback(
+    (food: RecentlyViewedFood) => {
+      const targetKey = navigation.getState().routes.find((route) => route.name === 'Main')?.key;
+      if (targetKey) {
+        navigation.dispatch({
+          ...CommonActions.setParams({
+            searchIntent: { type: 'recentlyViewedFood', food },
           }),
           source: targetKey,
         });
@@ -258,7 +301,46 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
     );
   };
 
-  const renderRecentlyViewedRow = (item: RecentlyViewedRestaurant, index: number) => {
+  const renderRecentlyViewedRow = (entry: RecentlyViewedHistoryItem, index: number) => {
+    if (entry.type === 'food') {
+      const item = entry.item;
+      const statusLine = renderMetaDetailLine(
+        item.statusPreview?.operatingStatus ?? null,
+        null,
+        null,
+        'left',
+        item.restaurantName,
+        false,
+        false,
+        null,
+        styles.metaLineText
+      );
+      const hasMetaLine = Boolean(statusLine);
+      return (
+        <TouchableOpacity
+          key={item.connectionId}
+          onPress={() => handleSelectRecentlyViewedFood(item)}
+          activeOpacity={ROW_ACTIVE_OPACITY}
+          accessibilityRole="button"
+          accessibilityLabel={`View ${item.foodName} at ${item.restaurantName}`}
+          style={styles.recentRow}
+        >
+          <View style={styles.recentIcon}>
+            <HandPlatter size={18} color={ICON_COLOR} strokeWidth={2} />
+          </View>
+          <View style={[styles.recentRowContent, index === 0 && styles.recentRowFirst]}>
+            <View style={styles.recentRowTextGroup}>
+              <Text style={styles.recentText} numberOfLines={1}>
+                {item.foodName}
+              </Text>
+              {hasMetaLine ? <View style={styles.metaLine}>{statusLine}</View> : null}
+            </View>
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    const item = entry.item;
     const statusLine = renderStatusLine(item.statusPreview ?? null);
     const hasMetaLine = Boolean(statusLine);
     return (
@@ -327,7 +409,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
               {section.items.map((item, index) =>
                 isRecentMode
                   ? renderRecentRow(item as RecentSearch, index)
-                  : renderRecentlyViewedRow(item as RecentlyViewedRestaurant, index)
+                  : renderRecentlyViewedRow(item as RecentlyViewedHistoryItem, index)
               )}
             </View>
           ))

@@ -4,7 +4,7 @@ import { EntityType, OnDemandReason, SearchLogSource } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
-import { EntityPriorityMetricsRepository } from '../../repositories/entity-priority-metrics.repository';
+import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   EntityScope,
   FilterClause,
@@ -24,7 +24,6 @@ import {
   OnDemandRequestService,
   OnDemandRequestInput,
 } from './on-demand-request.service';
-import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchMetricsService } from './search-metrics.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
@@ -78,10 +77,8 @@ export class SearchService {
   constructor(
     loggerService: LoggerService,
     private readonly queryExecutor: SearchQueryExecutor,
-    private readonly entityPriorityMetricsRepository: EntityPriorityMetricsRepository,
     private readonly queryBuilder: SearchQueryBuilder,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly onDemandProcessingService: OnDemandProcessingService,
     private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly prisma: PrismaService,
@@ -255,8 +252,10 @@ export class SearchService {
         execution.totalDishCount,
       );
 
-      const resolvedLocationKey = await this.resolveLocationKey(request);
-      const onDemandLocationKey = request.bounds ? resolvedLocationKey : null;
+      const uiCoverageKey = await this.resolveLocationKey(request);
+      const collectionCoverageKey =
+        await this.resolveCollectionCoverageKey(request);
+      const onDemandLocationKey = request.bounds ? collectionCoverageKey : null;
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
@@ -290,30 +289,22 @@ export class SearchService {
             if (viewportEligible && onDemandLocationKey) {
               const recorded = await this.onDemandRequestService.recordRequests(
                 lowResultRequests,
+                { userId: request.userId ?? null },
                 context,
               );
 
               if (recorded.length) {
-                const enqueueResults =
-                  await this.onDemandProcessingService.enqueueRequests(
-                    recorded,
-                  );
-                onDemandQueued = enqueueResults.some((result) => result.queued);
-                onDemandEtaMs = enqueueResults.find(
-                  (result) => result.etaMs,
-                )?.etaMs;
-
-                if (onDemandQueued && !onDemandEtaMs) {
-                  onDemandEtaMs =
-                    (await this.onDemandProcessingService.estimateQueueDelayMs()) ??
-                    undefined;
-                }
+                onDemandQueued = true;
               }
             } else if (!onDemandLocationKey) {
-              await this.onDemandRequestService.recordRequests(
+              const recorded = await this.onDemandRequestService.recordRequests(
                 lowResultRequests,
+                { userId: request.userId ?? null },
                 context,
               );
+              if (recorded.length) {
+                onDemandQueued = true;
+              }
             }
           }
         } catch (error) {
@@ -353,7 +344,7 @@ export class SearchService {
         perRestaurantLimit,
         coverageStatus,
         primaryFoodTerm: primaryFoodTerm || undefined,
-        coverageKey: resolvedLocationKey ?? null,
+        coverageKey: uiCoverageKey ?? null,
         onDemandQueued: onDemandQueued || undefined,
         onDemandEtaMs,
       };
@@ -386,14 +377,18 @@ export class SearchService {
 
       if (pagination.page === 1) {
         try {
-          await this.recordQueryImpressions(request, {
-            searchRequestId,
-            totalResults,
-            totalFoodResults,
-            totalRestaurantResults,
-            queryExecutionTimeMs: metadata.queryExecutionTimeMs,
-            coverageStatus,
-          });
+          await this.recordQueryImpressions(
+            request,
+            {
+              searchRequestId,
+              totalResults,
+              totalFoodResults,
+              totalRestaurantResults,
+              queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+              coverageStatus,
+            },
+            { uiCoverageKey, collectionCoverageKey },
+          );
         } catch (error) {
           this.logger.warn('Failed to record search query impressions', {
             error: {
@@ -663,6 +658,10 @@ export class SearchService {
       queryExecutionTimeMs: number;
       coverageStatus: 'full' | 'partial' | 'unresolved';
     },
+    coverageKeys?: {
+      uiCoverageKey: string | null;
+      collectionCoverageKey: string | null;
+    },
   ): Promise<void> {
     const targets = this.gatherEntityImpressionTargets(request);
     if (!targets.length) {
@@ -670,52 +669,10 @@ export class SearchService {
     }
 
     const now = new Date();
-
-    await Promise.all(
-      targets.map(({ entityId, entityType }) =>
-        this.entityPriorityMetricsRepository.upsertMetrics(
-          { entityId },
-          {
-            entity: { connect: { entityId } },
-            entityType,
-            queryImpressions: 1,
-            lastQueryAt: now,
-          },
-          {
-            entityType,
-            queryImpressions: { increment: 1 },
-            lastQueryAt: now,
-          },
-        ),
-      ),
-    );
-
-    const selected = request.submissionContext?.selectedEntityId
-      ? {
-          entityId: request.submissionContext.selectedEntityId,
-          entityType: request.submissionContext.selectedEntityType ?? null,
-        }
-      : null;
-
-    if (
-      request.submissionSource === 'autocomplete' &&
-      selected?.entityId &&
-      selected.entityType &&
-      selected.entityType !== 'restaurant'
-    ) {
-      await this.entityPriorityMetricsRepository.upsertMetrics(
-        { entityId: selected.entityId },
-        {
-          entity: { connect: { entityId: selected.entityId } },
-          entityType: selected.entityType,
-          autocompleteSelections: 1,
-        },
-        {
-          entityType: selected.entityType,
-          autocompleteSelections: { increment: 1 },
-        },
-      );
-    }
+    const resolvedCoverageKeys = coverageKeys ?? {
+      uiCoverageKey: await this.resolveLocationKey(request),
+      collectionCoverageKey: await this.resolveCollectionCoverageKey(request),
+    };
 
     await this.recordSearchLogEntries(
       request,
@@ -723,6 +680,7 @@ export class SearchService {
       now,
       request.userId,
       context,
+      resolvedCoverageKeys,
     );
   }
 
@@ -739,37 +697,77 @@ export class SearchService {
   private gatherEntityImpressionTargets(
     request: SearchQueryRequestDto,
   ): { entityId: string; entityType: EntityType }[] {
-    const targets: { entityId: string; entityType: EntityType }[] = [];
-    const push = (ids: string[], entityType: EntityType) => {
-      for (const id of ids) {
-        if (id) {
-          targets.push({ entityId: id, entityType });
+    const selectedEntityId =
+      request.submissionContext?.selectedEntityId ?? null;
+    const selectedEntityType =
+      request.submissionContext?.selectedEntityType ?? null;
+
+    if (selectedEntityId && selectedEntityType) {
+      return [{ entityId: selectedEntityId, entityType: selectedEntityType }];
+    }
+
+    const candidates: Array<{
+      entityId: string;
+      entityType: EntityType;
+      specificity: number;
+      term: string;
+    }> = [];
+
+    const pushMostSpecific = (
+      entities: QueryEntityDto[] | undefined,
+      entityType: EntityType,
+    ) => {
+      for (const entity of entities ?? []) {
+        const entityId = entity.entityIds?.[0] ?? null;
+        if (!entityId) {
+          continue;
         }
+
+        const rawTerm = entity.originalText ?? entity.normalizedName ?? '';
+        const stripped = stripGenericTokens(rawTerm);
+        if (stripped.isGenericOnly) {
+          continue;
+        }
+
+        const term = stripped.text.trim();
+        if (!term.length) {
+          continue;
+        }
+
+        candidates.push({
+          entityId,
+          entityType,
+          specificity: term.length,
+          term,
+        });
       }
     };
 
-    push(this.collectEntityIds(request.entities.restaurants), 'restaurant');
-    push(this.collectEntityIds(request.entities.food), 'food');
-    push(
-      this.collectEntityIds(request.entities.foodAttributes),
-      'food_attribute',
-    );
-    push(
-      this.collectEntityIds(request.entities.restaurantAttributes),
+    pushMostSpecific(request.entities.food, 'food');
+    pushMostSpecific(request.entities.restaurants, 'restaurant');
+    pushMostSpecific(request.entities.foodAttributes, 'food_attribute');
+    pushMostSpecific(
+      request.entities.restaurantAttributes,
       'restaurant_attribute',
     );
 
-    const deduped = new Map<string, EntityType>();
-    for (const target of targets) {
-      if (!deduped.has(target.entityId)) {
-        deduped.set(target.entityId, target.entityType);
-      }
+    if (!candidates.length) {
+      return [];
     }
 
-    return Array.from(deduped.entries()).map(([entityId, entityType]) => ({
-      entityId,
-      entityType,
-    }));
+    candidates.sort((a, b) => b.specificity - a.specificity);
+    const primary = candidates[0];
+    if (!primary) {
+      return [];
+    }
+
+    this.logger.debug('Selected primary search attribution target', {
+      entityId: primary.entityId,
+      entityType: primary.entityType,
+      term: primary.term,
+    });
+
+    return [{ entityId: primary.entityId, entityType: primary.entityType }];
   }
 
   private async recordSearchLogEntries(
@@ -785,6 +783,10 @@ export class SearchService {
       queryExecutionTimeMs: number;
       coverageStatus: 'full' | 'partial' | 'unresolved';
     },
+    coverageKeys?: {
+      uiCoverageKey: string | null;
+      collectionCoverageKey: string | null;
+    },
   ): Promise<void> {
     if (
       !this.searchLogEnabled ||
@@ -795,7 +797,8 @@ export class SearchService {
     }
 
     try {
-      const locationKey = await this.resolveLocationKey(request);
+      const locationKey = coverageKeys?.uiCoverageKey ?? null;
+      const collectionCoverageKey = coverageKeys?.collectionCoverageKey ?? null;
       const filtersApplied = {
         openNow: Boolean(request.openNow),
         priceLevels: this.normalizePriceLevels(request.priceLevels),
@@ -823,6 +826,7 @@ export class SearchService {
         entityId,
         entityType,
         locationKey,
+        collectionCoverageKey,
         queryText: request.sourceQuery ?? null,
         searchRequestId: context.searchRequestId,
         totalResults: context.totalResults,
@@ -876,6 +880,29 @@ export class SearchService {
       return null;
     } catch (error) {
       this.logger.debug('Unable to resolve search location key', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return null;
+    }
+  }
+
+  private async resolveCollectionCoverageKey(
+    request: SearchQueryRequestDto,
+  ): Promise<string | null> {
+    try {
+      const fallbackLocation = this.resolveFallbackLocation(request);
+      const match = await this.subredditResolver.resolvePrimaryCollectable({
+        bounds: request.bounds ?? null,
+        fallbackLocation: fallbackLocation ?? null,
+        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+      });
+
+      return match ? match.toLowerCase() : null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve search collection coverage key', {
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }

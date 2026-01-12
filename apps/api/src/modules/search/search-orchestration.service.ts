@@ -6,6 +6,7 @@ import {
 } from './dto/search-query.dto';
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { LoggerService } from '../../shared';
+import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 
 @Injectable()
 export class SearchOrchestrationService {
@@ -25,8 +26,36 @@ export class SearchOrchestrationService {
   async runNaturalQuery(
     request: NaturalSearchRequestDto,
   ): Promise<SearchResponseDto> {
-    const interpretation = await this.interpretationService.interpret(request);
-    interpretation.structuredRequest.sourceQuery = request.query;
+    const originalQuery = request.query;
+    const normalizedQuery = stripGenericTokens(originalQuery);
+
+    if (normalizedQuery.isGenericOnly) {
+      const response = await this.searchService.runQuery({
+        entities: {},
+        bounds: request.bounds,
+        userLocation: request.userLocation,
+        openNow: request.openNow,
+        pagination: request.pagination,
+        includeSqlPreview: request.includeSqlPreview,
+        priceLevels: request.priceLevels,
+        minimumVotes: request.minimumVotes,
+        userId: request.userId,
+        searchRequestId: request.searchRequestId,
+        submissionSource: 'shortcut',
+        submissionContext: request.submissionContext,
+      });
+
+      response.metadata.sourceQuery = originalQuery;
+      this.logPhaseTimings(response, originalQuery);
+
+      return response;
+    }
+
+    const interpretation = await this.interpretationService.interpret({
+      ...request,
+      query: normalizedQuery.text,
+    });
+    interpretation.structuredRequest.sourceQuery = normalizedQuery.text;
     interpretation.structuredRequest.searchRequestId = request.searchRequestId;
     interpretation.structuredRequest.submissionSource =
       request.submissionSource ?? 'manual';
@@ -55,13 +84,13 @@ export class SearchOrchestrationService {
           terms: group.terms,
         }),
       );
-      response.metadata.sourceQuery = request.query;
+      response.metadata.sourceQuery = originalQuery;
       response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
         response.metadata.analysisMetadata,
         interpretation.analysisMetadata,
         interpretation.phaseTimings,
       );
-      this.logPhaseTimings(response, request.query);
+      this.logPhaseTimings(response, normalizedQuery.text);
 
       return response;
     }
@@ -76,13 +105,13 @@ export class SearchOrchestrationService {
         terms: group.terms,
       }),
     );
-    response.metadata.sourceQuery = request.query;
+    response.metadata.sourceQuery = originalQuery;
     response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
       response.metadata.analysisMetadata,
       interpretation.analysisMetadata,
       interpretation.phaseTimings,
     );
-    this.logPhaseTimings(response, request.query);
+    this.logPhaseTimings(response, normalizedQuery.text);
     if (interpretation.onDemandQueued && !response.metadata.onDemandQueued) {
       response.metadata.onDemandQueued = true;
     }

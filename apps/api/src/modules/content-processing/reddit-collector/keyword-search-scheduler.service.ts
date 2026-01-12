@@ -1,45 +1,54 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { LoggerService, CorrelationUtils } from '../../../shared';
-import { CoverageSourceType, EntityType } from '@prisma/client';
+import { CoverageSourceType } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { SearchDemandService } from '../../analytics/search-demand.service';
-import { ScheduledCollectionExceptionFactory } from './scheduled-collection.exceptions';
-import {
-  EntityPrioritySelectionService,
-  EntityPriorityScore,
-} from './entity-priority-selection.service';
+import { stripGenericTokens } from '../../../shared/utils/generic-token-handling';
+import { normalizeKeywordTerm } from './keyword-term-normalization';
+import { KeywordSliceSelectionService } from './keyword-slice-selection.service';
+import type {
+  KeywordSearchSortPlan,
+  KeywordSearchTerm,
+} from './keyword-search-orchestrator.service';
 
 export interface KeywordSearchConfig {
   enabled: boolean;
-  entityCount: number;
   intervalDays: number;
-  searchLimit: number;
-  cityWindowDays: number;
-  cityMinImpressions: number;
 }
 
 export interface KeywordSearchSchedule {
   subreddit: string;
+  collectionCoverageKey: string;
+  safeIntervalDays: number;
   scheduledDate: Date;
-  entities: EntityPriorityScore[];
+  terms: KeywordSearchTerm[];
+  sortPlan: KeywordSearchSortPlan[];
+  lastTopRelevanceRunAt?: Date;
   status: 'pending' | 'scheduled' | 'completed' | 'failed';
   lastRun?: Date;
   nextRun: Date;
 }
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const KEYWORD_ENTITY_TYPES: EntityType[] = [
-  'restaurant',
-  'food',
-  'food_attribute',
-  'restaurant_attribute',
-];
+const HOT_SPIKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const HOT_SPIKE_ABSOLUTE_DISTINCT_USERS = 25;
+const HOT_SPIKE_TREND_DISTINCT_USERS = 10;
+const HOT_SPIKE_TREND_MULTIPLIER = 3;
+const HOT_SPIKE_ATTEMPT_THROTTLE_MS = 6 * 60 * 60 * 1000;
+const HOT_SPIKE_MAX_JOBS_PER_RUN = 10;
 
-type CoverageKeyRecord = {
-  coverageKey: string | null;
-  name: string;
-} | null;
+export interface HotSpikeKeywordCandidate {
+  subreddit: string;
+  collectionCoverageKey: string;
+  safeIntervalDays: number;
+  term: string;
+  normalizedTerm: string;
+  distinctUsersLast24h: number;
+  distinctUsersPrev24h: number;
+  lastSeenAt: Date;
+  trigger: 'absolute' | 'trend';
+  sortPlan: KeywordSearchSortPlan[];
+}
 
 /**
  * Keyword Search Scheduler Service
@@ -65,23 +74,16 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   private logger!: LoggerService;
   private config!: KeywordSearchConfig;
   private schedules = new Map<string, KeywordSearchSchedule>();
-  private readonly coverageKeyCache = new Map<string, string>();
-  // Default configuration following PRD requirements
   private readonly DEFAULT_CONFIG: KeywordSearchConfig = {
     enabled: true,
-    entityCount: 25,
-    intervalDays: 7,
-    searchLimit: 1000,
-    cityWindowDays: 14,
-    cityMinImpressions: 5,
+    intervalDays: 1,
   };
 
   constructor(
     @Inject(ConfigService) private readonly configService: ConfigService,
-    private readonly entityPriorityService: EntityPrioritySelectionService,
     private readonly prisma: PrismaService,
+    private readonly sliceSelection: KeywordSliceSelectionService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
-    private readonly demandService: SearchDemandService,
   ) {}
 
   onModuleInit(): void {
@@ -106,14 +108,15 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       return;
     }
 
-    // Initialize schedules for each subreddit
-    const subreddits = await this.loadActiveSubreddits();
-    for (const subreddit of subreddits) {
-      await this.initializeSubredditSchedule(subreddit);
+    // Initialize schedules for each coverage key (primary subreddit per key)
+    const scheduleTargets = await this.loadActiveScheduleTargets();
+    for (const target of scheduleTargets) {
+      await this.initializeCoverageSchedule(target);
     }
 
     this.logger.info('Keyword search scheduling initialized', {
       nextRuns: this.getAllSchedules().map((schedule) => ({
+        collectionCoverageKey: schedule.collectionCoverageKey,
         subreddit: schedule.subreddit,
         nextRun: schedule.nextRun,
       })),
@@ -121,150 +124,60 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
   }
 
   /**
-   * Initialize keyword search schedule for a specific subreddit
+   * Initialize keyword search schedule for a specific collection coverage key
    */
-  private async initializeSubredditSchedule(subreddit: string): Promise<void> {
+  private async initializeCoverageSchedule(target: {
+    subreddit: string;
+    collectionCoverageKey: string;
+  }): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
+    const subreddit = target.subreddit.trim();
 
-    this.logger.info('Initializing keyword search schedule for subreddit', {
+    this.logger.info('Initializing keyword search schedule for coverage key', {
       correlationId,
       operation: 'initialize_subreddit_schedule',
       subreddit,
+      collectionCoverageKey: target.collectionCoverageKey,
     });
 
     // Calculate next run date (first of next month + offset)
     const nextRun = this.calculateNextRunDate();
 
-    // Get priority entities for this subreddit
-    const entities = await this.calculateEntityPriorities(subreddit);
+    const selection = await this.selectTermsForSubreddit({
+      subreddit,
+      collectionCoverageKeyHint: target.collectionCoverageKey,
+    });
+    const sortPlan = this.buildSortPlan({
+      safeIntervalDays: selection.safeIntervalDays,
+      runAt: nextRun,
+    });
 
     const schedule: KeywordSearchSchedule = {
       subreddit,
+      collectionCoverageKey: selection.collectionCoverageKey,
+      safeIntervalDays: selection.safeIntervalDays,
       scheduledDate: nextRun,
-      entities,
+      terms: selection.terms,
+      sortPlan,
       status: 'pending',
       nextRun,
     };
 
-    this.schedules.set(subreddit, schedule);
+    this.schedules.set(schedule.collectionCoverageKey, schedule);
 
     this.logger.info('Keyword search schedule initialized', {
       correlationId,
       subreddit,
       nextRun,
-      entityCount: entities.length,
-      topEntities: entities
-        .slice(0, 5)
-        .map((e) => ({ name: e.entityName, score: e.score })),
+      termCount: selection.terms.length,
+      collectionCoverageKey: selection.collectionCoverageKey,
+      sortsPlanned: sortPlan.map((entry) => entry.sort),
+      topTerms: selection.terms.slice(0, 5).map((term) => ({
+        term: term.term,
+        slice: term.slice ?? null,
+        score: term.score ?? null,
+      })),
     });
-  }
-
-  /**
-   * Calculate entity priority scores using PRD algorithm
-   *
-   * PRD factors:
-   * - Data recency (days since last enrichment, new entity status)
-   * - Data quality (mention count, source diversity)
-   * - User demand (query frequency, high-potential entities)
-   */
-  private async calculateEntityPriorities(
-    subreddit: string,
-  ): Promise<EntityPriorityScore[]> {
-    const correlationId = CorrelationUtils.generateCorrelationId();
-
-    this.logger.debug('Calculating entity priority scores', {
-      correlationId,
-      operation: 'calculate_entity_priorities',
-      subreddit,
-    });
-
-    try {
-      const since = new Date(
-        Date.now() - this.config.cityWindowDays * MS_PER_DAY,
-      );
-      const locationKey = await this.resolveCoverageKey(subreddit);
-      const demand = await this.demandService.getTopEntitiesForLocation({
-        locationKey,
-        since,
-        entityTypes: KEYWORD_ENTITY_TYPES,
-        minImpressions: this.config.cityMinImpressions,
-        limit: this.config.entityCount * 3,
-      });
-
-      if (!demand.length) {
-        this.logger.debug('No city-specific demand found for subreddit', {
-          subreddit,
-        });
-        return [];
-      }
-
-      const demandIds = new Set(demand.map((record) => record.entityId));
-      const prioritizedEntities =
-        await this.entityPriorityService.selectTopPriorityEntities({
-          maxEntities: this.config.entityCount * 4,
-        });
-
-      const filtered = prioritizedEntities.filter((entity) =>
-        demandIds.has(entity.entityId),
-      );
-
-      this.logger.info('Entity priority scores calculated', {
-        correlationId,
-        subreddit,
-        selectedCount: filtered.length,
-        locationDemand: demand.length,
-        topEntities: filtered.slice(0, 5).map((e) => ({
-          name: e.entityName,
-          type: e.entityType,
-          score: e.score,
-        })),
-      });
-
-      return filtered.slice(0, this.config.entityCount);
-    } catch (error: unknown) {
-      this.logger.error('Failed to calculate entity priority scores', {
-        correlationId,
-        subreddit,
-        error: error instanceof Error ? error.message : String(error),
-      });
-
-      // Fallback to empty array if priority calculation fails
-      // In production, this might warrant alerting or alternative handling
-      return [];
-    }
-  }
-
-  private async resolveCoverageKey(subreddit: string): Promise<string> {
-    const normalized = subreddit.trim().toLowerCase();
-    if (!normalized) {
-      return subreddit;
-    }
-
-    const cached = this.coverageKeyCache.get(normalized);
-    if (cached) {
-      return cached;
-    }
-
-    const record = (await this.prisma.coverageArea.findFirst({
-      where: {
-        name: {
-          equals: subreddit,
-          mode: 'insensitive',
-        },
-        sourceType: CoverageSourceType.all,
-      },
-      select: { coverageKey: true, name: true },
-    })) as CoverageKeyRecord;
-
-    const resolved =
-      typeof record?.coverageKey === 'string' && record.coverageKey.trim()
-        ? record.coverageKey.trim().toLowerCase()
-        : record?.name
-          ? record.name.trim().toLowerCase()
-          : normalized;
-
-    this.coverageKeyCache.set(normalized, resolved);
-    return resolved;
   }
 
   /**
@@ -276,10 +189,40 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     return start;
   }
 
+  private buildSortPlan(params: {
+    safeIntervalDays: number;
+    lastTopRelevanceRunAt?: Date;
+    runAt?: Date;
+    forceHeavy?: boolean;
+  }): KeywordSearchSortPlan[] {
+    const runAt =
+      params.runAt instanceof Date && !Number.isNaN(params.runAt.getTime())
+        ? params.runAt
+        : new Date();
+    const safeIntervalDays =
+      Number.isFinite(params.safeIntervalDays) && params.safeIntervalDays > 0
+        ? params.safeIntervalDays
+        : 0;
+    const thresholdDays = Math.max(safeIntervalDays * 3, 60);
+    const thresholdMs = thresholdDays * MS_PER_DAY;
+
+    const heavyDue =
+      params.forceHeavy === true ||
+      !params.lastTopRelevanceRunAt ||
+      runAt.getTime() - params.lastTopRelevanceRunAt.getTime() >= thresholdMs;
+
+    const sortPlan: KeywordSearchSortPlan[] = [{ sort: 'new' }];
+    if (heavyDue) {
+      sortPlan.push({ sort: 'relevance' }, { sort: 'top' });
+    }
+
+    return sortPlan;
+  }
+
   /**
    * Check if any keyword searches are due
    */
-  checkDueSearches(): KeywordSearchSchedule[] {
+  async checkDueSearches(): Promise<KeywordSearchSchedule[]> {
     const correlationId = CorrelationUtils.generateCorrelationId();
     const now = new Date();
     const dueSchedules: KeywordSearchSchedule[] = [];
@@ -290,17 +233,35 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       currentTime: now,
     });
 
-    for (const [subreddit, schedule] of this.schedules.entries()) {
-      if (schedule.status === 'pending' && now >= schedule.nextRun) {
+    for (const [scheduleKey, schedule] of this.schedules.entries()) {
+      if (schedule.status !== 'scheduled' && now >= schedule.nextRun) {
+        const selection = await this.selectTermsForSubreddit({
+          subreddit: schedule.subreddit,
+          collectionCoverageKeyHint: schedule.collectionCoverageKey,
+        });
+        schedule.collectionCoverageKey = selection.collectionCoverageKey;
+        schedule.safeIntervalDays = selection.safeIntervalDays;
+        schedule.terms = selection.terms;
+        schedule.sortPlan = this.buildSortPlan({
+          safeIntervalDays: schedule.safeIntervalDays,
+          lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
+          runAt: now,
+        });
+
         this.logger.info('Keyword search is due', {
           correlationId,
-          subreddit,
+          subreddit: schedule.subreddit,
           scheduledTime: schedule.nextRun,
-          entityCount: schedule.entities.length,
+          collectionCoverageKey: schedule.collectionCoverageKey,
+          termCount: schedule.terms.length,
+          sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
         });
 
         schedule.status = 'scheduled';
-        this.schedules.set(subreddit, schedule);
+        if (schedule.collectionCoverageKey !== scheduleKey) {
+          this.schedules.delete(scheduleKey);
+        }
+        this.schedules.set(schedule.collectionCoverageKey, schedule);
         dueSchedules.push(schedule);
       }
     }
@@ -308,21 +269,236 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     return dueSchedules;
   }
 
+  async findHotSpikeCandidates(): Promise<HotSpikeKeywordCandidate[]> {
+    const correlationId = CorrelationUtils.generateCorrelationId();
+
+    if (!this.config.enabled) {
+      return [];
+    }
+
+    const now = new Date();
+    const since48h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS * 2);
+    const since24h = new Date(now.getTime() - HOT_SPIKE_WINDOW_MS);
+
+    const scheduleByCoverageKey = new Map<string, KeywordSearchSchedule>();
+    for (const schedule of this.schedules.values()) {
+      if (schedule.status === 'scheduled') {
+        continue;
+      }
+      if (!scheduleByCoverageKey.has(schedule.collectionCoverageKey)) {
+        scheduleByCoverageKey.set(schedule.collectionCoverageKey, schedule);
+      }
+    }
+
+    if (!scheduleByCoverageKey.size) {
+      return [];
+    }
+
+    const rows = await this.prisma.onDemandRequestUser.findMany({
+      where: { createdAt: { gte: since48h } },
+      select: {
+        userId: true,
+        createdAt: true,
+        request: {
+          select: {
+            locationKey: true,
+            term: true,
+          },
+        },
+      },
+    });
+
+    if (!rows.length) {
+      return [];
+    }
+
+    const aggregates = new Map<
+      string,
+      {
+        collectionCoverageKey: string;
+        normalizedTerm: string;
+        term: string;
+        lastSeenAt: Date;
+        last24Users: Set<string>;
+        prev24Users: Set<string>;
+      }
+    >();
+
+    for (const row of rows) {
+      const request = row.request;
+      const collectionCoverageKey = request.locationKey.trim().toLowerCase();
+      if (!scheduleByCoverageKey.has(collectionCoverageKey)) {
+        continue;
+      }
+
+      const stripped = stripGenericTokens(request.term);
+      const term = stripped.text;
+      const normalizedTerm = normalizeKeywordTerm(term);
+      if (!normalizedTerm || stripped.isGenericOnly) {
+        continue;
+      }
+
+      const key = `${collectionCoverageKey}::${normalizedTerm}`;
+      let aggregate = aggregates.get(key);
+      if (!aggregate) {
+        aggregate = {
+          collectionCoverageKey,
+          normalizedTerm,
+          term,
+          lastSeenAt: row.createdAt,
+          last24Users: new Set(),
+          prev24Users: new Set(),
+        };
+        aggregates.set(key, aggregate);
+      }
+
+      if (row.createdAt > aggregate.lastSeenAt) {
+        aggregate.lastSeenAt = row.createdAt;
+        aggregate.term = term;
+      }
+
+      if (row.createdAt >= since24h) {
+        aggregate.last24Users.add(row.userId);
+      } else {
+        aggregate.prev24Users.add(row.userId);
+      }
+    }
+
+    const candidates: HotSpikeKeywordCandidate[] = [];
+
+    for (const aggregate of aggregates.values()) {
+      const distinctUsersLast24h = aggregate.last24Users.size;
+      const distinctUsersPrev24h = aggregate.prev24Users.size;
+
+      const absoluteTrigger =
+        distinctUsersLast24h >= HOT_SPIKE_ABSOLUTE_DISTINCT_USERS;
+      const trendTrigger =
+        distinctUsersLast24h >= HOT_SPIKE_TREND_DISTINCT_USERS &&
+        distinctUsersLast24h >=
+          distinctUsersPrev24h * HOT_SPIKE_TREND_MULTIPLIER;
+
+      if (!absoluteTrigger && !trendTrigger) {
+        continue;
+      }
+
+      const schedule = scheduleByCoverageKey.get(
+        aggregate.collectionCoverageKey,
+      );
+      if (!schedule) {
+        continue;
+      }
+
+      candidates.push({
+        subreddit: schedule.subreddit,
+        collectionCoverageKey: schedule.collectionCoverageKey,
+        safeIntervalDays: schedule.safeIntervalDays,
+        term: aggregate.term,
+        normalizedTerm: aggregate.normalizedTerm,
+        distinctUsersLast24h,
+        distinctUsersPrev24h,
+        lastSeenAt: aggregate.lastSeenAt,
+        trigger: absoluteTrigger ? 'absolute' : 'trend',
+        sortPlan: this.buildSortPlan({
+          safeIntervalDays: schedule.safeIntervalDays,
+          lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
+          runAt: now,
+          forceHeavy: true,
+        }),
+      });
+    }
+
+    if (!candidates.length) {
+      return [];
+    }
+
+    const historyRows = await this.prisma.keywordAttemptHistory.findMany({
+      where: {
+        OR: candidates.map((candidate) => ({
+          collectionCoverageKey: candidate.collectionCoverageKey,
+          normalizedTerm: candidate.normalizedTerm,
+        })),
+      },
+      select: {
+        collectionCoverageKey: true,
+        normalizedTerm: true,
+        lastAttemptAt: true,
+      },
+    });
+
+    const historyMap = new Map<string, Date | null>(
+      historyRows.map((row) => [
+        `${row.collectionCoverageKey}::${row.normalizedTerm}`,
+        row.lastAttemptAt,
+      ]),
+    );
+
+    const eligible = candidates
+      .filter((candidate) => {
+        const lastAttemptAt = historyMap.get(
+          `${candidate.collectionCoverageKey}::${candidate.normalizedTerm}`,
+        );
+        if (!lastAttemptAt) {
+          return true;
+        }
+        return (
+          now.getTime() - lastAttemptAt.getTime() >=
+          HOT_SPIKE_ATTEMPT_THROTTLE_MS
+        );
+      })
+      .sort(
+        (a, b) =>
+          b.distinctUsersLast24h - a.distinctUsersLast24h ||
+          b.lastSeenAt.getTime() - a.lastSeenAt.getTime(),
+      );
+
+    const final: HotSpikeKeywordCandidate[] = [];
+    const seenCoverageKeys = new Set<string>();
+
+    for (const candidate of eligible) {
+      if (seenCoverageKeys.has(candidate.collectionCoverageKey)) {
+        continue;
+      }
+      seenCoverageKeys.add(candidate.collectionCoverageKey);
+      final.push(candidate);
+      if (final.length >= HOT_SPIKE_MAX_JOBS_PER_RUN) {
+        break;
+      }
+    }
+
+    if (final.length) {
+      this.logger.info('Identified hot spike keyword candidates', {
+        correlationId,
+        count: final.length,
+        candidates: final.slice(0, 10).map((candidate) => ({
+          subreddit: candidate.subreddit,
+          collectionCoverageKey: candidate.collectionCoverageKey,
+          normalizedTerm: candidate.normalizedTerm,
+          distinctUsersLast24h: candidate.distinctUsersLast24h,
+          distinctUsersPrev24h: candidate.distinctUsersPrev24h,
+          trigger: candidate.trigger,
+        })),
+      });
+    }
+
+    return final;
+  }
+
   /**
    * Mark keyword search as completed and schedule next run
    */
   async markSearchCompleted(
-    subreddit: string,
+    collectionCoverageKey: string,
     success: boolean,
-    entitiesProcessed?: number,
+    termsProcessed?: number,
   ): Promise<void> {
     const correlationId = CorrelationUtils.generateCorrelationId();
-    const schedule = this.schedules.get(subreddit);
+    const scheduleKey = collectionCoverageKey.trim().toLowerCase();
+    const schedule = this.schedules.get(scheduleKey);
 
     if (!schedule) {
       this.logger.warn('Attempted to mark completion for unknown schedule', {
         correlationId,
-        subreddit,
+        collectionCoverageKey: scheduleKey,
         success,
       });
       return;
@@ -332,33 +508,86 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     schedule.lastRun = new Date();
     schedule.nextRun = this.calculateNextRunDate(schedule.lastRun);
 
-    // Refresh entity priorities for next run
-    schedule.entities = await this.calculateEntityPriorities(subreddit);
+    const ranHeavySorts = schedule.sortPlan.some(
+      (entry) => entry.sort === 'top' || entry.sort === 'relevance',
+    );
+    if (success && ranHeavySorts) {
+      schedule.lastTopRelevanceRunAt = schedule.lastRun;
+    }
 
-    this.schedules.set(subreddit, schedule);
+    const selection = await this.selectTermsForSubreddit({
+      subreddit: schedule.subreddit,
+      collectionCoverageKeyHint: schedule.collectionCoverageKey,
+    });
+    schedule.collectionCoverageKey = selection.collectionCoverageKey;
+    schedule.safeIntervalDays = selection.safeIntervalDays;
+    schedule.terms = selection.terms;
+    schedule.sortPlan = this.buildSortPlan({
+      safeIntervalDays: schedule.safeIntervalDays,
+      lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
+      runAt: schedule.nextRun,
+    });
+
+    if (schedule.collectionCoverageKey !== scheduleKey) {
+      this.schedules.delete(scheduleKey);
+    }
+    this.schedules.set(schedule.collectionCoverageKey, schedule);
 
     this.logger.info('Keyword search marked as completed', {
       correlationId,
-      subreddit,
+      subreddit: schedule.subreddit,
       success,
-      entitiesProcessed,
+      termsProcessed,
       nextRun: schedule.nextRun,
-      newEntityCount: schedule.entities.length,
+      collectionCoverageKey: schedule.collectionCoverageKey,
+      newTermCount: schedule.terms.length,
+      sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
+    });
+  }
+
+  recordTopRelevanceRun(collectionCoverageKey: string, executedAt: Date): void {
+    const scheduleKey = collectionCoverageKey.trim().toLowerCase();
+    const schedule = this.schedules.get(scheduleKey);
+    if (!schedule) {
+      return;
+    }
+
+    const safeExecutedAt =
+      executedAt instanceof Date && !Number.isNaN(executedAt.getTime())
+        ? executedAt
+        : new Date();
+
+    schedule.lastTopRelevanceRunAt = safeExecutedAt;
+    schedule.sortPlan = this.buildSortPlan({
+      safeIntervalDays: schedule.safeIntervalDays,
+      lastTopRelevanceRunAt: schedule.lastTopRelevanceRunAt,
+      runAt: schedule.nextRun,
+    });
+
+    this.schedules.set(scheduleKey, schedule);
+
+    this.logger.debug('Recorded top/relevance run for schedule', {
+      subreddit: schedule.subreddit,
+      collectionCoverageKey: schedule.collectionCoverageKey,
+      executedAt: safeExecutedAt,
+      sortsPlanned: schedule.sortPlan.map((entry) => entry.sort),
     });
   }
 
   /**
-   * Get current schedules for all subreddits
+   * Get current schedules for all coverage keys
    */
   getAllSchedules(): KeywordSearchSchedule[] {
     return Array.from(this.schedules.values());
   }
 
   /**
-   * Get schedule for specific subreddit
+   * Get schedule for specific coverage key
    */
-  getSchedule(subreddit: string): KeywordSearchSchedule | undefined {
-    return this.schedules.get(subreddit);
+  getSchedule(
+    collectionCoverageKey: string,
+  ): KeywordSearchSchedule | undefined {
+    return this.schedules.get(collectionCoverageKey.trim().toLowerCase());
   }
 
   isEnabled(): boolean {
@@ -369,59 +598,46 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     return { ...this.config };
   }
 
-  /**
-   * Force refresh entity priorities for a subreddit
-   */
-  async refreshEntityPriorities(subreddit: string): Promise<void> {
+  private async selectTermsForSubreddit(params: {
+    subreddit: string;
+    collectionCoverageKeyHint?: string | null;
+  }): Promise<{
+    collectionCoverageKey: string;
+    safeIntervalDays: number;
+    terms: KeywordSearchTerm[];
+  }> {
     const correlationId = CorrelationUtils.generateCorrelationId();
+    const subreddit = params.subreddit.trim();
+    const fallbackCoverageKey = params.collectionCoverageKeyHint
+      ? params.collectionCoverageKeyHint.trim().toLowerCase()
+      : subreddit.trim().toLowerCase();
 
-    this.logger.info('Refreshing entity priorities', {
-      correlationId,
-      operation: 'refresh_entity_priorities',
-      subreddit,
-    });
+    try {
+      const selection =
+        await this.sliceSelection.selectTermsForSubreddit(subreddit);
 
-    const schedule = this.schedules.get(subreddit);
-    if (!schedule) {
-      throw ScheduledCollectionExceptionFactory.missingSubredditConfig(
+      return {
+        collectionCoverageKey: selection.collectionCoverageKey,
+        safeIntervalDays: selection.safeIntervalDays,
+        terms: selection.terms,
+      };
+    } catch (error: unknown) {
+      this.logger.error('Failed to select keyword terms for schedule', {
+        correlationId,
         subreddit,
-      );
+        collectionCoverageKey: fallbackCoverageKey,
+        error:
+          error instanceof Error
+            ? { message: error.message, name: error.name, stack: error.stack }
+            : { message: String(error) },
+      });
+
+      return {
+        collectionCoverageKey: fallbackCoverageKey,
+        safeIntervalDays: 7,
+        terms: [],
+      };
     }
-
-    const newEntities = await this.calculateEntityPriorities(subreddit);
-    schedule.entities = newEntities;
-    this.schedules.set(subreddit, schedule);
-
-    this.logger.info('Entity priorities refreshed', {
-      correlationId,
-      subreddit,
-      entityCount: newEntities.length,
-      averageScore:
-        newEntities.reduce((sum, e) => sum + e.score, 0) / newEntities.length,
-    });
-  }
-
-  stopScheduling(): void {
-    this.logger.info('Stopping keyword search scheduler', {
-      correlationId: CorrelationUtils.generateCorrelationId(),
-      operation: 'stop_scheduler',
-    });
-  }
-
-  /**
-   * Get entity type distribution for logging
-   */
-  private getEntityTypeDistribution(
-    entities: EntityPriorityScore[],
-  ): Record<string, number> {
-    const distribution: Record<string, number> = {};
-
-    for (const entity of entities) {
-      distribution[entity.entityType] =
-        (distribution[entity.entityType] || 0) + 1;
-    }
-
-    return distribution;
   }
 
   /**
@@ -433,37 +649,14 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
       ? enabledRaw.toLowerCase() === 'true'
       : this.DEFAULT_CONFIG.enabled;
 
-    const entityCount = this.parseNumberEnv(
-      'KEYWORD_SEARCH_ENTITY_COUNT',
-      this.DEFAULT_CONFIG.entityCount,
-    );
-
     const intervalDays = this.parseNumberEnv(
       'KEYWORD_SEARCH_INTERVAL_DAYS',
       this.DEFAULT_CONFIG.intervalDays,
     );
 
-    const searchLimit = this.parseNumberEnv(
-      'KEYWORD_SEARCH_LIMIT',
-      this.DEFAULT_CONFIG.searchLimit,
-    );
-
-    const cityWindowDays = this.parseNumberEnv(
-      'KEYWORD_CITY_DEMAND_WINDOW_DAYS',
-      this.DEFAULT_CONFIG.cityWindowDays,
-    );
-    const cityMinImpressions = this.parseNumberEnv(
-      'KEYWORD_CITY_MIN_IMPRESSIONS',
-      this.DEFAULT_CONFIG.cityMinImpressions,
-    );
-
     return {
       enabled,
-      entityCount,
       intervalDays,
-      searchLimit,
-      cityWindowDays,
-      cityMinImpressions,
     };
   }
 
@@ -475,12 +668,42 @@ export class KeywordSearchSchedulerService implements OnModuleInit {
     const parsed = Number(raw);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
-  private async loadActiveSubreddits(): Promise<string[]> {
+
+  private async loadActiveScheduleTargets(): Promise<
+    Array<{ subreddit: string; collectionCoverageKey: string }>
+  > {
     const records = await this.prisma.coverageArea.findMany({
       where: { isActive: true, sourceType: CoverageSourceType.all },
-      select: { name: true },
+      select: { name: true, coverageKey: true },
       orderBy: { name: 'asc' },
     });
-    return records.map((row) => row.name);
+
+    const schedulesByCoverageKey = new Map<
+      string,
+      { subreddit: string; collectionCoverageKey: string }
+    >();
+
+    for (const record of records) {
+      const collectionCoverageKey = this.buildCollectionCoverageKey(record);
+      if (!schedulesByCoverageKey.has(collectionCoverageKey)) {
+        schedulesByCoverageKey.set(collectionCoverageKey, {
+          subreddit: record.name,
+          collectionCoverageKey,
+        });
+      }
+    }
+
+    return Array.from(schedulesByCoverageKey.values());
+  }
+
+  private buildCollectionCoverageKey(record: {
+    name: string;
+    coverageKey: string | null;
+  }): string {
+    const rawKey =
+      typeof record.coverageKey === 'string' && record.coverageKey.trim()
+        ? record.coverageKey
+        : record.name;
+    return rawKey.trim().toLowerCase();
   }
 }

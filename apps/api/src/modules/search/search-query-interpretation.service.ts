@@ -11,6 +11,7 @@ import {
   EntityResolutionResult,
 } from '../content-processing/entity-resolver/entity-resolution.types';
 import { LoggerService } from '../../shared';
+import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   NaturalSearchRequestDto,
   QueryEntityDto,
@@ -19,7 +20,6 @@ import {
   MapBoundsDto,
 } from './dto/search-query.dto';
 import { OnDemandRequestService } from './on-demand-request.service';
-import { OnDemandProcessingService } from './on-demand-processing.service';
 import { SearchSubredditResolverService } from './search-subreddit-resolver.service';
 
 const METERS_PER_MILE = 1609.34;
@@ -49,7 +49,6 @@ export class SearchQueryInterpretationService {
     private readonly llmService: LLMService,
     private readonly entityResolutionService: EntityResolutionService,
     private readonly onDemandRequestService: OnDemandRequestService,
-    private readonly onDemandProcessingService: OnDemandProcessingService,
     private readonly subredditResolver: SearchSubredditResolverService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
@@ -87,23 +86,32 @@ export class SearchQueryInterpretationService {
     }
     llmMs = performance.now() - llmStart;
 
-    const analysisCounts = this.getAnalysisEntityCounts(analysis);
+    const cleanedAnalysis = this.stripGenericTokensFromAnalysis(analysis);
+    const analysisCounts = this.getAnalysisEntityCounts(cleanedAnalysis);
     this.logger.info('Search query LLM analysis summary', {
       query: request.query,
       analysisCounts,
-      sampleRestaurants: analysis.restaurants.slice(0, 3),
-      sampleFoods: analysis.foods.slice(0, 3),
-      sampleFoodAttributes: analysis.foodAttributes.slice(0, 3),
-      sampleRestaurantAttributes: analysis.restaurantAttributes.slice(0, 3),
+      sampleRestaurants: cleanedAnalysis.restaurants.slice(0, 3),
+      sampleFoods: cleanedAnalysis.foods.slice(0, 3),
+      sampleFoodAttributes: cleanedAnalysis.foodAttributes.slice(0, 3),
+      sampleRestaurantAttributes: cleanedAnalysis.restaurantAttributes.slice(
+        0,
+        3,
+      ),
     });
 
     this.logger.debug('Query interpretation foods breakdown', {
       query: request.query,
-      foods: analysis.foods,
+      foods: cleanedAnalysis.foods,
     });
 
-    const locationKey = await this.resolveLocationKey(request);
-    const resolutionInputs = this.buildResolutionInputs(analysis, locationKey);
+    const uiCoverageKey = await this.resolveLocationKey(request);
+    const collectionCoverageKey =
+      await this.resolveCollectionCoverageKey(request);
+    const resolutionInputs = this.buildResolutionInputs(
+      cleanedAnalysis,
+      uiCoverageKey,
+    );
     let entityResolutionMs = 0;
     const resolutionStart = performance.now();
     const resolutionResults = resolutionInputs.length
@@ -164,7 +172,7 @@ export class SearchQueryInterpretationService {
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      const onDemandLocationKey = request.bounds ? locationKey : null;
+      const onDemandLocationKey = request.bounds ? collectionCoverageKey : null;
       const onDemandContext: Record<string, unknown> = {
         query: request.query,
       };
@@ -191,26 +199,18 @@ export class SearchQueryInterpretationService {
         const recordedRequests =
           await this.onDemandRequestService.recordRequests(
             unresolvedRequests,
+            { userId: request.userId ?? null },
             onDemandContext,
           );
-
-        const enqueueResults =
-          await this.onDemandProcessingService.enqueueRequests(
-            recordedRequests,
-          );
-        onDemandQueued = enqueueResults.some((result) => result.queued);
-        onDemandEtaMs = enqueueResults.find((result) => result.etaMs)?.etaMs;
-
-        if (onDemandQueued && !onDemandEtaMs) {
-          onDemandEtaMs =
-            (await this.onDemandProcessingService.estimateQueueDelayMs()) ??
-            undefined;
-        }
+        onDemandQueued = recordedRequests.length > 0;
       } else if (!onDemandLocationKey) {
-        await this.onDemandRequestService.recordRequests(
-          unresolvedRequests,
-          onDemandContext,
-        );
+        const recordedRequests =
+          await this.onDemandRequestService.recordRequests(
+            unresolvedRequests,
+            { userId: request.userId ?? null },
+            onDemandContext,
+          );
+        onDemandQueued = recordedRequests.length > 0;
       }
       onDemandMs = performance.now() - onDemandStart;
     }
@@ -227,9 +227,9 @@ export class SearchQueryInterpretationService {
 
     return {
       structuredRequest,
-      analysis,
+      analysis: cleanedAnalysis,
       unresolved,
-      analysisMetadata: analysis.metadata,
+      analysisMetadata: cleanedAnalysis.metadata,
       onDemandQueued: onDemandQueued || undefined,
       onDemandEtaMs,
       phaseTimings,
@@ -247,8 +247,9 @@ export class SearchQueryInterpretationService {
     const addEntries = (names: string[], entityType: EntityType) => {
       const seen = new Set<string>();
       for (const name of names) {
-        const normalized = name.trim();
-        if (!normalized.length) {
+        const stripped = stripGenericTokens(name);
+        const normalized = stripped.text.trim();
+        if (!normalized.length || stripped.isGenericOnly) {
           continue;
         }
         const key = `${entityType}:${normalized.toLowerCase()}`;
@@ -274,6 +275,41 @@ export class SearchQueryInterpretationService {
     addEntries(analysis.restaurantAttributes, 'restaurant_attribute');
 
     return inputs;
+  }
+
+  private stripGenericTokensFromAnalysis(
+    analysis: LLMSearchQueryAnalysis,
+  ): LLMSearchQueryAnalysis {
+    return {
+      ...analysis,
+      restaurants: this.stripGenericTokensFromTerms(analysis.restaurants),
+      foods: this.stripGenericTokensFromTerms(analysis.foods),
+      foodAttributes: this.stripGenericTokensFromTerms(analysis.foodAttributes),
+      restaurantAttributes: this.stripGenericTokensFromTerms(
+        analysis.restaurantAttributes,
+      ),
+    };
+  }
+
+  private stripGenericTokensFromTerms(terms: string[]): string[] {
+    const result: string[] = [];
+    const seen = new Set<string>();
+
+    for (const term of terms) {
+      const stripped = stripGenericTokens(term);
+      const normalized = stripped.text.trim();
+      if (!normalized.length || stripped.isGenericOnly) {
+        continue;
+      }
+      const key = normalized.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(normalized);
+    }
+
+    return result;
   }
 
   private groupResolvedEntities(
@@ -379,6 +415,28 @@ export class SearchQueryInterpretationService {
       return match ? match.toLowerCase() : null;
     } catch (error) {
       this.logger.debug('Unable to resolve search location key', {
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+      return null;
+    }
+  }
+
+  private async resolveCollectionCoverageKey(
+    request: NaturalSearchRequestDto,
+  ): Promise<string | null> {
+    try {
+      const fallbackLocation = this.resolveFallbackLocation(request);
+      const match = await this.subredditResolver.resolvePrimaryCollectable({
+        bounds: request.bounds ?? null,
+        fallbackLocation: fallbackLocation ?? null,
+        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
+      });
+      return match ? match.toLowerCase() : null;
+    } catch (error) {
+      this.logger.debug('Unable to resolve search collection coverage key', {
         error:
           error instanceof Error
             ? { message: error.message, stack: error.stack }

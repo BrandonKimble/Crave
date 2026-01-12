@@ -47,6 +47,7 @@ import { logger } from '../../utils';
 import {
   searchService,
   type RecentSearch,
+  type RecentlyViewedFood,
   type RecentlyViewedRestaurant,
 } from '../../services/search';
 import type { FavoriteListType } from '../../services/favorite-lists';
@@ -720,6 +721,8 @@ const SearchScreen: React.FC = () => {
     isRecentLoading,
     recentlyViewedRestaurants,
     isRecentlyViewedLoading,
+    recentlyViewedFoods,
+    isRecentlyViewedFoodsLoading,
     loadRecentHistory,
     updateLocalRecentSearches,
     trackRecentlyViewedRestaurant,
@@ -740,8 +743,10 @@ const SearchScreen: React.FC = () => {
     suggestions: [] as AutocompleteMatch[],
     recentSearches: [] as RecentSearch[],
     recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+    recentlyViewedFoods: [] as RecentlyViewedFood[],
     isRecentLoading: false,
     isRecentlyViewedLoading: false,
+    isRecentlyViewedFoodsLoading: false,
     holdShortcuts: false,
     holdSuggestionPanel: false,
     holdSuggestionBackground: false,
@@ -1708,6 +1713,7 @@ const SearchScreen: React.FC = () => {
   );
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
+  const hasRecentlyViewedFoods = recentlyViewedFoods.length > 0;
   const trimmedQuery = query.trim();
   const hasSearchChromeRawQuery = trimmedQuery.length > 0;
   const isSuggestionScreenActive = isSearchOverlay && isSuggestionPanelActive;
@@ -1724,8 +1730,10 @@ const SearchScreen: React.FC = () => {
           suggestions: [] as AutocompleteMatch[],
           recentSearches: [] as RecentSearch[],
           recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+          recentlyViewedFoods: [] as RecentlyViewedFood[],
           isRecentLoading: false,
           isRecentlyViewedLoading: false,
+          isRecentlyViewedFoodsLoading: false,
           holdShortcuts: false,
           holdSuggestionPanel: false,
           holdSuggestionBackground: false,
@@ -1798,14 +1806,21 @@ const SearchScreen: React.FC = () => {
   const recentlyViewedRestaurantsDisplay = isSuggestionHoldActive
     ? submitTransitionHold.recentlyViewedRestaurants
     : recentlyViewedRestaurants;
+  const recentlyViewedFoodsDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.recentlyViewedFoods
+    : recentlyViewedFoods;
   const isRecentLoadingDisplay = isSuggestionHoldActive
     ? submitTransitionHold.isRecentLoading
     : isRecentLoading;
   const isRecentlyViewedLoadingDisplay = isSuggestionHoldActive
     ? submitTransitionHold.isRecentlyViewedLoading
     : isRecentlyViewedLoading;
+  const isRecentlyViewedFoodsLoadingDisplay = isSuggestionHoldActive
+    ? submitTransitionHold.isRecentlyViewedFoodsLoading
+    : isRecentlyViewedFoodsLoading;
   const hasRecentSearchesDisplay = recentSearchesDisplay.length > 0;
   const hasRecentlyViewedRestaurantsDisplay = recentlyViewedRestaurantsDisplay.length > 0;
+  const hasRecentlyViewedFoodsDisplay = recentlyViewedFoodsDisplay.length > 0;
   const suggestionDisplayTrimmedQuery = suggestionDisplayQuery.trim();
   const hasTypedQuery = suggestionDisplayTrimmedQuery.length > 0;
   const hasRawQuery = suggestionDisplayQuery.length > 0;
@@ -1831,8 +1846,10 @@ const SearchScreen: React.FC = () => {
     baseShouldShowRecentSection &&
     (hasRecentSearches ||
       hasRecentlyViewedRestaurants ||
+      hasRecentlyViewedFoods ||
       isRecentLoading ||
-      isRecentlyViewedLoading);
+      isRecentlyViewedLoading ||
+      isRecentlyViewedFoodsLoading);
   const baseShouldRenderAutocompleteSection =
     shouldDriveSuggestionLayout &&
     !isAutocompleteSuppressed &&
@@ -1873,8 +1890,10 @@ const SearchScreen: React.FC = () => {
         suggestions: [] as AutocompleteMatch[],
         recentSearches: [] as RecentSearch[],
         recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+        recentlyViewedFoods: [] as RecentlyViewedFood[],
         isRecentLoading: false,
         isRecentlyViewedLoading: false,
+        isRecentlyViewedFoodsLoading: false,
         holdShortcuts: false,
         holdSuggestionPanel: false,
         holdSuggestionBackground: false,
@@ -1976,8 +1995,10 @@ const SearchScreen: React.FC = () => {
         suggestions: suggestions.slice(),
         recentSearches,
         recentlyViewedRestaurants,
+        recentlyViewedFoods,
         isRecentLoading,
         isRecentlyViewedLoading,
+        isRecentlyViewedFoodsLoading,
         holdShortcuts,
         holdSuggestionPanel,
         holdSuggestionBackground,
@@ -1992,8 +2013,10 @@ const SearchScreen: React.FC = () => {
       suggestions,
       recentSearches,
       recentlyViewedRestaurants,
+      recentlyViewedFoods,
       isRecentLoading,
       isRecentlyViewedLoading,
+      isRecentlyViewedFoodsLoading,
       shouldRenderAutocompleteSection,
       shouldRenderRecentSection,
       shouldRenderSuggestionPanel,
@@ -4446,8 +4469,10 @@ const SearchScreen: React.FC = () => {
           suggestions: [] as AutocompleteMatch[],
           recentSearches: [] as RecentSearch[],
           recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+          recentlyViewedFoods: [] as RecentlyViewedFood[],
           isRecentLoading: false,
           isRecentlyViewedLoading: false,
+          isRecentlyViewedFoodsLoading: false,
           holdShortcuts: false,
           holdSuggestionPanel: false,
           holdSuggestionBackground: false,
@@ -4811,6 +4836,60 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
+  const handleRecentlyViewedFoodPress = React.useCallback(
+    (item: RecentlyViewedFood) => {
+      const trimmedValue = item.restaurantName.trim();
+      if (!trimmedValue) {
+        return;
+      }
+      isSearchEditingRef.current = false;
+      pendingResultsSheetRevealRef.current = false;
+      allowSearchBlurExitRef.current = true;
+      const shouldDeferSuggestionClear = beginSubmitTransition();
+      ignoreNextSearchBlurRef.current = true;
+      suppressAutocompleteResults();
+      cancelAutocomplete();
+      setIsAutocompleteSuppressed(true);
+      setIsSearchFocused(false);
+      setIsSuggestionPanelActive(false);
+      dismissSearchKeyboard();
+      setQuery(trimmedValue);
+      if (!shouldDeferSuggestionClear) {
+        setShowSuggestions(false);
+        setSuggestions([]);
+      }
+      resetFocusedMapState();
+      pendingRestaurantSelectionRef.current = { restaurantId: item.restaurantId };
+      openRestaurantProfilePreviewRef.current?.(item.restaurantId, trimmedValue);
+      setRestaurantOnlyIntent(item.restaurantId);
+      deferRecentSearchUpsert({
+        queryText: trimmedValue,
+        selectedEntityId: item.restaurantId,
+        selectedEntityType: 'restaurant',
+        statusPreview: item.statusPreview ?? null,
+      });
+      void runRestaurantEntitySearch({
+        restaurantId: item.restaurantId,
+        restaurantName: trimmedValue,
+        submissionSource: 'recent',
+        typedPrefix: item.foodName,
+      });
+    },
+    [
+      cancelAutocomplete,
+      deferRecentSearchUpsert,
+      dismissSearchKeyboard,
+      resetFocusedMapState,
+      runRestaurantEntitySearch,
+      beginSubmitTransition,
+      setRestaurantOnlyIntent,
+      setIsAutocompleteSuppressed,
+      setIsSearchFocused,
+      setIsSuggestionPanelActive,
+      suppressAutocompleteResults,
+    ]
+  );
+
   const resetSuggestionUiForExternalSubmit = React.useCallback(() => {
     ignoreNextSearchBlurRef.current = true;
     runOnUI(() => {
@@ -4830,8 +4909,10 @@ const SearchScreen: React.FC = () => {
         suggestions: [] as AutocompleteMatch[],
         recentSearches: [] as RecentSearch[],
         recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
+        recentlyViewedFoods: [] as RecentlyViewedFood[],
         isRecentLoading: false,
         isRecentlyViewedLoading: false,
+        isRecentlyViewedFoodsLoading: false,
         holdShortcuts: false,
         holdSuggestionPanel: false,
         holdSuggestionBackground: false,
@@ -4866,9 +4947,13 @@ const SearchScreen: React.FC = () => {
         handleRecentSearchPress(intent.entry);
         return;
       }
-      handleRecentlyViewedRestaurantPress(intent.restaurant);
+      if (intent.type === 'recentlyViewed') {
+        handleRecentlyViewedRestaurantPress(intent.restaurant);
+        return;
+      }
+      handleRecentlyViewedFoodPress(intent.food);
     },
-    [handleRecentSearchPress, handleRecentlyViewedRestaurantPress]
+    [handleRecentSearchPress, handleRecentlyViewedFoodPress, handleRecentlyViewedRestaurantPress]
   );
 
   React.useLayoutEffect(() => {
@@ -5224,14 +5309,24 @@ const SearchScreen: React.FC = () => {
     commitPriceSelection();
   }, [commitPriceSelection]);
 
-  const recordRestaurantView = React.useCallback(
-    async (restaurantId: string, source: 'results_sheet' | 'auto_open_single_candidate') => {
-      if (!isSignedIn) {
-        return;
-      }
-      try {
-        await searchService.recordRestaurantView({
-          restaurantId,
+	  const recordRestaurantView = React.useCallback(
+	    async (
+	      restaurantId: string,
+	      source:
+	        | 'results_sheet'
+	        | 'auto_open_single_candidate'
+	        | 'autocomplete'
+	        | 'dish_card'
+	    ) => {
+	      if (!isSignedIn) {
+	        return;
+	      }
+	      if (source === 'autocomplete' || source === 'dish_card') {
+	        return;
+	      }
+	      try {
+	        await searchService.recordRestaurantView({
+	          restaurantId,
           searchRequestId: lastSearchRequestIdRef.current ?? undefined,
           source,
         });
@@ -5498,12 +5593,16 @@ const SearchScreen: React.FC = () => {
   );
   openRestaurantProfilePreviewRef.current = openRestaurantProfilePreview;
 
-  const openRestaurantProfile = React.useCallback(
-    (
-      restaurant: RestaurantResult,
-      foodResultsOverride?: FoodResult[],
-      source: 'results_sheet' | 'auto_open_single_candidate' = 'results_sheet'
-    ) => {
+	  const openRestaurantProfile = React.useCallback(
+	    (
+	      restaurant: RestaurantResult,
+	      foodResultsOverride?: FoodResult[],
+	      source:
+	        | 'results_sheet'
+	        | 'auto_open_single_candidate'
+	        | 'autocomplete'
+	        | 'dish_card' = 'results_sheet'
+	    ) => {
       const transition = profileTransitionRef.current;
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
@@ -5588,18 +5687,20 @@ const SearchScreen: React.FC = () => {
         }
       }
 
-      setRestaurantProfile({
-        restaurant,
-        dishes: restaurantDishes,
-        queryLabel: label,
-        isFavorite: false,
-        isLoading: false,
-      });
-      setRestaurantOverlayVisible(true);
-      deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
+	      setRestaurantProfile({
+	        restaurant,
+	        dishes: restaurantDishes,
+	        queryLabel: label,
+	        isFavorite: false,
+	        isLoading: false,
+	      });
+	      setRestaurantOverlayVisible(true);
 
-      void recordRestaurantView(restaurant.restaurantId, source);
-    },
+	      if (source !== 'autocomplete' && source !== 'dish_card') {
+	        deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
+	        void recordRestaurantView(restaurant.restaurantId, source);
+	      }
+	    },
     [
       animateSheetTo,
       commitCameraState,
@@ -5626,32 +5727,32 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
-  const openRestaurantProfileFromResults = React.useCallback(
-    (
-      restaurant: RestaurantResult,
-      foodResultsOverride?: FoodResult[],
-      _source?: 'results_sheet' | 'auto_open_single_candidate'
-    ) => {
-      openRestaurantProfile(restaurant, foodResultsOverride, 'results_sheet');
-    },
-    [openRestaurantProfile]
-  );
+	  const openRestaurantProfileFromResults = React.useCallback(
+	    (
+	      restaurant: RestaurantResult,
+	      foodResultsOverride?: FoodResult[],
+	      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
+	    ) => {
+	      openRestaurantProfile(restaurant, foodResultsOverride, source ?? 'results_sheet');
+	    },
+	    [openRestaurantProfile]
+	  );
 
   // Stable wrapper for openRestaurantProfileFromResults using ref pattern
   // This prevents render callback dependencies from changing when openRestaurantProfile changes
   const openRestaurantProfileFromResultsRef = React.useRef(openRestaurantProfileFromResults);
   openRestaurantProfileFromResultsRef.current = openRestaurantProfileFromResults;
 
-  const stableOpenRestaurantProfileFromResults = React.useCallback(
-    (
-      restaurant: RestaurantResult,
-      foodResultsOverride?: FoodResult[],
-      source?: 'results_sheet' | 'auto_open_single_candidate'
-    ) => {
-      openRestaurantProfileFromResultsRef.current(restaurant, foodResultsOverride, source);
-    },
-    []
-  );
+	  const stableOpenRestaurantProfileFromResults = React.useCallback(
+	    (
+	      restaurant: RestaurantResult,
+	      foodResultsOverride?: FoodResult[],
+	      source?: 'results_sheet' | 'auto_open_single_candidate' | 'dish_card'
+	    ) => {
+	      openRestaurantProfileFromResultsRef.current(restaurant, foodResultsOverride, source);
+	    },
+	    []
+	  );
 
   const handleMapTouchStart = React.useCallback(() => {
     mapTouchActiveRef.current = true;
@@ -5723,7 +5824,7 @@ const SearchScreen: React.FC = () => {
         return;
       }
       pendingRestaurantSelectionRef.current = null;
-      openRestaurantProfile(targetRestaurant, results.dishes ?? [], 'results_sheet');
+      openRestaurantProfile(targetRestaurant, results.dishes ?? [], 'autocomplete');
       const queryKey = (submittedQuery || trimmedQuery).trim();
       if (queryKey) {
         lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
@@ -6905,13 +7006,17 @@ const SearchScreen: React.FC = () => {
                             suggestions={suggestionDisplaySuggestions}
                             recentSearches={recentSearchesDisplay}
                             recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
+                            recentlyViewedFoods={recentlyViewedFoodsDisplay}
                             hasRecentSearches={hasRecentSearchesDisplay}
                             hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
+                            hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
                             isRecentLoading={isRecentLoadingDisplay}
                             isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
+                            isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
                             onSelectSuggestion={handleSuggestionPress}
                             onSelectRecent={handleRecentSearchPress}
                             onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                            onSelectRecentlyViewedFood={handleRecentlyViewedFoodPress}
                             onPressRecentViewMore={handleRecentViewMorePress}
                             onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
                           />

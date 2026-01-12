@@ -64,6 +64,7 @@ Observability is split:
   - cooldowns/backoff,
   - “no_results” suppression,
   - staleness (“when did we last try this keyword here?”).
+- Record **food/dish views** when a user taps a dish card (opens a restaurant profile from a dish result) and use those as the primary high-intent signal for `food` entities.
 - Implement **term normalization + stopword behavior**:
   - “best” (and other generic tokens) are never keyword candidates,
   - generic tokens are ignored in LLM analysis and all downstream processing,
@@ -169,12 +170,26 @@ Hot-spike runs may override cooldown (see “hot spike” thresholds below).
 
 ### 4) Distinct-user demand everywhere (windowed)
 
-All “demand” signals are interpreted as **count of distinct users in a window** (e.g., last 30d), not raw counts.
+All event-based “demand” signals are interpreted as **count of distinct users in a window** (e.g., last 30d), not raw counts:
+
+- query demand (from `user_search_logs`)
+- high-intent demand (views / explicit selections)
+- unmet-demand (from on-demand terms)
+
+`favoriteUsers` is still “distinct users” but is naturally distinct already (one favorite per user) and can be treated as the current active count; we can add a “recent favorites” window later if we want more recency.
 
 This addresses the “will it never reset?” concern:
 
 - If demand is measured over the last 30 days, old users/actions roll off naturally.
 - Trending can be captured via 7d vs prior 7d deltas (Explore slice).
+
+Window defaults (v1):
+
+- `demandWindowDays = 30` (used for windowed cached aggregates like query/high-intent/unmet demand)
+- `trendWindowDays = 7` (used for Explore “trend”)
+- `hotSpikeWindowHours = 24` (used for hot spike scheduling)
+
+All windows should be env-configurable; `30d` is intentionally “stable enough” for low-traffic coverageKeys while still being bounded (not all-time).
 
 ### 5) Cached aggregates (table-backed) instead of real-time counters
 
@@ -326,15 +341,19 @@ Reallocation order (when slices underfill):
 
 ### 3) Demand scoring weights (distinct users, windowed)
 
-We separate “query-target demand” (noisy) from “high intent” (strong) and “favorites” (strongest).
+We separate “query-target demand” (noisy) from two higher-intent tiers:
+
+- **explicit selection** (user deliberately chose a specific entity from autocomplete/recents)
+- **card engagement** (user deliberately chose a concrete result card)
 
 Define, per term/entity in a coverageKey:
 
 - `favoriteUsers` (distinct users who favorited)
-- `highIntentUsers`:
-  - restaurants: distinct users who viewed the profile in window
-  - non-restaurants: distinct users who explicitly selected from autocomplete/recents in window
-  - (recommended) allow restaurants to also have selection counted, but treat `highIntentUsers` as a union to avoid double-counting
+- `explicitSelectionUsers` (distinct users who explicitly selected the entity from autocomplete/recents in window)
+- `cardEngagementUsers`:
+  - restaurants: distinct users who opened a restaurant profile via result-card/map selection in window (**exclude** profile opens triggered by autocomplete selection)
+  - foods: distinct users who tapped a dish card (recorded as a food view) in window
+  - attributes: N/A (0)
 - `queryUsersPrimary` (distinct users whose searches primarily attributed to this term/target)
 
 Normalize each with a log-style cap (diminishing returns).
@@ -346,19 +365,22 @@ Normalization (v1):
 Caps (v1):
 
 - `favoriteUsersCap = 10`
-- `highIntentUsersCap = 25`
+- `cardEngagementUsersCap = 25`
+- `explicitSelectionUsersCap = 25`
 - `queryUsersPrimaryCap = 50`
 
 Starting weights inside the Demand slice:
 
 - favorites: **0.35**
-- high intent (view/selection): **0.35**
+- card engagement: **0.20**
+- explicit selection: **0.15**
 - query-primary: **0.30**
 
 Rationale:
 
-- View and explicit selection are equivalent intent tier; weights are equal conceptually.
-- Query is meaningful but intentionally not dominant due to dilution risk.
+- Card engagement is the strongest non-favorite signal (user chose a concrete result).
+- Explicit selection is a strong “I meant this” signal, but weaker than post-result engagement.
+- Query-primary is meaningful but intentionally not dominant due to dilution risk.
 
 ### 4) Refresh scoring (staleness-driven)
 
@@ -499,6 +521,13 @@ Retention (v1):
   - `status`, `lastEnqueuedAt`, `attemptedSubreddits`, `deferredAttempts`, `lastOutcome`, `lastAttemptAt`, `lastCompletedAt`, etc.
 - All attempt outcomes move to `keyword_attempt_history`.
 
+4. Add `user_food_views` (dish views) for high-intent food signals
+
+- Add `FoodView` table keyed by `(userId, connectionId)` (dish-at-restaurant), with `foodId` denormalized for aggregation.
+  - This supports multiple history entries like “ramen @ Tatsuya” and “ramen @ Ichiban” (same `foodId`, different `connectionId`).
+- Add API endpoint to record a food view (no UI required now; used for demand only).
+- Update mobile `DishResultCard` press handling to record a food view for `item.connectionId` (and optionally `item.foodId`) (async, fire-and-forget).
+
 ### Phase 2 — Query normalization + stopwords (search + LLM + downstream)
 
 1. Implement shared “generic token handling”
@@ -522,6 +551,7 @@ Sources:
 
 - `user_search_logs` for query-primary demand and explicit selection events
 - `user_restaurant_views` for view demand
+- `user_food_views` for dish-card food views (high-intent for `food`)
 - `user_favorites` for favorites demand
 
 Notes:

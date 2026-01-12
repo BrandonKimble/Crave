@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-import type { RecentSearch, RecentlyViewedRestaurant } from '../services/search';
+import type { RecentSearch, RecentlyViewedFood, RecentlyViewedRestaurant } from '../services/search';
 import { RECENT_HISTORY_LIMIT, RECENTLY_VIEWED_LIMIT } from '../constants/searchHistory';
 
 type SearchHistoryState = {
@@ -8,12 +8,17 @@ type SearchHistoryState = {
   isRecentLoading: boolean;
   recentlyViewedRestaurants: RecentlyViewedRestaurant[];
   isRecentlyViewedLoading: boolean;
+  recentlyViewedFoods: RecentlyViewedFood[];
+  isRecentlyViewedFoodsLoading: boolean;
   setRecentSearches: (value: RecentSearch[]) => void;
   setIsRecentLoading: (value: boolean) => void;
   setRecentlyViewedRestaurants: (value: RecentlyViewedRestaurant[]) => void;
   setIsRecentlyViewedLoading: (value: boolean) => void;
+  setRecentlyViewedFoods: (value: RecentlyViewedFood[]) => void;
+  setIsRecentlyViewedFoodsLoading: (value: boolean) => void;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
   trackRecentlyViewedRestaurant: (restaurantId: string, restaurantName: string) => void;
+  trackRecentlyViewedFood: (value: RecentlyViewedFoodInput) => void;
   resetHistory: () => void;
 };
 
@@ -24,11 +29,22 @@ type RecentSearchInput = {
   statusPreview?: RecentSearch['statusPreview'] | null;
 };
 
+type RecentlyViewedFoodInput = {
+  connectionId: string;
+  foodId: string;
+  foodName: string;
+  restaurantId: string;
+  restaurantName: string;
+  statusPreview?: RecentlyViewedFood['statusPreview'] | null;
+};
+
 const defaultState = {
   recentSearches: [] as RecentSearch[],
   isRecentLoading: false,
   recentlyViewedRestaurants: [] as RecentlyViewedRestaurant[],
   isRecentlyViewedLoading: false,
+  recentlyViewedFoods: [] as RecentlyViewedFood[],
+  isRecentlyViewedFoodsLoading: false,
 } as const;
 
 export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
@@ -40,6 +56,9 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       recentlyViewedRestaurants,
     }),
   setIsRecentlyViewedLoading: (isRecentlyViewedLoading) => set({ isRecentlyViewedLoading }),
+  setRecentlyViewedFoods: (recentlyViewedFoods) => set({ recentlyViewedFoods }),
+  setIsRecentlyViewedFoodsLoading: (isRecentlyViewedFoodsLoading) =>
+    set({ isRecentlyViewedFoodsLoading }),
   updateLocalRecentSearches: (value) =>
     set((state) => {
       const rawQuery = typeof value === 'string' ? value : value.queryText;
@@ -87,6 +106,25 @@ export const useSearchHistoryStore = create<SearchHistoryState>((set) => ({
       return {
         ...state,
         recentlyViewedRestaurants: [next, ...withoutMatch].slice(0, RECENTLY_VIEWED_LIMIT),
+      };
+    }),
+  trackRecentlyViewedFood: (value) =>
+    set((state) => {
+      const existing = state.recentlyViewedFoods.find((item) => item.connectionId === value.connectionId);
+      const next: RecentlyViewedFood = {
+        connectionId: value.connectionId,
+        foodId: value.foodId,
+        foodName: value.foodName,
+        restaurantId: value.restaurantId,
+        restaurantName: value.restaurantName,
+        lastViewedAt: new Date().toISOString(),
+        viewCount: existing ? existing.viewCount + 1 : 1,
+        statusPreview: value.statusPreview ?? existing?.statusPreview ?? null,
+      };
+      const withoutMatch = state.recentlyViewedFoods.filter((item) => item.connectionId !== value.connectionId);
+      return {
+        ...state,
+        recentlyViewedFoods: [next, ...withoutMatch].slice(0, RECENTLY_VIEWED_LIMIT),
       };
     }),
   resetHistory: () => set({ ...defaultState }),

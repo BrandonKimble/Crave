@@ -46,6 +46,17 @@ export type RecentlyViewedRestaurant = {
   statusPreview?: RestaurantStatusPreview | null;
 };
 
+export type RecentlyViewedFood = {
+  connectionId: string;
+  foodId: string;
+  foodName: string;
+  restaurantId: string;
+  restaurantName: string;
+  lastViewedAt: string;
+  viewCount: number;
+  statusPreview?: RestaurantStatusPreview | null;
+};
+
 export type RestaurantStatusPreview = {
   restaurantId: string;
   operatingStatus: OperatingStatus | null;
@@ -122,12 +133,26 @@ export const searchService = {
     });
     return data;
   },
+  recentlyViewedFoods: async (limit = 10): Promise<RecentlyViewedFood[]> => {
+    const { data } = await api.get<RecentlyViewedFood[]>('/history/foods/viewed', {
+      params: { limit },
+    });
+    return data;
+  },
   recordRestaurantView: async (payload: {
     restaurantId: string;
     searchRequestId?: string;
     source?: 'search_suggestion' | 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete';
   }): Promise<void> => {
     await api.post('/history/restaurants/viewed', payload);
+  },
+  recordFoodView: async (payload: {
+    connectionId: string;
+    foodId?: string;
+    searchRequestId?: string;
+    source?: 'search_suggestion' | 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete';
+  }): Promise<void> => {
+    await api.post('/history/foods/viewed', payload);
   },
 };
 
