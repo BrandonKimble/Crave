@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Plus, X as LucideX } from 'lucide-react-native';
-import Animated, {
-  useDerivedValue,
-  useAnimatedStyle,
+import { Plus } from 'lucide-react-native';
+import {
+  useAnimatedReaction,
+  useSharedValue,
+  withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
 import { Text } from '../../components';
@@ -38,8 +39,9 @@ import {
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
-import { calculateSnapPoints } from '../sheetUtils';
+import { calculateSnapPoints, clampValue } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../screens/Search/constants/search';
 import type { MapBounds } from '../../types';
@@ -88,6 +90,7 @@ export const usePollsPanelSpec = ({
   const insets = useSafeAreaInsets();
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pushOverlay = useOverlayStore((state) => state.pushOverlay);
+  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setPersistedCity = useCityStore((state) => state.setSelectedCity);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -649,12 +652,6 @@ export const usePollsPanelSpec = ({
     }
   }, [mode, setOverlay]);
 
-  const handleHidden = useCallback(() => {
-    if (!visible) {
-      return;
-    }
-    setOverlay('search');
-  }, [setOverlay, visible]);
 
   const handleOpenCreate = useCallback(() => {
     if (!coverageKey && !coverageOverride) {
@@ -667,23 +664,56 @@ export const usePollsPanelSpec = ({
     });
   }, [coverageKey, coverageName, coverageOverride, pushOverlay]);
 
-  const headerActionProgress = useDerivedValue(() => {
+  const headerActionProgress = useSharedValue(0);
+  const headerActionOverride = useSharedValue(false);
+
+  useAnimatedReaction(
+    () => {
+      const range = snapPoints.collapsed - snapPoints.middle;
+      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.middle) / range : 0;
+      return clampValue(rawProgress, 0, 1);
+    },
+    (nextProgress) => {
+      if (headerActionOverride.value) {
+        return;
+      }
+      headerActionProgress.value = nextProgress;
+    },
+    [headerActionOverride, headerActionProgress, sheetY, snapPoints.collapsed, snapPoints.middle]
+  );
+
+  useEffect(() => {
+    if (!visible) {
+      return;
+    }
+
+    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
+    const shouldAnimateFromClose =
+      shouldStartAsPlus && (previousOverlay === 'bookmarks' || previousOverlay === 'profile');
+    if (!shouldAnimateFromClose) {
+      return;
+    }
+
     const range = snapPoints.collapsed - snapPoints.middle;
     const rawProgress = range !== 0 ? (sheetY.value - snapPoints.middle) / range : 0;
-    return Math.min(Math.max(rawProgress, 0), 1);
-  }, [sheetY, snapPoints.collapsed, snapPoints.middle]);
-  const plusRotationStyle = useAnimatedStyle(() => {
-    const rotation = 45 * headerActionProgress.value;
-    return { transform: [{ rotate: `${rotation}deg` }] };
-  }, [headerActionProgress]);
-  const plusAccentOpacityStyle = useAnimatedStyle(
-    () => ({ opacity: headerActionProgress.value }),
-    [headerActionProgress]
-  );
-  const closeBlackOpacityStyle = useAnimatedStyle(
-    () => ({ opacity: 1 - headerActionProgress.value }),
-    [headerActionProgress]
-  );
+    const target = Math.min(Math.max(rawProgress, 0), 1);
+    headerActionOverride.value = true;
+    headerActionProgress.value = 0;
+    headerActionProgress.value = withTiming(target, { duration: 220 }, (finished) => {
+      'worklet';
+      if (finished) {
+        headerActionOverride.value = false;
+      }
+    });
+  }, [
+    headerActionOverride,
+    headerActionProgress,
+    previousOverlay,
+    sheetY,
+    snapPoints.collapsed,
+    snapPoints.middle,
+    visible,
+  ]);
 
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
@@ -743,27 +773,14 @@ export const usePollsPanelSpec = ({
             </Text>
           </View>
         </View>
-        <Pressable
+        <OverlayHeaderActionButton
+          progress={headerActionProgress}
           onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
-          accessibilityRole="button"
           accessibilityLabel={headerAction === 'close' ? 'Close polls' : 'Create a new poll'}
-          style={overlaySheetStyles.closeButton}
+          accentColor={ACCENT}
+          closeColor="#000000"
           onLayout={closeCutout.onCloseLayout}
-          hitSlop={8}
-        >
-          <View style={overlaySheetStyles.closeIcon}>
-            <Animated.View style={plusRotationStyle}>
-              <View style={styles.headerActionIconStack} pointerEvents="none">
-                <Animated.View style={[styles.headerActionIcon, plusAccentOpacityStyle]}>
-                  <LucideX size={20} color={ACCENT} strokeWidth={2.5} />
-                </Animated.View>
-                <Animated.View style={[styles.headerActionIcon, closeBlackOpacityStyle]}>
-                  <LucideX size={20} color="#000000" strokeWidth={2.5} />
-                </Animated.View>
-              </View>
-            </Animated.View>
-          </View>
-        </Pressable>
+        />
       </View>
       <View style={overlaySheetStyles.headerDivider} />
     </View>
@@ -931,7 +948,6 @@ export const usePollsPanelSpec = ({
     backgroundComponent: <FrostedGlassBackground />,
     headerComponent,
     style: overlaySheetStyles.container,
-    onHidden: handleHidden,
     onSnapChange: handleSnapChange,
     dismissThreshold,
     preventSwipeDismiss: mode === 'overlay',
@@ -950,18 +966,6 @@ const styles = StyleSheet.create({
   headerRow: {
     justifyContent: 'flex-start',
     gap: 10,
-  },
-  headerActionIconStack: {
-    position: 'relative',
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerActionIcon: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   liveBadgeShell: {
     height: LIVE_BADGE_HEIGHT,

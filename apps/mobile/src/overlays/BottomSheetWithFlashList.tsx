@@ -161,6 +161,10 @@ type BottomSheetWithFlashListProps<T> = {
   shadowStyle?: StyleProp<ViewStyle>;
 };
 
+const PROGRAMMATIC_SNAP_MIN_VELOCITY = 900;
+const PROGRAMMATIC_SNAP_MAX_VELOCITY = 2200;
+const PROGRAMMATIC_SNAP_VELOCITY_PER_PX = 3.2;
+
 const BottomSheetWithFlashList = <T,>({
   visible,
   listScrollEnabled = true,
@@ -264,7 +268,24 @@ const BottomSheetWithFlashList = <T,>({
   const flashListRef = listRefProp ?? internalListRef;
   const isDragging = useSharedValue(false);
   const isSettling = useSharedValue(false);
+  const settlingToHidden = useSharedValue(false);
   const springId = useSharedValue(0);
+  const [touchBlockingEnabled, setTouchBlockingEnabled] = React.useState(false);
+
+  useAnimatedReaction(
+    () => {
+      const offscreenThreshold = screenHeight - 0.5;
+      const isOffscreen = sheetY.value >= offscreenThreshold;
+      return settlingToHidden.value || isOffscreen;
+    },
+    (next, prev) => {
+      if (prev === undefined || next === prev) {
+        return;
+      }
+      runOnJS(setTouchBlockingEnabled)(next);
+    },
+    [screenHeight, sheetY, settlingToHidden]
+  );
 
   useAnimatedReaction(
     () => sheetY.value,
@@ -285,6 +306,7 @@ const BottomSheetWithFlashList = <T,>({
   onDragStateChangeRef.current = onDragStateChange;
   onSettleStateChangeRef.current = onSettleStateChange;
   const lastSnapToRef = React.useRef<SheetSnapPoint | 'hidden' | null>(null);
+  const lastSnapToTargetRef = React.useRef<number | null>(null);
 
   const notifyHidden = React.useCallback(() => {
     onHiddenRef.current?.();
@@ -394,6 +416,7 @@ const BottomSheetWithFlashList = <T,>({
       'worklet';
       springId.value += 1;
       const localSpringId = springId.value;
+      settlingToHidden.value = hiddenSnap !== undefined && target === hiddenSnap;
       if (hiddenSnap !== undefined && target !== hiddenSnap) {
         hasNotifiedHidden.value = false;
       }
@@ -411,6 +434,7 @@ const BottomSheetWithFlashList = <T,>({
             return;
           }
           isSettling.value = false;
+          settlingToHidden.value = false;
           const snapKey = resolveSnapKeyFromValues(
             target,
             expandedSnap,
@@ -437,6 +461,7 @@ const BottomSheetWithFlashList = <T,>({
       notifyHidden,
       notifySnapChange,
       sheetY,
+      settlingToHidden,
       springId,
     ]
   );
@@ -465,6 +490,19 @@ const BottomSheetWithFlashList = <T,>({
     },
     [collapsedSnap, expandedSnap, hiddenSnap, middleSnap]
   );
+
+  const resolveProgrammaticSnapVelocity = React.useCallback((fromValue: number, toValue: number) => {
+    const delta = toValue - fromValue;
+    if (Math.abs(delta) < 0.5) {
+      return 0;
+    }
+    const direction = delta > 0 ? 1 : -1;
+    const magnitude = Math.min(
+      PROGRAMMATIC_SNAP_MAX_VELOCITY,
+      Math.max(PROGRAMMATIC_SNAP_MIN_VELOCITY, Math.abs(delta) * PROGRAMMATIC_SNAP_VELOCITY_PER_PX)
+    );
+    return direction * magnitude;
+  }, []);
 
   React.useEffect(() => {
     if (sheetYValue) {
@@ -513,21 +551,37 @@ const BottomSheetWithFlashList = <T,>({
   React.useEffect(() => {
     if (!snapTo) {
       lastSnapToRef.current = null;
+      lastSnapToTargetRef.current = null;
       return;
     }
-    if (snapTo === lastSnapToRef.current) {
-      return;
-    }
-    lastSnapToRef.current = snapTo;
     const target = resolveSnapValue(snapTo);
     if (target === undefined) {
       return;
     }
+    if (
+      snapTo === lastSnapToRef.current &&
+      lastSnapToTargetRef.current !== null &&
+      Math.abs(lastSnapToTargetRef.current - target) < 0.5
+    ) {
+      return;
+    }
+    lastSnapToRef.current = snapTo;
+    lastSnapToTargetRef.current = target;
     if (hiddenSnap !== undefined && target !== hiddenSnap) {
       hasNotifiedHidden.value = false;
     }
-    startSpringOnJS(target, 0, snapTo === 'hidden');
-  }, [hasNotifiedHidden, hiddenSnap, resolveSnapValue, snapTo, startSpringOnJS]);
+    const velocity = resolveProgrammaticSnapVelocity(sheetY.value, target);
+    startSpringOnJS(target, velocity, snapTo === 'hidden');
+  }, [
+    hasNotifiedHidden,
+    hiddenSnap,
+    lastSnapToTargetRef,
+    resolveProgrammaticSnapVelocity,
+    resolveSnapValue,
+    sheetY,
+    snapTo,
+    startSpringOnJS,
+  ]);
 
   const onHeaderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -633,6 +687,12 @@ const BottomSheetWithFlashList = <T,>({
         }
 
         if (!atExpanded) {
+          if (!touchInHeader) {
+            expandDidHandoffToScroll.value = true;
+            syncDragging();
+            stateManager.fail();
+            return;
+          }
           stateManager.activate();
           expandPanActive.value = true;
           beginDrag();
@@ -916,7 +976,7 @@ const BottomSheetWithFlashList = <T,>({
     };
     return {
       drawDistance: DEFAULT_DRAW_DISTANCE,
-      removeClippedSubviews: true,
+      removeClippedSubviews: false,
       ...flashListProps,
       overrideProps,
     };
@@ -932,7 +992,7 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View
-        pointerEvents={visible && interactionEnabled ? 'auto' : 'none'}
+        pointerEvents={visible && interactionEnabled && !touchBlockingEnabled ? 'auto' : 'none'}
         style={[style, sheetHeightStyle, animatedSheetStyle]}
       >
         <View style={shadowShellStyle}>

@@ -1,11 +1,7 @@
 import React from 'react';
 import { StyleSheet, View, type LayoutChangeEvent, type LayoutRectangle } from 'react-native';
-import MaskedView from '@react-native-masked-view/masked-view';
 import Svg, {
-  Circle as SvgCircle,
-  Rect as SvgRect,
-  Defs as SvgDefs,
-  Mask as SvgMask,
+  Path as SvgPath,
 } from 'react-native-svg';
 import { OVERLAY_HEADER_CLOSE_BUTTON_SIZE } from './overlaySheetStyles';
 
@@ -35,6 +31,29 @@ const DEFAULT_HOLE_Y_OFFSET = 0;
 const DEFAULT_BADGE_PADDING = 0;
 const DEFAULT_BADGE_Y_OFFSET = 0;
 
+const circlePath = (cx: number, cy: number, radius: number) =>
+  `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${radius * 2},0 a ${radius},${radius} 0 1,0 -${
+    radius * 2
+  },0`;
+
+const roundedRectPath = (x: number, y: number, width: number, height: number, radius: number) => {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  const right = x + width;
+  const bottom = y + height;
+  return [
+    `M ${x + r} ${y}`,
+    `H ${right - r}`,
+    `A ${r} ${r} 0 0 1 ${right} ${y + r}`,
+    `V ${bottom - r}`,
+    `A ${r} ${r} 0 0 1 ${right - r} ${bottom}`,
+    `H ${x + r}`,
+    `A ${r} ${r} 0 0 1 ${x} ${bottom - r}`,
+    `V ${y + r}`,
+    `A ${r} ${r} 0 0 1 ${x + r} ${y}`,
+    'Z',
+  ].join(' ');
+};
+
 const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderCloseCutoutResult => {
   const closeButtonSize = options.closeButtonSize ?? OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
   const fillColor = options.fillColor ?? '#ffffff';
@@ -49,10 +68,6 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
   const [headerRowOffset, setHeaderRowOffset] = React.useState({ x: 0, y: 0 });
   const [closeLayout, setCloseLayout] = React.useState<LayoutRectangle | null>(null);
   const [badgeLayout, setBadgeLayout] = React.useState<LayoutRectangle | null>(null);
-  const maskId = React.useMemo(
-    () => `overlay-header-close-mask-${Math.random().toString(36).slice(2, 8)}`,
-    []
-  );
 
   const onHeaderLayout = React.useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
     setHeaderLayout((prev) =>
@@ -102,10 +117,8 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
   }, []);
 
   const background = React.useMemo(() => {
-    const fillStyle = [styles.fill, { backgroundColor: fillColor }];
-
     if (!(headerLayout.width > 0 && headerLayout.height > 0)) {
-      return <View style={fillStyle} pointerEvents="none" />;
+      return <View style={[styles.fill, { backgroundColor: fillColor }]} pointerEvents="none" />;
     }
 
     const maskHeight = headerLayout.height + maskPadding * 2;
@@ -115,13 +128,13 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
         : null;
     const closeCenterY =
       closeLayout?.y !== undefined
-        ? headerRowOffset.y + closeLayout.y + closeLayout.height / 2 + holeYOffset
+        ? headerRowOffset.y + closeLayout.y + closeLayout.height / 2 + holeYOffset + maskPadding
         : null;
     const badgeRect =
       badgeLayout?.x !== undefined && badgeLayout?.y !== undefined
         ? {
             x: headerRowOffset.x + badgeLayout.x - badgePadding,
-            y: headerRowOffset.y + badgeLayout.y - badgePadding + badgeYOffset,
+            y: headerRowOffset.y + badgeLayout.y - badgePadding + badgeYOffset + maskPadding,
             width: badgeLayout.width + badgePadding * 2,
             height: badgeLayout.height + badgePadding * 2,
           }
@@ -131,52 +144,28 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
       ? Math.min(badgeRadiusBase + badgePadding, badgeRect.height / 2, badgeRect.width / 2)
       : 0;
 
+    const cutoutPaths: string[] = [];
+    if (closeCenterX !== null && closeCenterY !== null) {
+      cutoutPaths.push(circlePath(closeCenterX, closeCenterY, holeRadius));
+    }
+    if (badgeRect) {
+      cutoutPaths.push(
+        roundedRectPath(badgeRect.x, badgeRect.y, badgeRect.width, badgeRect.height, badgeRadius)
+      );
+    }
+
+    const outerRect = `M 0 0 H ${headerLayout.width} V ${maskHeight} H 0 Z`;
+    const d = cutoutPaths.length ? `${outerRect} ${cutoutPaths.join(' ')}` : outerRect;
+
     return (
-      <MaskedView
+      <Svg
         pointerEvents="none"
-        style={styles.maskOverlay}
-        maskElement={
-          <Svg width={headerLayout.width} height={maskHeight}>
-            <SvgDefs>
-              <SvgMask
-                id={maskId}
-                x={0}
-                y={0}
-                width={headerLayout.width}
-                height={maskHeight}
-                maskUnits="userSpaceOnUse"
-                maskContentUnits="userSpaceOnUse"
-              >
-                <SvgRect x={0} y={0} width={headerLayout.width} height={maskHeight} fill="white" />
-                {closeCenterX !== null && closeCenterY !== null ? (
-                  <SvgCircle cx={closeCenterX} cy={closeCenterY} r={holeRadius} fill="black" />
-                ) : null}
-                {badgeRect ? (
-                  <SvgRect
-                    x={badgeRect.x}
-                    y={badgeRect.y}
-                    width={badgeRect.width}
-                    height={badgeRect.height}
-                    rx={badgeRadius}
-                    ry={badgeRadius}
-                    fill="black"
-                  />
-                ) : null}
-              </SvgMask>
-            </SvgDefs>
-            <SvgRect
-              x={0}
-              y={0}
-              width={headerLayout.width}
-              height={maskHeight}
-              fill="white"
-              mask={`url(#${maskId})`}
-            />
-          </Svg>
-        }
+        width={headerLayout.width}
+        height={maskHeight}
+        style={[styles.fill, maskPadding ? { top: -maskPadding, height: maskHeight } : null]}
       >
-        <View style={fillStyle} pointerEvents="none" />
-      </MaskedView>
+        <SvgPath d={d} fill={fillColor} fillRule="evenodd" />
+      </Svg>
     );
   }, [
     closeLayout?.height,
@@ -197,7 +186,6 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     holeRadius,
     holeYOffset,
     options.badgeRadius,
-    maskId,
     maskPadding,
   ]);
 
@@ -212,9 +200,6 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
 };
 
 const styles = StyleSheet.create({
-  maskOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
   fill: {
     ...StyleSheet.absoluteFillObject,
   },

@@ -217,7 +217,7 @@ export const useSearchPanelSpec = <T,>({
       ...flashListProps,
       getItemType,
       overrideItemLayout,
-      removeClippedSubviews: true,
+      removeClippedSubviews: flashListProps?.removeClippedSubviews ?? false,
       overrideProps: {
         ...(flashListProps?.overrideProps ?? {}),
       },

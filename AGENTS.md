@@ -1,49 +1,52 @@
-# Repository Guidelines
+# MUST READ FIRST (EVERY SESSION START)
 
-## Project Structure & Module Organization
+This file is intentionally front-loaded because Codex loads the repo-root `AGENTS.md` as session context.
 
-- `apps/api`: NestJS service with Prisma. Tests in `apps/api/src/**/*.spec.ts` and e2e in `apps/api/test/`.
-- `apps/mobile`: Expo React Native app. Source in `apps/mobile/src/`.
-- `packages/shared`: Reusable TypeScript utilities published locally.
-- Supporting folders: `scripts/`, `data/`, `logs/`.
-- Monorepo uses Yarn workspaces and `turbo` for task orchestration.
+## Worktree-First Workflow (Non-Negotiable)
 
-## Build, Test, and Development Commands
+- If the task involves editing files, do the work inside a dedicated task `git worktree` (unless already in one).
+- Default to a dedicated `git worktree` + branch per task (unless already in one):
+  - Pick base branch (default: current branch)
+  - Create branch: `ai/<task>-<yyyymmdd-hhmm>`
+  - Create worktree: `mkdir -p ../.worktrees && git worktree add -b <branch> ../.worktrees/<task>-<yyyymmdd-hhmm> <base-branch>`
+  - Implement only inside the worktree; commit there
+  - Merge back only if the integration checkout is clean; stop on conflicts
+- Do not run git commands that modify/revert the working tree (`git restore`, `git checkout`, `git reset`) unless the user explicitly asks.
+- Prefer read-only git commands (`git diff`, `git status`, `git log`, `git show`, `git blame`) to inspect changes.
 
-- Install: `yarn install` (or `make setup`).
-- Dev (all): `yarn dev` runs workspace `dev` via Turbo.
-- API only: `yarn workspace api start:dev`. Mobile only: `yarn workspace @crave-search/mobile dev`.
-- Build: `yarn build`. Lint: `yarn lint`. Type check: `yarn type-check`. Format: `yarn format`.
-- Tests: `yarn test` (workspace). API: `yarn workspace api test`, coverage: `test:cov`, e2e: `test:e2e`.
-- Database (API): start deps `make docker-up`, migrate `yarn workspace api db:migrate`, studio `yarn workspace api prisma:studio`.
+## Principles (Leave It Better Than You Found It)
 
-## Coding Style & Naming Conventions
+- Optimize for a better foundation, not patch-stacking: if the "obvious" change adds complexity because the underlying code is awkward, improve the underlying structure first.
+- Broaden scope when it directly improves the current outcome: refactor/rename/reorganize when it makes the solution cleaner, more maintainable, or simpler to extend (and reduces net code).
+- Fix root causes over symptoms: prefer deleting/avoiding code via a better design to adding more conditionals, flags, or "just in case" glue.
+- Make small, continuous improvements: whenever touching a module, leave it measurably clearer (naming, boundaries, tests, ergonomics, performance) without introducing unrelated churn.
+- Keep changes intentional: avoid "drive-by" rewrites that don't help the task; if a larger cleanup is warranted, explain why and keep it contained to what unblocks or improves the work.
 
-- TypeScript, 2‑space indent, single quotes, semicolons; enforced by Prettier (`.prettierrc`) and ESLint (`.eslintrc.js`).
-- Naming: files kebab‑case; types/interfaces `PascalCase`; variables/functions `camelCase`; React components `PascalCase`.
-- Keep modules small and colocate tests near code in API (`*.spec.ts`).
+# Repo Quick Guide
 
-## Testing Guidelines
+## Structure
 
-- API uses Jest with unit/integration and e2e. Run e2e after `make docker-up` and migrations.
-- Mobile uses `jest-expo` (add tests as `*.test.tsx` under `apps/mobile`).
-- Prefer fast unit tests; mark integration with clear names and keep deterministic.
-- All API changes must finish with a clean `yarn workspace api lint` run so the `no-unsafe-*` checks stay at zero; re-run this lint task before committing any server-side TypeScript updates.
+- `apps/api`: NestJS + Prisma (tests: `apps/api/src/**/*.spec.ts`, e2e: `apps/api/test/`)
+- `apps/mobile`: Expo React Native app (source: `apps/mobile/src/`)
+- `packages/shared`: shared TypeScript utilities
+- Monorepo: Yarn workspaces + Turbo
 
-## Commit & Pull Request Guidelines
+## Commands
 
-- Conventional Commits style recommended: `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `test:`. Keep subject ≤ 72 chars.
-- Pre-commit hooks (Lefthook) run ESLint, Prettier, and `gitleaks` on staged files. Ensure `yarn lint` and `yarn test` pass locally.
-- PRs: concise description, linked issues, steps to test; include screenshots for mobile UI changes. Reference affected packages (`apps/api`, `apps/mobile`, `packages/shared`).
+- Install: `yarn install`
+- Dev (all): `yarn dev`
+- API dev: `yarn workspace api start:dev`
+- Mobile dev: `yarn workspace @crave-search/mobile dev`
+- Lint: `yarn lint` (API: `yarn workspace api lint`)
+- Tests: `yarn test` (API: `yarn workspace api test`)
 
-## Security & Configuration Tips
+## Style
 
-- Copy `.env.example` to `.env` per app; never commit secrets. Secrets scanning is enforced via `gitleaks`.
-- Commit Prisma migrations in `apps/api/prisma/migrations/`. Use `docker-compose` in `apps/api/` for local DB.
+- Prettier/ESLint enforced: 2-space indent, single quotes, semicolons; filenames kebab-case; React components PascalCase
 
-## Agent Notes
+## API Notes
 
-- You can connect directly to the local Postgres instance for debugging Prisma history or schema issues. Use the credentials in `apps/api/.env` (default `postgres:postgres@localhost:5432/crave_search`) and run commands like:
-  - `psql -h localhost -U postgres -d crave_search -c "SELECT migration_name FROM _prisma_migrations;"`.
-- These `psql` commands usually require escalated permissions in the Codex CLI. Always request them when issuing direct database queries.
-- When adding environment variables, update and organize `apps/api/.env` directly (not just `.env.example`) unless asked otherwise.
+- API changes: finish with `yarn workspace api lint`
+- API local Postgres: use credentials in `apps/api/.env` (default `postgres:postgres@localhost:5432/crave_search`), e.g. `psql -h localhost -U postgres -d crave_search -c "SELECT migration_name FROM _prisma_migrations;"`
+- `psql` may require escalated permissions in Codex CLI; always request them when issuing DB queries
+- Never commit secrets; if adding env vars, update `apps/api/.env` unless told otherwise

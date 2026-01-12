@@ -5,6 +5,12 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
+import {
+  useAnimatedReaction,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -12,7 +18,7 @@ import { useOverlayStore } from '../../store/overlayStore';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
-import { calculateSnapPoints } from '../sheetUtils';
+import { calculateSnapPoints, clampValue } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import {
   favoriteListsService,
@@ -23,6 +29,8 @@ import {
 import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
+import OverlaySheetHeader from '../OverlaySheetHeader';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -61,6 +69,7 @@ type UseBookmarksPanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
   searchBarTop?: number;
+  sheetY: SharedValue<number>;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
 };
@@ -79,12 +88,14 @@ export const useBookmarksPanelSpec = ({
   visible,
   navBarTop = 0,
   searchBarTop = 0,
+  sheetY,
   onSnapChange,
   snapTo,
 }: UseBookmarksPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
   const queryClient = useQueryClient();
+  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -109,16 +120,58 @@ export const useBookmarksPanelSpec = ({
     () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
+  const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
+
+  const headerActionProgress = useSharedValue(0);
+  const headerActionOverride = useSharedValue(false);
+
+  useAnimatedReaction(
+    () => {
+      const range = hiddenSnap - snapPoints.collapsed;
+      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.collapsed) / range : 0;
+      return clampValue(rawProgress, 0, 1);
+    },
+    (nextProgress) => {
+      if (headerActionOverride.value) {
+        return;
+      }
+      headerActionProgress.value = nextProgress;
+    },
+    [headerActionOverride, headerActionProgress, hiddenSnap, sheetY, snapPoints.collapsed]
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
+    const shouldAnimateFromPlus =
+      shouldStartAsPlus && (previousOverlay === 'polls' || previousOverlay === 'search');
+    if (!shouldAnimateFromPlus) {
+      headerActionProgress.value = 0;
+      return;
+    }
+
+    headerActionOverride.value = true;
+    headerActionProgress.value = 1;
+    headerActionProgress.value = withTiming(0, { duration: 220 }, (finished) => {
+      'worklet';
+      if (finished) {
+        headerActionOverride.value = false;
+      }
+    });
+  }, [
+    headerActionOverride,
+    headerActionProgress,
+    previousOverlay,
+    sheetY,
+    snapPoints.middle,
+    visible,
+  ]);
 
   const handleClose = React.useCallback(() => {
     setOverlay('search');
   }, [setOverlay]);
-  const handleHidden = React.useCallback(() => {
-    if (!visible) {
-      return;
-    }
-    setOverlay('search');
-  }, [setOverlay, visible]);
 
   const resetForm = React.useCallback(() => {
     setFormState({
@@ -370,30 +423,15 @@ export const useBookmarksPanelSpec = ({
     );
   };
 
-  const headerComponent = (
-    <View
-      style={[
-        overlaySheetStyles.header,
-        overlaySheetStyles.headerTransparent,
-        { paddingTop: headerPaddingTop },
-      ]}
-      onLayout={closeCutout.onHeaderLayout}
-    >
-      {closeCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
-        <Pressable
-          onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close favorites"
-          hitSlop={10}
-        >
-          <View style={overlaySheetStyles.grabHandle} />
-        </Pressable>
-      </View>
-      <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-        onLayout={closeCutout.onHeaderRowLayout}
-      >
+	  const headerComponent = (
+	    <OverlaySheetHeader
+	      cutoutBackground={closeCutout.background}
+	      onHeaderLayout={closeCutout.onHeaderLayout}
+	      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+      onGrabHandlePress={handleClose}
+      grabHandleAccessibilityLabel="Close favorites"
+      paddingTop={headerPaddingTop}
+      title={
         <View style={styles.headerTextGroup}>
           <Text
             variant="title"
@@ -405,42 +443,45 @@ export const useBookmarksPanelSpec = ({
             Favorites
           </Text>
         </View>
-        <Pressable
+      }
+      actionButton={
+        <OverlayHeaderActionButton
+          progress={headerActionProgress}
           onPress={handleClose}
-          accessibilityRole="button"
           accessibilityLabel="Close favorites"
-          style={overlaySheetStyles.closeButton}
-          onLayout={closeCutout.onCloseLayout}
-          hitSlop={8}
-        >
-          <View style={overlaySheetStyles.closeIcon}>
-            <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
-          </View>
-        </Pressable>
-      </View>
-      <View style={styles.segmentRow}>
-        {(['restaurant', 'dish'] as FavoriteListType[]).map((value) => {
-          const isActive = listType === value;
-          return (
-            <Pressable
-              key={value}
-              onPress={() => setListType(value)}
-              style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
-            >
-              <Text
-                variant="caption"
-                weight="semibold"
-                style={[styles.segmentText, isActive && styles.segmentTextActive]}
-              >
-                {value === 'restaurant' ? 'Restaurants' : 'Dishes'}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <View style={overlaySheetStyles.headerDivider} />
-    </View>
-  );
+          accentColor={ACTIVE_TAB_COLOR}
+          closeColor="#000000"
+	          onLayout={closeCutout.onCloseLayout}
+	        />
+	      }
+	    />
+	  );
+
+	  const listHeaderComponent = (
+	    <View>
+	      <View style={styles.segmentRow}>
+	        {(['restaurant', 'dish'] as FavoriteListType[]).map((value) => {
+	          const isActive = listType === value;
+	          return (
+	            <Pressable
+	              key={value}
+	              onPress={() => setListType(value)}
+	              style={[styles.segmentButton, isActive && styles.segmentButtonActive]}
+	            >
+	              <Text
+	                variant="caption"
+	                weight="semibold"
+	                style={[styles.segmentText, isActive && styles.segmentTextActive]}
+	              >
+	                {value === 'restaurant' ? 'Restaurants' : 'Dishes'}
+	              </Text>
+	            </Pressable>
+	          );
+	        })}
+	      </View>
+	      {renderFormPanel()}
+	    </View>
+	  );
 
   return {
     overlayKey: 'bookmarks',
@@ -456,19 +497,18 @@ export const useBookmarksPanelSpec = ({
       {
         paddingBottom: contentBottomPadding,
       },
-    ],
-    ListHeaderComponent: renderFormPanel,
-    ListEmptyComponent: (
-      <View style={styles.emptyState}>
-        <Text variant="body" style={styles.emptyText}>
-          No lists yet
+	    ],
+	    ListHeaderComponent: listHeaderComponent,
+	    ListEmptyComponent: (
+	      <View style={styles.emptyState}>
+	        <Text variant="body" style={styles.emptyText}>
+	          No lists yet
         </Text>
       </View>
     ),
     backgroundComponent: <FrostedGlassBackground />,
     headerComponent: headerComponent,
     style: overlaySheetStyles.container,
-    onHidden: handleHidden,
     onSnapChange,
     dismissThreshold,
     preventSwipeDismiss: true,
@@ -491,13 +531,14 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#0f172a',
   },
-  segmentRow: {
-    flexDirection: 'row',
-    backgroundColor: SEGMENT_BG,
-    borderRadius: 999,
-    padding: 4,
-    marginTop: 12,
-  },
+	  segmentRow: {
+	    flexDirection: 'row',
+	    backgroundColor: SEGMENT_BG,
+	    borderRadius: 999,
+	    padding: 4,
+	    marginTop: 8,
+	    marginBottom: 12,
+	  },
   segmentButton: {
     flex: 1,
     alignItems: 'center',

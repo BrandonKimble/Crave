@@ -14,12 +14,16 @@ type FrostedGlassBackgroundProps = {
   intensity?: number;
   tint?: 'light' | 'dark' | 'default';
   blurStyle?: StyleProp<ViewStyle>;
+  tintOpacity?: number;
+  tintColor?: string;
 };
 
 const FrostedGlassBackground: React.FC<FrostedGlassBackgroundProps> = ({
   intensity = 45,
   tint = 'light',
   blurStyle,
+  tintOpacity,
+  tintColor,
 }) => (
   <>
     <AppBlurView
@@ -28,7 +32,18 @@ const FrostedGlassBackground: React.FC<FrostedGlassBackgroundProps> = ({
       tint={tint}
       style={[frostedStyles.blur, blurStyle]}
     />
-    <View pointerEvents="none" style={frostedStyles.tint} />
+    <View
+      pointerEvents="none"
+      style={[
+        frostedStyles.tint,
+        tintOpacity !== undefined || tintColor
+          ? {
+              backgroundColor:
+                tintColor ?? `rgba(248, 251, 255, ${Math.min(1, Math.max(0, tintOpacity ?? 0))})`,
+            }
+          : null,
+      ]}
+    />
   </>
 );
 

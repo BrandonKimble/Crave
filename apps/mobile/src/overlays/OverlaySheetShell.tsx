@@ -31,6 +31,7 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   applyNavBarCutout = false,
 }) => {
   const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
+  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
 
   const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
   const resolvedListRef = spec?.listRef ?? internalListRef;
@@ -44,6 +45,8 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   }, [shellSnapTo]);
   const currentSnapRef = React.useRef<OverlaySheetSnap>('hidden');
   const lastOverlayKeyRef = React.useRef<OverlayKey | null>(null);
+  const lastSnapOverlayKeyRef = React.useRef<OverlayKey | null>(null);
+  const lastSnapPointsKeyRef = React.useRef<string | null>(null);
 
   const handleScrollOffsetChange = React.useCallback(
     (nextOffset: number) => {
@@ -65,58 +68,43 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   );
 
   React.useEffect(() => {
-    if (!spec) {
-      return;
-    }
-
-    const hiddenSnap = spec.snapPoints.hidden ?? spec.snapPoints.collapsed;
-    const resolveSnapValue = (snap: OverlaySheetSnap): number => {
-      if (snap === 'hidden') {
-        return hiddenSnap;
-      }
-      return spec.snapPoints[snap];
-    };
-
-    if (!visible) {
-      if (sheetY.value < hiddenSnap - 0.5) {
-        setShellSnapTo('hidden');
-      }
+    if (!visible || !spec) {
+      lastSnapOverlayKeyRef.current = null;
+      lastSnapPointsKeyRef.current = null;
       return;
     }
 
     if (spec.snapTo) {
+      setShellSnapTo(null);
       return;
     }
 
-    const currentY = sheetY.value;
+    const snapPointsKey = `${spec.snapPoints.expanded}:${spec.snapPoints.middle}:${spec.snapPoints.collapsed}:${spec.snapPoints.hidden ?? ''}`;
+    const overlayChanged = lastSnapOverlayKeyRef.current !== activeOverlayKey;
+    const snapPointsChanged = lastSnapPointsKeyRef.current !== snapPointsKey;
+    if (!overlayChanged && !snapPointsChanged) {
+      return;
+    }
+    lastSnapOverlayKeyRef.current = activeOverlayKey;
+    lastSnapPointsKeyRef.current = snapPointsKey;
 
-    if (currentY >= hiddenSnap - 0.5) {
-      setShellSnapTo(spec.initialSnapPoint ?? 'middle');
+    if (overlayChanged && previousOverlay !== 'search' && currentSnapRef.current !== 'hidden') {
+      setShellSnapTo(null);
       return;
     }
 
-    const lowerBound = spec.snapPoints.expanded;
-    const upperBound = spec.preventSwipeDismiss ? spec.snapPoints.collapsed : hiddenSnap;
-
-    if (currentY < lowerBound - 0.5) {
-      setShellSnapTo('expanded');
-      return;
-    }
-
-    if (currentY > upperBound + 0.5) {
-      setShellSnapTo(spec.preventSwipeDismiss ? 'collapsed' : 'hidden');
-      return;
-    }
-
-    const desiredSnap =
+    const desiredSnap: OverlaySheetSnap =
       currentSnapRef.current === 'hidden'
-        ? spec.initialSnapPoint ?? 'middle'
-        : currentSnapRef.current;
-    const desiredTarget = resolveSnapValue(desiredSnap);
-    if (Math.abs(currentY - desiredTarget) > 0.5) {
-      setShellSnapTo(desiredSnap);
+        ? (spec.initialSnapPoint ?? 'middle')
+        : overlayChanged && previousOverlay === 'search'
+          ? (spec.initialSnapPoint ?? 'middle')
+          : currentSnapRef.current;
+
+    if (shellSnapToRef.current === desiredSnap) {
+      return;
     }
-  }, [activeOverlayKey, spec, sheetY, visible]);
+    setShellSnapTo(desiredSnap);
+  }, [activeOverlayKey, previousOverlay, spec, visible]);
 
   React.useLayoutEffect(() => {
     if (!visible) {

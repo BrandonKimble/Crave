@@ -19,6 +19,7 @@ type DismissHandler = () => void;
 
 interface OverlayState {
   activeOverlay: OverlayKey;
+  previousOverlay: OverlayKey | null;
   overlayStack: OverlayKey[];
   overlayParams: OverlayParamsMap;
   overlayScrollOffsets: Partial<Record<OverlayKey, number>>;
@@ -35,12 +36,14 @@ interface OverlayState {
 
 export const useOverlayStore = create<OverlayState>((set, get) => ({
   activeOverlay: 'search',
+  previousOverlay: null,
   overlayStack: ['search'],
   overlayParams: {},
   overlayScrollOffsets: {},
   transientDismissors: [],
   setOverlay: (overlay, params) =>
     set((state) => ({
+      previousOverlay: state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay,
       activeOverlay: overlay,
       overlayStack: [overlay],
       overlayParams: {
@@ -60,7 +63,10 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
       const currentTop = state.overlayStack[state.overlayStack.length - 1];
       const nextStack =
         currentTop === overlay ? state.overlayStack : [...state.overlayStack, overlay];
+      const nextPrevious =
+        state.activeOverlay === overlay ? state.previousOverlay : state.activeOverlay;
       return {
+        previousOverlay: nextPrevious,
         activeOverlay: overlay,
         overlayStack: nextStack,
         overlayParams: {
@@ -77,6 +83,8 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
       const nextStack = state.overlayStack.slice(0, -1);
       const nextActive = nextStack[nextStack.length - 1] ?? 'search';
       return {
+        previousOverlay:
+          state.activeOverlay === nextActive ? state.previousOverlay : state.activeOverlay,
         activeOverlay: nextActive,
         overlayStack: nextStack,
       };
@@ -88,6 +96,7 @@ export const useOverlayStore = create<OverlayState>((set, get) => ({
         return state;
       }
       return {
+        previousOverlay: state.activeOverlay === root ? state.previousOverlay : state.activeOverlay,
         activeOverlay: root,
         overlayStack: [root],
       };

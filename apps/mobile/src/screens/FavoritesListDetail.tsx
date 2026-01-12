@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { FlashList } from '@shopify/flash-list';
 import type { StackScreenProps } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
+import { X as LucideX } from 'lucide-react-native';
 import { Text } from '../components';
 import { FrostedGlassBackground } from '../components/FrostedGlassBackground';
 import { colors as themeColors } from '../constants/theme';
@@ -171,7 +172,7 @@ const FavoritesListDetailScreen: React.FC<
           hitSlop={8}
           style={styles.headerIcon}
         >
-          <Feather name="x" size={22} color={themeColors.primary} />
+          <LucideX size={20} color="#000000" strokeWidth={2.5} />
         </Pressable>
         <View style={styles.headerTitleGroup}>
           {isEditing ? (

@@ -13,6 +13,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { Feather } from '@expo/vector-icons';
 import { Heart } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
@@ -39,6 +40,16 @@ const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
 const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
+const USER_POLLS_STALE_MS = 1000 * 60; // 1 minute
+const USER_POLLS_GC_MS = 1000 * 60 * 10; // 10 minutes
+
+const shouldRetryUserPollsQuery = (failureCount: number, error: unknown) => {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    return false;
+  }
+  return failureCount < 2;
+};
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
@@ -72,14 +83,20 @@ const ProfileScreen: React.FC = () => {
   const userId = profile?.userId ?? null;
 
   const createdPollsQuery = useQuery({
-    queryKey: ['user-polls', 'created'],
+    queryKey: ['user-polls', userId, 'created'],
     queryFn: () => fetchUserPolls({ activity: 'created', limit: 50 }),
-    enabled: isSignedIn && Boolean(userId),
+    enabled: isSignedIn && Boolean(userId) && activeSegment === 'created',
+    staleTime: USER_POLLS_STALE_MS,
+    gcTime: USER_POLLS_GC_MS,
+    retry: shouldRetryUserPollsQuery,
   });
   const contributedPollsQuery = useQuery({
-    queryKey: ['user-polls', 'contributed'],
+    queryKey: ['user-polls', userId, 'contributed'],
     queryFn: () => fetchUserPolls({ activity: 'participated', limit: 50 }),
-    enabled: isSignedIn && Boolean(userId),
+    enabled: isSignedIn && Boolean(userId) && activeSegment === 'contributed',
+    staleTime: USER_POLLS_STALE_MS,
+    gcTime: USER_POLLS_GC_MS,
+    retry: shouldRetryUserPollsQuery,
   });
   const contributedPolls = React.useMemo(() => {
     const polls = contributedPollsQuery.data?.polls ?? [];
@@ -211,6 +228,13 @@ const ProfileScreen: React.FC = () => {
       : activeSegment === 'contributed'
       ? contributedPolls
       : [];
+
+  const isActivePollListLoading =
+    activeSegment === 'created'
+      ? createdPollsQuery.isLoading
+      : activeSegment === 'contributed'
+      ? contributedPollsQuery.isLoading
+      : false;
 
   const renderPollCard = (poll: Poll) => {
     const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
@@ -395,8 +419,7 @@ const ProfileScreen: React.FC = () => {
         ) : (
           <View style={styles.section}>
             {profileQuery.isLoading ||
-            createdPollsQuery.isLoading ||
-            contributedPollsQuery.isLoading ? (
+            isActivePollListLoading ? (
               <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
             ) : activePolls.length ? (
               <View style={styles.pollList}>{activePolls.map(renderPollCard)}</View>

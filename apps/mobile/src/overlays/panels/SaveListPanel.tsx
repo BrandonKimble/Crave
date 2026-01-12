@@ -3,6 +3,7 @@ import { Dimensions, Pressable, StyleSheet, TextInput, View } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -10,6 +11,8 @@ import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetS
 import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { resolveExpandedTop } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
+import OverlaySheetHeader from '../OverlaySheetHeader';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -82,6 +85,7 @@ export const useSaveListPanelSpec = ({
 
   const headerPaddingTop = 0;
   const closeCutout = useHeaderCloseCutout();
+  const headerActionProgress = useSharedValue(0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
     const expanded = resolveExpandedTop(searchBarTop, insets.top);
@@ -280,29 +284,14 @@ export const useSaveListPanelSpec = ({
 
   const headerComponent = React.useMemo(
     () => (
-      <View
-        style={[
-          overlaySheetStyles.header,
-          overlaySheetStyles.headerTransparent,
-          { paddingTop: headerPaddingTop },
-        ]}
-        onLayout={closeCutout.onHeaderLayout}
-      >
-        {closeCutout.background}
-        <View style={overlaySheetStyles.grabHandleWrapper}>
-          <Pressable
-            onPress={onClose}
-            accessibilityRole="button"
-            accessibilityLabel="Close save sheet"
-            hitSlop={10}
-          >
-            <View style={overlaySheetStyles.grabHandle} />
-          </Pressable>
-        </View>
-        <View
-          style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-          onLayout={closeCutout.onHeaderRowLayout}
-        >
+      <OverlaySheetHeader
+        cutoutBackground={closeCutout.background}
+        onHeaderLayout={closeCutout.onHeaderLayout}
+        onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+        onGrabHandlePress={onClose}
+        grabHandleAccessibilityLabel="Close save sheet"
+        paddingTop={headerPaddingTop}
+        title={
           <View style={styles.headerTextGroup}>
             <Text
               variant="title"
@@ -314,27 +303,25 @@ export const useSaveListPanelSpec = ({
               Save to {listType === 'restaurant' ? 'Restaurants' : 'Dishes'}
             </Text>
           </View>
-          <Pressable
+        }
+        actionButton={
+          <OverlayHeaderActionButton
+            progress={headerActionProgress}
             onPress={onClose}
-            accessibilityRole="button"
             accessibilityLabel="Close save sheet"
-            style={overlaySheetStyles.closeButton}
+            accentColor={ACTIVE_TAB_COLOR}
+            closeColor="#000000"
             onLayout={closeCutout.onCloseLayout}
-            hitSlop={8}
-          >
-            <View style={overlaySheetStyles.closeIcon}>
-              <Feather name="x" size={20} color={ACTIVE_TAB_COLOR} />
-            </View>
-          </Pressable>
-        </View>
-        <View style={overlaySheetStyles.headerDivider} />
-      </View>
+          />
+        }
+      />
     ),
     [
       closeCutout.background,
       closeCutout.onCloseLayout,
       closeCutout.onHeaderLayout,
       closeCutout.onHeaderRowLayout,
+      headerActionProgress,
       headerPaddingTop,
       listType,
       onClose,

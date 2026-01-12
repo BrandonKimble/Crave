@@ -13,7 +13,14 @@ import { useAuth } from '@clerk/clerk-expo';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { Feather } from '@expo/vector-icons';
+import {
+  useAnimatedReaction,
+  useSharedValue,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -28,9 +35,11 @@ import { useFavoriteLists } from '../../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import { calculateSnapPoints } from '../sheetUtils';
+import { calculateSnapPoints, clampValue } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
+import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
+import OverlaySheetHeader from '../OverlaySheetHeader';
 
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
 
@@ -38,7 +47,9 @@ type UseProfilePanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
   searchBarTop?: number;
+  sheetY: SharedValue<number>;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
+  snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
 };
 
 type Navigation = StackNavigationProp<RootStackParamList>;
@@ -48,6 +59,16 @@ const SEGMENT_BG = '#f1f5f9';
 const SEGMENT_ACTIVE = '#ffffff';
 const SEGMENT_TEXT = themeColors.textBody;
 const SEGMENT_ACTIVE_TEXT = '#0f172a';
+const USER_POLLS_STALE_MS = 1000 * 60; // 1 minute
+const USER_POLLS_GC_MS = 1000 * 60 * 10; // 10 minutes
+
+const shouldRetryUserPollsQuery = (failureCount: number, error: unknown) => {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    return false;
+  }
+  return failureCount < 2;
+};
 
 const resolveRankColor = (score?: number | null) => {
   if (score == null) {
@@ -66,12 +87,15 @@ export const useProfilePanelSpec = ({
   visible,
   navBarTop = 0,
   searchBarTop = 0,
+  sheetY,
   onSnapChange,
+  snapTo,
 }: UseProfilePanelSpecOptions): OverlayContentSpec<unknown> => {
   const resetOnboarding = useOnboardingStore((state) => state.__forceOnboarding);
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
+  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
@@ -86,14 +110,20 @@ export const useProfilePanelSpec = ({
   const userId = profile?.userId ?? null;
 
   const createdPollsQuery = useQuery({
-    queryKey: ['user-polls', 'created'],
+    queryKey: ['user-polls', userId, 'created'],
     queryFn: () => fetchUserPolls({ activity: 'created', limit: 50 }),
-    enabled: isSignedIn && visible && Boolean(userId),
+    enabled: isSignedIn && visible && Boolean(userId) && activeSegment === 'created',
+    staleTime: USER_POLLS_STALE_MS,
+    gcTime: USER_POLLS_GC_MS,
+    retry: shouldRetryUserPollsQuery,
   });
   const contributedPollsQuery = useQuery({
-    queryKey: ['user-polls', 'contributed'],
+    queryKey: ['user-polls', userId, 'contributed'],
     queryFn: () => fetchUserPolls({ activity: 'participated', limit: 50 }),
-    enabled: isSignedIn && visible && Boolean(userId),
+    enabled: isSignedIn && visible && Boolean(userId) && activeSegment === 'contributed',
+    staleTime: USER_POLLS_STALE_MS,
+    gcTime: USER_POLLS_GC_MS,
+    retry: shouldRetryUserPollsQuery,
   });
   const contributedPolls = React.useMemo(() => {
     const polls = contributedPollsQuery.data?.polls ?? [];
@@ -193,13 +223,6 @@ export const useProfilePanelSpec = ({
     setOverlay('search');
   }, [setOverlay]);
 
-  const handleHidden = React.useCallback(() => {
-    if (!visible) {
-      return;
-    }
-    setOverlay('search');
-  }, [setOverlay, visible]);
-
   const displayName = profile?.displayName?.trim() || profile?.username || 'Crave Explorer';
   const usernameLabel = profile?.username ? `@${profile.username}` : 'Pick a username';
   const initials = React.useMemo(() => {
@@ -223,6 +246,12 @@ export const useProfilePanelSpec = ({
       : activeSegment === 'contributed'
       ? contributedPolls
       : [];
+  const isActivePollListLoading =
+    activeSegment === 'created'
+      ? createdPollsQuery.isLoading
+      : activeSegment === 'contributed'
+      ? contributedPollsQuery.isLoading
+      : false;
 
   const renderPollCard = (poll: Poll) => {
     const totalVotes = poll.options.reduce((sum, option) => sum + option.voteCount, 0);
@@ -286,45 +315,78 @@ export const useProfilePanelSpec = ({
     () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
     [headerHeight, insets.top, navBarOffset, searchBarTop]
   );
+  const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
+
+  const headerActionProgress = useSharedValue(0);
+  const headerActionOverride = useSharedValue(false);
+
+  useAnimatedReaction(
+    () => {
+      const range = hiddenSnap - snapPoints.collapsed;
+      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.collapsed) / range : 0;
+      return clampValue(rawProgress, 0, 1);
+    },
+    (nextProgress) => {
+      if (headerActionOverride.value) {
+        return;
+      }
+      headerActionProgress.value = nextProgress;
+    },
+    [headerActionOverride, headerActionProgress, hiddenSnap, sheetY, snapPoints.collapsed]
+  );
+
+  React.useEffect(() => {
+    if (!visible) {
+      return;
+    }
+    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
+    const shouldAnimateFromPlus =
+      shouldStartAsPlus && (previousOverlay === 'polls' || previousOverlay === 'search');
+    if (!shouldAnimateFromPlus) {
+      headerActionProgress.value = 0;
+      return;
+    }
+
+    headerActionOverride.value = true;
+    headerActionProgress.value = 1;
+    headerActionProgress.value = withTiming(0, { duration: 220 }, (finished) => {
+      'worklet';
+      if (finished) {
+        headerActionOverride.value = false;
+      }
+    });
+  }, [
+    headerActionOverride,
+    headerActionProgress,
+    previousOverlay,
+    sheetY,
+    snapPoints.middle,
+    visible,
+  ]);
 
   const headerComponent = (
-    <View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent]}
-      onLayout={closeCutout.onHeaderLayout}
-    >
-      {closeCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
-        <Pressable
-          onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close profile"
-          hitSlop={10}
-        >
-          <View style={overlaySheetStyles.grabHandle} />
-        </Pressable>
-      </View>
-      <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
-        onLayout={closeCutout.onHeaderRowLayout}
-      >
+    <OverlaySheetHeader
+      cutoutBackground={closeCutout.background}
+      onHeaderLayout={closeCutout.onHeaderLayout}
+      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+      onGrabHandlePress={handleClose}
+      grabHandleAccessibilityLabel="Close profile"
+      title={
         <Text variant="title" weight="semibold" style={styles.sheetTitle}>
           Profile
         </Text>
-        <Pressable
+      }
+      actionButton={
+        <OverlayHeaderActionButton
+          progress={headerActionProgress}
           onPress={handleClose}
-          accessibilityRole="button"
           accessibilityLabel="Close profile"
-          style={overlaySheetStyles.closeButton}
+          accentColor={themeColors.primary}
+          closeColor="#000000"
           onLayout={closeCutout.onCloseLayout}
-          hitSlop={8}
-        >
-          <View style={overlaySheetStyles.closeIcon}>
-            <Feather name="x" size={20} color={themeColors.primary} />
-          </View>
-        </Pressable>
-      </View>
-      <View style={overlaySheetStyles.headerDivider} />
-    </View>
+        />
+      }
+    />
   );
 
   const listHeaderComponent = (
@@ -452,8 +514,7 @@ export const useProfilePanelSpec = ({
       ) : (
         <View style={styles.section}>
           {profileQuery.isLoading ||
-          createdPollsQuery.isLoading ||
-          contributedPollsQuery.isLoading ? (
+          isActivePollListLoading ? (
             <ActivityIndicator color={themeColors.primary} style={styles.sectionSpinner} />
           ) : activePolls.length ? (
             <View style={styles.pollList}>{activePolls.map(renderPollCard)}</View>
@@ -471,6 +532,7 @@ export const useProfilePanelSpec = ({
     overlayKey: 'profile',
     snapPoints,
     initialSnapPoint: 'expanded',
+    snapTo,
     data: [],
     renderItem: () => null,
     estimatedItemSize: 720,
@@ -478,7 +540,6 @@ export const useProfilePanelSpec = ({
     ListHeaderComponent: listHeaderComponent,
     backgroundComponent: <FrostedGlassBackground />,
     headerComponent: headerComponent,
-    onHidden: handleHidden,
     onSnapChange,
     dismissThreshold,
     preventSwipeDismiss: true,

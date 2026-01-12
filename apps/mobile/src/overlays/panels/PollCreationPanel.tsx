@@ -11,8 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Feather } from '@expo/vector-icons';
-import { HandPlatter, Sparkles, Store, Utensils } from 'lucide-react-native';
+import { HandPlatter, Sparkles, Store, Utensils, X as LucideX } from 'lucide-react-native';
 
 import { Text } from '../../components';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
@@ -361,7 +360,7 @@ export const usePollCreationPanelSpec = ({
           </Text>
         </View>
         <Pressable onPress={onClose} accessibilityRole="button" hitSlop={8}>
-          <Feather name="x" size={20} color={ACCENT} />
+          <LucideX size={20} color="#000000" strokeWidth={2.5} />
         </Pressable>
       </View>
 

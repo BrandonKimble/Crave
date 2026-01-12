@@ -761,9 +761,9 @@ const styles = StyleSheet.create({
     elevation: 0,
   },
   resultItemSeparator: {
-    height: 1,
+    height: 8,
     width: '100%',
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   resultItemSeparatorLine: {
     height: 1,
