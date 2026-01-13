@@ -1,6 +1,5 @@
 import React from 'react';
 
-import { PixelRatio } from 'react-native';
 import {
   Extrapolation,
   interpolate,
@@ -11,14 +10,13 @@ import {
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
 import { calculateSnapPoints, type SheetPosition } from '../../../overlays/sheetUtils';
-import { LINE_HEIGHTS } from '../../../constants/typography';
-import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING, SCREEN_HEIGHT } from '../constants/search';
+import { SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
   searchBarTop: number;
   insetTop: number;
-  insetBottom: number;
+  navBarTop: number;
   headerHeight?: number;
 };
 
@@ -44,7 +42,7 @@ const useSearchSheet = ({
   isSearchOverlay,
   searchBarTop,
   insetTop,
-  insetBottom,
+  navBarTop,
   headerHeight,
 }: UseSearchSheetOptions): UseSearchSheetResult => {
   const [panelVisible, setPanelVisible] = React.useState(false);
@@ -57,26 +55,15 @@ const useSearchSheet = ({
   const [snapTo, setSnapTo] = React.useState<SheetPosition | null>(null);
   const snapToRef = React.useRef<SheetPosition | null>(null);
 
-  // The search results sheet intentionally uses the same snap-point math as other overlays,
-  // even when the bottom nav is hidden (we still align collapsed as if it were present).
-  const estimatedNavBarTop = React.useMemo(() => {
-    const clampedInsetBottom = Math.max(insetBottom, 12);
-    const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
-      NAV_TOP_PADDING + 24 + 2 + LINE_HEIGHTS.body + clampedInsetBottom + NAV_BOTTOM_PADDING
-    );
-    return SCREEN_HEIGHT - estimatedNavBarHeight;
-  }, [insetBottom]);
-
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    const resolvedHeaderHeight = Math.max(headerHeight ?? 0, 96);
     return calculateSnapPoints(
       SCREEN_HEIGHT,
       searchBarTop,
       insetTop,
-      estimatedNavBarTop,
-      resolvedHeaderHeight
+      navBarTop,
+      headerHeight ?? 0
     );
-  }, [estimatedNavBarTop, headerHeight, insetTop, searchBarTop]);
+  }, [headerHeight, insetTop, navBarTop, searchBarTop]);
 
   const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
 

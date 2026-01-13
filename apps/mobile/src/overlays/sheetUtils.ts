@@ -82,11 +82,9 @@ export const calculateSnapPoints = (
   const middle = Math.max(expanded + 96, rawMiddle);
   const hidden = screenHeight + 80;
   const clampedMiddle = Math.min(middle, hidden - 120);
-  const collapsed = screenHeight - 130;
-  // If we have a nav bar, align collapsed to it
-  const fallbackCollapsed = collapsed;
-  const navAlignedCollapsed =
-    navBarOffset > 0 && headerHeight > 0 ? navBarOffset - headerHeight : fallbackCollapsed;
+  const resolvedNavBarOffset = navBarOffset > 0 ? navBarOffset : screenHeight;
+  const resolvedHeaderHeight = headerHeight > 0 ? headerHeight : 96;
+  const navAlignedCollapsed = resolvedNavBarOffset - resolvedHeaderHeight;
   const finalCollapsed = Math.max(navAlignedCollapsed, clampedMiddle + 24);
 
   return {

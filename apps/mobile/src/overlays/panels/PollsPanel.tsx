@@ -984,7 +984,7 @@ const styles = StyleSheet.create({
     color: ACCENT,
   },
   liveBadgeTextMuted: {
-    color: themeColors.textBody,
+    color: themeColors.text,
   },
   scrollContent: {
     paddingBottom: 32,

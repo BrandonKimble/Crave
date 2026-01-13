@@ -1152,7 +1152,7 @@ const SearchScreen: React.FC = () => {
     isSearchOverlay,
     searchBarTop,
     insetTop: insets.top,
-    insetBottom: insets.bottom,
+    navBarTop: navBarTopForSnaps,
     headerHeight: resultsSheetHeaderHeight,
   });
   const isSearchEditingRef = React.useRef(false);
@@ -2059,6 +2059,8 @@ const SearchScreen: React.FC = () => {
     bottomNavFrame?.height && bottomNavFrame.height > 0
       ? bottomNavFrame.height
       : estimatedNavBarHeight;
+  const navBarTopForSnaps =
+    bottomNavFrame?.y && bottomNavFrame.y > 0 ? bottomNavFrame.y : SCREEN_HEIGHT - fallbackNavBarHeight;
   const navBarTop = shouldHideBottomNav
     ? SCREEN_HEIGHT
     : bottomNavFrame?.y && bottomNavFrame.y > 0
@@ -6898,7 +6900,7 @@ const SearchScreen: React.FC = () => {
     params: pollOverlayParams,
     initialSnapPoint: pollsOverlaySnapPoint,
     mode: pollsOverlayMode,
-    navBarTop,
+    navBarTop: navBarTopForSnaps,
     navBarHeight,
     searchBarTop,
     onSnapChange: handlePollsSnapChange,
@@ -6909,7 +6911,7 @@ const SearchScreen: React.FC = () => {
 
   const bookmarksPanelSpec = useBookmarksPanelSpec({
     visible: showBookmarksOverlay,
-    navBarTop,
+    navBarTop: navBarTopForSnaps,
     searchBarTop,
     sheetY: sheetTranslateY,
     onSnapChange: handleBookmarksSnapChange,
@@ -6918,7 +6920,7 @@ const SearchScreen: React.FC = () => {
 
   const profilePanelSpec = useProfilePanelSpec({
     visible: showProfileOverlay,
-    navBarTop,
+    navBarTop: navBarTopForSnaps,
     searchBarTop,
     sheetY: sheetTranslateY,
     onSnapChange: handleProfileSnapChange,
@@ -6930,7 +6932,7 @@ const SearchScreen: React.FC = () => {
     onDismiss: handleRestaurantOverlayDismissed,
     onRequestClose: handleRestaurantOverlayRequestClose,
     onToggleFavorite: handleRestaurantSavePress,
-    navBarTop,
+    navBarTop: navBarTopForSnaps,
     searchBarTop,
     interactionEnabled: shouldEnableRestaurantOverlayInteraction,
     containerStyle: restaurantOverlayAnimatedStyle,
@@ -7014,7 +7016,6 @@ const SearchScreen: React.FC = () => {
     : null;
   const overlaySheetVisible = Boolean(overlaySheetSpec && overlaySheetKey);
   const overlaySheetApplyNavBarCutout = overlaySheetVisible && !shouldHideBottomNav;
-  const navBarTintOpacity = 0.55;
 
   return (
     <React.Profiler id="SearchScreen" onRender={handleProfilerRender}>
@@ -7417,8 +7418,8 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.bottomNavBackground} pointerEvents="none">
                   {!shouldDisableSearchBlur && (
                     <>
-                      <FrostedGlassBackground tintOpacity={navBarTintOpacity} />
-                      <FrostedGlassBackground intensity={18} tintOpacity={navBarTintOpacity} />
+                      <FrostedGlassBackground />
+                      <FrostedGlassBackground />
                     </>
                   )}
                 </View>
