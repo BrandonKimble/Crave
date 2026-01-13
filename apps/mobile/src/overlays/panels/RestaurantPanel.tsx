@@ -8,7 +8,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
-import Reanimated from 'react-native-reanimated';
+import Reanimated, { useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import type { OperatingStatus } from '@crave-search/shared';
@@ -17,6 +17,7 @@ import type { FoodResult, RestaurantResult } from '../../types';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import { getPriceRangeLabel } from '../../constants/pricing';
@@ -73,7 +74,10 @@ export const useRestaurantPanelSpec = ({
 }: UseRestaurantPanelSpecOptions): OverlayContentSpec<FoodResult> | null => {
   const insets = useSafeAreaInsets();
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
-  const closeCutout = useHeaderCloseCutout();
+  const closeCutout = useHeaderCloseCutout({
+    grabHandleCutout: true,
+    headerPaddingTop: 0,
+  });
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
@@ -90,6 +94,7 @@ export const useRestaurantPanelSpec = ({
   const isLoading = data?.isLoading ?? false;
   const restaurantName = restaurant?.restaurantName ?? '';
   const restaurantId = restaurant?.restaurantId ?? '';
+  const closeButtonProgress = useSharedValue(0);
 
   React.useEffect(() => {
     setExpandedLocations({});
@@ -254,7 +259,7 @@ export const useRestaurantPanelSpec = ({
       >
         {closeCutout.background}
         <View style={overlaySheetStyles.grabHandleWrapper}>
-          <View style={overlaySheetStyles.grabHandle} />
+          <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
         </View>
         <View
           style={[
@@ -284,27 +289,24 @@ export const useRestaurantPanelSpec = ({
                 color={isFavorite ? '#ef4444' : '#1f2937'}
                 {...(isFavorite ? { fill: '#ef4444' } : {})}
               />
-            </Pressable>
-            <Pressable
-              onPress={() => void handleShare()}
-              style={styles.headerIconButton}
-              accessibilityLabel="Share"
-            >
-              <Feather name="share-2" size={18} color="#1f2937" />
-            </Pressable>
-          </View>
-          <Pressable
-            onPress={onRequestClose}
-            accessibilityLabel="Back"
-            accessibilityRole="button"
-            style={[overlaySheetStyles.closeButton, styles.headerCloseButton]}
-            onLayout={closeCutout.onCloseLayout}
-            hitSlop={8}
-          >
-            <View style={overlaySheetStyles.closeIcon}>
-              <Feather name="chevron-left" size={22} color="#1f2937" />
-            </View>
           </Pressable>
+          <Pressable
+            onPress={() => void handleShare()}
+            style={styles.headerIconButton}
+            accessibilityLabel="Share"
+          >
+            <Feather name="share-2" size={18} color="#1f2937" />
+          </Pressable>
+          </View>
+          <OverlayHeaderActionButton
+            progress={closeButtonProgress}
+            onPress={onRequestClose}
+            accessibilityLabel="Close restaurant"
+            accentColor={themeColors.primary}
+            closeColor="#1f2937"
+            onLayout={closeCutout.onCloseLayout}
+            style={styles.headerCloseButton}
+          />
         </View>
         <View style={overlaySheetStyles.headerDivider} />
       </View>
@@ -317,6 +319,7 @@ export const useRestaurantPanelSpec = ({
       handleShare,
       handleToggleFavorite,
       isFavorite,
+      closeButtonProgress,
       onRequestClose,
       primaryAddress,
       restaurantName,

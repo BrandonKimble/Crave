@@ -207,12 +207,14 @@ export interface SearchPlanResponseDto {
 export interface FoodResultDto extends SharedFoodResult {
   restaurantLocationId?: string;
   restaurantDistanceMiles?: number | null;
+  coverageName?: string | null;
 }
 
 export type RestaurantFoodSnippetDto = SharedRestaurantFoodSnippet;
 
 export interface RestaurantResultDto extends SharedRestaurantResult {
   distanceMiles?: number | null;
+  coverageName?: string | null;
 }
 
 export type DishRestaurantLocationDto = SharedDishRestaurantLocation;

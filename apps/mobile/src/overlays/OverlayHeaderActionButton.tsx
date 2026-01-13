@@ -1,4 +1,5 @@
 import React from 'react';
+import type { StyleProp, ViewStyle } from 'react-native';
 import { Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 
 import { X as LucideX } from 'lucide-react-native';
@@ -13,6 +14,7 @@ type OverlayHeaderActionButtonProps = {
   accentColor: string;
   closeColor?: string;
   onLayout?: (event: LayoutChangeEvent) => void;
+  style?: StyleProp<ViewStyle>;
 };
 
 const OverlayHeaderActionButton: React.FC<OverlayHeaderActionButtonProps> = ({
@@ -22,6 +24,7 @@ const OverlayHeaderActionButton: React.FC<OverlayHeaderActionButtonProps> = ({
   accentColor,
   closeColor = '#000000',
   onLayout,
+  style,
 }) => {
   const rotationStyle = useAnimatedStyle(() => {
     const rotation = 45 * progress.value;
@@ -43,7 +46,7 @@ const OverlayHeaderActionButton: React.FC<OverlayHeaderActionButtonProps> = ({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={overlaySheetStyles.closeButton}
+      style={[overlaySheetStyles.closeButton, style]}
       onLayout={handleLayout}
       collapsable={false}
       hitSlop={8}

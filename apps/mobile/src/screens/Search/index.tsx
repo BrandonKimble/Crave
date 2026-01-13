@@ -34,7 +34,7 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import AppBlurView from '../../components/app-blur-view';
-import { HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
+import { ChartNoAxesColumn, HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
 import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../../overlays/overlaySheetStyles';
@@ -103,6 +103,10 @@ import { SearchInteractionProvider } from './context/SearchInteractionContext';
 import searchPerfDebug from './search-perf-debug';
 import styles from './styles';
 import { LINE_HEIGHTS } from '../../constants/typography';
+import {
+  getCachedBottomNavMetrics,
+  setCachedBottomNavMetricsFromLayout,
+} from './utils/bottom-nav-metrics-cache';
 import {
   ACTIVE_TAB_COLOR,
   AUTOCOMPLETE_CACHE_TTL_MS,
@@ -718,7 +722,11 @@ const SearchScreen: React.FC = () => {
     onHeaderLayout: onResultsHeaderCutoutLayout,
     onHeaderRowLayout: onResultsHeaderCutoutRowLayout,
     onCloseLayout: onResultsHeaderCutoutCloseLayout,
-  } = useHeaderCloseCutout();
+    headerHeight: resultsHeaderCutoutHeight,
+  } = useHeaderCloseCutout({
+    grabHandleCutout: true,
+    headerPaddingTop: 0,
+  });
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const {
     recentSearches,
@@ -760,6 +768,8 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsDockedSnapRequest, setPollsDockedSnapRequest] =
     React.useState<OverlaySheetSnap | null>(null);
+  const [pollsHeaderActionAnimationToken, setPollsHeaderActionAnimationToken] =
+    React.useState(0);
   const [pollsOverlaySnapRequest, setPollsOverlaySnapRequest] = React.useState<Exclude<
     OverlaySheetSnap,
     'hidden'
@@ -1132,7 +1142,62 @@ const SearchScreen: React.FC = () => {
       popToRootOverlay();
     }
   }, [activeOverlay, popToRootOverlay, rootOverlay, setOverlay]);
+
+  const bottomInset = Math.max(insets.bottom, 12);
+  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
+  const shouldHideBottomNav =
+    isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isLoading);
+  const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
+    const cached = getCachedBottomNavMetrics();
+    if (!cached) {
+      return null;
+    }
+    return { x: 0, y: cached.top, width: 0, height: cached.height };
+  });
+  const handleBottomNavLayout = React.useCallback((event: LayoutChangeEvent) => {
+    const layout = event.nativeEvent.layout;
+    setCachedBottomNavMetricsFromLayout(layout);
+    setBottomNavFrame((prev) => {
+      if (
+        prev &&
+        Math.abs(prev.x - layout.x) < 0.5 &&
+        Math.abs(prev.y - layout.y) < 0.5 &&
+        Math.abs(prev.width - layout.width) < 0.5 &&
+        Math.abs(prev.height - layout.height) < 0.5
+      ) {
+        return prev;
+      }
+      return layout;
+    });
+  }, []);
+  const ESTIMATED_NAV_ICON_SIZE = 24;
+  const ESTIMATED_NAV_ICON_LABEL_GAP = 2;
+  const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
+    NAV_TOP_PADDING +
+      ESTIMATED_NAV_ICON_SIZE +
+      ESTIMATED_NAV_ICON_LABEL_GAP +
+      LINE_HEIGHTS.body +
+      bottomInset +
+      NAV_BOTTOM_PADDING
+  );
+  const resolvedEstimatedNavBarHeight =
+    Number.isFinite(estimatedNavBarHeight) && estimatedNavBarHeight > 0 ? estimatedNavBarHeight : 0;
+  const fallbackNavBarHeight =
+    bottomNavFrame?.height && bottomNavFrame.height > 0
+      ? bottomNavFrame.height
+      : resolvedEstimatedNavBarHeight;
+  // Snap points should behave as if the nav bar is present (even when it isn't rendered).
+  const navBarTopForSnaps = SCREEN_HEIGHT - fallbackNavBarHeight;
+  const navBarTop = shouldHideBottomNav ? SCREEN_HEIGHT : navBarTopForSnaps;
+  const navBarHeight = shouldHideBottomNav ? 0 : fallbackNavBarHeight;
+
   const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
+  const resultsSheetSnapHeaderHeight = React.useMemo(() => {
+    // Results header is the grab handle + title/close row (filters/toggles are list header content).
+    // Avoid inflating the header height; that would make the collapsed snap too high.
+    const measured = Math.max(resultsSheetHeaderHeight, resultsHeaderCutoutHeight);
+    return measured > 0 ? measured : 78;
+  }, [resultsHeaderCutoutHeight, resultsSheetHeaderHeight]);
   const {
     panelVisible,
     sheetState,
@@ -1153,8 +1218,31 @@ const SearchScreen: React.FC = () => {
     searchBarTop,
     insetTop: insets.top,
     navBarTop: navBarTopForSnaps,
-    headerHeight: resultsSheetHeaderHeight,
+    headerHeight: resultsSheetSnapHeaderHeight,
   });
+  const lastNavBarTopForSnapsRef = React.useRef(navBarTopForSnaps);
+  React.useEffect(() => {
+    const previous = lastNavBarTopForSnapsRef.current;
+    if (previous === navBarTopForSnaps) {
+      return;
+    }
+    lastNavBarTopForSnapsRef.current = navBarTopForSnaps;
+    if (sheetState !== 'collapsed') {
+      return;
+    }
+    if (!Number.isFinite(navBarTopForSnaps)) {
+      return;
+    }
+    if (Number.isFinite(previous) && Math.abs(navBarTopForSnaps - previous) < 1) {
+      return;
+    }
+    if (resultsSheetDraggingRef.current || resultsSheetSettlingRef.current) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      animateSheetTo('collapsed');
+    });
+  }, [animateSheetTo, navBarTopForSnaps, sheetState]);
   const isSearchEditingRef = React.useRef(false);
   const pendingResultsSheetRevealRef = React.useRef(false);
   const allowSearchBlurExitRef = React.useRef(false);
@@ -1693,7 +1781,17 @@ const SearchScreen: React.FC = () => {
         />
       ),
       polls: (color: string, active: boolean) => (
-        <PollIcon color={color} size={24} strokeWidth={active ? 2.5 : 2} />
+        <View
+          style={{
+            width: 24,
+            height: 24,
+            alignItems: 'center',
+            justifyContent: 'center',
+            transform: [{ rotate: '-90deg' }, { scaleY: -1 }],
+          }}
+        >
+          <ChartNoAxesColumn size={24} color={color} strokeWidth={active ? 2.5 : 2} />
+        </View>
       ),
       profile: (color: string, active: boolean) => {
         if (active) {
@@ -2026,48 +2124,6 @@ const SearchScreen: React.FC = () => {
     },
     [shouldDriveSuggestionLayout, shouldRenderSuggestionPanel]
   );
-  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
-  const shouldHideBottomNav =
-    isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isLoading);
-  const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(null);
-  const handleBottomNavLayout = React.useCallback((event: LayoutChangeEvent) => {
-    const layout = event.nativeEvent.layout;
-    setBottomNavFrame((prev) => {
-      if (
-        prev &&
-        Math.abs(prev.x - layout.x) < 0.5 &&
-        Math.abs(prev.y - layout.y) < 0.5 &&
-        Math.abs(prev.width - layout.width) < 0.5 &&
-        Math.abs(prev.height - layout.height) < 0.5
-      ) {
-        return prev;
-      }
-      return layout;
-    });
-  }, []);
-  const ESTIMATED_NAV_ICON_SIZE = 24;
-  const ESTIMATED_NAV_ICON_LABEL_GAP = 2;
-  const estimatedNavBarHeight = PixelRatio.roundToNearestPixel(
-    NAV_TOP_PADDING +
-      ESTIMATED_NAV_ICON_SIZE +
-      ESTIMATED_NAV_ICON_LABEL_GAP +
-      LINE_HEIGHTS.body +
-      bottomInset +
-      NAV_BOTTOM_PADDING
-  );
-  const fallbackNavBarHeight =
-    bottomNavFrame?.height && bottomNavFrame.height > 0
-      ? bottomNavFrame.height
-      : estimatedNavBarHeight;
-  const navBarTopForSnaps =
-    bottomNavFrame?.y && bottomNavFrame.y > 0 ? bottomNavFrame.y : SCREEN_HEIGHT - fallbackNavBarHeight;
-  const navBarTop = shouldHideBottomNav
-    ? SCREEN_HEIGHT
-    : bottomNavFrame?.y && bottomNavFrame.y > 0
-    ? bottomNavFrame.y
-    : SCREEN_HEIGHT - fallbackNavBarHeight;
-  // Keep nav bar height consistent with nav bar top to avoid 1px seams/gaps.
-  const navBarHeight = shouldHideBottomNav ? 0 : Math.max(SCREEN_HEIGHT - navBarTop, 0);
   const showDockedPolls =
     isSearchOverlay &&
     !isSuggestionPanelActive &&
@@ -2298,7 +2354,6 @@ const SearchScreen: React.FC = () => {
     suggestionHeaderHeightTarget,
     SEARCH_SUGGESTION_HEADER_PANEL_GAP,
   ]);
-  const bottomInset = Math.max(insets.bottom, 12);
   const suggestionScrollMaxHeightTarget = React.useMemo(() => {
     if (!shouldDriveSuggestionLayout) {
       return undefined;
@@ -4790,10 +4845,15 @@ const SearchScreen: React.FC = () => {
 
   const handleCloseResults = React.useCallback(() => {
     ignoreNextSearchBlurRef.current = true;
+    setPollsHeaderActionAnimationToken((current) => current + 1);
+    setPollsDockedSnapRequest('collapsed');
+    requestAnimationFrame(() => {
+      setPollsDockedSnapRequest((current) => (current === 'collapsed' ? null : current));
+    });
     clearSearchState({
       skipProfileDismissWait: true,
     });
-  }, [clearSearchState, isRestaurantOverlayVisible, isSearchSessionActive]);
+  }, [clearSearchState, setPollsDockedSnapRequest, setPollsHeaderActionAnimationToken]);
 
   const handleSearchFocus = React.useCallback(() => {
     isSearchEditingRef.current = true;
@@ -6199,10 +6259,6 @@ const SearchScreen: React.FC = () => {
   closeRestaurantProfileRef.current = closeRestaurantProfile;
 
   const handleRestaurantOverlayRequestClose = React.useCallback(() => {
-    if (clearSearchStateRef.current) {
-      clearSearchStateRef.current({ skipProfileDismissWait: true });
-      return;
-    }
     closeRestaurantProfile();
   }, [closeRestaurantProfile]);
 
@@ -6702,6 +6758,7 @@ const SearchScreen: React.FC = () => {
           shouldUseResultsHeaderBlur ? null : styles.resultsHeaderSurfaceSolid,
         ]}
         onLayout={handleResultsHeaderLayout}
+        collapsable={false}
       >
         {resultsHeaderCutoutBackground}
         <View style={[overlaySheetStyles.grabHandleWrapper, styles.resultsHeaderHandle]}>
@@ -6710,12 +6767,13 @@ const SearchScreen: React.FC = () => {
             accessibilityRole="button"
             accessibilityLabel="Hide results"
           >
-            <View style={overlaySheetStyles.grabHandle} />
+            <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
           </Pressable>
         </View>
         <View
           onLayout={handleResultsHeaderRowLayout}
           style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced]}
+          collapsable={false}
         >
           <Text
             variant="title"
@@ -6735,7 +6793,13 @@ const SearchScreen: React.FC = () => {
             onLayout={handleResultsHeaderCloseLayout}
           />
         </View>
-        <Reanimated.View style={[overlaySheetStyles.headerDivider, headerDividerAnimatedStyle]} />
+        <Reanimated.View
+          style={[
+            overlaySheetStyles.headerDivider,
+            styles.resultsHeaderBottomSeparator,
+            headerDividerAnimatedStyle,
+          ]}
+        />
       </Reanimated.View>
     );
   }, [
@@ -6906,6 +6970,7 @@ const SearchScreen: React.FC = () => {
     onSnapChange: handlePollsSnapChange,
     snapTo: pollsOverlayMode === 'overlay' ? pollsOverlaySnapRequest : pollsDockedSnapRequest,
     sheetY: sheetTranslateY,
+    headerActionAnimationToken: pollsHeaderActionAnimationToken,
     interactionRef: searchInteractionRef,
   });
 

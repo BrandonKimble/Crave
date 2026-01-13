@@ -15,6 +15,7 @@ type OverlaySheetHeaderProps = {
   onHeaderRowLayout: (event: LayoutChangeEvent) => void;
   onGrabHandlePress: () => void;
   grabHandleAccessibilityLabel: string;
+  grabHandleCutout?: boolean;
   title: React.ReactNode;
   actionButton: React.ReactNode;
   paddingTop?: number;
@@ -30,6 +31,7 @@ const OverlaySheetHeader: React.FC<OverlaySheetHeaderProps> = ({
   onHeaderRowLayout,
   onGrabHandlePress,
   grabHandleAccessibilityLabel,
+  grabHandleCutout = false,
   title,
   actionButton,
   paddingTop = 0,
@@ -57,7 +59,12 @@ const OverlaySheetHeader: React.FC<OverlaySheetHeaderProps> = ({
           accessibilityLabel={grabHandleAccessibilityLabel}
           hitSlop={10}
         >
-          <View style={overlaySheetStyles.grabHandle} />
+          <View
+            style={[
+              overlaySheetStyles.grabHandle,
+              grabHandleCutout ? overlaySheetStyles.grabHandleCutout : null,
+            ]}
+          />
         </Pressable>
       </View>
       <View

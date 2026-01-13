@@ -385,8 +385,12 @@ export class SearchQueryExecutor {
       referenceDate,
     );
     const mapRestaurantMs = performance.now() - mapRestaurantStart;
+
+    await this.attachCoverageNames({ restaurants: restaurantResults, dishes: foodResults });
+
     const postProcessMs = performance.now() - postProcessStart;
     const executeMs = performance.now() - executeStart;
+
     const timings = {
       buildSqlMs: Math.round(buildSqlMs),
       dbQueryMs: Math.round(dbQueryMs),
@@ -562,6 +566,8 @@ export class SearchQueryExecutor {
     );
     const mapDishMs = performance.now() - mapDishStart;
 
+    await this.attachCoverageNames({ restaurants, dishes });
+
     const postProcessMs = performance.now() - postProcessStart;
     const executeMs = performance.now() - executeStart;
 
@@ -637,6 +643,118 @@ export class SearchQueryExecutor {
       }
     }
     return ids.size;
+  }
+
+  private resolveCoverageName(row: {
+    displayName?: string | null;
+    locationName?: string | null;
+    coverageKey?: string | null;
+    name?: string | null;
+  }): string | null {
+    const displayName = row.displayName?.trim();
+    if (displayName) {
+      return displayName;
+    }
+    const locationName = row.locationName?.trim();
+    if (locationName) {
+      const [first] = locationName.split(',');
+      return first?.trim() || locationName;
+    }
+    const key = row.coverageKey?.trim();
+    if (key) {
+      return key;
+    }
+    const name = row.name?.trim();
+    return name || null;
+  }
+
+  private async attachCoverageNames(payload: {
+    restaurants: RestaurantResultDto[];
+    dishes: FoodResultDto[];
+  }): Promise<void> {
+    const coverageKeys = new Set<string>();
+
+    payload.dishes.forEach((dish) => {
+      const key = typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+      if (key) {
+        coverageKeys.add(key);
+      }
+    });
+    payload.restaurants.forEach((restaurant) => {
+      const key =
+        typeof restaurant.coverageKey === 'string' ? restaurant.coverageKey.trim() : '';
+      if (key) {
+        coverageKeys.add(key);
+      }
+    });
+
+    if (!coverageKeys.size) {
+      return;
+    }
+
+    const rows = await this.prisma.coverageArea.findMany({
+      where: {
+        coverageKey: { in: Array.from(coverageKeys) },
+        isActive: true,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      select: {
+        coverageKey: true,
+        displayName: true,
+        locationName: true,
+        name: true,
+      },
+    });
+
+    const coverageNameByKey = new Map<string, string>();
+    rows.forEach((row) => {
+      const key = row.coverageKey?.trim();
+      if (!key) {
+        return;
+      }
+      if (coverageNameByKey.has(key)) {
+        return;
+      }
+      const coverageName = this.resolveCoverageName(row);
+      if (coverageName) {
+        coverageNameByKey.set(key, coverageName);
+      }
+    });
+
+    if (!coverageNameByKey.size) {
+      return;
+    }
+
+    payload.dishes.forEach((dish) => {
+      if (dish.coverageName) {
+        return;
+      }
+      const key = typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+      if (!key) {
+        return;
+      }
+      const coverageName = coverageNameByKey.get(key);
+      if (coverageName) {
+        dish.coverageName = coverageName;
+      }
+    });
+
+    payload.restaurants.forEach((restaurant) => {
+      if (restaurant.coverageName) {
+        return;
+      }
+      const key =
+        typeof restaurant.coverageKey === 'string' ? restaurant.coverageKey.trim() : '';
+      if (!key) {
+        return;
+      }
+      const coverageName = coverageNameByKey.get(key);
+      if (coverageName) {
+        restaurant.coverageName = coverageName;
+      }
+    });
   }
 
   private normalizeUserLocation(

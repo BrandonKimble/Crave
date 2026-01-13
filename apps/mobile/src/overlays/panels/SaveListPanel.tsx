@@ -84,7 +84,10 @@ export const useSaveListPanelSpec = ({
   const lists = listsQuery.data ?? [];
 
   const headerPaddingTop = 0;
-  const closeCutout = useHeaderCloseCutout();
+  const closeCutout = useHeaderCloseCutout({
+    grabHandleCutout: true,
+    headerPaddingTop,
+  });
   const headerActionProgress = useSharedValue(0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
@@ -290,6 +293,7 @@ export const useSaveListPanelSpec = ({
         onHeaderRowLayout={closeCutout.onHeaderRowLayout}
         onGrabHandlePress={onClose}
         grabHandleAccessibilityLabel="Close save sheet"
+        grabHandleCutout
         paddingTop={headerPaddingTop}
         title={
           <View style={styles.headerTextGroup}>

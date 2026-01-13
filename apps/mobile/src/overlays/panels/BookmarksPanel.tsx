@@ -5,12 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  useAnimatedReaction,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -18,8 +13,9 @@ import { useOverlayStore } from '../../store/overlayStore';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
-import { calculateSnapPoints, clampValue } from '../sheetUtils';
+import { calculateSnapPoints } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -111,7 +107,10 @@ export const useBookmarksPanelSpec = ({
   const lists = listsQuery.data ?? [];
 
   const headerPaddingTop = 0;
-  const closeCutout = useHeaderCloseCutout();
+  const closeCutout = useHeaderCloseCutout({
+    grabHandleCutout: true,
+    headerPaddingTop,
+  });
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
@@ -122,52 +121,23 @@ export const useBookmarksPanelSpec = ({
   );
   const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
 
-  const headerActionProgress = useSharedValue(0);
-  const headerActionOverride = useSharedValue(false);
-
-  useAnimatedReaction(
-    () => {
-      const range = hiddenSnap - snapPoints.collapsed;
-      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.collapsed) / range : 0;
-      return clampValue(rawProgress, 0, 1);
-    },
-    (nextProgress) => {
-      if (headerActionOverride.value) {
-        return;
-      }
-      headerActionProgress.value = nextProgress;
-    },
-    [headerActionOverride, headerActionProgress, hiddenSnap, sheetY, snapPoints.collapsed]
-  );
-
-  React.useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
-    const shouldAnimateFromPlus =
-      shouldStartAsPlus && (previousOverlay === 'polls' || previousOverlay === 'search');
-    if (!shouldAnimateFromPlus) {
-      headerActionProgress.value = 0;
-      return;
-    }
-
-    headerActionOverride.value = true;
-    headerActionProgress.value = 1;
-    headerActionProgress.value = withTiming(0, { duration: 220 }, (finished) => {
-      'worklet';
-      if (finished) {
-        headerActionOverride.value = false;
-      }
-    });
-  }, [
-    headerActionOverride,
-    headerActionProgress,
-    previousOverlay,
-    sheetY,
-    snapPoints.middle,
+  const shouldAnimateHeaderActionFromPlus = previousOverlay === 'polls' || previousOverlay === 'search';
+  const headerActionProgress = useOverlayHeaderActionProgress({
     visible,
-  ]);
+    sheetY,
+    progressRange: {
+      start: snapPoints.collapsed,
+      end: hiddenSnap,
+    },
+    handoff: shouldAnimateHeaderActionFromPlus
+      ? {
+          enabled: true,
+          key: `fromPlus:${previousOverlay}`,
+          from: 1,
+          maxTarget: 0.25,
+        }
+      : undefined,
+  });
 
   const handleClose = React.useCallback(() => {
     setOverlay('search');
@@ -430,6 +400,7 @@ export const useBookmarksPanelSpec = ({
       onHeaderRowLayout={closeCutout.onHeaderRowLayout}
       onGrabHandlePress={handleClose}
       grabHandleAccessibilityLabel="Close favorites"
+      grabHandleCutout
       paddingTop={headerPaddingTop}
       title={
         <View style={styles.headerTextGroup}>

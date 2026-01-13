@@ -18,6 +18,17 @@ export const formatCoverageLabel = (value?: string | null): string | null => {
     .join(' ');
 };
 
+export const resolveCoverageDisplayLabel = (
+  coverageName?: string | null,
+  coverageKey?: string | null
+): string | null => {
+  const name = typeof coverageName === 'string' ? coverageName.trim() : '';
+  if (name) {
+    return name;
+  }
+  return formatCoverageLabel(coverageKey);
+};
+
 const parseTimeDisplayToMinutes = (value?: string | null): number | null => {
   if (!value || typeof value !== 'string') {
     return null;

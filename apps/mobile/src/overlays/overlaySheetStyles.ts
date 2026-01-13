@@ -5,6 +5,10 @@ export const OVERLAY_HORIZONTAL_PADDING = 12;
 export const OVERLAY_CORNER_RADIUS = 22;
 export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = CONTROL_HEIGHT;
 export const OVERLAY_STACK_ZINDEX = 10;
+export const OVERLAY_GRAB_HANDLE_WIDTH = 40;
+export const OVERLAY_GRAB_HANDLE_HEIGHT = 3.25;
+export const OVERLAY_GRAB_HANDLE_RADIUS = 2;
+export const OVERLAY_GRAB_HANDLE_PADDING_TOP = 8;
 
 export const overlaySheetStyles = StyleSheet.create({
   container: {
@@ -27,9 +31,9 @@ export const overlaySheetStyles = StyleSheet.create({
     borderTopLeftRadius: OVERLAY_CORNER_RADIUS,
     borderTopRightRadius: OVERLAY_CORNER_RADIUS,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
     elevation: 2,
   },
   shadowShellAndroid: {
@@ -47,17 +51,20 @@ export const overlaySheetStyles = StyleSheet.create({
   },
   grabHandleWrapper: {
     alignItems: 'center',
-    paddingTop: 6,
+    paddingTop: OVERLAY_GRAB_HANDLE_PADDING_TOP,
     paddingBottom: 0,
     marginTop: 0,
     marginBottom: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   grabHandle: {
-    width: 50,
-    height: 3.25,
-    borderRadius: 2,
+    width: OVERLAY_GRAB_HANDLE_WIDTH,
+    height: OVERLAY_GRAB_HANDLE_HEIGHT,
+    borderRadius: OVERLAY_GRAB_HANDLE_RADIUS,
     backgroundColor: '#cbd5e1',
+  },
+  grabHandleCutout: {
+    backgroundColor: 'transparent',
   },
   headerRow: {
     flexDirection: 'row',

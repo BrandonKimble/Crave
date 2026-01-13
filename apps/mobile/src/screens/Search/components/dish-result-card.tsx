@@ -12,7 +12,7 @@ import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE } from '../constants/search';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
-import { formatCoverageLabel } from '../utils/format';
+import { resolveCoverageDisplayLabel } from '../utils/format';
 import { searchService } from '../../../services/search';
 import { useSearchHistoryStore } from '../../../store/searchHistoryStore';
 
@@ -76,7 +76,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   const displayScoreValue = item.displayScore ?? item.qualityScore;
   const coverageLabel =
     showCoverageLabel && item.coverageKey && item.coverageKey !== primaryCoverageKey
-      ? formatCoverageLabel(item.coverageKey)
+      ? resolveCoverageDisplayLabel(item.coverageName, item.coverageKey)
       : null;
 
   const handleShare = React.useCallback(() => {

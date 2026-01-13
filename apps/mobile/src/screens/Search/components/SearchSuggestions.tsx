@@ -141,6 +141,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
       true,
       true,
       locationCount,
+      null,
       styles.metaLineText
     );
     return statusLine ?? null;
@@ -292,6 +293,7 @@ const SearchSuggestions: React.FC<SearchSuggestionsProps> = ({
                     item.restaurantName,
                     false,
                     false,
+                    null,
                     null,
                     styles.metaLineText
                   );

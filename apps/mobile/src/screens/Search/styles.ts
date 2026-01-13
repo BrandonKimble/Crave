@@ -583,6 +583,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
+  resultsHeaderBottomSeparator: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: themeColors.border,
+  },
   resultsHeaderSurfaceSolid: {
     backgroundColor: '#ffffff',
   },

@@ -14,12 +14,7 @@ import {
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus } from 'lucide-react-native';
-import {
-  useAnimatedReaction,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../../services/polls';
 import { resolveCoverage } from '../../services/coverage';
@@ -39,9 +34,10 @@ import {
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
-import { calculateSnapPoints, clampValue } from '../sheetUtils';
+import { calculateSnapPoints } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
+import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../screens/Search/constants/search';
 import type { MapBounds } from '../../types';
@@ -65,6 +61,7 @@ type UsePollsPanelSpecOptions = {
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
   sheetY: SharedValue<number>;
+  headerActionAnimationToken?: number;
   interactionRef?: React.MutableRefObject<{ isInteracting: boolean }>;
 };
 
@@ -85,6 +82,7 @@ export const usePollsPanelSpec = ({
   onSnapChange,
   snapTo,
   sheetY,
+  headerActionAnimationToken,
   interactionRef,
 }: UsePollsPanelSpecOptions): OverlayContentSpec<Poll> => {
   const insets = useSafeAreaInsets();
@@ -98,6 +96,8 @@ export const usePollsPanelSpec = ({
   const closeCutout = useHeaderCloseCutout({
     badgePadding: 0,
     badgeRadius: LIVE_BADGE_HEIGHT / 2,
+    grabHandleCutout: true,
+    headerPaddingTop: 0,
   });
   const headerHeight = closeCutout.headerHeight;
   const estimatedNavBarHeight =
@@ -663,56 +663,38 @@ export const usePollsPanelSpec = ({
     });
   }, [coverageKey, coverageName, coverageOverride, pushOverlay]);
 
-  const headerActionProgress = useSharedValue(0);
-  const headerActionOverride = useSharedValue(false);
+  const lastHeaderActionAnimationTokenRef = useRef(headerActionAnimationToken ?? 0);
 
-  useAnimatedReaction(
-    () => {
-      const range = snapPoints.collapsed - snapPoints.middle;
-      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.middle) / range : 0;
-      return clampValue(rawProgress, 0, 1);
+  const tokenChanged =
+    headerActionAnimationToken != null &&
+    headerActionAnimationToken !== lastHeaderActionAnimationTokenRef.current;
+  const shouldAnimateHeaderActionFromClose =
+    tokenChanged || previousOverlay === 'bookmarks' || previousOverlay === 'profile';
+  const headerActionProgress = useOverlayHeaderActionProgress({
+    visible,
+    sheetY,
+    progressRange: {
+      start: snapPoints.middle,
+      end: snapPoints.collapsed,
     },
-    (nextProgress) => {
-      if (headerActionOverride.value) {
-        return;
-      }
-      headerActionProgress.value = nextProgress;
-    },
-    [headerActionOverride, headerActionProgress, sheetY, snapPoints.collapsed, snapPoints.middle]
-  );
+    debug: true,
+    debugLabel: 'polls',
+    handoff: shouldAnimateHeaderActionFromClose
+      ? {
+          enabled: true,
+          key: `${previousOverlay}:${headerActionAnimationToken ?? 0}`,
+          from: 0,
+          minTarget: 0.65,
+        }
+      : undefined,
+  });
 
   useEffect(() => {
-    if (!visible) {
+    if (!visible || headerActionAnimationToken == null) {
       return;
     }
-
-    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
-    const shouldAnimateFromClose =
-      shouldStartAsPlus && (previousOverlay === 'bookmarks' || previousOverlay === 'profile');
-    if (!shouldAnimateFromClose) {
-      return;
-    }
-
-    const range = snapPoints.collapsed - snapPoints.middle;
-    const rawProgress = range !== 0 ? (sheetY.value - snapPoints.middle) / range : 0;
-    const target = Math.min(Math.max(rawProgress, 0), 1);
-    headerActionOverride.value = true;
-    headerActionProgress.value = 0;
-    headerActionProgress.value = withTiming(target, { duration: 220 }, (finished) => {
-      'worklet';
-      if (finished) {
-        headerActionOverride.value = false;
-      }
-    });
-  }, [
-    headerActionOverride,
-    headerActionProgress,
-    previousOverlay,
-    sheetY,
-    snapPoints.collapsed,
-    snapPoints.middle,
-    visible,
-  ]);
+    lastHeaderActionAnimationTokenRef.current = headerActionAnimationToken;
+  }, [headerActionAnimationToken, visible]);
 
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
@@ -738,7 +720,7 @@ export const usePollsPanelSpec = ({
           accessibilityLabel="Close polls"
           hitSlop={10}
         >
-          <View style={overlaySheetStyles.grabHandle} />
+          <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
         </Pressable>
       </View>
       <View

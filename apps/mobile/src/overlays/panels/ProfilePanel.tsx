@@ -15,12 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Feather } from '@expo/vector-icons';
-import {
-  useAnimatedReaction,
-  useSharedValue,
-  withTiming,
-  type SharedValue,
-} from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -35,8 +30,9 @@ import { useFavoriteLists } from '../../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
-import { calculateSnapPoints, clampValue } from '../sheetUtils';
+import { calculateSnapPoints } from '../sheetUtils';
 import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
+import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeader from '../OverlaySheetHeader';
@@ -306,7 +302,9 @@ export const useProfilePanelSpec = ({
     </Pressable>
   );
 
-  const closeCutout = useHeaderCloseCutout();
+  const closeCutout = useHeaderCloseCutout({
+    grabHandleCutout: true,
+  });
   const headerHeight = closeCutout.headerHeight;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
@@ -317,52 +315,25 @@ export const useProfilePanelSpec = ({
   );
   const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
 
-  const headerActionProgress = useSharedValue(0);
-  const headerActionOverride = useSharedValue(false);
-
-  useAnimatedReaction(
-    () => {
-      const range = hiddenSnap - snapPoints.collapsed;
-      const rawProgress = range !== 0 ? (sheetY.value - snapPoints.collapsed) / range : 0;
-      return clampValue(rawProgress, 0, 1);
-    },
-    (nextProgress) => {
-      if (headerActionOverride.value) {
-        return;
-      }
-      headerActionProgress.value = nextProgress;
-    },
-    [headerActionOverride, headerActionProgress, hiddenSnap, sheetY, snapPoints.collapsed]
-  );
-
-  React.useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    const shouldStartAsPlus = sheetY.value > snapPoints.middle + 0.5;
-    const shouldAnimateFromPlus =
-      shouldStartAsPlus && (previousOverlay === 'polls' || previousOverlay === 'search');
-    if (!shouldAnimateFromPlus) {
-      headerActionProgress.value = 0;
-      return;
-    }
-
-    headerActionOverride.value = true;
-    headerActionProgress.value = 1;
-    headerActionProgress.value = withTiming(0, { duration: 220 }, (finished) => {
-      'worklet';
-      if (finished) {
-        headerActionOverride.value = false;
-      }
-    });
-  }, [
-    headerActionOverride,
-    headerActionProgress,
-    previousOverlay,
-    sheetY,
-    snapPoints.middle,
+  const shouldAnimateHeaderActionFromPlus = previousOverlay === 'polls' || previousOverlay === 'search';
+  const headerActionProgress = useOverlayHeaderActionProgress({
     visible,
-  ]);
+    sheetY,
+    progressRange: {
+      start: snapPoints.collapsed,
+      end: hiddenSnap,
+    },
+    debug: true,
+    debugLabel: 'profile',
+    handoff: shouldAnimateHeaderActionFromPlus
+      ? {
+          enabled: true,
+          key: `fromPlus:${previousOverlay}`,
+          from: 1,
+          maxTarget: 0.25,
+        }
+      : undefined,
+  });
 
   const headerComponent = (
     <OverlaySheetHeader
@@ -371,6 +342,7 @@ export const useProfilePanelSpec = ({
       onHeaderRowLayout={closeCutout.onHeaderRowLayout}
       onGrabHandlePress={handleClose}
       grabHandleAccessibilityLabel="Close profile"
+      grabHandleCutout
       title={
         <Text variant="title" weight="semibold" style={styles.sheetTitle}>
           Profile

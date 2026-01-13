@@ -48,6 +48,7 @@ export interface FoodResult {
   displayScore?: number | null;
   displayPercentile?: number | null;
   coverageKey?: string;
+  coverageName?: string | null;
   activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;
@@ -107,6 +108,7 @@ export interface RestaurantResult {
   displayScore?: number | null;
   displayPercentile?: number | null;
   coverageKey?: string;
+  coverageName?: string | null;
   mentionCount?: number;
   totalUpvotes?: number;
   latitude?: number | null;
@@ -156,6 +158,7 @@ export interface DishResult {
   displayScore?: number | null;
   displayPercentile?: number | null;
   coverageKey?: string;
+  coverageName?: string | null;
   activityLevel: ActivityLevel;
   mentionCount: number;
   totalUpvotes: number;

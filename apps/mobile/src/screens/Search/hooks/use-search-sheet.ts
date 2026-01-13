@@ -149,7 +149,7 @@ const useSearchSheet = ({
   }));
 
   const headerDividerAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(resultsScrollOffset.value, [0, 12], [0, 1], Extrapolation.CLAMP),
+    opacity: interpolate(resultsScrollOffset.value, [0, 24], [0, 1], Extrapolation.CLAMP),
   }));
 
   return {

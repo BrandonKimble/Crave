@@ -16,7 +16,7 @@ import {
   SECONDARY_METRIC_ICON_SIZE,
   TOP_FOOD_RENDER_LIMIT,
 } from '../constants/search';
-import { capitalizeFirst, formatCoverageLabel, formatDistanceMiles } from '../utils/format';
+import { capitalizeFirst, formatDistanceMiles, resolveCoverageDisplayLabel } from '../utils/format';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
@@ -75,7 +75,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   const displayScoreValue = restaurant.displayScore ?? restaurant.restaurantQualityScore;
   const coverageLabel =
     showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
-      ? formatCoverageLabel(restaurant.coverageKey)
+      ? resolveCoverageDisplayLabel(restaurant.coverageName, restaurant.coverageKey)
       : null;
 
   const topFoodAverage = React.useMemo(() => {
@@ -167,7 +167,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     'left',
     undefined,
     true,
-    true
+    true,
+    undefined,
+    hasStatus ? coverageLabel : null
   );
 
   const handleShare = React.useCallback(() => {
@@ -224,13 +226,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 {restaurant.restaurantName}
               </Text>
             </View>
-            {coverageLabel ? (
-              <View style={styles.coverageBadge}>
-                <Text variant="body" style={styles.coverageBadgeText}>
-                  {coverageLabel}
-                </Text>
-              </View>
-            ) : null}
             <View style={[styles.resultContent, styles.resultContentStack]}>
               {displayScoreValue !== null && displayScoreValue !== undefined ? (
                 <View style={styles.metricBlock}>
@@ -291,6 +286,20 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                             >
                               {distanceLabel ?? ''}
                             </Text>
+                            {coverageLabel ? (
+                              <>
+                                <Text variant="body" style={styles.metricDot}>
+                                  {'·'}
+                                </Text>
+                                <Text
+                                  variant="body"
+                                  style={styles.resultMetaDistance}
+                                  numberOfLines={1}
+                                >
+                                  {coverageLabel}
+                                </Text>
+                              </>
+                            ) : null}
                           </>
                         ) : null}
                       </View>
