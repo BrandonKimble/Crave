@@ -79,10 +79,8 @@ export const useOverlayHeaderActionProgress = ({
 
   React.useEffect(() => {
     if (!visible) {
-      lastHandoffKeyRef.current = null;
       overrideActive.value = true;
       cancelAnimation(progress);
-      progress.value = 0;
       debugLog('hide->cancel');
       return;
     }
@@ -95,7 +93,11 @@ export const useOverlayHeaderActionProgress = ({
     if (shouldHandoff) {
       const nextKey = handoff?.key ?? 'handoff';
       if (lastHandoffKeyRef.current === nextKey) {
-        debugLog('handoff skip (same key)', { key: nextKey });
+        debugLog('handoff key repeat->sync', { key: nextKey, target });
+        overrideActive.value = true;
+        cancelAnimation(progress);
+        progress.value = target;
+        overrideActive.value = false;
         return;
       }
       const minTarget = handoff?.minTarget ?? 0;

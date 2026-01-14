@@ -36,9 +36,7 @@ For every task (every session):
    - Run `git status --porcelain` and inspect existing diffs for that file (assume they’re intentional from another session).
    - Merge your change into the current state; do not revert or delete others’ changes.
    - Update your log bullet if you start touching new files/areas.
-3) Before finishing:
-   - Re-check `git diff` and confirm you didn’t accidentally clobber unrelated work.
-4) When committing:
+3) When committing:
    - `plans/agent-log.md` must contain at least one bullet under `## Entries` (pre-commit hook enforces this).
    - After a successful commit, the log is automatically reset (post-commit hook).
 

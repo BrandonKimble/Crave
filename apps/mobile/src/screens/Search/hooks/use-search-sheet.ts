@@ -76,10 +76,13 @@ const useSearchSheet = ({
   }, [sheetState]);
 
   React.useEffect(() => {
+    if (!isSearchOverlay) {
+      return;
+    }
     if (!panelVisible) {
       sheetTranslateY.value = snapPoints.hidden;
     }
-  }, [panelVisible, sheetTranslateY, snapPoints.hidden]);
+  }, [isSearchOverlay, panelVisible, sheetTranslateY, snapPoints.hidden]);
 
   const handleSheetSnapChange = React.useCallback(
     (nextSnap: SheetPosition | 'hidden') => {
@@ -115,8 +118,10 @@ const useSearchSheet = ({
     setSheetState('hidden');
     setSnapTo(null);
     snapToRef.current = null;
-    sheetTranslateY.value = snapPoints.hidden;
-  }, [sheetTranslateY, snapPoints.hidden]);
+    if (isSearchOverlay) {
+      sheetTranslateY.value = snapPoints.hidden;
+    }
+  }, [isSearchOverlay, sheetTranslateY, snapPoints.hidden]);
 
   const showPanel = React.useCallback(() => {
     if (!panelVisibleRef.current) {
@@ -139,9 +144,11 @@ const useSearchSheet = ({
       setSheetState(position);
       setSnapTo(null);
       snapToRef.current = null;
-      sheetTranslateY.value = snapPoints[position];
+      if (isSearchOverlay) {
+        sheetTranslateY.value = snapPoints[position];
+      }
     },
-    [setPanelVisible, setSheetState, setSnapTo, sheetTranslateY, snapPoints]
+    [isSearchOverlay, setPanelVisible, setSheetState, setSnapTo, sheetTranslateY, snapPoints]
   );
 
   const resultsContainerAnimatedStyle = useAnimatedStyle(() => ({

@@ -15,6 +15,7 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import { Search, ChevronLeft, X as LucideX } from 'lucide-react-native';
+import { SEARCH_BAR_SHADOW } from '../shadows';
 import { colors as themeColors } from '../../../constants/theme';
 import SquircleSpinner from '../../../components/SquircleSpinner';
 import { XCircleIcon } from '../../../components/icons/HeroIcons';
@@ -331,11 +332,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     minHeight: 50,
     height: 50,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 1,
+    ...SEARCH_BAR_SHADOW,
   },
   promptCardInner: {
     borderRadius: 14,

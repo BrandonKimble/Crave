@@ -41,6 +41,9 @@ type SnapPoints = Record<SheetSnapPoint, number> & {
   hidden?: number;
 };
 
+type SnapChangeSource = 'gesture' | 'programmatic';
+type SnapChangeMeta = { source: SnapChangeSource };
+
 const AnimatedFlashList = Animated.createAnimatedComponent(FlashList) as typeof FlashList;
 const AnimatedScrollView = Animated.createAnimatedComponent(ScrollView);
 
@@ -110,7 +113,8 @@ type BottomSheetWithFlashListProps<T> = {
   keyboardShouldPersistTaps?: FlashListProps<T>['keyboardShouldPersistTaps'];
   scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
   onHidden?: () => void;
-  onSnapChange?: (snap: SheetSnapPoint | 'hidden') => void;
+  onSnapStart?: (snap: SheetSnapPoint | 'hidden', meta?: SnapChangeMeta) => void;
+  onSnapChange?: (snap: SheetSnapPoint | 'hidden', meta?: SnapChangeMeta) => void;
   onScrollOffsetChange?: (offsetY: number) => void;
   onScrollBeginDrag?: () => void;
   onScrollEndDrag?: () => void;
@@ -159,6 +163,7 @@ type BottomSheetWithFlashListProps<T> = {
   style?: StyleProp<ViewStyle>;
   surfaceStyle?: StyleProp<ViewStyle>;
   shadowStyle?: StyleProp<ViewStyle>;
+  contentSurfaceStyle?: StyleProp<ViewStyle>;
 };
 
 const PROGRAMMATIC_SNAP_MIN_VELOCITY = 900;
@@ -188,6 +193,7 @@ const BottomSheetWithFlashList = <T,>({
   keyboardShouldPersistTaps = 'handled',
   scrollIndicatorInsets,
   onHidden,
+  onSnapStart,
   onSnapChange,
   onScrollOffsetChange,
   onScrollBeginDrag,
@@ -218,6 +224,7 @@ const BottomSheetWithFlashList = <T,>({
   style,
   surfaceStyle,
   shadowStyle,
+  contentSurfaceStyle,
 }: BottomSheetWithFlashListProps<T>): React.ReactElement | null => {
   const { height: screenHeight } = useWindowDimensions();
   const pixelRatio = PixelRatio.get();
@@ -298,10 +305,12 @@ const BottomSheetWithFlashList = <T,>({
   );
 
   const onHiddenRef = React.useRef(onHidden);
+  const onSnapStartRef = React.useRef(onSnapStart);
   const onSnapChangeRef = React.useRef(onSnapChange);
   const onDragStateChangeRef = React.useRef(onDragStateChange);
   const onSettleStateChangeRef = React.useRef(onSettleStateChange);
   onHiddenRef.current = onHidden;
+  onSnapStartRef.current = onSnapStart;
   onSnapChangeRef.current = onSnapChange;
   onDragStateChangeRef.current = onDragStateChange;
   onSettleStateChangeRef.current = onSettleStateChange;
@@ -312,13 +321,27 @@ const BottomSheetWithFlashList = <T,>({
     onHiddenRef.current?.();
   }, []);
 
-  const notifySnapChange = React.useCallback((snapKey: SheetSnapPoint | 'hidden') => {
-    if (currentSnapKeyRef.current === snapKey) {
-      return;
-    }
-    currentSnapKeyRef.current = snapKey;
-    onSnapChangeRef.current?.(snapKey);
-  }, []);
+  const notifySnapChange = React.useCallback(
+    (
+      snapKey: SheetSnapPoint | 'hidden',
+      source: SnapChangeSource,
+      options?: { force?: boolean }
+    ) => {
+      if (!options?.force && currentSnapKeyRef.current === snapKey) {
+        return;
+      }
+      currentSnapKeyRef.current = snapKey;
+      onSnapChangeRef.current?.(snapKey, { source });
+    },
+    []
+  );
+
+  const notifySnapStart = React.useCallback(
+    (snapKey: SheetSnapPoint | 'hidden', source: SnapChangeSource) => {
+      onSnapStartRef.current?.(snapKey, { source });
+    },
+    []
+  );
 
   const notifyDragStateChange = React.useCallback((value: boolean) => {
     onDragStateChangeRef.current?.(value);
@@ -412,10 +435,26 @@ const BottomSheetWithFlashList = <T,>({
   );
 
   const startSpring = React.useCallback(
-    (target: number, velocity = 0, shouldNotifyHidden = false) => {
+    (
+      target: number,
+      velocity = 0,
+      shouldNotifyHidden = false,
+      source: SnapChangeSource = 'programmatic'
+    ) => {
       'worklet';
       springId.value += 1;
       const localSpringId = springId.value;
+      const localSource = source;
+      const snapKeyAtStart = resolveSnapKeyFromValues(
+        target,
+        expandedSnap,
+        middleSnap,
+        collapsedSnap,
+        hiddenSnap
+      );
+      if (snapKeyAtStart && snapKeyAtStart !== 'hidden') {
+        runOnJS(notifySnapStart)(snapKeyAtStart, localSource);
+      }
       settlingToHidden.value = hiddenSnap !== undefined && target === hiddenSnap;
       if (hiddenSnap !== undefined && target !== hiddenSnap) {
         hasNotifiedHidden.value = false;
@@ -443,7 +482,7 @@ const BottomSheetWithFlashList = <T,>({
             hiddenSnap
           );
           if (snapKey) {
-            runOnJS(notifySnapChange)(snapKey);
+            runOnJS(notifySnapChange)(snapKey, localSource);
             if (snapKey === 'hidden' && shouldNotifyHidden && !hasNotifiedHidden.value) {
               hasNotifiedHidden.value = true;
               runOnJS(notifyHidden)();
@@ -459,6 +498,7 @@ const BottomSheetWithFlashList = <T,>({
       middleSnap,
       hasNotifiedHidden,
       notifyHidden,
+      notifySnapStart,
       notifySnapChange,
       sheetY,
       settlingToHidden,
@@ -467,8 +507,13 @@ const BottomSheetWithFlashList = <T,>({
   );
 
   const startSpringOnJS = React.useCallback(
-    (target: number, velocity = 0, shouldNotifyHidden = false) => {
-      runOnUI(startSpring)(target, velocity, shouldNotifyHidden);
+    (
+      target: number,
+      velocity = 0,
+      shouldNotifyHidden = false,
+      source: SnapChangeSource = 'programmatic'
+    ) => {
+      runOnUI(startSpring)(target, velocity, shouldNotifyHidden, source);
     },
     [startSpring]
   );
@@ -573,6 +618,14 @@ const BottomSheetWithFlashList = <T,>({
     }
     lastSnapToRef.current = snapTo;
     lastSnapToTargetRef.current = target;
+    if (Math.abs(sheetY.value - target) < 0.5) {
+      notifySnapChange(snapTo, 'programmatic', { force: true });
+      if (snapTo === 'hidden' && !hasNotifiedHidden.value) {
+        hasNotifiedHidden.value = true;
+        notifyHidden();
+      }
+      return;
+    }
     if (hiddenSnap !== undefined && target !== hiddenSnap) {
       hasNotifiedHidden.value = false;
     }
@@ -582,6 +635,8 @@ const BottomSheetWithFlashList = <T,>({
     hasNotifiedHidden,
     hiddenSnap,
     lastSnapToTargetRef,
+    notifyHidden,
+    notifySnapChange,
     resolveProgrammaticSnapVelocity,
     resolveSnapValue,
     sheetY,
@@ -693,12 +748,6 @@ const BottomSheetWithFlashList = <T,>({
         }
 
         if (!atExpanded) {
-          if (!touchInHeader) {
-            expandDidHandoffToScroll.value = true;
-            syncDragging();
-            stateManager.fail();
-            return;
-          }
           stateManager.activate();
           expandPanActive.value = true;
           beginDrag();
@@ -754,7 +803,7 @@ const BottomSheetWithFlashList = <T,>({
           return;
         }
         const destination = resolveDestination(sheetY.value, event.velocityY);
-        startSpring(destination, event.velocityY, destination === hiddenSnap);
+        startSpring(destination, event.velocityY, destination === hiddenSnap, 'gesture');
       })
       .onFinalize(() => {
         'worklet';
@@ -855,7 +904,7 @@ const BottomSheetWithFlashList = <T,>({
           return;
         }
         const destination = resolveDestination(sheetY.value, event.velocityY);
-        startSpring(destination, event.velocityY, destination === hiddenSnap);
+        startSpring(destination, event.velocityY, destination === hiddenSnap, 'gesture');
       })
       .onFinalize(() => {
         'worklet';
@@ -1009,7 +1058,7 @@ const BottomSheetWithFlashList = <T,>({
               </View>
             ) : null}
             {headerComponent ? <View onLayout={onHeaderLayout}>{headerComponent}</View> : null}
-            <View style={{ flex: 1 }}>
+            <View style={[{ flex: 1 }, contentSurfaceStyle]}>
               <AnimatedFlashList
                 key={listKey}
                 ref={flashListRef as React.RefObject<FlashList<T>>}
@@ -1063,5 +1112,5 @@ const BottomSheetWithFlashList = <T,>({
   );
 };
 
-export type { BottomSheetWithFlashListProps, SnapPoints };
+export type { BottomSheetWithFlashListProps, SnapChangeMeta, SnapChangeSource, SnapPoints };
 export default BottomSheetWithFlashList;

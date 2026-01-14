@@ -9,12 +9,11 @@ import {
   ScrollView,
   Alert,
   Dimensions,
-  Pressable,
 } from 'react-native';
 import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus } from 'lucide-react-native';
-import type { SharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../../services/polls';
 import { resolveCoverage } from '../../services/coverage';
@@ -30,14 +29,14 @@ import {
   overlaySheetStyles,
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
   OVERLAY_HORIZONTAL_PADDING,
+  OVERLAY_TAB_HEADER_HEIGHT,
 } from '../overlaySheetStyles';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { calculateSnapPoints } from '../sheetUtils';
-import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
+import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../screens/Search/constants/search';
 import type { MapBounds } from '../../types';
@@ -58,10 +57,13 @@ type UsePollsPanelSpecOptions = {
   navBarTop?: number;
   navBarHeight?: number;
   searchBarTop?: number;
+  snapPoints?: SnapPoints;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
+  onRequestReturnToSearch?: () => void;
   sheetY: SharedValue<number>;
   headerActionAnimationToken?: number;
+  headerActionProgress?: SharedValue<number>;
   interactionRef?: React.MutableRefObject<{ isInteracting: boolean }>;
 };
 
@@ -79,27 +81,22 @@ export const usePollsPanelSpec = ({
   navBarTop = 0,
   navBarHeight = 0,
   searchBarTop = 0,
+  snapPoints: snapPointsOverride,
   onSnapChange,
   snapTo,
-  sheetY,
-  headerActionAnimationToken,
+  onRequestReturnToSearch,
+  sheetY: _sheetY,
+  headerActionAnimationToken: _headerActionAnimationToken,
+  headerActionProgress: headerActionProgressProp,
   interactionRef,
 }: UsePollsPanelSpecOptions): OverlayContentSpec<Poll> => {
   const insets = useSafeAreaInsets();
-  const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pushOverlay = useOverlayStore((state) => state.pushOverlay);
-  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setPersistedCity = useCityStore((state) => state.setSelectedCity);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
   const isSystemUnavailable = isOffline || Boolean(serviceIssue);
-  const closeCutout = useHeaderCloseCutout({
-    badgePadding: 0,
-    badgeRadius: LIVE_BADGE_HEIGHT / 2,
-    grabHandleCutout: true,
-    headerPaddingTop: 0,
-  });
-  const headerHeight = closeCutout.headerHeight;
+  const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
   const estimatedNavBarHeight =
     NAV_TOP_PADDING +
     NAV_BOTTOM_PADDING +
@@ -142,8 +139,10 @@ export const usePollsPanelSpec = ({
 
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = useMemo<SnapPoints>(
-    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
-    [headerHeight, insets.top, navBarOffset, searchBarTop]
+    () =>
+      snapPointsOverride ??
+      calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop, snapPointsOverride]
   );
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
@@ -645,12 +644,12 @@ export const usePollsPanelSpec = ({
   );
 
   const handleClose = useCallback(() => {
-    const targetSnap = mode === 'overlay' ? 'hidden' : 'collapsed';
+    const targetSnap = 'collapsed';
     setSnapRequest(targetSnap);
     if (mode === 'overlay') {
-      setOverlay('search');
+      onRequestReturnToSearch?.();
     }
-  }, [mode, setOverlay]);
+  }, [mode, onRequestReturnToSearch]);
 
   const handleOpenCreate = useCallback(() => {
     if (!coverageKey && !coverageOverride) {
@@ -663,38 +662,8 @@ export const usePollsPanelSpec = ({
     });
   }, [coverageKey, coverageName, coverageOverride, pushOverlay]);
 
-  const lastHeaderActionAnimationTokenRef = useRef(headerActionAnimationToken ?? 0);
-
-  const tokenChanged =
-    headerActionAnimationToken != null &&
-    headerActionAnimationToken !== lastHeaderActionAnimationTokenRef.current;
-  const shouldAnimateHeaderActionFromClose =
-    tokenChanged || previousOverlay === 'bookmarks' || previousOverlay === 'profile';
-  const headerActionProgress = useOverlayHeaderActionProgress({
-    visible,
-    sheetY,
-    progressRange: {
-      start: snapPoints.middle,
-      end: snapPoints.collapsed,
-    },
-    debug: true,
-    debugLabel: 'polls',
-    handoff: shouldAnimateHeaderActionFromClose
-      ? {
-          enabled: true,
-          key: `${previousOverlay}:${headerActionAnimationToken ?? 0}`,
-          from: 0,
-          minTarget: 0.65,
-        }
-      : undefined,
-  });
-
-  useEffect(() => {
-    if (!visible || headerActionAnimationToken == null) {
-      return;
-    }
-    lastHeaderActionAnimationTokenRef.current = headerActionAnimationToken;
-  }, [headerActionAnimationToken, visible]);
+  const localHeaderActionProgress = useSharedValue(0);
+  const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
 
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
@@ -708,25 +677,11 @@ export const usePollsPanelSpec = ({
   );
 
   const headerComponent = (
-    <View
-      style={[overlaySheetStyles.header, overlaySheetStyles.headerTransparent, { paddingTop: 0 }]}
-      onLayout={closeCutout.onHeaderLayout}
-    >
-      {closeCutout.background}
-      <View style={overlaySheetStyles.grabHandleWrapper}>
-        <Pressable
-          onPress={handleClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close polls"
-          hitSlop={10}
-        >
-          <View style={[overlaySheetStyles.grabHandle, overlaySheetStyles.grabHandleCutout]} />
-        </Pressable>
-      </View>
-      <View
-        style={[overlaySheetStyles.headerRow, overlaySheetStyles.headerRowSpaced, styles.headerRow]}
-        onLayout={closeCutout.onHeaderRowLayout}
-      >
+    <OverlaySheetHeaderChrome
+      onGrabHandlePress={handleClose}
+      grabHandleAccessibilityLabel="Close polls"
+      rowStyle={styles.headerRow}
+      title={
         <Text
           variant="title"
           weight="semibold"
@@ -736,7 +691,9 @@ export const usePollsPanelSpec = ({
         >
           {headerBaseTitle}
         </Text>
-        <View style={styles.liveBadgeShell} onLayout={closeCutout.onBadgeLayout}>
+      }
+      badge={
+        <View style={styles.liveBadgeShell}>
           <View style={styles.liveBadgeContent} pointerEvents="none">
             <Text
               variant="title"
@@ -754,17 +711,18 @@ export const usePollsPanelSpec = ({
             </Text>
           </View>
         </View>
+      }
+      badgeRadius={LIVE_BADGE_HEIGHT / 2}
+      actionButton={
         <OverlayHeaderActionButton
           progress={headerActionProgress}
           onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
           accessibilityLabel={headerAction === 'close' ? 'Close polls' : 'Create a new poll'}
           accentColor={ACCENT}
           closeColor="#000000"
-          onLayout={closeCutout.onCloseLayout}
         />
-      </View>
-      <View style={overlaySheetStyles.headerDivider} />
-    </View>
+      }
+    />
   );
 
   const listHeaderComponent = (
@@ -926,7 +884,11 @@ export const usePollsPanelSpec = ({
     ListFooterComponent: listFooterComponent,
     ListEmptyComponent: listEmptyComponent,
     keyboardShouldPersistTaps: 'handled',
+    bounces: false,
+    alwaysBounceVertical: false,
+    overScrollMode: 'never',
     backgroundComponent: <FrostedGlassBackground />,
+    contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent,
     style: overlaySheetStyles.container,
     onSnapChange: handleSnapChange,

@@ -5,17 +5,19 @@ import { Feather } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
 import { useQueryClient } from '@tanstack/react-query';
-import type { SharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
 import { useOverlayStore } from '../../store/overlayStore';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import {
+  OVERLAY_TAB_HEADER_HEIGHT,
+  OVERLAY_HORIZONTAL_PADDING,
+  overlaySheetStyles,
+} from '../overlaySheetStyles';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { calculateSnapPoints } from '../sheetUtils';
-import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
-import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -26,7 +28,7 @@ import { useFavoriteLists, favoriteListKeys } from '../../hooks/use-favorite-lis
 import type { RootStackParamList } from '../../types/navigation';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeader from '../OverlaySheetHeader';
+import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const ACTIVE_TAB_COLOR = themeColors.primary;
@@ -65,7 +67,9 @@ type UseBookmarksPanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
   searchBarTop?: number;
+  snapPoints?: SnapPoints;
   sheetY: SharedValue<number>;
+  headerActionProgress?: SharedValue<number>;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
 };
@@ -84,14 +88,15 @@ export const useBookmarksPanelSpec = ({
   visible,
   navBarTop = 0,
   searchBarTop = 0,
-  sheetY,
+  snapPoints: snapPointsOverride,
+  sheetY: _sheetY,
+  headerActionProgress: headerActionProgressProp,
   onSnapChange,
   snapTo,
 }: UseBookmarksPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<Navigation>();
   const queryClient = useQueryClient();
-  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const serviceIssue = useSystemStatusStore((state) => state.serviceIssue);
@@ -107,37 +112,19 @@ export const useBookmarksPanelSpec = ({
   const lists = listsQuery.data ?? [];
 
   const headerPaddingTop = 0;
-  const closeCutout = useHeaderCloseCutout({
-    grabHandleCutout: true,
-    headerPaddingTop,
-  });
-  const headerHeight = closeCutout.headerHeight;
+  const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(
-    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
-    [headerHeight, insets.top, navBarOffset, searchBarTop]
+    () =>
+      snapPointsOverride ??
+      calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop, snapPointsOverride]
   );
-  const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
 
-  const shouldAnimateHeaderActionFromPlus = previousOverlay === 'polls' || previousOverlay === 'search';
-  const headerActionProgress = useOverlayHeaderActionProgress({
-    visible,
-    sheetY,
-    progressRange: {
-      start: snapPoints.collapsed,
-      end: hiddenSnap,
-    },
-    handoff: shouldAnimateHeaderActionFromPlus
-      ? {
-          enabled: true,
-          key: `fromPlus:${previousOverlay}`,
-          from: 1,
-          maxTarget: 0.25,
-        }
-      : undefined,
-  });
+  const localHeaderActionProgress = useSharedValue(0);
+  const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
 
   const handleClose = React.useCallback(() => {
     setOverlay('search');
@@ -394,13 +381,9 @@ export const useBookmarksPanelSpec = ({
   };
 
   const headerComponent = (
-    <OverlaySheetHeader
-      cutoutBackground={closeCutout.background}
-      onHeaderLayout={closeCutout.onHeaderLayout}
-      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+    <OverlaySheetHeaderChrome
       onGrabHandlePress={handleClose}
       grabHandleAccessibilityLabel="Close favorites"
-      grabHandleCutout
       paddingTop={headerPaddingTop}
       title={
         <View style={styles.headerTextGroup}>
@@ -422,7 +405,6 @@ export const useBookmarksPanelSpec = ({
           accessibilityLabel="Close favorites"
           accentColor={ACTIVE_TAB_COLOR}
           closeColor="#000000"
-          onLayout={closeCutout.onCloseLayout}
         />
       }
     />
@@ -477,7 +459,11 @@ export const useBookmarksPanelSpec = ({
         </Text>
       </View>
     ),
+    bounces: false,
+    alwaysBounceVertical: false,
+    overScrollMode: 'never',
     backgroundComponent: <FrostedGlassBackground />,
+    contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent: headerComponent,
     style: overlaySheetStyles.container,
     onSnapChange,

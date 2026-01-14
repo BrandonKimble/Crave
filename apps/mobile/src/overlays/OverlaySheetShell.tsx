@@ -1,13 +1,17 @@
 import React from 'react';
-import { InteractionManager, StyleSheet, View } from 'react-native';
+import { InteractionManager, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import type { FlashListRef } from '@shopify/flash-list';
 import type { SharedValue } from 'react-native-reanimated';
 
-import BottomSheetWithFlashList from './BottomSheetWithFlashList';
+import BottomSheetWithFlashList, {
+  type BottomSheetWithFlashListProps,
+} from './BottomSheetWithFlashList';
 import { OVERLAY_STACK_ZINDEX, overlaySheetStyles } from './overlaySheetStyles';
 import { useOverlayStore } from '../store/overlayStore';
 import type { OverlayContentSpec, OverlayKey, OverlaySheetSnap } from './types';
+import { useOverlayHeaderActionController, type OverlayHeaderActionMode } from './useOverlayHeaderActionController';
+import { useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
 
 type OverlaySheetShellProps = {
   visible: boolean;
@@ -16,6 +20,8 @@ type OverlaySheetShellProps = {
   sheetY: SharedValue<number>;
   scrollOffset: SharedValue<number>;
   momentumFlag: SharedValue<boolean>;
+  headerActionProgress?: SharedValue<number>;
+  headerActionMode?: OverlayHeaderActionMode;
   navBarHeight?: number;
   applyNavBarCutout?: boolean;
 };
@@ -27,11 +33,16 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   sheetY,
   scrollOffset,
   momentumFlag,
+  headerActionProgress,
+  headerActionMode = 'fixed-close',
   navBarHeight = 0,
   applyNavBarCutout = false,
 }) => {
+  const { height: screenHeight } = useWindowDimensions();
   const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
   const previousOverlay = useOverlayStore((state) => state.previousOverlay);
+  const rootOverlay = useOverlayStore((state) => state.overlayStack[0] ?? state.activeOverlay);
+  const recordUserSnap = useOverlaySheetPositionStore((state) => state.recordUserSnap);
 
   const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
   const resolvedListRef = spec?.listRef ?? internalListRef;
@@ -56,25 +67,60 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     [activeOverlayKey, setOverlayScrollOffset, specRef]
   );
 
-  const handleSnapChange = React.useCallback(
-    (snap: OverlaySheetSnap) => {
+  const handleSnapChange = React.useCallback<
+    NonNullable<BottomSheetWithFlashListProps<unknown>['onSnapChange']>
+  >(
+    (snap, meta) => {
       currentSnapRef.current = snap;
-      specRef.current?.onSnapChange?.(snap);
+      specRef.current?.onSnapChange?.(snap, meta);
+      if (meta?.source === 'gesture') {
+        recordUserSnap({
+          rootOverlay,
+          activeOverlayKey,
+          snap,
+        });
+      }
       if (shellSnapToRef.current && snap === shellSnapToRef.current) {
         setShellSnapTo(null);
       }
     },
-    [setShellSnapTo, shellSnapToRef, specRef]
+    [activeOverlayKey, recordUserSnap, rootOverlay, setShellSnapTo]
+  );
+
+  const handleSnapStart = React.useCallback<
+    NonNullable<BottomSheetWithFlashListProps<unknown>['onSnapStart']>
+  >(
+    (snap, meta) => {
+      specRef.current?.onSnapStart?.(snap, meta);
+      if (meta?.source === 'gesture') {
+        recordUserSnap({
+          rootOverlay,
+          activeOverlayKey,
+          snap,
+        });
+      }
+    },
+    [activeOverlayKey, recordUserSnap, rootOverlay]
+  );
+
+  const handleDragStateChange = React.useCallback(
+    (isDragging: boolean) => {
+      specRef.current?.onDragStateChange?.(isDragging);
+    },
+    [specRef]
+  );
+
+  const handleSettleStateChange = React.useCallback(
+    (isSettling: boolean) => {
+      specRef.current?.onSettleStateChange?.(isSettling);
+    },
+    [specRef]
   );
 
   React.useEffect(() => {
     if (!visible || !spec) {
       lastSnapOverlayKeyRef.current = null;
       lastSnapPointsKeyRef.current = null;
-      return;
-    }
-
-    if (spec.snapTo) {
       setShellSnapTo(null);
       return;
     }
@@ -84,29 +130,38 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     }:${spec.snapPoints.hidden ?? ''}`;
     const overlayChanged = lastSnapOverlayKeyRef.current !== activeOverlayKey;
     const snapPointsChanged = lastSnapPointsKeyRef.current !== snapPointsKey;
-    if (!overlayChanged && !snapPointsChanged) {
-      return;
+    if (overlayChanged || snapPointsChanged) {
+      lastSnapOverlayKeyRef.current = activeOverlayKey;
+      lastSnapPointsKeyRef.current = snapPointsKey;
     }
-    lastSnapOverlayKeyRef.current = activeOverlayKey;
-    lastSnapPointsKeyRef.current = snapPointsKey;
 
-    if (overlayChanged && previousOverlay !== 'search' && currentSnapRef.current !== 'hidden') {
+    if (spec.snapTo) {
       setShellSnapTo(null);
       return;
     }
 
-    const desiredSnap: OverlaySheetSnap =
-      currentSnapRef.current === 'hidden'
-        ? spec.initialSnapPoint ?? 'middle'
-        : overlayChanged && previousOverlay === 'search'
-        ? spec.initialSnapPoint ?? 'middle'
-        : currentSnapRef.current;
-
-    if (shellSnapToRef.current === desiredSnap) {
+    const sheetYValue = sheetY.value;
+    const isSheetOffscreen =
+      Number.isFinite(screenHeight) &&
+      screenHeight > 0 &&
+      Number.isFinite(sheetYValue) &&
+      sheetYValue >= screenHeight - 0.5;
+    if (currentSnapRef.current !== 'hidden' && !isSheetOffscreen) {
+      if (shellSnapToRef.current !== null) {
+        setShellSnapTo(null);
+      }
       return;
     }
-    setShellSnapTo(desiredSnap);
-  }, [activeOverlayKey, previousOverlay, spec, visible]);
+
+    if (isSheetOffscreen) {
+      currentSnapRef.current = 'hidden';
+    }
+
+    const desiredSnap: OverlaySheetSnap = spec.initialSnapPoint ?? 'middle';
+    if (shellSnapToRef.current !== desiredSnap) {
+      setShellSnapTo(desiredSnap);
+    }
+  }, [activeOverlayKey, previousOverlay, screenHeight, sheetY, spec, visible]);
 
   React.useLayoutEffect(() => {
     if (!visible) {
@@ -151,6 +206,17 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
 
   const bottomInset = applyNavBarCutout ? Math.max(navBarHeight, 0) : 0;
 
+  useOverlayHeaderActionController({
+    visible: visible && Boolean(spec),
+    mode: headerActionMode,
+    sheetY,
+    collapseRange: {
+      start: spec?.snapPoints.middle ?? 0,
+      end: spec?.snapPoints.collapsed ?? 1,
+    },
+    progress: headerActionProgress,
+  });
+
   if (!spec) {
     return null;
   }
@@ -172,7 +238,10 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         {...spec}
         snapTo={spec.snapTo ?? shellSnapTo}
         onScrollOffsetChange={handleScrollOffsetChange}
+        onSnapStart={handleSnapStart}
         onSnapChange={handleSnapChange}
+        onDragStateChange={handleDragStateChange}
+        onSettleStateChange={handleSettleStateChange}
         style={spec.style ?? overlaySheetStyles.container}
       />
     </View>

@@ -10,9 +10,8 @@ import { colors as themeColors } from '../../constants/theme';
 import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
 import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { resolveExpandedTop } from '../sheetUtils';
-import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeader from '../OverlaySheetHeader';
+import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 import {
   favoriteListsService,
   type FavoriteListSummary,
@@ -84,10 +83,6 @@ export const useSaveListPanelSpec = ({
   const lists = listsQuery.data ?? [];
 
   const headerPaddingTop = 0;
-  const closeCutout = useHeaderCloseCutout({
-    grabHandleCutout: true,
-    headerPaddingTop,
-  });
   const headerActionProgress = useSharedValue(0);
   const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const snapPoints = React.useMemo<SnapPoints>(() => {
@@ -287,13 +282,9 @@ export const useSaveListPanelSpec = ({
 
   const headerComponent = React.useMemo(
     () => (
-      <OverlaySheetHeader
-        cutoutBackground={closeCutout.background}
-        onHeaderLayout={closeCutout.onHeaderLayout}
-        onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+      <OverlaySheetHeaderChrome
         onGrabHandlePress={onClose}
         grabHandleAccessibilityLabel="Close save sheet"
-        grabHandleCutout
         paddingTop={headerPaddingTop}
         title={
           <View style={styles.headerTextGroup}>
@@ -315,16 +306,11 @@ export const useSaveListPanelSpec = ({
             accessibilityLabel="Close save sheet"
             accentColor={ACTIVE_TAB_COLOR}
             closeColor="#000000"
-            onLayout={closeCutout.onCloseLayout}
           />
         }
       />
     ),
     [
-      closeCutout.background,
-      closeCutout.onCloseLayout,
-      closeCutout.onHeaderLayout,
-      closeCutout.onHeaderRowLayout,
       headerActionProgress,
       headerPaddingTop,
       listType,

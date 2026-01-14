@@ -16,6 +16,7 @@ type OverlaySheetHeaderProps = {
   onGrabHandlePress: () => void;
   grabHandleAccessibilityLabel: string;
   grabHandleCutout?: boolean;
+  fixedHeight?: boolean;
   title: React.ReactNode;
   actionButton: React.ReactNode;
   paddingTop?: number;
@@ -32,6 +33,7 @@ const OverlaySheetHeader: React.FC<OverlaySheetHeaderProps> = ({
   onGrabHandlePress,
   grabHandleAccessibilityLabel,
   grabHandleCutout = false,
+  fixedHeight = true,
   title,
   actionButton,
   paddingTop = 0,
@@ -44,6 +46,7 @@ const OverlaySheetHeader: React.FC<OverlaySheetHeaderProps> = ({
     <View
       style={[
         overlaySheetStyles.header,
+        fixedHeight ? overlaySheetStyles.tabHeader : null,
         transparent ? overlaySheetStyles.headerTransparent : null,
         { paddingTop },
         style,

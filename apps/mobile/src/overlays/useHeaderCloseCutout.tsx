@@ -7,6 +7,7 @@ import {
   OVERLAY_GRAB_HANDLE_RADIUS,
   OVERLAY_GRAB_HANDLE_WIDTH,
   OVERLAY_HEADER_CLOSE_BUTTON_SIZE,
+  OVERLAY_HORIZONTAL_PADDING,
 } from './overlaySheetStyles';
 
 type HeaderCloseCutoutOptions = {
@@ -87,12 +88,14 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     width: 0,
     height: 0,
   });
-  const [closeLayout, setCloseLayout] = React.useState<LayoutRectangle | null>(null);
+  const [, setCloseLayout] = React.useState<LayoutRectangle | null>(null);
   const [badgeLayout, setBadgeLayout] = React.useState<LayoutRectangle | null>(null);
 
   const onHeaderLayout = React.useCallback(({ nativeEvent: { layout } }: LayoutChangeEvent) => {
     setHeaderLayout((prev) =>
-      prev.width === layout.width && prev.height === layout.height
+      (layout.width <= 0 || layout.height <= 0) && prev.width > 0 && prev.height > 0
+        ? prev
+        : prev.width === layout.width && prev.height === layout.height
         ? prev
         : { width: layout.width, height: layout.height }
     );
@@ -108,6 +111,9 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
       ) {
         return prev;
       }
+      if ((layout.width <= 0 || layout.height <= 0) && prev.width > 0 && prev.height > 0) {
+        return prev;
+      }
       return layout;
     });
   }, []);
@@ -120,6 +126,14 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
         Math.abs(prev.y - layout.y) < 0.5 &&
         Math.abs(prev.width - layout.width) < 0.5 &&
         Math.abs(prev.height - layout.height) < 0.5
+      ) {
+        return prev;
+      }
+      if (
+        prev &&
+        (layout.width <= 0 || layout.height <= 0) &&
+        prev.width > 0 &&
+        prev.height > 0
       ) {
         return prev;
       }
@@ -138,6 +152,14 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
       ) {
         return prev;
       }
+      if (
+        prev &&
+        (layout.width <= 0 || layout.height <= 0) &&
+        prev.width > 0 &&
+        prev.height > 0
+      ) {
+        return prev;
+      }
       return layout;
     });
   }, []);
@@ -148,24 +170,32 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     }
 
     const maskHeight = headerLayout.height + maskPadding * 2;
-    const inferredCloseCenterX =
-      headerRowLayout.width > 0
-        ? headerRowLayout.x + headerRowLayout.width - closeButtonSize / 2
-        : null;
-    const inferredCloseCenterY =
-      headerRowLayout.height > 0
-        ? headerRowLayout.y + headerRowLayout.height / 2 + holeYOffset + maskPadding
-        : null;
-    const closeCenterX =
-      closeLayout?.x !== undefined
-        ? headerRowLayout.x + closeLayout.x + closeLayout.width / 2
-        : inferredCloseCenterX;
-    const closeCenterY =
-      closeLayout?.y !== undefined
-        ? headerRowLayout.y + closeLayout.y + closeLayout.height / 2 + holeYOffset + maskPadding
-        : inferredCloseCenterY;
+    const canUseHeaderRowLayout = headerRowLayout.width > 0 && headerRowLayout.height > 0;
+    const inferredCloseCenterX = canUseHeaderRowLayout
+      ? headerRowLayout.x + headerRowLayout.width - closeButtonSize / 2
+      : headerLayout.width - OVERLAY_HORIZONTAL_PADDING - closeButtonSize / 2;
+    const inferredCloseCenterY = canUseHeaderRowLayout
+      ? headerRowLayout.y + headerRowLayout.height / 2 + holeYOffset + maskPadding
+      : headerPaddingTop +
+        grabHandlePaddingTop +
+        grabHandleHeight +
+        7 +
+        closeButtonSize / 2 +
+        holeYOffset +
+        maskPadding;
+    const closeCenterX = inferredCloseCenterX;
+    const closeCenterY = inferredCloseCenterY;
+
+    const safeCloseCenterX = Math.max(
+      holeRadius,
+      Math.min(headerLayout.width - holeRadius, closeCenterX)
+    );
+    const safeCloseCenterY = Math.max(
+      holeRadius,
+      Math.min(maskHeight - holeRadius, closeCenterY)
+    );
     const badgeRect =
-      badgeLayout?.x !== undefined && badgeLayout?.y !== undefined
+      canUseHeaderRowLayout && badgeLayout?.x !== undefined && badgeLayout?.y !== undefined
         ? {
             x: headerRowLayout.x + badgeLayout.x - badgePadding,
             y: headerRowLayout.y + badgeLayout.y - badgePadding + badgeYOffset + maskPadding,
@@ -179,9 +209,7 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
       : 0;
 
     const cutoutPaths: string[] = [];
-    if (closeCenterX !== null && closeCenterY !== null) {
-      cutoutPaths.push(circlePath(closeCenterX, closeCenterY, holeRadius));
-    }
+    cutoutPaths.push(circlePath(safeCloseCenterX, safeCloseCenterY, holeRadius));
     if (badgeRect) {
       cutoutPaths.push(
         roundedRectPath(badgeRect.x, badgeRect.y, badgeRect.width, badgeRect.height, badgeRadius)
@@ -217,10 +245,6 @@ const useHeaderCloseCutout = (options: HeaderCloseCutoutOptions = {}): HeaderClo
     );
   }, [
     closeButtonSize,
-    closeLayout?.height,
-    closeLayout?.width,
-    closeLayout?.x,
-    closeLayout?.y,
     badgeLayout?.height,
     badgeLayout?.width,
     badgeLayout?.x,

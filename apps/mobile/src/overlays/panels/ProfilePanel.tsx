@@ -15,7 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { Feather } from '@expo/vector-icons';
-import type { SharedValue } from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { colors as themeColors } from '../../constants/theme';
@@ -29,13 +29,16 @@ import { fetchUserPolls, type Poll } from '../../services/polls';
 import { useFavoriteLists } from '../../hooks/use-favorite-lists';
 import type { FavoriteListSummary } from '../../services/favorite-lists';
 import type { RootStackParamList } from '../../types/navigation';
-import { overlaySheetStyles, OVERLAY_HORIZONTAL_PADDING } from '../overlaySheetStyles';
+import {
+  OVERLAY_TAB_HEADER_HEIGHT,
+  OVERLAY_HORIZONTAL_PADDING,
+  overlaySheetStyles,
+} from '../overlaySheetStyles';
+import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { calculateSnapPoints } from '../sheetUtils';
-import { useHeaderCloseCutout } from '../useHeaderCloseCutout';
-import { useOverlayHeaderActionProgress } from '../useOverlayHeaderActionProgress';
 import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
-import OverlaySheetHeader from '../OverlaySheetHeader';
+import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
 
 type ProfileSegment = 'created' | 'contributed' | 'favorites';
 
@@ -43,7 +46,9 @@ type UseProfilePanelSpecOptions = {
   visible: boolean;
   navBarTop?: number;
   searchBarTop?: number;
+  snapPoints?: SnapPoints;
   sheetY: SharedValue<number>;
+  headerActionProgress?: SharedValue<number>;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
 };
@@ -83,7 +88,9 @@ export const useProfilePanelSpec = ({
   visible,
   navBarTop = 0,
   searchBarTop = 0,
-  sheetY,
+  snapPoints: snapPointsOverride,
+  sheetY: _sheetY,
+  headerActionProgress: headerActionProgressProp,
   onSnapChange,
   snapTo,
 }: UseProfilePanelSpecOptions): OverlayContentSpec<unknown> => {
@@ -91,7 +98,6 @@ export const useProfilePanelSpec = ({
   const { signOut, isSignedIn } = useAuth();
   const navigation = useNavigation<Navigation>();
   const insets = useSafeAreaInsets();
-  const previousOverlay = useOverlayStore((state) => state.previousOverlay);
   const setOverlay = useOverlayStore((state) => state.setOverlay);
   const pushToken = useNotificationStore((state) => state.pushToken);
   const setPushToken = useNotificationStore((state) => state.setPushToken);
@@ -302,47 +308,24 @@ export const useProfilePanelSpec = ({
     </Pressable>
   );
 
-  const closeCutout = useHeaderCloseCutout({
-    grabHandleCutout: true,
-  });
-  const headerHeight = closeCutout.headerHeight;
+  const headerHeight = OVERLAY_TAB_HEADER_HEIGHT;
   const navBarOffset = Math.max(navBarTop, 0);
   const dismissThreshold = navBarOffset > 0 ? navBarOffset : undefined;
   const contentBottomPadding = Math.max(insets.bottom + 140, 160);
   const snapPoints = React.useMemo(
-    () => calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
-    [headerHeight, insets.top, navBarOffset, searchBarTop]
+    () =>
+      snapPointsOverride ??
+      calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarOffset, headerHeight),
+    [headerHeight, insets.top, navBarOffset, searchBarTop, snapPointsOverride]
   );
-  const hiddenSnap = snapPoints.hidden ?? snapPoints.collapsed;
 
-  const shouldAnimateHeaderActionFromPlus = previousOverlay === 'polls' || previousOverlay === 'search';
-  const headerActionProgress = useOverlayHeaderActionProgress({
-    visible,
-    sheetY,
-    progressRange: {
-      start: snapPoints.collapsed,
-      end: hiddenSnap,
-    },
-    debug: true,
-    debugLabel: 'profile',
-    handoff: shouldAnimateHeaderActionFromPlus
-      ? {
-          enabled: true,
-          key: `fromPlus:${previousOverlay}`,
-          from: 1,
-          maxTarget: 0.25,
-        }
-      : undefined,
-  });
+  const localHeaderActionProgress = useSharedValue(0);
+  const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
 
   const headerComponent = (
-    <OverlaySheetHeader
-      cutoutBackground={closeCutout.background}
-      onHeaderLayout={closeCutout.onHeaderLayout}
-      onHeaderRowLayout={closeCutout.onHeaderRowLayout}
+    <OverlaySheetHeaderChrome
       onGrabHandlePress={handleClose}
       grabHandleAccessibilityLabel="Close profile"
-      grabHandleCutout
       title={
         <Text variant="title" weight="semibold" style={styles.sheetTitle}>
           Profile
@@ -355,7 +338,6 @@ export const useProfilePanelSpec = ({
           accessibilityLabel="Close profile"
           accentColor={themeColors.primary}
           closeColor="#000000"
-          onLayout={closeCutout.onCloseLayout}
         />
       }
     />
@@ -509,7 +491,11 @@ export const useProfilePanelSpec = ({
     estimatedItemSize: 720,
     contentContainerStyle: [styles.scrollContent, { paddingBottom: contentBottomPadding }],
     ListHeaderComponent: listHeaderComponent,
+    bounces: false,
+    alwaysBounceVertical: false,
+    overScrollMode: 'never',
     backgroundComponent: <FrostedGlassBackground />,
+    contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent: headerComponent,
     onSnapChange,
     dismissThreshold,

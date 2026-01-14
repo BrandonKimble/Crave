@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 
+import { SEARCH_SHORTCUT_SHADOW, SEARCH_THIS_AREA_SHADOW } from './shadows';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { colors as themeColors } from '../../constants/theme';
 import {
@@ -173,11 +174,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'flex-start',
     marginRight: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.24,
-    shadowRadius: 2,
-    elevation: 2,
+    ...SEARCH_SHORTCUT_SHADOW,
   },
   searchShortcutContent: {
     flexDirection: 'row',
@@ -193,18 +190,13 @@ const styles = StyleSheet.create({
     zIndex: 30,
   },
   searchThisAreaButton: {
-    height: CONTROL_HEIGHT + 4,
-    borderRadius: CONTROL_RADIUS,
+    borderRadius: 12,
     borderWidth: 0,
     backgroundColor: '#ffffff',
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 8,
-    paddingVertical: CONTROL_VERTICAL_PADDING,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1.5 },
-    shadowOpacity: 0.24,
-    shadowRadius: 2,
-    elevation: 2,
+    ...SEARCH_THIS_AREA_SHADOW,
   },
   searchThisAreaText: {
     color: SEARCH_THIS_AREA_COLOR,
