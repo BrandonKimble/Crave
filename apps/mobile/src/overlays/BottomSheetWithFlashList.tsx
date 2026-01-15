@@ -612,7 +612,8 @@ const BottomSheetWithFlashList = <T,>({
     if (
       snapTo === lastSnapToRef.current &&
       lastSnapToTargetRef.current !== null &&
-      Math.abs(lastSnapToTargetRef.current - target) < 0.5
+      Math.abs(lastSnapToTargetRef.current - target) < 0.5 &&
+      Math.abs(sheetY.value - target) < 0.5
     ) {
       return;
     }

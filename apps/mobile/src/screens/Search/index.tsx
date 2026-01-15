@@ -7,6 +7,7 @@ import {
   PixelRatio,
   Pressable,
   TouchableOpacity,
+  unstable_batchedUpdates,
   View,
   Easing as RNEasing,
 } from 'react-native';
@@ -1179,8 +1180,10 @@ const SearchScreen: React.FC = () => {
     if (!previous || previous === 'search') {
       return;
     }
-    setTabOverlaySnapRequest(null);
-    requestDockedPollsRestore();
+    unstable_batchedUpdates(() => {
+      setTabOverlaySnapRequest(null);
+      requestDockedPollsRestore();
+    });
   }, [
     requestDockedPollsRestore,
     rootOverlay,
@@ -1206,13 +1209,24 @@ const SearchScreen: React.FC = () => {
   }, [searchBarFrame, searchLayout.top]);
   const ensureSearchOverlay = React.useCallback(() => {
     if (rootOverlay !== 'search') {
-      setOverlay('search');
+      unstable_batchedUpdates(() => {
+        requestDockedPollsRestore();
+        setTabOverlaySnapRequest(null);
+        setOverlay('search');
+      });
       return;
     }
     if (activeOverlay !== 'search') {
       popToRootOverlay();
     }
-  }, [activeOverlay, popToRootOverlay, rootOverlay, setOverlay]);
+  }, [
+    activeOverlay,
+    popToRootOverlay,
+    requestDockedPollsRestore,
+    rootOverlay,
+    setOverlay,
+    setTabOverlaySnapRequest,
+  ]);
 
   const bottomInset = Math.max(insets.bottom, 12);
   // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
@@ -1263,6 +1277,12 @@ const SearchScreen: React.FC = () => {
   const navBarHeight = shouldHideBottomNav ? 0 : fallbackNavBarHeight;
 
   const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
+  const shouldShowDockedPolls =
+    isSearchOverlay &&
+    !isSuggestionPanelActive &&
+    !isSearchSessionActive &&
+    !isLoading &&
+    !isDockedPollsDismissed;
   const {
     panelVisible,
     sheetState,
@@ -1280,6 +1300,7 @@ const SearchScreen: React.FC = () => {
     headerDividerAnimatedStyle,
   } = useSearchSheet({
     isSearchOverlay,
+    suspendHiddenSync: shouldShowDockedPolls,
     searchBarTop,
     insetTop: insets.top,
     navBarTop: navBarTopForSnaps,
@@ -1650,17 +1671,18 @@ const SearchScreen: React.FC = () => {
       setIsSuggestionPanelActive(false);
       if (target === 'search') {
         overlaySwitchInFlightRef.current = true;
-        setTabOverlaySnapRequest(null);
-        setOverlay('search');
-        setIsSearchFocused(false);
-        setIsAutocompleteSuppressed(true);
-        if (!shouldDeferSuggestionClear) {
-          setShowSuggestions(false);
-          setSuggestions([]);
-        }
+        unstable_batchedUpdates(() => {
+          requestDockedPollsRestore();
+          setTabOverlaySnapRequest(null);
+          setOverlay('search');
+          setIsSearchFocused(false);
+          setIsAutocompleteSuppressed(true);
+          if (!shouldDeferSuggestionClear) {
+            setShowSuggestions(false);
+            setSuggestions([]);
+          }
+        });
         inputRef.current?.blur();
-        // Search always enters with the docked polls collapsed until the user drags it.
-        requestDockedPollsRestore();
         requestAnimationFrame(() => {
           overlaySwitchInFlightRef.current = false;
         });
@@ -1719,7 +1741,10 @@ const SearchScreen: React.FC = () => {
         setTabOverlaySnapRequest(null);
         // Immediately switch to search when polls overlay is dismissed (unless we're switching tabs).
         if (rootOverlay === 'polls' && !overlaySwitchInFlightRef.current) {
-          setOverlay('search');
+          unstable_batchedUpdates(() => {
+            requestDockedPollsRestore();
+            setOverlay('search');
+          });
         }
       }
     },
@@ -1729,6 +1754,7 @@ const SearchScreen: React.FC = () => {
       pollsDockedSnapRequest,
       tabOverlaySnapRequest,
       rootOverlay,
+      requestDockedPollsRestore,
       setIsDockedPollsDismissed,
       setOverlay,
       setPollsSheetSnap,
@@ -1744,10 +1770,19 @@ const SearchScreen: React.FC = () => {
       }
       if (snap === 'hidden' && rootOverlay === 'bookmarks' && !overlaySwitchInFlightRef.current) {
         setTabOverlaySnapRequest(null);
-        setOverlay('search');
+        unstable_batchedUpdates(() => {
+          requestDockedPollsRestore();
+          setOverlay('search');
+        });
       }
     },
-    [overlaySwitchInFlightRef, rootOverlay, setOverlay, tabOverlaySnapRequest]
+    [
+      overlaySwitchInFlightRef,
+      requestDockedPollsRestore,
+      rootOverlay,
+      setOverlay,
+      tabOverlaySnapRequest,
+    ]
   );
   const handleProfileSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
@@ -1757,10 +1792,19 @@ const SearchScreen: React.FC = () => {
       }
       if (snap === 'hidden' && rootOverlay === 'profile' && !overlaySwitchInFlightRef.current) {
         setTabOverlaySnapRequest(null);
-        setOverlay('search');
+        unstable_batchedUpdates(() => {
+          requestDockedPollsRestore();
+          setOverlay('search');
+        });
       }
     },
-    [overlaySwitchInFlightRef, rootOverlay, setOverlay, tabOverlaySnapRequest]
+    [
+      overlaySwitchInFlightRef,
+      requestDockedPollsRestore,
+      rootOverlay,
+      setOverlay,
+      tabOverlaySnapRequest,
+    ]
   );
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
     useSearchRequests();
@@ -2156,12 +2200,7 @@ const SearchScreen: React.FC = () => {
     },
     [shouldDriveSuggestionLayout, shouldRenderSuggestionPanel]
   );
-  const showDockedPolls =
-    isSearchOverlay &&
-    !isSuggestionPanelActive &&
-    !isSearchSessionActive &&
-    !isLoading &&
-    !isDockedPollsDismissed;
+  const showDockedPolls = shouldShowDockedPolls;
   const shouldShowPollsSheet = showPollsOverlay || showDockedPolls;
   const pollsOverlayMode = showPollsOverlay ? 'overlay' : 'docked';
   const lastShowDockedPollsRef = React.useRef(showDockedPolls);
@@ -4559,6 +4598,7 @@ const SearchScreen: React.FC = () => {
     if (!focused) {
       return;
     }
+    allowSearchBlurExitRef.current = true;
     ignoreNextSearchBlurRef.current = true;
     setIsSearchFocused(false);
     setIsSuggestionScrollDismissing(true);
@@ -4570,6 +4610,17 @@ const SearchScreen: React.FC = () => {
       suggestionScrollDismissTimeoutRef.current = null;
       setIsSuggestionScrollDismissing(false);
     }, 450);
+  }, [dismissSearchKeyboard, inputRef, setIsSearchFocused]);
+
+  const handleSuggestionTouchStart = React.useCallback(() => {
+    const focused = Boolean(inputRef.current?.isFocused?.());
+    if (!focused) {
+      return;
+    }
+    allowSearchBlurExitRef.current = true;
+    ignoreNextSearchBlurRef.current = true;
+    setIsSearchFocused(false);
+    dismissSearchKeyboard();
   }, [dismissSearchKeyboard, inputRef, setIsSearchFocused]);
 
   const handleSuggestionInteractionEnd = React.useCallback(() => {
@@ -6774,7 +6825,11 @@ const SearchScreen: React.FC = () => {
     snapPoints.middle,
   ]);
   const searchThisAreaTop = Math.max(searchLayout.top + searchLayout.height + 12, insets.top + 12);
-  const statusBarFadeHeight = Math.max(0, insets.top + 16);
+  const statusBarFadeHeightFallback = Math.max(0, insets.top + 16);
+  const statusBarFadeHeight = Math.max(
+    0,
+    searchLayout.top > 0 ? searchLayout.top - 4 : statusBarFadeHeightFallback
+  );
   const handleResultsHeaderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
       if (shouldDisableResultsHeader) {
@@ -7262,9 +7317,11 @@ const SearchScreen: React.FC = () => {
                   'rgba(0, 0, 0, 0.85)',
                   'rgba(0, 0, 0, 0.6)',
                   'rgba(0, 0, 0, 0.3)',
+                  'rgba(0, 0, 0, 0.12)',
+                  'rgba(0, 0, 0, 0.05)',
                   'rgba(0, 0, 0, 0)',
                 ]}
-                locations={[0, 0.5, 0.65, 0.78, 0.9, 1]}
+                locations={[0, 0.5, 0.65, 0.78, 0.84, 0.88, 0.92, 1]}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
                 style={styles.statusBarFadeLayer}
@@ -7336,6 +7393,7 @@ const SearchScreen: React.FC = () => {
                       ]}
                       keyboardShouldPersistTaps="handled"
                       keyboardDismissMode="on-drag"
+                      onTouchStart={handleSuggestionTouchStart}
                       onContentSizeChange={handleSuggestionContentSizeChange}
                       onScrollBeginDrag={handleSuggestionInteractionStart}
                       onScrollEndDrag={handleSuggestionInteractionEnd}

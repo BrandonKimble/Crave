@@ -14,6 +14,7 @@ import { SCREEN_HEIGHT } from '../constants/search';
 
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
+  suspendHiddenSync?: boolean;
   searchBarTop: number;
   insetTop: number;
   navBarTop: number;
@@ -40,6 +41,7 @@ type UseSearchSheetResult = {
 
 const useSearchSheet = ({
   isSearchOverlay,
+  suspendHiddenSync = false,
   searchBarTop,
   insetTop,
   navBarTop,
@@ -79,10 +81,13 @@ const useSearchSheet = ({
     if (!isSearchOverlay) {
       return;
     }
+    if (suspendHiddenSync) {
+      return;
+    }
     if (!panelVisible) {
       sheetTranslateY.value = snapPoints.hidden;
     }
-  }, [isSearchOverlay, panelVisible, sheetTranslateY, snapPoints.hidden]);
+  }, [isSearchOverlay, panelVisible, sheetTranslateY, snapPoints.hidden, suspendHiddenSync]);
 
   const handleSheetSnapChange = React.useCallback(
     (nextSnap: SheetPosition | 'hidden') => {
