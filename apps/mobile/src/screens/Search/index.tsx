@@ -778,8 +778,7 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsDockedSnapRequest, setPollsDockedSnapRequest] =
     React.useState<OverlaySheetSnap | null>(null);
-  const [pollsHeaderActionAnimationToken, setPollsHeaderActionAnimationToken] =
-    React.useState(0);
+  const [pollsHeaderActionAnimationToken, setPollsHeaderActionAnimationToken] = React.useState(0);
   const [tabOverlaySnapRequest, setTabOverlaySnapRequest] = React.useState<Exclude<
     OverlaySheetSnap,
     'hidden'
@@ -1184,15 +1183,11 @@ const SearchScreen: React.FC = () => {
       setTabOverlaySnapRequest(null);
       requestDockedPollsRestore();
     });
-  }, [
-    requestDockedPollsRestore,
-    rootOverlay,
-    setTabOverlaySnapRequest,
-  ]);
+  }, [requestDockedPollsRestore, rootOverlay, setTabOverlaySnapRequest]);
   const pollOverlayParams = overlayParams.polls;
   const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
     {
-      enabled: isSearchOverlay,
+      enabled: true,
       active: isSuggestionPanelActive,
       showMs: SUGGESTION_PANEL_FADE_IN_MS,
       hideMs: SUGGESTION_PANEL_FADE_OUT_MS,
@@ -1201,6 +1196,7 @@ const SearchScreen: React.FC = () => {
       delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
     }
   );
+  const isSuggestionOverlayVisible = isSuggestionPanelActive || isSuggestionPanelVisible;
   const searchBarTop = React.useMemo(() => {
     const rawTop = searchBarFrame
       ? searchLayout.top + searchBarFrame.y
@@ -1229,7 +1225,7 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const bottomInset = Math.max(insets.bottom, 12);
-  // Hide the bottom nav only while search is in use (focused/suggestions) or mid-session.
+  // Hide the bottom nav only while the search tab is actively in use.
   const shouldHideBottomNav =
     isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isLoading);
   const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
@@ -1995,7 +1991,7 @@ const SearchScreen: React.FC = () => {
   const hasRecentlyViewedFoods = recentlyViewedFoods.length > 0;
   const trimmedQuery = query.trim();
   const hasSearchChromeRawQuery = trimmedQuery.length > 0;
-  const isSuggestionScreenActive = isSearchOverlay && isSuggestionPanelActive;
+  const isSuggestionScreenActive = isSuggestionPanelActive;
   React.useEffect(() => {
     if (isSuggestionPanelActive) {
       setSearchTransitionVariant('default');
@@ -2030,17 +2026,11 @@ const SearchScreen: React.FC = () => {
     setSuggestions,
     setShowSuggestions,
   ]);
-  const isSuggestionScreenVisible = isSearchOverlay && isSuggestionPanelVisible;
+  const isSuggestionScreenVisible = isSuggestionPanelVisible;
   React.useEffect(() => {
     if (suggestionLayoutHoldTimeoutRef.current) {
       clearTimeout(suggestionLayoutHoldTimeoutRef.current);
       suggestionLayoutHoldTimeoutRef.current = null;
-    }
-    if (!isSearchOverlay) {
-      if (isSuggestionLayoutWarm) {
-        setIsSuggestionLayoutWarm(false);
-      }
-      return;
     }
     if (isSuggestionPanelActive || isSuggestionPanelVisible) {
       if (!isSuggestionLayoutWarm) {
@@ -2060,10 +2050,9 @@ const SearchScreen: React.FC = () => {
         suggestionLayoutHoldTimeoutRef.current = null;
       }
     };
-  }, [isSearchOverlay, isSuggestionLayoutWarm, isSuggestionPanelActive, isSuggestionPanelVisible]);
+  }, [isSuggestionLayoutWarm, isSuggestionPanelActive, isSuggestionPanelVisible]);
   const shouldDriveSuggestionLayout =
-    isSearchOverlay &&
-    (isSuggestionPanelActive || isSuggestionPanelVisible || isSuggestionLayoutWarm);
+    isSuggestionPanelActive || isSuggestionPanelVisible || isSuggestionLayoutWarm;
   const submitTransitionHold = submitTransitionHoldRef.current;
   const isSuggestionClosing = isSuggestionPanelVisible && !isSuggestionPanelActive;
   const prevHasSearchChromeRawQueryRef = React.useRef(hasSearchChromeRawQuery);
@@ -2643,7 +2632,11 @@ const SearchScreen: React.FC = () => {
       restaurants: suggestionHeaderShortcutHoleCandidates.restaurants ?? cached.restaurants,
       dishes: suggestionHeaderShortcutHoleCandidates.dishes ?? cached.dishes,
     };
-  }, [shouldFreezeSuggestionHeader, suggestionHeaderShortcutHoleCandidates, shouldIncludeShortcutHoles]);
+  }, [
+    shouldFreezeSuggestionHeader,
+    suggestionHeaderShortcutHoleCandidates,
+    shouldIncludeShortcutHoles,
+  ]);
   const suggestionHeaderHoles = React.useMemo<MaskedHole[]>(() => {
     if (!shouldDriveSuggestionLayout) {
       return [];
@@ -2689,7 +2682,11 @@ const SearchScreen: React.FC = () => {
     return {
       opacity: chromeOpacity,
       backgroundColor: `rgba(255, 255, 255, ${backgroundAlpha})`,
-      ...shadowFadeStyle(SEARCH_BAR_BASE_SHADOW_OPACITY, SEARCH_BAR_BASE_ELEVATION, backgroundAlpha),
+      ...shadowFadeStyle(
+        SEARCH_BAR_BASE_SHADOW_OPACITY,
+        SEARCH_BAR_BASE_ELEVATION,
+        backgroundAlpha
+      ),
       borderWidth: 0,
       transform: [{ scale: chromeScale }],
       display: chromeOpacity < 0.02 ? 'none' : 'flex',
@@ -2940,7 +2937,6 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
-    ensureSearchOverlay();
     dismissTransientOverlays();
     allowAutocompleteResults();
     setIsAutocompleteSuppressed(false);
@@ -2959,7 +2955,6 @@ const SearchScreen: React.FC = () => {
     captureSearchSessionQuery,
     cancelAutocomplete,
     dismissTransientOverlays,
-    ensureSearchOverlay,
     query,
     showCachedSuggestionsIfFresh,
   ]);
@@ -2967,7 +2962,6 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
-    ensureSearchOverlay();
     dismissTransientOverlays();
     allowAutocompleteResults();
     setIsAutocompleteSuppressed(false);
@@ -2977,7 +2971,6 @@ const SearchScreen: React.FC = () => {
     allowAutocompleteResults,
     captureSearchSessionQuery,
     dismissTransientOverlays,
-    ensureSearchOverlay,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
@@ -4767,6 +4760,7 @@ const SearchScreen: React.FC = () => {
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
+      ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
@@ -4814,6 +4808,7 @@ const SearchScreen: React.FC = () => {
     [
       cancelAutocomplete,
       dismissSearchKeyboard,
+      ensureSearchOverlay,
       query,
       submitSearch,
       beginSubmitTransition,
@@ -4996,18 +4991,12 @@ const SearchScreen: React.FC = () => {
     isSearchEditingRef.current = true;
     allowSearchBlurExitRef.current = false;
     captureSearchSessionQuery();
-    ensureSearchOverlay();
     dismissTransientOverlays();
     allowAutocompleteResults();
     setIsSearchFocused(true);
     setIsSuggestionPanelActive(true);
     setIsAutocompleteSuppressed(false);
-  }, [
-    allowAutocompleteResults,
-    captureSearchSessionQuery,
-    dismissTransientOverlays,
-    ensureSearchOverlay,
-  ]);
+  }, [allowAutocompleteResults, captureSearchSessionQuery, dismissTransientOverlays]);
 
   const handleSearchBlur = React.useCallback(() => {
     if (!allowSearchBlurExitRef.current && isSuggestionPanelActive) {
@@ -5127,6 +5116,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
@@ -5172,6 +5162,7 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
+      ensureSearchOverlay,
       resetFocusedMapState,
       runRestaurantEntitySearch,
       submitSearch,
@@ -5190,6 +5181,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
@@ -5227,6 +5219,7 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
+      ensureSearchOverlay,
       resetFocusedMapState,
       runRestaurantEntitySearch,
       beginSubmitTransition,
@@ -5244,6 +5237,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
       allowSearchBlurExitRef.current = true;
@@ -5281,6 +5275,7 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
+      ensureSearchOverlay,
       resetFocusedMapState,
       runRestaurantEntitySearch,
       beginSubmitTransition,
@@ -6828,7 +6823,7 @@ const SearchScreen: React.FC = () => {
   const statusBarFadeHeightFallback = Math.max(0, insets.top + 16);
   const statusBarFadeHeight = Math.max(
     0,
-    searchLayout.top > 0 ? searchLayout.top - 4 : statusBarFadeHeightFallback
+    searchLayout.top > 0 ? searchLayout.top + 8 : statusBarFadeHeightFallback
   );
   const handleResultsHeaderLayout = React.useCallback(
     (event: LayoutChangeEvent) => {
@@ -7314,14 +7309,16 @@ const SearchScreen: React.FC = () => {
                 colors={[
                   'rgba(0, 0, 0, 1)',
                   'rgba(0, 0, 0, 1)',
-                  'rgba(0, 0, 0, 0.85)',
-                  'rgba(0, 0, 0, 0.6)',
-                  'rgba(0, 0, 0, 0.3)',
+                  'rgba(0, 0, 0, 0.99)',
+                  'rgba(0, 0, 0, 0.97)',
+                  'rgba(0, 0, 0, 0.9)',
+                  'rgba(0, 0, 0, 0.7)',
+                  'rgba(0, 0, 0, 0.35)',
                   'rgba(0, 0, 0, 0.12)',
-                  'rgba(0, 0, 0, 0.05)',
+                  'rgba(0, 0, 0, 0.04)',
                   'rgba(0, 0, 0, 0)',
                 ]}
-                locations={[0, 0.5, 0.65, 0.78, 0.84, 0.88, 0.92, 1]}
+                locations={[0, 0.6, 0.63, 0.66, 0.7, 0.8, 0.88, 0.945, 0.965, 0.985]}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
                 style={styles.statusBarFadeLayer}
@@ -7335,113 +7332,114 @@ const SearchScreen: React.FC = () => {
           <>
             <React.Profiler id="SearchOverlayChrome" onRender={handleProfilerRender}>
               <SafeAreaView
-                style={styles.overlay}
+                style={[
+                  styles.overlay,
+                  isSuggestionOverlayVisible ? { zIndex: shouldHideBottomNav ? 200 : 110 } : null,
+                ]}
                 pointerEvents="box-none"
                 edges={['top', 'left', 'right']}
               >
-                {isSearchOverlay ? (
-                  <Reanimated.View
-                    pointerEvents={isSuggestionPanelActive ? 'auto' : 'none'}
+                <Reanimated.View
+                  pointerEvents={isSuggestionOverlayVisible ? 'auto' : 'none'}
+                  style={[
+                    styles.searchSurface,
+                    searchSurfaceAnimatedStyle,
+                    {
+                      top: 0,
+                    },
+                  ]}
+                >
+                  {!shouldDisableSearchBlur && <FrostedGlassBackground />}
+                  {shouldShowSuggestionSurface ? (
+                    <MaskedHoleOverlay
+                      holes={resolvedSuggestionHeaderHoles}
+                      backgroundColor="#ffffff"
+                      style={[
+                        styles.searchSuggestionHeaderSurface,
+                        suggestionHeaderHeightAnimatedStyle,
+                      ]}
+                      pointerEvents="none"
+                    />
+                  ) : null}
+                  <Reanimated.ScrollView
                     style={[
-                      styles.searchSurface,
-                      searchSurfaceAnimatedStyle,
+                      styles.searchSurfaceScroll,
+                      suggestionPanelAnimatedStyle,
+                      shouldDriveSuggestionLayout
+                        ? [
+                            styles.searchSuggestionScrollSurface,
+                            suggestionScrollTopAnimatedStyle,
+                            suggestionScrollMaxHeightTarget
+                              ? suggestionScrollMaxHeightAnimatedStyle
+                              : null,
+                          ]
+                        : null,
+                    ]}
+                    contentContainerStyle={[
+                      styles.searchSurfaceContent,
                       {
-                        top: 0,
+                        paddingTop: shouldDriveSuggestionLayout
+                          ? 0
+                          : searchLayout.top + searchLayout.height + 8,
+                        paddingBottom: shouldDriveSuggestionLayout
+                          ? shouldHideBottomNav
+                            ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
+                            : navBarHeight + 16
+                          : bottomInset + 32,
+                        paddingHorizontal: shouldDriveSuggestionLayout
+                          ? CONTENT_HORIZONTAL_PADDING
+                          : 0,
+                        backgroundColor: 'transparent',
                       },
                     ]}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="on-drag"
+                    onTouchStart={handleSuggestionTouchStart}
+                    onContentSizeChange={handleSuggestionContentSizeChange}
+                    onScrollBeginDrag={handleSuggestionInteractionStart}
+                    onScrollEndDrag={handleSuggestionInteractionEnd}
+                    onMomentumScrollEnd={handleSuggestionInteractionEnd}
+                    scrollEnabled={Boolean(isSuggestionScreenActive && shouldRenderSuggestionPanel)}
+                    showsVerticalScrollIndicator={false}
                   >
-                    {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-                    {shouldShowSuggestionSurface ? (
-                      <MaskedHoleOverlay
-                        holes={resolvedSuggestionHeaderHoles}
-                        backgroundColor="#ffffff"
-                        style={[
-                          styles.searchSuggestionHeaderSurface,
-                          suggestionHeaderHeightAnimatedStyle,
-                        ]}
-                        pointerEvents="none"
-                      />
+                    {shouldRenderSuggestionPanel ? (
+                      <View style={styles.searchSuggestionScrollContent}>
+                        <View
+                          pointerEvents="none"
+                          style={[
+                            styles.searchSuggestionScrollBackground,
+                            {
+                              left: -CONTENT_HORIZONTAL_PADDING,
+                              right: -CONTENT_HORIZONTAL_PADDING,
+                            },
+                            { top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER },
+                          ]}
+                        />
+                        <SearchSuggestions
+                          visible={shouldRenderSuggestionPanel}
+                          showAutocomplete={shouldRenderAutocompleteSection}
+                          showRecent={shouldRenderRecentSection}
+                          suggestions={suggestionDisplaySuggestions}
+                          recentSearches={recentSearchesDisplay}
+                          recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
+                          recentlyViewedFoods={recentlyViewedFoodsDisplay}
+                          hasRecentSearches={hasRecentSearchesDisplay}
+                          hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
+                          hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
+                          isRecentLoading={isRecentLoadingDisplay}
+                          isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
+                          isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
+                          onSelectSuggestion={handleSuggestionPress}
+                          onSelectRecent={handleRecentSearchPress}
+                          onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
+                          onSelectRecentlyViewedFood={handleRecentlyViewedFoodPress}
+                          onPressRecentViewMore={handleRecentViewMorePress}
+                          onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
+                        />
+                      </View>
                     ) : null}
-                    <Reanimated.ScrollView
-                      style={[
-                        styles.searchSurfaceScroll,
-                        suggestionPanelAnimatedStyle,
-                        shouldDriveSuggestionLayout
-                          ? [
-                              styles.searchSuggestionScrollSurface,
-                              suggestionScrollTopAnimatedStyle,
-                              suggestionScrollMaxHeightTarget
-                                ? suggestionScrollMaxHeightAnimatedStyle
-                                : null,
-                            ]
-                          : null,
-                      ]}
-                      contentContainerStyle={[
-                        styles.searchSurfaceContent,
-                        {
-                          paddingTop: shouldDriveSuggestionLayout
-                            ? 0
-                            : searchLayout.top + searchLayout.height + 8,
-                          paddingBottom: shouldDriveSuggestionLayout
-                            ? SEARCH_SUGGESTION_PANEL_PADDING_BOTTOM
-                            : bottomInset + 32,
-                          paddingHorizontal: shouldDriveSuggestionLayout
-                            ? CONTENT_HORIZONTAL_PADDING
-                            : 0,
-                          backgroundColor: 'transparent',
-                        },
-                      ]}
-                      keyboardShouldPersistTaps="handled"
-                      keyboardDismissMode="on-drag"
-                      onTouchStart={handleSuggestionTouchStart}
-                      onContentSizeChange={handleSuggestionContentSizeChange}
-                      onScrollBeginDrag={handleSuggestionInteractionStart}
-                      onScrollEndDrag={handleSuggestionInteractionEnd}
-                      onMomentumScrollEnd={handleSuggestionInteractionEnd}
-                      scrollEnabled={Boolean(
-                        isSuggestionScreenActive && shouldRenderSuggestionPanel
-                      )}
-                      showsVerticalScrollIndicator={false}
-                    >
-                      {shouldRenderSuggestionPanel ? (
-                        <View style={styles.searchSuggestionScrollContent}>
-                          <View
-                            pointerEvents="none"
-                            style={[
-                              styles.searchSuggestionScrollBackground,
-                              {
-                                left: -CONTENT_HORIZONTAL_PADDING,
-                                right: -CONTENT_HORIZONTAL_PADDING,
-                              },
-                              { top: -SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER },
-                            ]}
-                          />
-                          <SearchSuggestions
-                            visible={shouldRenderSuggestionPanel}
-                            showAutocomplete={shouldRenderAutocompleteSection}
-                            showRecent={shouldRenderRecentSection}
-                            suggestions={suggestionDisplaySuggestions}
-                            recentSearches={recentSearchesDisplay}
-                            recentlyViewedRestaurants={recentlyViewedRestaurantsDisplay}
-                            recentlyViewedFoods={recentlyViewedFoodsDisplay}
-                            hasRecentSearches={hasRecentSearchesDisplay}
-                            hasRecentlyViewedRestaurants={hasRecentlyViewedRestaurantsDisplay}
-                            hasRecentlyViewedFoods={hasRecentlyViewedFoodsDisplay}
-                            isRecentLoading={isRecentLoadingDisplay}
-                            isRecentlyViewedLoading={isRecentlyViewedLoadingDisplay}
-                            isRecentlyViewedFoodsLoading={isRecentlyViewedFoodsLoadingDisplay}
-                            onSelectSuggestion={handleSuggestionPress}
-                            onSelectRecent={handleRecentSearchPress}
-                            onSelectRecentlyViewed={handleRecentlyViewedRestaurantPress}
-                            onSelectRecentlyViewedFood={handleRecentlyViewedFoodPress}
-                            onPressRecentViewMore={handleRecentViewMorePress}
-                            onPressRecentlyViewedMore={handleRecentlyViewedMorePress}
-                          />
-                        </View>
-                      ) : null}
-                    </Reanimated.ScrollView>
-                  </Reanimated.View>
-                ) : null}
+                  </Reanimated.ScrollView>
+                </Reanimated.View>
                 <View
                   pointerEvents="box-none"
                   style={styles.searchContainer}
@@ -7460,15 +7458,15 @@ const SearchScreen: React.FC = () => {
                     onPressIn={handleSearchPressIn}
                     onInputTouchStart={handleSearchPressIn}
                     accentColor={ACTIVE_TAB_COLOR}
-                    showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
+                    showBack={isSuggestionOverlayVisible}
                     onBackPress={handleSearchBack}
                     onLayout={handleSearchHeaderLayout}
                     inputRef={inputRef}
                     inputAnimatedStyle={searchBarInputAnimatedStyle}
                     containerAnimatedStyle={searchBarContainerAnimatedStyle}
                     editable={!isSuggestionScrollDismissing}
-                    showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
-                    isSearchSessionActive={isSearchSessionActive && !isSuggestionPanelActive}
+                    showInactiveSearchIcon={!isSuggestionOverlayVisible && !isSearchSessionActive}
+                    isSearchSessionActive={isSearchSessionActive && !isSuggestionOverlayVisible}
                     focusProgress={searchHeaderFocusProgress}
                   />
                 </View>
@@ -7523,7 +7521,11 @@ const SearchScreen: React.FC = () => {
                         style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
                       >
                         <Store size={18} color="#0f172a" strokeWidth={2} />
-                        <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
                           Best restaurants
                         </Text>
                       </Reanimated.View>
@@ -7559,7 +7561,11 @@ const SearchScreen: React.FC = () => {
                         style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
                       >
                         <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-                        <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
                           Best dishes
                         </Text>
                       </Reanimated.View>

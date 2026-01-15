@@ -4,7 +4,7 @@
 
 If you are picking this up in a fresh chat: treat this plan as the source of truth and implement it end-to-end.
 
-- Read `plans/keyword-collection-priority-overhaul.md` and `plans/keyword-collection-observability-overhaul.md` first.
+- Read `plans/keyword-collection-priority-overhaul.md` and `plans/observability-overhaul.md` first.
 - Follow all “Decisions (Locked)” exactly; do not re-open them unless a real blocker appears.
 - We are intentionally skipping unit/integration/smoke tests; rely on the “Minimum Observability Safety Net” + manual validation steps.
 - Data is non-production/test-only: prefer the simplest cutover (truncate/backfill) and aggressively delete legacy fields/code once replaced.
@@ -32,7 +32,7 @@ This plan also:
 Observability is split:
 
 - This plan ships a **minimum safety net** (cycleId + summary logs + a few low-cardinality metrics).
-- The full cohesive observability work is tracked in `plans/keyword-collection-observability-overhaul.md`.
+- The full cohesive observability work is tracked in `plans/observability-overhaul.md`.
 
 ## Goals / Non-Goals
 
@@ -469,7 +469,7 @@ This keeps daily runs responsive while controlling API cost.
 - Emit:
   - one `keyword_cycle_summary` log per cycle,
   - one `keyword_term_summary` log per term attempt.
-- Full observability work is in `plans/keyword-collection-observability-overhaul.md`.
+- Full observability work is in `plans/observability-overhaul.md`.
 
 2. Baseline measurements (before behavior change)
 
@@ -657,7 +657,7 @@ Ship the smallest set of signals needed to safely iterate without tests:
   - terms_selected / terms_deduped,
   - no_results_terms_total.
 
-Full, cohesive observability work is tracked in `plans/keyword-collection-observability-overhaul.md`.
+Full, cohesive observability work is tracked in `plans/observability-overhaul.md`.
 
 ## Validation (No Tests)
 
@@ -684,4 +684,4 @@ We are skipping tests, so validation is operational:
 - Coverage key resolution: `apps/api/src/modules/coverage-key/coverage-key-resolver.service.ts`
 - On-demand requests (legacy): `apps/api/src/modules/search/on-demand-request.service.ts`, `apps/api/prisma/schema.prisma` (`OnDemandRequest`)
 - Search UI shortcuts (mobile): `apps/mobile/src/screens/Search/index.tsx`
-- Observability plan: `plans/keyword-collection-observability-overhaul.md`
+- Observability plan: `plans/observability-overhaul.md`

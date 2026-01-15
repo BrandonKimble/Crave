@@ -15,8 +15,11 @@ This plan is intentionally split into **workstreams** that can be shipped increm
 Before building, confirm these decisions (they change the “best” implementation):
 
 1) **Runtime topology**
-   - Do we plan to run *only* the API on Railway at first, or also a worker service?
-   - Will we run >1 API replica early (autoscaling) or stay single-instance?
+   - Decision: **launch with a separate worker service** (at least 1 worker instance) alongside the API.
+   - Confirm:
+     - Will the API run >1 replica at launch (or shortly after)?
+     - Will the worker run >1 replica (likely later, once backlog requires it)?
+     - Will the worker be **private** (no public domain) in Railway?
 2) **Observability target**
    - Are we willing to pay for a hosted metrics/logs product (Grafana Cloud / Axiom / Better Stack), or do we want to self-run Prometheus/Loki?
 3) **Mobile release path**
@@ -75,81 +78,18 @@ Current state:
 
 ## 2) Production Observability Strategy (Metrics + Logs + Traces)
 
-Current state:
-- API has:
-  - Sentry errors/perf
-  - Prometheus-format metrics at `/metrics`
-  - A local Docker observability stack (Prometheus + Grafana + Loki + Promtail)
-- Railway deployment docs exist, but production observability hosting is not decided.
+Owned by `plans/observability-overhaul.md`.
 
-### Recommendation (phased, pragmatic)
-**Start with Sentry + Railway logs**, then add hosted metrics when we need it.
-
-Reasoning:
-- Sentry already covers “what broke” + latency outliers quickly.
-- Hosted metrics/logs adds cost + operational overhead; you can defer until you have real traffic and concrete questions.
-
-### Phase A (Launch baseline)
-1) **Sentry (API + Mobile)**
-   - Alerts routing (Discord/Slack) and a simple on-call playbook.
-2) **Railway logs**
-   - Ensure structured logs are readable and have stable fields (service, requestId, userId).
-3) **Uptime checks**
-   - Add an external health monitor (e.g. Better Uptime / Statuspage / simple cron) hitting `/health`.
-4) **Minimal dashboards**
-   - Sentry dashboards for error rate and latency.
-
-### Phase B (Metrics without self-hosting Grafana/Loki)
-Pick one of these options:
-1) **Grafana Cloud (recommended if you want to keep Prometheus semantics)**
-   - Run Grafana Alloy (or agent) as a small service that scrapes `https://<api>/metrics` and remote-writes to Grafana Cloud.
-   - Keep dashboards in Grafana Cloud (no self-hosted Grafana/Loki needed).
-2) **Alternative “one vendor” observability**
-   - Axiom / Better Stack / Datadog, depending on budget and preference.
-   - If chosen, decide whether to keep Prometheus metrics or emit OTEL metrics/logs.
-
-### Phase C (Centralized logs)
-Only add when you need cross-request querying beyond Railway logs:
-- Grafana Cloud Loki (or Axiom/Better Stack logs).
-- Ensure log volume/cost control via:
-  - sampling
-  - dropping noisy debug fields
-  - strict label hygiene (avoid high-cardinality labels)
-
-### Validation
-- Confirm metrics scrape works (scraper target “UP”).
-- Confirm alerts trigger on:
-  - error spike
-  - elevated p95 latency
-  - queue backlog
-- Confirm logs can be searched by requestId and userId.
+Decision summary:
+- Sentry for errors/performance.
+- Grafana Cloud for metrics-only dashboards/alerts (scrape `/metrics`).
+- Defer hosted logs (no Loki in production at launch); use Railway logs.
 
 ---
 
 ## 3) Protect `/metrics` (Production Security Hygiene)
 
-Current state:
-- `/metrics` exists and appears unauthenticated.
-
-### Discovery
-- How will metrics be scraped in production?
-  - Public internet scrape (bad default)
-  - Private network / VPN / internal only
-  - Token-authenticated scrape endpoint
-
-### Implementation (Recommended)
-1) **Require an access token in production**
-   - Env var: `METRICS_ACCESS_TOKEN`.
-   - Only enforce when `NODE_ENV=production` (or `APP_ENV=prod`).
-   - Support `Authorization: Bearer <token>` (or a dedicated header).
-2) **Allowlist health endpoints**
-   - Keep `/health`, `/health/ready`, `/health/live` unauthenticated.
-3) **Avoid leaking secrets/PII**
-   - Ensure metrics never include user identifiers or request URLs as labels.
-
-### Validation
-- Without token: `/metrics` returns 401 in prod.
-- With token: `/metrics` returns 200 and scrapes cleanly.
+Owned by `plans/observability-overhaul.md` (token-authenticated scrape in production).
 
 ---
 
@@ -164,12 +104,23 @@ Current state:
 - Decide target model:
   - **Single worker** (most common early)
   - **Worker pool** (scale with backlog)
+- Confirm what the worker must expose:
+  - **Metrics**: do we need the worker to expose `/metrics` so Grafana Cloud can see job/collection metrics? (recommended: yes)
+  - **Health**: do we need a worker `/health` endpoint for Railway healthchecks? (recommended: yes)
+  - **Public access**: ensure the worker has **no public domain** (recommended) even if it binds a port.
+  - **Sentry**: ensure background job errors are captured and tagged `service=worker`.
+  - **Kill switches**: confirm the exact env vars/flags we will use to disable schedulers and/or pause collection safely in production.
+  - **Queue ops**: confirm how we’ll retry/triage failed jobs without exposing a public Bull UI.
 
 ### Implementation (Recommended)
 1) **Introduce process roles**
    - `PROCESS_ROLE=api|worker` (or similar).
 2) **Worker bootstrap**
-   - Create a worker entrypoint that starts Nest in “application context” mode (no HTTP listener) and runs processors + schedulers.
+   - Preferred: create a worker entrypoint that starts Nest in “application context” mode (no public HTTP API) and runs processors + schedulers.
+   - If Railway requires HTTP healthchecks/metrics: run a **minimal HTTP server** in worker role that exposes only:
+     - `/health` (and optionally `/health/live`, `/health/ready`)
+     - `/metrics` (token-protected in production)
+   - Initialize Sentry in the worker process as well (same DSN, different `serverName`/tag).
 3) **API bootstrap**
    - API role runs HTTP only; processors disabled; schedulers disabled.
 4) **Distributed safety**
@@ -177,11 +128,27 @@ Current state:
 5) **Railway deploy**
    - Add a second Railway service for the worker with a different `startCommand` and the same image/build.
    - Set resource sizing separately (CPU/memory) for API vs worker.
+   - Ensure both services share the same Postgres + Redis and consistent Bull prefix/env (`APP_ENV`, `BULL_PREFIX`).
+6) **Kill switches (prod safety)**
+   - Add explicit env-controlled switches for:
+     - schedulers on/off
+     - enqueueing on/off (optional)
+     - worker processors on/off (emergency “stop the bleeding”)
+   - Require these switches to default to “safe on” in production, but be trivially toggled in Railway variables without a redeploy.
+7) **Queue operations (no public admin UI by default)**
+   - Provide a secure mechanism to:
+     - inspect failed job counts by queue/job
+     - requeue/retry with guardrails
+     - optionally drain/pause queues during incidents
+   - Prefer: internal scripts run via `railway run ...` or a locked-down admin-only endpoint guarded by Clerk admin IDs (if you must).
 
 ### Validation
 - With 2 API replicas: scheduled jobs run once (not twice).
 - Worker restarts do not lose jobs (Bull persistence).
 - Queue backlog drains and does not impact API latency under load.
+- Grafana metrics show worker-side queue/job activity (not just API request metrics).
+- A worker-thrown exception shows up in Sentry with `service=worker` tags.
+- Kill switch toggles stop scheduling/enqueueing within a bounded time (no new work is created, and in-flight work finishes or is safely interrupted).
 
 ---
 
@@ -315,3 +282,36 @@ Decision: the app is a **digital** subscription product (monthly/yearly paywall)
 - RevenueCat webhooks update backend entitlement state.
 - Paywalled API endpoints reject non-entitled users and allow entitled users.
 - No Stripe endpoints/routes exist, and no Stripe secrets are required anywhere.
+
+---
+
+## 8) Staging + Runbooks (Launch With a Worker)
+
+Launching with a separate worker makes “it deployed” != “it’s healthy”. We need a small amount of operational scaffolding.
+
+### Staging environment (recommended before first paid launch)
+- Create a staging Railway environment with:
+  - separate Postgres + Redis
+  - separate Sentry environment
+  - separate Clerk instance/config (or clearly separated templates/audiences)
+  - RevenueCat test configuration pointing at staging webhooks
+- Rehearse:
+  - migrations (including rollback procedure)
+  - worker deploy/restart behavior
+  - collection/poll job execution end-to-end
+
+### Runbooks (minimum set)
+1) **Incident: backlog climbing**
+   - How to confirm (Grafana panels + `ops report`) and what to do first (reduce concurrency? pause schedulers?).
+2) **Incident: error spike**
+   - How to correlate Sentry errors to job types and the last deploy.
+3) **DB migration failure**
+   - How to stop deploy, recover, and roll forward/back (with explicit “do not drop data” guidance).
+4) **RevenueCat webhook mismatch**
+   - How to validate webhook auth, event ingestion, and entitlement state.
+
+### Backups / restore drill
+- Even if Railway provides backups, define:
+  - RPO/RTO targets
+  - how to perform a restore
+  - how often you run a restore rehearsal (quarterly is a good default)
