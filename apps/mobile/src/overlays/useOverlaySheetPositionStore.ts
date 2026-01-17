@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 import type { OverlayKey, OverlaySheetSnap } from './types';
 
-type SharedSnap = Exclude<OverlaySheetSnap, 'hidden'>;
+type SharedSnap = Exclude<OverlaySheetSnap, 'hidden' | 'collapsed'>;
 
 type OverlaySheetPositionState = {
   hasUserSharedSnap: boolean;
@@ -17,21 +17,20 @@ type OverlaySheetPositionState = {
 const DEFAULT_SHARED_SNAP: SharedSnap = 'expanded';
 
 const isSharedOverlayKey = (overlayKey: OverlayKey) =>
-  overlayKey === 'polls' || overlayKey === 'bookmarks' || overlayKey === 'profile';
+  overlayKey === 'polls' ||
+  overlayKey === 'pollCreation' ||
+  overlayKey === 'bookmarks' ||
+  overlayKey === 'profile';
 
 export const useOverlaySheetPositionStore = create<OverlaySheetPositionState>((set) => ({
   hasUserSharedSnap: false,
   sharedSnap: DEFAULT_SHARED_SNAP,
-  recordUserSnap: ({ rootOverlay, activeOverlayKey, snap }) => {
+  recordUserSnap: ({ rootOverlay: _rootOverlay, activeOverlayKey, snap }) => {
     if (!isSharedOverlayKey(activeOverlayKey)) {
       return;
     }
 
-    if (snap === 'hidden') {
-      return;
-    }
-
-    if (rootOverlay === 'search' && activeOverlayKey === 'polls' && snap === 'collapsed') {
+    if (snap === 'hidden' || snap === 'collapsed') {
       return;
     }
 

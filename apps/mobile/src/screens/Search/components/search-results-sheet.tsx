@@ -280,7 +280,8 @@ const SearchResultsSheet = <T,>({
           listKey={listKey}
           onEndReached={onEndReached}
           onEndReachedThreshold={0.2}
-          showsVerticalScrollIndicator={false}
+          showsVerticalScrollIndicator
+          scrollIndicatorInsets={{ top: 0, bottom: RESULTS_BOTTOM_PADDING }}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           bounces={false}

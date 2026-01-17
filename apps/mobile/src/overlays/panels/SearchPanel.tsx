@@ -26,6 +26,7 @@ type UseSearchPanelSpecOptions<T> = {
   onSettleStateChange?: (isSettling: boolean) => void;
   listKey?: string;
   onEndReached?: FlashListProps<T>['onEndReached'];
+  scrollIndicatorInsets?: FlashListProps<T>['scrollIndicatorInsets'];
   extraData?: FlashListProps<T>['extraData'];
   interactionEnabled?: boolean;
   data: ReadonlyArray<T>;
@@ -66,6 +67,7 @@ export const useSearchPanelSpec = <T,>({
   onSettleStateChange,
   listKey,
   onEndReached,
+  scrollIndicatorInsets,
   extraData,
   interactionEnabled = true,
   data,
@@ -242,7 +244,8 @@ export const useSearchPanelSpec = <T,>({
     listKey,
     onEndReached,
     onEndReachedThreshold: 0.2,
-    showsVerticalScrollIndicator: false,
+    showsVerticalScrollIndicator: true,
+    scrollIndicatorInsets,
     keyboardShouldPersistTaps: 'handled',
     keyboardDismissMode: 'on-drag',
     bounces: false,

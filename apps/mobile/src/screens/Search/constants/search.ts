@@ -19,7 +19,7 @@ export const TOP_FOOD_INLINE_WIDTH_BUFFER = CONTENT_HORIZONTAL_PADDING;
 export const ACTIVE_TAB_COLOR = themeColors.primary;
 export const MINIMUM_VOTES_FILTER = 100;
 export const DEFAULT_PAGE_SIZE = 20;
-export const RESULTS_BOTTOM_PADDING = 375;
+export const RESULTS_BOTTOM_PADDING = 200;
 export const PRICE_THUMB_SIZE = 20;
 export const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 4;
 

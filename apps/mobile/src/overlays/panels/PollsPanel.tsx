@@ -54,12 +54,14 @@ type UsePollsPanelSpecOptions = {
   params?: { coverageKey?: string | null; pollId?: string | null };
   initialSnapPoint?: 'expanded' | 'middle' | 'collapsed';
   mode?: 'docked' | 'overlay';
+  currentSnap?: OverlaySheetSnap;
   navBarTop?: number;
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
+  onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
   sheetY: SharedValue<number>;
   headerActionAnimationToken?: number;
@@ -78,12 +80,14 @@ export const usePollsPanelSpec = ({
   params,
   initialSnapPoint,
   mode = 'docked',
+  currentSnap,
   navBarTop = 0,
   navBarHeight = 0,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
   onSnapChange,
   snapTo,
+  onRequestPollCreationExpand,
   onRequestReturnToSearch,
   sheetY: _sheetY,
   headerActionAnimationToken: _headerActionAnimationToken,
@@ -123,13 +127,16 @@ export const usePollsPanelSpec = ({
   const [restaurantLoading, setRestaurantLoading] = useState(false);
   const [dishLoading, setDishLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [snapRequest, setSnapRequest] = useState<
-    'expanded' | 'middle' | 'collapsed' | 'hidden' | null
-  >(null);
+  const snapRequestTokenRef = useRef(0);
+  const [snapRequest, setSnapRequest] = useState<{
+    snap: OverlaySheetSnap;
+    token: number;
+  } | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const pendingPollIdRef = useRef<string | null>(null);
   const lastResolvedCoverageKeyRef = useRef<string | null>(null);
-  const activeSnapRequest = snapTo ?? snapRequest;
+  const activeSnapRequest = snapTo ?? snapRequest?.snap ?? null;
+  const activeSnapRequestToken = snapTo ? undefined : snapRequest?.token;
 
   useEffect(() => {
     if (snapTo) {
@@ -146,9 +153,10 @@ export const usePollsPanelSpec = ({
   );
 
   const initialSnap = initialSnapPoint ?? (mode === 'overlay' ? 'middle' : 'collapsed');
-  const [headerAction, setHeaderAction] = useState<'create' | 'close'>(
-    initialSnap === 'collapsed' ? 'create' : 'close'
-  );
+  const headerAction: 'create' | 'close' =
+    (currentSnap ?? initialSnap) === 'collapsed' || (currentSnap ?? initialSnap) === 'hidden'
+      ? 'create'
+      : 'close';
 
   const activePoll = polls.find((poll) => poll.pollId === selectedPollId);
   const activePollType = (activePoll?.topic?.topicType ?? 'best_dish') as PollTopicType;
@@ -645,7 +653,8 @@ export const usePollsPanelSpec = ({
 
   const handleClose = useCallback(() => {
     const targetSnap = 'collapsed';
-    setSnapRequest(targetSnap);
+    snapRequestTokenRef.current += 1;
+    setSnapRequest({ snap: targetSnap, token: snapRequestTokenRef.current });
     if (mode === 'overlay') {
       onRequestReturnToSearch?.();
     }
@@ -668,13 +677,21 @@ export const usePollsPanelSpec = ({
   const handleSnapChange = useCallback(
     (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
       onSnapChange?.(snap);
-      setHeaderAction(snap === 'collapsed' || snap === 'hidden' ? 'create' : 'close');
-      if (snapRequest && snapRequest === snap) {
+      if (snapRequest && snapRequest.snap === snap) {
         setSnapRequest(null);
       }
     },
     [onSnapChange, snapRequest]
   );
+
+  const handleHeaderActionPress = useCallback(() => {
+    if (headerAction === 'create') {
+      onRequestPollCreationExpand?.();
+      handleOpenCreate();
+      return;
+    }
+    handleClose();
+  }, [handleClose, handleOpenCreate, headerAction, onRequestPollCreationExpand]);
 
   const headerComponent = (
     <OverlaySheetHeaderChrome
@@ -716,7 +733,7 @@ export const usePollsPanelSpec = ({
       actionButton={
         <OverlayHeaderActionButton
           progress={headerActionProgress}
-          onPress={headerAction === 'close' ? handleClose : handleOpenCreate}
+          onPress={handleHeaderActionPress}
           accessibilityLabel={headerAction === 'close' ? 'Close polls' : 'Create a new poll'}
           accentColor={ACCENT}
           closeColor="#000000"
@@ -874,6 +891,7 @@ export const usePollsPanelSpec = ({
     snapPoints,
     initialSnapPoint: initialSnap,
     snapTo: activeSnapRequest,
+    snapToToken: activeSnapRequestToken,
     data: polls,
     renderItem: renderPoll,
     keyExtractor: (item) => item.pollId,

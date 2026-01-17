@@ -59,6 +59,16 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   const lastSnapOverlayKeyRef = React.useRef<OverlayKey | null>(null);
   const lastSnapPointsKeyRef = React.useRef<string | null>(null);
 
+  const lastInteractionOverlayKeyRef = React.useRef<OverlayKey | null>(null);
+  const overlayJustChanged =
+    lastInteractionOverlayKeyRef.current !== null &&
+    lastInteractionOverlayKeyRef.current !== activeOverlayKey;
+  if (visible && spec && overlayJustChanged) {
+    lastInteractionOverlayKeyRef.current = activeOverlayKey;
+  } else if (visible && spec && lastInteractionOverlayKeyRef.current === null) {
+    lastInteractionOverlayKeyRef.current = activeOverlayKey;
+  }
+
   const handleScrollOffsetChange = React.useCallback(
     (nextOffset: number) => {
       specRef.current?.onScrollOffsetChange?.(nextOffset);
@@ -221,6 +231,8 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     return null;
   }
 
+  const resolvedInteractionEnabled = (spec.interactionEnabled ?? true) && !overlayJustChanged;
+
   return (
     <View
       pointerEvents="box-none"
@@ -237,6 +249,8 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         listRef={resolvedListRef}
         {...spec}
         snapTo={spec.snapTo ?? shellSnapTo}
+        snapToToken={spec.snapToToken}
+        interactionEnabled={resolvedInteractionEnabled}
         onScrollOffsetChange={handleScrollOffsetChange}
         onSnapStart={handleSnapStart}
         onSnapChange={handleSnapChange}

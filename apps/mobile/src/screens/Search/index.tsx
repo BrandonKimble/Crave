@@ -778,6 +778,10 @@ const SearchScreen: React.FC = () => {
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsDockedSnapRequest, setPollsDockedSnapRequest] =
     React.useState<OverlaySheetSnap | null>(null);
+  const [pollCreationSnapRequest, setPollCreationSnapRequest] = React.useState<Exclude<
+    OverlaySheetSnap,
+    'hidden'
+  > | null>(null);
   const [pollsHeaderActionAnimationToken, setPollsHeaderActionAnimationToken] = React.useState(0);
   const [tabOverlaySnapRequest, setTabOverlaySnapRequest] = React.useState<Exclude<
     OverlaySheetSnap,
@@ -792,8 +796,8 @@ const SearchScreen: React.FC = () => {
   const requestDockedPollsRestore = React.useCallback(() => {
     ignoreDockedPollsHiddenUntilMsRef.current = Date.now() + 650;
     setIsDockedPollsDismissed(false);
-    setPollsDockedSnapRequest('collapsed');
-  }, [setIsDockedPollsDismissed, setPollsDockedSnapRequest]);
+    setPollsDockedSnapRequest(pollsSheetSnap === 'collapsed' ? null : 'collapsed');
+  }, [pollsSheetSnap, setIsDockedPollsDismissed, setPollsDockedSnapRequest]);
   const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
@@ -1127,7 +1131,6 @@ const SearchScreen: React.FC = () => {
   const resultsScrollRef = React.useRef<FlashListRef<FoodResult | RestaurantResult> | null>(null);
   const resultsScrollingTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUserScrolledResultsRef = React.useRef(false);
-  const triggerPendingEndReachedRef = React.useRef<(() => void) | null>(null);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
   const locationRequestInFlightRef = React.useRef(false);
   const cameraPersistTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1638,7 +1641,6 @@ const SearchScreen: React.FC = () => {
     resultsScrollingTimeoutRef.current = setTimeout(() => {
       setResultsListScrolling(false);
       resultsScrollingTimeoutRef.current = null;
-      triggerPendingEndReachedRef.current?.();
     }, 100);
   }, [resultsMomentum, setResultsListScrolling]);
   const handleResultsListMomentumBegin = React.useCallback(() => {
@@ -1656,7 +1658,6 @@ const SearchScreen: React.FC = () => {
     resultsScrollingTimeoutRef.current = setTimeout(() => {
       setResultsListScrolling(false);
       resultsScrollingTimeoutRef.current = null;
-      triggerPendingEndReachedRef.current?.();
     }, 100);
   }, [setResultsListScrolling]);
 
@@ -1758,6 +1759,25 @@ const SearchScreen: React.FC = () => {
       setTabOverlaySnapRequest,
     ]
   );
+
+  const requestPollCreationExpand = React.useCallback(() => {
+    if (pollsSheetSnap !== 'collapsed') {
+      return;
+    }
+    const desired = hasUserSharedSnap ? sharedSnap : 'expanded';
+    setPollCreationSnapRequest(desired);
+  }, [hasUserSharedSnap, pollsSheetSnap, sharedSnap]);
+
+  const handlePollCreationSnapChange = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      setPollsSheetSnap(snap);
+      if (pollCreationSnapRequest && pollCreationSnapRequest === snap) {
+        setPollCreationSnapRequest(null);
+      }
+    },
+    [pollCreationSnapRequest]
+  );
+
   const handleBookmarksSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
       setBookmarksSheetSnap(snap);
@@ -4373,7 +4393,6 @@ const SearchScreen: React.FC = () => {
   const isLoadingRef = React.useRef(isLoading);
   const isLoadingMoreRef = React.useRef(isLoadingMore);
   const lastLoadMorePageRef = React.useRef<number | null>(null);
-  const pendingEndReachedRef = React.useRef(false);
 
   React.useEffect(() => {
     loadMoreResultsRef.current = loadMoreResults;
@@ -4416,11 +4435,6 @@ const SearchScreen: React.FC = () => {
     if (!canLoadMoreRef.current || isLoadingRef.current || isLoadingMoreRef.current) {
       return;
     }
-    if (searchInteractionRef.current.isResultsListScrolling || resultsMomentum.value) {
-      pendingEndReachedRef.current = true;
-      return;
-    }
-    pendingEndReachedRef.current = false;
     const nextPage = currentPageRef.current + 1;
     if (lastLoadMorePageRef.current === nextPage) {
       return;
@@ -4434,24 +4448,8 @@ const SearchScreen: React.FC = () => {
         }`
       );
     }
-    void InteractionManager.runAfterInteractions(() => {
-      loadMoreResultsRef.current(searchModeRef.current);
-    });
-  }, [resultsMomentum, searchInteractionRef, shouldLogSearchStateChanges]);
-
-  React.useEffect(() => {
-    const triggerPendingEndReached = () => {
-      if (!pendingEndReachedRef.current) {
-        return;
-      }
-      pendingEndReachedRef.current = false;
-      requestAnimationFrame(() => {
-        handleResultsEndReached();
-      });
-    };
-    triggerPendingEndReachedRef.current = triggerPendingEndReached;
-    triggerPendingEndReached();
-  }, [handleResultsEndReached]);
+    loadMoreResultsRef.current(searchModeRef.current);
+  }, [shouldLogSearchStateChanges]);
 
   const shouldRetrySearchOnReconnectRef = React.useRef(false);
   React.useEffect(() => {
@@ -7010,10 +7008,12 @@ const SearchScreen: React.FC = () => {
   const pollCreationParams = overlayParams.pollCreation;
   const shouldShowPollCreationPanel = activeOverlay === 'pollCreation';
   const handleClosePollCreation = React.useCallback(() => {
+    setPollCreationSnapRequest(null);
     popOverlay();
   }, [popOverlay]);
   const handlePollCreated = React.useCallback(
     (poll: { pollId: string; coverageKey?: string | null }) => {
+      setPollCreationSnapRequest(null);
       setOverlayParams('polls', {
         pollId: poll.pollId,
         coverageKey: poll.coverageKey ?? pollCreationParams?.coverageKey ?? null,
@@ -7028,8 +7028,11 @@ const SearchScreen: React.FC = () => {
     coverageKey: pollCreationParams?.coverageKey ?? null,
     coverageName: pollCreationParams?.coverageName ?? null,
     searchBarTop,
+    snapPoints,
+    snapTo: pollCreationSnapRequest,
     onClose: handleClosePollCreation,
     onCreated: handlePollCreated,
+    onSnapChange: handlePollCreationSnapChange,
   });
 
   const searchPanelSpec = useSearchPanelSpec<FoodResult | RestaurantResult>({
@@ -7047,6 +7050,7 @@ const SearchScreen: React.FC = () => {
     onSettleStateChange: handleResultsSheetSettlingChange,
     interactionEnabled: !shouldDisableResultsSheetInteraction,
     onEndReached: handleResultsEndReached,
+    scrollIndicatorInsets: { top: effectiveResultsHeaderHeight, bottom: RESULTS_BOTTOM_PADDING },
     data: resultsListData,
     renderItem: resultsRenderItem,
     keyExtractor: resultsKeyExtractor,
@@ -7075,6 +7079,7 @@ const SearchScreen: React.FC = () => {
     params: pollOverlayParams,
     initialSnapPoint: pollsOverlaySnapPoint,
     mode: pollsOverlayMode,
+    currentSnap: pollsSheetSnap,
     navBarTop: navBarTopForSnaps,
     navBarHeight,
     searchBarTop,
@@ -7082,6 +7087,7 @@ const SearchScreen: React.FC = () => {
     onSnapChange: handlePollsSnapChange,
     snapTo: pollsOverlayMode === 'overlay' ? tabOverlaySnapRequest : pollsDockedSnapRequest,
     onRequestReturnToSearch: requestReturnToSearchFromPolls,
+    onRequestPollCreationExpand: requestPollCreationExpand,
     sheetY: sheetTranslateY,
     headerActionAnimationToken: pollsHeaderActionAnimationToken,
     headerActionProgress: overlayHeaderActionProgress,

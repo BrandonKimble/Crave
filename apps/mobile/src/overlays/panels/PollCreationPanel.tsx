@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HandPlatter, Sparkles, Store, Utensils, X as LucideX } from 'lucide-react-native';
 
 import { Text } from '../../components';
+import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
 import {
   createPoll,
@@ -25,7 +26,9 @@ import { colors as themeColors } from '../../constants/theme';
 import { FONT_SIZES, LINE_HEIGHTS } from '../../constants/typography';
 import { OVERLAY_HORIZONTAL_PADDING, overlaySheetStyles } from '../overlaySheetStyles';
 import { resolveExpandedTop } from '../sheetUtils';
-import type { OverlayContentSpec } from '../types';
+import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import type { SnapPoints } from '../BottomSheetWithFlashList';
+import type { OverlayContentSpec, OverlaySheetSnap } from '../types';
 
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
@@ -38,8 +41,11 @@ type UsePollCreationPanelSpecOptions = {
   coverageKey: string | null;
   coverageName?: string | null;
   searchBarTop?: number;
+  snapPoints?: SnapPoints;
+  snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
   onClose: () => void;
   onCreated: (poll: Poll) => void;
+  onSnapChange?: (snap: OverlaySheetSnap) => void;
 };
 
 type TemplateOption = {
@@ -172,8 +178,11 @@ export const usePollCreationPanelSpec = ({
   coverageKey,
   coverageName,
   searchBarTop = 0,
+  snapPoints: snapPointsOverride,
+  snapTo,
   onClose,
   onCreated,
+  onSnapChange,
 }: UsePollCreationPanelSpecOptions): OverlayContentSpec<unknown> => {
   const insets = useSafeAreaInsets();
   const [selectedType, setSelectedType] = useState<PollTopicType | null>(null);
@@ -335,35 +344,51 @@ export const usePollCreationPanelSpec = ({
     field.setShowSuggestions(false);
   };
 
-  const contentBottomPadding = Math.max(insets.bottom, 12);
+  const headerTitle = coverageName?.trim()
+    ? `Add a poll in ${coverageName.trim()}`
+    : coverageKey
+    ? 'Add a poll'
+    : 'Add a poll near here';
+
+  const contentBottomPadding = Math.max(insets.bottom + 48, 72);
   const expanded = resolveExpandedTop(searchBarTop, insets.top);
   const hidden = SCREEN_HEIGHT + 80;
   const snapPoints = useMemo(
-    () => ({
-      expanded,
-      middle: expanded,
-      collapsed: expanded,
-      hidden,
-    }),
-    [expanded, hidden]
+    () =>
+      snapPointsOverride ?? {
+        expanded,
+        middle: expanded,
+        collapsed: expanded,
+        hidden,
+      },
+    [expanded, hidden, snapPointsOverride]
+  );
+
+  const headerComponent = (
+    <OverlaySheetHeaderChrome
+      title={
+        <Text variant="title" weight="semibold" style={styles.sheetTitle} numberOfLines={1}>
+          {headerTitle}
+        </Text>
+      }
+      actionButton={
+        <Pressable
+          onPressIn={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close poll creation"
+          style={overlaySheetStyles.closeButton}
+          hitSlop={8}
+        >
+          <View style={overlaySheetStyles.closeIcon} pointerEvents="none">
+            <LucideX size={20} color="#000000" strokeWidth={2.5} />
+          </View>
+        </Pressable>
+      }
+    />
   );
 
   const listHeaderComponent = (
     <View>
-      <View style={styles.headerRow}>
-        <View>
-          <Text variant="title" weight="semibold" style={styles.headerTitle}>
-            New poll
-          </Text>
-          <Text variant="body" style={styles.headerSubtitle}>
-            {coverageName ? `in ${coverageName}` : 'Pick a city to continue'}
-          </Text>
-        </View>
-        <Pressable onPress={onClose} accessibilityRole="button" hitSlop={8}>
-          <LucideX size={20} color="#000000" strokeWidth={2.5} />
-        </Pressable>
-      </View>
-
       <View style={styles.section}>
         <Text variant="body" weight="semibold" style={styles.sectionLabel}>
           Poll type
@@ -533,10 +558,12 @@ export const usePollCreationPanelSpec = ({
     overlayKey: 'pollCreation',
     snapPoints,
     initialSnapPoint: 'expanded',
+    snapTo,
     preventSwipeDismiss: true,
     data: [],
     renderItem: () => null,
     estimatedItemSize: 880,
+    onSnapChange: (snap) => onSnapChange?.(snap),
     contentContainerStyle: {
       paddingHorizontal: OVERLAY_HORIZONTAL_PADDING,
       paddingTop: 16,
@@ -544,28 +571,20 @@ export const usePollCreationPanelSpec = ({
     },
     ListHeaderComponent: listHeaderComponent,
     keyboardShouldPersistTaps: 'handled',
-    surfaceStyle: [overlaySheetStyles.surface, styles.surface],
+    backgroundComponent: <FrostedGlassBackground />,
+    contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
+    headerComponent,
     style: overlaySheetStyles.container,
     onHidden: onClose,
   };
 };
 
 const styles = StyleSheet.create({
-  surface: {
-    backgroundColor: '#ffffff',
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  headerTitle: {
-    color: '#0f172a',
-  },
-  headerSubtitle: {
-    color: themeColors.textBody,
-    marginTop: 4,
+  sheetTitle: {
+    color: themeColors.text,
+    flex: 1,
+    marginRight: 12,
+    minWidth: 0,
   },
   section: {
     marginBottom: 16,

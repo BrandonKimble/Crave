@@ -132,6 +132,7 @@ type BottomSheetWithFlashListProps<T> = {
   onDragStateChange?: (isDragging: boolean) => void;
   onSettleStateChange?: (isSettling: boolean) => void;
   snapTo?: SheetSnapPoint | 'hidden' | null;
+  snapToToken?: number;
   dismissThreshold?: number;
   listKey?: string;
   preventSwipeDismiss?: boolean;
@@ -212,6 +213,7 @@ const BottomSheetWithFlashList = <T,>({
   onDragStateChange,
   onSettleStateChange,
   snapTo,
+  snapToToken,
   dismissThreshold,
   preventSwipeDismiss = false,
   interactionEnabled = true,
@@ -316,6 +318,7 @@ const BottomSheetWithFlashList = <T,>({
   onSettleStateChangeRef.current = onSettleStateChange;
   const lastSnapToRef = React.useRef<SheetSnapPoint | 'hidden' | null>(null);
   const lastSnapToTargetRef = React.useRef<number | null>(null);
+  const lastSnapToTokenRef = React.useRef<number | null>(null);
 
   const notifyHidden = React.useCallback(() => {
     onHiddenRef.current?.();
@@ -603,6 +606,7 @@ const BottomSheetWithFlashList = <T,>({
     if (!snapTo) {
       lastSnapToRef.current = null;
       lastSnapToTargetRef.current = null;
+      lastSnapToTokenRef.current = null;
       return;
     }
     const target = resolveSnapValue(snapTo);
@@ -611,6 +615,7 @@ const BottomSheetWithFlashList = <T,>({
     }
     if (
       snapTo === lastSnapToRef.current &&
+      (snapToToken ?? null) === lastSnapToTokenRef.current &&
       lastSnapToTargetRef.current !== null &&
       Math.abs(lastSnapToTargetRef.current - target) < 0.5 &&
       Math.abs(sheetY.value - target) < 0.5
@@ -619,6 +624,7 @@ const BottomSheetWithFlashList = <T,>({
     }
     lastSnapToRef.current = snapTo;
     lastSnapToTargetRef.current = target;
+    lastSnapToTokenRef.current = snapToToken ?? null;
     if (Math.abs(sheetY.value - target) < 0.5) {
       notifySnapChange(snapTo, 'programmatic', { force: true });
       if (snapTo === 'hidden' && !hasNotifiedHidden.value) {
@@ -642,6 +648,7 @@ const BottomSheetWithFlashList = <T,>({
     resolveSnapValue,
     sheetY,
     snapTo,
+    snapToToken,
     startSpringOnJS,
   ]);
 
