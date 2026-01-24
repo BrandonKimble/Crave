@@ -10,8 +10,32 @@ import { colors as themeColors } from '../constants/theme';
 import { useClerkOAuth } from '../hooks/useClerkOAuth';
 import { logger } from '../utils';
 import { authService } from '../services/auth';
+import { navigationRef } from '../navigation/navigationRef';
 
 const CTA_COLOR = themeColors.accentDark ?? '#7c3aed';
+
+const getOAuthErrorMessage = (error: unknown) => {
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const errors = Array.isArray(record.errors) ? record.errors : undefined;
+    const firstError =
+      errors && errors[0] && typeof errors[0] === 'object' ? (errors[0] as Record<string, unknown>) : null;
+    const code = firstError && typeof firstError.code === 'string' ? firstError.code : null;
+    const longMessage = firstError && typeof firstError.longMessage === 'string' ? firstError.longMessage : null;
+    const message = firstError && typeof firstError.message === 'string' ? firstError.message : null;
+
+    if (code === 'session_exists') return "You're already signed in.";
+    if (longMessage && longMessage.trim().length) return longMessage;
+    if (message && message.trim().length) return message;
+    if (typeof record.message === 'string' && record.message.trim().length) return record.message;
+  }
+
+  if (error instanceof Error && error.message.trim().length) {
+    return error.message;
+  }
+
+  return 'Sign-in failed. Check your internet connection (captive portal/VPN) and try again.';
+};
 
 const SignInScreen: React.FC = () => {
   const auth = useAuth();
@@ -19,6 +43,19 @@ const SignInScreen: React.FC = () => {
     typeof auth.setActive === 'function'
       ? (auth.setActive as (params: { session: string }) => Promise<void>)
       : null;
+
+  React.useEffect(() => {
+    if (!auth.isLoaded || !auth.isSignedIn) {
+      return;
+    }
+    if (!navigationRef.isReady()) {
+      return;
+    }
+    navigationRef.reset({
+      index: 0,
+      routes: [{ name: 'Main' }],
+    });
+  }, [auth.isLoaded, auth.isSignedIn]);
 
   const appleOAuth = useClerkOAuth('oauth_apple');
   const googleOAuth = useClerkOAuth('oauth_google');
@@ -73,20 +110,40 @@ const SignInScreen: React.FC = () => {
         try {
           setAuthError(null);
           setOauthStatus(provider);
-          const { createdSessionId, sessionId, setActive } = await client.startOAuthFlow({
+          const { createdSessionId, sessionId, setActive, authSessionResult } =
+            await client.startOAuthFlow({
             redirectUrl,
           });
           const resolvedSessionId = createdSessionId ?? sessionId;
+          if (!resolvedSessionId) {
+            const resultType =
+              authSessionResult &&
+              typeof authSessionResult === 'object' &&
+              'type' in authSessionResult
+                ? String((authSessionResult as { type?: unknown }).type)
+                : '';
+            if (resultType !== 'cancel' && resultType !== 'dismiss') {
+              setAuthError('Sign-in was not completed. Please try again.');
+            }
+            return;
+          }
           if (resolvedSessionId && setActive) {
             await setActive({ session: resolvedSessionId });
           }
         } catch (error) {
-          logger.error('OAuth sign-in failed', error);
-          const message =
-            error instanceof Error
-              ? error.message
-              : 'We could not connect that account. Please try again.';
-          setAuthError(message);
+          let raw: unknown = error;
+          if (raw && typeof raw === 'object') {
+            raw = { ...(raw as Record<string, unknown>) };
+          }
+          logger.error(
+            'OAuth sign-in failed',
+            JSON.stringify({
+              message: error instanceof Error ? error.message : undefined,
+              stack: error instanceof Error ? error.stack : undefined,
+              raw,
+            })
+          );
+          setAuthError(getOAuthErrorMessage(error));
         } finally {
           setOauthStatus('idle');
         }

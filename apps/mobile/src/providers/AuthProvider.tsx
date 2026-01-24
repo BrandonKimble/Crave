@@ -194,27 +194,41 @@ const PushNotificationRegistrar: React.FC = () => {
 const AuthStateMonitor: React.FC = () => {
   const { isLoaded, isSignedIn } = useAuth();
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
+  const lastRouteRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
-    if (!isLoaded || !navigationRef.isReady()) {
-      return;
-    }
-    if (isSignedIn) {
-      navigationRef.reset({
-        index: 0,
-        routes: [{ name: 'Main' }],
-      });
+    if (!isLoaded) {
       return;
     }
 
-    navigationRef.reset({
-      index: 0,
-      routes: [
-        {
-          name: hasCompletedOnboarding ? 'SignIn' : 'Onboarding',
-        },
-      ],
-    });
+    const targetRoute = isSignedIn ? 'Main' : hasCompletedOnboarding ? 'SignIn' : 'Onboarding';
+    if (lastRouteRef.current === targetRoute) {
+      return;
+    }
+
+    const applyReset = () => {
+      if (!navigationRef.isReady()) {
+        return false;
+      }
+      lastRouteRef.current = targetRoute;
+      navigationRef.reset({
+        index: 0,
+        routes: [{ name: targetRoute as never }],
+      });
+      return true;
+    };
+
+    if (applyReset()) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (applyReset()) {
+        clearInterval(interval);
+      }
+    }, 100);
+
+    return () => clearInterval(interval);
   }, [hasCompletedOnboarding, isLoaded, isSignedIn]);
 
   return null;

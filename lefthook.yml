@@ -12,6 +12,10 @@ pre-commit:
       glob: 'packages/shared/**/*.{ts,tsx}'
       run: bash ./.lefthook/with-node-22.sh bash -c "cd packages/shared && yarn lint"
 
+    deps-check:
+      glob: '{package.json,yarn.lock,apps/*/package.json,packages/*/package.json}'
+      run: bash ./.lefthook/with-node-22.sh bash ./scripts/deps-check.sh
+
     # Global formatting for all staged files
     prettier:
       glob: '*.{js,jsx,ts,tsx,json,md,yml,yaml}'

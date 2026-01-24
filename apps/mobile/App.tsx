@@ -11,6 +11,7 @@ import { StatusBar } from 'expo-status-bar';
 import { enableScreens } from 'react-native-screens';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Notifications from 'expo-notifications';
+import * as WebBrowser from 'expo-web-browser';
 import Reanimated, {
   Easing,
   useAnimatedStyle,
@@ -31,6 +32,7 @@ const SYSTEM_BANNER_PUSH_HEIGHT = 32;
 const BANNER_BACKGROUND = '#0b0b0f';
 
 enableScreens();
+WebBrowser.maybeCompleteAuthSession();
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

@@ -1,0 +1,19 @@
+{
+  "workspaces": {
+    "apps/mobile": {
+      "ignoreDependencies": [
+        "expo-system-ui",
+        "@expo/metro-config",
+        "@react-native-community/cli",
+        "@types/minimatch",
+        "@typescript-eslint/eslint-plugin",
+        "@typescript-eslint/parser",
+        "eslint-config-prettier"
+      ]
+    },
+    "apps/api": {
+      "ignoreBinaries": ["docker-compose"],
+      "ignoreDependencies": ["@typescript-eslint/eslint-plugin", "@typescript-eslint/parser"]
+    }
+  }
+}

@@ -1,7 +1,6 @@
 import React from 'react';
-import { useSignIn, useSignUp } from '@clerk/clerk-expo';
-import * as AuthSession from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
+import { useOAuth } from '@clerk/clerk-expo';
+import { logger } from '../utils';
 
 type OAuthStrategy = 'oauth_apple' | 'oauth_google';
 
@@ -11,89 +10,78 @@ type StartOAuthFlowParams = {
 };
 
 type StartOAuthFlowResult = {
-  authSessionResult?: AuthSession.AuthSessionResult;
+  authSessionResult?: unknown;
   createdSessionId: string;
   sessionId: string;
   setActive?: (params: { session: string }) => Promise<void>;
 };
 
+const summarizeOAuthError = (error: unknown) => {
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>;
+    const errors = Array.isArray(record.errors) ? record.errors : undefined;
+    const firstError =
+      errors && errors[0] && typeof errors[0] === 'object' ? (errors[0] as Record<string, unknown>) : null;
+
+    return {
+      name: typeof record.name === 'string' ? record.name : undefined,
+      message: typeof record.message === 'string' ? record.message : undefined,
+      stack: typeof record.stack === 'string' ? record.stack : undefined,
+      status: typeof record.status === 'number' ? record.status : undefined,
+      clerkTraceId:
+        typeof record.clerkTraceId === 'string'
+          ? record.clerkTraceId
+          : typeof record.traceId === 'string'
+            ? record.traceId
+            : undefined,
+      firstError: firstError
+        ? {
+            code: typeof firstError.code === 'string' ? firstError.code : undefined,
+            message: typeof firstError.message === 'string' ? firstError.message : undefined,
+            longMessage:
+              typeof firstError.longMessage === 'string' ? firstError.longMessage : undefined,
+            meta: firstError.meta,
+          }
+        : undefined,
+    };
+  }
+
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  };
+};
+
 export const useClerkOAuth = (strategy: OAuthStrategy) => {
-  const { signIn, setActive, isLoaded: isSignInLoaded } = useSignIn();
-  const { signUp, isLoaded: isSignUpLoaded } = useSignUp();
+  const clerkOAuth = useOAuth({ strategy });
 
   const startOAuthFlow = React.useCallback(
     async (params?: StartOAuthFlowParams): Promise<StartOAuthFlowResult> => {
-      if (!isSignInLoaded || !isSignUpLoaded || !signIn || !signUp) {
-        return {
-          createdSessionId: '',
-          sessionId: '',
-          setActive,
-        };
-      }
-
-      const oauthRedirectUrl =
-        params?.redirectUrl ??
-        AuthSession.makeRedirectUri({
-          path: 'oauth-native-callback',
-        });
-
-      await signIn.create({ strategy, redirectUrl: oauthRedirectUrl });
-
-      if (signIn.status === 'complete' && signIn.createdSessionId) {
-        return {
-          createdSessionId: signIn.createdSessionId ?? '',
-          sessionId: signIn.createdSessionId ?? '',
-          setActive,
-        };
-      }
-
-      const externalVerificationRedirectURL =
-        signIn.firstFactorVerification?.externalVerificationRedirectURL;
-
-      if (!externalVerificationRedirectURL) {
-        throw new Error(
-          'OAuth is not ready. Check that the provider is enabled in Clerk and the redirect URL is allowed.'
-        );
-      }
-
-      const authSessionResult = await WebBrowser.openAuthSessionAsync(
-        externalVerificationRedirectURL.toString(),
-        oauthRedirectUrl
-      );
-
-      const { type, url } = authSessionResult || {};
-      if (type !== 'success' || !url) {
-        return {
-          authSessionResult,
-          createdSessionId: '',
-          sessionId: '',
-          setActive,
-        };
-      }
-
-      const urlParams = new URL(url).searchParams;
-      const rotatingTokenNonce = urlParams.get('rotating_token_nonce') || '';
-      await signIn.reload({ rotatingTokenNonce });
-
-      let createdSessionId = '';
-      if (signIn.status === 'complete') {
-        createdSessionId = signIn.createdSessionId ?? '';
-      } else if (signIn.firstFactorVerification?.status === 'transferable') {
-        await signUp.create({
-          transfer: true,
+      try {
+        const result = await clerkOAuth.startOAuthFlow({
+          redirectUrl: params?.redirectUrl,
           unsafeMetadata: params?.unsafeMetadata,
         });
-        createdSessionId = signUp.createdSessionId || '';
+        const createdSessionId = result.createdSessionId ?? '';
+        return {
+          authSessionResult: result.authSessionResult,
+          createdSessionId,
+          sessionId: createdSessionId,
+          setActive: result.setActive,
+        };
+      } catch (error) {
+        const summary = summarizeOAuthError(error);
+        logger.error(
+          'OAuth flow threw',
+          JSON.stringify({
+            strategy,
+            ...summary,
+          })
+        );
+        throw error;
       }
-
-      return {
-        authSessionResult,
-        createdSessionId,
-        sessionId: createdSessionId,
-        setActive,
-      };
     },
-    [isSignInLoaded, isSignUpLoaded, setActive, signIn, signUp, strategy]
+    [clerkOAuth, strategy]
   );
 
   return { startOAuthFlow };

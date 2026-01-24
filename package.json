@@ -18,7 +18,10 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:refresh": "IOS_DEVICE_UDID= IOS_DEVICE_NAME= IOS_SIMULATOR_UDID= IOS_SIMULATOR_NAME= bash ./scripts/ios-refresh.sh",
-    "ios:device": "IP=$(ipconfig getifaddr en0) && EXPO_PACKAGER_HOSTNAME=$IP EXPO_PUBLIC_API_URL=http://$IP:3000/api/v1 bash ./scripts/ios-refresh.sh",
+    "ios:device": "IOS_PREFER_DEVICE=1 IOS_RUN=0 bash ./scripts/ios-refresh.sh",
+    "ios:device:install": "IOS_PREFER_DEVICE=1 IOS_RUN=1 bash ./scripts/ios-refresh.sh",
+    "ios:device:reset": "IOS_PREFER_DEVICE=1 IOS_RUN=0 EXPO_RESET_CACHE=1 bash ./scripts/ios-refresh.sh",
+    "ios:device:tunnel": "IOS_PREFER_DEVICE=1 IOS_RUN=0 EXPO_START_HOST=tunnel bash ./scripts/ios-refresh.sh",
     "postinstall": "patch-package"
   },
   "devDependencies": {

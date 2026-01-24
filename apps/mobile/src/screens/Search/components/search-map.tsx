@@ -23,6 +23,7 @@ import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
 import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
+import { logger } from '../../../utils';
 import { PIN_MARKER_RENDER_SIZE, USA_FALLBACK_CENTER } from '../constants/search';
 
 import styles from '../styles';
@@ -38,6 +39,30 @@ const MARKER_MOUNT_DEFER_CHECK_MS = 100;
 const MARKER_ANCHOR = { x: 0.5, y: 1 } as const;
 const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
 const MARKER_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
+
+const getSafeStyleUrlForLogs = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  if (trimmed.startsWith('mapbox://')) {
+    return trimmed;
+  }
+
+  const withoutQuery = trimmed.split('?')[0] ?? trimmed;
+  return withoutQuery;
+};
+
+const getSafeUrlForLogs = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return '';
+  }
+
+  const [base] = trimmed.split('?');
+  return base ?? trimmed;
+};
 
 export type RestaurantFeatureProperties = {
   restaurantId: string;
@@ -755,6 +780,31 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onMapLoaded();
   }, [onMapLoaded]);
 
+  const handleMapLoadError = React.useCallback(
+    (event: unknown) => {
+      const eventRecord =
+        event && typeof event === 'object' && !Array.isArray(event)
+          ? (event as Record<string, unknown>)
+          : null;
+      const payload =
+        eventRecord?.payload && typeof eventRecord.payload === 'object' && !Array.isArray(eventRecord.payload)
+          ? (eventRecord.payload as Record<string, unknown>)
+          : null;
+      const rawError = typeof payload?.error === 'string' ? payload.error : undefined;
+      const rawMessage = typeof payload?.message === 'string' ? payload.message : undefined;
+      const rawUrl = typeof payload?.url === 'string' ? payload.url : undefined;
+
+      logger.error('Mapbox map failed to load', {
+        type: typeof eventRecord?.type === 'string' ? eventRecord.type : undefined,
+        error: rawError,
+        message: rawMessage,
+        url: rawUrl ? getSafeUrlForLogs(rawUrl) : undefined,
+        styleURL: getSafeStyleUrlForLogs(styleURL),
+      });
+    },
+    [styleURL]
+  );
+
   const handleTouchStart = React.useCallback(() => {
     onTouchStart?.();
   }, [onTouchStart]);
@@ -811,13 +861,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
         onTouchStartCapture={handleTouchStart}
         onTouchEndCapture={handleTouchEnd}
         onTouchCancelCapture={handleTouchEnd}
-        onCameraChanged={handleCameraChanged}
-        onMapIdle={handleMapIdle}
-        onDidFinishLoadingStyle={handleMapLoaded}
-        onDidFinishLoadingMap={handleMapLoaded}
-      >
-        <MapboxGL.Camera
-          ref={cameraRef}
+	        onCameraChanged={handleCameraChanged}
+	        onMapIdle={handleMapIdle}
+	        onDidFinishLoadingStyle={handleMapLoaded}
+	        onDidFinishLoadingMap={handleMapLoaded}
+	        onDidFailLoadingMap={handleMapLoadError}
+	        onDidFailLoadingStyle={handleMapLoadError}
+	      >
+	        <MapboxGL.Camera
+	          ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
           zoomLevel={mapZoom}
           padding={cameraPadding ?? ZERO_CAMERA_PADDING}

@@ -386,7 +386,10 @@ export class SearchQueryExecutor {
     );
     const mapRestaurantMs = performance.now() - mapRestaurantStart;
 
-    await this.attachCoverageNames({ restaurants: restaurantResults, dishes: foodResults });
+    await this.attachCoverageNames({
+      restaurants: restaurantResults,
+      dishes: foodResults,
+    });
 
     const postProcessMs = performance.now() - postProcessStart;
     const executeMs = performance.now() - executeStart;
@@ -675,14 +678,17 @@ export class SearchQueryExecutor {
     const coverageKeys = new Set<string>();
 
     payload.dishes.forEach((dish) => {
-      const key = typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+      const key =
+        typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
       if (key) {
         coverageKeys.add(key);
       }
     });
     payload.restaurants.forEach((restaurant) => {
       const key =
-        typeof restaurant.coverageKey === 'string' ? restaurant.coverageKey.trim() : '';
+        typeof restaurant.coverageKey === 'string'
+          ? restaurant.coverageKey.trim()
+          : '';
       if (key) {
         coverageKeys.add(key);
       }
@@ -731,7 +737,8 @@ export class SearchQueryExecutor {
       if (dish.coverageName) {
         return;
       }
-      const key = typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
+      const key =
+        typeof dish.coverageKey === 'string' ? dish.coverageKey.trim() : '';
       if (!key) {
         return;
       }
@@ -746,7 +753,9 @@ export class SearchQueryExecutor {
         return;
       }
       const key =
-        typeof restaurant.coverageKey === 'string' ? restaurant.coverageKey.trim() : '';
+        typeof restaurant.coverageKey === 'string'
+          ? restaurant.coverageKey.trim()
+          : '';
       if (!key) {
         return;
       }

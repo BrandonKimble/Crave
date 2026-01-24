@@ -317,6 +317,13 @@ const SearchScreen: React.FC = () => {
   }, [accessToken]);
 
   React.useEffect(() => {
+    logger.info('Mapbox config', {
+      hasToken: accessToken.length > 0,
+      hasStyleUrl: typeof process.env.EXPO_PUBLIC_MAPBOX_STYLE_URL === 'string',
+    });
+  }, [accessToken]);
+
+  React.useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
 
@@ -561,6 +568,33 @@ const SearchScreen: React.FC = () => {
     mapZoom,
     setIsFollowingUser,
   ]);
+
+  React.useEffect(() => {
+    if (!isInitialCameraHydrated || isInitialCameraReady) {
+      return;
+    }
+    if (mapCenter || mapZoom !== null) {
+      return;
+    }
+    if (locationPermissionDenied) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      if (mapCenter || mapZoom !== null) {
+        return;
+      }
+      const fallbackCenter = USA_FALLBACK_CENTER;
+      const fallbackZoom = USA_FALLBACK_ZOOM;
+      setMapCenter(fallbackCenter);
+      setMapZoom(fallbackZoom);
+      lastCameraStateRef.current = { center: fallbackCenter, zoom: fallbackZoom };
+      setIsFollowingUser(false);
+      setIsInitialCameraReady(true);
+    }, 600);
+
+    return () => clearTimeout(timeout);
+  }, [isInitialCameraHydrated, isInitialCameraReady, locationPermissionDenied, mapCenter, mapZoom, setIsFollowingUser]);
 
   const stopLocationPulse = React.useCallback(() => {
     locationPulseAnimationRef.current?.stop();
@@ -7464,15 +7498,15 @@ const SearchScreen: React.FC = () => {
                     onPressIn={handleSearchPressIn}
                     onInputTouchStart={handleSearchPressIn}
                     accentColor={ACTIVE_TAB_COLOR}
-                    showBack={isSuggestionOverlayVisible}
+                    showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
                     onBackPress={handleSearchBack}
                     onLayout={handleSearchHeaderLayout}
                     inputRef={inputRef}
                     inputAnimatedStyle={searchBarInputAnimatedStyle}
                     containerAnimatedStyle={searchBarContainerAnimatedStyle}
                     editable={!isSuggestionScrollDismissing}
-                    showInactiveSearchIcon={!isSuggestionOverlayVisible && !isSearchSessionActive}
-                    isSearchSessionActive={isSearchSessionActive && !isSuggestionOverlayVisible}
+                    showInactiveSearchIcon={!isSuggestionPanelActive && !isSearchSessionActive}
+                    isSearchSessionActive={isSearchSessionActive && !isSuggestionPanelActive}
                     focusProgress={searchHeaderFocusProgress}
                   />
                 </View>

@@ -51,8 +51,6 @@ const DEFAULT_HOLE_Y_OFFSET = 0;
 const DEFAULT_BADGE_PADDING = 0;
 const DEFAULT_BADGE_Y_OFFSET = 0;
 const DEFAULT_CUTOUT_FILL = '#ffffff';
-const DEFAULT_CUTOUT_OUTLINE = 'rgba(15, 23, 42, 0.06)';
-const DEFAULT_CUTOUT_OUTLINE_WIDTH = 0.5;
 
 const circlePath = (cx: number, cy: number, radius: number) =>
   `M ${cx} ${cy} m -${radius},0 a ${radius},${radius} 0 1,0 ${
@@ -139,8 +137,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
   const cutoutBackground = React.useMemo(() => {
     const maskHeight = headerHeight + maskPadding * 2;
     const fillColor = DEFAULT_CUTOUT_FILL;
-    const outlineColor = DEFAULT_CUTOUT_OUTLINE;
-    const outlineWidth = DEFAULT_CUTOUT_OUTLINE_WIDTH;
 
     const headerRowY =
       paddingTop +
@@ -156,7 +152,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
 
     const closeHolePath = circlePath(safeCloseCenterX, safeCloseCenterY, holeRadius);
     const cutoutPaths: string[] = [closeHolePath];
-    const outlinePaths: string[] = [closeHolePath];
 
     if (grabHandleCutout) {
       const handleX = (windowWidth - OVERLAY_GRAB_HANDLE_WIDTH) / 2;
@@ -169,7 +164,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         OVERLAY_GRAB_HANDLE_RADIUS
       );
       cutoutPaths.push(handlePath);
-      outlinePaths.push(handlePath);
     }
 
     if (badge && badgeLayout && badgeLayout.width > 0 && badgeLayout.height > 0) {
@@ -190,7 +184,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         Math.min(resolvedRadius, rect.height / 2, rect.width / 2)
       );
       cutoutPaths.push(badgePath);
-      outlinePaths.push(badgePath);
     }
 
     const outerRect = `M 0 0 H ${windowWidth} V ${maskHeight} H 0 Z`;
@@ -211,15 +204,6 @@ const OverlaySheetHeaderChrome: React.FC<OverlaySheetHeaderChromeProps> = ({
         ]}
       >
         <SvgPath d={d} fill={fillColor} fillRule="evenodd" clipRule="evenodd" />
-        {outlinePaths.map((path) => (
-          <SvgPath
-            key={path}
-            d={path}
-            fill="none"
-            stroke={outlineColor}
-            strokeWidth={outlineWidth}
-          />
-        ))}
       </Svg>
     );
   }, [

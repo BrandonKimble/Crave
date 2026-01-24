@@ -682,7 +682,7 @@ export class KeywordSliceSelectionService {
         ? normalizeKeywordTerm(stripped.text)
         : '';
       const unmetDistinctUsers = normalized.length
-        ? unmetByNormalizedTerm.get(normalized) ?? 0
+        ? (unmetByNormalizedTerm.get(normalized) ?? 0)
         : 0;
 
       const signalFloorMet =
@@ -939,8 +939,8 @@ export class KeywordSliceSelectionService {
         })::int AS "queryUsers7d",
         COUNT(DISTINCT user_id) FILTER (
           WHERE logged_at >= ${params.since} AND logged_at < ${
-      params.trendSince
-    }
+            params.trendSince
+          }
         )::int AS "queryUsersPrev7d"
       FROM user_search_logs
       WHERE logged_at >= ${params.since}

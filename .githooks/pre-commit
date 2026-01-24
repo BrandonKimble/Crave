@@ -26,4 +26,3 @@ fi
 if command -v lefthook >/dev/null 2>&1; then
   lefthook run pre-commit
 fi
-
