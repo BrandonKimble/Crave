@@ -594,7 +594,14 @@ const SearchScreen: React.FC = () => {
     }, 600);
 
     return () => clearTimeout(timeout);
-  }, [isInitialCameraHydrated, isInitialCameraReady, locationPermissionDenied, mapCenter, mapZoom, setIsFollowingUser]);
+  }, [
+    isInitialCameraHydrated,
+    isInitialCameraReady,
+    locationPermissionDenied,
+    mapCenter,
+    mapZoom,
+    setIsFollowingUser,
+  ]);
 
   const stopLocationPulse = React.useCallback(() => {
     locationPulseAnimationRef.current?.stop();

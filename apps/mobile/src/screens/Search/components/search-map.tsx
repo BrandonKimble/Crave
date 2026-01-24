@@ -1212,7 +1212,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
               id={RESTAURANT_LABEL_SOURCE_ID}
               shape={restaurantLabelFeaturesWithIds}
             >
-              <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyleWithOpacity} />
+              <MapboxGL.SymbolLayer
+                id="restaurant-labels"
+                style={restaurantLabelStyleWithOpacity}
+              />
             </MapboxGL.ShapeSource>
           </React.Profiler>
         ) : null}
