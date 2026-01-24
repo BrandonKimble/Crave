@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# This repo uses a custom `.githooks/pre-commit` to invoke lefthook with a Node 22
+# bootstrap (and `--no-auto-install`) to keep hooks stable in minimal PATH
+# environments. We don't currently use a `prepare-commit-msg` workflow, so keep
+# this hook as a no-op.
+exit 0

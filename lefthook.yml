@@ -6,7 +6,6 @@ pre-commit:
       glob: 'apps/api/**/*.{ts,tsx}'
       run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/api && yarn lint"
     mobile-lint:
-      glob: 'apps/mobile/**/*.{ts,tsx,js,jsx}'
       run: bash ./.lefthook/with-node-22.sh bash -c "cd apps/mobile && yarn lint"
     shared-lint:
       glob: 'packages/shared/**/*.{ts,tsx}'

@@ -9,7 +9,7 @@
     "dev": "expo start",
     "build": "node -e \"console.log('Skipping web build (native-only app).')\"",
     "test": "node -e \"console.log('No mobile tests configured.')\"",
-    "lint": "eslint ."
+    "lint": "eslint . --fix"
   },
   "dependencies": {
     "@babel/runtime": "^7.28.0",

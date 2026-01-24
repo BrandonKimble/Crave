@@ -32,7 +32,7 @@ import { getMarkerZIndex } from '../utils/map';
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
 const MARKER_REENTRY_HOLD_MS = 120;
 const MARKER_VISIBILITY_REFRESH_MS_IDLE = 120;
-const MARKER_VISIBILITY_REFRESH_MS_MOVING = 200;
+const MARKER_VISIBILITY_REFRESH_MS_MOVING = 80;
 const MARKER_MOUNT_INITIAL_BATCH = 4;
 const MARKER_MOUNT_BATCH_SIZE = 2;
 const MARKER_MOUNT_DEFER_CHECK_MS = 100;
@@ -787,7 +787,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
           ? (event as Record<string, unknown>)
           : null;
       const payload =
-        eventRecord?.payload && typeof eventRecord.payload === 'object' && !Array.isArray(eventRecord.payload)
+        eventRecord?.payload &&
+        typeof eventRecord.payload === 'object' &&
+        !Array.isArray(eventRecord.payload)
           ? (eventRecord.payload as Record<string, unknown>)
           : null;
       const rawError = typeof payload?.error === 'string' ? payload.error : undefined;
@@ -861,15 +863,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
         onTouchStartCapture={handleTouchStart}
         onTouchEndCapture={handleTouchEnd}
         onTouchCancelCapture={handleTouchEnd}
-	        onCameraChanged={handleCameraChanged}
-	        onMapIdle={handleMapIdle}
-	        onDidFinishLoadingStyle={handleMapLoaded}
-	        onDidFinishLoadingMap={handleMapLoaded}
-	        onDidFailLoadingMap={handleMapLoadError}
-	        onDidFailLoadingStyle={handleMapLoadError}
-	      >
-	        <MapboxGL.Camera
-	          ref={cameraRef}
+        onCameraChanged={handleCameraChanged}
+        onMapIdle={handleMapIdle}
+        onDidFinishLoadingStyle={handleMapLoaded}
+        onDidFinishLoadingMap={handleMapLoaded}
+        onDidFailLoadingMap={handleMapLoadError}
+        onDidFailLoadingStyle={handleMapLoadError}
+      >
+        <MapboxGL.Camera
+          ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
           zoomLevel={mapZoom}
           padding={cameraPadding ?? ZERO_CAMERA_PADDING}

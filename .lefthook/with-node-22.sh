@@ -4,6 +4,10 @@ set -euo pipefail
 required_major="22"
 
 ensure_node_22() {
+  # Git hooks (and some GUI git clients) often run with a minimal PATH.
+  # Add common Node install locations so `node` is discoverable.
+  export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
   if command -v node >/dev/null 2>&1; then
     local current_major
     current_major="$(node -p "process.versions.node.split('.')[0]")"
@@ -39,4 +43,3 @@ ensure_node_22() {
 
 ensure_node_22
 exec "$@"
-

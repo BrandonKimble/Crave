@@ -27,11 +27,13 @@ with_node="$repo_root/.lefthook/with-node-22.sh"
 lefthook_js="$repo_root/node_modules/lefthook/bin/index.js"
 
 if [[ -f "$lefthook_js" ]]; then
-  # Avoid lefthook auto-installing/syncing hooks inside core.hooksPath (.githooks),
-  # which can reintroduce `env: node: No such file or directory` on minimal PATHs.
-  bash "$with_node" node "$lefthook_js" run pre-commit --no-auto-install
+  if [[ -f "$with_node" ]]; then
+    bash "$with_node" node "$lefthook_js" run pre-commit
+  else
+    node "$lefthook_js" run pre-commit
+  fi
 elif command -v lefthook >/dev/null 2>&1; then
-  lefthook run pre-commit --no-auto-install
+  lefthook run pre-commit
 else
   echo "Warning: lefthook is not installed; skipping pre-commit checks." >&2
   echo "Run: yarn install" >&2
