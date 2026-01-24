@@ -82,6 +82,12 @@ export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getCenter?: () => Promise<[number, number]>;
   getZoom?: () => Promise<number>;
   getCoordinateFromView?: (point: [number, number]) => Promise<[number, number]>;
+  setFeatureState?: (
+    featureId: string,
+    state: Record<string, unknown>,
+    sourceId: string,
+    sourceLayerId?: string | null
+  ) => Promise<void>;
 };
 
 type CameraPadding = {
@@ -95,6 +101,7 @@ const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
+const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleColor: ['get', 'pinColor'],
   circleOpacity: 1,
@@ -112,6 +119,8 @@ const MARKER_VIEW_OVERSCAN_STYLE = {
   top: -MARKER_VIEW_OVERSCAN_TOP_PX,
   bottom: -MARKER_VIEW_OVERSCAN_BOTTOM_PX,
 };
+
+const LABEL_OPACITY_STEP_MS = 80;
 
 const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
   if (left === right) {
@@ -154,6 +163,9 @@ const isPointInPolygon = (point: [number, number], polygon: Array<[number, numbe
   }
   return isInside;
 };
+
+const easeInCubic = (t: number) => t * t * t;
+const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
 type MarkerPinProps = {
   markerKey: string;
@@ -441,6 +453,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
   const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
+  const canUseLabelFeatureState = !!mapRef.current?.setFeatureState;
   const shouldRenderDots =
     !shouldDisableMarkers &&
     dotRestaurantFeatures != null &&
@@ -452,6 +465,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const [visibleMarkerKeys, setVisibleMarkerKeys] = React.useState<Set<string>>(() => new Set());
   const [markerRenderCount, setMarkerRenderCount] = React.useState(0);
   const markerRevealRegistryRef = React.useRef<Set<string>>(new Set());
+  const labelRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const previousShouldAnimateMarkerRevealRef = React.useRef(false);
   const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
   const markerRenderCountRef = React.useRef(0);
@@ -463,6 +477,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const visibilityRefreshQueuedRef = React.useRef(false);
   const isMapMovingRef = React.useRef(false);
   const mapLastMovedAtRef = React.useRef(0);
+  const labelOpacityByIdRef = React.useRef<Map<string, number>>(new Map());
+  const labelAnimationTimeoutsRef = React.useRef<Map<string, Array<ReturnType<typeof setTimeout>>>>(
+    new Map()
+  );
+  const previousVisibleLabelIdsRef = React.useRef<Set<string>>(new Set());
 
   const markerMercatorEntries = React.useMemo(
     () =>
@@ -473,6 +492,50 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }),
     [buildMarkerKey, sortedRestaurantMarkers]
   );
+
+  const restaurantLabelFeaturesWithIds = React.useMemo(() => {
+    if (!restaurantFeatures.features.length) {
+      return restaurantFeatures;
+    }
+
+    let didChange = false;
+    const nextFeatures = restaurantFeatures.features.map((feature) => {
+      const markerKey = buildMarkerKey(feature);
+      if (feature.id === markerKey) {
+        return feature;
+      }
+      didChange = true;
+      return { ...feature, id: markerKey };
+    });
+
+    if (!didChange) {
+      return restaurantFeatures;
+    }
+
+    return { ...restaurantFeatures, features: nextFeatures };
+  }, [buildMarkerKey, restaurantFeatures]);
+
+  const labelFeatureIdSet = React.useMemo(() => {
+    if (!restaurantLabelFeaturesWithIds.features.length) {
+      return new Set<string>();
+    }
+    const ids = restaurantLabelFeaturesWithIds.features
+      .map((feature) => feature.id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+    return new Set(ids);
+  }, [restaurantLabelFeaturesWithIds]);
+
+  const restaurantLabelStyleWithOpacity = React.useMemo(() => {
+    if (!canUseLabelFeatureState) {
+      return restaurantLabelStyle;
+    }
+    const baseOpacity = restaurantLabelStyle.textOpacity ?? 1;
+
+    return {
+      ...restaurantLabelStyle,
+      textOpacity: ['*', baseOpacity, ['coalesce', ['feature-state', 'opacity'], 0]],
+    } as MapboxGL.SymbolLayerStyle;
+  }, [canUseLabelFeatureState, restaurantLabelStyle]);
 
   React.useEffect(() => {
     markerRenderCountRef.current = markerRenderCount;
@@ -578,6 +641,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   React.useEffect(() => {
     if (shouldAnimateMarkerReveal && !previousShouldAnimateMarkerRevealRef.current) {
       markerRevealRegistryRef.current.clear();
+      labelRevealRegistryRef.current.clear();
     }
     previousShouldAnimateMarkerRevealRef.current = shouldAnimateMarkerReveal;
   }, [shouldAnimateMarkerReveal]);
@@ -589,6 +653,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
         clearTimeout(visibilityRefreshTimeoutRef.current);
         visibilityRefreshTimeoutRef.current = null;
       }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    return () => {
+      for (const timeouts of labelAnimationTimeoutsRef.current.values()) {
+        for (const timeout of timeouts) {
+          clearTimeout(timeout);
+        }
+      }
+      labelAnimationTimeoutsRef.current.clear();
     };
   }, []);
 
@@ -604,6 +679,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const getIsFirstMarkerReveal = React.useCallback((markerKey: string) => {
     const registry = markerRevealRegistryRef.current;
+    const isFirstReveal = !registry.has(markerKey);
+    if (isFirstReveal) {
+      registry.add(markerKey);
+    }
+    return isFirstReveal;
+  }, []);
+
+  const getIsFirstLabelReveal = React.useCallback((markerKey: string) => {
+    const registry = labelRevealRegistryRef.current;
     const isFirstReveal = !registry.has(markerKey);
     if (isFirstReveal) {
       registry.add(markerKey);
@@ -680,6 +764,70 @@ const SearchMap: React.FC<SearchMapProps> = ({
     []
   );
 
+  const cancelLabelAnimation = React.useCallback((featureId: string) => {
+    const timeouts = labelAnimationTimeoutsRef.current.get(featureId);
+    if (!timeouts?.length) {
+      return;
+    }
+    for (const timeout of timeouts) {
+      clearTimeout(timeout);
+    }
+    labelAnimationTimeoutsRef.current.delete(featureId);
+  }, []);
+
+  const setLabelOpacityNow = React.useCallback(
+    (featureId: string, opacity: number) => {
+      labelOpacityByIdRef.current.set(featureId, opacity);
+      const mapInstance = mapRef.current;
+      if (!mapInstance?.setFeatureState) {
+        return;
+      }
+      void mapInstance
+        .setFeatureState(featureId, { opacity }, RESTAURANT_LABEL_SOURCE_ID)
+        .catch(() => undefined);
+    },
+    [mapRef]
+  );
+
+  const animateLabelOpacity = React.useCallback(
+    (featureId: string, targetOpacity: number, delayMs: number, durationMs: number) => {
+      cancelLabelAnimation(featureId);
+
+      const resolvedDelayMs = Math.max(0, delayMs);
+      const resolvedDurationMs = Math.max(0, durationMs);
+      if (resolvedDurationMs === 0) {
+        setLabelOpacityNow(featureId, targetOpacity);
+        return;
+      }
+
+      const startOpacity = labelOpacityByIdRef.current.get(featureId) ?? 0;
+      if (startOpacity === targetOpacity) {
+        setLabelOpacityNow(featureId, targetOpacity);
+        return;
+      }
+
+      const easing = targetOpacity > startOpacity ? easeOutCubic : easeInCubic;
+      const steps = Math.max(1, Math.ceil(resolvedDurationMs / LABEL_OPACITY_STEP_MS));
+      const timeouts: Array<ReturnType<typeof setTimeout>> = [];
+
+      for (let step = 1; step <= steps; step++) {
+        const tLinear = step / steps;
+        const t = easing(tLinear);
+        const nextOpacity = startOpacity + (targetOpacity - startOpacity) * t;
+        const timeout = setTimeout(() => {
+          setLabelOpacityNow(featureId, nextOpacity);
+          if (step === steps) {
+            labelAnimationTimeoutsRef.current.delete(featureId);
+          }
+        }, resolvedDelayMs + Math.round(tLinear * resolvedDurationMs));
+        timeouts.push(timeout);
+      }
+
+      labelAnimationTimeoutsRef.current.set(featureId, timeouts);
+    },
+    [cancelLabelAnimation, setLabelOpacityNow]
+  );
+
   const runVisibleMarkerRefreshRef = React.useRef<() => void>(() => undefined);
   const runVisibleMarkerRefresh = React.useCallback(() => {
     if (visibilityRefreshInFlightRef.current) {
@@ -722,6 +870,44 @@ const SearchMap: React.FC<SearchMapProps> = ({
       runVisibleMarkerRefreshRef.current();
     }, delayMs);
   }, []);
+
+  React.useEffect(() => {
+    if (!shouldRenderLabels) {
+      for (const timeouts of labelAnimationTimeoutsRef.current.values()) {
+        for (const timeout of timeouts) {
+          clearTimeout(timeout);
+        }
+      }
+      labelAnimationTimeoutsRef.current.clear();
+      labelOpacityByIdRef.current.clear();
+      previousVisibleLabelIdsRef.current = new Set();
+      labelRevealRegistryRef.current.clear();
+      return;
+    }
+
+    if (!canUseLabelFeatureState) {
+      return;
+    }
+
+    const mapInstance = mapRef.current;
+
+    for (const timeouts of labelAnimationTimeoutsRef.current.values()) {
+      for (const timeout of timeouts) {
+        clearTimeout(timeout);
+      }
+    }
+    labelAnimationTimeoutsRef.current.clear();
+    labelOpacityByIdRef.current.clear();
+    previousVisibleLabelIdsRef.current = new Set();
+    labelRevealRegistryRef.current.clear();
+
+    for (const featureId of labelFeatureIdSet) {
+      labelOpacityByIdRef.current.set(featureId, 0);
+      void mapInstance
+        .setFeatureState(featureId, { opacity: 0 }, RESTAURANT_LABEL_SOURCE_ID)
+        .catch(() => undefined);
+    }
+  }, [canUseLabelFeatureState, labelFeatureIdSet, mapRef, markersRenderKey, shouldRenderLabels]);
 
   React.useEffect(() => {
     scheduleVisibleMarkerRefresh();
@@ -849,6 +1035,97 @@ const SearchMap: React.FC<SearchMapProps> = ({
     sortedRestaurantMarkers.length,
   ]);
 
+  const renderedMarkerMetaByKey = React.useMemo(() => {
+    const revealChunk = Math.max(1, markerRevealChunk);
+    const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
+    const meta = new Map<string, { enterDelayMs: number }>();
+
+    for (
+      let index = 0;
+      index < Math.min(resolvedMarkerRenderCount, sortedRestaurantMarkers.length);
+      index++
+    ) {
+      const feature = sortedRestaurantMarkers[index];
+      const markerKey = buildMarkerKey(feature);
+      const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
+      const enterDelayMs = withinChunkIndex * revealStaggerMs;
+      meta.set(markerKey, { enterDelayMs });
+    }
+
+    return meta;
+  }, [
+    buildMarkerKey,
+    markerRevealChunk,
+    markerRevealStaggerMs,
+    resolvedMarkerRenderCount,
+    sortedRestaurantMarkers,
+  ]);
+
+  React.useEffect(() => {
+    if (!shouldRenderLabels) {
+      return;
+    }
+
+    if (!canUseLabelFeatureState) {
+      previousVisibleLabelIdsRef.current = new Set();
+      return;
+    }
+
+    if (!labelFeatureIdSet.size) {
+      previousVisibleLabelIdsRef.current = new Set();
+      return;
+    }
+
+    const nextVisibleLabelIds = new Set<string>();
+    for (const markerKey of renderedMarkerMetaByKey.keys()) {
+      if (!labelFeatureIdSet.has(markerKey)) {
+        continue;
+      }
+      if (visibleMarkerKeys.has(markerKey)) {
+        nextVisibleLabelIds.add(markerKey);
+      }
+    }
+
+    const previousVisible = previousVisibleLabelIdsRef.current;
+    for (const markerKey of previousVisible) {
+      if (nextVisibleLabelIds.has(markerKey)) {
+        continue;
+      }
+      animateLabelOpacity(markerKey, 0, 0, Math.max(0, markerRevealAnimMs));
+    }
+
+    const shouldHoldForReentry = getIsMapMoving();
+    for (const markerKey of nextVisibleLabelIds) {
+      if (previousVisible.has(markerKey)) {
+        continue;
+      }
+
+      const markerMeta = renderedMarkerMetaByKey.get(markerKey);
+      const enterDelayMs = markerMeta?.enterDelayMs ?? 0;
+      const shouldUseReveal = shouldAnimateMarkerReveal && getIsFirstLabelReveal(markerKey);
+      const delayMs = shouldUseReveal
+        ? enterDelayMs
+        : shouldHoldForReentry
+        ? MARKER_REENTRY_HOLD_MS
+        : 0;
+
+      animateLabelOpacity(markerKey, 1, delayMs, Math.max(0, markerRevealAnimMs));
+    }
+
+    previousVisibleLabelIdsRef.current = nextVisibleLabelIds;
+  }, [
+    animateLabelOpacity,
+    canUseLabelFeatureState,
+    getIsFirstLabelReveal,
+    getIsMapMoving,
+    labelFeatureIdSet,
+    markerRevealAnimMs,
+    renderedMarkerMetaByKey,
+    shouldAnimateMarkerReveal,
+    shouldRenderLabels,
+    visibleMarkerKeys,
+  ]);
+
   return (
     <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
       <MapboxGL.MapView
@@ -931,8 +1208,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ) : null}
         {shouldRenderLabels ? (
           <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
-            <MapboxGL.ShapeSource id="restaurant-source" shape={restaurantFeatures}>
-              <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyle} />
+            <MapboxGL.ShapeSource
+              id={RESTAURANT_LABEL_SOURCE_ID}
+              shape={restaurantLabelFeaturesWithIds}
+            >
+              <MapboxGL.SymbolLayer id="restaurant-labels" style={restaurantLabelStyleWithOpacity} />
             </MapboxGL.ShapeSource>
           </React.Profiler>
         ) : null}
