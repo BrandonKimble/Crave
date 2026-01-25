@@ -705,13 +705,7 @@ export const usePollsPanelSpec = ({
     return headerActionProgress.value >= HEADER_ACTION_CREATE_PROGRESS_THRESHOLD && isAtCollapsed
       ? 'create'
       : 'close';
-  }, [
-    _sheetY,
-    headerAction,
-    headerActionProgress,
-    headerActionProgressProp,
-    snapPoints.collapsed,
-  ]);
+  }, [_sheetY, headerAction, headerActionProgress, headerActionProgressProp, snapPoints.collapsed]);
 
   const handleHeaderActionPress = useCallback(() => {
     const action = resolveHeaderActionForPress();
