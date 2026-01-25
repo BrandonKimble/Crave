@@ -48,6 +48,8 @@ const CARD_GAP = 4;
 const LIVE_BADGE_HEIGHT = OVERLAY_HEADER_CLOSE_BUTTON_SIZE;
 const NAV_ICON_SIZE = 24;
 const NAV_ICON_LABEL_GAP = 2;
+const HEADER_ACTION_CREATE_PROGRESS_THRESHOLD = 0.98;
+const HEADER_ACTION_CREATE_POSITION_EPSILON_PX = 6;
 type UsePollsPanelSpecOptions = {
   visible: boolean;
   bounds?: MapBounds | null;
@@ -59,6 +61,7 @@ type UsePollsPanelSpecOptions = {
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
+  onSnapStart?: (snap: OverlaySheetSnap) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
   onRequestPollCreationExpand?: () => void;
@@ -85,6 +88,7 @@ export const usePollsPanelSpec = ({
   navBarHeight = 0,
   searchBarTop = 0,
   snapPoints: snapPointsOverride,
+  onSnapStart,
   onSnapChange,
   snapTo,
   onRequestPollCreationExpand,
@@ -684,14 +688,40 @@ export const usePollsPanelSpec = ({
     [onSnapChange, snapRequest]
   );
 
+  const handleSnapStart = useCallback<NonNullable<OverlayContentSpec<Poll>['onSnapStart']>>(
+    (snap) => {
+      onSnapStart?.(snap);
+    },
+    [onSnapStart]
+  );
+
+  const resolveHeaderActionForPress = useCallback((): 'create' | 'close' => {
+    if (!headerActionProgressProp) {
+      return headerAction;
+    }
+
+    const isAtCollapsed =
+      Math.abs(_sheetY.value - snapPoints.collapsed) <= HEADER_ACTION_CREATE_POSITION_EPSILON_PX;
+    return headerActionProgress.value >= HEADER_ACTION_CREATE_PROGRESS_THRESHOLD && isAtCollapsed
+      ? 'create'
+      : 'close';
+  }, [
+    _sheetY,
+    headerAction,
+    headerActionProgress,
+    headerActionProgressProp,
+    snapPoints.collapsed,
+  ]);
+
   const handleHeaderActionPress = useCallback(() => {
-    if (headerAction === 'create') {
+    const action = resolveHeaderActionForPress();
+    if (action === 'create') {
       onRequestPollCreationExpand?.();
       handleOpenCreate();
       return;
     }
     handleClose();
-  }, [handleClose, handleOpenCreate, headerAction, onRequestPollCreationExpand]);
+  }, [handleClose, handleOpenCreate, onRequestPollCreationExpand, resolveHeaderActionForPress]);
 
   const headerComponent = (
     <OverlaySheetHeaderChrome
@@ -909,6 +939,7 @@ export const usePollsPanelSpec = ({
     contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent,
     style: overlaySheetStyles.container,
+    onSnapStart: handleSnapStart,
     onSnapChange: handleSnapChange,
     dismissThreshold,
     preventSwipeDismiss: mode === 'overlay',

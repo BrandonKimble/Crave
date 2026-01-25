@@ -1759,6 +1759,12 @@ const SearchScreen: React.FC = () => {
     () => handleOverlaySelect('search'),
     [handleOverlaySelect]
   );
+  const handlePollsSnapStart = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      setPollsSheetSnap(snap);
+    },
+    [setPollsSheetSnap]
+  );
   const handlePollsSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
       setPollsSheetSnap(snap);
@@ -7125,6 +7131,7 @@ const SearchScreen: React.FC = () => {
     navBarHeight,
     searchBarTop,
     snapPoints,
+    onSnapStart: handlePollsSnapStart,
     onSnapChange: handlePollsSnapChange,
     snapTo: pollsOverlayMode === 'overlay' ? tabOverlaySnapRequest : pollsDockedSnapRequest,
     onRequestReturnToSearch: requestReturnToSearchFromPolls,
