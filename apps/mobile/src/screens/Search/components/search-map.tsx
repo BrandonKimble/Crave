@@ -24,13 +24,23 @@ import pinFillAsset from '../../../assets/pin-fill.png';
 import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
 import { logger } from '../../../utils';
-import { PIN_MARKER_RENDER_SIZE, USA_FALLBACK_CENTER } from '../constants/search';
+import { USA_FALLBACK_CENTER } from '../constants/search';
 
 import styles from '../styles';
 import { getMarkerZIndex } from '../utils/map';
+import {
+  getViewportMercatorPolygonForMarkerVisibility,
+  isPointInPolygon,
+  MARKER_VIEW_OVERSCAN_STYLE,
+  projectToMercator,
+} from './marker-visibility';
 
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
+// When a marker re-enters the (overscanned) visibility bounds while the map is still moving, we
+// hold the fade-in briefly to avoid flicker caused by view->coordinate sampling jitter.
 const MARKER_REENTRY_HOLD_MS = 120;
+// Visibility refresh is intentionally frequent while moving to keep edge fade responsive, but not
+// so frequent that rounding/jitter causes rapid visible<->hidden toggles (which reads as "snapping").
 const MARKER_VISIBILITY_REFRESH_MS_IDLE = 120;
 const MARKER_VISIBILITY_REFRESH_MS_MOVING = 80;
 const MARKER_MOUNT_INITIAL_BATCH = 4;
@@ -109,17 +119,6 @@ const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleStrokeWidth: 0,
 };
 
-const MARKER_VIEW_OVERSCAN_LEFT_PX = Math.max(0, Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 1);
-const MARKER_VIEW_OVERSCAN_RIGHT_PX = MARKER_VIEW_OVERSCAN_LEFT_PX;
-const MARKER_VIEW_OVERSCAN_TOP_PX = 2;
-const MARKER_VIEW_OVERSCAN_BOTTOM_PX = Math.max(0, Math.ceil(PIN_MARKER_RENDER_SIZE) + 2);
-const MARKER_VIEW_OVERSCAN_STYLE = {
-  left: -MARKER_VIEW_OVERSCAN_LEFT_PX,
-  right: -MARKER_VIEW_OVERSCAN_RIGHT_PX,
-  top: -MARKER_VIEW_OVERSCAN_TOP_PX,
-  bottom: -MARKER_VIEW_OVERSCAN_BOTTOM_PX,
-};
-
 const LABEL_OPACITY_STEP_MS = 80;
 
 const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
@@ -135,33 +134,6 @@ const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
     }
   }
   return true;
-};
-
-const projectToMercator = (coordinate: [number, number]): [number, number] => {
-  const lng = coordinate[0];
-  const lat = Math.max(-85.05112878, Math.min(85.05112878, coordinate[1]));
-  const lngRadians = (lng * Math.PI) / 180;
-  const latRadians = (lat * Math.PI) / 180;
-  const x = lngRadians;
-  const y = Math.log(Math.tan(Math.PI / 4 + latRadians / 2));
-  return [x, y];
-};
-
-const isPointInPolygon = (point: [number, number], polygon: Array<[number, number]>): boolean => {
-  const x = point[0];
-  const y = point[1];
-  let isInside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i][0];
-    const yi = polygon[i][1];
-    const xj = polygon[j][0];
-    const yj = polygon[j][1];
-    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
-    if (intersects) {
-      isInside = !isInside;
-    }
-  }
-  return isInside;
 };
 
 const easeInCubic = (t: number) => t * t * t;
@@ -181,9 +153,26 @@ type MarkerPinProps = {
 };
 
 /**
- * MarkerPin - Fade in whenever a marker becomes visible in the viewport. Mapbox view annotations
- * can be hidden/shown without React unmounting, and can also appear with slight native delay
- * during fast pans. Driving opacity off viewport visibility prevents pop-in.
+ * MarkerPin - MarkerView "edge fade" with *no snapping*.
+ *
+ * The critical invariant: **MarkerView stays mounted** and we only drive its visual presence via an
+ * opacity animation.
+ *
+ * Why it doesn't snap/pop:
+ * - We never conditionally mount/unmount the MarkerView based on viewport intersection.
+ * - Visibility is computed against an *overscanned* viewport polygon (see `marker-visibility.ts`)
+ *   so the fade-in starts while the pin is still outside the clipped viewport, and the hard-hide
+ *   happens after it's already offscreen.
+ * - We gate the fade-in on a single boolean edge (`wasVisible -> isVisible`) and keep steady-state
+ *   "visible" pins from restarting their animation on every refresh tick.
+ *
+ * DO NOT "simplify" this by:
+ * - toggling MarkerView rendering on `isVisible`
+ * - swapping `opacity` for `display: none`
+ * - removing the overscan coupling
+ *
+ * Any of those changes tends to reintroduce native annotation pop/snapping at the viewport edge,
+ * especially during fast pans.
  */
 const MarkerPin: React.FC<MarkerPinProps> = React.memo(
   ({
@@ -213,14 +202,19 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
       const wasVisible = previousVisibilityRef.current === true;
       previousVisibilityRef.current = isVisible;
 
+      // This cancellation is the difference between a clean fade and jittery "snaps" when map
+      // movement causes visibility to toggle quickly (native view annotations can lag by a frame).
       cancelAnimation(opacity);
 
       if (!isVisible) {
+        // Hard-hide immediately. This transition only happens once the pin is already offscreen
+        // thanks to the overscanned visibility bounds, so users never perceive this as a snap.
         opacity.value = 0;
         return;
       }
 
       if (wasVisible) {
+        // Stay visible; do not restart the animation on every visibility refresh tick.
         return;
       }
 
@@ -235,6 +229,8 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
       const durationMs = Math.max(0, enterDurationMsRef.current);
       const easing = Easing.out(Easing.cubic);
 
+      // Always restart the reveal from 0, even if a previous reveal was mid-flight.
+      // Combined with `cancelAnimation` this guarantees we never "jump" to an unexpected opacity.
       opacity.value = 0;
       opacity.value = withDelay(
         delayMs,
@@ -251,6 +247,7 @@ const MarkerPin: React.FC<MarkerPinProps> = React.memo(
 
     return (
       <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
+        {/* Prevent React Native's default image crossfade from fighting our opacity animation. */}
         <Image source={pinAsset} style={styles.pinBase} fadeDuration={0} />
         <Image
           source={pinFillAsset}
@@ -467,14 +464,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const markerRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const labelRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const previousShouldAnimateMarkerRevealRef = React.useRef(false);
-  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
-  const markerRenderCountRef = React.useRef(0);
-  const markerMountRafRef = React.useRef<number | null>(null);
-  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const visibilityRefreshSeqRef = React.useRef(0);
-  const visibilityRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const visibilityRefreshInFlightRef = React.useRef(false);
-  const visibilityRefreshQueuedRef = React.useRef(false);
+	  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
+	  const markerRenderCountRef = React.useRef(0);
+	  const markerMountRafRef = React.useRef<number | null>(null);
+	  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	  // Marker visibility refreshes are async (Mapbox view->coordinate conversion) and can complete
+	  // out of order. This "sequencer + single-flight queue" prevents stale results from applying,
+	  // which would otherwise make `isVisible` flap near edges and read as snapping.
+	  const visibilityRefreshSeqRef = React.useRef(0);
+	  const visibilityRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+	  const visibilityRefreshInFlightRef = React.useRef(false);
+	  const visibilityRefreshQueuedRef = React.useRef(false);
   const isMapMovingRef = React.useRef(false);
   const mapLastMovedAtRef = React.useRef(0);
   const labelOpacityByIdRef = React.useRef<Map<string, number>>(new Map());
@@ -710,35 +710,25 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
+    // Visibility is computed from the same *overscanned* view bounds used by the MapView style.
+    // This coupling is what makes the fade-in smooth and avoids "snapping" at the viewport edge.
     const refreshSeq = ++visibilityRefreshSeqRef.current;
-    const mapViewWidth =
-      mapViewportSize.width + MARKER_VIEW_OVERSCAN_LEFT_PX + MARKER_VIEW_OVERSCAN_RIGHT_PX;
-    const mapViewHeight =
-      mapViewportSize.height + MARKER_VIEW_OVERSCAN_TOP_PX + MARKER_VIEW_OVERSCAN_BOTTOM_PX;
-    const rightEdge = Math.max(0, mapViewWidth - 1);
-    const bottomEdge = Math.max(0, mapViewHeight - 1);
 
     try {
-      const [topLeft, topRight, bottomRight, bottomLeft] = await Promise.all([
-        mapInstance.getCoordinateFromView([0, 0]),
-        mapInstance.getCoordinateFromView([rightEdge, 0]),
-        mapInstance.getCoordinateFromView([rightEdge, bottomEdge]),
-        mapInstance.getCoordinateFromView([0, bottomEdge]),
-      ]);
+      const mercatorPolygon = await getViewportMercatorPolygonForMarkerVisibility(
+        mapInstance,
+        mapViewportSize
+      );
 
       if (refreshSeq !== visibilityRefreshSeqRef.current) {
         return;
       }
 
-      const polygon: Array<[number, number]> = [topLeft, topRight, bottomRight, bottomLeft].filter(
-        (value): value is [number, number] => Array.isArray(value) && value.length === 2
-      );
-      if (polygon.length !== 4) {
+      if (!mercatorPolygon) {
         return;
       }
 
       const nextVisibleKeys = new Set<string>();
-      const mercatorPolygon = polygon.map(projectToMercator);
       for (const entry of markerMercatorEntries) {
         if (isPointInPolygon(entry.mercatorPoint, mercatorPolygon)) {
           nextVisibleKeys.add(entry.markerKey);
@@ -746,6 +736,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
 
       setVisibleMarkerKeys((previous) =>
+        // Avoid thrashing React renders (and downstream animation restarts) when the key set is
+        // unchanged but a refresh tick produced a new Set instance.
         areStringSetsEqual(previous, nextVisibleKeys) ? previous : nextVisibleKeys
       );
     } catch {
@@ -1128,11 +1120,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   return (
     <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
-      <MapboxGL.MapView
-        ref={mapRef}
-        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
-        styleURL={styleURL}
-        logoEnabled={false}
+	      <MapboxGL.MapView
+	        ref={mapRef}
+	        // Overscan is required for our no-snapping edge fade: it lets Mapbox render markers just
+	        // outside the clipped viewport so fade-ins can start offscreen (see `marker-visibility.ts`).
+	        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
+	        styleURL={styleURL}
+	        logoEnabled={false}
         attributionEnabled={false}
         scaleBarEnabled={false}
         gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
