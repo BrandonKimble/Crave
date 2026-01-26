@@ -464,17 +464,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const markerRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const labelRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const previousShouldAnimateMarkerRevealRef = React.useRef(false);
-	  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
-	  const markerRenderCountRef = React.useRef(0);
-	  const markerMountRafRef = React.useRef<number | null>(null);
-	  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-	  // Marker visibility refreshes are async (Mapbox view->coordinate conversion) and can complete
-	  // out of order. This "sequencer + single-flight queue" prevents stale results from applying,
-	  // which would otherwise make `isVisible` flap near edges and read as snapping.
-	  const visibilityRefreshSeqRef = React.useRef(0);
-	  const visibilityRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-	  const visibilityRefreshInFlightRef = React.useRef(false);
-	  const visibilityRefreshQueuedRef = React.useRef(false);
+  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
+  const markerRenderCountRef = React.useRef(0);
+  const markerMountRafRef = React.useRef<number | null>(null);
+  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Marker visibility refreshes are async (Mapbox view->coordinate conversion) and can complete
+  // out of order. This "sequencer + single-flight queue" prevents stale results from applying,
+  // which would otherwise make `isVisible` flap near edges and read as snapping.
+  const visibilityRefreshSeqRef = React.useRef(0);
+  const visibilityRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const visibilityRefreshInFlightRef = React.useRef(false);
+  const visibilityRefreshQueuedRef = React.useRef(false);
   const isMapMovingRef = React.useRef(false);
   const mapLastMovedAtRef = React.useRef(0);
   const labelOpacityByIdRef = React.useRef<Map<string, number>>(new Map());
@@ -1120,13 +1120,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   return (
     <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
-	      <MapboxGL.MapView
-	        ref={mapRef}
-	        // Overscan is required for our no-snapping edge fade: it lets Mapbox render markers just
-	        // outside the clipped viewport so fade-ins can start offscreen (see `marker-visibility.ts`).
-	        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
-	        styleURL={styleURL}
-	        logoEnabled={false}
+      <MapboxGL.MapView
+        ref={mapRef}
+        // Overscan is required for our no-snapping edge fade: it lets Mapbox render markers just
+        // outside the clipped viewport so fade-ins can start offscreen (see `marker-visibility.ts`).
+        style={[styles.map, MARKER_VIEW_OVERSCAN_STYLE]}
+        styleURL={styleURL}
+        logoEnabled={false}
         attributionEnabled={false}
         scaleBarEnabled={false}
         gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
