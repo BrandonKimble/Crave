@@ -1,9 +1,5 @@
 import React from 'react';
-import {
-  Animated,
-  type LayoutChangeEvent,
-  View,
-} from 'react-native';
+import { Animated, type LayoutChangeEvent, View } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState, type OnPressEvent } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -59,7 +55,10 @@ const DEBUG_FORCE_TOP_LABELS = false;
 const STYLE_PINS_SHADOW_OPACITY = 0.65;
 // `pin-shadow.png` includes extra bottom padding (see `apps/mobile/scripts/generate-pin-shadow.mjs`)
 // so the blur isn't clipped. Compensate by shifting it down a touch so it still sits under the pin.
-const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [0, 1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98)];
+const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
+  0,
+  1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98),
+];
 const STYLE_PIN_LAYER_ID_SAFE_MAX_LEN = 120;
 
 // `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
@@ -71,9 +70,12 @@ const STYLE_PINS_OUTLINE_ICON_SIZE = PIN_MARKER_RENDER_SIZE / PIN_OUTLINE_IMAGE_
 const STYLE_PINS_FILL_ICON_SIZE = PIN_FILL_RENDER_HEIGHT / PIN_FILL_IMAGE_HEIGHT_PX;
 // `SymbolLayer.iconOffset` is specified in the *source image's pixel units* (and then scaled by
 // `iconSize`). Our pin layout constants are in "rendered wrapper pixels", so we convert.
-const STYLE_PINS_FILL_OFFSET_RENDER_PX =
-  -(PIN_MARKER_RENDER_SIZE - (PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT));
-const STYLE_PINS_FILL_OFFSET_IMAGE_PX = STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
+const STYLE_PINS_FILL_OFFSET_RENDER_PX = -(
+  PIN_MARKER_RENDER_SIZE -
+  (PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT)
+);
+const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
+  STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
 const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 
 const getSafeStyleUrlForLogs = (value: string) => {
@@ -891,12 +893,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
 
     return meta;
-  }, [
-    buildMarkerKey,
-    markerRevealChunk,
-    markerRevealStaggerMs,
-    sortedRestaurantMarkers,
-  ]);
+  }, [buildMarkerKey, markerRevealChunk, markerRevealStaggerMs, sortedRestaurantMarkers]);
 
   React.useEffect(() => {
     if (!shouldRenderLabels) {
