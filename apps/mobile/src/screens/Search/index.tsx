@@ -208,7 +208,7 @@ const SUGGESTION_PANEL_MAX_MS = 320;
 const FILTER_TOGGLE_DEBOUNCE_MS = 600;
 const MARKER_REVEAL_CHUNK = 4;
 const MARKER_REVEAL_STAGGER_MS = 12;
-const MARKER_REVEAL_ANIM_MS = 1000;
+const MARKER_REVEAL_ANIM_MS = 2000;
 const MARKER_REVEAL_WINDOW_MS =
   MARKER_REVEAL_ANIM_MS + (MARKER_REVEAL_CHUNK - 1) * MARKER_REVEAL_STAGGER_MS + 60;
 const MARKER_DOT_HEAVY_ZOOM_ENTER = 12.0;
@@ -704,7 +704,11 @@ const SearchScreen: React.FC = () => {
         // Restaurant pin: single line
         ['coalesce', ['get', 'restaurantName'], ''],
       ],
-      textVariableAnchor: ['literal', ['top', 'right', 'left', 'bottom']],
+      // `textVariableAnchor` must be a plain array (not an expression). Mapbox uses this list (in
+      // order) to try alternative placements when labels collide.
+      //
+      // We prefer "bottom" as the intuitive default, but allow other sides when needed.
+      textVariableAnchor: ['bottom', 'right', 'top', 'left'],
       textAnchor: 'center',
       textRadialOffset: radialEm,
       textTranslate: [0, LABEL_TRANSLATE_Y],
@@ -6274,11 +6278,6 @@ const SearchScreen: React.FC = () => {
     handleMarkerPressRef.current(restaurantId);
   }, []);
 
-  const getShouldDeferMarkerMount = React.useCallback(() => {
-    const interactionState = searchInteractionRef.current;
-    return interactionState.isInteracting || isLoadingRef.current || isLoadingMoreRef.current;
-  }, []);
-
   React.useEffect(() => {
     if (!results) {
       return;
@@ -7289,7 +7288,6 @@ const SearchScreen: React.FC = () => {
               onPress={stableHandleMapPress}
               onTouchStart={handleMapTouchStart}
               onTouchEnd={handleMapTouchEnd}
-              getShouldDeferMarkerMount={getShouldDeferMarkerMount}
               onCameraChanged={stableHandleCameraChanged}
               onMapIdle={stableHandleMapIdle}
               onMapLoaded={stableHandleMapLoaded}

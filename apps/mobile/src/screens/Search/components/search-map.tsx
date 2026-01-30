@@ -1,33 +1,30 @@
 import React from 'react';
 import {
   Animated,
-  Image,
   type LayoutChangeEvent,
-  Pressable,
-  Text as RNText,
   View,
 } from 'react-native';
-import Reanimated, {
-  cancelAnimation,
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withDelay,
-  withTiming,
-} from 'react-native-reanimated';
 
 import MapboxGL, { type MapState as MapboxMapState, type OnPressEvent } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 
 import pinAsset from '../../../assets/pin.png';
 import pinFillAsset from '../../../assets/pin-fill.png';
+import pinShadowAsset from '../../../assets/pin-shadow.png';
 import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
 import { logger } from '../../../utils';
-import { USA_FALLBACK_CENTER } from '../constants/search';
+import {
+  PIN_FILL_CENTER_Y,
+  PIN_FILL_RENDER_HEIGHT,
+  PIN_FILL_TOP_OFFSET,
+  PIN_MARKER_RENDER_SIZE,
+  PIN_RANK_FONT_SIZE,
+  USA_FALLBACK_CENTER,
+} from '../constants/search';
 
 import styles from '../styles';
-import { getMarkerZIndex } from '../utils/map';
+import { haversineDistanceMiles } from '../utils/geo';
 import {
   getViewportMercatorPolygonForMarkerVisibility,
   isPointInPolygon,
@@ -43,12 +40,41 @@ const MARKER_REENTRY_HOLD_MS = 120;
 // so frequent that rounding/jitter causes rapid visible<->hidden toggles (which reads as "snapping").
 const MARKER_VISIBILITY_REFRESH_MS_IDLE = 120;
 const MARKER_VISIBILITY_REFRESH_MS_MOVING = 80;
-const MARKER_MOUNT_INITIAL_BATCH = 4;
-const MARKER_MOUNT_BATCH_SIZE = 2;
-const MARKER_MOUNT_DEFER_CHECK_MS = 100;
-const MARKER_ANCHOR = { x: 0.5, y: 1 } as const;
 const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
-const MARKER_HIT_SLOP = { top: 8, bottom: 8, left: 8, right: 8 } as const;
+
+// Experimental: render restaurant pins via Mapbox style layers (instead of MarkerView).
+// This avoids view-annotation gaps during fast pans and is the foundation for truly reversible fade.
+const USE_STYLE_LAYER_PINS = true;
+const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
+const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
+const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
+const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
+const DEBUG_STYLE_PINS_COLLISION = false;
+// Extreme diagnostic: force labels to render *only* above pins, bypassing collision logic.
+// If you still don't see top labels with this enabled, the issue isn't collision/offset math.
+const DEBUG_FORCE_TOP_LABELS = false;
+
+// Approximate the MarkerView drop-shadow (`styles.pinShadow`) using a translated, tinted SDF copy
+// of the pin silhouette.
+const STYLE_PINS_SHADOW_OPACITY = 0.65;
+// `pin-shadow.png` includes extra bottom padding (see `apps/mobile/scripts/generate-pin-shadow.mjs`)
+// so the blur isn't clipped. Compensate by shifting it down a touch so it still sits under the pin.
+const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [0, 1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98)];
+const STYLE_PIN_LAYER_ID_SAFE_MAX_LEN = 120;
+
+// `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
+// These values are derived to match the existing RN pin layout in `styles.ts` + `constants/search.ts`.
+const PIN_OUTLINE_IMAGE_HEIGHT_PX = 98;
+const PIN_FILL_IMAGE_HEIGHT_PX = 72;
+
+const STYLE_PINS_OUTLINE_ICON_SIZE = PIN_MARKER_RENDER_SIZE / PIN_OUTLINE_IMAGE_HEIGHT_PX;
+const STYLE_PINS_FILL_ICON_SIZE = PIN_FILL_RENDER_HEIGHT / PIN_FILL_IMAGE_HEIGHT_PX;
+// `SymbolLayer.iconOffset` is specified in the *source image's pixel units* (and then scaled by
+// `iconSize`). Our pin layout constants are in "rendered wrapper pixels", so we convert.
+const STYLE_PINS_FILL_OFFSET_RENDER_PX =
+  -(PIN_MARKER_RENDER_SIZE - (PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT));
+const STYLE_PINS_FILL_OFFSET_IMAGE_PX = STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
+const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 
 const getSafeStyleUrlForLogs = (value: string) => {
   const trimmed = value.trim();
@@ -87,6 +113,14 @@ export type RestaurantFeatureProperties = {
   connectionId?: string;
 };
 
+const toSafeLayerIdPart = (value: string) => {
+  const normalized = value.replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (normalized.length <= STYLE_PIN_LAYER_ID_SAFE_MAX_LEN) {
+    return normalized;
+  }
+  return normalized.slice(0, STYLE_PIN_LAYER_ID_SAFE_MAX_LEN);
+};
+
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getVisibleBounds?: () => Promise<[number[], number[]]>;
   getCenter?: () => Promise<[number, number]>;
@@ -121,6 +155,70 @@ const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
 
 const LABEL_OPACITY_STEP_MS = 80;
 
+const DEBUG_STYLE_PINS_COLLISION_STYLE: MapboxGL.CircleLayerStyle = {
+  circleRadius: PIN_MARKER_RENDER_SIZE * 0.6,
+  circleColor: 'rgba(255, 0, 0, 0.12)',
+  circleStrokeColor: 'rgba(255, 0, 0, 0.55)',
+  circleStrokeWidth: 1,
+  // Approximate the pin icon collision region (icon is anchored at bottom, so its center is above
+  // the point). This is only a visual debugging aid.
+  circleTranslate: [0, -PIN_MARKER_RENDER_SIZE * 0.5],
+  circleTranslateAnchor: 'viewport',
+};
+
+const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
+  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'viewport-y',
+  iconAllowOverlap: true,
+  // Visual-only: label placement is handled by the label layer itself (see `restaurantLabelStyle`).
+  iconIgnorePlacement: true,
+} as MapboxGL.SymbolLayerStyle;
+
+const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
+  // `pin-shadow.png` includes padding so blur isn't clipped; keep size aligned with the base pin.
+  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'viewport-y',
+  iconAllowOverlap: true,
+  // Shadow should never affect placement/collision decisions for labels.
+  iconIgnorePlacement: true,
+  // Shadow opacity is baked into the sprite, but we keep an extra multiplier here so it's easy
+  // to tune without regenerating assets.
+  iconOpacity: STYLE_PINS_SHADOW_OPACITY,
+  iconTranslate: STYLE_PINS_SHADOW_TRANSLATE,
+  iconTranslateAnchor: 'viewport',
+} as MapboxGL.SymbolLayerStyle;
+
+const STYLE_PINS_FILL_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_FILL_IMAGE_ID,
+  iconSize: STYLE_PINS_FILL_ICON_SIZE,
+  iconAnchor: 'bottom',
+  // Match `styles.pinFill` layout (positioned within the base image bounds).
+  iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX],
+  symbolZOrder: 'viewport-y',
+  iconAllowOverlap: true,
+  // Fill should never affect placement/collision decisions for labels (only the base does).
+  iconIgnorePlacement: true,
+} as MapboxGL.SymbolLayerStyle;
+
+const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
+  symbolZOrder: 'viewport-y',
+  textField: ['to-string', ['get', 'rank']],
+  // Match `styles.pinRank` (white, bold-ish).
+  textSize: PIN_RANK_FONT_SIZE,
+  textColor: '#ffffff',
+  textFont: ['DIN Offc Pro Bold', 'DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+  textAllowOverlap: true,
+  textIgnorePlacement: true,
+  textAnchor: 'center',
+  // Match `styles.pinRankWrapper` layout (centered on the pin fill region).
+  textTranslate: [0, STYLE_PINS_RANK_TRANSLATE_Y],
+  textTranslateAnchor: 'viewport',
+} as MapboxGL.SymbolLayerStyle;
+
 const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
   if (left === right) {
     return true;
@@ -139,245 +237,6 @@ const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
 const easeInCubic = (t: number) => t * t * t;
 const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3);
 
-type MarkerPinProps = {
-  markerKey: string;
-  getIsFirstReveal: (markerKey: string) => boolean;
-  getIsMapMoving: () => boolean;
-  isVisible: boolean;
-  isSelected: boolean;
-  pinColor: string;
-  rank: number;
-  shouldAnimateOnMount: boolean;
-  enterDelayMs: number;
-  enterDurationMs: number;
-};
-
-/**
- * MarkerPin - MarkerView "edge fade" with *no snapping*.
- *
- * The critical invariant: **MarkerView stays mounted** and we only drive its visual presence via an
- * opacity animation.
- *
- * Why it doesn't snap/pop:
- * - We never conditionally mount/unmount the MarkerView based on viewport intersection.
- * - Visibility is computed against an *overscanned* viewport polygon (see `marker-visibility.ts`)
- *   so the fade-in starts while the pin is still outside the clipped viewport, and the hard-hide
- *   happens after it's already offscreen.
- * - We gate the fade-in on a single boolean edge (`wasVisible -> isVisible`) and keep steady-state
- *   "visible" pins from restarting their animation on every refresh tick.
- *
- * DO NOT "simplify" this by:
- * - toggling MarkerView rendering on `isVisible`
- * - swapping `opacity` for `display: none`
- * - removing the overscan coupling
- *
- * Any of those changes tends to reintroduce native annotation pop/snapping at the viewport edge,
- * especially during fast pans.
- */
-const MarkerPin: React.FC<MarkerPinProps> = React.memo(
-  ({
-    markerKey,
-    getIsFirstReveal,
-    getIsMapMoving,
-    isVisible,
-    isSelected,
-    pinColor,
-    rank,
-    shouldAnimateOnMount,
-    enterDelayMs,
-    enterDurationMs,
-  }) => {
-    const shouldAnimateOnMountRef = React.useRef(shouldAnimateOnMount);
-    const enterDelayMsRef = React.useRef(enterDelayMs);
-    const enterDurationMsRef = React.useRef(enterDurationMs);
-
-    shouldAnimateOnMountRef.current = shouldAnimateOnMount;
-    enterDelayMsRef.current = enterDelayMs;
-    enterDurationMsRef.current = enterDurationMs;
-
-    const opacity = useSharedValue(0);
-    const previousVisibilityRef = React.useRef<boolean | null>(null);
-
-    React.useEffect(() => {
-      const wasVisible = previousVisibilityRef.current === true;
-      previousVisibilityRef.current = isVisible;
-
-      // This cancellation is the difference between a clean fade and jittery "snaps" when map
-      // movement causes visibility to toggle quickly (native view annotations can lag by a frame).
-      cancelAnimation(opacity);
-
-      if (!isVisible) {
-        // Hard-hide immediately. This transition only happens once the pin is already offscreen
-        // thanks to the overscanned visibility bounds, so users never perceive this as a snap.
-        opacity.value = 0;
-        return;
-      }
-
-      if (wasVisible) {
-        // Stay visible; do not restart the animation on every visibility refresh tick.
-        return;
-      }
-
-      const shouldUseReveal = shouldAnimateOnMountRef.current && getIsFirstReveal(markerKey);
-      const shouldHoldForReentry = !shouldUseReveal && getIsMapMoving();
-      let delayMs = 0;
-      if (shouldUseReveal) {
-        delayMs = Math.max(0, enterDelayMsRef.current);
-      } else if (shouldHoldForReentry) {
-        delayMs = MARKER_REENTRY_HOLD_MS;
-      }
-      const durationMs = Math.max(0, enterDurationMsRef.current);
-      const easing = Easing.out(Easing.cubic);
-
-      // Always restart the reveal from 0, even if a previous reveal was mid-flight.
-      // Combined with `cancelAnimation` this guarantees we never "jump" to an unexpected opacity.
-      opacity.value = 0;
-      opacity.value = withDelay(
-        delayMs,
-        withTiming(1, {
-          duration: durationMs,
-          easing,
-        })
-      );
-    }, [getIsFirstReveal, getIsMapMoving, isVisible, markerKey, opacity]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-      opacity: opacity.value,
-    }));
-
-    return (
-      <Reanimated.View style={[styles.pinWrapper, styles.pinShadow, animatedStyle]}>
-        {/* Prevent React Native's default image crossfade from fighting our opacity animation. */}
-        <Image source={pinAsset} style={styles.pinBase} fadeDuration={0} />
-        <Image
-          source={pinFillAsset}
-          style={[styles.pinFill, { tintColor: isSelected ? PRIMARY_COLOR : pinColor }]}
-          fadeDuration={0}
-        />
-        <View style={styles.pinRankWrapper}>
-          <RNText style={styles.pinRank}>{rank}</RNText>
-        </View>
-      </Reanimated.View>
-    );
-  }
-);
-
-type MarkerItemProps = {
-  markerKey: string;
-  restaurantId: string;
-  coordinate: [number, number];
-  zIndex: number;
-  rank: number;
-  pinColor: string;
-  isVisible: boolean;
-  isSelected: boolean;
-  onMarkerPress?: (restaurantId: string) => void;
-  getIsFirstReveal: (markerKey: string) => boolean;
-  getIsMapMoving: () => boolean;
-  shouldAnimateOnMount: boolean;
-  enterDelayMs: number;
-  enterDurationMs: number;
-};
-
-const MarkerItem: React.FC<MarkerItemProps> = React.memo(
-  ({
-    markerKey,
-    restaurantId,
-    coordinate,
-    zIndex,
-    rank,
-    pinColor,
-    isVisible,
-    isSelected,
-    onMarkerPress,
-    getIsFirstReveal,
-    getIsMapMoving,
-    shouldAnimateOnMount,
-    enterDelayMs,
-    enterDurationMs,
-  }) => {
-    const markerViewStyle = React.useMemo(() => [styles.markerView, { zIndex }], [zIndex]);
-    const handlePress = React.useCallback(() => {
-      onMarkerPress?.(restaurantId);
-    }, [onMarkerPress, restaurantId]);
-
-    return (
-      <MapboxGL.MarkerView
-        id={`restaurant-marker-${markerKey}`}
-        coordinate={coordinate}
-        anchor={MARKER_ANCHOR}
-        allowOverlap
-        isSelected={true}
-        style={markerViewStyle}
-      >
-        <Pressable
-          onPress={handlePress}
-          hitSlop={MARKER_HIT_SLOP}
-          pointerEvents={isVisible ? 'auto' : 'none'}
-        >
-          <MarkerPin
-            markerKey={markerKey}
-            getIsFirstReveal={getIsFirstReveal}
-            getIsMapMoving={getIsMapMoving}
-            isVisible={isVisible}
-            isSelected={isSelected}
-            pinColor={pinColor}
-            rank={rank}
-            shouldAnimateOnMount={shouldAnimateOnMount}
-            enterDelayMs={enterDelayMs}
-            enterDurationMs={enterDurationMs}
-          />
-        </Pressable>
-      </MapboxGL.MarkerView>
-    );
-  },
-  (prev, next) => {
-    if (prev.markerKey !== next.markerKey) {
-      return false;
-    }
-    if (prev.restaurantId !== next.restaurantId) {
-      return false;
-    }
-    if (prev.coordinate[0] !== next.coordinate[0] || prev.coordinate[1] !== next.coordinate[1]) {
-      return false;
-    }
-    if (prev.zIndex !== next.zIndex) {
-      return false;
-    }
-    if (prev.rank !== next.rank) {
-      return false;
-    }
-    if (prev.pinColor !== next.pinColor) {
-      return false;
-    }
-    if (prev.isVisible !== next.isVisible) {
-      return false;
-    }
-    if (prev.isSelected !== next.isSelected) {
-      return false;
-    }
-    if (prev.onMarkerPress !== next.onMarkerPress) {
-      return false;
-    }
-    if (prev.getIsFirstReveal !== next.getIsFirstReveal) {
-      return false;
-    }
-    if (prev.getIsMapMoving !== next.getIsMapMoving) {
-      return false;
-    }
-    if (prev.shouldAnimateOnMount !== next.shouldAnimateOnMount) {
-      return false;
-    }
-    if (prev.enterDelayMs !== next.enterDelayMs) {
-      return false;
-    }
-    if (prev.enterDurationMs !== next.enterDurationMs) {
-      return false;
-    }
-    return true;
-  }
-);
-
 type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
@@ -389,7 +248,6 @@ type SearchMapProps = {
   onPress: () => void;
   onTouchStart?: () => void;
   onTouchEnd?: () => void;
-  getShouldDeferMarkerMount?: () => boolean;
   onCameraChanged: (state: MapboxMapState) => void;
   onMapIdle: (state: MapboxMapState) => void;
   onMapLoaded: () => void;
@@ -424,7 +282,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onPress,
   onTouchStart,
   onTouchEnd,
-  getShouldDeferMarkerMount,
   onCameraChanged,
   onMapIdle,
   onMapLoaded,
@@ -460,14 +317,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     height: 0,
   });
   const [visibleMarkerKeys, setVisibleMarkerKeys] = React.useState<Set<string>>(() => new Set());
-  const [markerRenderCount, setMarkerRenderCount] = React.useState(0);
-  const markerRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const labelRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const previousShouldAnimateMarkerRevealRef = React.useRef(false);
-  const previousMarkersRenderKeyRef = React.useRef<string | null>(null);
-  const markerRenderCountRef = React.useRef(0);
-  const markerMountRafRef = React.useRef<number | null>(null);
-  const markerMountDeferTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Marker visibility refreshes are async (Mapbox view->coordinate conversion) and can complete
   // out of order. This "sequencer + single-flight queue" prevents stale results from applying,
   // which would otherwise make `isVisible` flap near edges and read as snapping.
@@ -515,6 +366,57 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return { ...restaurantFeatures, features: nextFeatures };
   }, [buildMarkerKey, restaurantFeatures]);
 
+  const stylePinDrawOrder = React.useMemo(() => {
+    if (!restaurantLabelFeaturesWithIds.features.length) {
+      return [];
+    }
+
+    const user = userLocation ? { lng: userLocation.lng, lat: userLocation.lat } : null;
+    const missingDistanceMiles = 1e12;
+
+    const entries = restaurantLabelFeaturesWithIds.features
+      .map((feature) => {
+        const markerKey = buildMarkerKey(feature);
+        const rank = feature.properties.rank;
+        const coordinates = feature.geometry.coordinates as [number, number];
+        const lng = coordinates?.[0];
+        const lat = coordinates?.[1];
+        const distanceMiles =
+          user &&
+          typeof lng === 'number' &&
+          Number.isFinite(lng) &&
+          typeof lat === 'number' &&
+          Number.isFinite(lat)
+            ? haversineDistanceMiles(user, { lng, lat })
+            : missingDistanceMiles;
+        return { markerKey, rank, distanceMiles };
+      })
+      .filter(
+        (entry) =>
+          typeof entry.markerKey === 'string' &&
+          entry.markerKey.length > 0 &&
+          typeof entry.rank === 'number' &&
+          Number.isFinite(entry.rank) &&
+          entry.rank > 0
+      );
+
+    // Layer order determines draw order: earlier layers are under later layers.
+    // We want:
+    //   - rank 50 underneath rank 1
+    //   - within same rank: farther underneath closer
+    return entries.sort((a, b) => {
+      const rankDelta = b.rank - a.rank;
+      if (rankDelta !== 0) {
+        return rankDelta;
+      }
+      const distDelta = b.distanceMiles - a.distanceMiles;
+      if (distDelta !== 0) {
+        return distDelta;
+      }
+      return a.markerKey.localeCompare(b.markerKey);
+    });
+  }, [buildMarkerKey, restaurantLabelFeaturesWithIds.features, userLocation]);
+
   const labelFeatureIdSet = React.useMemo(() => {
     if (!restaurantLabelFeaturesWithIds.features.length) {
       return new Set<string>();
@@ -537,110 +439,101 @@ const SearchMap: React.FC<SearchMapProps> = ({
     } as MapboxGL.SymbolLayerStyle;
   }, [canUseLabelFeatureState, restaurantLabelStyle]);
 
-  React.useEffect(() => {
-    markerRenderCountRef.current = markerRenderCount;
-  }, [markerRenderCount]);
-
-  React.useEffect(() => {
-    if (shouldDisableMarkers) {
-      if (markerMountRafRef.current != null) {
-        cancelAnimationFrame(markerMountRafRef.current);
-        markerMountRafRef.current = null;
-      }
-      if (markerMountDeferTimeoutRef.current) {
-        clearTimeout(markerMountDeferTimeoutRef.current);
-        markerMountDeferTimeoutRef.current = null;
-      }
-      markerRenderCountRef.current = 0;
-      setMarkerRenderCount(0);
-      previousMarkersRenderKeyRef.current = markersRenderKey;
-      return;
+  const restaurantLabelForceTopDebugStyle = React.useMemo(() => {
+    if (!DEBUG_FORCE_TOP_LABELS) {
+      return null;
     }
 
-    const targetCount = sortedRestaurantMarkers.length;
-    const previousKey = previousMarkersRenderKeyRef.current;
-    const isAppend =
-      typeof previousKey === 'string' &&
-      previousKey.length > 0 &&
-      markersRenderKey.startsWith(previousKey);
-    const shouldDeferMarkerMount = getShouldDeferMarkerMount?.() === true;
+    return {
+      // IMPORTANT: This debug layer must not depend on feature-state opacity. When label opacity is
+      // gated via feature-state (our normal label path), any mismatch in state updates can make
+      // debug output invisible and hide the root cause we're trying to diagnose.
+      ...restaurantLabelStyle,
+      // Only allow "top" and bypass collision so we can prove the engine can render top labels.
+      // NOTE: `textVariableAnchor` expects a plain array (not an expression).
+      textVariableAnchor: ['top'],
+      textAllowOverlap: true,
+      textIgnorePlacement: true,
+      textOptional: true,
+      textOpacity: 1,
+      textColor: '#ef4444',
+      textHaloColor: 'rgba(255, 255, 255, 0.85)',
+      textHaloWidth: 1.2,
+      textHaloBlur: 0.9,
+    } as MapboxGL.SymbolLayerStyle;
+  }, [restaurantLabelStyle]);
 
-    previousMarkersRenderKeyRef.current = markersRenderKey;
+  const stylePinsFillStyle = React.useMemo(() => {
+    return {
+      ...STYLE_PINS_FILL_STYLE,
+      // NOTE: `iconColor` only tints SDF icons. If `pinFillAsset` isn't SDF, this will no-op and
+      // we’ll need either per-color assets or a different composition (e.g. circles).
+      iconColor: [
+        'case',
+        ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
+        PRIMARY_COLOR,
+        ['get', 'pinColor'],
+      ],
+    } as MapboxGL.SymbolLayerStyle;
+  }, [selectedRestaurantId]);
 
-    if (markerMountRafRef.current != null) {
-      cancelAnimationFrame(markerMountRafRef.current);
-      markerMountRafRef.current = null;
+  const stylePinLayerStack = React.useMemo(() => {
+    if (!stylePinDrawOrder.length) {
+      return null;
     }
-    if (markerMountDeferTimeoutRef.current) {
-      clearTimeout(markerMountDeferTimeoutRef.current);
-      markerMountDeferTimeoutRef.current = null;
-    }
 
-    const initialCount = isAppend
-      ? Math.min(markerRenderCountRef.current, targetCount)
-      : shouldDeferMarkerMount
-      ? 0
-      : Math.min(targetCount, MARKER_MOUNT_INITIAL_BATCH);
+    // Critical: we need per-pin layer stacks so overlap renders like:
+    //   shadow+base+fill+text (pin A), then shadow+base+fill+text (pin B), etc.
+    //
+    // Mapbox cannot interleave per-feature across separate layers, but it *can* interleave by
+    // layer order. Creating a layer stack per pin guarantees perfect interleaving even when
+    // multiple pins share the same rank.
+    return stylePinDrawOrder.flatMap((entry) => {
+      const stackSuffix = toSafeLayerIdPart(entry.markerKey);
+      const featureFilter = ['==', ['id'], entry.markerKey] as const;
+      return [
+        <MapboxGL.SymbolLayer
+          key={`shadow-${entry.markerKey}`}
+          id={`restaurant-style-pins-shadow-${stackSuffix}`}
+          style={STYLE_PINS_SHADOW_STYLE}
+          filter={featureFilter}
+        />,
+        <MapboxGL.SymbolLayer
+          key={`base-${entry.markerKey}`}
+          id={`restaurant-style-pins-base-${stackSuffix}`}
+          style={STYLE_PINS_OUTLINE_STYLE}
+          filter={featureFilter}
+        />,
+        <MapboxGL.SymbolLayer
+          key={`fill-${entry.markerKey}`}
+          id={`restaurant-style-pins-fill-${stackSuffix}`}
+          style={stylePinsFillStyle}
+          filter={featureFilter}
+        />,
+        <MapboxGL.SymbolLayer
+          key={`rank-${entry.markerKey}`}
+          id={`restaurant-style-pins-rank-${stackSuffix}`}
+          style={STYLE_PINS_RANK_STYLE}
+          filter={featureFilter}
+        />,
+      ];
+    });
+  }, [stylePinDrawOrder, stylePinsFillStyle]);
 
-    if (markerRenderCountRef.current !== initialCount) {
-      markerRenderCountRef.current = initialCount;
-      setMarkerRenderCount(initialCount);
-    }
-
-    if (markerRenderCountRef.current >= targetCount) {
-      return;
-    }
-
-    const tick = () => {
-      if (getShouldDeferMarkerMount?.() === true) {
-        if (markerMountDeferTimeoutRef.current) {
-          return;
-        }
-        markerMountDeferTimeoutRef.current = setTimeout(() => {
-          markerMountDeferTimeoutRef.current = null;
-          tick();
-        }, MARKER_MOUNT_DEFER_CHECK_MS);
+  const handleStylePinPress = React.useCallback(
+    (event: OnPressEvent) => {
+      const feature = event?.features?.[0];
+      const restaurantId = feature?.properties?.restaurantId;
+      if (typeof restaurantId !== 'string') {
         return;
       }
-      const nextCount = Math.min(
-        targetCount,
-        markerRenderCountRef.current + MARKER_MOUNT_BATCH_SIZE
-      );
-      if (nextCount === markerRenderCountRef.current) {
-        markerMountRafRef.current = null;
-        return;
-      }
-      markerRenderCountRef.current = nextCount;
-      setMarkerRenderCount(nextCount);
-      if (nextCount < targetCount) {
-        markerMountRafRef.current = requestAnimationFrame(tick);
-      } else {
-        markerMountRafRef.current = null;
-      }
-    };
-
-    markerMountRafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (markerMountRafRef.current != null) {
-        cancelAnimationFrame(markerMountRafRef.current);
-        markerMountRafRef.current = null;
-      }
-      if (markerMountDeferTimeoutRef.current) {
-        clearTimeout(markerMountDeferTimeoutRef.current);
-        markerMountDeferTimeoutRef.current = null;
-      }
-    };
-  }, [
-    getShouldDeferMarkerMount,
-    markersRenderKey,
-    shouldDisableMarkers,
-    sortedRestaurantMarkers.length,
-  ]);
+      onMarkerPress?.(restaurantId);
+    },
+    [onMarkerPress]
+  );
 
   React.useEffect(() => {
     if (shouldAnimateMarkerReveal && !previousShouldAnimateMarkerRevealRef.current) {
-      markerRevealRegistryRef.current.clear();
       labelRevealRegistryRef.current.clear();
     }
     previousShouldAnimateMarkerRevealRef.current = shouldAnimateMarkerReveal;
@@ -675,15 +568,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
       return { width, height };
     });
-  }, []);
-
-  const getIsFirstMarkerReveal = React.useCallback((markerKey: string) => {
-    const registry = markerRevealRegistryRef.current;
-    const isFirstReveal = !registry.has(markerKey);
-    if (isFirstReveal) {
-      registry.add(markerKey);
-    }
-    return isFirstReveal;
   }, []);
 
   const getIsFirstLabelReveal = React.useCallback((markerKey: string) => {
@@ -993,50 +877,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onTouchEnd?.();
   }, [onTouchEnd]);
 
-  const resolvedMarkerRenderCount = React.useMemo(() => {
-    const targetCount = sortedRestaurantMarkers.length;
-    if (targetCount === 0) {
-      return 0;
-    }
-    if (shouldDisableMarkers) {
-      return 0;
-    }
-
-    const previousKey = previousMarkersRenderKeyRef.current;
-    const isRenderKeyStale = previousKey !== markersRenderKey;
-    if (!isRenderKeyStale) {
-      return Math.min(markerRenderCount, targetCount);
-    }
-
-    const isAppend =
-      typeof previousKey === 'string' &&
-      previousKey.length > 0 &&
-      markersRenderKey.startsWith(previousKey);
-    if (isAppend) {
-      return Math.min(markerRenderCount, targetCount);
-    }
-    if (getShouldDeferMarkerMount?.() === true) {
-      return 0;
-    }
-    return Math.min(targetCount, MARKER_MOUNT_INITIAL_BATCH);
-  }, [
-    getShouldDeferMarkerMount,
-    markerRenderCount,
-    markersRenderKey,
-    shouldDisableMarkers,
-    sortedRestaurantMarkers.length,
-  ]);
-
   const renderedMarkerMetaByKey = React.useMemo(() => {
     const revealChunk = Math.max(1, markerRevealChunk);
     const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
     const meta = new Map<string, { enterDelayMs: number }>();
 
-    for (
-      let index = 0;
-      index < Math.min(resolvedMarkerRenderCount, sortedRestaurantMarkers.length);
-      index++
-    ) {
+    for (let index = 0; index < sortedRestaurantMarkers.length; index++) {
       const feature = sortedRestaurantMarkers[index];
       const markerKey = buildMarkerKey(feature);
       const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
@@ -1049,7 +895,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     buildMarkerKey,
     markerRevealChunk,
     markerRevealStaggerMs,
-    resolvedMarkerRenderCount,
     sortedRestaurantMarkers,
   ]);
 
@@ -1141,6 +986,19 @@ const SearchMap: React.FC<SearchMapProps> = ({
         onDidFailLoadingMap={handleMapLoadError}
         onDidFailLoadingStyle={handleMapLoadError}
       >
+        {USE_STYLE_LAYER_PINS ? (
+          <MapboxGL.Images
+            images={{
+              [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
+              // Used only for the shadow layer (tinted + translated). Keep the outline itself as
+              // a non-SDF image so we preserve the original asset as-is.
+              [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
+              // `iconColor` only applies to SDF images. Our RN MarkerView path relies on `tintColor`,
+              // so we mark the fill as SDF here to enable color tinting via `SymbolLayer.iconColor`.
+              [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
+            }}
+          />
+        ) : null}
         <MapboxGL.Camera
           ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
@@ -1164,41 +1022,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
             </MapboxGL.ShapeSource>
           </React.Profiler>
         ) : null}
-        {!shouldDisableMarkers && sortedRestaurantMarkers.length ? (
-          <React.Profiler id="SearchMapMarkers" onRender={profilerCallback}>
-            <React.Fragment>
-              {sortedRestaurantMarkers.slice(0, resolvedMarkerRenderCount).map((feature, index) => {
-                const coordinates = feature.geometry.coordinates as [number, number];
-                const markerKey = buildMarkerKey(feature);
-                const zIndex = getMarkerZIndex(feature.properties.rank);
-                const revealChunk = Math.max(1, markerRevealChunk);
-                const revealStaggerMs = Math.max(0, markerRevealStaggerMs);
-                const withinChunkIndex = revealChunk > 1 ? index % revealChunk : 0;
-                const enterDelayMs = withinChunkIndex * revealStaggerMs;
-                const isSelected = selectedRestaurantId === feature.properties.restaurantId;
-                const isMarkerVisible = visibleMarkerKeys.has(markerKey);
-                return (
-                  <MarkerItem
-                    key={markerKey}
-                    markerKey={markerKey}
-                    restaurantId={feature.properties.restaurantId}
-                    coordinate={coordinates}
-                    zIndex={zIndex}
-                    rank={feature.properties.rank}
-                    pinColor={feature.properties.pinColor}
-                    isVisible={isMarkerVisible}
-                    isSelected={isSelected}
-                    onMarkerPress={onMarkerPress}
-                    getIsFirstReveal={getIsFirstMarkerReveal}
-                    getIsMapMoving={getIsMapMoving}
-                    shouldAnimateOnMount={shouldAnimateMarkerReveal}
-                    enterDelayMs={enterDelayMs}
-                    enterDurationMs={markerRevealAnimMs}
-                  />
-                );
-              })}
-            </React.Fragment>
-          </React.Profiler>
+        {USE_STYLE_LAYER_PINS && !shouldDisableMarkers && sortedRestaurantMarkers.length ? (
+          <MapboxGL.ShapeSource
+            id={STYLE_PINS_SOURCE_ID}
+            shape={restaurantLabelFeaturesWithIds}
+            onPress={handleStylePinPress}
+          >
+            {DEBUG_STYLE_PINS_COLLISION ? (
+              <MapboxGL.CircleLayer
+                id="restaurant-style-pins-collision-debug"
+                style={DEBUG_STYLE_PINS_COLLISION_STYLE}
+              />
+            ) : null}
+            {stylePinLayerStack}
+          </MapboxGL.ShapeSource>
         ) : null}
         {shouldRenderLabels ? (
           <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
@@ -1208,8 +1045,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
             >
               <MapboxGL.SymbolLayer
                 id="restaurant-labels"
+                sourceID={RESTAURANT_LABEL_SOURCE_ID}
                 style={restaurantLabelStyleWithOpacity}
               />
+              {DEBUG_FORCE_TOP_LABELS && restaurantLabelForceTopDebugStyle ? (
+                <MapboxGL.SymbolLayer
+                  id="restaurant-labels-force-top-debug"
+                  sourceID={RESTAURANT_LABEL_SOURCE_ID}
+                  style={restaurantLabelForceTopDebugStyle}
+                />
+              ) : null}
             </MapboxGL.ShapeSource>
           </React.Profiler>
         ) : null}
@@ -1370,9 +1215,6 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.onTouchEnd !== next.onTouchEnd) {
-    return false;
-  }
-  if (prev.getShouldDeferMarkerMount !== next.getShouldDeferMarkerMount) {
     return false;
   }
   if (prev.onCameraChanged !== next.onCameraChanged) {
