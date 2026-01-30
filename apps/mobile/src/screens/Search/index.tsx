@@ -122,7 +122,6 @@ import {
   DEFAULT_SEGMENT,
   LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
-  LABEL_TRANSLATE_Y,
   LOCATION_STORAGE_KEY,
   MINIMUM_VOTES_FILTER,
   NAV_TOP_PADDING,
@@ -707,12 +706,11 @@ const SearchScreen: React.FC = () => {
       // `textVariableAnchor` must be a plain array (not an expression). Mapbox uses this list (in
       // order) to try alternative placements when labels collide.
       //
-      // We prefer "bottom" as the intuitive default, but allow other sides when needed.
+      // Note: SearchMap may choose a per-feature anchor by filtering into separate layers, but we
+      // keep the default list here as the "baseline" style.
       textVariableAnchor: ['bottom', 'right', 'top', 'left'],
       textAnchor: 'center',
       textRadialOffset: radialEm,
-      textTranslate: [0, LABEL_TRANSLATE_Y],
-      textTranslateAnchor: 'viewport',
       textJustify: 'auto',
       textAllowOverlap: false,
       textOptional: false,
@@ -723,10 +721,11 @@ const SearchScreen: React.FC = () => {
       textHaloColor: 'rgba(255, 255, 255, 0.9)',
       textHaloWidth: 1.2,
       textHaloBlur: 0.9,
-      textOffset: [0, 0],
       symbolZOrder: 'viewport-y',
     };
-  }, []);
+    // Depend on the exported geometry constants so Fast Refresh picks up tuning changes without
+    // requiring a full app reload.
+  }, [LABEL_RADIAL_OFFSET_EM, LABEL_TEXT_SIZE]);
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);

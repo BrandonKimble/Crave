@@ -60,6 +60,9 @@ const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
   1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98),
 ];
 const STYLE_PIN_LAYER_ID_SAFE_MAX_LEN = 120;
+// Debug: render a single combined SymbolLayer (pin base + label text) so collision happens in the
+// same placement pass, exactly as Mapbox docs assume.
+const USE_COMBINED_PIN_LABEL_LAYER = false;
 
 // `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
 // These values are derived to match the existing RN pin layout in `styles.ts` + `constants/search.ts`.
@@ -172,7 +175,7 @@ const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
   iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
   iconAnchor: 'bottom',
-  symbolZOrder: 'viewport-y',
+  symbolZOrder: 'source',
   iconAllowOverlap: true,
   // Visual-only: label placement is handled by the label layer itself (see `restaurantLabelStyle`).
   iconIgnorePlacement: true,
@@ -183,7 +186,7 @@ const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   // `pin-shadow.png` includes padding so blur isn't clipped; keep size aligned with the base pin.
   iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
   iconAnchor: 'bottom',
-  symbolZOrder: 'viewport-y',
+  symbolZOrder: 'source',
   iconAllowOverlap: true,
   // Shadow should never affect placement/collision decisions for labels.
   iconIgnorePlacement: true,
@@ -200,14 +203,14 @@ const STYLE_PINS_FILL_STYLE: MapboxGL.SymbolLayerStyle = {
   iconAnchor: 'bottom',
   // Match `styles.pinFill` layout (positioned within the base image bounds).
   iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX],
-  symbolZOrder: 'viewport-y',
+  symbolZOrder: 'source',
   iconAllowOverlap: true,
   // Fill should never affect placement/collision decisions for labels (only the base does).
   iconIgnorePlacement: true,
 } as MapboxGL.SymbolLayerStyle;
 
 const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
-  symbolZOrder: 'viewport-y',
+  symbolZOrder: 'source',
   textField: ['to-string', ['get', 'rank']],
   // Match `styles.pinRank` (white, bold-ish).
   textSize: PIN_RANK_FONT_SIZE,
@@ -219,6 +222,32 @@ const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
   // Match `styles.pinRankWrapper` layout (centered on the pin fill region).
   textTranslate: [0, STYLE_PINS_RANK_TRANSLATE_Y],
   textTranslateAnchor: 'viewport',
+} as MapboxGL.SymbolLayerStyle;
+
+// Invisible collision obstacle used to make label placement respect pin bases.
+//
+// This layer creates a collision box at each pin coordinate using the base silhouette, but renders
+// it fully transparent.
+//
+// IMPORTANT (layer ordering): Mapbox symbol placement gives priority to *higher* layers. We insert
+// this collision layer *above* the real label layer so pin obstacles reserve collision space before
+// labels are evaluated.
+const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
+  iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
+  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+  iconAnchor: 'bottom',
+  symbolZOrder: 'source',
+  // Always place the obstacle, even when pins overlap each other.
+  iconAllowOverlap: true,
+  // IMPORTANT: must be false so this layer reserves collision space for subsequent symbols.
+  iconIgnorePlacement: false,
+  // Keep it invisible while still participating in placement.
+  //
+  // NOTE: We intentionally keep this non-zero. On cold starts / RN reloads, Mapbox can sometimes
+  // skip placement/collision for symbols that are effectively "not drawable" (missing image,
+  // fully-transparent, etc). We pair this with a one-time post-style-load re-mount to guarantee
+  // collision is initialized deterministically.
+  iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
 const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
@@ -335,6 +364,50 @@ const SearchMap: React.FC<SearchMapProps> = ({
     new Map()
   );
   const previousVisibleLabelIdsRef = React.useRef<Set<string>>(new Set());
+  const [labelPlacementEpoch, setLabelPlacementEpoch] = React.useState(0);
+  const labelPlacementBootstrapTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const labelPlacementBootstrapKeyRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    // Style reloads (and RN "Reload") can change the ordering/timing of when images + layers are
+    // registered with the native Mapbox style. If our (invisible) collision layer is created
+    // before its icon is ready, it may not participate in the initial placement pass.
+    //
+    // We replicate the "warm state" behavior you can accidentally get via Fast Refresh (undo/redo)
+    // by forcing a one-time, post-style-load re-mount of the label layers.
+    if (!shouldRenderLabels) {
+      labelPlacementBootstrapKeyRef.current = null;
+      if (labelPlacementBootstrapTimeoutRef.current) {
+        clearTimeout(labelPlacementBootstrapTimeoutRef.current);
+        labelPlacementBootstrapTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const bootstrapKey = `${styleURL}::${markersRenderKey}`;
+    if (labelPlacementBootstrapKeyRef.current === bootstrapKey) {
+      return;
+    }
+    labelPlacementBootstrapKeyRef.current = bootstrapKey;
+
+    // First bump: forces a re-layout on initial label render.
+    setLabelPlacementEpoch((value) => value + 1);
+
+    // Second bump: gives Mapbox a moment to register images, then forces another placement pass.
+    labelPlacementBootstrapTimeoutRef.current = setTimeout(() => {
+      setLabelPlacementEpoch((value) => value + 1);
+      labelPlacementBootstrapTimeoutRef.current = null;
+    }, 250);
+
+    return () => {
+      if (labelPlacementBootstrapTimeoutRef.current) {
+        clearTimeout(labelPlacementBootstrapTimeoutRef.current);
+        labelPlacementBootstrapTimeoutRef.current = null;
+      }
+    };
+  }, [markersRenderKey, shouldRenderLabels, styleURL]);
 
   const markerMercatorEntries = React.useMemo(
     () =>
@@ -441,6 +514,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
     } as MapboxGL.SymbolLayerStyle;
   }, [canUseLabelFeatureState, restaurantLabelStyle]);
 
+  const restaurantLabelWithPinStyleWithOpacity = React.useMemo(() => {
+    // Combine pin + label into a single SymbolLayer so collision behaves like Mapbox expects:
+    // the icon is the obstacle, and the label chooses an anchor based on available space.
+    return {
+      ...restaurantLabelStyleWithOpacity,
+      iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
+      iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+      iconAnchor: 'bottom',
+      // Make the icon act as an obstacle (and always place it so the obstacle exists).
+      iconIgnorePlacement: false,
+      iconAllowOverlap: true,
+      // Keep label placement native (no overlap).
+      textAllowOverlap: false,
+      textIgnorePlacement: false,
+    } as MapboxGL.SymbolLayerStyle;
+  }, [restaurantLabelStyleWithOpacity]);
+
   const restaurantLabelForceTopDebugStyle = React.useMemo(() => {
     if (!DEBUG_FORCE_TOP_LABELS) {
       return null;
@@ -464,6 +554,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textHaloBlur: 0.9,
     } as MapboxGL.SymbolLayerStyle;
   }, [restaurantLabelStyle]);
+
+  const restaurantLabelLayerId = USE_COMBINED_PIN_LABEL_LAYER
+    ? 'restaurant-labels-with-pin'
+    : 'restaurant-labels';
+  const restaurantLabelLayerKey = `${restaurantLabelLayerId}-${labelPlacementEpoch}`;
+  const restaurantLabelPinCollisionLayerId = 'restaurant-labels-pin-collision';
+  const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${labelPlacementEpoch}`;
 
   const stylePinsFillStyle = React.useMemo(() => {
     return {
@@ -1041,10 +1138,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
               shape={restaurantLabelFeaturesWithIds}
             >
               <MapboxGL.SymbolLayer
-                id="restaurant-labels"
+                key={restaurantLabelLayerKey}
+                id={restaurantLabelLayerId}
                 sourceID={RESTAURANT_LABEL_SOURCE_ID}
-                style={restaurantLabelStyleWithOpacity}
+                style={
+                  USE_COMBINED_PIN_LABEL_LAYER
+                    ? restaurantLabelWithPinStyleWithOpacity
+                    : restaurantLabelStyleWithOpacity
+                }
               />
+              {!USE_COMBINED_PIN_LABEL_LAYER && USE_STYLE_LAYER_PINS && !shouldDisableMarkers ? (
+                <MapboxGL.SymbolLayer
+                  key={restaurantLabelPinCollisionLayerKey}
+                  id={restaurantLabelPinCollisionLayerId}
+                  sourceID={RESTAURANT_LABEL_SOURCE_ID}
+                  style={LABEL_PIN_COLLISION_STYLE}
+                />
+              ) : null}
               {DEBUG_FORCE_TOP_LABELS && restaurantLabelForceTopDebugStyle ? (
                 <MapboxGL.SymbolLayer
                   id="restaurant-labels-force-top-debug"

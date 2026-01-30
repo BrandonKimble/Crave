@@ -36,11 +36,8 @@ export const LABEL_TEXT_SIZE = FONT_SIZES.caption;
 export const PIN_MARKER_SIZE = 28;
 export const PIN_MARKER_SCALE = 1;
 export const PIN_MARKER_RENDER_SIZE = PIN_MARKER_SIZE * PIN_MARKER_SCALE;
-// Label placement baseline (pre SymbolLayer-pin collision obstacle tuning).
-// We preserve the *effective* bottom placement by compensating `textTranslate` and `textRadialOffset`
-// together (see exports below).
+// Label placement baseline (natural Mapbox symbol placement).
 const LABEL_RADIAL_OFFSET_EM_BASELINE = 1.3;
-const LABEL_TRANSLATE_Y_BASELINE = -PIN_MARKER_RENDER_SIZE * 0.45;
 export const PIN_BASE_WIDTH = 96;
 export const PIN_BASE_HEIGHT = 96;
 export const PIN_FILL_WIDTH = 80;
@@ -64,16 +61,9 @@ export const PIN_FILL_CENTER_Y = PIN_FILL_TOP_OFFSET + PIN_FILL_RENDER_HEIGHT / 
 
 // Label placement:
 // - Center left/right labels on the pin fill (not the full base).
-// - Keep the bottom label at the same effective distance as the baseline.
-//
-// Approximation note: Mapbox interprets `textRadialOffset` in em (scaled by text size) and applies
-// it per-anchor; `textTranslate` is a viewport-pixel shift applied after. By shifting translate up
-// to the pin-fill center, then increasing radialOffset by the same pixel delta (in em units), we
-// keep bottom unchanged while making `top` more likely to clear the pin obstacle.
-export const LABEL_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
-export const LABEL_RADIAL_OFFSET_EM =
-  LABEL_RADIAL_OFFSET_EM_BASELINE +
-  (LABEL_TRANSLATE_Y_BASELINE - LABEL_TRANSLATE_Y) / LABEL_TEXT_SIZE;
+// - Use Mapbox-native placement (`textVariableAnchor` + `textRadialOffset`) so collision decisions
+//   reflect what’s rendered on screen.
+export const LABEL_RADIAL_OFFSET_EM = LABEL_RADIAL_OFFSET_EM_BASELINE;
 
 // Rank text sizing - use pin fill dimensions for container
 export const PIN_RANK_FONT_SIZE = FONT_SIZES.body; // 14
