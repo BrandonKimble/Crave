@@ -2292,17 +2292,14 @@ const SearchScreen: React.FC = () => {
     !hasSearchChromeRawQuery;
   const shouldRenderSearchShortcuts =
     (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
-  const {
-    progress: searchShortcutsFadeProgress,
-    isVisible: shouldRenderSearchShortcutsRow,
-  } = useTransitionDriver({
-    enabled: true,
-    target: shouldRenderSearchShortcuts ? 1 : 0,
-    getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-    getEasing: (target) =>
-      target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-    resetOnShow: true,
-  });
+  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
+    useTransitionDriver({
+      enabled: true,
+      target: shouldRenderSearchShortcuts ? 1 : 0,
+      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+      getEasing: (target) => (target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic)),
+      resetOnShow: true,
+    });
   const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
   const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
@@ -7563,86 +7560,78 @@ const SearchScreen: React.FC = () => {
                     });
                   }}
                 >
-                    <AnimatedPressable
-                      onPress={handleBestRestaurantsHere}
-                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                      accessibilityRole="button"
-                      accessibilityLabel="Show best restaurants here"
-                      hitSlop={8}
-                      onLayout={({ nativeEvent: { layout } }) => {
-                        setSearchShortcutChipFrames((prev) => {
-                          const prevLayout = prev.restaurants;
-                          if (
-                            prevLayout &&
-                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                            Math.abs(prevLayout.height - layout.height) < 0.5
-                          ) {
-                            return prev;
-                          }
-                          const next = { ...prev, restaurants: layout };
-                          searchShortcutsLayoutCacheRef.current.chipFrames = {
-                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-                            restaurants: layout,
-                          };
-                          return next;
-                        });
-                      }}
+                  <AnimatedPressable
+                    onPress={handleBestRestaurantsHere}
+                    style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Show best restaurants here"
+                    hitSlop={8}
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      setSearchShortcutChipFrames((prev) => {
+                        const prevLayout = prev.restaurants;
+                        if (
+                          prevLayout &&
+                          Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                          Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                          Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                          Math.abs(prevLayout.height - layout.height) < 0.5
+                        ) {
+                          return prev;
+                        }
+                        const next = { ...prev, restaurants: layout };
+                        searchShortcutsLayoutCacheRef.current.chipFrames = {
+                          ...searchShortcutsLayoutCacheRef.current.chipFrames,
+                          restaurants: layout,
+                        };
+                        return next;
+                      });
+                    }}
+                  >
+                    <Reanimated.View
+                      style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
                     >
-                      <Reanimated.View
-                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-                      >
-                        <Store size={18} color="#0f172a" strokeWidth={2} />
-                        <Text
-                          variant="body"
-                          weight="semibold"
-                          style={styles.searchShortcutChipText}
-                        >
-                          Best restaurants
-                        </Text>
-                      </Reanimated.View>
-                    </AnimatedPressable>
-                    <AnimatedPressable
-                      onPress={handleBestDishesHere}
-                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                      accessibilityRole="button"
-                      accessibilityLabel="Show best dishes here"
-                      hitSlop={8}
-                      onLayout={({ nativeEvent: { layout } }) => {
-                        setSearchShortcutChipFrames((prev) => {
-                          const prevLayout = prev.dishes;
-                          if (
-                            prevLayout &&
-                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                            Math.abs(prevLayout.height - layout.height) < 0.5
-                          ) {
-                            return prev;
-                          }
-                          const next = { ...prev, dishes: layout };
-                          searchShortcutsLayoutCacheRef.current.chipFrames = {
-                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-                            dishes: layout,
-                          };
-                          return next;
-                        });
-                      }}
+                      <Store size={18} color="#0f172a" strokeWidth={2} />
+                      <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                        Best restaurants
+                      </Text>
+                    </Reanimated.View>
+                  </AnimatedPressable>
+                  <AnimatedPressable
+                    onPress={handleBestDishesHere}
+                    style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Show best dishes here"
+                    hitSlop={8}
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      setSearchShortcutChipFrames((prev) => {
+                        const prevLayout = prev.dishes;
+                        if (
+                          prevLayout &&
+                          Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                          Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                          Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                          Math.abs(prevLayout.height - layout.height) < 0.5
+                        ) {
+                          return prev;
+                        }
+                        const next = { ...prev, dishes: layout };
+                        searchShortcutsLayoutCacheRef.current.chipFrames = {
+                          ...searchShortcutsLayoutCacheRef.current.chipFrames,
+                          dishes: layout,
+                        };
+                        return next;
+                      });
+                    }}
+                  >
+                    <Reanimated.View
+                      style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
                     >
-                      <Reanimated.View
-                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-                      >
-                        <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-                        <Text
-                          variant="body"
-                          weight="semibold"
-                          style={styles.searchShortcutChipText}
-                        >
-                          Best dishes
-                        </Text>
-                      </Reanimated.View>
-                    </AnimatedPressable>
+                      <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+                      <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
+                        Best dishes
+                      </Text>
+                    </Reanimated.View>
+                  </AnimatedPressable>
                 </Reanimated.View>
                 <Reanimated.View
                   pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
