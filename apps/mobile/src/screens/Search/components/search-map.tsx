@@ -165,7 +165,12 @@ type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
 const LABEL_CANDIDATES: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
 // Placement preference (highest -> lowest): bottom, right, top, left.
 // Mapbox symbol placement gives priority to higher layers, so we render candidates in reverse.
-const LABEL_CANDIDATE_LAYER_ORDER: ReadonlyArray<LabelCandidate> = ['left', 'top', 'right', 'bottom'];
+const LABEL_CANDIDATE_LAYER_ORDER: ReadonlyArray<LabelCandidate> = [
+  'left',
+  'top',
+  'right',
+  'bottom',
+];
 
 // Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
 // once we shift the ring upward to align with the pin fill centerline.
@@ -465,7 +470,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
     if (!restaurantLabelFeaturesWithIds.features.length) {
-      return restaurantLabelFeaturesWithIds as FeatureCollection<Point, RestaurantFeatureProperties>;
+      return restaurantLabelFeaturesWithIds as FeatureCollection<
+        Point,
+        RestaurantFeatureProperties
+      >;
     }
 
     const nextFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
@@ -596,7 +604,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const labelRadialYEm = React.useMemo(() => {
     const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
-    const radialPx = Math.max(baselineRadialPx, labelPinTipToFillCenterPx + LABEL_MIN_BOTTOM_GAP_PX);
+    const radialPx = Math.max(
+      baselineRadialPx,
+      labelPinTipToFillCenterPx + LABEL_MIN_BOTTOM_GAP_PX
+    );
     return radialPx / labelTextSize;
   }, [labelPinTipToFillCenterPx, labelTextSize]);
 
@@ -652,7 +663,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
         textOffset: [-labelRadialXEm, -labelUpShiftEm],
       },
     } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
-  }, [labelRadialTopEm, labelRadialXEm, labelRadialYEm, labelUpShiftEm, restaurantLabelStyleWithOpacity]);
+  }, [
+    labelRadialTopEm,
+    labelRadialXEm,
+    labelRadialYEm,
+    labelUpShiftEm,
+    restaurantLabelStyleWithOpacity,
+  ]);
 
   const restaurantLabelForceTopDebugStyle = React.useMemo(() => {
     if (!DEBUG_FORCE_TOP_LABELS) {

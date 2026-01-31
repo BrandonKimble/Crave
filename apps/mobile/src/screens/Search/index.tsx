@@ -1226,17 +1226,17 @@ const SearchScreen: React.FC = () => {
     });
   }, [requestDockedPollsRestore, rootOverlay, setTabOverlaySnapRequest]);
   const pollOverlayParams = overlayParams.polls;
-	  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
-	    {
-	      enabled: true,
-	      active: isSuggestionPanelActive,
-	      showMs: SUGGESTION_PANEL_FADE_MS,
-	      hideMs: SUGGESTION_PANEL_FADE_MS,
-	      minMs: SUGGESTION_PANEL_MIN_MS,
-	      maxMs: SUGGESTION_PANEL_MAX_MS,
-	      delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
-	    }
-	  );
+  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
+    {
+      enabled: true,
+      active: isSuggestionPanelActive,
+      showMs: SUGGESTION_PANEL_FADE_MS,
+      hideMs: SUGGESTION_PANEL_FADE_MS,
+      minMs: SUGGESTION_PANEL_MIN_MS,
+      maxMs: SUGGESTION_PANEL_MAX_MS,
+      delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
+    }
+  );
   const isSuggestionOverlayVisible = isSuggestionPanelActive || isSuggestionPanelVisible;
   const searchBarTop = React.useMemo(() => {
     const rawTop = searchBarFrame
@@ -2282,14 +2282,14 @@ const SearchScreen: React.FC = () => {
     !hasSearchChromeRawQuery;
   const shouldRenderSearchShortcuts =
     (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
-	  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
-	    useTransitionDriver({
-	      enabled: true,
-	      target: shouldRenderSearchShortcuts ? 1 : 0,
-	      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-	      getEasing: () => Easing.linear,
-	      resetOnShowKey: searchShortcutsFadeResetKey,
-	    });
+  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
+    useTransitionDriver({
+      enabled: true,
+      target: shouldRenderSearchShortcuts ? 1 : 0,
+      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+      getEasing: () => Easing.linear,
+      resetOnShowKey: searchShortcutsFadeResetKey,
+    });
   const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
   const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
@@ -4977,28 +4977,28 @@ const SearchScreen: React.FC = () => {
         });
       }
     },
-	    [
-	      cancelActiveSearchRequest,
-	      cancelAutocomplete,
-	      hidePanel,
-	      isRestaurantOverlayVisible,
-	      isSearchSessionActive,
-	      results,
-	      resetSheetToHidden,
-	      resetFilters,
-	      resetFocusedMapState,
-	      resetMapMoveFlag,
+    [
+      cancelActiveSearchRequest,
+      cancelAutocomplete,
+      hidePanel,
+      isRestaurantOverlayVisible,
+      isSearchSessionActive,
+      results,
+      resetSheetToHidden,
+      resetFilters,
+      resetFocusedMapState,
+      resetMapMoveFlag,
       setRestaurantOnlyIntent,
-	      setIsDockedPollsDismissed,
-	      setIsSearchSessionActive,
-	      setSearchMode,
-	      setSearchTransitionVariant,
-	      setSearchShortcutsFadeResetKey,
-	      scrollResultsToTop,
-	      shortcutContentFadeMode,
-	      submittedQuery,
-	    ]
-	  );
+      setIsDockedPollsDismissed,
+      setIsSearchSessionActive,
+      setSearchMode,
+      setSearchTransitionVariant,
+      setSearchShortcutsFadeResetKey,
+      scrollResultsToTop,
+      shortcutContentFadeMode,
+      submittedQuery,
+    ]
+  );
   clearSearchStateRef.current = clearSearchState;
 
   const clearTypedQuery = React.useCallback(() => {

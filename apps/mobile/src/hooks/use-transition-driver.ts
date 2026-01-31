@@ -45,10 +45,7 @@ export const useTransitionDriver = ({
       }
       if (nextTarget === 1) {
         setIsVisible(true);
-        if (
-          typeof resetOnShowKey === 'number' &&
-          resetOnShowKey !== lastResetKeyRef.current
-        ) {
+        if (typeof resetOnShowKey === 'number' && resetOnShowKey !== lastResetKeyRef.current) {
           lastResetKeyRef.current = resetOnShowKey;
           progress.value = 0;
         }
