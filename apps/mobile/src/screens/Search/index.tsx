@@ -123,7 +123,6 @@ import {
   CAMERA_STORAGE_KEY,
   CONTENT_HORIZONTAL_PADDING,
   DEFAULT_SEGMENT,
-  LABEL_RADIAL_OFFSET_EM,
   LABEL_TEXT_SIZE,
   LOCATION_STORAGE_KEY,
   MINIMUM_VOTES_FILTER,
@@ -201,8 +200,7 @@ const SEARCH_BAR_BASE_ELEVATION = SEARCH_BAR_SHADOW.elevation ?? 0;
 const SEARCH_SHORTCUT_BASE_SHADOW_OPACITY = SEARCH_SHORTCUT_SHADOW.shadowOpacity ?? 0;
 const SEARCH_SHORTCUT_BASE_ELEVATION = SEARCH_SHORTCUT_SHADOW.elevation ?? 0;
 const SEARCH_SUGGESTION_EMPTY_FILL_HEIGHT = 16;
-const SUGGESTION_PANEL_FADE_IN_MS = 200;
-const SUGGESTION_PANEL_FADE_OUT_MS = 180;
+const SUGGESTION_PANEL_FADE_MS = 200;
 const SUGGESTION_PANEL_LAYOUT_HOLD_MS = 200;
 const SUGGESTION_PANEL_KEYBOARD_DELAY_MS = 0;
 const SUGGESTION_PANEL_MIN_MS = 160;
@@ -686,7 +684,6 @@ const SearchScreen: React.FC = () => {
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
-    const radialEm = LABEL_RADIAL_OFFSET_EM;
     const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
     return {
       // For dish pins: show dish name + restaurant name on two lines
@@ -707,14 +704,6 @@ const SearchScreen: React.FC = () => {
         // Restaurant pin: single line
         ['coalesce', ['get', 'restaurantName'], ''],
       ],
-      // `textVariableAnchor` must be a plain array (not an expression). Mapbox uses this list (in
-      // order) to try alternative placements when labels collide.
-      //
-      // Note: SearchMap may choose a per-feature anchor by filtering into separate layers, but we
-      // keep the default list here as the "baseline" style.
-      textVariableAnchor: ['bottom', 'right', 'top', 'left'],
-      textAnchor: 'center',
-      textRadialOffset: radialEm,
       textJustify: 'auto',
       textAllowOverlap: false,
       textOptional: false,
@@ -729,7 +718,7 @@ const SearchScreen: React.FC = () => {
     };
     // Depend on the exported geometry constants so Fast Refresh picks up tuning changes without
     // requiring a full app reload.
-  }, [LABEL_RADIAL_OFFSET_EM, LABEL_TEXT_SIZE]);
+  }, [LABEL_TEXT_SIZE]);
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);
@@ -765,6 +754,7 @@ const SearchScreen: React.FC = () => {
   const [searchShortcutsFrame, setSearchShortcutsFrame] = React.useState<LayoutRectangle | null>(
     null
   );
+  const [searchShortcutsFadeResetKey, setSearchShortcutsFadeResetKey] = React.useState(0);
   const [searchShortcutChipFrames, setSearchShortcutChipFrames] = React.useState<
     Record<string, LayoutRectangle>
   >({});
@@ -1236,17 +1226,17 @@ const SearchScreen: React.FC = () => {
     });
   }, [requestDockedPollsRestore, rootOverlay, setTabOverlaySnapRequest]);
   const pollOverlayParams = overlayParams.polls;
-  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
-    {
-      enabled: true,
-      active: isSuggestionPanelActive,
-      showMs: SUGGESTION_PANEL_FADE_IN_MS,
-      hideMs: SUGGESTION_PANEL_FADE_OUT_MS,
-      minMs: SUGGESTION_PANEL_MIN_MS,
-      maxMs: SUGGESTION_PANEL_MAX_MS,
-      delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
-    }
-  );
+	  const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
+	    {
+	      enabled: true,
+	      active: isSuggestionPanelActive,
+	      showMs: SUGGESTION_PANEL_FADE_MS,
+	      hideMs: SUGGESTION_PANEL_FADE_MS,
+	      minMs: SUGGESTION_PANEL_MIN_MS,
+	      maxMs: SUGGESTION_PANEL_MAX_MS,
+	      delayMs: SUGGESTION_PANEL_KEYBOARD_DELAY_MS,
+	    }
+	  );
   const isSuggestionOverlayVisible = isSuggestionPanelActive || isSuggestionPanelVisible;
   const searchBarTop = React.useMemo(() => {
     const rawTop = searchBarFrame
@@ -2292,14 +2282,14 @@ const SearchScreen: React.FC = () => {
     !hasSearchChromeRawQuery;
   const shouldRenderSearchShortcuts =
     (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
-  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
-    useTransitionDriver({
-      enabled: true,
-      target: shouldRenderSearchShortcuts ? 1 : 0,
-      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-      getEasing: (target) => (target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic)),
-      resetOnShow: true,
-    });
+	  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
+	    useTransitionDriver({
+	      enabled: true,
+	      target: shouldRenderSearchShortcuts ? 1 : 0,
+	      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+	      getEasing: () => Easing.linear,
+	      resetOnShowKey: searchShortcutsFadeResetKey,
+	    });
   const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
   const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
@@ -2529,9 +2519,7 @@ const SearchScreen: React.FC = () => {
     suggestionContentHeight,
     suggestionScrollMaxHeightTarget,
   ]);
-  const suggestionSpacingDuration = isSuggestionPanelActive
-    ? SUGGESTION_PANEL_FADE_IN_MS
-    : SUGGESTION_PANEL_FADE_OUT_MS;
+  const suggestionSpacingDuration = SUGGESTION_PANEL_FADE_MS;
   const suggestionSpacingEasing = isSuggestionPanelActive
     ? Easing.out(Easing.cubic)
     : Easing.in(Easing.cubic);
@@ -4910,6 +4898,9 @@ const SearchScreen: React.FC = () => {
         }
       }
       isClearingSearchRef.current = true;
+      if (isSearchSessionActive || Boolean(results) || submittedQuery.length > 0) {
+        setSearchShortcutsFadeResetKey((current) => current + 1);
+      }
       cancelActiveSearchRequest();
       cancelAutocomplete();
       if (filterDebounceRef.current) {
@@ -4986,24 +4977,28 @@ const SearchScreen: React.FC = () => {
         });
       }
     },
-    [
-      cancelActiveSearchRequest,
-      cancelAutocomplete,
-      hidePanel,
-      isRestaurantOverlayVisible,
-      resetSheetToHidden,
-      resetFilters,
-      resetFocusedMapState,
-      resetMapMoveFlag,
+	    [
+	      cancelActiveSearchRequest,
+	      cancelAutocomplete,
+	      hidePanel,
+	      isRestaurantOverlayVisible,
+	      isSearchSessionActive,
+	      results,
+	      resetSheetToHidden,
+	      resetFilters,
+	      resetFocusedMapState,
+	      resetMapMoveFlag,
       setRestaurantOnlyIntent,
-      setIsDockedPollsDismissed,
-      setIsSearchSessionActive,
-      setSearchMode,
-      setSearchTransitionVariant,
-      scrollResultsToTop,
-      shortcutContentFadeMode,
-    ]
-  );
+	      setIsDockedPollsDismissed,
+	      setIsSearchSessionActive,
+	      setSearchMode,
+	      setSearchTransitionVariant,
+	      setSearchShortcutsFadeResetKey,
+	      scrollResultsToTop,
+	      shortcutContentFadeMode,
+	      submittedQuery,
+	    ]
+	  );
   clearSearchStateRef.current = clearSearchState;
 
   const clearTypedQuery = React.useCallback(() => {

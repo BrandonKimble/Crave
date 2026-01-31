@@ -11,6 +11,8 @@ import AppBlurView from '../../../components/app-blur-view';
 import type { Coordinate } from '../../../types';
 import { logger } from '../../../utils';
 import {
+  LABEL_RADIAL_OFFSET_EM,
+  LABEL_TEXT_SIZE,
   PIN_FILL_CENTER_Y,
   PIN_FILL_RENDER_HEIGHT,
   PIN_FILL_TOP_OFFSET,
@@ -60,9 +62,6 @@ const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
   1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98),
 ];
 const STYLE_PIN_LAYER_ID_SAFE_MAX_LEN = 120;
-// Debug: render a single combined SymbolLayer (pin base + label text) so collision happens in the
-// same placement pass, exactly as Mapbox docs assume.
-const USE_COMBINED_PIN_LABEL_LAYER = false;
 
 // `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
 // These values are derived to match the existing RN pin layout in `styles.ts` + `constants/search.ts`.
@@ -112,6 +111,7 @@ export type RestaurantFeatureProperties = {
   rank: number;
   pinColor: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
+  labelCandidate?: LabelCandidate;
   // Dish-specific fields (populated when rendering dish pins)
   isDishPin?: boolean;
   dishName?: string;
@@ -151,6 +151,7 @@ const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, p
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
+const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
 const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
   circleColor: ['get', 'pinColor'],
   circleOpacity: 1,
@@ -159,6 +160,27 @@ const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
 };
 
 const LABEL_OPACITY_STEP_MS = 80;
+
+type LabelCandidate = 'bottom' | 'right' | 'top' | 'left';
+const LABEL_CANDIDATES: ReadonlyArray<LabelCandidate> = ['bottom', 'right', 'top', 'left'];
+// Placement preference (highest -> lowest): bottom, right, top, left.
+// Mapbox symbol placement gives priority to higher layers, so we render candidates in reverse.
+const LABEL_CANDIDATE_LAYER_ORDER: ReadonlyArray<LabelCandidate> = ['left', 'top', 'right', 'bottom'];
+
+// Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
+// once we shift the ring upward to align with the pin fill centerline.
+const LABEL_MIN_BOTTOM_GAP_PX = 4.01;
+const LABEL_MIN_TOP_GAP_PX = 4;
+const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 8;
+
+// Tiny icon used as a per-restaurant "mutex" so only one candidate label can place.
+const LABEL_MUTEX_ICON_SIZE = 0.03;
+// Offset the mutex icon away from the pin base collision region so it doesn't get blocked by the
+// dedicated pin-obstacle layer. This is in *source image pixels* (scaled by `iconSize`).
+const LABEL_MUTEX_ICON_OFFSET_IMAGE_PX = 1600;
+
+const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
+  `${markerKey}::label::${candidate}`;
 
 const DEBUG_STYLE_PINS_COLLISION_STYLE: MapboxGL.CircleLayerStyle = {
   circleRadius: PIN_MARKER_RENDER_SIZE * 0.6,
@@ -441,6 +463,29 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return { ...restaurantFeatures, features: nextFeatures };
   }, [buildMarkerKey, restaurantFeatures]);
 
+  const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
+    if (!restaurantLabelFeaturesWithIds.features.length) {
+      return restaurantLabelFeaturesWithIds as FeatureCollection<Point, RestaurantFeatureProperties>;
+    }
+
+    const nextFeatures: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+    for (const feature of restaurantLabelFeaturesWithIds.features) {
+      const markerKey = feature.id;
+      if (typeof markerKey !== 'string' || markerKey.length === 0) {
+        continue;
+      }
+      for (const candidate of LABEL_CANDIDATES) {
+        nextFeatures.push({
+          ...feature,
+          id: buildLabelCandidateFeatureId(markerKey, candidate),
+          properties: { ...feature.properties, labelCandidate: candidate },
+        });
+      }
+    }
+
+    return { ...restaurantLabelFeaturesWithIds, features: nextFeatures };
+  }, [restaurantLabelFeaturesWithIds]);
+
   const stylePinDrawOrder = React.useMemo(() => {
     if (!restaurantLabelFeaturesWithIds.features.length) {
       return [];
@@ -493,6 +538,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [buildMarkerKey, restaurantLabelFeaturesWithIds.features, userLocation]);
 
   const labelFeatureIdSet = React.useMemo(() => {
+    if (!restaurantLabelCandidateFeaturesWithIds.features.length) {
+      return new Set<string>();
+    }
+    const ids = restaurantLabelCandidateFeaturesWithIds.features
+      .map((feature) => feature.id)
+      .filter((value): value is string => typeof value === 'string' && value.length > 0);
+    return new Set(ids);
+  }, [restaurantLabelCandidateFeaturesWithIds]);
+
+  const labelMarkerKeySet = React.useMemo(() => {
     if (!restaurantLabelFeaturesWithIds.features.length) {
       return new Set<string>();
     }
@@ -514,22 +569,90 @@ const SearchMap: React.FC<SearchMapProps> = ({
     } as MapboxGL.SymbolLayerStyle;
   }, [canUseLabelFeatureState, restaurantLabelStyle]);
 
-  const restaurantLabelWithPinStyleWithOpacity = React.useMemo(() => {
-    // Combine pin + label into a single SymbolLayer so collision behaves like Mapbox expects:
-    // the icon is the obstacle, and the label chooses an anchor based on available space.
-    return {
+  const labelTextSize = React.useMemo(() => {
+    const candidate = restaurantLabelStyleWithOpacity.textSize as unknown;
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+      return candidate;
+    }
+    return LABEL_TEXT_SIZE;
+  }, [restaurantLabelStyleWithOpacity.textSize]);
+
+  const labelPinTipToFillCenterPx = React.useMemo(() => {
+    // Feature coordinate is anchored at the pin tip (bottom of wrapper).
+    // We want candidate label placements centered on the pin fill centerline instead.
+    return PIN_MARKER_RENDER_SIZE - PIN_FILL_CENTER_Y;
+  }, []);
+
+  const labelUpShiftEm = React.useMemo(
+    () => labelPinTipToFillCenterPx / labelTextSize,
+    [labelPinTipToFillCenterPx, labelTextSize]
+  );
+
+  const labelRadialXEm = React.useMemo(() => {
+    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
+    const radialPx = Math.max(baselineRadialPx, LABEL_MIN_HORIZONTAL_GAP_PX);
+    return radialPx / labelTextSize;
+  }, [labelPinTipToFillCenterPx, labelTextSize]);
+
+  const labelRadialYEm = React.useMemo(() => {
+    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
+    const radialPx = Math.max(baselineRadialPx, labelPinTipToFillCenterPx + LABEL_MIN_BOTTOM_GAP_PX);
+    return radialPx / labelTextSize;
+  }, [labelPinTipToFillCenterPx, labelTextSize]);
+
+  const labelRadialTopEm = React.useMemo(() => {
+    const baselineRadialPx = LABEL_RADIAL_OFFSET_EM * labelTextSize;
+    // For the top candidate, the total upward shift is `labelUpShiftPx + labelRadialTopPx`.
+    // Keep the text comfortably above the pin base silhouette, but don't over-push it (we want
+    // top labels closer than bottom/left/right when possible).
+    const minRadialPx = Math.max(
+      0,
+      PIN_MARKER_RENDER_SIZE + LABEL_MIN_TOP_GAP_PX - labelPinTipToFillCenterPx
+    );
+    const radialPx = Math.max(baselineRadialPx, minRadialPx);
+    return radialPx / labelTextSize;
+  }, [labelPinTipToFillCenterPx, labelTextSize]);
+
+  const labelCandidateStyles = React.useMemo(() => {
+    const base: MapboxGL.SymbolLayerStyle = {
       ...restaurantLabelStyleWithOpacity,
+      // Tiny "mutex" icon at the feature point: prevents multiple candidate labels for the same
+      // restaurant from being placed simultaneously, without materially affecting other symbols.
       iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
-      iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+      iconSize: LABEL_MUTEX_ICON_SIZE,
       iconAnchor: 'bottom',
-      // Make the icon act as an obstacle (and always place it so the obstacle exists).
+      iconOffset: [0, LABEL_MUTEX_ICON_OFFSET_IMAGE_PX],
+      iconAllowOverlap: false,
       iconIgnorePlacement: false,
-      iconAllowOverlap: true,
-      // Keep label placement native (no overlap).
+      iconOpacity: 0.001,
+      iconPadding: 0,
       textAllowOverlap: false,
       textIgnorePlacement: false,
-    } as MapboxGL.SymbolLayerStyle;
-  }, [restaurantLabelStyleWithOpacity]);
+    };
+
+    return {
+      bottom: {
+        ...base,
+        textAnchor: 'top',
+        textOffset: [0, labelRadialYEm - labelUpShiftEm],
+      },
+      right: {
+        ...base,
+        textAnchor: 'left',
+        textOffset: [labelRadialXEm, -labelUpShiftEm],
+      },
+      top: {
+        ...base,
+        textAnchor: 'bottom',
+        textOffset: [0, -(labelRadialTopEm + labelUpShiftEm)],
+      },
+      left: {
+        ...base,
+        textAnchor: 'right',
+        textOffset: [-labelRadialXEm, -labelUpShiftEm],
+      },
+    } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
+  }, [labelRadialTopEm, labelRadialXEm, labelRadialYEm, labelUpShiftEm, restaurantLabelStyleWithOpacity]);
 
   const restaurantLabelForceTopDebugStyle = React.useMemo(() => {
     if (!DEBUG_FORCE_TOP_LABELS) {
@@ -537,13 +660,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
 
     return {
-      // IMPORTANT: This debug layer must not depend on feature-state opacity. When label opacity is
-      // gated via feature-state (our normal label path), any mismatch in state updates can make
-      // debug output invisible and hide the root cause we're trying to diagnose.
+      // IMPORTANT: This debug layer must not depend on feature-state opacity.
       ...restaurantLabelStyle,
-      // Only allow "top" and bypass collision so we can prove the engine can render top labels.
-      // NOTE: `textVariableAnchor` expects a plain array (not an expression).
-      textVariableAnchor: ['top'],
+      textAnchor: 'bottom',
+      textOffset: [0, -(labelRadialTopEm + labelUpShiftEm)],
       textAllowOverlap: true,
       textIgnorePlacement: true,
       textOptional: true,
@@ -553,14 +673,26 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textHaloWidth: 1.2,
       textHaloBlur: 0.9,
     } as MapboxGL.SymbolLayerStyle;
-  }, [restaurantLabelStyle]);
+  }, [labelRadialTopEm, labelUpShiftEm, restaurantLabelStyle]);
 
-  const restaurantLabelLayerId = USE_COMBINED_PIN_LABEL_LAYER
-    ? 'restaurant-labels-with-pin'
-    : 'restaurant-labels';
-  const restaurantLabelLayerKey = `${restaurantLabelLayerId}-${labelPlacementEpoch}`;
   const restaurantLabelPinCollisionLayerId = 'restaurant-labels-pin-collision';
   const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${labelPlacementEpoch}`;
+
+  const labelLayerIdsByCandidate = React.useMemo(
+    () => ({
+      bottom: 'restaurant-labels-candidate-bottom',
+      right: 'restaurant-labels-candidate-right',
+      top: 'restaurant-labels-candidate-top',
+      left: 'restaurant-labels-candidate-left',
+    }),
+    []
+  );
+
+  const getCandidateFeatureIdsForMarkerKey = React.useCallback(
+    (markerKey: string) =>
+      LABEL_CANDIDATES.map((candidate) => buildLabelCandidateFeatureId(markerKey, candidate)),
+    []
+  );
 
   const stylePinsFillStyle = React.useMemo(() => {
     return {
@@ -1007,26 +1139,28 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    const nextVisibleLabelIds = new Set<string>();
+    const nextVisibleMarkerKeys = new Set<string>();
     for (const markerKey of renderedMarkerMetaByKey.keys()) {
-      if (!labelFeatureIdSet.has(markerKey)) {
+      if (!labelMarkerKeySet.has(markerKey)) {
         continue;
       }
       if (visibleMarkerKeys.has(markerKey)) {
-        nextVisibleLabelIds.add(markerKey);
+        nextVisibleMarkerKeys.add(markerKey);
       }
     }
 
     const previousVisible = previousVisibleLabelIdsRef.current;
     for (const markerKey of previousVisible) {
-      if (nextVisibleLabelIds.has(markerKey)) {
+      if (nextVisibleMarkerKeys.has(markerKey)) {
         continue;
       }
-      animateLabelOpacity(markerKey, 0, 0, Math.max(0, markerRevealAnimMs));
+      for (const featureId of getCandidateFeatureIdsForMarkerKey(markerKey)) {
+        animateLabelOpacity(featureId, 0, 0, Math.max(0, markerRevealAnimMs));
+      }
     }
 
     const shouldHoldForReentry = getIsMapMoving();
-    for (const markerKey of nextVisibleLabelIds) {
+    for (const markerKey of nextVisibleMarkerKeys) {
       if (previousVisible.has(markerKey)) {
         continue;
       }
@@ -1040,16 +1174,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ? MARKER_REENTRY_HOLD_MS
         : 0;
 
-      animateLabelOpacity(markerKey, 1, delayMs, Math.max(0, markerRevealAnimMs));
+      for (const featureId of getCandidateFeatureIdsForMarkerKey(markerKey)) {
+        animateLabelOpacity(featureId, 1, delayMs, Math.max(0, markerRevealAnimMs));
+      }
     }
 
-    previousVisibleLabelIdsRef.current = nextVisibleLabelIds;
+    previousVisibleLabelIdsRef.current = nextVisibleMarkerKeys;
   }, [
     animateLabelOpacity,
     canUseLabelFeatureState,
+    getCandidateFeatureIdsForMarkerKey,
     getIsFirstLabelReveal,
     getIsMapMoving,
     labelFeatureIdSet,
+    labelMarkerKeySet,
     markerRevealAnimMs,
     renderedMarkerMetaByKey,
     shouldAnimateMarkerReveal,
@@ -1133,36 +1271,43 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ) : null}
         {shouldRenderLabels ? (
           <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
-            <MapboxGL.ShapeSource
-              id={RESTAURANT_LABEL_SOURCE_ID}
-              shape={restaurantLabelFeaturesWithIds}
-            >
-              <MapboxGL.SymbolLayer
-                key={restaurantLabelLayerKey}
-                id={restaurantLabelLayerId}
-                sourceID={RESTAURANT_LABEL_SOURCE_ID}
-                style={
-                  USE_COMBINED_PIN_LABEL_LAYER
-                    ? restaurantLabelWithPinStyleWithOpacity
-                    : restaurantLabelStyleWithOpacity
-                }
-              />
-              {!USE_COMBINED_PIN_LABEL_LAYER && USE_STYLE_LAYER_PINS && !shouldDisableMarkers ? (
-                <MapboxGL.SymbolLayer
-                  key={restaurantLabelPinCollisionLayerKey}
-                  id={restaurantLabelPinCollisionLayerId}
-                  sourceID={RESTAURANT_LABEL_SOURCE_ID}
-                  style={LABEL_PIN_COLLISION_STYLE}
-                />
+            <>
+              <MapboxGL.ShapeSource
+                id={RESTAURANT_LABEL_SOURCE_ID}
+                shape={restaurantLabelCandidateFeaturesWithIds}
+              >
+                {LABEL_CANDIDATE_LAYER_ORDER.map((candidate) => (
+                  <MapboxGL.SymbolLayer
+                    key={`${labelLayerIdsByCandidate[candidate]}-${labelPlacementEpoch}`}
+                    id={labelLayerIdsByCandidate[candidate]}
+                    sourceID={RESTAURANT_LABEL_SOURCE_ID}
+                    style={labelCandidateStyles[candidate]}
+                    filter={['==', ['get', 'labelCandidate'], candidate]}
+                  />
+                ))}
+                {DEBUG_FORCE_TOP_LABELS && restaurantLabelForceTopDebugStyle ? (
+                  <MapboxGL.SymbolLayer
+                    id="restaurant-labels-force-top-debug"
+                    sourceID={RESTAURANT_LABEL_SOURCE_ID}
+                    style={restaurantLabelForceTopDebugStyle}
+                    filter={['==', ['get', 'labelCandidate'], 'top']}
+                  />
+                ) : null}
+              </MapboxGL.ShapeSource>
+              {USE_STYLE_LAYER_PINS && !shouldDisableMarkers ? (
+                <MapboxGL.ShapeSource
+                  id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+                  shape={restaurantLabelFeaturesWithIds}
+                >
+                  <MapboxGL.SymbolLayer
+                    key={restaurantLabelPinCollisionLayerKey}
+                    id={restaurantLabelPinCollisionLayerId}
+                    sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+                    style={LABEL_PIN_COLLISION_STYLE}
+                  />
+                </MapboxGL.ShapeSource>
               ) : null}
-              {DEBUG_FORCE_TOP_LABELS && restaurantLabelForceTopDebugStyle ? (
-                <MapboxGL.SymbolLayer
-                  id="restaurant-labels-force-top-debug"
-                  sourceID={RESTAURANT_LABEL_SOURCE_ID}
-                  style={restaurantLabelForceTopDebugStyle}
-                />
-              ) : null}
-            </MapboxGL.ShapeSource>
+            </>
           </React.Profiler>
         ) : null}
         {userLocation ? (

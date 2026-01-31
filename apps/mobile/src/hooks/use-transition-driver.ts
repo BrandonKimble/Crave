@@ -13,6 +13,7 @@ type TransitionDriverOptions = {
   getDurationMs: (target: 0 | 1) => number;
   getEasing?: (target: 0 | 1) => EasingFunction;
   getDelayMs?: (target: 0 | 1) => number;
+  resetOnShowKey?: number;
 };
 
 type TransitionDriverResult = {
@@ -26,11 +27,13 @@ export const useTransitionDriver = ({
   getDurationMs,
   getEasing,
   getDelayMs,
+  resetOnShowKey,
 }: TransitionDriverOptions): TransitionDriverResult => {
   const progress = useSharedValue(0);
   const [isVisible, setIsVisible] = React.useState(false);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const requestSeq = useSharedValue(0);
+  const lastResetKeyRef = React.useRef<number | undefined>(undefined);
 
   const runTransition = React.useCallback(
     (nextTarget: 0 | 1) => {
@@ -42,6 +45,13 @@ export const useTransitionDriver = ({
       }
       if (nextTarget === 1) {
         setIsVisible(true);
+        if (
+          typeof resetOnShowKey === 'number' &&
+          resetOnShowKey !== lastResetKeyRef.current
+        ) {
+          lastResetKeyRef.current = resetOnShowKey;
+          progress.value = 0;
+        }
       }
       const duration = getDurationMs(nextTarget);
       const easing = getEasing ? getEasing(nextTarget) : (t: number) => t;
@@ -59,7 +69,7 @@ export const useTransitionDriver = ({
       }
       start();
     },
-    [getDelayMs, getDurationMs, getEasing, progress, requestSeq]
+    [getDelayMs, getDurationMs, getEasing, progress, requestSeq, resetOnShowKey]
   );
 
   React.useEffect(() => {
@@ -70,6 +80,7 @@ export const useTransitionDriver = ({
       }
       progress.value = 0;
       setIsVisible(false);
+      lastResetKeyRef.current = undefined;
       return;
     }
     runTransition(target);
