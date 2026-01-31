@@ -15,6 +15,8 @@ import type { LayoutChangeEvent, LayoutRectangle, TextInput } from 'react-native
 import type { FlashListProps, FlashListRef } from '@shopify/flash-list';
 import Reanimated, {
   Easing,
+  Extrapolation,
+  interpolate,
   runOnUI,
   useAnimatedStyle,
   useDerivedValue,
@@ -83,6 +85,7 @@ import { useOverlaySheetPositionStore } from '../../overlays/useOverlaySheetPosi
 import { FrostedGlassBackground } from '../../components/FrostedGlassBackground';
 import MaskedHoleOverlay, { type MaskedHole } from '../../components/MaskedHoleOverlay';
 import { useSearchRequests } from '../../hooks/useSearchRequests';
+import useTransitionDriver from '../../hooks/use-transition-driver';
 import { useKeyedCallback } from '../../hooks/useCallbackFactory';
 import { useDebouncedLayoutMeasurement } from '../../hooks/useDebouncedLayoutMeasurement';
 import SquircleSpinner from '../../components/SquircleSpinner';
@@ -204,6 +207,7 @@ const SUGGESTION_PANEL_LAYOUT_HOLD_MS = 200;
 const SUGGESTION_PANEL_KEYBOARD_DELAY_MS = 0;
 const SUGGESTION_PANEL_MIN_MS = 160;
 const SUGGESTION_PANEL_MAX_MS = 320;
+const SEARCH_SHORTCUTS_FADE_MS = 200;
 const FILTER_TOGGLE_DEBOUNCE_MS = 600;
 const MARKER_REVEAL_CHUNK = 4;
 const MARKER_REVEAL_STAGGER_MS = 12;
@@ -2288,6 +2292,17 @@ const SearchScreen: React.FC = () => {
     !hasSearchChromeRawQuery;
   const shouldRenderSearchShortcuts =
     (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
+  const {
+    progress: searchShortcutsFadeProgress,
+    isVisible: shouldRenderSearchShortcutsRow,
+  } = useTransitionDriver({
+    enabled: true,
+    target: shouldRenderSearchShortcuts ? 1 : 0,
+    getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+    getEasing: (target) =>
+      target === 1 ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
+    resetOnShow: true,
+  });
   const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
   const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
   const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
@@ -2790,7 +2805,14 @@ const SearchScreen: React.FC = () => {
     return { opacity: 1 };
   }, [isSuggestionClosing]);
   const searchShortcutsAnimatedStyle = useAnimatedStyle(() => {
-    const visibility = shouldRenderSearchShortcuts ? 1 : 0;
+    const sheetTop = sheetTranslateY.value;
+    const uncoverProgress = interpolate(
+      sheetTop,
+      [chromeTransitionConfig.expanded, chromeTransitionConfig.middle],
+      [0, 1],
+      Extrapolation.CLAMP
+    );
+    const visibility = Math.min(searchShortcutsFadeProgress.value, uncoverProgress);
     const submitOpacity = searchTransitionVariant === 'submitting' ? suggestionProgress.value : 1;
     const progress = suggestionProgress.value;
     const backgroundAlpha = 1 - progress;
@@ -2803,10 +2825,11 @@ const SearchScreen: React.FC = () => {
       transform: [{ scale: chromeScale }],
     };
   }, [
+    chromeTransitionConfig.expanded,
+    chromeTransitionConfig.middle,
     isSuggestionPanelVisible,
     searchTransitionVariant,
     shouldLockSearchChromeTransform,
-    shouldRenderSearchShortcuts,
   ]);
   const suggestionPanelAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: 0 }],
@@ -7521,26 +7544,25 @@ const SearchScreen: React.FC = () => {
                     focusProgress={searchHeaderFocusProgress}
                   />
                 </View>
-                {shouldRenderSearchShortcuts && (
-                  <Reanimated.View
-                    style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
-                    pointerEvents={shouldShowSearchShortcuts ? 'box-none' : 'none'}
-                    onLayout={({ nativeEvent: { layout } }) => {
-                      searchShortcutsLayoutCacheRef.current.frame = layout;
-                      setSearchShortcutsFrame((prev) => {
-                        if (
-                          prev &&
-                          Math.abs(prev.x - layout.x) < 0.5 &&
-                          Math.abs(prev.y - layout.y) < 0.5 &&
-                          Math.abs(prev.width - layout.width) < 0.5 &&
-                          Math.abs(prev.height - layout.height) < 0.5
-                        ) {
-                          return prev;
-                        }
-                        return layout;
-                      });
-                    }}
-                  >
+                <Reanimated.View
+                  style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
+                  pointerEvents={shouldRenderSearchShortcutsRow ? 'box-none' : 'none'}
+                  onLayout={({ nativeEvent: { layout } }) => {
+                    searchShortcutsLayoutCacheRef.current.frame = layout;
+                    setSearchShortcutsFrame((prev) => {
+                      if (
+                        prev &&
+                        Math.abs(prev.x - layout.x) < 0.5 &&
+                        Math.abs(prev.y - layout.y) < 0.5 &&
+                        Math.abs(prev.width - layout.width) < 0.5 &&
+                        Math.abs(prev.height - layout.height) < 0.5
+                      ) {
+                        return prev;
+                      }
+                      return layout;
+                    });
+                  }}
+                >
                     <AnimatedPressable
                       onPress={handleBestRestaurantsHere}
                       style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
@@ -7621,8 +7643,7 @@ const SearchScreen: React.FC = () => {
                         </Text>
                       </Reanimated.View>
                     </AnimatedPressable>
-                  </Reanimated.View>
-                )}
+                </Reanimated.View>
                 <Reanimated.View
                   pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
                   style={[
