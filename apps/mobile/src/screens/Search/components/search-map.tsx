@@ -232,9 +232,7 @@ const parseLabelCandidateFeatureId = (
     return null;
   }
   const markerKey = value.slice(0, delimiterIndex);
-  const rawCandidate = value.slice(
-    delimiterIndex + LABEL_CANDIDATE_FEATURE_ID_DELIMITER.length
-  );
+  const rawCandidate = value.slice(delimiterIndex + LABEL_CANDIDATE_FEATURE_ID_DELIMITER.length);
   if (
     rawCandidate === 'bottom' ||
     rawCandidate === 'right' ||
@@ -1303,9 +1301,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }));
 
     const layerIDs = Object.values(LABEL_LAYER_IDS_BY_CANDIDATE);
-    let rendered:
-      | FeatureCollection
-      | undefined;
+    let rendered: FeatureCollection | undefined;
     try {
       // IMPORTANT: Our MapView is intentionally overscanned (negative top/left + larger bounds) so
       // markers can render just outside the clipped viewport. `queryRenderedFeaturesInRect` uses the
@@ -1392,12 +1388,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         setLabelPlacementEpoch((value) => value + 1);
       }
     }
-  }, [
-    mapRef,
-    mapViewportSize,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-  ]);
+  }, [mapRef, mapViewportSize, shouldDisableMarkers, shouldRenderLabels]);
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
@@ -1570,7 +1561,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
 Mutex point: ${DEBUG_LABEL_MUTEX_POINT}
 Label fade: ${DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY ? 'off' : 'on'}
 Label order: ${DEBUG_STABILIZE_LABEL_ORDER ? 'stable' : 'viewport-y'}
-Sticky candidates: ${DEBUG_STICKY_LABEL_CANDIDATES ? 'on' : 'off'} (locks=${labelStickyCandidateByMarkerKeyRef.current.size})`}
+Sticky candidates: ${DEBUG_STICKY_LABEL_CANDIDATES ? 'on' : 'off'} (locks=${
+            labelStickyCandidateByMarkerKeyRef.current.size
+          })`}
         </Text>
         {DEBUG_STICKY_LABEL_CANDIDATES ? (
           <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 4 }}>
