@@ -149,6 +149,17 @@ const STYLE_PINS_FILL_OFFSET_IMAGE_PX =
   STYLE_PINS_FILL_OFFSET_RENDER_PX / STYLE_PINS_FILL_ICON_SIZE;
 const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 
+// Collision tuning: shift the pin obstacle upward so other restaurants' labels collide with the pin
+// body sooner (reducing overlap at the top) while allowing a bit more overlap near the tip.
+//
+// NOTE: Must use `iconOffset` (layout) instead of `iconTranslate` (paint), otherwise collision won't
+// move even if the visualization does.
+const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
+const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
+  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE);
+const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
+  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE);
+
 const getSafeStyleUrlForLogs = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -411,6 +422,7 @@ const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
   iconSize: STYLE_PINS_OUTLINE_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE,
   iconAnchor: 'bottom',
+  iconOffset: [0, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
   symbolZOrder: 'source',
   // Always place the obstacle, even when pins overlap each other.
   iconAllowOverlap: true,
@@ -431,7 +443,7 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconSize: STYLE_PINS_FILL_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE,
   iconAnchor: 'bottom',
   // Match `styles.pinFill` layout (positioned within the base image bounds).
-  iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX],
+  iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX],
   symbolZOrder: 'source',
   // Always place the obstacle, even when pins overlap each other.
   iconAllowOverlap: true,
