@@ -1,5 +1,5 @@
 import React from 'react';
-import { Animated, type LayoutChangeEvent, Text, View } from 'react-native';
+import { Animated, type LayoutChangeEvent, View } from 'react-native';
 
 import MapboxGL, { type MapState as MapboxMapState, type OnPressEvent } from '@rnmapbox/maps';
 import type { Feature, FeatureCollection, Point } from 'geojson';
@@ -30,49 +30,6 @@ import {
   projectToMercator,
 } from './marker-visibility';
 
-const makeDebugId = () => Math.random().toString(36).slice(2, 10);
-const SEARCH_MAP_MODULE_INSTANCE_ID = makeDebugId();
-const SEARCH_MAP_MODULE_LOADED_AT_MS = Date.now();
-type SearchMapModuleHotReloadState = {
-  loadCount: number;
-  moduleId: string;
-  loadedAtMs: number;
-  previousModuleId: string | null;
-  previousLoadedAtMs: number | null;
-};
-
-const getSearchMapModuleHotReloadState = (): SearchMapModuleHotReloadState => {
-  const globalKey = '__CRAVE_SEARCH_SEARCH_MAP_MODULE_HOT_RELOAD_STATE__';
-  const globalRecord = globalThis as unknown as Record<string, unknown>;
-  const previous = globalRecord[globalKey] as SearchMapModuleHotReloadState | undefined;
-  const next: SearchMapModuleHotReloadState = {
-    loadCount: (previous?.loadCount ?? 0) + 1,
-    moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-    loadedAtMs: SEARCH_MAP_MODULE_LOADED_AT_MS,
-    previousModuleId: previous?.moduleId ?? null,
-    previousLoadedAtMs: previous?.loadedAtMs ?? null,
-  };
-  globalRecord[globalKey] = next;
-  return next;
-};
-
-const SEARCH_MAP_MODULE_HOT_RELOAD_STATE: SearchMapModuleHotReloadState | null = __DEV__
-  ? getSearchMapModuleHotReloadState()
-  : null;
-
-if (__DEV__ && SEARCH_MAP_MODULE_HOT_RELOAD_STATE) {
-  logger.info('SearchMap module init', SEARCH_MAP_MODULE_HOT_RELOAD_STATE);
-}
-
-const hashString32 = (value: string) => {
-  // Deterministic small hash for log correlation; NOT crypto-safe.
-  let hash = 5381;
-  for (let index = 0; index < value.length; index++) {
-    hash = (hash * 33) ^ value.charCodeAt(index);
-  }
-  return (hash >>> 0).toString(16);
-};
-
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
 // When a marker re-enters the (overscanned) visibility bounds while the map is still moving, we
 // hold the fade-in briefly to avoid flicker caused by view->coordinate sampling jitter.
@@ -97,29 +54,23 @@ const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
-const DEBUG_STYLE_PINS_COLLISION = false;
-// Debug: remove feature-state driven label visibility + fade.
-// This is high-signal for separating "opacity/state gating" from "collision/placement".
-const DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY = true;
-// Debug: stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
-// This can reduce "labels jump around while panning" caused by `symbolZOrder: 'viewport-y'`.
-const DEBUG_STABILIZE_LABEL_ORDER = true;
-// Debug/Experiment: Google-like label behavior.
+
 // Lock each restaurant to a single chosen candidate and only reconsider when that candidate
 // disappears (i.e. it can’t be placed).
-const DEBUG_STICKY_LABEL_CANDIDATES = true;
-// Debug: A/B test pin collision obstacle geometry.
+const ENABLE_STICKY_LABEL_CANDIDATES = true;
+// Remove feature-state driven label fade (kept as-is to preserve current behavior).
+const DISABLE_LABEL_FEATURE_STATE_OPACITY = true;
+// Stabilize intra-layer ordering so placement priority doesn't vary with viewport y.
+const STABILIZE_LABEL_ORDER = true;
+// Pin collision obstacle geometry.
 // - `outline`: uses the full pin sprite bounding box (conservative).
 // - `fill`: uses the fill sprite bounding box (tighter).
 // - `off`: disables pin collision obstacles entirely (labels may overlap pins).
-const DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill';
-// Further tighten obstacle bounds by scaling the icon used for collision. This is purely for
-// diagnosing whether over-conservative collision boxes are the cause of missing labels.
-const DEBUG_PIN_COLLISION_OBSTACLE_SCALE = 0.6;
-// Debug: move the shared per-restaurant collision point used to enforce "one candidate label"
-// placement. If moving it makes missing labels appear (with obstacles still ON), then the mutex
-// point was being blocked by another pin's obstacle.
-const DEBUG_LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
+const PIN_COLLISION_OBSTACLE_GEOMETRY: 'outline' | 'fill' | 'off' = 'fill';
+const PIN_COLLISION_OBSTACLE_SCALE = 0.6;
+// Move the shared per-restaurant collision point used to enforce "one candidate label" placement.
+// This avoids the mutex being blocked by another pin's collision obstacle when pins stack.
+const LABEL_MUTEX_POINT: 'below-pin' | 'above-pin' = 'above-pin';
 
 // Approximate the MarkerView drop-shadow (`styles.pinShadow`) using a translated, tinted SDF copy
 // of the pin silhouette.
@@ -156,9 +107,9 @@ const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 // move even if the visualization does.
 const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
 const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
-  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE);
+  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
-  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE);
+  PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 
 const getSafeStyleUrlForLogs = (value: string) => {
   const trimmed = value.trim();
@@ -235,7 +186,6 @@ type LabelStickyRuntime = {
   shouldRenderLabels: boolean;
   viewport: { width: number; height: number };
   markerCount: number;
-  markersRenderKey: { len: number; hash: string | null; sampleLen: number };
 };
 
 const PRIMARY_COLOR = '#ff3368';
@@ -282,8 +232,8 @@ const LABEL_MUTEX_ICON_SIZE = 0.03;
 // Offset the mutex icon away from the pin base collision region so it doesn't get blocked by the
 // dedicated pin-obstacle layer. This is in *source image pixels* (scaled by `iconSize`).
 const LABEL_MUTEX_ICON_OFFSET_IMAGE_PX = 1600;
-// If we need to move the mutex into screen pixel space (for debugging), use a constant viewport
-// translation so it doesn't depend on iconSize/image pixels.
+// Move the mutex into screen pixel space via a constant viewport translation so it doesn't depend
+// on iconSize/image pixels.
 const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
 
 const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
@@ -344,17 +294,6 @@ const getLabelCandidateInfoFromRenderedFeature = (
   }
 
   return null;
-};
-
-const DEBUG_STYLE_PINS_COLLISION_STYLE: MapboxGL.CircleLayerStyle = {
-  circleRadius: PIN_MARKER_RENDER_SIZE * 0.6,
-  circleColor: 'rgba(255, 0, 0, 0.12)',
-  circleStrokeColor: 'rgba(255, 0, 0, 0.55)',
-  circleStrokeWidth: 1,
-  // Approximate the pin icon collision region (icon is anchored at bottom, so its center is above
-  // the point). This is only a visual debugging aid.
-  circleTranslate: [0, -PIN_MARKER_RENDER_SIZE * 0.5],
-  circleTranslateAnchor: 'viewport',
 };
 
 const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -420,7 +359,7 @@ const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
 // labels are evaluated.
 const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
-  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE,
+  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE,
   iconAnchor: 'bottom',
   iconOffset: [0, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
   symbolZOrder: 'source',
@@ -440,7 +379,7 @@ const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
 
 const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_FILL_IMAGE_ID,
-  iconSize: STYLE_PINS_FILL_ICON_SIZE * DEBUG_PIN_COLLISION_OBSTACLE_SCALE,
+  iconSize: STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE,
   iconAnchor: 'bottom',
   // Match `styles.pinFill` layout (positioned within the base image bounds).
   iconOffset: [0, STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX],
@@ -579,12 +518,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const labelPlacementBootstrapKeyRef = React.useRef<string | null>(null);
   const labelStickyCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(new Map());
   const labelStickyLastSeenAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
-  const searchMapInstanceIdRef = React.useRef<string>(makeDebugId());
-  const initialStyleUrlForLogsRef = React.useRef(getSafeStyleUrlForLogs(styleURL));
   const labelStickyQueryReadyRef = React.useRef(false);
   const labelStickyQueryReadyAtRef = React.useRef<number | null>(null);
   const labelStickyLastProbeAtRef = React.useRef(0);
-  const labelStickyLastProbeLogAtRef = React.useRef(0);
   const labelStickyLastProbeSnapshotRef = React.useRef<{
     at: number;
     controlRendered: number;
@@ -606,14 +542,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     null
   );
   const labelStickyBootstrapPollStartedAtRef = React.useRef<number | null>(null);
-  const labelStickyScheduleLogAtRef = React.useRef(0);
-  const labelStickyRefreshStartLogAtRef = React.useRef(0);
-  const labelStickyRunLogAtRef = React.useRef(0);
-  const labelStickySkipLogAtRef = React.useRef(0);
-  const labelStickyRuntimeDeltaLogAtRef = React.useRef(0);
-  const labelStickyLastRuntimeSnapshotRef = React.useRef<LabelStickyRuntime | null>(null);
-  const labelStickyScheduledReasonsRef = React.useRef<Set<string>>(new Set(['init']));
-  const labelStickyLastRunReasonsRef = React.useRef<string>('init');
   const labelStickyRuntimeRef = React.useRef<LabelStickyRuntime>({
     styleURL: '',
     labelLayerTreeEpoch: 0,
@@ -622,7 +550,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldRenderLabels: false,
     viewport: { width: 0, height: 0 },
     markerCount: 0,
-    markersRenderKey: { len: 0, hash: null, sampleLen: 0 },
   });
   const [labelLayerTreeEpoch, setLabelLayerTreeEpoch] = React.useState(0);
   const [labelStickyMarkersReadyAt, setLabelStickyMarkersReadyAt] = React.useState<number | null>(
@@ -630,78 +557,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
   const labelStickyMarkersReadyKeyRef = React.useRef<string | null>(null);
   const [labelStickyEpoch, setLabelStickyEpoch] = React.useState(0);
-  const [labelStickyDebug, setLabelStickyDebug] = React.useState<{
-    scheduled: number;
-    attempts: number;
-    probeAttempts: number;
-    probeControlRendered: number;
-    probeFilterRendered: number;
-    probeSourceFeatures: number;
-    probeReady: boolean;
-    probeReadyAt: number | null;
-    probeLastError: string | null;
-    errors: number;
-    lastError: string | null;
-    lastSkip: string | null;
-    hasQuery: boolean;
-    renderedFeatures: number;
-    parsedFeatures: number;
-  }>({
-    scheduled: 0,
-    attempts: 0,
-    probeAttempts: 0,
-    probeControlRendered: 0,
-    probeFilterRendered: 0,
-    probeSourceFeatures: 0,
-    probeReady: false,
-    probeReadyAt: null,
-    probeLastError: null,
-    errors: 0,
-    lastError: null,
-    lastSkip: null,
-    hasQuery: false,
-    renderedFeatures: 0,
-    parsedFeatures: 0,
-  });
-
-  const markersRenderKeySummary = React.useMemo(() => {
-    const key = markersRenderKey ?? '';
-    const len = key.length;
-    if (len === 0) {
-      return { len: 0, hash: null as string | null, sampleLen: 0 };
-    }
-    const sampleLen = Math.min(4096, len);
-    return { len, hash: hashString32(key.slice(0, sampleLen)), sampleLen };
-  }, [markersRenderKey]);
-
-  React.useEffect(() => {
-    if (!__DEV__) {
-      return;
-    }
-    logger.info('SearchMap lifecycle effect attached', {
-      moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-      instanceId: searchMapInstanceIdRef.current,
-      styleURL: initialStyleUrlForLogsRef.current,
-      moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
-      previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
-    });
-    return () => {
-      logger.info('SearchMap lifecycle effect cleanup', {
-        moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-        instanceId: searchMapInstanceIdRef.current,
-        styleURL: initialStyleUrlForLogsRef.current,
-        moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
-        previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
-      });
-    };
-  }, []);
 
   React.useEffect(() => {
     if (!shouldRenderLabels) {
       labelStickyQueryReadyRef.current = false;
       labelStickyQueryReadyAtRef.current = null;
       labelStickyLastProbeAtRef.current = 0;
-      labelStickyLastProbeLogAtRef.current = 0;
       labelStickyColdStartRecoverAttemptsRef.current = 0;
       labelStickyBootstrapPollStartedAtRef.current = null;
       if (labelStickyBootstrapPollTimeoutRef.current) {
@@ -721,16 +582,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
       setLabelStickyMarkersReadyAt(null);
       labelStickyMarkersReadyKeyRef.current = null;
-      setLabelStickyDebug((previous) => ({
-        ...previous,
-        probeAttempts: 0,
-        probeControlRendered: 0,
-        probeFilterRendered: 0,
-        probeSourceFeatures: 0,
-        probeReady: false,
-        probeReadyAt: null,
-        probeLastError: null,
-      }));
       return;
     }
 
@@ -738,7 +589,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelStickyQueryReadyRef.current = false;
     labelStickyQueryReadyAtRef.current = null;
     labelStickyLastProbeAtRef.current = 0;
-    labelStickyLastProbeLogAtRef.current = 0;
     labelStickyLastProbeSnapshotRef.current = {
       at: 0,
       controlRendered: 0,
@@ -751,16 +601,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
       clearTimeout(labelStickyBootstrapPollTimeoutRef.current);
       labelStickyBootstrapPollTimeoutRef.current = null;
     }
-    setLabelStickyDebug((previous) => ({
-      ...previous,
-      probeAttempts: 0,
-      probeControlRendered: 0,
-      probeFilterRendered: 0,
-      probeSourceFeatures: 0,
-      probeReady: false,
-      probeReadyAt: null,
-      probeLastError: null,
-    }));
   }, [labelLayerTreeEpoch, shouldRenderLabels, styleURL]);
 
   React.useEffect(() => {
@@ -803,7 +643,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [markersRenderKey, shouldRenderLabels, styleURL]);
 
   React.useEffect(() => {
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     labelStickyCandidateByMarkerKeyRef.current.clear();
@@ -853,92 +693,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldRenderLabels,
     viewport: { width: mapViewportSize.width, height: mapViewportSize.height },
     markerCount: restaurantLabelFeaturesWithIds.features.length,
-    markersRenderKey: markersRenderKeySummary,
   };
 
   React.useEffect(() => {
-    if (!__DEV__) {
-      return;
-    }
-
-    const now = Date.now();
-    if (now - labelStickyRuntimeDeltaLogAtRef.current < 400) {
-      return;
-    }
-
-    const runtime = labelStickyRuntimeRef.current;
-    const previous = labelStickyLastRuntimeSnapshotRef.current;
-    const changed: Array<keyof LabelStickyRuntime | 'markersRenderKey.hash' | 'viewport'> = [];
-
-    if (!previous) {
-      changed.push('styleURL');
-      changed.push('labelLayerTreeEpoch');
-      changed.push('isMapStyleReady');
-      changed.push('shouldDisableMarkers');
-      changed.push('shouldRenderLabels');
-      changed.push('viewport');
-      changed.push('markerCount');
-      changed.push('markersRenderKey.hash');
-    } else {
-      if (previous.styleURL !== runtime.styleURL) {
-        changed.push('styleURL');
-      }
-      if (previous.labelLayerTreeEpoch !== runtime.labelLayerTreeEpoch) {
-        changed.push('labelLayerTreeEpoch');
-      }
-      if (previous.isMapStyleReady !== runtime.isMapStyleReady) {
-        changed.push('isMapStyleReady');
-      }
-      if (previous.shouldDisableMarkers !== runtime.shouldDisableMarkers) {
-        changed.push('shouldDisableMarkers');
-      }
-      if (previous.shouldRenderLabels !== runtime.shouldRenderLabels) {
-        changed.push('shouldRenderLabels');
-      }
-      if (
-        previous.viewport.width !== runtime.viewport.width ||
-        previous.viewport.height !== runtime.viewport.height
-      ) {
-        changed.push('viewport');
-      }
-      if (previous.markerCount !== runtime.markerCount) {
-        changed.push('markerCount');
-      }
-      if (previous.markersRenderKey.hash !== runtime.markersRenderKey.hash) {
-        changed.push('markersRenderKey.hash');
-      }
-    }
-
-    if (changed.length === 0) {
-      return;
-    }
-
-    labelStickyRuntimeDeltaLogAtRef.current = now;
-    labelStickyLastRuntimeSnapshotRef.current = runtime;
-    logger.info('Mapbox sticky labels: runtime snapshot', {
-      moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-      instanceId: searchMapInstanceIdRef.current,
-      moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
-      previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
-      changed,
-      queryReady: labelStickyQueryReadyRef.current,
-      queryReadyAt: labelStickyQueryReadyAtRef.current,
-      runtime,
-    });
-  }, [
-    isMapStyleReady,
-    labelLayerTreeEpoch,
-    mapViewportSize.height,
-    mapViewportSize.width,
-    markersRenderKeySummary.hash,
-    restaurantLabelFeaturesWithIds.features.length,
-    shouldDisableMarkers,
-    shouldRenderLabels,
-    styleURL,
-  ]);
-
-  React.useEffect(() => {
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     if (!shouldRenderLabels) {
@@ -971,7 +729,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   React.useEffect(() => {
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     if (!shouldRenderLabels) {
@@ -1009,35 +767,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
         snapshotAgeMs < 1500;
 
       if (!shouldRecover) {
-        logger.warn('Mapbox sticky labels: cold-start query still empty (no recovery)', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(styleURL),
-          attempt: labelStickyColdStartRecoverAttemptsRef.current + 1,
-          elapsedMs: Date.now() - labelStickyMarkersReadyAt,
-          snapshot: {
-            at: snapshot.at,
-            ageMs: snapshotAgeMs,
-            controlRendered: snapshot.controlRendered,
-            filterRendered: snapshot.filterRendered,
-            sourceFeatures: snapshot.sourceFeatures,
-            lastError: snapshot.lastError,
-          },
-        });
         return;
       }
 
       labelStickyColdStartRecoverAttemptsRef.current += 1;
-      logger.warn(
-        'Mapbox sticky labels: query still empty after cold start, remounting label tree',
-        {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(styleURL),
-          attempt: labelStickyColdStartRecoverAttemptsRef.current,
-          elapsedMs: Date.now() - labelStickyMarkersReadyAt,
-        }
-      );
       setLabelLayerTreeEpoch((value) => value + 1);
       labelStickyCandidateByMarkerKeyRef.current.clear();
       labelStickyLastSeenAtByMarkerKeyRef.current.clear();
@@ -1067,7 +800,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (typeof markerKey !== 'string' || markerKey.length === 0) {
         continue;
       }
-      const lockedCandidate = DEBUG_STICKY_LABEL_CANDIDATES
+      const lockedCandidate = ENABLE_STICKY_LABEL_CANDIDATES
         ? labelStickyCandidateByMarkerKeyRef.current.get(markerKey)
         : null;
       const candidates = lockedCandidate ? [lockedCandidate] : LABEL_CANDIDATES;
@@ -1155,7 +888,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [restaurantLabelFeaturesWithIds]);
 
   const restaurantLabelStyleWithStableOrder = React.useMemo(() => {
-    if (!DEBUG_STABILIZE_LABEL_ORDER) {
+    if (!STABILIZE_LABEL_ORDER) {
       return restaurantLabelStyle;
     }
 
@@ -1169,7 +902,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [restaurantLabelStyle]);
 
   const restaurantLabelStyleWithOpacity = React.useMemo(() => {
-    if (!canUseLabelFeatureState || DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY) {
+    if (!canUseLabelFeatureState || DISABLE_LABEL_FEATURE_STATE_OPACITY) {
       return restaurantLabelStyleWithStableOrder;
     }
     const baseOpacity = restaurantLabelStyleWithStableOrder.textOpacity ?? 1;
@@ -1235,7 +968,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       iconImage: STYLE_PIN_OUTLINE_IMAGE_ID,
       iconSize: LABEL_MUTEX_ICON_SIZE,
       iconAnchor: 'bottom',
-      ...(DEBUG_LABEL_MUTEX_POINT === 'above-pin'
+      ...(LABEL_MUTEX_POINT === 'above-pin'
         ? {
             iconOffset: [0, 0],
             iconTranslate: [0, LABEL_MUTEX_TRANSLATE_Y_PX] as [number, number],
@@ -1281,10 +1014,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   const restaurantLabelPinCollisionLayerId = 'restaurant-labels-pin-collision';
-  const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${labelPlacementEpoch}-${DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY}`;
+  const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${labelPlacementEpoch}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
   const restaurantLabelPinCollisionStyle = React.useMemo(
     () =>
-      DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY === 'fill'
+      PIN_COLLISION_OBSTACLE_GEOMETRY === 'fill'
         ? LABEL_PIN_COLLISION_STYLE_FILL
         : LABEL_PIN_COLLISION_STYLE,
     []
@@ -1587,30 +1320,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const runStickyLabelRefreshRef = React.useRef<() => void>(() => undefined);
   const runStickyLabelRefresh = React.useCallback(() => {
-    if (__DEV__) {
-      const now = Date.now();
-      if (now - labelStickyRunLogAtRef.current > 1500) {
-        labelStickyRunLogAtRef.current = now;
-        const runtime = labelStickyRuntimeRef.current;
-        logger.info('Mapbox sticky labels: runner tick', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-          queued: labelStickyRefreshQueuedRef.current,
-          inFlight: labelStickyRefreshInFlightRef.current,
-          hasTimeout: Boolean(labelStickyRefreshTimeoutRef.current),
-          scheduledReasonsCount: labelStickyScheduledReasonsRef.current.size,
-          markerCount: runtime.markerCount,
-          markersRenderKey: runtime.markersRenderKey,
-          viewport: runtime.viewport,
-          shouldRenderLabels: runtime.shouldRenderLabels,
-          isMapStyleReady: runtime.isMapStyleReady,
-          shouldDisableMarkers: runtime.shouldDisableMarkers,
-          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
-        });
-      }
-    }
-
     if (labelStickyRefreshInFlightRef.current) {
       return;
     }
@@ -1621,10 +1330,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelStickyRefreshQueuedRef.current = false;
     labelStickyRefreshInFlightRef.current = true;
     const refreshSeq = ++labelStickyRefreshSeqRef.current;
-    labelStickyLastRunReasonsRef.current = Array.from(labelStickyScheduledReasonsRef.current)
-      .sort()
-      .join(',');
-    labelStickyScheduledReasonsRef.current.clear();
 
     void refreshStickyLabelCandidates().finally(() => {
       if (refreshSeq !== labelStickyRefreshSeqRef.current) {
@@ -1644,42 +1349,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [refreshStickyLabelCandidates]);
   runStickyLabelRefreshRef.current = runStickyLabelRefresh;
 
-  const scheduleStickyLabelRefresh = React.useCallback((reason: string) => {
-    setLabelStickyDebug((previous) => ({
-      ...previous,
-      scheduled: previous.scheduled + 1,
-    }));
-    labelStickyScheduledReasonsRef.current.add(reason);
+  const scheduleStickyLabelRefresh = React.useCallback((_reason: string) => {
     labelStickyRefreshQueuedRef.current = true;
-
-    if (__DEV__) {
-      const now = Date.now();
-      const shouldLog =
-        now - labelStickyScheduleLogAtRef.current > 900 ||
-        reason === 'markers-ready' ||
-        reason === 'bootstrap-poll';
-      if (shouldLog) {
-        labelStickyScheduleLogAtRef.current = now;
-        const runtime = labelStickyRuntimeRef.current;
-        logger.info('Mapbox sticky labels: schedule refresh', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          reason,
-          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-          shouldRenderLabels: runtime.shouldRenderLabels,
-          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
-          queryReady: labelStickyQueryReadyRef.current,
-          markerCount: runtime.markerCount,
-          markersRenderKey: runtime.markersRenderKey,
-          viewport: runtime.viewport,
-          queue: {
-            queued: true,
-            inFlight: labelStickyRefreshInFlightRef.current,
-            hasTimeout: Boolean(labelStickyRefreshTimeoutRef.current),
-          },
-        });
-      }
-    }
 
     if (labelStickyRefreshTimeoutRef.current || labelStickyRefreshInFlightRef.current) {
       return;
@@ -1694,7 +1365,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, []);
 
   React.useEffect(() => {
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     if (!shouldRenderLabels) {
@@ -1712,7 +1383,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     const tick = () => {
       labelStickyBootstrapPollTimeoutRef.current = null;
-      if (!DEBUG_STICKY_LABEL_CANDIDATES || !shouldRenderLabels) {
+      if (!ENABLE_STICKY_LABEL_CANDIDATES || !shouldRenderLabels) {
         return;
       }
       if (labelStickyQueryReadyRef.current) {
@@ -1751,7 +1422,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    if (!canUseLabelFeatureState || DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY) {
+    if (!canUseLabelFeatureState || DISABLE_LABEL_FEATURE_STATE_OPACITY) {
       return;
     }
 
@@ -1785,7 +1456,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   React.useEffect(() => {
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     if (!shouldRenderLabels) {
@@ -1833,130 +1504,35 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const refreshStickyLabelCandidates = React.useCallback(async () => {
     const runtime = labelStickyRuntimeRef.current;
-    if (__DEV__) {
-      const now = Date.now();
-      if (now - labelStickyRefreshStartLogAtRef.current > 1800) {
-        labelStickyRefreshStartLogAtRef.current = now;
-        const mapInstance = mapRef.current;
-        logger.info('Mapbox sticky labels: refresh start', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-          reasons: labelStickyLastRunReasonsRef.current,
-          shouldRenderLabels: runtime.shouldRenderLabels,
-          shouldDisableMarkers: runtime.shouldDisableMarkers,
-          viewport: runtime.viewport,
-          markerCount: runtime.markerCount,
-          markersRenderKey: runtime.markersRenderKey,
-          mapRefReady: Boolean(mapInstance),
-          hasQueryRenderedFeaturesInRect: Boolean(mapInstance?.queryRenderedFeaturesInRect),
-          hasQuerySourceFeatures: Boolean(
-            (mapInstance as unknown as { querySourceFeatures?: unknown })?.querySourceFeatures
-          ),
-          queryReady: labelStickyQueryReadyRef.current,
-        });
-      }
-    }
-
-    setLabelStickyDebug((previous) => ({
-      ...previous,
-      attempts: previous.attempts + 1,
-      lastSkip: null,
-    }));
-
-    const maybeLogSkip = (skip: string, extra?: Record<string, unknown>) => {
-      if (!__DEV__) {
-        return;
-      }
-      const now = Date.now();
-      if (now - labelStickySkipLogAtRef.current < 1200) {
-        return;
-      }
-      labelStickySkipLogAtRef.current = now;
-      logger.info('Mapbox sticky labels: refresh skip', {
-        moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-        instanceId: searchMapInstanceIdRef.current,
-        styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-        reasons: labelStickyLastRunReasonsRef.current,
-        skip,
-        shouldRenderLabels: runtime.shouldRenderLabels,
-        shouldDisableMarkers: runtime.shouldDisableMarkers,
-        markerCount: runtime.markerCount,
-        markersRenderKey: runtime.markersRenderKey,
-        viewport: runtime.viewport,
-        ...extra,
-      });
-    };
-
-    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
-      setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'sticky-disabled' }));
-      maybeLogSkip('sticky-disabled');
+    if (!ENABLE_STICKY_LABEL_CANDIDATES) {
       return;
     }
     if (runtime.shouldDisableMarkers || !runtime.shouldRenderLabels) {
-      setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'labels-disabled' }));
-      maybeLogSkip('labels-disabled', {
-        isMapStyleReady: runtime.isMapStyleReady,
-        disableMarkers: runtime.shouldDisableMarkers,
-      });
       return;
     }
     if (runtime.viewport.width <= 0 || runtime.viewport.height <= 0) {
-      setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'viewport-0' }));
-      maybeLogSkip('viewport-0');
       return;
     }
 
     const mapInstance = mapRef.current;
     if (!mapInstance?.queryRenderedFeaturesInRect) {
-      setLabelStickyDebug((previous) => ({
-        ...previous,
-        hasQuery: false,
-        lastSkip: 'no-queryRenderedFeaturesInRect',
-      }));
-      if (__DEV__) {
-        logger.warn('Mapbox sticky labels: MapView missing queryRenderedFeaturesInRect', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-          reasons: labelStickyLastRunReasonsRef.current,
-          mapRefReady: Boolean(mapInstance),
-        });
-      }
-      maybeLogSkip('no-queryRenderedFeaturesInRect');
       return;
     }
-
-    setLabelStickyDebug((previous) => ({
-      ...previous,
-      hasQuery: true,
-    }));
 
     const now = Date.now();
     if (!labelStickyQueryReadyRef.current) {
       const msSinceProbe = now - labelStickyLastProbeAtRef.current;
       if (msSinceProbe < LABEL_STICKY_QUERY_PROBE_MIN_INTERVAL_MS) {
-        setLabelStickyDebug((previous) => ({
-          ...previous,
-          lastSkip: 'query-not-ready',
-          renderedFeatures: 0,
-          parsedFeatures: 0,
-        }));
         return;
       }
 
       labelStickyLastProbeAtRef.current = now;
-      setLabelStickyDebug((previous) => ({
-        ...previous,
-        probeAttempts: previous.probeAttempts + 1,
-        probeLastError: null,
-      }));
 
       const probeFilter: unknown[] = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
       const controlLayerIDs =
         USE_STYLE_LAYER_PINS &&
         !runtime.shouldDisableMarkers &&
-        DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off'
+        PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off'
           ? [restaurantLabelPinCollisionLayerId]
           : null;
 
@@ -2007,40 +1583,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         }
       }
 
-      setLabelStickyDebug((previous) => ({
-        ...previous,
-        probeControlRendered,
-        probeFilterRendered,
-        probeSourceFeatures,
-        probeReady,
-        probeReadyAt: probeReady ? previous.probeReadyAt ?? now : previous.probeReadyAt,
-        probeLastError: probeLastError ?? null,
-        lastSkip: probeReady ? null : 'query-not-ready',
-        renderedFeatures: 0,
-        parsedFeatures: 0,
-      }));
-
-      const shouldLog =
-        __DEV__ &&
-        (probeReady || now - labelStickyLastProbeLogAtRef.current > 2000 || probeLastError != null);
-      if (shouldLog) {
-        labelStickyLastProbeLogAtRef.current = now;
-        logger.info('Mapbox sticky labels: query readiness probe', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
-          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
-          markersRenderKey: runtime.markersRenderKey,
-          viewport: runtime.viewport,
-          controlLayerId: controlLayerIDs?.[0],
-          probeReady,
-          probeControlRendered,
-          probeFilterRendered,
-          probeSourceFeatures,
-          probeLastError,
-        });
-      }
-
       if (!probeReady) {
         return;
       }
@@ -2055,19 +1597,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Querying with `[]` asks RNMBX to use the full MapView bounds (v10), which is stable with
       // overscan and works for both idle + in-motion sampling.
       rendered = await mapInstance.queryRenderedFeaturesInRect([], [], layerIDs);
-    } catch (error) {
-      const message =
-        error && typeof error === 'object' && 'message' in error
-          ? String((error as { message?: unknown }).message)
-          : String(error);
-      setLabelStickyDebug((previous) => ({
-        ...previous,
-        errors: previous.errors + 1,
-        lastError: message,
-        lastSkip: 'query-error',
-        renderedFeatures: 0,
-        parsedFeatures: 0,
-      }));
+    } catch {
       return;
     }
 
@@ -2084,10 +1614,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
         if (filteredCount > 0) {
           renderedForParsing = filtered;
         }
-        setLabelStickyDebug((previous) => ({
-          ...previous,
-          probeFilterRendered: filteredCount,
-        }));
       } catch {
         // Ignore: we already report query errors above, and this is best-effort only.
       }
@@ -2096,24 +1622,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const effectiveRenderedFeatures = renderedForParsing?.features?.length ?? 0;
 
     const renderedCandidateByMarkerKey = new Map<string, LabelCandidate>();
-    let parsedFeatures = 0;
     for (const feature of renderedForParsing?.features ?? []) {
       const parsed = getLabelCandidateInfoFromRenderedFeature(feature);
       if (!parsed) {
         continue;
       }
-      parsedFeatures += 1;
       if (!renderedCandidateByMarkerKey.has(parsed.markerKey)) {
         renderedCandidateByMarkerKey.set(parsed.markerKey, parsed.candidate);
       }
     }
-    setLabelStickyDebug((previous) => ({
-      ...previous,
-      lastError: null,
-      lastSkip: effectiveRenderedFeatures === 0 ? 'query-empty' : null,
-      renderedFeatures: effectiveRenderedFeatures,
-      parsedFeatures,
-    }));
 
     const stickyMap = labelStickyCandidateByMarkerKeyRef.current;
     const lastSeenAt = labelStickyLastSeenAtByMarkerKeyRef.current;
@@ -2178,47 +1695,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [onMapIdle]
   );
 
-  const handleMapLoaded = React.useCallback(
-    (source: 'style' | 'map') => {
-      if (__DEV__) {
-        logger.info('Mapbox didFinishLoading', {
-          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
-          instanceId: searchMapInstanceIdRef.current,
-          source,
-          styleURL: getSafeStyleUrlForLogs(styleURL),
-          labelLayerTreeEpoch,
-          markersRenderKey: markersRenderKeySummary,
-          viewport: {
-            width: mapViewportSize.width,
-            height: mapViewportSize.height,
-          },
-          markerCount: restaurantLabelFeaturesWithIds.features.length,
-          queryReady: labelStickyQueryReadyRef.current,
-        });
-      }
-      visibilityRefreshQueuedRef.current = true;
-      runVisibleMarkerRefreshRef.current();
-      labelStickyRefreshQueuedRef.current = true;
-      runStickyLabelRefreshRef.current();
-      onMapLoaded();
-    },
-    [
-      labelLayerTreeEpoch,
-      mapViewportSize.height,
-      mapViewportSize.width,
-      markersRenderKeySummary,
-      onMapLoaded,
-      restaurantLabelFeaturesWithIds.features.length,
-      styleURL,
-    ]
-  );
+  const handleMapLoaded = React.useCallback(() => {
+    visibilityRefreshQueuedRef.current = true;
+    runVisibleMarkerRefreshRef.current();
+    labelStickyRefreshQueuedRef.current = true;
+    runStickyLabelRefreshRef.current();
+    onMapLoaded();
+  }, [onMapLoaded]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
-    handleMapLoaded('style');
+    handleMapLoaded();
   }, [handleMapLoaded]);
 
   const handleMapLoadedMap = React.useCallback(() => {
-    handleMapLoaded('map');
+    handleMapLoaded();
   }, [handleMapLoaded]);
 
   const handleMapLoadError = React.useCallback(
@@ -2277,7 +1767,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    if (!canUseLabelFeatureState || DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY) {
+    if (!canUseLabelFeatureState || DISABLE_LABEL_FEATURE_STATE_OPACITY) {
       previousVisibleLabelIdsRef.current = new Set();
       return;
     }
@@ -2345,45 +1835,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   return (
     <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
-      <View
-        pointerEvents="none"
-        style={{
-          position: 'absolute',
-          top: 120,
-          left: 8,
-          zIndex: 1000,
-          backgroundColor: 'rgba(0,0,0,0.65)',
-          paddingHorizontal: 8,
-          paddingVertical: 6,
-          borderRadius: 8,
-        }}
-      >
-        <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-          {`Pin obstacle collision: ${DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY} (scale=${DEBUG_PIN_COLLISION_OBSTACLE_SCALE})
-Mutex point: ${DEBUG_LABEL_MUTEX_POINT}
-Label fade: ${DEBUG_DISABLE_LABEL_FEATURE_STATE_OPACITY ? 'off' : 'on'}
-Label order: ${DEBUG_STABILIZE_LABEL_ORDER ? 'stable' : 'viewport-y'}
-Sticky candidates: ${DEBUG_STICKY_LABEL_CANDIDATES ? 'on' : 'off'} (locks=${
-            labelStickyCandidateByMarkerKeyRef.current.size
-          })`}
-        </Text>
-        {DEBUG_STICKY_LABEL_CANDIDATES ? (
-          <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 4 }}>
-            {`Sticky query: attempts=${labelStickyDebug.attempts} errors=${labelStickyDebug.errors}
-probe: attempts=${labelStickyDebug.probeAttempts} ready=${
-              labelStickyDebug.probeReady ? 'yes' : 'no'
-            } control=${labelStickyDebug.probeControlRendered} filter=${
-              labelStickyDebug.probeFilterRendered
-            } source=${labelStickyDebug.probeSourceFeatures}
-rendered=${labelStickyDebug.renderedFeatures} parsed=${labelStickyDebug.parsedFeatures} skip=${
-              labelStickyDebug.lastSkip ?? ''
-            }
-${labelStickyDebug.probeLastError ? `probeError=${labelStickyDebug.probeLastError}` : ''}${
-              labelStickyDebug.lastError ? ` error=${labelStickyDebug.lastError}` : ''
-            }`}
-          </Text>
-        ) : null}
-      </View>
       <MapboxGL.MapView
         ref={mapRef}
         // Overscan is required for our no-snapping edge fade: it lets Mapbox render markers just
@@ -2446,12 +1897,6 @@ ${labelStickyDebug.probeLastError ? `probeError=${labelStickyDebug.probeLastErro
             shape={restaurantLabelFeaturesWithIds}
             onPress={handleStylePinPress}
           >
-            {DEBUG_STYLE_PINS_COLLISION ? (
-              <MapboxGL.CircleLayer
-                id="restaurant-style-pins-collision-debug"
-                style={DEBUG_STYLE_PINS_COLLISION_STYLE}
-              />
-            ) : null}
             {stylePinLayerStack}
           </MapboxGL.ShapeSource>
         ) : null}
@@ -2474,7 +1919,7 @@ ${labelStickyDebug.probeLastError ? `probeError=${labelStickyDebug.probeLastErro
               </MapboxGL.ShapeSource>
               {USE_STYLE_LAYER_PINS &&
               !shouldDisableMarkers &&
-              DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off' ? (
+              PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off' ? (
                 <MapboxGL.ShapeSource
                   id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
                   shape={restaurantLabelFeaturesWithIds}
