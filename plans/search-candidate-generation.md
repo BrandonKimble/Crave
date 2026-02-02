@@ -537,4 +537,4 @@ Goal: reduce “spread out semantics” and make the system explainable/debuggab
 
 Optional follow-up (if we want to go further):
 
-- Move plan expansion from a “post-compile plan patch” into the constraint compilation step (keeps all intent decisions in one place).
+- (Done) Plan expansion is now applied during constraint building (so the compiler emits the final `QueryPlan` directly, without post-compile patching).

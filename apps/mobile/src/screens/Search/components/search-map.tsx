@@ -1911,6 +1911,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
                   <MapboxGL.SymbolLayer
                     key={`${LABEL_LAYER_IDS_BY_CANDIDATE[candidate]}-${labelPlacementEpoch}`}
                     id={LABEL_LAYER_IDS_BY_CANDIDATE[candidate]}
+                    slot="top"
                     sourceID={RESTAURANT_LABEL_SOURCE_ID}
                     style={labelCandidateStyles[candidate]}
                     filter={['==', ['get', 'labelCandidate'], candidate]}
@@ -1927,6 +1928,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
                   <MapboxGL.SymbolLayer
                     key={restaurantLabelPinCollisionLayerKey}
                     id={restaurantLabelPinCollisionLayerId}
+                    slot="top"
                     sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
                     style={restaurantLabelPinCollisionStyle}
                   />

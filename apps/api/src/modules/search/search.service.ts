@@ -88,6 +88,7 @@ type SearchExplainInput = {
   relaxationCapabilities: RelaxationCapabilities;
   strictCoverageCount: number;
   hasUnresolvedTerms: boolean;
+  planExpansion: PlanExpansionState | null;
   strictCounts: {
     restaurantsOnPage: number;
     dishesOnPage: number;
@@ -458,6 +459,7 @@ export class SearchService {
           relaxationCapabilities: relaxation,
           strictCoverageCount,
           hasUnresolvedTerms,
+          planExpansion,
           strictCounts: {
             restaurantsOnPage: strictPage.exec.restaurants.length,
             dishesOnPage: strictPage.exec.dishes.length,
@@ -747,6 +749,7 @@ export class SearchService {
         relaxationCapabilities: relaxation,
         strictCoverageCount,
         hasUnresolvedTerms,
+        planExpansion,
         strictCounts: {
           restaurantsOnPage: strictRestaurantExactCount,
           dishesOnPage: strictDishExactCount,
@@ -876,11 +879,9 @@ export class SearchService {
         priceLevels,
         minimumVotes,
       },
+      params.planExpansion,
     );
-    const basePlan = compileQueryPlanFromConstraints(constraints);
-    const stagePlan = params.planExpansion
-      ? this.applyPlanExpansion(basePlan, params.planExpansion)
-      : basePlan;
+    const stagePlan = compileQueryPlanFromConstraints(constraints);
     const planMs = performance.now() - planStart;
 
     const directives = this.buildExecutionDirectives(
@@ -914,6 +915,7 @@ export class SearchService {
       priceLevels: number[];
       minimumVotes: number | null;
     },
+    planExpansion?: PlanExpansionState | null,
   ): SearchConstraints {
     const inputPresence = this.getEntityPresenceSummary(request);
     const stagePresence = { ...inputPresence };
@@ -949,6 +951,16 @@ export class SearchService {
         ? this.collectEntityIds(request.entities.restaurantAttributes)
         : [];
 
+    const dedupe = (ids: string[]): string[] =>
+      Array.from(new Set(ids.filter(Boolean)));
+    const mergeIfBase = (base: string[], added: string[]): string[] =>
+      base.length ? dedupe([...base, ...(added ?? [])]) : base;
+
+    const baseRestaurantIds = this.collectEntityIds(
+      request.entities.restaurants,
+    );
+    const baseFoodIds = this.collectEntityIds(request.entities.food);
+
     return {
       stage,
       format: inputs.format,
@@ -960,10 +972,16 @@ export class SearchService {
       hadRestaurantAttributeGroup,
       primaryFoodAttributeQuery,
       ids: {
-        restaurantIds: this.collectEntityIds(request.entities.restaurants),
-        foodIds: this.collectEntityIds(request.entities.food),
-        foodAttributeIds,
-        restaurantAttributeIds,
+        restaurantIds: baseRestaurantIds,
+        foodIds: mergeIfBase(baseFoodIds, planExpansion?.foodIds ?? []),
+        foodAttributeIds: mergeIfBase(
+          foodAttributeIds,
+          planExpansion?.foodAttributeIds ?? [],
+        ),
+        restaurantAttributeIds: mergeIfBase(
+          restaurantAttributeIds,
+          planExpansion?.restaurantAttributeIds ?? [],
+        ),
       },
       filters: {
         bounds: request.bounds,
@@ -1152,6 +1170,7 @@ export class SearchService {
         priceLevels,
         minimumVotes,
       },
+      input.planExpansion,
     );
 
     return {
@@ -2404,73 +2423,6 @@ export class SearchService {
     };
 
     return this.hasPlanExpansion(expansion) ? expansion : null;
-  }
-
-  private applyPlanExpansion(
-    plan: QueryPlan,
-    expansion: PlanExpansionState,
-  ): QueryPlan {
-    if (!this.hasPlanExpansion(expansion)) {
-      return plan;
-    }
-
-    const dedupe = (ids: string[]): string[] =>
-      Array.from(new Set(ids.filter(Boolean)));
-    const mergeIds = (base: string[], added: string[]) =>
-      dedupe([...base, ...(added ?? [])]);
-
-    let connectionFiltersUpdated = false;
-    const connectionFilters = (plan.connectionFilters ?? []).map((clause) => {
-      if (clause.entityType === EntityScope.FOOD && clause.entityIds?.length) {
-        const merged = mergeIds(clause.entityIds, expansion.foodIds);
-        if (merged.length !== clause.entityIds.length) {
-          connectionFiltersUpdated = true;
-          return { ...clause, entityIds: merged };
-        }
-      }
-      if (
-        clause.entityType === EntityScope.FOOD_ATTRIBUTE &&
-        clause.entityIds?.length
-      ) {
-        const merged = mergeIds(clause.entityIds, expansion.foodAttributeIds);
-        if (merged.length !== clause.entityIds.length) {
-          connectionFiltersUpdated = true;
-          return { ...clause, entityIds: merged };
-        }
-      }
-      return clause;
-    });
-
-    // Attribute-only OR fallback is now driven by SearchExecutionDirectives at execution time,
-    // rather than baking a special tagged filter into the QueryPlan.
-
-    let restaurantFiltersUpdated = false;
-    const restaurantFilters = (plan.restaurantFilters ?? []).map((clause) => {
-      if (
-        clause.entityType === EntityScope.RESTAURANT_ATTRIBUTE &&
-        clause.entityIds?.length
-      ) {
-        const merged = mergeIds(
-          clause.entityIds,
-          expansion.restaurantAttributeIds,
-        );
-        if (merged.length !== clause.entityIds.length) {
-          restaurantFiltersUpdated = true;
-          return { ...clause, entityIds: merged };
-        }
-      }
-      return clause;
-    });
-
-    if (!connectionFiltersUpdated && !restaurantFiltersUpdated) {
-      return plan;
-    }
-
-    return {
-      ...plan,
-      connectionFilters,
-      restaurantFilters,
-    };
   }
 
   private resolveDbPagination(
