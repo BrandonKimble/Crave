@@ -49,6 +49,21 @@ export class SearchSubmissionContextDto {
   @IsOptional()
   @IsEnum(EntityType)
   selectedEntityType?: EntityType;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => UnresolvedEntityGroupDto)
+  unresolvedEntities?: UnresolvedEntityGroupDto[];
+}
+
+export class UnresolvedEntityGroupDto {
+  @IsEnum(EntityType)
+  type!: EntityType;
+
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  terms!: string[];
 }
 
 export class QueryEntityDto {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EntityScope, FilterClause, QueryPlan } from './dto/search-query.dto';
+import type { SearchExecutionDirectives } from './search-execution-directives';
 
 interface BuildQueryOptions {
   plan: QueryPlan;
@@ -24,6 +25,8 @@ interface BuildRestaurantQueryOptions {
   pagination: { skip: number; take: number };
   searchCenter?: { lat: number; lng: number } | null;
   topDishesLimit?: number;
+  excludeRestaurantIds?: string[];
+  directives?: SearchExecutionDirectives;
 }
 
 interface BuildRestaurantQueryResult {
@@ -41,6 +44,8 @@ interface BuildDishQueryOptions {
   plan: QueryPlan;
   pagination: { skip: number; take: number };
   searchCenter?: { lat: number; lng: number } | null;
+  excludeConnectionIds?: string[];
+  directives?: SearchExecutionDirectives;
 }
 
 interface BuildDishQueryResult {
@@ -71,7 +76,9 @@ interface ParsedFilters {
   restaurantIds: string[];
   restaurantAttributeIds: string[];
   foodIds: string[];
+  foodTextExpansionIds: string[];
   foodAttributeIds: string[];
+  foodAttributePrimary: boolean;
   boundsPayload: BoundsPayload | null;
   priceLevels: number[];
   minimumVotes: number | null;
@@ -85,12 +92,47 @@ export class SearchQueryBuilder {
   buildRestaurantQuery(
     options: BuildRestaurantQueryOptions,
   ): BuildRestaurantQueryResult {
-    const { plan, pagination, searchCenter, topDishesLimit = 3 } = options;
-    const filters = this.parseFilters(plan);
+    const {
+      plan,
+      pagination,
+      searchCenter,
+      topDishesLimit = 3,
+      excludeRestaurantIds = [],
+      directives,
+    } = options;
+    const filters = this.parseFilters(plan, directives);
 
-    // Build restaurant conditions (for restaurants query, we DON'T use food entity filters)
+    // Build restaurant conditions (restaurant IDs / restaurant attributes / price)
     const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
       this.buildRestaurantConditions(filters);
+
+    // Always require at least one connection; if food/attribute filters exist, require a matching connection.
+    const { sql: connectionMatchSql, preview: connectionMatchPreview } =
+      this.buildConnectionMatchConditions(filters);
+
+    const connectionExistsSql = Prisma.sql`EXISTS (
+      SELECT 1
+      FROM core_connections c
+      WHERE c.restaurant_id = r.entity_id
+        AND ${connectionMatchSql}
+    )`;
+    const connectionExistsPreview = `EXISTS (SELECT 1 FROM core_connections c WHERE c.restaurant_id = r.entity_id AND ${connectionMatchPreview})`;
+
+    const excludeRestaurantsSql = excludeRestaurantIds.length
+      ? Prisma.sql`AND NOT (${this.buildInClause(
+          'r.entity_id',
+          excludeRestaurantIds,
+        )})`
+      : Prisma.sql``;
+    const excludeRestaurantsPreview = excludeRestaurantIds.length
+      ? `AND NOT (r.entity_id = ANY(${this.formatUuidArray(
+          excludeRestaurantIds,
+        )}))`
+      : '';
+
+    const combinedRestaurantWhereSql = Prisma.sql`${restaurantWhereSql} AND ${connectionExistsSql} ${excludeRestaurantsSql}`;
+    const combinedRestaurantWherePreview =
+      `${restaurantWherePreview} AND ${connectionExistsPreview} ${excludeRestaurantsPreview}`.trim();
 
     // Build location conditions (bounds)
     const {
@@ -104,8 +146,8 @@ export class SearchQueryBuilder {
 
     // Build CTEs
     const restaurantCte = this.buildFilteredRestaurantsCte(
-      restaurantWhereSql,
-      restaurantWherePreview,
+      combinedRestaurantWhereSql,
+      combinedRestaurantWherePreview,
     );
 
     const filteredLocationsCte = this.buildFilteredLocationsCte(
@@ -264,6 +306,7 @@ LEFT JOIN LATERAL (
       AND drc.subject_id = c.connection_id
       AND drc.location_key = rr.location_key
     WHERE c.restaurant_id = rr.restaurant_id
+      AND ${connectionMatchSql}
   ) sub
 ) td ON true`;
 
@@ -301,30 +344,18 @@ LEFT JOIN LATERAL (...top dishes subquery with LIMIT ${topDishesLimit}...) td ON
    * Build dish query (Query B) - Top dishes with restaurant data for map pins
    */
   buildDishQuery(options: BuildDishQueryOptions): BuildDishQueryResult {
-    const { plan, pagination, searchCenter } = options;
-    const filters = this.parseFilters(plan);
+    const {
+      plan,
+      pagination,
+      searchCenter,
+      excludeConnectionIds = [],
+      directives,
+    } = options;
+    const filters = this.parseFilters(plan, directives);
 
-    // For dish query, we use bounds and price filters but NOT restaurant entity filters
-    // We DO use food entity filters
-    const restaurantConditions: Prisma.Sql[] = [
-      Prisma.sql`r.type = 'restaurant'`,
-    ];
-    const restaurantConditionPreview: string[] = [`r.type = 'restaurant'`];
-
-    // Apply price levels (affects both queries)
-    if (filters.priceLevels.length) {
-      restaurantConditions.push(
-        this.buildNumberInClause('r.price_level', filters.priceLevels),
-      );
-      restaurantConditionPreview.push(
-        `r.price_level = ANY(${this.formatNumberArray(filters.priceLevels)})`,
-      );
-    }
-
-    const restaurantWhereSql = this.combineSqlClauses(restaurantConditions);
-    const restaurantWherePreview = this.combinePreviewClauses(
-      restaurantConditionPreview,
-    );
+    // For dish query, we apply restaurant constraints (IDs, restaurant attributes, price) and connection constraints.
+    const { sql: restaurantWhereSql, preview: restaurantWherePreview } =
+      this.buildRestaurantConditions(filters);
 
     // Build location conditions (bounds)
     const {
@@ -339,6 +370,22 @@ LEFT JOIN LATERAL (...top dishes subquery with LIMIT ${topDishesLimit}...) td ON
       preview: connectionWherePreview,
       minimumVotesApplied,
     } = this.buildConnectionConditions(filters);
+
+    const excludeConnectionsSql = excludeConnectionIds.length
+      ? Prisma.sql`AND NOT (${this.buildInClause(
+          'c.connection_id',
+          excludeConnectionIds,
+        )})`
+      : Prisma.sql``;
+    const excludeConnectionsPreview = excludeConnectionIds.length
+      ? `AND NOT (c.connection_id = ANY(${this.formatUuidArray(
+          excludeConnectionIds,
+        )}))`
+      : '';
+
+    const combinedConnectionWhereSql = Prisma.sql`${connectionWhereSql} ${excludeConnectionsSql}`;
+    const combinedConnectionWherePreview =
+      `${connectionWherePreview} ${excludeConnectionsPreview}`.trim();
 
     // Build CTEs
     const restaurantCte = Prisma.sql`
@@ -430,7 +477,7 @@ filtered_connections AS (
     AND drc.subject_id = c.connection_id
     AND drc.location_key = fr.location_key
   JOIN core_entities f ON f.entity_id = c.food_id
-  WHERE ${connectionWhereSql}
+  WHERE ${combinedConnectionWhereSql}
 )`;
 
     const filteredConnectionsCtePreview = `
@@ -449,7 +496,7 @@ filtered_connections AS (
   LEFT JOIN core_display_rank_scores drr ON drr.subject_type = 'restaurant' AND drr.subject_id = fr.entity_id AND drr.location_key = fr.location_key
   LEFT JOIN core_display_rank_scores drc ON drc.subject_type = 'connection' AND drc.subject_id = c.connection_id AND drc.location_key = fr.location_key
   JOIN core_entities f ON f.entity_id = c.food_id
-  WHERE ${connectionWherePreview}
+  WHERE ${combinedConnectionWherePreview}
 )`.trim();
 
     const order = this.resolveDishOrderSql(plan.ranking.foodOrder);
@@ -517,7 +564,12 @@ LIMIT ${pagination.take};`.trim();
   // Private helpers
   // ==========================================================================
 
-  private parseFilters(plan: QueryPlan): ParsedFilters {
+  private parseFilters(
+    plan: QueryPlan,
+    directives?: SearchExecutionDirectives,
+  ): ParsedFilters {
+    const connectionFilters = plan.connectionFilters ?? [];
+
     return {
       restaurantIds: this.collectEntityIds(
         plan.restaurantFilters,
@@ -527,14 +579,16 @@ LIMIT ${pagination.take};`.trim();
         plan.restaurantFilters,
         EntityScope.RESTAURANT_ATTRIBUTE,
       ),
-      foodIds: this.collectEntityIds(plan.connectionFilters, EntityScope.FOOD),
+      foodIds: this.collectEntityIds(connectionFilters, EntityScope.FOOD),
+      foodTextExpansionIds: directives?.primaryFoodAttributeTextFoodIds ?? [],
       foodAttributeIds: this.collectEntityIds(
-        plan.connectionFilters,
+        connectionFilters,
         EntityScope.FOOD_ATTRIBUTE,
       ),
+      foodAttributePrimary: Boolean(directives?.primaryFoodAttributeQuery),
       boundsPayload: this.extractBoundsPayload(plan.restaurantFilters),
       priceLevels: this.extractPriceLevels(plan.restaurantFilters),
-      minimumVotes: this.extractMinimumVotes(plan.connectionFilters),
+      minimumVotes: this.extractMinimumVotes(connectionFilters),
     };
   }
 
@@ -622,32 +676,64 @@ LIMIT ${pagination.take};`.trim();
     const conditionPreview: string[] = [];
     let minimumVotesApplied = false;
 
-    if (filters.foodIds.length) {
-      const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
+    const shouldOrPrimaryFoodAttributeEvidence =
+      filters.foodAttributePrimary &&
+      filters.foodAttributeIds.length > 0 &&
+      filters.foodTextExpansionIds.length > 0 &&
+      filters.foodIds.length === 0;
+    if (shouldOrPrimaryFoodAttributeEvidence) {
+      const attributeClause = this.buildArrayOverlapClause(
+        'c.food_attributes',
+        filters.foodAttributeIds,
+      );
+      const foodIdClause = this.buildInClause(
+        'c.food_id',
+        filters.foodTextExpansionIds,
+      );
       const categoryClause = this.buildArrayOverlapClause(
         'c.categories',
-        filters.foodIds,
+        filters.foodTextExpansionIds,
       );
-      conditions.push(Prisma.sql`(${foodIdClause} OR ${categoryClause})`);
-      conditionPreview.push(
-        `(c.food_id = ANY(${this.formatUuidArray(
-          filters.foodIds,
-        )}) OR c.categories && ${this.formatUuidArray(filters.foodIds)})`,
-      );
-    }
-
-    if (filters.foodAttributeIds.length) {
       conditions.push(
-        this.buildArrayOverlapClause(
-          'c.food_attributes',
-          filters.foodAttributeIds,
-        ),
+        Prisma.sql`((${attributeClause}) OR (${foodIdClause} OR ${categoryClause}))`,
       );
       conditionPreview.push(
-        `c.food_attributes && ${this.formatUuidArray(
+        `((c.food_attributes && ${this.formatUuidArray(
           filters.foodAttributeIds,
-        )}`,
+        )}) OR (c.food_id = ANY(${this.formatUuidArray(
+          filters.foodTextExpansionIds,
+        )}) OR c.categories && ${this.formatUuidArray(
+          filters.foodTextExpansionIds,
+        )}))`,
       );
+    } else {
+      if (filters.foodIds.length) {
+        const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
+        const categoryClause = this.buildArrayOverlapClause(
+          'c.categories',
+          filters.foodIds,
+        );
+        conditions.push(Prisma.sql`(${foodIdClause} OR ${categoryClause})`);
+        conditionPreview.push(
+          `(c.food_id = ANY(${this.formatUuidArray(
+            filters.foodIds,
+          )}) OR c.categories && ${this.formatUuidArray(filters.foodIds)})`,
+        );
+      }
+
+      if (filters.foodAttributeIds.length) {
+        conditions.push(
+          this.buildArrayOverlapClause(
+            'c.food_attributes',
+            filters.foodAttributeIds,
+          ),
+        );
+        conditionPreview.push(
+          `c.food_attributes && ${this.formatUuidArray(
+            filters.foodAttributeIds,
+          )}`,
+        );
+      }
     }
 
     if (filters.minimumVotes !== null) {
@@ -662,6 +748,84 @@ LIMIT ${pagination.take};`.trim();
       sql: this.combineSqlClauses(conditions),
       preview: this.combinePreviewClauses(conditionPreview),
       minimumVotesApplied,
+    };
+  }
+
+  private buildConnectionMatchConditions(filters: ParsedFilters): {
+    sql: Prisma.Sql;
+    preview: string;
+  } {
+    const conditions: Prisma.Sql[] = [];
+    const conditionPreview: string[] = [];
+
+    const shouldOrPrimaryFoodAttributeEvidence =
+      filters.foodAttributePrimary &&
+      filters.foodAttributeIds.length > 0 &&
+      filters.foodTextExpansionIds.length > 0 &&
+      filters.foodIds.length === 0;
+    if (shouldOrPrimaryFoodAttributeEvidence) {
+      const attributeClause = this.buildArrayOverlapClause(
+        'c.food_attributes',
+        filters.foodAttributeIds,
+      );
+      const foodIdClause = this.buildInClause(
+        'c.food_id',
+        filters.foodTextExpansionIds,
+      );
+      const categoryClause = this.buildArrayOverlapClause(
+        'c.categories',
+        filters.foodTextExpansionIds,
+      );
+      conditions.push(
+        Prisma.sql`((${attributeClause}) OR (${foodIdClause} OR ${categoryClause}))`,
+      );
+      conditionPreview.push(
+        `((c.food_attributes && ${this.formatUuidArray(
+          filters.foodAttributeIds,
+        )}) OR (c.food_id = ANY(${this.formatUuidArray(
+          filters.foodTextExpansionIds,
+        )}) OR c.categories && ${this.formatUuidArray(
+          filters.foodTextExpansionIds,
+        )}))`,
+      );
+    } else {
+      if (filters.foodIds.length) {
+        const foodIdClause = this.buildInClause('c.food_id', filters.foodIds);
+        const categoryClause = this.buildArrayOverlapClause(
+          'c.categories',
+          filters.foodIds,
+        );
+        conditions.push(Prisma.sql`(${foodIdClause} OR ${categoryClause})`);
+        conditionPreview.push(
+          `(c.food_id = ANY(${this.formatUuidArray(
+            filters.foodIds,
+          )}) OR c.categories && ${this.formatUuidArray(filters.foodIds)})`,
+        );
+      }
+
+      if (filters.foodAttributeIds.length) {
+        conditions.push(
+          this.buildArrayOverlapClause(
+            'c.food_attributes',
+            filters.foodAttributeIds,
+          ),
+        );
+        conditionPreview.push(
+          `c.food_attributes && ${this.formatUuidArray(
+            filters.foodAttributeIds,
+          )}`,
+        );
+      }
+    }
+
+    if (filters.minimumVotes !== null) {
+      conditions.push(Prisma.sql`c.total_upvotes >= ${filters.minimumVotes}`);
+      conditionPreview.push(`c.total_upvotes >= ${filters.minimumVotes}`);
+    }
+
+    return {
+      sql: this.combineSqlClauses(conditions),
+      preview: this.combinePreviewClauses(conditionPreview),
     };
   }
 

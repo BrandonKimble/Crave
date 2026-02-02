@@ -184,6 +184,19 @@ export interface SearchResponseMetadata {
   page: number;
   pageSize: number;
   perRestaurantLimit: number;
+  /**
+   * When the API expands the query beyond the strict intent, page 1 can include
+   * both “exact” and “broader” sections. These fields describe how many of the
+   * returned items belong to the strict (exact) section.
+   */
+  exactDishCountOnPage?: number;
+  exactRestaurantCountOnPage?: number;
+  relaxationApplied?: boolean;
+  relaxationStage?:
+    | 'strict'
+    | 'relaxed_restaurant_attributes'
+    | 'relaxed_food_attributes'
+    | 'relaxed_modifiers';
   coverageStatus?: 'full' | 'partial' | 'unresolved';
   unresolvedEntities?: Array<{
     type: EntityScope;

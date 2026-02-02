@@ -7,6 +7,7 @@ import { AutocompleteService } from './autocomplete.service';
 import { AutocompleteController } from './autocomplete.controller';
 import { EntitySearchService } from './entity-search.service';
 import { IdentityModule } from '../identity/identity.module';
+import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { IdentityModule } from '../identity/identity.module';
     SearchModule,
     PrismaModule,
     IdentityModule,
+    EntityTextSearchModule,
   ],
   controllers: [AutocompleteController],
   providers: [AutocompleteService, EntitySearchService],

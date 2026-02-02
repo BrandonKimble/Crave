@@ -8,6 +8,7 @@ import { EntityResolverModule } from '../content-processing/entity-resolver/enti
 import { ExternalIntegrationsModule } from '../external-integrations/external-integrations.module';
 import { RestaurantEnrichmentModule } from '../restaurant-enrichment';
 import { IdentityModule } from '../identity/identity.module';
+import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
 import { SearchQueryExecutor } from './search-query.executor';
@@ -22,6 +23,7 @@ import { OnDemandRequestUsersCleanupService } from './on-demand-request-users-cl
 import { SearchQuerySuggestionService } from './search-query-suggestion.service';
 import { SearchPopularityService } from './search-popularity.service';
 import { RestaurantStatusService } from './restaurant-status.service';
+import { SearchEntityExpansionService } from './search-entity-expansion.service';
 
 @Module({
   imports: [
@@ -34,6 +36,7 @@ import { RestaurantStatusService } from './restaurant-status.service';
     ExternalIntegrationsModule,
     RestaurantEnrichmentModule,
     IdentityModule,
+    EntityTextSearchModule,
   ],
   controllers: [SearchController],
   providers: [
@@ -50,6 +53,7 @@ import { RestaurantStatusService } from './restaurant-status.service';
     SearchQuerySuggestionService,
     SearchPopularityService,
     RestaurantStatusService,
+    SearchEntityExpansionService,
   ],
   exports: [
     SearchService,

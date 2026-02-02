@@ -21,12 +21,16 @@ export interface OnDemandRequestRecordOptions {
 @Injectable()
 export class OnDemandRequestService {
   private readonly logger: LoggerService;
+  private readonly cooldownMs: number;
+  private readonly maxEntities: number;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(LoggerService) loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('OnDemandRequestService');
+    this.cooldownMs = this.resolveCooldownMs();
+    this.maxEntities = this.resolveMaxEntities();
   }
 
   async recordRequests(
@@ -35,7 +39,9 @@ export class OnDemandRequestService {
     context: Record<string, unknown> = {},
   ): Promise<OnDemandRequestInput[]> {
     const deduped = this.deduplicateRequests(requests);
-    if (!deduped.length) {
+    const capped =
+      this.maxEntities > 0 ? deduped.slice(0, this.maxEntities) : deduped;
+    if (!capped.length) {
       return [];
     }
 
@@ -45,8 +51,16 @@ export class OnDemandRequestService {
         ? options.seenAt
         : new Date();
 
+    const filtered =
+      this.cooldownMs > 0
+        ? await this.filterByCooldown(capped, seenAt)
+        : capped;
+    if (!filtered.length) {
+      return [];
+    }
+
     await this.prisma.$transaction(async (tx) => {
-      for (const request of deduped) {
+      for (const request of filtered) {
         const resultRestaurantCount = this.extractInteger(
           context.restaurantCount,
         );
@@ -142,7 +156,7 @@ export class OnDemandRequestService {
     });
 
     this.logger.debug('Recorded on-demand requests', {
-      requests: deduped.map((request) => ({
+      requests: filtered.map((request) => ({
         term: request.term,
         entityType: request.entityType,
         reason: request.reason,
@@ -150,7 +164,7 @@ export class OnDemandRequestService {
       userId: userId ?? undefined,
     });
 
-    return deduped;
+    return filtered;
   }
 
   private deduplicateRequests(
@@ -198,6 +212,80 @@ export class OnDemandRequestService {
   private sanitizeTerm(term: string): string {
     const stripped = stripGenericTokens(term);
     return stripped.isGenericOnly ? '' : stripped.text;
+  }
+
+  private resolveCooldownMs(): number {
+    const raw = process.env.SEARCH_ON_DEMAND_COOLDOWN_MS;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.max(0, Math.floor(parsed));
+      }
+    }
+    return 300_000;
+  }
+
+  private resolveMaxEntities(): number {
+    const raw = process.env.SEARCH_ON_DEMAND_MAX_ENTITIES;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.max(0, Math.floor(parsed));
+      }
+    }
+    return 5;
+  }
+
+  private composeCooldownKey(request: OnDemandRequestInput): string {
+    const locationKey = this.normalizeLocationKey(request.locationKey);
+    return `${request.reason}:${
+      request.entityType
+    }:${request.term.toLowerCase()}:${locationKey}`;
+  }
+
+  private async filterByCooldown(
+    requests: OnDemandRequestInput[],
+    seenAt: Date,
+  ): Promise<OnDemandRequestInput[]> {
+    if (this.cooldownMs <= 0) {
+      return requests;
+    }
+
+    const ors = requests.map((request) => ({
+      term: request.term,
+      entityType: request.entityType,
+      reason: request.reason,
+      locationKey: this.normalizeLocationKey(request.locationKey),
+    }));
+
+    const existing = await this.prisma.onDemandRequest.findMany({
+      where: { OR: ors },
+      select: {
+        term: true,
+        entityType: true,
+        reason: true,
+        locationKey: true,
+        lastSeenAt: true,
+      },
+    });
+
+    const cutoffByKey = new Map<string, Date>();
+    for (const row of existing) {
+      const key = `${row.reason}:${row.entityType}:${row.term.toLowerCase()}:${
+        row.locationKey
+      }`;
+      cutoffByKey.set(key, row.lastSeenAt);
+    }
+
+    const nowMs = seenAt.getTime();
+    return requests.filter((request) => {
+      const key = this.composeCooldownKey(request);
+      const lastSeenAt = cutoffByKey.get(key);
+      if (!lastSeenAt) {
+        return true;
+      }
+      return nowMs - lastSeenAt.getTime() >= this.cooldownMs;
+    });
   }
 
   private buildMetadata(

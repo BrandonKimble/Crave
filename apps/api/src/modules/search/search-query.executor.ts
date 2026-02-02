@@ -12,6 +12,7 @@ import {
   SearchQueryRequestDto,
 } from './dto/search-query.dto';
 import { SearchQueryBuilder } from './search-query.builder';
+import type { SearchExecutionDirectives } from './search-execution-directives';
 import {
   buildOperatingMetadata as buildOperatingMetadataUtil,
   buildOperatingMetadataFromLocation as buildOperatingMetadataFromLocationUtil,
@@ -241,8 +242,13 @@ interface ExecuteDualParams {
   plan: QueryPlan;
   request: SearchQueryRequestDto;
   pagination: { skip: number; take: number };
+  restaurantPagination?: { skip: number; take: number };
+  dishPagination?: { skip: number; take: number };
   topDishesLimit?: number;
   includeSqlPreview?: boolean;
+  excludeRestaurantIds?: string[];
+  excludeConnectionIds?: string[];
+  directives?: SearchExecutionDirectives;
 }
 
 interface ExecuteDualResult {
@@ -449,25 +455,37 @@ export class SearchQueryExecutor {
       plan,
       request,
       pagination,
+      restaurantPagination,
+      dishPagination,
       topDishesLimit = 3,
       includeSqlPreview,
+      excludeRestaurantIds,
+      excludeConnectionIds,
+      directives,
     } = params;
 
     const executeStart = performance.now();
     const searchCenter = this.resolveSearchCenter(request);
 
+    const effectiveRestaurantPagination = restaurantPagination ?? pagination;
+    const effectiveDishPagination = dishPagination ?? pagination;
+
     // Build both queries in parallel
     const buildStart = performance.now();
     const restaurantQuery = this.queryBuilder.buildRestaurantQuery({
       plan,
-      pagination,
+      pagination: effectiveRestaurantPagination,
       searchCenter,
       topDishesLimit,
+      excludeRestaurantIds,
+      directives,
     });
     const dishQuery = this.queryBuilder.buildDishQuery({
       plan,
-      pagination,
+      pagination: effectiveDishPagination,
       searchCenter,
+      excludeConnectionIds,
+      directives,
     });
     const buildSqlMs = performance.now() - buildStart;
 

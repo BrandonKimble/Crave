@@ -1166,7 +1166,22 @@ const SearchScreen: React.FC = () => {
   const cancelSearchEditOnBackRef = React.useRef(false);
   const restoreHomeOnSearchBackRef = React.useRef(false);
   const suggestionLayoutHoldTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const resultsScrollRef = React.useRef<FlashListRef<FoodResult | RestaurantResult> | null>(null);
+
+  type ResultsSectionRow = {
+    kind: 'section';
+    key: string;
+    label: string;
+  };
+
+  type ResultsShowMoreRow = {
+    kind: 'show_more_exact';
+    key: string;
+    hiddenCount: number;
+  };
+
+  type ResultsListItem = FoodResult | RestaurantResult | ResultsSectionRow | ResultsShowMoreRow;
+
+  const resultsScrollRef = React.useRef<FlashListRef<ResultsListItem> | null>(null);
   const resultsScrollingTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasUserScrolledResultsRef = React.useRef(false);
   const searchFiltersLayoutCacheRef = React.useRef<SearchFiltersLayoutCache | null>(null);
@@ -6632,26 +6647,79 @@ const SearchScreen: React.FC = () => {
     ]
   );
 
-  const resultsKeyExtractor = React.useCallback(
-    (item: FoodResult | RestaurantResult, index: number) => {
-      if (item && 'foodId' in item) {
-        if (item.connectionId) {
-          return item.connectionId;
-        }
-        if (item.foodId && item.restaurantId) {
-          return `${item.foodId}-${item.restaurantId}`;
-        }
-        return `dish-${index}`;
+  const resultsKeyExtractor = React.useCallback((item: ResultsListItem, index: number) => {
+    if (item && typeof item === 'object' && 'kind' in item) {
+      return item.key || `row-${index}`;
+    }
+    if (item && 'foodId' in item) {
+      if (item.connectionId) {
+        return item.connectionId;
       }
-      if (item && 'restaurantId' in item) {
-        return item.restaurantId || `restaurant-${index}`;
+      if (item.foodId && item.restaurantId) {
+        return `${item.foodId}-${item.restaurantId}`;
       }
-      return `result-${index}`;
-    },
-    []
-  );
+      return `dish-${index}`;
+    }
+    if (item && 'restaurantId' in item) {
+      return item.restaurantId || `restaurant-${index}`;
+    }
+    return `result-${index}`;
+  }, []);
 
   const isDishesTab = activeTab === 'dishes';
+  const EXACT_VISIBLE_LIMIT = 5;
+  const [sectionedSearchRequestId, setSectionedSearchRequestId] = React.useState<string | null>(
+    null
+  );
+  const [exactDishesOnPage, setExactDishesOnPage] = React.useState<number | null>(null);
+  const [exactRestaurantsOnPage, setExactRestaurantsOnPage] = React.useState<number | null>(null);
+  const [showAllExactDishes, setShowAllExactDishes] = React.useState(false);
+  const [showAllExactRestaurants, setShowAllExactRestaurants] = React.useState(false);
+
+  React.useEffect(() => {
+    const searchId = results?.metadata?.searchRequestId ?? null;
+    const nextExactDishes =
+      typeof results?.metadata?.exactDishCountOnPage === 'number'
+        ? results.metadata.exactDishCountOnPage
+        : null;
+    const nextExactRestaurants =
+      typeof results?.metadata?.exactRestaurantCountOnPage === 'number'
+        ? results.metadata.exactRestaurantCountOnPage
+        : null;
+
+    if (!searchId) {
+      setSectionedSearchRequestId(null);
+      setExactDishesOnPage(null);
+      setExactRestaurantsOnPage(null);
+      setShowAllExactDishes(false);
+      setShowAllExactRestaurants(false);
+      return;
+    }
+
+    if (searchId !== sectionedSearchRequestId) {
+      setSectionedSearchRequestId(searchId);
+      setExactDishesOnPage(nextExactDishes);
+      setExactRestaurantsOnPage(nextExactRestaurants);
+      setShowAllExactDishes(false);
+      setShowAllExactRestaurants(false);
+      return;
+    }
+
+    if (nextExactDishes !== null && exactDishesOnPage === null) {
+      setExactDishesOnPage(nextExactDishes);
+    }
+    if (nextExactRestaurants !== null && exactRestaurantsOnPage === null) {
+      setExactRestaurantsOnPage(nextExactRestaurants);
+    }
+  }, [
+    exactDishesOnPage,
+    exactRestaurantsOnPage,
+    results?.metadata?.exactDishCountOnPage,
+    results?.metadata?.exactRestaurantCountOnPage,
+    results?.metadata?.searchRequestId,
+    sectionedSearchRequestId,
+  ]);
+
   const resultsData = React.useMemo(() => {
     const source = isDishesTab ? dishes : restaurants;
     if (!Array.isArray(source)) {
@@ -6669,6 +6737,59 @@ const SearchScreen: React.FC = () => {
     );
     return filtered.length > 0 ? filtered : EMPTY_RESULTS;
   }, [resultsData]);
+
+  const sectionedResultsData = React.useMemo<ResultsListItem[]>(() => {
+    const exactCountRaw = isDishesTab ? exactDishesOnPage : exactRestaurantsOnPage;
+    const exactCount =
+      typeof exactCountRaw === 'number' && Number.isFinite(exactCountRaw) && exactCountRaw > 0
+        ? Math.floor(exactCountRaw)
+        : 0;
+
+    if (exactCount <= 0 || safeResultsData.length <= exactCount) {
+      return safeResultsData;
+    }
+
+    const exactAll = safeResultsData.slice(0, exactCount);
+    const relaxedAll = safeResultsData.slice(exactCount);
+
+    const showAllExact = isDishesTab ? showAllExactDishes : showAllExactRestaurants;
+    const exactVisible = showAllExact ? exactAll : exactAll.slice(0, EXACT_VISIBLE_LIMIT);
+    const hiddenCount = Math.max(0, exactAll.length - exactVisible.length);
+
+    const rows: ResultsListItem[] = [
+      { kind: 'section', key: `${activeTab}-section-exact`, label: 'Exact matches' },
+      ...exactVisible,
+    ];
+
+    if (hiddenCount > 0 && !showAllExact) {
+      rows.push({
+        kind: 'show_more_exact',
+        key: `${activeTab}-show-more-exact`,
+        hiddenCount,
+      });
+    }
+
+    if (relaxedAll.length > 0) {
+      rows.push({
+        kind: 'section',
+        key: `${activeTab}-section-broader`,
+        label: 'Broader matches',
+      });
+      rows.push(...relaxedAll);
+    }
+
+    return rows;
+  }, [
+    EXACT_VISIBLE_LIMIT,
+    activeTab,
+    exactDishesOnPage,
+    exactRestaurantsOnPage,
+    isDishesTab,
+    safeResultsData,
+    showAllExactDishes,
+    showAllExactRestaurants,
+  ]);
+
   const shouldShowResultsOverlay = isFilterTogglePending && safeResultsData.length > 0;
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
@@ -6685,20 +6806,57 @@ const SearchScreen: React.FC = () => {
     ),
     [placeholderItemStyle]
   );
-  const getResultItemType = React.useCallback<
-    FlashListProps<FoodResult | RestaurantResult>['getItemType']
-  >((item) => ('foodId' in item ? 'dish' : 'restaurant'), []);
+  const getResultItemType = React.useCallback<FlashListProps<ResultsListItem>['getItemType']>(
+    (item) => {
+      if (item && typeof item === 'object' && 'kind' in item) {
+        return item.kind;
+      }
+      return 'foodId' in item ? 'dish' : 'restaurant';
+    },
+    []
+  );
 
   const renderPlaceholderFlashListItem = React.useCallback<
-    NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
+    NonNullable<FlashListProps<ResultsListItem>['renderItem']>
   >(({ index }) => renderPlaceholderItem(index), [renderPlaceholderItem]);
   const renderResultsFlashListItem = React.useCallback<
-    NonNullable<FlashListProps<FoodResult | RestaurantResult>['renderItem']>
+    NonNullable<FlashListProps<ResultsListItem>['renderItem']>
   >(
     ({ item, index }) => {
       if (item === undefined || item === null) {
         logger.error('FlashList renderItem received nullish item', { index });
         return null;
+      }
+      if (item && typeof item === 'object' && 'kind' in item) {
+        if (item.kind === 'section') {
+          return (
+            <View style={[styles.resultItem, index === 0 && styles.firstResultItem]}>
+              <Text style={[styles.resultMetaText, { color: themeColors.textMuted }]}>
+                {item.label}
+              </Text>
+            </View>
+          );
+        }
+        if (item.kind === 'show_more_exact') {
+          const hiddenCount = item.hiddenCount;
+          const onPress = isDishesTab
+            ? () => setShowAllExactDishes(true)
+            : () => setShowAllExactRestaurants(true);
+          const label =
+            hiddenCount === 1
+              ? 'Show 1 more exact match'
+              : `Show ${hiddenCount} more exact matches`;
+          return (
+            <Pressable
+              onPress={onPress}
+              style={[styles.resultItem, index === 0 && styles.firstResultItem]}
+            >
+              <Text style={[styles.resultMetaText, { color: themeColors.secondaryAccent }]}>
+                {label}
+              </Text>
+            </Pressable>
+          );
+        }
       }
       return 'foodId' in item
         ? renderDishCard(item as FoodResult, index)
@@ -6712,11 +6870,11 @@ const SearchScreen: React.FC = () => {
   const resultsListKey = React.useMemo(() => 'results', []);
   const resultsListData = React.useMemo(() => {
     if (!shouldHydrateResults) {
-      return safeResultsData;
+      return sectionedResultsData;
     }
-    const targetCount = Math.min(6, safeResultsData.length);
-    return targetCount > 0 ? safeResultsData.slice(0, targetCount) : safeResultsData;
-  }, [shouldHydrateResults, safeResultsData]);
+    const targetCount = Math.min(6, sectionedResultsData.length);
+    return targetCount > 0 ? sectionedResultsData.slice(0, targetCount) : sectionedResultsData;
+  }, [shouldHydrateResults, sectionedResultsData]);
   React.useEffect(() => {
     if (!resultsHydrationKey) {
       if (hydratedResultsKey !== null) {
@@ -6999,7 +7157,7 @@ const SearchScreen: React.FC = () => {
     []
   );
   const handleResultsViewableItemsChanged = React.useCallback<
-    NonNullable<FlashListProps<FoodResult | RestaurantResult>['onViewableItemsChanged']>
+    NonNullable<FlashListProps<ResultsListItem>['onViewableItemsChanged']>
   >(
     (info) => {
       if (!shouldLogResultsViewability || safeResultsData.length === 0) {
@@ -7095,7 +7253,7 @@ const SearchScreen: React.FC = () => {
     onSnapChange: handlePollCreationSnapChange,
   });
 
-  const searchPanelSpec = useSearchPanelSpec<FoodResult | RestaurantResult>({
+  const searchPanelSpec = useSearchPanelSpec<ResultsListItem>({
     visible: shouldRenderResultsSheet,
     listScrollEnabled:
       !isPriceSelectorVisible && !isFilterTogglePending && !shouldDisableResultsSheetInteraction,

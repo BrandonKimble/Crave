@@ -59,8 +59,13 @@ export class SearchOrchestrationService {
     interpretation.structuredRequest.searchRequestId = request.searchRequestId;
     interpretation.structuredRequest.submissionSource =
       request.submissionSource ?? 'manual';
-    interpretation.structuredRequest.submissionContext =
-      request.submissionContext;
+    interpretation.structuredRequest.submissionContext = {
+      ...(request.submissionContext ?? {}),
+      unresolvedEntities: interpretation.unresolved.map((group) => ({
+        type: group.type,
+        terms: group.terms,
+      })),
+    };
     interpretation.structuredRequest.userId = request.userId;
 
     const hasInterpretationTargets =

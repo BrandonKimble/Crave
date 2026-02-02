@@ -30,6 +30,49 @@ import {
   projectToMercator,
 } from './marker-visibility';
 
+const makeDebugId = () => Math.random().toString(36).slice(2, 10);
+const SEARCH_MAP_MODULE_INSTANCE_ID = makeDebugId();
+const SEARCH_MAP_MODULE_LOADED_AT_MS = Date.now();
+type SearchMapModuleHotReloadState = {
+  loadCount: number;
+  moduleId: string;
+  loadedAtMs: number;
+  previousModuleId: string | null;
+  previousLoadedAtMs: number | null;
+};
+
+const getSearchMapModuleHotReloadState = (): SearchMapModuleHotReloadState => {
+  const globalKey = '__CRAVE_SEARCH_SEARCH_MAP_MODULE_HOT_RELOAD_STATE__';
+  const globalRecord = globalThis as unknown as Record<string, unknown>;
+  const previous = globalRecord[globalKey] as SearchMapModuleHotReloadState | undefined;
+  const next: SearchMapModuleHotReloadState = {
+    loadCount: (previous?.loadCount ?? 0) + 1,
+    moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+    loadedAtMs: SEARCH_MAP_MODULE_LOADED_AT_MS,
+    previousModuleId: previous?.moduleId ?? null,
+    previousLoadedAtMs: previous?.loadedAtMs ?? null,
+  };
+  globalRecord[globalKey] = next;
+  return next;
+};
+
+const SEARCH_MAP_MODULE_HOT_RELOAD_STATE: SearchMapModuleHotReloadState | null = __DEV__
+  ? getSearchMapModuleHotReloadState()
+  : null;
+
+if (__DEV__ && SEARCH_MAP_MODULE_HOT_RELOAD_STATE) {
+  logger.info('SearchMap module init', SEARCH_MAP_MODULE_HOT_RELOAD_STATE);
+}
+
+const hashString32 = (value: string) => {
+  // Deterministic small hash for log correlation; NOT crypto-safe.
+  let hash = 5381;
+  for (let index = 0; index < value.length; index++) {
+    hash = (hash * 33) ^ value.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
+};
+
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
 // When a marker re-enters the (overscanned) visibility bounds while the map is still moving, we
 // hold the fade-in briefly to avoid flicker caused by view->coordinate sampling jitter.
@@ -40,6 +83,11 @@ const MARKER_VISIBILITY_REFRESH_MS_IDLE = 120;
 const MARKER_VISIBILITY_REFRESH_MS_MOVING = 80;
 const LABEL_STICKY_REFRESH_MS_IDLE = 140;
 const LABEL_STICKY_REFRESH_MS_MOVING = 90;
+const LABEL_STICKY_QUERY_PROBE_MIN_INTERVAL_MS = 450;
+const LABEL_STICKY_COLD_START_RECOVER_AFTER_MS = 3500;
+const LABEL_STICKY_COLD_START_RECOVER_MAX_ATTEMPTS = 2;
+const LABEL_STICKY_BOOTSTRAP_POLL_MS = 650;
+const LABEL_STICKY_BOOTSTRAP_MAX_POLL_MS = 10000;
 const USER_LOCATION_ANCHOR = { x: 0.5, y: 0.5 } as const;
 
 // Experimental: render restaurant pins via Mapbox style layers (instead of MarkerView).
@@ -166,6 +214,17 @@ type CameraPadding = {
   paddingBottom: number;
   paddingLeft: number;
   paddingRight: number;
+};
+
+type LabelStickyRuntime = {
+  styleURL: string;
+  labelLayerTreeEpoch: number;
+  isMapStyleReady: boolean;
+  shouldDisableMarkers: boolean;
+  shouldRenderLabels: boolean;
+  viewport: { width: number; height: number };
+  markerCount: number;
+  markersRenderKey: { len: number; hash: string | null; sampleLen: number };
 };
 
 const PRIMARY_COLOR = '#ff3368';
@@ -508,10 +567,67 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const labelPlacementBootstrapKeyRef = React.useRef<string | null>(null);
   const labelStickyCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(new Map());
   const labelStickyLastSeenAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
+  const searchMapInstanceIdRef = React.useRef<string>(makeDebugId());
+  const initialStyleUrlForLogsRef = React.useRef(getSafeStyleUrlForLogs(styleURL));
+  const labelStickyQueryReadyRef = React.useRef(false);
+  const labelStickyQueryReadyAtRef = React.useRef<number | null>(null);
+  const labelStickyLastProbeAtRef = React.useRef(0);
+  const labelStickyLastProbeLogAtRef = React.useRef(0);
+  const labelStickyLastProbeSnapshotRef = React.useRef<{
+    at: number;
+    controlRendered: number;
+    filterRendered: number;
+    sourceFeatures: number;
+    lastError: string | null;
+  }>({
+    at: 0,
+    controlRendered: 0,
+    filterRendered: 0,
+    sourceFeatures: 0,
+    lastError: null,
+  });
+  const labelStickyColdStartRecoverAttemptsRef = React.useRef(0);
+  const labelStickyColdStartRecoverTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const labelStickyBootstrapPollTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const labelStickyBootstrapPollStartedAtRef = React.useRef<number | null>(null);
+  const labelStickyScheduleLogAtRef = React.useRef(0);
+  const labelStickyRefreshStartLogAtRef = React.useRef(0);
+  const labelStickyRunLogAtRef = React.useRef(0);
+  const labelStickySkipLogAtRef = React.useRef(0);
+  const labelStickyRuntimeDeltaLogAtRef = React.useRef(0);
+  const labelStickyLastRuntimeSnapshotRef = React.useRef<LabelStickyRuntime | null>(null);
+  const labelStickyScheduledReasonsRef = React.useRef<Set<string>>(new Set(['init']));
+  const labelStickyLastRunReasonsRef = React.useRef<string>('init');
+  const labelStickyRuntimeRef = React.useRef<LabelStickyRuntime>({
+    styleURL: '',
+    labelLayerTreeEpoch: 0,
+    isMapStyleReady: false,
+    shouldDisableMarkers: false,
+    shouldRenderLabels: false,
+    viewport: { width: 0, height: 0 },
+    markerCount: 0,
+    markersRenderKey: { len: 0, hash: null, sampleLen: 0 },
+  });
+  const [labelLayerTreeEpoch, setLabelLayerTreeEpoch] = React.useState(0);
+  const [labelStickyMarkersReadyAt, setLabelStickyMarkersReadyAt] = React.useState<number | null>(
+    null
+  );
+  const labelStickyMarkersReadyKeyRef = React.useRef<string | null>(null);
   const [labelStickyEpoch, setLabelStickyEpoch] = React.useState(0);
   const [labelStickyDebug, setLabelStickyDebug] = React.useState<{
     scheduled: number;
     attempts: number;
+    probeAttempts: number;
+    probeControlRendered: number;
+    probeFilterRendered: number;
+    probeSourceFeatures: number;
+    probeReady: boolean;
+    probeReadyAt: number | null;
+    probeLastError: string | null;
     errors: number;
     lastError: string | null;
     lastSkip: string | null;
@@ -521,6 +637,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }>({
     scheduled: 0,
     attempts: 0,
+    probeAttempts: 0,
+    probeControlRendered: 0,
+    probeFilterRendered: 0,
+    probeSourceFeatures: 0,
+    probeReady: false,
+    probeReadyAt: null,
+    probeLastError: null,
     errors: 0,
     lastError: null,
     lastSkip: null,
@@ -528,6 +651,105 @@ const SearchMap: React.FC<SearchMapProps> = ({
     renderedFeatures: 0,
     parsedFeatures: 0,
   });
+
+  const markersRenderKeySummary = React.useMemo(() => {
+    const key = markersRenderKey ?? '';
+    const len = key.length;
+    if (len === 0) {
+      return { len: 0, hash: null as string | null, sampleLen: 0 };
+    }
+    const sampleLen = Math.min(4096, len);
+    return { len, hash: hashString32(key.slice(0, sampleLen)), sampleLen };
+  }, [markersRenderKey]);
+
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return;
+    }
+    logger.info('SearchMap lifecycle effect attached', {
+      moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+      instanceId: searchMapInstanceIdRef.current,
+      styleURL: initialStyleUrlForLogsRef.current,
+      moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
+      previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
+    });
+    return () => {
+      logger.info('SearchMap lifecycle effect cleanup', {
+        moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+        instanceId: searchMapInstanceIdRef.current,
+        styleURL: initialStyleUrlForLogsRef.current,
+        moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
+        previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
+      });
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!shouldRenderLabels) {
+      labelStickyQueryReadyRef.current = false;
+      labelStickyQueryReadyAtRef.current = null;
+      labelStickyLastProbeAtRef.current = 0;
+      labelStickyLastProbeLogAtRef.current = 0;
+      labelStickyColdStartRecoverAttemptsRef.current = 0;
+      labelStickyBootstrapPollStartedAtRef.current = null;
+      if (labelStickyBootstrapPollTimeoutRef.current) {
+        clearTimeout(labelStickyBootstrapPollTimeoutRef.current);
+        labelStickyBootstrapPollTimeoutRef.current = null;
+      }
+      labelStickyLastProbeSnapshotRef.current = {
+        at: 0,
+        controlRendered: 0,
+        filterRendered: 0,
+        sourceFeatures: 0,
+        lastError: null,
+      };
+      if (labelStickyColdStartRecoverTimeoutRef.current) {
+        clearTimeout(labelStickyColdStartRecoverTimeoutRef.current);
+        labelStickyColdStartRecoverTimeoutRef.current = null;
+      }
+      setLabelStickyMarkersReadyAt(null);
+      labelStickyMarkersReadyKeyRef.current = null;
+      setLabelStickyDebug((previous) => ({
+        ...previous,
+        probeAttempts: 0,
+        probeControlRendered: 0,
+        probeFilterRendered: 0,
+        probeSourceFeatures: 0,
+        probeReady: false,
+        probeReadyAt: null,
+        probeLastError: null,
+      }));
+      return;
+    }
+
+    // Style changes or MapView remounts can invalidate query readiness on iOS cold start.
+    labelStickyQueryReadyRef.current = false;
+    labelStickyQueryReadyAtRef.current = null;
+    labelStickyLastProbeAtRef.current = 0;
+    labelStickyLastProbeLogAtRef.current = 0;
+    labelStickyLastProbeSnapshotRef.current = {
+      at: 0,
+      controlRendered: 0,
+      filterRendered: 0,
+      sourceFeatures: 0,
+      lastError: null,
+    };
+    labelStickyBootstrapPollStartedAtRef.current = null;
+    if (labelStickyBootstrapPollTimeoutRef.current) {
+      clearTimeout(labelStickyBootstrapPollTimeoutRef.current);
+      labelStickyBootstrapPollTimeoutRef.current = null;
+    }
+    setLabelStickyDebug((previous) => ({
+      ...previous,
+      probeAttempts: 0,
+      probeControlRendered: 0,
+      probeFilterRendered: 0,
+      probeSourceFeatures: 0,
+      probeReady: false,
+      probeReadyAt: null,
+      probeLastError: null,
+    }));
+  }, [labelLayerTreeEpoch, shouldRenderLabels, styleURL]);
 
   React.useEffect(() => {
     // Style reloads (and RN "Reload") can change the ordering/timing of when images + layers are
@@ -608,6 +830,216 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     return { ...restaurantFeatures, features: nextFeatures };
   }, [buildMarkerKey, restaurantFeatures]);
+
+  // Keep a single authoritative snapshot for async/timer callbacks.
+  // This prevents stale-closure behavior where schedule logs show new props but refresh runs with old ones.
+  labelStickyRuntimeRef.current = {
+    styleURL,
+    labelLayerTreeEpoch,
+    isMapStyleReady,
+    shouldDisableMarkers,
+    shouldRenderLabels,
+    viewport: { width: mapViewportSize.width, height: mapViewportSize.height },
+    markerCount: restaurantLabelFeaturesWithIds.features.length,
+    markersRenderKey: markersRenderKeySummary,
+  };
+
+  React.useEffect(() => {
+    if (!__DEV__) {
+      return;
+    }
+
+    const now = Date.now();
+    if (now - labelStickyRuntimeDeltaLogAtRef.current < 400) {
+      return;
+    }
+
+    const runtime = labelStickyRuntimeRef.current;
+    const previous = labelStickyLastRuntimeSnapshotRef.current;
+    const changed: Array<keyof LabelStickyRuntime | 'markersRenderKey.hash' | 'viewport'> = [];
+
+    if (!previous) {
+      changed.push('styleURL');
+      changed.push('labelLayerTreeEpoch');
+      changed.push('isMapStyleReady');
+      changed.push('shouldDisableMarkers');
+      changed.push('shouldRenderLabels');
+      changed.push('viewport');
+      changed.push('markerCount');
+      changed.push('markersRenderKey.hash');
+    } else {
+      if (previous.styleURL !== runtime.styleURL) {
+        changed.push('styleURL');
+      }
+      if (previous.labelLayerTreeEpoch !== runtime.labelLayerTreeEpoch) {
+        changed.push('labelLayerTreeEpoch');
+      }
+      if (previous.isMapStyleReady !== runtime.isMapStyleReady) {
+        changed.push('isMapStyleReady');
+      }
+      if (previous.shouldDisableMarkers !== runtime.shouldDisableMarkers) {
+        changed.push('shouldDisableMarkers');
+      }
+      if (previous.shouldRenderLabels !== runtime.shouldRenderLabels) {
+        changed.push('shouldRenderLabels');
+      }
+      if (
+        previous.viewport.width !== runtime.viewport.width ||
+        previous.viewport.height !== runtime.viewport.height
+      ) {
+        changed.push('viewport');
+      }
+      if (previous.markerCount !== runtime.markerCount) {
+        changed.push('markerCount');
+      }
+      if (previous.markersRenderKey.hash !== runtime.markersRenderKey.hash) {
+        changed.push('markersRenderKey.hash');
+      }
+    }
+
+    if (changed.length === 0) {
+      return;
+    }
+
+    labelStickyRuntimeDeltaLogAtRef.current = now;
+    labelStickyLastRuntimeSnapshotRef.current = runtime;
+    logger.info('Mapbox sticky labels: runtime snapshot', {
+      moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+      instanceId: searchMapInstanceIdRef.current,
+      moduleLoadCount: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.loadCount ?? null,
+      previousModuleId: SEARCH_MAP_MODULE_HOT_RELOAD_STATE?.previousModuleId ?? null,
+      changed,
+      queryReady: labelStickyQueryReadyRef.current,
+      queryReadyAt: labelStickyQueryReadyAtRef.current,
+      runtime,
+    });
+  }, [
+    isMapStyleReady,
+    labelLayerTreeEpoch,
+    mapViewportSize.height,
+    mapViewportSize.width,
+    markersRenderKeySummary.hash,
+    restaurantLabelFeaturesWithIds.features.length,
+    shouldDisableMarkers,
+    shouldRenderLabels,
+    styleURL,
+  ]);
+
+  React.useEffect(() => {
+    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+      return;
+    }
+    if (!shouldRenderLabels) {
+      return;
+    }
+
+    const latchKey = styleURL;
+    if (labelStickyMarkersReadyKeyRef.current !== latchKey) {
+      labelStickyMarkersReadyKeyRef.current = latchKey;
+      setLabelStickyMarkersReadyAt(null);
+      labelStickyColdStartRecoverAttemptsRef.current = 0;
+    }
+
+    if (labelStickyMarkersReadyAt) {
+      return;
+    }
+    if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
+      return;
+    }
+    if (restaurantLabelFeaturesWithIds.features.length > 0) {
+      setLabelStickyMarkersReadyAt(Date.now());
+    }
+  }, [
+    labelStickyMarkersReadyAt,
+    mapViewportSize.height,
+    mapViewportSize.width,
+    restaurantLabelFeaturesWithIds.features.length,
+    shouldRenderLabels,
+    styleURL,
+  ]);
+
+  React.useEffect(() => {
+    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+      return;
+    }
+    if (!shouldRenderLabels) {
+      return;
+    }
+    if (!labelStickyMarkersReadyAt) {
+      return;
+    }
+    if (labelStickyQueryReadyRef.current) {
+      return;
+    }
+    if (labelStickyColdStartRecoverTimeoutRef.current) {
+      return;
+    }
+
+    labelStickyColdStartRecoverTimeoutRef.current = setTimeout(() => {
+      labelStickyColdStartRecoverTimeoutRef.current = null;
+      if (labelStickyQueryReadyRef.current) {
+        return;
+      }
+      if (
+        labelStickyColdStartRecoverAttemptsRef.current >=
+        LABEL_STICKY_COLD_START_RECOVER_MAX_ATTEMPTS
+      ) {
+        return;
+      }
+
+      const snapshot = labelStickyLastProbeSnapshotRef.current;
+      const snapshotAgeMs = snapshot.at ? Date.now() - snapshot.at : null;
+      const shouldRecover =
+        snapshot.sourceFeatures > 0 &&
+        snapshot.controlRendered === 0 &&
+        snapshot.filterRendered === 0 &&
+        snapshotAgeMs != null &&
+        snapshotAgeMs < 1500;
+
+      if (!shouldRecover) {
+        logger.warn('Mapbox sticky labels: cold-start query still empty (no recovery)', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(styleURL),
+          attempt: labelStickyColdStartRecoverAttemptsRef.current + 1,
+          elapsedMs: Date.now() - labelStickyMarkersReadyAt,
+          snapshot: {
+            at: snapshot.at,
+            ageMs: snapshotAgeMs,
+            controlRendered: snapshot.controlRendered,
+            filterRendered: snapshot.filterRendered,
+            sourceFeatures: snapshot.sourceFeatures,
+            lastError: snapshot.lastError,
+          },
+        });
+        return;
+      }
+
+      labelStickyColdStartRecoverAttemptsRef.current += 1;
+      logger.warn(
+        'Mapbox sticky labels: query still empty after cold start, remounting label tree',
+        {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(styleURL),
+          attempt: labelStickyColdStartRecoverAttemptsRef.current,
+          elapsedMs: Date.now() - labelStickyMarkersReadyAt,
+        }
+      );
+      setLabelLayerTreeEpoch((value) => value + 1);
+      labelStickyCandidateByMarkerKeyRef.current.clear();
+      labelStickyLastSeenAtByMarkerKeyRef.current.clear();
+      setLabelStickyEpoch((value) => value + 1);
+      setLabelPlacementEpoch((value) => value + 1);
+    }, LABEL_STICKY_COLD_START_RECOVER_AFTER_MS);
+
+    return () => {
+      if (labelStickyColdStartRecoverTimeoutRef.current) {
+        clearTimeout(labelStickyColdStartRecoverTimeoutRef.current);
+        labelStickyColdStartRecoverTimeoutRef.current = null;
+      }
+    };
+  }, [labelStickyMarkersReadyAt, shouldRenderLabels, styleURL]);
 
   const restaurantLabelCandidateFeaturesWithIds = React.useMemo(() => {
     if (!restaurantLabelFeaturesWithIds.features.length) {
@@ -1143,6 +1575,30 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const runStickyLabelRefreshRef = React.useRef<() => void>(() => undefined);
   const runStickyLabelRefresh = React.useCallback(() => {
+    if (__DEV__) {
+      const now = Date.now();
+      if (now - labelStickyRunLogAtRef.current > 1500) {
+        labelStickyRunLogAtRef.current = now;
+        const runtime = labelStickyRuntimeRef.current;
+        logger.info('Mapbox sticky labels: runner tick', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+          queued: labelStickyRefreshQueuedRef.current,
+          inFlight: labelStickyRefreshInFlightRef.current,
+          hasTimeout: Boolean(labelStickyRefreshTimeoutRef.current),
+          scheduledReasonsCount: labelStickyScheduledReasonsRef.current.size,
+          markerCount: runtime.markerCount,
+          markersRenderKey: runtime.markersRenderKey,
+          viewport: runtime.viewport,
+          shouldRenderLabels: runtime.shouldRenderLabels,
+          isMapStyleReady: runtime.isMapStyleReady,
+          shouldDisableMarkers: runtime.shouldDisableMarkers,
+          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
+        });
+      }
+    }
+
     if (labelStickyRefreshInFlightRef.current) {
       return;
     }
@@ -1153,6 +1609,10 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelStickyRefreshQueuedRef.current = false;
     labelStickyRefreshInFlightRef.current = true;
     const refreshSeq = ++labelStickyRefreshSeqRef.current;
+    labelStickyLastRunReasonsRef.current = Array.from(labelStickyScheduledReasonsRef.current)
+      .sort()
+      .join(',');
+    labelStickyScheduledReasonsRef.current.clear();
 
     void refreshStickyLabelCandidates().finally(() => {
       if (refreshSeq !== labelStickyRefreshSeqRef.current) {
@@ -1172,12 +1632,43 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [refreshStickyLabelCandidates]);
   runStickyLabelRefreshRef.current = runStickyLabelRefresh;
 
-  const scheduleStickyLabelRefresh = React.useCallback(() => {
+  const scheduleStickyLabelRefresh = React.useCallback((reason: string) => {
     setLabelStickyDebug((previous) => ({
       ...previous,
       scheduled: previous.scheduled + 1,
     }));
+    labelStickyScheduledReasonsRef.current.add(reason);
     labelStickyRefreshQueuedRef.current = true;
+
+    if (__DEV__) {
+      const now = Date.now();
+      const shouldLog =
+        now - labelStickyScheduleLogAtRef.current > 900 ||
+        reason === 'markers-ready' ||
+        reason === 'bootstrap-poll';
+      if (shouldLog) {
+        labelStickyScheduleLogAtRef.current = now;
+        const runtime = labelStickyRuntimeRef.current;
+        logger.info('Mapbox sticky labels: schedule refresh', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          reason,
+          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+          shouldRenderLabels: runtime.shouldRenderLabels,
+          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
+          queryReady: labelStickyQueryReadyRef.current,
+          markerCount: runtime.markerCount,
+          markersRenderKey: runtime.markersRenderKey,
+          viewport: runtime.viewport,
+          queue: {
+            queued: true,
+            inFlight: labelStickyRefreshInFlightRef.current,
+            hasTimeout: Boolean(labelStickyRefreshTimeoutRef.current),
+          },
+        });
+      }
+    }
+
     if (labelStickyRefreshTimeoutRef.current || labelStickyRefreshInFlightRef.current) {
       return;
     }
@@ -1189,6 +1680,50 @@ const SearchMap: React.FC<SearchMapProps> = ({
       runStickyLabelRefreshRef.current();
     }, delayMs);
   }, []);
+
+  React.useEffect(() => {
+    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+      return;
+    }
+    if (!shouldRenderLabels) {
+      return;
+    }
+    if (!labelStickyMarkersReadyAt) {
+      return;
+    }
+    if (labelStickyQueryReadyRef.current) {
+      return;
+    }
+
+    const startedAt = labelStickyBootstrapPollStartedAtRef.current ?? Date.now();
+    labelStickyBootstrapPollStartedAtRef.current = startedAt;
+
+    const tick = () => {
+      labelStickyBootstrapPollTimeoutRef.current = null;
+      if (!DEBUG_STICKY_LABEL_CANDIDATES || !shouldRenderLabels) {
+        return;
+      }
+      if (labelStickyQueryReadyRef.current) {
+        return;
+      }
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs > LABEL_STICKY_BOOTSTRAP_MAX_POLL_MS) {
+        return;
+      }
+      scheduleStickyLabelRefresh('bootstrap-poll');
+      labelStickyBootstrapPollTimeoutRef.current = setTimeout(tick, LABEL_STICKY_BOOTSTRAP_POLL_MS);
+    };
+
+    scheduleStickyLabelRefresh('markers-ready');
+    labelStickyBootstrapPollTimeoutRef.current = setTimeout(tick, LABEL_STICKY_BOOTSTRAP_POLL_MS);
+
+    return () => {
+      if (labelStickyBootstrapPollTimeoutRef.current) {
+        clearTimeout(labelStickyBootstrapPollTimeoutRef.current);
+        labelStickyBootstrapPollTimeoutRef.current = null;
+      }
+    };
+  }, [labelStickyMarkersReadyAt, scheduleStickyLabelRefresh, shouldRenderLabels]);
 
   React.useEffect(() => {
     if (!shouldRenderLabels) {
@@ -1237,6 +1772,25 @@ const SearchMap: React.FC<SearchMapProps> = ({
     scheduleVisibleMarkerRefresh,
   ]);
 
+  React.useEffect(() => {
+    if (!DEBUG_STICKY_LABEL_CANDIDATES) {
+      return;
+    }
+    if (!shouldRenderLabels) {
+      return;
+    }
+    if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
+      return;
+    }
+    scheduleStickyLabelRefresh('viewport-or-markers');
+  }, [
+    mapViewportSize.height,
+    mapViewportSize.width,
+    markersRenderKey,
+    scheduleStickyLabelRefresh,
+    shouldRenderLabels,
+  ]);
+
   const handleDotPress = React.useCallback(
     (event: OnPressEvent) => {
       const feature = event?.features?.[0];
@@ -1259,29 +1813,85 @@ const SearchMap: React.FC<SearchMapProps> = ({
       isMapMovingRef.current = true;
       mapLastMovedAtRef.current = Date.now();
       scheduleVisibleMarkerRefresh();
-      scheduleStickyLabelRefresh();
+      scheduleStickyLabelRefresh('camera-changed');
       onCameraChanged(state);
     },
     [onCameraChanged, scheduleStickyLabelRefresh, scheduleVisibleMarkerRefresh]
   );
 
   const refreshStickyLabelCandidates = React.useCallback(async () => {
+    const runtime = labelStickyRuntimeRef.current;
+    if (__DEV__) {
+      const now = Date.now();
+      if (now - labelStickyRefreshStartLogAtRef.current > 1800) {
+        labelStickyRefreshStartLogAtRef.current = now;
+        const mapInstance = mapRef.current;
+        logger.info('Mapbox sticky labels: refresh start', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+          reasons: labelStickyLastRunReasonsRef.current,
+          shouldRenderLabels: runtime.shouldRenderLabels,
+          shouldDisableMarkers: runtime.shouldDisableMarkers,
+          viewport: runtime.viewport,
+          markerCount: runtime.markerCount,
+          markersRenderKey: runtime.markersRenderKey,
+          mapRefReady: Boolean(mapInstance),
+          hasQueryRenderedFeaturesInRect: Boolean(mapInstance?.queryRenderedFeaturesInRect),
+          hasQuerySourceFeatures: Boolean(
+            (mapInstance as unknown as { querySourceFeatures?: unknown })?.querySourceFeatures
+          ),
+          queryReady: labelStickyQueryReadyRef.current,
+        });
+      }
+    }
+
     setLabelStickyDebug((previous) => ({
       ...previous,
       attempts: previous.attempts + 1,
       lastSkip: null,
     }));
 
+    const maybeLogSkip = (skip: string, extra?: Record<string, unknown>) => {
+      if (!__DEV__) {
+        return;
+      }
+      const now = Date.now();
+      if (now - labelStickySkipLogAtRef.current < 1200) {
+        return;
+      }
+      labelStickySkipLogAtRef.current = now;
+      logger.info('Mapbox sticky labels: refresh skip', {
+        moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+        instanceId: searchMapInstanceIdRef.current,
+        styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+        reasons: labelStickyLastRunReasonsRef.current,
+        skip,
+        shouldRenderLabels: runtime.shouldRenderLabels,
+        shouldDisableMarkers: runtime.shouldDisableMarkers,
+        markerCount: runtime.markerCount,
+        markersRenderKey: runtime.markersRenderKey,
+        viewport: runtime.viewport,
+        ...extra,
+      });
+    };
+
     if (!DEBUG_STICKY_LABEL_CANDIDATES) {
       setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'sticky-disabled' }));
+      maybeLogSkip('sticky-disabled');
       return;
     }
-    if (shouldDisableMarkers || !shouldRenderLabels) {
+    if (runtime.shouldDisableMarkers || !runtime.shouldRenderLabels) {
       setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'labels-disabled' }));
+      maybeLogSkip('labels-disabled', {
+        isMapStyleReady: runtime.isMapStyleReady,
+        disableMarkers: runtime.shouldDisableMarkers,
+      });
       return;
     }
-    if (mapViewportSize.width <= 0 || mapViewportSize.height <= 0) {
+    if (runtime.viewport.width <= 0 || runtime.viewport.height <= 0) {
       setLabelStickyDebug((previous) => ({ ...previous, lastSkip: 'viewport-0' }));
+      maybeLogSkip('viewport-0');
       return;
     }
 
@@ -1292,6 +1902,16 @@ const SearchMap: React.FC<SearchMapProps> = ({
         hasQuery: false,
         lastSkip: 'no-queryRenderedFeaturesInRect',
       }));
+      if (__DEV__) {
+        logger.warn('Mapbox sticky labels: MapView missing queryRenderedFeaturesInRect', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+          reasons: labelStickyLastRunReasonsRef.current,
+          mapRefReady: Boolean(mapInstance),
+        });
+      }
+      maybeLogSkip('no-queryRenderedFeaturesInRect');
       return;
     }
 
@@ -1299,6 +1919,120 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ...previous,
       hasQuery: true,
     }));
+
+    const now = Date.now();
+    if (!labelStickyQueryReadyRef.current) {
+      const msSinceProbe = now - labelStickyLastProbeAtRef.current;
+      if (msSinceProbe < LABEL_STICKY_QUERY_PROBE_MIN_INTERVAL_MS) {
+        setLabelStickyDebug((previous) => ({
+          ...previous,
+          lastSkip: 'query-not-ready',
+          renderedFeatures: 0,
+          parsedFeatures: 0,
+        }));
+        return;
+      }
+
+      labelStickyLastProbeAtRef.current = now;
+      setLabelStickyDebug((previous) => ({
+        ...previous,
+        probeAttempts: previous.probeAttempts + 1,
+        probeLastError: null,
+      }));
+
+      const probeFilter: unknown[] = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
+      const controlLayerIDs =
+        USE_STYLE_LAYER_PINS &&
+        !runtime.shouldDisableMarkers &&
+        DEBUG_PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off'
+          ? [restaurantLabelPinCollisionLayerId]
+          : null;
+
+      let probeControlRendered = 0;
+      let probeFilterRendered = 0;
+      let probeSourceFeatures = 0;
+      let probeLastError: string | null = null;
+
+      try {
+        if (controlLayerIDs?.length) {
+          const control = await mapInstance.queryRenderedFeaturesInRect([], [], controlLayerIDs);
+          probeControlRendered = control?.features?.length ?? 0;
+        }
+
+        const filtered = await mapInstance.queryRenderedFeaturesInRect([], probeFilter, null);
+        probeFilterRendered = filtered?.features?.length ?? 0;
+
+        if (typeof mapInstance.querySourceFeatures === 'function') {
+          const source = await mapInstance.querySourceFeatures(
+            RESTAURANT_LABEL_SOURCE_ID,
+            ['has', 'markerKey'] as unknown[],
+            []
+          );
+          probeSourceFeatures = source?.features?.length ?? 0;
+        }
+      } catch (error) {
+        probeLastError =
+          error && typeof error === 'object' && 'message' in error
+            ? String((error as { message?: unknown }).message)
+            : String(error);
+      }
+
+      labelStickyLastProbeSnapshotRef.current = {
+        at: now,
+        controlRendered: probeControlRendered,
+        filterRendered: probeFilterRendered,
+        sourceFeatures: probeSourceFeatures,
+        lastError: probeLastError,
+      };
+
+      const probeReady = probeControlRendered > 0 || probeFilterRendered > 0;
+      if (probeReady) {
+        labelStickyQueryReadyRef.current = true;
+        labelStickyQueryReadyAtRef.current = now;
+        if (labelStickyColdStartRecoverTimeoutRef.current) {
+          clearTimeout(labelStickyColdStartRecoverTimeoutRef.current);
+          labelStickyColdStartRecoverTimeoutRef.current = null;
+        }
+      }
+
+      setLabelStickyDebug((previous) => ({
+        ...previous,
+        probeControlRendered,
+        probeFilterRendered,
+        probeSourceFeatures,
+        probeReady,
+        probeReadyAt: probeReady ? previous.probeReadyAt ?? now : previous.probeReadyAt,
+        probeLastError: probeLastError ?? null,
+        lastSkip: probeReady ? null : 'query-not-ready',
+        renderedFeatures: 0,
+        parsedFeatures: 0,
+      }));
+
+      const shouldLog =
+        __DEV__ &&
+        (probeReady || now - labelStickyLastProbeLogAtRef.current > 2000 || probeLastError != null);
+      if (shouldLog) {
+        labelStickyLastProbeLogAtRef.current = now;
+        logger.info('Mapbox sticky labels: query readiness probe', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          styleURL: getSafeStyleUrlForLogs(runtime.styleURL),
+          labelLayerTreeEpoch: runtime.labelLayerTreeEpoch,
+          markersRenderKey: runtime.markersRenderKey,
+          viewport: runtime.viewport,
+          controlLayerId: controlLayerIDs?.[0],
+          probeReady,
+          probeControlRendered,
+          probeFilterRendered,
+          probeSourceFeatures,
+          probeLastError,
+        });
+      }
+
+      if (!probeReady) {
+        return;
+      }
+    }
 
     const layerIDs = Object.values(LABEL_LAYER_IDS_BY_CANDIDATE);
     let rendered: FeatureCollection | undefined;
@@ -1325,12 +2059,33 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    const now = Date.now();
-    const renderedFeatures = rendered?.features?.length ?? 0;
+    const layerRenderedFeatures = rendered?.features?.length ?? 0;
+    let renderedForParsing = rendered;
+
+    if (layerRenderedFeatures === 0) {
+      // Diagnostic fallback: on iOS cold start, layerID-restricted queries can return empty even
+      // when the same features are queryable via property filters (or are visibly rendered).
+      try {
+        const filter: unknown[] = ['all', ['has', 'markerKey'], ['has', 'labelCandidate']];
+        const filtered = await mapInstance.queryRenderedFeaturesInRect([], filter, null);
+        const filteredCount = filtered?.features?.length ?? 0;
+        if (filteredCount > 0) {
+          renderedForParsing = filtered;
+        }
+        setLabelStickyDebug((previous) => ({
+          ...previous,
+          probeFilterRendered: filteredCount,
+        }));
+      } catch {
+        // Ignore: we already report query errors above, and this is best-effort only.
+      }
+    }
+
+    const effectiveRenderedFeatures = renderedForParsing?.features?.length ?? 0;
 
     const renderedCandidateByMarkerKey = new Map<string, LabelCandidate>();
     let parsedFeatures = 0;
-    for (const feature of rendered?.features ?? []) {
+    for (const feature of renderedForParsing?.features ?? []) {
       const parsed = getLabelCandidateInfoFromRenderedFeature(feature);
       if (!parsed) {
         continue;
@@ -1343,8 +2098,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     setLabelStickyDebug((previous) => ({
       ...previous,
       lastError: null,
-      lastSkip: renderedFeatures === 0 ? 'query-empty' : null,
-      renderedFeatures,
+      lastSkip: effectiveRenderedFeatures === 0 ? 'query-empty' : null,
+      renderedFeatures: effectiveRenderedFeatures,
       parsedFeatures,
     }));
 
@@ -1364,7 +2119,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // IMPORTANT: only treat "missing" as a signal when the query is returning *some* features.
     // During active camera changes on iOS, querying can occasionally return empty/stale results;
     // unlocking on those frames causes locks to churn and effectively disables stickiness.
-    if (renderedFeatures > 0) {
+    if (effectiveRenderedFeatures > 0) {
       const isRecentlyMoving = isMapMovingRef.current || now - mapLastMovedAtRef.current < 600;
       if (isRecentlyMoving) {
         for (const markerKey of stickyMap.keys()) {
@@ -1388,7 +2143,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         setLabelPlacementEpoch((value) => value + 1);
       }
     }
-  }, [mapRef, mapViewportSize, shouldDisableMarkers, shouldRenderLabels]);
+  }, [mapRef, restaurantLabelPinCollisionLayerId]);
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
@@ -1411,13 +2166,48 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [onMapIdle]
   );
 
-  const handleMapLoaded = React.useCallback(() => {
-    visibilityRefreshQueuedRef.current = true;
-    runVisibleMarkerRefreshRef.current();
-    labelStickyRefreshQueuedRef.current = true;
-    runStickyLabelRefreshRef.current();
-    onMapLoaded();
-  }, [onMapLoaded]);
+  const handleMapLoaded = React.useCallback(
+    (source: 'style' | 'map') => {
+      if (__DEV__) {
+        logger.info('Mapbox didFinishLoading', {
+          moduleId: SEARCH_MAP_MODULE_INSTANCE_ID,
+          instanceId: searchMapInstanceIdRef.current,
+          source,
+          styleURL: getSafeStyleUrlForLogs(styleURL),
+          labelLayerTreeEpoch,
+          markersRenderKey: markersRenderKeySummary,
+          viewport: {
+            width: mapViewportSize.width,
+            height: mapViewportSize.height,
+          },
+          markerCount: restaurantLabelFeaturesWithIds.features.length,
+          queryReady: labelStickyQueryReadyRef.current,
+        });
+      }
+      visibilityRefreshQueuedRef.current = true;
+      runVisibleMarkerRefreshRef.current();
+      labelStickyRefreshQueuedRef.current = true;
+      runStickyLabelRefreshRef.current();
+      onMapLoaded();
+    },
+    [
+      labelLayerTreeEpoch,
+      mapViewportSize.height,
+      mapViewportSize.width,
+      markersRenderKeySummary,
+      onMapLoaded,
+      restaurantLabelFeaturesWithIds.features.length,
+      styleURL,
+    ]
+  );
+
+  const handleMapLoadedStyle = React.useCallback(() => {
+    handleMapLoaded('style');
+  }, [handleMapLoaded]);
+
+  const handleMapLoadedMap = React.useCallback(() => {
+    handleMapLoaded('map');
+  }, [handleMapLoaded]);
 
   const handleMapLoadError = React.useCallback(
     (event: unknown) => {
@@ -1568,8 +2358,17 @@ Sticky candidates: ${DEBUG_STICKY_LABEL_CANDIDATES ? 'on' : 'off'} (locks=${
         {DEBUG_STICKY_LABEL_CANDIDATES ? (
           <Text style={{ color: 'rgba(255,255,255,0.85)', fontSize: 11, marginTop: 4 }}>
             {`Sticky query: attempts=${labelStickyDebug.attempts} errors=${labelStickyDebug.errors}
-rendered=${labelStickyDebug.renderedFeatures} parsed=${labelStickyDebug.parsedFeatures}
-${labelStickyDebug.lastError ? `error=${labelStickyDebug.lastError}` : ''}`}
+probe: attempts=${labelStickyDebug.probeAttempts} ready=${
+              labelStickyDebug.probeReady ? 'yes' : 'no'
+            } control=${labelStickyDebug.probeControlRendered} filter=${
+              labelStickyDebug.probeFilterRendered
+            } source=${labelStickyDebug.probeSourceFeatures}
+rendered=${labelStickyDebug.renderedFeatures} parsed=${labelStickyDebug.parsedFeatures} skip=${
+              labelStickyDebug.lastSkip ?? ''
+            }
+${labelStickyDebug.probeLastError ? `probeError=${labelStickyDebug.probeLastError}` : ''}${
+              labelStickyDebug.lastError ? ` error=${labelStickyDebug.lastError}` : ''
+            }`}
           </Text>
         ) : null}
       </View>
@@ -1589,10 +2388,9 @@ ${labelStickyDebug.lastError ? `error=${labelStickyDebug.lastError}` : ''}`}
         onTouchCancelCapture={handleTouchEnd}
         onCameraChanged={handleCameraChanged}
         onMapIdle={handleMapIdle}
-        onDidFinishLoadingStyle={handleMapLoaded}
-        onDidFinishLoadingMap={handleMapLoaded}
-        onDidFailLoadingMap={handleMapLoadError}
-        onDidFailLoadingStyle={handleMapLoadError}
+        onDidFinishLoadingStyle={handleMapLoadedStyle}
+        onDidFinishLoadingMap={handleMapLoadedMap}
+        onMapLoadingError={handleMapLoadError}
       >
         {USE_STYLE_LAYER_PINS ? (
           <MapboxGL.Images
@@ -1647,7 +2445,7 @@ ${labelStickyDebug.lastError ? `error=${labelStickyDebug.lastError}` : ''}`}
         ) : null}
         {shouldRenderLabels ? (
           <React.Profiler id="SearchMapLabels" onRender={profilerCallback}>
-            <>
+            <React.Fragment key={`labels-${labelLayerTreeEpoch}`}>
               <MapboxGL.ShapeSource
                 id={RESTAURANT_LABEL_SOURCE_ID}
                 shape={restaurantLabelCandidateFeaturesWithIds}
@@ -1677,7 +2475,7 @@ ${labelStickyDebug.lastError ? `error=${labelStickyDebug.lastError}` : ''}`}
                   />
                 </MapboxGL.ShapeSource>
               ) : null}
-            </>
+            </React.Fragment>
           </React.Profiler>
         ) : null}
         {userLocation ? (
@@ -1774,6 +2572,9 @@ const areUserLocationsEqual = (left?: Coordinate | null, right?: Coordinate | nu
 
 const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.styleURL !== next.styleURL) {
+    return false;
+  }
+  if (prev.isMapStyleReady !== next.isMapStyleReady) {
     return false;
   }
   if (prev.mapZoom !== next.mapZoom) {

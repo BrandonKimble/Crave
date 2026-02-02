@@ -7,7 +7,6 @@ import { LoggerService, TextSanitizerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   EntityScope,
-  FilterClause,
   QueryEntityDto,
   QueryPlan,
   SearchQueryRequestDto,
@@ -20,6 +19,10 @@ import {
 } from './dto/search-query.dto';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
+import { SearchEntityExpansionService } from './search-entity-expansion.service';
+import type { SearchExecutionDirectives } from './search-execution-directives';
+import type { SearchConstraints, RelaxationStage } from './search-constraints';
+import { compileQueryPlanFromConstraints } from './search-constraints.compiler';
 import {
   OnDemandRequestService,
   OnDemandRequestInput,
@@ -52,6 +55,56 @@ interface EntityPresenceSummary {
   restaurantAttributes: number;
 }
 
+interface PlanExpansionState {
+  foodIds: string[];
+  foodAttributeIds: string[];
+  restaurantAttributeIds: string[];
+  foodIdsFromPrimaryFoodAttributeText: string[];
+}
+
+type RelaxationCapabilities = {
+  hasFoodAttributes: boolean;
+  hasRestaurantAttributes: boolean;
+  hasPrimaryEntities: boolean;
+  canDropFoodAttributes: boolean;
+  canDropRestaurantAttributes: boolean;
+  canDropAllModifiers: boolean;
+  canRelax: boolean;
+};
+
+type DualExecutionResult = Awaited<
+  ReturnType<SearchQueryExecutor['executeDual']>
+>;
+
+interface StageExecutionResult {
+  stagePlan: QueryPlan;
+  exec: DualExecutionResult;
+  timings: { planMs: number; executeMs: number };
+}
+
+type SearchExplainInput = {
+  request: SearchQueryRequestDto;
+  pagination: PaginationState;
+  relaxationCapabilities: RelaxationCapabilities;
+  strictCoverageCount: number;
+  hasUnresolvedTerms: boolean;
+  strictCounts: {
+    restaurantsOnPage: number;
+    dishesOnPage: number;
+    totalRestaurants: number;
+    totalDishes: number;
+  };
+  relaxation: {
+    applied: boolean;
+    stage?: RelaxationStage;
+    threshold: number;
+  };
+  onDemand: {
+    triggered: boolean;
+    queued: boolean;
+  };
+};
+
 export type SearchHistoryEntry = {
   queryText: string;
   lastSearchedAt: string;
@@ -73,11 +126,17 @@ export class SearchService {
   private readonly openNowFetchMultiplier: number;
   private readonly searchLogEnabled: boolean;
   private readonly includePhaseTimings: boolean;
+  private readonly explainEnabled: boolean;
+  private readonly expansionStrictCoverageTarget: number;
+  private readonly expansionFoodCap: number;
+  private readonly expansionAttributeCap: number;
+  private readonly expansionMaxTermsPerType: number;
 
   constructor(
     loggerService: LoggerService,
     private readonly queryExecutor: SearchQueryExecutor,
     private readonly queryBuilder: SearchQueryBuilder,
+    private readonly entityExpansion: SearchEntityExpansionService,
     private readonly onDemandRequestService: OnDemandRequestService,
     private readonly searchMetrics: SearchMetricsService,
     private readonly textSanitizer: TextSanitizerService,
@@ -97,37 +156,27 @@ export class SearchService {
     this.openNowFetchMultiplier = this.resolveOpenNowFetchMultiplier();
     this.searchLogEnabled = this.resolveSearchLogEnabled();
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
+    this.explainEnabled = this.resolveExplainEnabled();
+    this.expansionStrictCoverageTarget =
+      this.resolveExpansionStrictCoverageTarget();
+    this.expansionFoodCap = this.resolveExpansionFoodCap();
+    this.expansionAttributeCap = this.resolveExpansionAttributeCap();
+    this.expansionMaxTermsPerType = this.resolveExpansionMaxTermsPerType();
   }
 
   buildQueryPlan(request: SearchQueryRequestDto): QueryPlan {
     this.sanitizeEntityGroups(request);
-    const presence = this.getEntityPresenceSummary(request);
     const priceLevels = this.normalizePriceLevels(request.priceLevels);
     const minimumVotes = this.normalizeMinimumVotes(request.minimumVotes);
-    request.minimumVotes = minimumVotes ?? undefined;
 
     // Always use dual_list format - restaurants and dishes are independent lists
     const format: QueryPlan['format'] = 'dual_list';
-
-    const restaurantFilters = this.buildRestaurantFilters(request, priceLevels);
-    const connectionFilters = this.buildConnectionFilters(
-      request,
-      minimumVotes,
-    );
-
-    const plan: QueryPlan = {
+    const constraints = this.buildSearchConstraints(request, 'strict', {
       format,
-      restaurantFilters,
-      connectionFilters,
-      ranking: {
-        foodOrder: 'display_rank DESC',
-        restaurantOrder: 'display_rank DESC',
-      },
-      diagnostics: {
-        missingEntities: this.getMissingScopes(presence),
-        notes: this.buildDiagnosticNotes(request, presence, priceLevels),
-      },
-    };
+      priceLevels,
+      minimumVotes,
+    });
+    const plan: QueryPlan = compileQueryPlanFromConstraints(constraints);
 
     this.logger.debug('Generated query plan', {
       format: plan.format,
@@ -208,35 +257,117 @@ export class SearchService {
     const start = Date.now();
     const searchRequestId = request.searchRequestId ?? randomUUID();
     request.searchRequestId = searchRequestId;
+
     let plan: QueryPlan | undefined;
     const phaseTimings: Record<string, number> = {};
 
+    const RELAX_STRICT_THRESHOLD = 10;
+    const TOP_DISHES_LIMIT = 3;
+
     try {
-      const planStart = performance.now();
-      plan = this.buildQueryPlan(request);
-      phaseTimings.queryPlanMs = Math.round(performance.now() - planStart);
       const pagination = this.resolvePagination(request.pagination);
       const includeSqlPreview = this.shouldIncludeSqlPreview(request);
       const perRestaurantLimit = this.perRestaurantLimit;
 
-      const executeStart = performance.now();
-      const execution = await this.queryExecutor.executeDual({
-        plan,
-        request,
-        pagination,
-        topDishesLimit: 3,
-        includeSqlPreview,
+      const relaxation = this.resolveRelaxationCapabilities(request);
+      const canRelax = relaxation.canRelax;
+
+      let planExpansion: PlanExpansionState | null = null;
+      let expansionAnalysisMetadata: Record<string, unknown> | null = null;
+
+      const executeStage = async (params: {
+        stage: RelaxationStage;
+        restaurantPagination: { skip: number; take: number };
+        dishPagination: { skip: number; take: number };
+        excludeRestaurantIds?: string[];
+        excludeConnectionIds?: string[];
+        includeSqlPreview?: boolean;
+      }): Promise<StageExecutionResult> => {
+        return this.executeSearchStage({
+          request,
+          stage: params.stage,
+          planExpansion,
+          pagination,
+          restaurantPagination: params.restaurantPagination,
+          dishPagination: params.dishPagination,
+          topDishesLimit: TOP_DISHES_LIMIT,
+          includeSqlPreview: params.includeSqlPreview,
+          excludeRestaurantIds: params.excludeRestaurantIds,
+          excludeConnectionIds: params.excludeConnectionIds,
+        });
+      };
+
+      // Strict probe (page 1 uses full pagination; later pages probe first).
+      const strictProbePagination =
+        pagination.page === 1
+          ? pagination
+          : { skip: 0, take: Math.max(RELAX_STRICT_THRESHOLD, 10) };
+
+      let strictProbe = await executeStage({
+        stage: 'strict',
+        restaurantPagination: strictProbePagination,
+        dishPagination: strictProbePagination,
+        includeSqlPreview: false,
       });
-      phaseTimings.queryExecuteMs = Math.round(
-        performance.now() - executeStart,
+
+      const strictCoverageCount =
+        strictProbe.exec.totalRestaurantCount + strictProbe.exec.totalDishCount;
+      const unresolvedGroups =
+        request.submissionContext?.unresolvedEntities ?? [];
+      const hasUnresolvedTerms = unresolvedGroups.some(
+        (group) => group.terms?.length,
       );
-      if (execution.timings) {
-        Object.assign(phaseTimings, execution.timings);
+      if (
+        this.hasEntityTargets(request) &&
+        (strictCoverageCount < this.expansionStrictCoverageTarget ||
+          hasUnresolvedTerms)
+      ) {
+        const expansion = await this.buildPlanExpansionForRequest(
+          request,
+          strictProbe.stagePlan,
+        );
+        if (expansion && this.hasPlanExpansion(expansion)) {
+          planExpansion = expansion;
+          expansionAnalysisMetadata = this.buildExpansionMetadata(
+            strictCoverageCount,
+            planExpansion,
+            {
+              belowTarget:
+                strictCoverageCount < this.expansionStrictCoverageTarget,
+              hasUnresolvedTerms,
+            },
+          );
+          strictProbe = await executeStage({
+            stage: 'strict',
+            restaurantPagination: strictProbePagination,
+            dishPagination: strictProbePagination,
+            includeSqlPreview: false,
+          });
+        }
       }
 
-      const totalRestaurantResults = execution.totalRestaurantCount;
-      const totalFoodResults = execution.totalDishCount;
-      const totalResults = totalFoodResults + totalRestaurantResults;
+      plan = strictProbe.stagePlan;
+      phaseTimings.queryPlanMs = Math.round(strictProbe.timings.planMs);
+
+      // Strict execution for the requested page (needed for lists that do not relax).
+      const strictPage =
+        pagination.page === 1
+          ? strictProbe
+          : await executeStage({
+              stage: 'strict',
+              restaurantPagination: pagination,
+              dishPagination: pagination,
+              includeSqlPreview,
+            });
+
+      const strictRestaurantExactCount = strictProbe.exec.restaurants.length;
+      const strictDishExactCount = strictProbe.exec.dishes.length;
+
+      const needsRestaurantRelaxation =
+        canRelax && strictRestaurantExactCount < RELAX_STRICT_THRESHOLD;
+      const needsDishRelaxation =
+        canRelax && strictDishExactCount < RELAX_STRICT_THRESHOLD;
+
       const primaryFoodTermRaw =
         request.entities.food?.[0]?.originalText ??
         request.entities.food?.[0]?.normalizedName ??
@@ -245,76 +376,305 @@ export class SearchService {
         ? primaryFoodTermRaw.trim()
         : null;
 
-      const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
-        request,
-        plan.format,
-        execution.restaurants.length,
-        execution.totalDishCount,
-      );
+      // No relaxation: existing behavior.
+      if (!needsRestaurantRelaxation && !needsDishRelaxation) {
+        phaseTimings.queryExecuteMs = Math.round(strictPage.timings.executeMs);
+        if (strictPage.exec.timings) {
+          Object.assign(phaseTimings, strictPage.exec.timings);
+        }
 
-      const uiCoverageKey = await this.resolveLocationKey(request);
-      const collectionCoverageKey =
-        await this.resolveCollectionCoverageKey(request);
+        const totalRestaurantResults = strictPage.exec.totalRestaurantCount;
+        const totalFoodResults = strictPage.exec.totalDishCount;
+        const totalResults = totalFoodResults + totalRestaurantResults;
+
+        const [uiCoverageKey, collectionCoverageKey] = await Promise.all([
+          this.resolveLocationKey(request),
+          this.resolveCollectionCoverageKey(request),
+        ]);
+        const onDemandLocationKey = request.bounds
+          ? collectionCoverageKey
+          : null;
+        const viewportEligible = this.isViewportEligibleForOnDemand(
+          request.bounds,
+        );
+
+        const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
+          request,
+          plan.format,
+          strictPage.exec.restaurants.length,
+        );
+        const onDemandResult = shouldTriggerOnDemand
+          ? await this.recordLowResultOnDemand({
+              request,
+              planFormat: plan.format,
+              restaurantCount: strictPage.exec.restaurants.length,
+              dishCount: strictPage.exec.dishes.length,
+              viewportEligible,
+              onDemandLocationKey,
+              expansionSignals: expansionAnalysisMetadata,
+            })
+          : { queued: false, etaMs: undefined };
+        const onDemandQueued = onDemandResult.queued;
+        const onDemandEtaMs = onDemandResult.etaMs;
+
+        const coverageStatus = this.calculateCoverageStatus({
+          request,
+          totalFoodResults,
+          totalRestaurantResults,
+          triggeredOnDemand: onDemandQueued,
+        });
+
+        const metadata: SearchResponseMetadataDto = {
+          totalFoodResults,
+          totalRestaurantResults,
+          queryExecutionTimeMs: Date.now() - start,
+          searchRequestId,
+          boundsApplied: strictPage.exec.metadata.boundsApplied,
+          openNowApplied: strictPage.exec.metadata.openNowApplied,
+          openNowSupportedRestaurants:
+            strictPage.exec.metadata.openNowSupportedRestaurants,
+          openNowUnsupportedRestaurants:
+            strictPage.exec.metadata.openNowUnsupportedRestaurants,
+          openNowUnsupportedRestaurantIds:
+            strictPage.exec.metadata.openNowUnsupportedRestaurantIds,
+          openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut,
+          priceFilterApplied: strictPage.exec.metadata.priceFilterApplied,
+          minimumVotesApplied: strictPage.exec.metadata.minimumVotesApplied,
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          perRestaurantLimit,
+          coverageStatus,
+          primaryFoodTerm: primaryFoodTerm || undefined,
+          coverageKey: uiCoverageKey ?? null,
+          onDemandQueued: onDemandQueued || undefined,
+          onDemandEtaMs,
+        };
+
+        this.attachPhaseTimings(metadata, phaseTimings);
+        this.mergeAnalysisMetadata(metadata, expansionAnalysisMetadata);
+        this.attachSearchExplain(metadata, {
+          request,
+          pagination,
+          relaxationCapabilities: relaxation,
+          strictCoverageCount,
+          hasUnresolvedTerms,
+          strictCounts: {
+            restaurantsOnPage: strictPage.exec.restaurants.length,
+            dishesOnPage: strictPage.exec.dishes.length,
+            totalRestaurants: strictPage.exec.totalRestaurantCount,
+            totalDishes: strictPage.exec.totalDishCount,
+          },
+          relaxation: { applied: false, threshold: RELAX_STRICT_THRESHOLD },
+          onDemand: {
+            triggered: shouldTriggerOnDemand,
+            queued: onDemandQueued,
+          },
+        });
+
+        if (request.openNow && !strictPage.exec.metadata.openNowApplied) {
+          this.logger.warn(
+            'Open-now filter requested but insufficient metadata to evaluate',
+            {
+              unsupportedCount:
+                strictPage.exec.metadata.openNowUnsupportedRestaurants,
+            },
+          );
+        }
+
+        if (pagination.page === 1) {
+          try {
+            await this.recordQueryImpressions(
+              request,
+              {
+                searchRequestId,
+                totalResults,
+                totalFoodResults,
+                totalRestaurantResults,
+                queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+                coverageStatus,
+              },
+              {
+                uiCoverageKey: metadata.coverageKey ?? null,
+                collectionCoverageKey,
+              },
+            );
+          } catch (error) {
+            this.logger.warn('Failed to record search query impressions', {
+              error: {
+                message: error instanceof Error ? error.message : String(error),
+                stack: error instanceof Error ? error.stack : undefined,
+              },
+            });
+          }
+        }
+
+        this.logger.debug('Search query executed', {
+          dishCount: strictPage.exec.dishes.length,
+          restaurantCount: strictPage.exec.restaurants.length,
+          metadata,
+        });
+
+        this.searchMetrics.recordSearchExecution({
+          format: plan.format,
+          openNow: Boolean(request.openNow),
+          durationMs: metadata.queryExecutionTimeMs,
+          totalFoodResults,
+          openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut ?? 0,
+        });
+
+        return {
+          format: plan.format,
+          plan,
+          dishes: strictPage.exec.dishes,
+          restaurants: strictPage.exec.restaurants,
+          sqlPreview: includeSqlPreview
+            ? (strictPage.exec.sqlPreview ?? null)
+            : null,
+          metadata,
+        };
+      }
+
+      // Relaxation path (per-list; still score-ranked). Use strict IDs to exclude duplicates.
+      const candidateStages: RelaxationStage[] = [];
+      if (relaxation.canDropRestaurantAttributes)
+        candidateStages.push('relaxed_restaurant_attributes');
+      if (relaxation.canDropFoodAttributes)
+        candidateStages.push('relaxed_food_attributes');
+
+      const selectedStage = await this.selectRelaxationStage({
+        candidateStages,
+        threshold: RELAX_STRICT_THRESHOLD,
+        canDropAllModifiers: relaxation.canDropAllModifiers,
+        needsRestaurantRelaxation,
+        needsDishRelaxation,
+        probe: async (stage) => {
+          const probeResult = await executeStage({
+            stage,
+            restaurantPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
+            dishPagination: { skip: 0, take: RELAX_STRICT_THRESHOLD },
+            includeSqlPreview: false,
+          });
+          return {
+            restaurants: probeResult.exec.restaurants,
+            dishes: probeResult.exec.dishes,
+          };
+        },
+      });
+
+      const strictRestaurantIds = strictProbe.exec.restaurants
+        .map((row) => row.restaurantId)
+        .filter((value): value is string => typeof value === 'string');
+      const strictConnectionIds = strictProbe.exec.dishes
+        .map((row) => row.connectionId)
+        .filter((value): value is string => typeof value === 'string');
+
+      const relaxedRestaurantPagination = needsRestaurantRelaxation
+        ? (() => {
+            const exactCount = strictRestaurantExactCount;
+            const relaxedSkip = Math.max(
+              0,
+              (pagination.page - 1) * pagination.pageSize - exactCount,
+            );
+            const relaxedTake =
+              pagination.page === 1
+                ? Math.max(0, pagination.pageSize - exactCount)
+                : pagination.pageSize;
+            return { skip: relaxedSkip, take: relaxedTake };
+          })()
+        : pagination;
+
+      const relaxedDishPagination = needsDishRelaxation
+        ? (() => {
+            const exactCount = strictDishExactCount;
+            const relaxedSkip = Math.max(
+              0,
+              (pagination.page - 1) * pagination.pageSize - exactCount,
+            );
+            const relaxedTake =
+              pagination.page === 1
+                ? Math.max(0, pagination.pageSize - exactCount)
+                : pagination.pageSize;
+            return { skip: relaxedSkip, take: relaxedTake };
+          })()
+        : pagination;
+
+      const relaxed = await executeStage({
+        stage: selectedStage,
+        restaurantPagination: relaxedRestaurantPagination,
+        dishPagination: relaxedDishPagination,
+        excludeRestaurantIds: needsRestaurantRelaxation
+          ? strictRestaurantIds
+          : undefined,
+        excludeConnectionIds: needsDishRelaxation
+          ? strictConnectionIds
+          : undefined,
+        includeSqlPreview,
+      });
+
+      phaseTimings.queryExecuteMs = Math.round(relaxed.timings.executeMs);
+      if (relaxed.exec.timings) {
+        Object.assign(phaseTimings, relaxed.exec.timings);
+      }
+
+      const dishes = needsDishRelaxation
+        ? pagination.page === 1
+          ? [...strictProbe.exec.dishes, ...relaxed.exec.dishes]
+          : relaxed.exec.dishes
+        : strictPage.exec.dishes;
+
+      const restaurants = needsRestaurantRelaxation
+        ? pagination.page === 1
+          ? [...strictProbe.exec.restaurants, ...relaxed.exec.restaurants]
+          : relaxed.exec.restaurants
+        : strictPage.exec.restaurants;
+
+      const totalFoodResults = needsDishRelaxation
+        ? strictProbe.exec.totalDishCount + relaxed.exec.totalDishCount
+        : strictPage.exec.totalDishCount;
+      const totalRestaurantResults = needsRestaurantRelaxation
+        ? strictProbe.exec.totalRestaurantCount +
+          relaxed.exec.totalRestaurantCount
+        : strictPage.exec.totalRestaurantCount;
+      const totalResults = totalFoodResults + totalRestaurantResults;
+
+      const [uiCoverageKey, collectionCoverageKey] = await Promise.all([
+        this.resolveLocationKey(request),
+        this.resolveCollectionCoverageKey(request),
+      ]);
       const onDemandLocationKey = request.bounds ? collectionCoverageKey : null;
       const viewportEligible = this.isViewportEligibleForOnDemand(
         request.bounds,
       );
-      let onDemandQueued = false;
-      let onDemandEtaMs: number | undefined;
 
-      if (shouldTriggerOnDemand) {
-        try {
-          const lowResultRequests = this.buildLowResultRequests(
+      const shouldTriggerOnDemand = this.shouldTriggerOnDemand(
+        request,
+        plan.format,
+        strictRestaurantExactCount,
+      );
+      const onDemandResult = shouldTriggerOnDemand
+        ? await this.recordLowResultOnDemand({
             request,
+            planFormat: plan.format,
+            restaurantCount: strictRestaurantExactCount,
+            dishCount: strictDishExactCount,
+            viewportEligible,
             onDemandLocationKey,
-          );
-          if (lowResultRequests.length) {
-            const context: Record<string, unknown> = {
-              source: 'low_result',
-              restaurantCount: execution.restaurants.length,
-              dishCount: execution.dishes.length,
-              planFormat: plan.format,
-              bounds: request.bounds,
-              openNow: request.openNow,
-            };
-            const fallbackLocation = this.resolveFallbackLocation(request);
-            if (fallbackLocation) {
-              context.location = fallbackLocation;
-            }
-            const locationBias = this.buildLocationBias(request);
-            if (locationBias) {
-              context.locationBias = locationBias;
-            }
-
-            if (viewportEligible && onDemandLocationKey) {
-              const recorded = await this.onDemandRequestService.recordRequests(
-                lowResultRequests,
-                { userId: request.userId ?? null },
-                context,
-              );
-
-              if (recorded.length) {
-                onDemandQueued = true;
-              }
-            } else if (!onDemandLocationKey) {
-              const recorded = await this.onDemandRequestService.recordRequests(
-                lowResultRequests,
-                { userId: request.userId ?? null },
-                context,
-              );
-              if (recorded.length) {
-                onDemandQueued = true;
-              }
-            }
-          }
-        } catch (error) {
-          this.logger.warn('Failed to handle low-result on-demand requests', {
-            error: {
-              message: error instanceof Error ? error.message : String(error),
+            expansionSignals: expansionAnalysisMetadata,
+            relaxation: {
+              stage: selectedStage,
+              threshold: RELAX_STRICT_THRESHOLD,
+              dropped: {
+                foodAttributes:
+                  selectedStage === 'relaxed_food_attributes' ||
+                  selectedStage === 'relaxed_modifiers',
+                restaurantAttributes:
+                  selectedStage === 'relaxed_restaurant_attributes' ||
+                  selectedStage === 'relaxed_modifiers',
+              },
             },
-          });
-        }
-      }
+          })
+        : { queued: false, etaMs: undefined };
+      const onDemandQueued = onDemandResult.queued;
 
       const coverageStatus = this.calculateCoverageStatus({
         request,
@@ -328,17 +688,33 @@ export class SearchService {
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
-        boundsApplied: execution.metadata.boundsApplied,
-        openNowApplied: execution.metadata.openNowApplied,
+        boundsApplied:
+          strictPage.exec.metadata.boundsApplied ||
+          relaxed.exec.metadata.boundsApplied,
+        openNowApplied:
+          strictPage.exec.metadata.openNowApplied ||
+          relaxed.exec.metadata.openNowApplied,
         openNowSupportedRestaurants:
-          execution.metadata.openNowSupportedRestaurants,
+          (strictPage.exec.metadata.openNowSupportedRestaurants ?? 0) +
+          (relaxed.exec.metadata.openNowSupportedRestaurants ?? 0),
         openNowUnsupportedRestaurants:
-          execution.metadata.openNowUnsupportedRestaurants,
-        openNowUnsupportedRestaurantIds:
-          execution.metadata.openNowUnsupportedRestaurantIds,
-        openNowFilteredOut: execution.metadata.openNowFilteredOut,
-        priceFilterApplied: execution.metadata.priceFilterApplied,
-        minimumVotesApplied: execution.metadata.minimumVotesApplied,
+          (strictPage.exec.metadata.openNowUnsupportedRestaurants ?? 0) +
+          (relaxed.exec.metadata.openNowUnsupportedRestaurants ?? 0),
+        openNowUnsupportedRestaurantIds: Array.from(
+          new Set([
+            ...(strictPage.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
+            ...(relaxed.exec.metadata.openNowUnsupportedRestaurantIds ?? []),
+          ]),
+        ),
+        openNowFilteredOut:
+          (strictPage.exec.metadata.openNowFilteredOut ?? 0) +
+          (relaxed.exec.metadata.openNowFilteredOut ?? 0),
+        priceFilterApplied:
+          strictPage.exec.metadata.priceFilterApplied ||
+          relaxed.exec.metadata.priceFilterApplied,
+        minimumVotesApplied:
+          strictPage.exec.metadata.minimumVotesApplied ||
+          relaxed.exec.metadata.minimumVotesApplied,
         page: pagination.page,
         pageSize: pagination.pageSize,
         perRestaurantLimit,
@@ -346,32 +722,56 @@ export class SearchService {
         primaryFoodTerm: primaryFoodTerm || undefined,
         coverageKey: uiCoverageKey ?? null,
         onDemandQueued: onDemandQueued || undefined,
-        onDemandEtaMs,
+        onDemandEtaMs: undefined,
+        exactDishCountOnPage:
+          needsDishRelaxation && pagination.page === 1
+            ? strictDishExactCount
+            : undefined,
+        exactRestaurantCountOnPage:
+          needsRestaurantRelaxation && pagination.page === 1
+            ? strictRestaurantExactCount
+            : undefined,
+        relaxationApplied:
+          (needsRestaurantRelaxation || needsDishRelaxation) &&
+          pagination.page === 1
+            ? true
+            : undefined,
+        relaxationStage: selectedStage,
       };
 
-      if (this.includePhaseTimings && Object.keys(phaseTimings).length > 0) {
-        const existing =
-          metadata.analysisMetadata &&
-          typeof metadata.analysisMetadata === 'object'
-            ? metadata.analysisMetadata
-            : {};
-        const existingPhaseTimings =
-          typeof existing.phaseTimings === 'object' &&
-          existing.phaseTimings !== null
-            ? (existing.phaseTimings as Record<string, number>)
-            : {};
-        metadata.analysisMetadata = {
-          ...existing,
-          phaseTimings: { ...existingPhaseTimings, ...phaseTimings },
-        };
-      }
+      this.attachPhaseTimings(metadata, phaseTimings);
+      this.mergeAnalysisMetadata(metadata, expansionAnalysisMetadata);
+      this.attachSearchExplain(metadata, {
+        request,
+        pagination,
+        relaxationCapabilities: relaxation,
+        strictCoverageCount,
+        hasUnresolvedTerms,
+        strictCounts: {
+          restaurantsOnPage: strictRestaurantExactCount,
+          dishesOnPage: strictDishExactCount,
+          totalRestaurants: strictProbe.exec.totalRestaurantCount,
+          totalDishes: strictProbe.exec.totalDishCount,
+        },
+        relaxation: {
+          applied: true,
+          stage: selectedStage,
+          threshold: RELAX_STRICT_THRESHOLD,
+        },
+        onDemand: {
+          triggered: shouldTriggerOnDemand,
+          queued: onDemandQueued,
+        },
+      });
 
-      if (request.openNow && !execution.metadata.openNowApplied) {
+      if (
+        request.openNow &&
+        !strictPage.exec.metadata.openNowApplied &&
+        !relaxed.exec.metadata.openNowApplied
+      ) {
         this.logger.warn(
           'Open-now filter requested but insufficient metadata to evaluate',
-          {
-            unsupportedCount: execution.metadata.openNowUnsupportedRestaurants,
-          },
+          { unsupportedCount: metadata.openNowUnsupportedRestaurants },
         );
       }
 
@@ -400,8 +800,8 @@ export class SearchService {
       }
 
       this.logger.debug('Search query executed', {
-        dishCount: execution.dishes.length,
-        restaurantCount: execution.restaurants.length,
+        dishCount: dishes.length,
+        restaurantCount: restaurants.length,
         metadata,
       });
 
@@ -410,15 +810,17 @@ export class SearchService {
         openNow: Boolean(request.openNow),
         durationMs: metadata.queryExecutionTimeMs,
         totalFoodResults,
-        openNowFilteredOut: execution.metadata.openNowFilteredOut ?? 0,
+        openNowFilteredOut: metadata.openNowFilteredOut ?? 0,
       });
 
       return {
         format: plan.format,
         plan,
-        dishes: execution.dishes,
-        restaurants: execution.restaurants,
-        sqlPreview: includeSqlPreview ? (execution.sqlPreview ?? null) : null,
+        dishes,
+        restaurants,
+        sqlPreview: includeSqlPreview
+          ? (relaxed.exec.sqlPreview ?? null)
+          : null,
         metadata,
       };
     } catch (error) {
@@ -428,6 +830,462 @@ export class SearchService {
         errorName: error instanceof Error ? error.name : 'Error',
       });
       throw error;
+    }
+  }
+
+  private buildExecutionDirectives(
+    constraints: SearchConstraints,
+    planExpansion: PlanExpansionState | null,
+  ): SearchExecutionDirectives | undefined {
+    if (!constraints.primaryFoodAttributeQuery) {
+      return undefined;
+    }
+
+    const textFoodIds =
+      planExpansion?.foodIdsFromPrimaryFoodAttributeText ?? [];
+    return {
+      primaryFoodAttributeQuery: true,
+      primaryFoodAttributeTextFoodIds: textFoodIds.length
+        ? textFoodIds
+        : undefined,
+    };
+  }
+
+  private async executeSearchStage(params: {
+    request: SearchQueryRequestDto;
+    stage: RelaxationStage;
+    planExpansion: PlanExpansionState | null;
+    pagination: PaginationState;
+    restaurantPagination: { skip: number; take: number };
+    dishPagination: { skip: number; take: number };
+    topDishesLimit: number;
+    includeSqlPreview?: boolean;
+    excludeRestaurantIds?: string[];
+    excludeConnectionIds?: string[];
+  }): Promise<StageExecutionResult> {
+    const planStart = performance.now();
+    const priceLevels = this.normalizePriceLevels(params.request.priceLevels);
+    const minimumVotes = this.normalizeMinimumVotes(
+      params.request.minimumVotes,
+    );
+    const constraints = this.buildSearchConstraints(
+      params.request,
+      params.stage,
+      {
+        format: 'dual_list',
+        priceLevels,
+        minimumVotes,
+      },
+    );
+    const basePlan = compileQueryPlanFromConstraints(constraints);
+    const stagePlan = params.planExpansion
+      ? this.applyPlanExpansion(basePlan, params.planExpansion)
+      : basePlan;
+    const planMs = performance.now() - planStart;
+
+    const directives = this.buildExecutionDirectives(
+      constraints,
+      params.planExpansion,
+    );
+
+    const executeStart = performance.now();
+    const exec = await this.queryExecutor.executeDual({
+      plan: stagePlan,
+      request: params.request,
+      pagination: params.pagination,
+      restaurantPagination: params.restaurantPagination,
+      dishPagination: params.dishPagination,
+      topDishesLimit: params.topDishesLimit,
+      includeSqlPreview: params.includeSqlPreview,
+      excludeRestaurantIds: params.excludeRestaurantIds,
+      excludeConnectionIds: params.excludeConnectionIds,
+      directives,
+    });
+    const executeMs = performance.now() - executeStart;
+
+    return { stagePlan, exec, timings: { planMs, executeMs } };
+  }
+
+  private buildSearchConstraints(
+    request: SearchQueryRequestDto,
+    stage: RelaxationStage,
+    inputs: {
+      format: QueryPlan['format'];
+      priceLevels: number[];
+      minimumVotes: number | null;
+    },
+  ): SearchConstraints {
+    const inputPresence = this.getEntityPresenceSummary(request);
+    const stagePresence = { ...inputPresence };
+
+    if (stage === 'relaxed_food_attributes' || stage === 'relaxed_modifiers') {
+      stagePresence.foodAttributes = 0;
+    }
+    if (
+      stage === 'relaxed_restaurant_attributes' ||
+      stage === 'relaxed_modifiers'
+    ) {
+      stagePresence.restaurantAttributes = 0;
+    }
+
+    const hadFoodGroup = Boolean(request.entities.food?.length);
+    const hadRestaurantGroup = Boolean(request.entities.restaurants?.length);
+    const hadFoodAttributeGroup = Boolean(
+      request.entities.foodAttributes?.length,
+    );
+    const hadRestaurantAttributeGroup = Boolean(
+      request.entities.restaurantAttributes?.length,
+    );
+
+    const primaryFoodAttributeQuery =
+      !hadFoodGroup && !hadRestaurantGroup && hadFoodAttributeGroup;
+
+    const foodAttributeIds =
+      stagePresence.foodAttributes > 0
+        ? this.collectEntityIds(request.entities.foodAttributes)
+        : [];
+    const restaurantAttributeIds =
+      stagePresence.restaurantAttributes > 0
+        ? this.collectEntityIds(request.entities.restaurantAttributes)
+        : [];
+
+    return {
+      stage,
+      format: inputs.format,
+      inputPresence,
+      stagePresence,
+      hadFoodGroup,
+      hadRestaurantGroup,
+      hadFoodAttributeGroup,
+      hadRestaurantAttributeGroup,
+      primaryFoodAttributeQuery,
+      ids: {
+        restaurantIds: this.collectEntityIds(request.entities.restaurants),
+        foodIds: this.collectEntityIds(request.entities.food),
+        foodAttributeIds,
+        restaurantAttributeIds,
+      },
+      filters: {
+        bounds: request.bounds,
+        openNow: Boolean(request.openNow),
+        priceLevels: inputs.priceLevels,
+        minimumVotes: inputs.minimumVotes,
+      },
+      unresolved: {
+        groups: request.submissionContext?.unresolvedEntities ?? [],
+      },
+    };
+  }
+
+  private resolveRelaxationCapabilities(
+    request: SearchQueryRequestDto,
+  ): RelaxationCapabilities {
+    const hasFoodAttributes = Boolean(request.entities.foodAttributes?.length);
+    const hasRestaurantAttributes = Boolean(
+      request.entities.restaurantAttributes?.length,
+    );
+    const hasPrimaryEntities = Boolean(
+      request.entities.food?.length || request.entities.restaurants?.length,
+    );
+
+    const canDropFoodAttributes = hasFoodAttributes
+      ? hasPrimaryEntities || hasRestaurantAttributes
+      : false;
+    const canDropRestaurantAttributes = hasRestaurantAttributes
+      ? hasPrimaryEntities || hasFoodAttributes
+      : false;
+    const canDropAllModifiers = hasPrimaryEntities;
+    const canRelax = canDropFoodAttributes || canDropRestaurantAttributes;
+
+    return {
+      hasFoodAttributes,
+      hasRestaurantAttributes,
+      hasPrimaryEntities,
+      canDropFoodAttributes,
+      canDropRestaurantAttributes,
+      canDropAllModifiers,
+      canRelax,
+    };
+  }
+
+  private async selectRelaxationStage(params: {
+    candidateStages: RelaxationStage[];
+    threshold: number;
+    canDropAllModifiers: boolean;
+    needsRestaurantRelaxation: boolean;
+    needsDishRelaxation: boolean;
+    probe: (
+      stage: RelaxationStage,
+    ) => Promise<{ restaurants: unknown[]; dishes: unknown[] }>;
+  }): Promise<RelaxationStage> {
+    const {
+      candidateStages,
+      threshold,
+      canDropAllModifiers,
+      needsRestaurantRelaxation,
+      needsDishRelaxation,
+      probe,
+    } = params;
+
+    const scoreCounts = (counts: { restaurants: number; dishes: number }) => {
+      if (needsRestaurantRelaxation && needsDishRelaxation) {
+        return Math.min(counts.restaurants, counts.dishes);
+      }
+      if (needsRestaurantRelaxation) {
+        return counts.restaurants;
+      }
+      return counts.dishes;
+    };
+
+    const cache = new Map<
+      RelaxationStage,
+      { restaurants: number; dishes: number }
+    >();
+    const probeCounts = async (stage: RelaxationStage) => {
+      const cached = cache.get(stage);
+      if (cached) {
+        return cached;
+      }
+      const result = await probe(stage);
+      const counts = {
+        restaurants: result.restaurants.length,
+        dishes: result.dishes.length,
+      };
+      cache.set(stage, counts);
+      return counts;
+    };
+
+    let selectedStage: RelaxationStage = canDropAllModifiers
+      ? 'relaxed_modifiers'
+      : (candidateStages[0] ?? 'strict');
+
+    if (candidateStages.length === 1) {
+      selectedStage = candidateStages[0];
+    } else if (candidateStages.length === 2) {
+      const [a, b] = candidateStages;
+      const aCounts = await probeCounts(a);
+      const bCounts = await probeCounts(b);
+      selectedStage = scoreCounts(aCounts) >= scoreCounts(bCounts) ? a : b;
+    }
+
+    if (canDropAllModifiers && selectedStage !== 'relaxed_modifiers') {
+      const selectedCounts = await probeCounts(selectedStage);
+      if (scoreCounts(selectedCounts) < threshold) {
+        selectedStage = 'relaxed_modifiers';
+      }
+    }
+
+    return selectedStage;
+  }
+
+  private attachPhaseTimings(
+    metadata: SearchResponseMetadataDto,
+    phaseTimings: Record<string, number>,
+  ): void {
+    if (!this.includePhaseTimings || Object.keys(phaseTimings).length === 0) {
+      return;
+    }
+    const existing =
+      metadata.analysisMetadata && typeof metadata.analysisMetadata === 'object'
+        ? metadata.analysisMetadata
+        : {};
+    const existingPhaseTimings =
+      typeof existing.phaseTimings === 'object' &&
+      existing.phaseTimings !== null
+        ? (existing.phaseTimings as Record<string, number>)
+        : {};
+    metadata.analysisMetadata = {
+      ...existing,
+      phaseTimings: { ...existingPhaseTimings, ...phaseTimings },
+    };
+  }
+
+  private mergeAnalysisMetadata(
+    metadata: SearchResponseMetadataDto,
+    patch: Record<string, unknown> | null,
+  ): void {
+    if (!patch || Object.keys(patch).length === 0) {
+      return;
+    }
+    const existing =
+      metadata.analysisMetadata && typeof metadata.analysisMetadata === 'object'
+        ? metadata.analysisMetadata
+        : {};
+    metadata.analysisMetadata = { ...existing, ...patch };
+  }
+
+  private attachSearchExplain(
+    metadata: SearchResponseMetadataDto,
+    input: SearchExplainInput,
+  ): void {
+    if (!this.explainEnabled) {
+      return;
+    }
+    const explain = this.buildSearchExplain(input);
+    const existing =
+      metadata.analysisMetadata && typeof metadata.analysisMetadata === 'object'
+        ? metadata.analysisMetadata
+        : {};
+    metadata.analysisMetadata = { ...existing, searchExplain: explain };
+  }
+
+  private buildSearchExplain(
+    input: SearchExplainInput,
+  ): Record<string, unknown> {
+    const presence = this.getEntityPresenceSummary(input.request);
+    const unresolvedGroups =
+      input.request.submissionContext?.unresolvedEntities ?? [];
+    const unresolvedGroupCount = unresolvedGroups.length;
+    const unresolvedTermCount = unresolvedGroups.reduce(
+      (acc, group) => acc + (group.terms?.length ?? 0),
+      0,
+    );
+
+    const explainStage: RelaxationStage = input.relaxation.stage ?? 'strict';
+    const priceLevels = this.normalizePriceLevels(input.request.priceLevels);
+    const minimumVotes = this.normalizeMinimumVotes(input.request.minimumVotes);
+    const constraints = this.buildSearchConstraints(
+      input.request,
+      explainStage,
+      {
+        format: 'dual_list',
+        priceLevels,
+        minimumVotes,
+      },
+    );
+
+    return {
+      pagination: {
+        page: input.pagination.page,
+        pageSize: input.pagination.pageSize,
+      },
+      presence,
+      constraints: {
+        stage: constraints.stage,
+        stagePresence: constraints.stagePresence,
+        ids: {
+          restaurants: constraints.ids.restaurantIds.length,
+          foods: constraints.ids.foodIds.length,
+          foodAttributes: constraints.ids.foodAttributeIds.length,
+          restaurantAttributes: constraints.ids.restaurantAttributeIds.length,
+        },
+        filters: {
+          bounds: Boolean(constraints.filters.bounds),
+          openNow: Boolean(constraints.filters.openNow),
+          priceLevels: constraints.filters.priceLevels.length,
+          minimumVotes: constraints.filters.minimumVotes,
+        },
+      },
+      submission: {
+        source: input.request.submissionSource ?? null,
+        matchType: input.request.submissionContext?.matchType ?? null,
+        typedPrefixLength:
+          input.request.submissionContext?.typedPrefix?.length ?? 0,
+        selectedEntityType:
+          input.request.submissionContext?.selectedEntityType ?? null,
+        unresolvedGroupCount,
+        unresolvedTermCount,
+      },
+      strict: {
+        coverageCount: input.strictCoverageCount,
+        counts: input.strictCounts,
+      },
+      expansion: {
+        strictCoverageTarget: this.expansionStrictCoverageTarget,
+        hasUnresolvedTerms: input.hasUnresolvedTerms,
+      },
+      relaxation: {
+        ...input.relaxation,
+        capabilities: input.relaxationCapabilities,
+      },
+      onDemand: input.onDemand,
+    };
+  }
+
+  private async recordLowResultOnDemand(params: {
+    request: SearchQueryRequestDto;
+    planFormat: QueryPlan['format'];
+    restaurantCount: number;
+    dishCount: number;
+    viewportEligible: boolean;
+    onDemandLocationKey: string | null;
+    expansionSignals?: Record<string, unknown> | null;
+    relaxation?: {
+      stage: RelaxationStage;
+      threshold: number;
+      dropped: { foodAttributes: boolean; restaurantAttributes: boolean };
+    };
+  }): Promise<{ queued: boolean; etaMs?: number }> {
+    try {
+      const lowResultRequests = this.buildLowResultRequests(
+        params.request,
+        params.onDemandLocationKey,
+      );
+      if (!lowResultRequests.length) {
+        return { queued: false, etaMs: undefined };
+      }
+
+      const context: Record<string, unknown> = {
+        source: 'low_result',
+        restaurantCount: params.restaurantCount,
+        foodCount: params.dishCount,
+        planFormat: params.planFormat,
+        bounds: params.request.bounds,
+        openNow: params.request.openNow,
+        ...(params.expansionSignals
+          ? { signals: params.expansionSignals }
+          : {}),
+      };
+
+      if (params.relaxation) {
+        context.counts = {
+          stage: 'strict',
+          page: {
+            restaurants: params.restaurantCount,
+            dishes: params.dishCount,
+          },
+        };
+        context.relaxation = {
+          ran: true,
+          toStage: params.relaxation.stage,
+          threshold: params.relaxation.threshold,
+          dropped: params.relaxation.dropped,
+        };
+      }
+
+      const fallbackLocation = this.resolveFallbackLocation(params.request);
+      if (fallbackLocation) {
+        context.location = fallbackLocation;
+      }
+      const locationBias = this.buildLocationBias(params.request);
+      if (locationBias) {
+        context.locationBias = locationBias;
+      }
+
+      const record = async () =>
+        this.onDemandRequestService.recordRequests(
+          lowResultRequests,
+          { userId: params.request.userId ?? null },
+          context,
+        );
+
+      if (params.viewportEligible && params.onDemandLocationKey) {
+        const recorded = await record();
+        return { queued: recorded.length > 0, etaMs: undefined };
+      }
+      if (!params.onDemandLocationKey) {
+        const recorded = await record();
+        return { queued: recorded.length > 0, etaMs: undefined };
+      }
+
+      return { queued: false, etaMs: undefined };
+    } catch (error) {
+      this.logger.warn('Failed to handle low-result on-demand requests', {
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return { queued: false, etaMs: undefined };
     }
   }
 
@@ -462,125 +1320,15 @@ export class SearchService {
     request: SearchQueryRequestDto,
     _format: QueryPlan['format'],
     restaurantCount: number,
-    dishCount: number,
   ): boolean {
-    // Trigger on-demand if either restaurants or dishes is below minimum
-    const primaryCount = Math.min(restaurantCount, dishCount);
-
-    if (primaryCount >= this.onDemandMinResults) {
+    // Trigger on-demand primarily when restaurant coverage is low for food-driven queries.
+    // (Dish coverage can be high even when restaurant list is under-covered.)
+    if (restaurantCount >= this.onDemandMinResults) {
       return false;
     }
-    return this.hasEntityTargets(request);
-  }
-
-  private buildRestaurantFilters(
-    request: SearchQueryRequestDto,
-    priceLevels: number[],
-  ): FilterClause[] {
-    const filters: FilterClause[] = [];
-    const now = new Date();
-
-    if (request.entities.restaurants?.length) {
-      filters.push({
-        scope: 'restaurant',
-        description: 'Match explicit restaurant entities',
-        entityType: EntityScope.RESTAURANT,
-        entityIds: this.collectEntityIds(request.entities.restaurants),
-      });
-    }
-
-    if (request.entities.restaurantAttributes?.length) {
-      filters.push({
-        scope: 'restaurant',
-        description: 'Filter by restaurant attributes',
-        entityType: EntityScope.RESTAURANT_ATTRIBUTE,
-        entityIds: this.collectEntityIds(request.entities.restaurantAttributes),
-      });
-    }
-
-    if (request.bounds) {
-      filters.push({
-        scope: 'restaurant',
-        description: `Restrict to map bounds (${request.bounds.southWest.lat.toFixed(
-          4,
-        )}, ${request.bounds.southWest.lng.toFixed(
-          4,
-        )}) ↔ (${request.bounds.northEast.lat.toFixed(
-          4,
-        )}, ${request.bounds.northEast.lng.toFixed(4)})`,
-        entityType: EntityScope.RESTAURANT,
-        entityIds: [],
-        payload: { bounds: request.bounds },
-      });
-    }
-
-    if (request.openNow) {
-      filters.push({
-        scope: 'restaurant',
-        description: `Filter restaurants open at ${now.toISOString()}`,
-        entityType: EntityScope.RESTAURANT,
-        entityIds: [],
-        payload: { openNow: { requestedAt: now.toISOString() } },
-      });
-    }
-
-    if (priceLevels.length) {
-      filters.push({
-        scope: 'restaurant',
-        description: `Restrict to price levels (${priceLevels.join(', ')})`,
-        entityType: EntityScope.RESTAURANT,
-        entityIds: [],
-        payload: { priceLevels },
-      });
-    }
-
-    return filters;
-  }
-
-  private buildConnectionFilters(
-    request: SearchQueryRequestDto,
-    minimumVotes: number | null,
-  ): FilterClause[] {
-    const filters: FilterClause[] = [];
-    const foodEntityIds = this.collectEntityIds(request.entities.food);
-
-    if (foodEntityIds.length > 0) {
-      filters.push({
-        scope: 'connection',
-        description: 'Match food entities',
-        entityType: EntityScope.FOOD,
-        entityIds: foodEntityIds,
-      });
-    }
-
-    if (request.entities.foodAttributes?.length) {
-      const attributeIds = this.collectEntityIds(
-        request.entities.foodAttributes,
-      );
-      if (
-        attributeIds.length > 0 &&
-        (foodEntityIds.length > 0 || !request.entities.food?.length)
-      ) {
-        filters.push({
-          scope: 'connection',
-          description: 'Filter by food attributes',
-          entityType: EntityScope.FOOD_ATTRIBUTE,
-          entityIds: attributeIds,
-        });
-      }
-    }
-
-    if (minimumVotes !== null) {
-      filters.push({
-        scope: 'connection',
-        description: `Require at least ${minimumVotes} total votes`,
-        entityType: EntityScope.FOOD,
-        entityIds: [],
-        payload: { minimumVotes },
-      });
-    }
-
-    return filters;
+    return Boolean(
+      request.entities.food?.length || request.entities.foodAttributes?.length,
+    );
   }
 
   private normalizeMinimumVotes(value?: number | null): number | null {
@@ -597,55 +1345,6 @@ export class SearchService {
     }
     const ids = entities.flatMap((entity) => entity.entityIds).filter(Boolean);
     return Array.from(new Set(ids));
-  }
-
-  private getMissingScopes(presence: EntityPresenceSummary): EntityScope[] {
-    const missing: EntityScope[] = [];
-    if (!presence.restaurants) {
-      missing.push(EntityScope.RESTAURANT);
-    }
-    if (!presence.food) {
-      missing.push(EntityScope.FOOD);
-    }
-    if (!presence.foodAttributes) {
-      missing.push(EntityScope.FOOD_ATTRIBUTE);
-    }
-    if (!presence.restaurantAttributes) {
-      missing.push(EntityScope.RESTAURANT_ATTRIBUTE);
-    }
-    return missing;
-  }
-
-  private buildDiagnosticNotes(
-    request: SearchQueryRequestDto,
-    presence: EntityPresenceSummary,
-    priceLevels: number[],
-  ): string[] {
-    const notes: string[] = [];
-
-    if (!presence.food && !presence.foodAttributes) {
-      notes.push(
-        'No food entities provided; results will not include contextual restaurant rankings.',
-      );
-    }
-
-    if (request.bounds) {
-      notes.push(
-        'Map bounds supplied; ensure spatial indexes are ready before enabling execution.',
-      );
-    }
-
-    if (request.openNow) {
-      notes.push(
-        'Open-now filter requested; requires restaurant hour metadata.',
-      );
-    }
-
-    if (priceLevels.length) {
-      notes.push('Price filter requested; ensure price metadata is available.');
-    }
-
-    return notes;
   }
 
   private async recordQueryImpressions(
@@ -1420,6 +2119,14 @@ export class SearchService {
     return false;
   }
 
+  private resolveExplainEnabled(): boolean {
+    const raw = process.env.SEARCH_EXPLAIN_ENABLED;
+    if (typeof raw === 'string' && raw.length > 0) {
+      return raw.toLowerCase() === 'true';
+    }
+    return this.isDevEnvironment;
+  }
+
   private resolveOnDemandMinResults(): number {
     const raw = process.env.SEARCH_ON_DEMAND_MIN_RESULTS;
     if (raw) {
@@ -1442,6 +2149,50 @@ export class SearchService {
     return 4;
   }
 
+  private resolveExpansionStrictCoverageTarget(): number {
+    const raw = process.env.SEARCH_EXPANSION_STRICT_COVERAGE_TARGET;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        return Math.min(Math.max(0, Math.floor(parsed)), 200);
+      }
+    }
+    return 25;
+  }
+
+  private resolveExpansionFoodCap(): number {
+    const raw = process.env.SEARCH_EXPANSION_FOOD_CAP;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(Math.max(1, Math.floor(parsed)), 50);
+      }
+    }
+    return 25;
+  }
+
+  private resolveExpansionAttributeCap(): number {
+    const raw = process.env.SEARCH_EXPANSION_ATTRIBUTE_CAP;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(Math.max(1, Math.floor(parsed)), 50);
+      }
+    }
+    return 15;
+  }
+
+  private resolveExpansionMaxTermsPerType(): number {
+    const raw = process.env.SEARCH_EXPANSION_MAX_TERMS_PER_TYPE;
+    if (raw) {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        return Math.min(Math.max(1, Math.floor(parsed)), 5);
+      }
+    }
+    return 3;
+  }
+
   private hasEntityTargets(request: SearchQueryRequestDto): boolean {
     return Boolean(
       request.entities.food?.length ||
@@ -1449,6 +2200,277 @@ export class SearchService {
         request.entities.restaurants?.length ||
         request.entities.restaurantAttributes?.length,
     );
+  }
+
+  private isPrimaryFoodAttributeQuery(request: SearchQueryRequestDto): boolean {
+    const hasFood = Boolean(request.entities.food?.length);
+    const hasRestaurant = Boolean(request.entities.restaurants?.length);
+    return (
+      !hasFood &&
+      !hasRestaurant &&
+      Boolean(request.entities.foodAttributes?.length)
+    );
+  }
+
+  private hasPlanExpansion(expansion: PlanExpansionState): boolean {
+    return Boolean(
+      expansion.foodIds.length ||
+        expansion.foodAttributeIds.length ||
+        expansion.restaurantAttributeIds.length ||
+        expansion.foodIdsFromPrimaryFoodAttributeText.length,
+    );
+  }
+
+  private buildExpansionMetadata(
+    strictCoverageCount: number,
+    expansion: PlanExpansionState,
+    trigger: { belowTarget: boolean; hasUnresolvedTerms: boolean },
+  ): Record<string, unknown> {
+    return {
+      idExpansion: {
+        strictCoverageCount,
+        strictCoverageTarget: this.expansionStrictCoverageTarget,
+        trigger,
+        foodsAdded: expansion.foodIds.length,
+        foodAttributesAdded: expansion.foodAttributeIds.length,
+        restaurantAttributesAdded: expansion.restaurantAttributeIds.length,
+        foodsFromPrimaryFoodAttributeTextAdded:
+          expansion.foodIdsFromPrimaryFoodAttributeText.length,
+      },
+    };
+  }
+
+  private async buildPlanExpansionForRequest(
+    request: SearchQueryRequestDto,
+    plan: QueryPlan,
+  ): Promise<PlanExpansionState | null> {
+    const existingFoodIds = new Set<string>();
+    const existingFoodAttributeIds = new Set<string>();
+    const existingRestaurantAttributeIds = new Set<string>();
+
+    for (const clause of plan.connectionFilters ?? []) {
+      if (clause.entityType === EntityScope.FOOD) {
+        for (const id of clause.entityIds ?? []) {
+          existingFoodIds.add(id);
+        }
+      }
+      if (clause.entityType === EntityScope.FOOD_ATTRIBUTE) {
+        for (const id of clause.entityIds ?? []) {
+          existingFoodAttributeIds.add(id);
+        }
+      }
+    }
+
+    for (const clause of plan.restaurantFilters ?? []) {
+      if (clause.entityType === EntityScope.RESTAURANT_ATTRIBUTE) {
+        for (const id of clause.entityIds ?? []) {
+          existingRestaurantAttributeIds.add(id);
+        }
+      }
+    }
+
+    const takeTerms = (entities: QueryEntityDto[] | undefined): string[] => {
+      if (!entities?.length) {
+        return [];
+      }
+      const deduped: string[] = [];
+      const seen = new Set<string>();
+      for (const entity of entities) {
+        const raw = (entity.originalText ?? entity.normalizedName ?? '').trim();
+        const normalized = raw.toLowerCase();
+        if (!normalized) continue;
+        if (seen.has(normalized)) continue;
+        seen.add(normalized);
+        deduped.push(raw);
+        if (deduped.length >= this.expansionMaxTermsPerType) {
+          break;
+        }
+      }
+      return deduped;
+    };
+
+    const takeUnresolvedTerms = (type: EntityType): string[] => {
+      const groups = request.submissionContext?.unresolvedEntities ?? [];
+      const terms: string[] = [];
+      const seen = new Set<string>();
+      for (const group of groups) {
+        if (group.type !== type) continue;
+        for (const raw of group.terms ?? []) {
+          const sanitized = typeof raw === 'string' ? raw.trim() : '';
+          const normalized = sanitized.toLowerCase();
+          if (!normalized) continue;
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          terms.push(sanitized);
+          if (terms.length >= this.expansionMaxTermsPerType) {
+            return terms;
+          }
+        }
+      }
+      return terms;
+    };
+
+    const mergeTerms = (a: string[], b: string[]): string[] => {
+      const merged: string[] = [];
+      const seen = new Set<string>();
+      for (const list of [a, b]) {
+        for (const raw of list) {
+          const normalized = raw.trim().toLowerCase();
+          if (!normalized) continue;
+          if (seen.has(normalized)) continue;
+          seen.add(normalized);
+          merged.push(raw);
+          if (merged.length >= this.expansionMaxTermsPerType) {
+            return merged;
+          }
+        }
+      }
+      return merged;
+    };
+
+    const foodTerms = mergeTerms(
+      takeTerms(request.entities.food),
+      takeUnresolvedTerms(EntityType.food),
+    );
+    const foodAttributeTerms = mergeTerms(
+      takeTerms(request.entities.foodAttributes),
+      takeUnresolvedTerms(EntityType.food_attribute),
+    );
+    const restaurantAttributeTerms = mergeTerms(
+      takeTerms(request.entities.restaurantAttributes),
+      takeUnresolvedTerms(EntityType.restaurant_attribute),
+    );
+
+    type ExpandedMatches = Awaited<
+      ReturnType<SearchEntityExpansionService['expandEntitiesByText']>
+    >;
+    const emptyMatches: ExpandedMatches = [];
+
+    const [foods, foodAttributes, restaurantAttributes] = await Promise.all([
+      foodTerms.length
+        ? this.entityExpansion.expandEntitiesByText({
+            terms: foodTerms,
+            entityTypes: ['food' as EntityType],
+            limit: this.expansionFoodCap,
+          })
+        : Promise.resolve(emptyMatches),
+      foodAttributeTerms.length
+        ? this.entityExpansion.expandEntitiesByText({
+            terms: foodAttributeTerms,
+            entityTypes: ['food_attribute' as EntityType],
+            limit: this.expansionAttributeCap,
+          })
+        : Promise.resolve(emptyMatches),
+      restaurantAttributeTerms.length
+        ? this.entityExpansion.expandEntitiesByText({
+            terms: restaurantAttributeTerms,
+            entityTypes: ['restaurant_attribute' as EntityType],
+            limit: this.expansionAttributeCap,
+          })
+        : Promise.resolve(emptyMatches),
+    ]);
+
+    const foodIds = foods
+      .map((match) => match.entityId)
+      .filter((id) => !existingFoodIds.has(id));
+    const foodAttributeIds = foodAttributes
+      .map((match) => match.entityId)
+      .filter((id) => !existingFoodAttributeIds.has(id));
+    const restaurantAttributeIds = restaurantAttributes
+      .map((match) => match.entityId)
+      .filter((id) => !existingRestaurantAttributeIds.has(id));
+
+    let foodIdsFromPrimaryFoodAttributeText: string[] = [];
+    if (
+      this.isPrimaryFoodAttributeQuery(request) &&
+      foodAttributeTerms.length
+    ) {
+      const attrFoodMatches = await this.entityExpansion.expandEntitiesByText({
+        terms: foodAttributeTerms,
+        entityTypes: ['food' as EntityType],
+        limit: this.expansionFoodCap,
+      });
+      const seenFood = new Set([...existingFoodIds, ...foodIds]);
+      foodIdsFromPrimaryFoodAttributeText = attrFoodMatches
+        .map((match) => match.entityId)
+        .filter((id) => !seenFood.has(id));
+    }
+
+    const expansion: PlanExpansionState = {
+      foodIds,
+      foodAttributeIds,
+      restaurantAttributeIds,
+      foodIdsFromPrimaryFoodAttributeText,
+    };
+
+    return this.hasPlanExpansion(expansion) ? expansion : null;
+  }
+
+  private applyPlanExpansion(
+    plan: QueryPlan,
+    expansion: PlanExpansionState,
+  ): QueryPlan {
+    if (!this.hasPlanExpansion(expansion)) {
+      return plan;
+    }
+
+    const dedupe = (ids: string[]): string[] =>
+      Array.from(new Set(ids.filter(Boolean)));
+    const mergeIds = (base: string[], added: string[]) =>
+      dedupe([...base, ...(added ?? [])]);
+
+    let connectionFiltersUpdated = false;
+    const connectionFilters = (plan.connectionFilters ?? []).map((clause) => {
+      if (clause.entityType === EntityScope.FOOD && clause.entityIds?.length) {
+        const merged = mergeIds(clause.entityIds, expansion.foodIds);
+        if (merged.length !== clause.entityIds.length) {
+          connectionFiltersUpdated = true;
+          return { ...clause, entityIds: merged };
+        }
+      }
+      if (
+        clause.entityType === EntityScope.FOOD_ATTRIBUTE &&
+        clause.entityIds?.length
+      ) {
+        const merged = mergeIds(clause.entityIds, expansion.foodAttributeIds);
+        if (merged.length !== clause.entityIds.length) {
+          connectionFiltersUpdated = true;
+          return { ...clause, entityIds: merged };
+        }
+      }
+      return clause;
+    });
+
+    // Attribute-only OR fallback is now driven by SearchExecutionDirectives at execution time,
+    // rather than baking a special tagged filter into the QueryPlan.
+
+    let restaurantFiltersUpdated = false;
+    const restaurantFilters = (plan.restaurantFilters ?? []).map((clause) => {
+      if (
+        clause.entityType === EntityScope.RESTAURANT_ATTRIBUTE &&
+        clause.entityIds?.length
+      ) {
+        const merged = mergeIds(
+          clause.entityIds,
+          expansion.restaurantAttributeIds,
+        );
+        if (merged.length !== clause.entityIds.length) {
+          restaurantFiltersUpdated = true;
+          return { ...clause, entityIds: merged };
+        }
+      }
+      return clause;
+    });
+
+    if (!connectionFiltersUpdated && !restaurantFiltersUpdated) {
+      return plan;
+    }
+
+    return {
+      ...plan,
+      connectionFilters,
+      restaurantFilters,
+    };
   }
 
   private resolveDbPagination(
