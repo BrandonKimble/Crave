@@ -538,3 +538,30 @@ Goal: reduce “spread out semantics” and make the system explainable/debuggab
 Optional follow-up (if we want to go further):
 
 - (Done) Plan expansion is now applied during constraint building (so the compiler emits the final `QueryPlan` directly, without post-compile patching).
+
+## Performance Improvements (Shipped)
+
+These are speed-focused follow-ups that keep the same candidate semantics and score-based ordering.
+
+### 1) Add a real text-search index for `core_entities`
+
+- Add supporting indexes/functions so entity text lookup can rely on indexes rather than `LIKE '%term%'` scans:
+  - `name` prefix index for short queries (autocomplete / typed prefix)
+  - `name` trigram index for fuzzy matches
+  - `name+aliases` full-text index for word queries (GIN on `crave_entity_search_tsv(name, aliases)`)
+
+### 2) Replace `LIKE '%term%'` with indexed trigram matching
+
+- For non-short terms, prefer trigram operators + similarity ordering (and a cutoff) rather than substring `LIKE`.
+
+### 3) Batch multi-term expansion
+
+- Expand N terms in a single query per entity type using `VALUES (term)` + `LATERAL` top-N, instead of one query per term.
+
+### 4) Add short-lived caching for expansion lookups
+
+- Cache text→ID expansion results per `{locationKey, entityType(s), normalizedTerm}` with a short TTL and a max entry cap.
+
+### 5) Gate phonetic fallback
+
+- Only run phonetic fallback when earlier tiers (prefix/FTS/trigram) can’t fill the requested limit, and only for sufficiently long terms (and when “low results”).

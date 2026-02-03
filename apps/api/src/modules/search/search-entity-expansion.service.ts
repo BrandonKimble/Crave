@@ -33,8 +33,15 @@ export class SearchEntityExpansionService {
     const normalizedTerms = options.terms
       .map((term) => term.trim().toLowerCase())
       .filter((term) => term.length > 0);
+    const uniqueTerms: string[] = [];
+    const seenTerms = new Set<string>();
+    normalizedTerms.forEach((term) => {
+      if (seenTerms.has(term)) return;
+      seenTerms.add(term);
+      uniqueTerms.push(term);
+    });
     const entityTypes = options.entityTypes;
-    if (!normalizedTerms.length || entityTypes.length === 0) {
+    if (!uniqueTerms.length || entityTypes.length === 0) {
       return [];
     }
 
@@ -43,24 +50,21 @@ export class SearchEntityExpansionService {
         ? options.locationKey.trim().toLowerCase()
         : null;
     const limit = Math.max(1, Math.min(options.limit, 50));
-    const perTermLimit = Math.max(
-      3,
-      Math.ceil(limit / normalizedTerms.length) + 2,
-    );
+    const perTermLimit = Math.max(3, Math.ceil(limit / uniqueTerms.length) + 2);
 
     try {
       const results: ExpandedEntityMatch[] = [];
       const seen = new Set<string>();
-      for (const term of normalizedTerms) {
-        if (results.length >= limit) {
-          break;
-        }
-        const matches = await this.textSearch.searchEntities(
-          term,
-          entityTypes,
-          perTermLimit,
-          { locationKey: normalizedLocationKey },
-        );
+      const resultsByTerm = await this.textSearch.searchEntitiesForTerms(
+        uniqueTerms,
+        entityTypes,
+        perTermLimit,
+        { locationKey: normalizedLocationKey, allowPhonetic: true },
+      );
+
+      for (const term of uniqueTerms) {
+        if (results.length >= limit) break;
+        const matches = resultsByTerm.get(term) ?? [];
         for (const match of matches) {
           if (results.length >= limit) break;
           if (seen.has(match.entityId)) continue;
@@ -78,7 +82,7 @@ export class SearchEntityExpansionService {
       return results;
     } catch (error) {
       this.logger.warn('Failed to expand entities by text', {
-        terms: normalizedTerms,
+        terms: uniqueTerms,
         entityTypes,
         limit,
         error:

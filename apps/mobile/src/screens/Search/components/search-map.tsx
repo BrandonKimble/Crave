@@ -41,6 +41,15 @@ const MARKER_VISIBILITY_REFRESH_MS_MOVING = 80;
 const LABEL_STICKY_REFRESH_MS_IDLE = 140;
 const LABEL_STICKY_REFRESH_MS_MOVING = 90;
 const LABEL_STICKY_QUERY_PROBE_MIN_INTERVAL_MS = 450;
+// Sticky label tuning:
+// - We keep a per-marker "locked" candidate (bottom/right/top/left) to prevent rapid anchor flips.
+// - If the locked label isn't being placed, we unlock so Mapbox can pick a new side.
+// - While moving, unlock/lock uses small hysteresis so brief query sampling gaps don't cause thrash.
+const LABEL_STICKY_LOCK_STABLE_MS_MOVING = 140;
+const LABEL_STICKY_LOCK_STABLE_MS_IDLE = 80;
+const LABEL_STICKY_UNLOCK_MISSING_MS_MOVING = 260;
+const LABEL_STICKY_UNLOCK_MISSING_MS_IDLE = 700;
+const LABEL_STICKY_UNLOCK_MISSING_STREAK_MOVING = 3;
 const LABEL_STICKY_COLD_START_RECOVER_AFTER_MS = 3500;
 const LABEL_STICKY_COLD_START_RECOVER_MAX_ATTEMPTS = 2;
 const LABEL_STICKY_BOOTSTRAP_POLL_MS = 650;
@@ -518,6 +527,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const labelPlacementBootstrapKeyRef = React.useRef<string | null>(null);
   const labelStickyCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(new Map());
   const labelStickyLastSeenAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
+  const labelStickyMissingStreakByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
+  const labelStickyProposedCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(
+    new Map()
+  );
+  const labelStickyProposedSinceAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
   const labelStickyQueryReadyRef = React.useRef(false);
   const labelStickyQueryReadyAtRef = React.useRef<number | null>(null);
   const labelStickyLastProbeAtRef = React.useRef(0);
@@ -648,6 +662,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
     labelStickyCandidateByMarkerKeyRef.current.clear();
     labelStickyLastSeenAtByMarkerKeyRef.current.clear();
+    labelStickyMissingStreakByMarkerKeyRef.current.clear();
+    labelStickyProposedCandidateByMarkerKeyRef.current.clear();
+    labelStickyProposedSinceAtByMarkerKeyRef.current.clear();
     setLabelStickyEpoch((value) => value + 1);
   }, [markersRenderKey, shouldRenderLabels, styleURL]);
 
@@ -1634,14 +1651,42 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     const stickyMap = labelStickyCandidateByMarkerKeyRef.current;
     const lastSeenAt = labelStickyLastSeenAtByMarkerKeyRef.current;
+    const missingStreak = labelStickyMissingStreakByMarkerKeyRef.current;
+    const proposedCandidate = labelStickyProposedCandidateByMarkerKeyRef.current;
+    const proposedSinceAt = labelStickyProposedSinceAtByMarkerKeyRef.current;
+    const isActivelyMoving = isMapMovingRef.current;
     let didChange = false;
+
     for (const [markerKey, candidate] of renderedCandidateByMarkerKey) {
       lastSeenAt.set(markerKey, now);
+      missingStreak.set(markerKey, 0);
       const locked = stickyMap.get(markerKey);
-      if (!locked || locked !== candidate) {
-        stickyMap.set(markerKey, candidate);
-        didChange = true;
+      if (locked === candidate) {
+        proposedCandidate.delete(markerKey);
+        proposedSinceAt.delete(markerKey);
+        continue;
       }
+
+      const stableMs = isActivelyMoving
+        ? LABEL_STICKY_LOCK_STABLE_MS_MOVING
+        : LABEL_STICKY_LOCK_STABLE_MS_IDLE;
+
+      const proposed = proposedCandidate.get(markerKey);
+      if (proposed !== candidate) {
+        proposedCandidate.set(markerKey, candidate);
+        proposedSinceAt.set(markerKey, now);
+        continue;
+      }
+
+      const sinceAt = proposedSinceAt.get(markerKey) ?? now;
+      if (now - sinceAt < stableMs) {
+        continue;
+      }
+
+      stickyMap.set(markerKey, candidate);
+      proposedCandidate.delete(markerKey);
+      proposedSinceAt.delete(markerKey);
+      didChange = true;
     }
 
     // If we haven't seen the locked candidate rendered recently, it's likely blocked by collision.
@@ -1649,14 +1694,26 @@ const SearchMap: React.FC<SearchMapProps> = ({
     // During active camera changes on iOS, querying can occasionally return empty/stale results;
     // unlocking on those frames causes locks to churn and effectively disables stickiness.
     if (effectiveRenderedFeatures > 0) {
-      const isRecentlyMoving = isMapMovingRef.current || now - mapLastMovedAtRef.current < 600;
-      if (isRecentlyMoving) {
-        for (const markerKey of stickyMap.keys()) {
-          const seenAt = lastSeenAt.get(markerKey) ?? 0;
-          if (now - seenAt > 350) {
-            stickyMap.delete(markerKey);
-            didChange = true;
-          }
+      const unlockMs = isActivelyMoving
+        ? LABEL_STICKY_UNLOCK_MISSING_MS_MOVING
+        : LABEL_STICKY_UNLOCK_MISSING_MS_IDLE;
+      const requiredStreak = isActivelyMoving ? LABEL_STICKY_UNLOCK_MISSING_STREAK_MOVING : 1;
+
+      for (const markerKey of stickyMap.keys()) {
+        if (renderedCandidateByMarkerKey.has(markerKey)) {
+          continue;
+        }
+
+        const nextStreak = (missingStreak.get(markerKey) ?? 0) + 1;
+        missingStreak.set(markerKey, nextStreak);
+
+        const seenAt = lastSeenAt.get(markerKey) ?? 0;
+        if (nextStreak >= requiredStreak && now - seenAt > unlockMs) {
+          stickyMap.delete(markerKey);
+          proposedCandidate.delete(markerKey);
+          proposedSinceAt.delete(markerKey);
+          missingStreak.delete(markerKey);
+          didChange = true;
         }
       }
     }
@@ -1666,9 +1723,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // While the user is actively gesturing, forcing a full SymbolLayer re-mount is both expensive
       // and can cause placement “thrash” (layers reset -> query sees empty -> locks churn). Updating
       // the source data is enough for Mapbox to re-run placement; reserve the hard re-mount for idle.
-      const isRecentlyMoving =
-        isMapMovingRef.current || now - mapLastMovedAtRef.current < LABEL_STICKY_REFRESH_MS_IDLE;
-      if (!isRecentlyMoving) {
+      if (!isActivelyMoving) {
         setLabelPlacementEpoch((value) => value + 1);
       }
     }
