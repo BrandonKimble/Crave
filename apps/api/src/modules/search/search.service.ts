@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { performance } from 'perf_hooks';
-import { EntityType, OnDemandReason, SearchLogSource } from '@prisma/client';
+import {
+  EntityType,
+  OnDemandReason,
+  Prisma,
+  SearchLogSource,
+} from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
 import {
   EntityScope,
+  FoodResultDto,
   QueryEntityDto,
   QueryPlan,
   SearchQueryRequestDto,
@@ -32,6 +38,34 @@ import { SearchSubredditResolverService } from './search-subreddit-resolver.serv
 import { CoverageRegistryService } from '../coverage-key/coverage-registry.service';
 import { RestaurantStatusService } from './restaurant-status.service';
 import type { RestaurantStatusPreviewDto } from './dto/restaurant-status-preview.dto';
+import {
+  resolveSearchDebugMode,
+  summarizeEntities,
+  summarizeUnresolvedEntities,
+  type SearchDebugMode,
+} from './utils/search-debug';
+
+type RestaurantDishRow = {
+  connection_id: string;
+  restaurant_id: string;
+  food_id: string;
+  categories: string[];
+  food_attributes: string[];
+  mention_count: number;
+  total_upvotes: number;
+  recent_mention_count: number;
+  last_mentioned_at: Date | null;
+  activity_level: string;
+  food_quality_score: unknown;
+  restaurant_name: string;
+  restaurant_aliases: string[];
+  coverage_key: string;
+  restaurant_price_level: number | null;
+  connection_display_score: unknown;
+  connection_display_percentile: unknown;
+  food_name: string;
+  food_aliases: string[];
+};
 
 const DEFAULT_RESULT_LIMIT = 100;
 const DEFAULT_PAGE_SIZE = 25;
@@ -128,6 +162,7 @@ export class SearchService {
   private readonly searchLogEnabled: boolean;
   private readonly includePhaseTimings: boolean;
   private readonly explainEnabled: boolean;
+  private readonly debugMode: SearchDebugMode;
   private readonly expansionStrictCoverageTarget: number;
   private readonly expansionFoodCap: number;
   private readonly expansionAttributeCap: number;
@@ -158,6 +193,7 @@ export class SearchService {
     this.searchLogEnabled = this.resolveSearchLogEnabled();
     this.includePhaseTimings = this.resolveIncludePhaseTimings();
     this.explainEnabled = this.resolveExplainEnabled();
+    this.debugMode = resolveSearchDebugMode();
     this.expansionStrictCoverageTarget =
       this.resolveExpansionStrictCoverageTarget();
     this.expansionFoodCap = this.resolveExpansionFoodCap();
@@ -270,6 +306,32 @@ export class SearchService {
       const includeSqlPreview = this.shouldIncludeSqlPreview(request);
       const perRestaurantLimit = this.perRestaurantLimit;
 
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: runQuery start', {
+          searchRequestId,
+          sourceQuery: request.sourceQuery ?? null,
+          submissionSource: request.submissionSource ?? null,
+          submissionContext: request.submissionContext ?? null,
+          bounds: Boolean(request.bounds),
+          openNow: Boolean(request.openNow),
+          page: pagination.page,
+          pageSize: pagination.pageSize,
+          priceLevels: request.priceLevels ?? null,
+          minimumVotes: request.minimumVotes ?? null,
+          structuredEntities:
+            this.debugMode === 'verbose'
+              ? summarizeEntities(request.entities, {
+                  maxEntities: 10,
+                  maxIds: 10,
+                })
+              : summarizeEntities(request.entities),
+          unresolved: summarizeUnresolvedEntities(
+            request.submissionContext?.unresolvedEntities,
+          ),
+          verbose: this.debugMode === 'verbose',
+        });
+      }
+
       const relaxation = this.resolveRelaxationCapabilities(request);
       const canRelax = relaxation.canRelax;
 
@@ -318,15 +380,33 @@ export class SearchService {
       const hasUnresolvedTerms = unresolvedGroups.some(
         (group) => group.terms?.length,
       );
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: strict probe', {
+          searchRequestId,
+          strictCoverageCount,
+          strictCounts: {
+            restaurantsOnPage: strictProbe.exec.restaurants.length,
+            dishesOnPage: strictProbe.exec.dishes.length,
+            totalRestaurants: strictProbe.exec.totalRestaurantCount,
+            totalDishes: strictProbe.exec.totalDishCount,
+          },
+          planMs: Math.round(strictProbe.timings.planMs),
+          executeMs: Math.round(strictProbe.timings.executeMs),
+          hasUnresolvedTerms,
+          expansionStrictCoverageTarget: this.expansionStrictCoverageTarget,
+        });
+      }
       if (
         this.hasEntityTargets(request) &&
         (strictCoverageCount < this.expansionStrictCoverageTarget ||
           hasUnresolvedTerms)
       ) {
+        const expansionStart = performance.now();
         const expansion = await this.buildPlanExpansionForRequest(
           request,
           strictProbe.stagePlan,
         );
+        const expansionMs = Math.round(performance.now() - expansionStart);
         if (expansion && this.hasPlanExpansion(expansion)) {
           planExpansion = expansion;
           expansionAnalysisMetadata = this.buildExpansionMetadata(
@@ -338,6 +418,43 @@ export class SearchService {
               hasUnresolvedTerms,
             },
           );
+          if (this.debugMode !== 'off') {
+            this.logger.info('Search debug: plan expansion applied', {
+              searchRequestId,
+              expansionMs,
+              strictCoverageCount,
+              trigger: {
+                belowTarget:
+                  strictCoverageCount < this.expansionStrictCoverageTarget,
+                hasUnresolvedTerms,
+              },
+              added: {
+                foods: planExpansion.foodIds.length,
+                foodAttributes: planExpansion.foodAttributeIds.length,
+                restaurantAttributes:
+                  planExpansion.restaurantAttributeIds.length,
+                foodsFromPrimaryFoodAttributeText:
+                  planExpansion.foodIdsFromPrimaryFoodAttributeText.length,
+              },
+              samples:
+                this.debugMode === 'verbose'
+                  ? {
+                      foodIds: planExpansion.foodIds.slice(0, 20),
+                      foodAttributeIds: planExpansion.foodAttributeIds.slice(
+                        0,
+                        20,
+                      ),
+                      restaurantAttributeIds:
+                        planExpansion.restaurantAttributeIds.slice(0, 20),
+                      foodIdsFromPrimaryFoodAttributeText:
+                        planExpansion.foodIdsFromPrimaryFoodAttributeText.slice(
+                          0,
+                          20,
+                        ),
+                    }
+                  : undefined,
+            });
+          }
           strictProbe = await executeStage({
             stage: 'strict',
             restaurantPagination: strictProbePagination,
@@ -515,6 +632,33 @@ export class SearchService {
           restaurantCount: strictPage.exec.restaurants.length,
           metadata,
         });
+
+        if (this.debugMode !== 'off') {
+          this.logger.info('Search debug: runQuery end (no relaxation)', {
+            searchRequestId,
+            queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+            coverageStatus: metadata.coverageStatus,
+            totals: {
+              totalRestaurantResults,
+              totalFoodResults,
+            },
+            onDemandQueued: metadata.onDemandQueued ?? false,
+            onDemandEtaMs: metadata.onDemandEtaMs ?? null,
+            relaxationApplied: false,
+            strictCounts: {
+              restaurantsOnPage: strictPage.exec.restaurants.length,
+              dishesOnPage: strictPage.exec.dishes.length,
+            },
+            phaseTimings:
+              this.debugMode === 'verbose' && Object.keys(phaseTimings).length
+                ? phaseTimings
+                : undefined,
+            analysisMetadataSearchExplain:
+              this.debugMode === 'verbose'
+                ? (metadata.analysisMetadata?.searchExplain ?? null)
+                : undefined,
+          });
+        }
 
         this.searchMetrics.recordSearchExecution({
           format: plan.format,
@@ -808,6 +952,38 @@ export class SearchService {
         metadata,
       });
 
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: runQuery end (relaxation)', {
+          searchRequestId,
+          queryExecutionTimeMs: metadata.queryExecutionTimeMs,
+          coverageStatus: metadata.coverageStatus,
+          totals: {
+            totalRestaurantResults,
+            totalFoodResults,
+          },
+          onDemandQueued: metadata.onDemandQueued ?? false,
+          onDemandEtaMs: metadata.onDemandEtaMs ?? null,
+          relaxationApplied: metadata.relaxationApplied ?? false,
+          relaxationStage: metadata.relaxationStage ?? null,
+          exactCountsOnPage: {
+            exactRestaurants: metadata.exactRestaurantCountOnPage ?? null,
+            exactDishes: metadata.exactDishCountOnPage ?? null,
+          },
+          pageCounts: {
+            restaurantsOnPage: restaurants.length,
+            dishesOnPage: dishes.length,
+          },
+          phaseTimings:
+            this.debugMode === 'verbose' && Object.keys(phaseTimings).length
+              ? phaseTimings
+              : undefined,
+          analysisMetadataSearchExplain:
+            this.debugMode === 'verbose'
+              ? (metadata.analysisMetadata?.searchExplain ?? null)
+              : undefined,
+        });
+      }
+
       this.searchMetrics.recordSearchExecution({
         format: plan.format,
         openNow: Boolean(request.openNow),
@@ -834,6 +1010,116 @@ export class SearchService {
       });
       throw error;
     }
+  }
+
+  async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {
+    const toNumber = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (value && typeof value === 'object' && 'toNumber' in value) {
+        const numeric = (value as { toNumber: () => number }).toNumber();
+        return Number.isFinite(numeric) ? numeric : null;
+      }
+      return null;
+    };
+
+    const startedAt = Date.now();
+    const rows = await this.prisma.$queryRaw<RestaurantDishRow[]>(Prisma.sql`
+      SELECT
+        c.connection_id AS connection_id,
+        c.restaurant_id AS restaurant_id,
+        c.food_id AS food_id,
+        c.categories AS categories,
+        c.food_attributes AS food_attributes,
+        c.mention_count AS mention_count,
+        c.total_upvotes AS total_upvotes,
+        c.recent_mention_count AS recent_mention_count,
+        c.last_mentioned_at AS last_mentioned_at,
+        c.activity_level AS activity_level,
+        c.food_quality_score AS food_quality_score,
+        r.name AS restaurant_name,
+        r.aliases AS restaurant_aliases,
+        r.location_key AS coverage_key,
+        r.price_level AS restaurant_price_level,
+        drc.rank_score_display AS connection_display_score,
+        drc.rank_percentile AS connection_display_percentile,
+        f.name AS food_name,
+        f.aliases AS food_aliases
+      FROM core_connections c
+      JOIN core_entities r
+        ON r.entity_id = c.restaurant_id
+      JOIN core_entities f
+        ON f.entity_id = c.food_id
+      LEFT JOIN core_display_rank_scores drc
+        ON drc.location_key = r.location_key
+        AND drc.subject_type = 'connection'
+        AND drc.subject_id = c.connection_id
+      WHERE c.restaurant_id = ${restaurantId}::uuid
+      ORDER BY
+        COALESCE(drc.rank_score_display, c.food_quality_score) DESC,
+        c.mention_count DESC,
+        c.total_upvotes DESC;
+    `);
+
+    this.logger.debug('Loaded restaurant dishes', {
+      restaurantId,
+      count: rows.length,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return rows.map((row) => {
+      const qualityScore = toNumber(row.food_quality_score) ?? 0;
+      const displayScore = toNumber(row.connection_display_score);
+      const displayPercentile = toNumber(row.connection_display_percentile);
+      return {
+        connectionId: row.connection_id,
+        foodId: row.food_id,
+        foodName: row.food_name,
+        foodAliases: Array.isArray(row.food_aliases) ? row.food_aliases : [],
+        restaurantId: row.restaurant_id,
+        restaurantName: row.restaurant_name,
+        restaurantAliases: Array.isArray(row.restaurant_aliases)
+          ? row.restaurant_aliases
+          : [],
+        qualityScore,
+        displayScore,
+        displayPercentile,
+        coverageKey: row.coverage_key ?? undefined,
+        coverageName: null,
+        activityLevel:
+          row.activity_level === 'trending' ||
+          row.activity_level === 'active' ||
+          row.activity_level === 'normal'
+            ? row.activity_level
+            : 'normal',
+        mentionCount: row.mention_count ?? 0,
+        totalUpvotes: row.total_upvotes ?? 0,
+        recentMentionCount: row.recent_mention_count ?? 0,
+        lastMentionedAt: row.last_mentioned_at
+          ? row.last_mentioned_at.toISOString()
+          : null,
+        categories: Array.isArray(row.categories) ? row.categories : [],
+        foodAttributes: Array.isArray(row.food_attributes)
+          ? row.food_attributes
+          : [],
+        restaurantPriceLevel:
+          typeof row.restaurant_price_level === 'number'
+            ? row.restaurant_price_level
+            : null,
+        restaurantPriceSymbol: null,
+        restaurantDistanceMiles: null,
+        restaurantOperatingStatus: null,
+        restaurantDisplayScore: null,
+        restaurantDisplayPercentile: null,
+        restaurantLatitude: null,
+        restaurantLongitude: null,
+      };
+    });
   }
 
   private buildExecutionDirectives(
@@ -2421,6 +2707,52 @@ export class SearchService {
       restaurantAttributeIds,
       foodIdsFromPrimaryFoodAttributeText,
     };
+
+    if (this.debugMode !== 'off') {
+      const evidenceCounts = (matches: ExpandedMatches) =>
+        matches.reduce<Record<string, number>>((acc, match) => {
+          acc[match.evidence] = (acc[match.evidence] ?? 0) + 1;
+          return acc;
+        }, {});
+      this.logger.info('Search debug: id expansion details', {
+        searchRequestId: request.searchRequestId ?? null,
+        terms: {
+          food: foodTerms,
+          foodAttributes: foodAttributeTerms,
+          restaurantAttributes: restaurantAttributeTerms,
+        },
+        results: {
+          foods: {
+            count: foods.length,
+            evidence: evidenceCounts(foods),
+          },
+          foodAttributes: {
+            count: foodAttributes.length,
+            evidence: evidenceCounts(foodAttributes),
+          },
+          restaurantAttributes: {
+            count: restaurantAttributes.length,
+            evidence: evidenceCounts(restaurantAttributes),
+          },
+          foodsFromPrimaryFoodAttributeText: {
+            count: foodIdsFromPrimaryFoodAttributeText.length,
+          },
+        },
+        addedAfterPlanDedup: {
+          foodIds: foodIds.length,
+          foodAttributeIds: foodAttributeIds.length,
+          restaurantAttributeIds: restaurantAttributeIds.length,
+        },
+        samples:
+          this.debugMode === 'verbose'
+            ? {
+                foods: foods.slice(0, 10),
+                foodAttributes: foodAttributes.slice(0, 10),
+                restaurantAttributes: restaurantAttributes.slice(0, 10),
+              }
+            : undefined,
+      });
+    }
 
     return this.hasPlanExpansion(expansion) ? expansion : null;
   }

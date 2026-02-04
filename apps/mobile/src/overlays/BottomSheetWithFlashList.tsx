@@ -1055,7 +1055,9 @@ const BottomSheetWithFlashList = <T,>({
   return (
     <GestureDetector gesture={gestures.sheet}>
       <Animated.View
-        pointerEvents={visible && interactionEnabled && !touchBlockingEnabled ? 'auto' : 'none'}
+        // Keep the sheet as a touch barrier whenever it's visible so taps don't "fall through"
+        // to the map during brief interaction lockouts (e.g. overlay transitions).
+        pointerEvents={visible && !touchBlockingEnabled ? 'auto' : 'none'}
         style={[style, sheetHeightStyle, animatedSheetStyle]}
       >
         <View style={shadowShellStyle}>

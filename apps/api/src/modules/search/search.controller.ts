@@ -1,4 +1,13 @@
-import { Body, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import type { User } from '@prisma/client';
 import { LoggerService, CurrentUser } from '../../shared';
 import {
@@ -8,10 +17,13 @@ import {
   SearchResponseDto,
   SearchResultClickDto,
 } from './dto/search-query.dto';
+import { ShortcutCoverageRequestDto } from './dto/shortcut-coverage.dto';
 import { SearchService, type SearchHistoryEntry } from './search.service';
 import { SearchOrchestrationService } from './search-orchestration.service';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
+import { SearchCoverageService } from './search-coverage.service';
+import type { FoodResultDto } from './dto/search-query.dto';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -21,6 +33,7 @@ export class SearchController {
   constructor(
     private readonly searchService: SearchService,
     private readonly searchOrchestrationService: SearchOrchestrationService,
+    private readonly searchCoverageService: SearchCoverageService,
     loggerService: LoggerService,
   ) {
     this.logger = loggerService.setContext('SearchController');
@@ -64,5 +77,20 @@ export class SearchController {
     @CurrentUser() user: User,
   ): Promise<SearchHistoryEntry[]> {
     return this.searchService.listRecentSearches(user.userId, query.limit);
+  }
+
+  @Post('shortcut/coverage')
+  async shortcutCoverage(
+    @Body() request: ShortcutCoverageRequestDto,
+  ): Promise<unknown> {
+    return this.searchCoverageService.buildShortcutCoverageGeoJson(request);
+  }
+
+  @Get('restaurants/:restaurantId/dishes')
+  async restaurantDishes(
+    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
+    restaurantId: string,
+  ): Promise<FoodResultDto[]> {
+    return this.searchService.listRestaurantDishes(restaurantId);
   }
 }

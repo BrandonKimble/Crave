@@ -26,5 +26,12 @@ export type SnapProfile = {
 export type OverlayContentSpec<T> = {
   overlayKey: OverlayKey;
   snapPoints: SnapPoints;
+  /**
+   * Optional key used to persist and restore a sheet snap position across overlay switches.
+   * - `undefined`: resolved automatically by the overlay shell.
+   * - `null`: disables snap persistence for this overlay spec.
+   * - `string`: uses the provided key.
+   */
+  snapPersistenceKey?: string | null;
   underlayComponent?: React.ReactNode;
 } & Omit<BottomSheetWithFlashListProps<T>, 'visible' | 'snapPoints'>;

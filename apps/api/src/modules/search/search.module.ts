@@ -11,6 +11,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { EntityTextSearchModule } from '../entity-text-search/entity-text-search.module';
 import { SearchController } from './search.controller';
 import { SearchService } from './search.service';
+import { SearchCoverageService } from './search-coverage.service';
 import { SearchQueryExecutor } from './search-query.executor';
 import { SearchQueryBuilder } from './search-query.builder';
 import { SearchMetricsService } from './search-metrics.service';
@@ -41,6 +42,7 @@ import { SearchEntityExpansionService } from './search-entity-expansion.service'
   controllers: [SearchController],
   providers: [
     SearchService,
+    SearchCoverageService,
     SearchQueryExecutor,
     SearchQueryBuilder,
     SearchMetricsService,

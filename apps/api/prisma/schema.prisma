@@ -59,6 +59,7 @@ model Entity {
   @@index([type, restaurantQualityScore(sort: Desc)], map: "idx_entities_type_score")
   @@index([name], map: "idx_entities_name")
   @@index([locationKey], map: "idx_entities_location_key")
+  @@index([locationKey, type], map: "idx_entities_location_key_type")
   @@index([aliases], map: "idx_entities_aliases")
   @@index([restaurantAttributes], map: "idx_entities_restaurant_attributes")
   @@index([longitude, latitude], map: "idx_entities_location")

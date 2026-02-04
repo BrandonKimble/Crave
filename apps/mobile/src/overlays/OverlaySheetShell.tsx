@@ -11,7 +11,7 @@ import { OVERLAY_STACK_ZINDEX, overlaySheetStyles } from './overlaySheetStyles';
 import { useOverlayStore } from '../store/overlayStore';
 import type { OverlayContentSpec, OverlayKey, OverlaySheetSnap } from './types';
 import { useOverlayHeaderActionController, type OverlayHeaderActionMode } from './useOverlayHeaderActionController';
-import { useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
+import { TAB_OVERLAY_SNAP_KEY, useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
 
 type OverlaySheetShellProps = {
   visible: boolean;
@@ -41,13 +41,48 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   const { height: screenHeight } = useWindowDimensions();
   const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
   const previousOverlay = useOverlayStore((state) => state.previousOverlay);
+  const overlayStack = useOverlayStore((state) => state.overlayStack);
   const rootOverlay = useOverlayStore((state) => state.overlayStack[0] ?? state.activeOverlay);
   const recordUserSnap = useOverlaySheetPositionStore((state) => state.recordUserSnap);
+  const recordPersistentSnap = useOverlaySheetPositionStore((state) => state.recordPersistentSnap);
 
   const internalListRef = React.useRef<FlashListRef<unknown> | null>(null);
   const resolvedListRef = spec?.listRef ?? internalListRef;
   const specRef = React.useRef<OverlayContentSpec<unknown> | null>(null);
   specRef.current = spec;
+
+  const resolvedSnapPersistenceKey = React.useMemo(() => {
+    if (!spec) {
+      return null;
+    }
+
+    if (spec.snapPersistenceKey === null) {
+      return null;
+    }
+
+    if (typeof spec.snapPersistenceKey === 'string') {
+      return spec.snapPersistenceKey;
+    }
+
+    const isTabOverlay =
+      activeOverlayKey === 'polls' ||
+      activeOverlayKey === 'pollCreation' ||
+      activeOverlayKey === 'bookmarks' ||
+      activeOverlayKey === 'profile';
+    if (isTabOverlay) {
+      return TAB_OVERLAY_SNAP_KEY;
+    }
+
+    if (overlayStack.length > 1) {
+      return `overlay-stack:${rootOverlay}`;
+    }
+
+    return `overlay:${activeOverlayKey}`;
+  }, [activeOverlayKey, overlayStack.length, rootOverlay, spec?.snapPersistenceKey]);
+
+  const persistedSnap = useOverlaySheetPositionStore((state) =>
+    resolvedSnapPersistenceKey ? state.persistentSnaps[resolvedSnapPersistenceKey] ?? null : null
+  );
 
   const [shellSnapTo, setShellSnapTo] = React.useState<OverlaySheetSnap | null>(null);
   const shellSnapToRef = React.useRef<OverlaySheetSnap | null>(null);
@@ -58,16 +93,6 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   const lastOverlayKeyRef = React.useRef<OverlayKey | null>(null);
   const lastSnapOverlayKeyRef = React.useRef<OverlayKey | null>(null);
   const lastSnapPointsKeyRef = React.useRef<string | null>(null);
-
-  const lastInteractionOverlayKeyRef = React.useRef<OverlayKey | null>(null);
-  const overlayJustChanged =
-    lastInteractionOverlayKeyRef.current !== null &&
-    lastInteractionOverlayKeyRef.current !== activeOverlayKey;
-  if (visible && spec && overlayJustChanged) {
-    lastInteractionOverlayKeyRef.current = activeOverlayKey;
-  } else if (visible && spec && lastInteractionOverlayKeyRef.current === null) {
-    lastInteractionOverlayKeyRef.current = activeOverlayKey;
-  }
 
   const handleScrollOffsetChange = React.useCallback(
     (nextOffset: number) => {
@@ -83,6 +108,9 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     (snap, meta) => {
       currentSnapRef.current = snap;
       specRef.current?.onSnapChange?.(snap, meta);
+      if (resolvedSnapPersistenceKey) {
+        recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap });
+      }
       if (meta?.source === 'gesture') {
         recordUserSnap({
           rootOverlay,
@@ -94,7 +122,14 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         setShellSnapTo(null);
       }
     },
-    [activeOverlayKey, recordUserSnap, rootOverlay, setShellSnapTo]
+    [
+      activeOverlayKey,
+      recordPersistentSnap,
+      recordUserSnap,
+      resolvedSnapPersistenceKey,
+      rootOverlay,
+      setShellSnapTo,
+    ]
   );
 
   const handleSnapStart = React.useCallback<
@@ -102,6 +137,9 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   >(
     (snap, meta) => {
       specRef.current?.onSnapStart?.(snap, meta);
+      if (resolvedSnapPersistenceKey) {
+        recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap });
+      }
       if (meta?.source === 'gesture') {
         recordUserSnap({
           rootOverlay,
@@ -110,7 +148,7 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         });
       }
     },
-    [activeOverlayKey, recordUserSnap, rootOverlay]
+    [activeOverlayKey, recordPersistentSnap, recordUserSnap, resolvedSnapPersistenceKey, rootOverlay]
   );
 
   const handleDragStateChange = React.useCallback(
@@ -167,11 +205,24 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
       currentSnapRef.current = 'hidden';
     }
 
-    const desiredSnap: OverlaySheetSnap = spec.initialSnapPoint ?? 'middle';
+    const desiredSnap: OverlaySheetSnap = persistedSnap ?? spec.initialSnapPoint ?? 'middle';
+    if (resolvedSnapPersistenceKey && !persistedSnap) {
+      recordPersistentSnap({ key: resolvedSnapPersistenceKey, snap: desiredSnap });
+    }
     if (shellSnapToRef.current !== desiredSnap) {
       setShellSnapTo(desiredSnap);
     }
-  }, [activeOverlayKey, previousOverlay, screenHeight, sheetY, spec, visible]);
+  }, [
+    activeOverlayKey,
+    persistedSnap,
+    previousOverlay,
+    recordPersistentSnap,
+    resolvedSnapPersistenceKey,
+    screenHeight,
+    sheetY,
+    spec,
+    visible,
+  ]);
 
   React.useLayoutEffect(() => {
     if (!visible) {
@@ -231,7 +282,8 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     return null;
   }
 
-  const resolvedInteractionEnabled = (spec.interactionEnabled ?? true) && !overlayJustChanged;
+  const { snapPoints, ...specProps } = spec;
+  const resolvedInteractionEnabled = spec.interactionEnabled ?? true;
 
   return (
     <View
@@ -241,13 +293,13 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
       {spec.underlayComponent ?? null}
       <BottomSheetWithFlashList
         visible={visible}
-        snapPoints={spec.snapPoints}
+        snapPoints={snapPoints}
         preservePositionOnSnapPointsChange
         sheetYValue={sheetY}
         scrollOffsetValue={scrollOffset}
         momentumFlag={momentumFlag}
         listRef={resolvedListRef}
-        {...spec}
+        {...specProps}
         snapTo={spec.snapTo ?? shellSnapTo}
         snapToToken={spec.snapToToken}
         interactionEnabled={resolvedInteractionEnabled}

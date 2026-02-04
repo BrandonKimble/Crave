@@ -7,10 +7,17 @@ import {
 import { SearchQueryInterpretationService } from './search-query-interpretation.service';
 import { LoggerService } from '../../shared';
 import { stripGenericTokens } from '../../shared/utils/generic-token-handling';
+import {
+  resolveSearchDebugMode,
+  summarizeEntities,
+  summarizeUnresolvedEntities,
+  type SearchDebugMode,
+} from './utils/search-debug';
 
 @Injectable()
 export class SearchOrchestrationService {
   private readonly includePhaseTimings: boolean;
+  private readonly debugMode: SearchDebugMode;
   private readonly logger: LoggerService;
 
   constructor(
@@ -21,6 +28,7 @@ export class SearchOrchestrationService {
     this.logger = loggerService.setContext('SearchOrchestrationService');
     this.includePhaseTimings =
       (process.env.SEARCH_INCLUDE_PHASE_TIMINGS || '').toLowerCase() === 'true';
+    this.debugMode = resolveSearchDebugMode();
   }
 
   async runNaturalQuery(
@@ -28,6 +36,22 @@ export class SearchOrchestrationService {
   ): Promise<SearchResponseDto> {
     const originalQuery = request.query;
     const normalizedQuery = stripGenericTokens(originalQuery);
+
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: natural query received', {
+        searchRequestId: request.searchRequestId ?? null,
+        originalQuery,
+        normalizedQuery: normalizedQuery.text,
+        isGenericOnly: normalizedQuery.isGenericOnly,
+        bounds: Boolean(request.bounds),
+        openNow: Boolean(request.openNow),
+        page: request.pagination?.page ?? null,
+        pageSize: request.pagination?.pageSize ?? null,
+        submissionSource: request.submissionSource ?? null,
+        submissionContext: request.submissionContext ?? null,
+        verbose: this.debugMode === 'verbose',
+      });
+    }
 
     if (normalizedQuery.isGenericOnly) {
       const response = await this.searchService.runQuery({
@@ -47,6 +71,17 @@ export class SearchOrchestrationService {
 
       response.metadata.sourceQuery = originalQuery;
       this.logPhaseTimings(response, originalQuery);
+
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: generic-only response', {
+          searchRequestId: response.metadata.searchRequestId,
+          coverageStatus: response.metadata.coverageStatus,
+          totalRestaurantResults: response.metadata.totalRestaurantResults,
+          totalFoodResults: response.metadata.totalFoodResults,
+          queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
+          onDemandQueued: response.metadata.onDemandQueued ?? false,
+        });
+      }
 
       return response;
     }
@@ -97,7 +132,65 @@ export class SearchOrchestrationService {
       );
       this.logPhaseTimings(response, normalizedQuery.text);
 
+      if (this.debugMode !== 'off') {
+        this.logger.info('Search debug: no interpretation targets', {
+          searchRequestId: response.metadata.searchRequestId,
+          originalQuery,
+          normalizedQuery: normalizedQuery.text,
+          analysis:
+            this.debugMode === 'verbose' ? interpretation.analysis : undefined,
+          analysisMetadata:
+            this.debugMode === 'verbose'
+              ? (interpretation.analysisMetadata ?? null)
+              : undefined,
+          interpretationCounts: {
+            restaurants: interpretation.analysis.restaurants.length,
+            foods: interpretation.analysis.foods.length,
+            foodAttributes: interpretation.analysis.foodAttributes.length,
+            restaurantAttributes:
+              interpretation.analysis.restaurantAttributes.length,
+          },
+          unresolved: summarizeUnresolvedEntities(interpretation.unresolved),
+          structuredEntities:
+            this.debugMode === 'verbose'
+              ? summarizeEntities(interpretation.structuredRequest.entities, {
+                  maxEntities: 10,
+                  maxIds: 10,
+                })
+              : summarizeEntities(interpretation.structuredRequest.entities),
+        });
+      }
+
       return response;
+    }
+
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: interpretation summary', {
+        searchRequestId: interpretation.structuredRequest.searchRequestId,
+        originalQuery,
+        normalizedQuery: normalizedQuery.text,
+        analysis:
+          this.debugMode === 'verbose' ? interpretation.analysis : undefined,
+        analysisMetadata:
+          this.debugMode === 'verbose'
+            ? (interpretation.analysisMetadata ?? null)
+            : undefined,
+        interpretationCounts: {
+          restaurants: interpretation.analysis.restaurants.length,
+          foods: interpretation.analysis.foods.length,
+          foodAttributes: interpretation.analysis.foodAttributes.length,
+          restaurantAttributes:
+            interpretation.analysis.restaurantAttributes.length,
+        },
+        unresolved: summarizeUnresolvedEntities(interpretation.unresolved),
+        structuredEntities:
+          this.debugMode === 'verbose'
+            ? summarizeEntities(interpretation.structuredRequest.entities, {
+                maxEntities: 10,
+                maxIds: 10,
+              })
+            : summarizeEntities(interpretation.structuredRequest.entities),
+      });
     }
 
     const response = await this.searchService.runQuery(
@@ -122,6 +215,22 @@ export class SearchOrchestrationService {
     }
     if (!response.metadata.onDemandEtaMs && interpretation.onDemandEtaMs) {
       response.metadata.onDemandEtaMs = interpretation.onDemandEtaMs;
+    }
+
+    if (this.debugMode !== 'off') {
+      this.logger.info('Search debug: final response', {
+        searchRequestId: response.metadata.searchRequestId,
+        coverageStatus: response.metadata.coverageStatus,
+        totalRestaurantResults: response.metadata.totalRestaurantResults,
+        totalFoodResults: response.metadata.totalFoodResults,
+        restaurantsOnPage: response.restaurants?.length ?? 0,
+        dishesOnPage: response.dishes?.length ?? 0,
+        relaxationApplied: response.metadata.relaxationApplied ?? false,
+        relaxationStage: response.metadata.relaxationStage ?? null,
+        queryExecutionTimeMs: response.metadata.queryExecutionTimeMs,
+        onDemandQueued: response.metadata.onDemandQueued ?? false,
+        onDemandEtaMs: response.metadata.onDemandEtaMs ?? null,
+      });
     }
 
     const totalResults =

@@ -77,6 +77,11 @@ type UseSearchSubmitOptions = {
   resetMapMoveFlag: () => void;
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
+  onShortcutSearchCoverageSnapshot?: (snapshot: {
+    searchRequestId: string;
+    bounds: MapBounds | null;
+    entities: StructuredSearchRequest['entities'];
+  }) => void;
 };
 
 type RecentSearchInput = {
@@ -159,9 +164,12 @@ const useSearchSubmit = ({
   resetMapMoveFlag,
   loadRecentHistory,
   updateLocalRecentSearches,
+  onShortcutSearchCoverageSnapshot,
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
   const activeSearchRequestRef = React.useRef(0);
+  const shortcutBoundsSnapshotRef = React.useRef<MapBounds | null>(null);
+  const shortcutSearchRequestIdRef = React.useRef<string | null>(null);
   const shouldLogSearchResponsePayload = searchPerfDebug.logSearchResponsePayload;
   const shouldLogSearchResponseTimings =
     searchPerfDebug.enabled && searchPerfDebug.logSearchResponseTimings;
@@ -869,6 +877,7 @@ const useSearchSubmit = ({
       }
 
       try {
+        shortcutSearchRequestIdRef.current = null;
         if (isLoadingMore) {
           unstable_batchedUpdates(() => {
             setIsLoadingMore(false);
@@ -885,6 +894,11 @@ const useSearchSubmit = ({
           logSearchPhase('runBestHere:loading-state');
         }
         const payload = await buildStructuredSearchPayload(1, options?.filters);
+        shortcutBoundsSnapshotRef.current = payload.bounds ?? null;
+        const shortcutCoverageSnapshot = {
+          bounds: payload.bounds ?? null,
+          entities: payload.entities,
+        };
         logSearchPhase('runBestHere:runSearch');
         const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
         const response = await runSearch({
@@ -899,6 +913,14 @@ const useSearchSubmit = ({
         }
         logSearchPhase('runBestHere:response');
         if (response && requestId === activeSearchRequestRef.current) {
+          const responseSearchRequestId = response?.metadata?.searchRequestId ?? null;
+          if (responseSearchRequestId && onShortcutSearchCoverageSnapshot) {
+            shortcutSearchRequestIdRef.current = responseSearchRequestId;
+            onShortcutSearchCoverageSnapshot({
+              searchRequestId: responseSearchRequestId,
+              ...shortcutCoverageSnapshot,
+            });
+          }
           if (shouldDeferBestHereUi) {
             applyBestHereUiState();
             logSearchPhase('runBestHere:ui-prep');
@@ -953,6 +975,7 @@ const useSearchSubmit = ({
       setShowSuggestions,
       showPanel,
       shouldDeferBestHereUi,
+      onShortcutSearchCoverageSnapshot,
     ]
   );
 
@@ -967,6 +990,12 @@ const useSearchSubmit = ({
       try {
         setIsLoadingMore(true);
         const payload = await buildStructuredSearchPayload(nextPage);
+        if (shortcutBoundsSnapshotRef.current) {
+          payload.bounds = shortcutBoundsSnapshotRef.current;
+        }
+        if (shortcutSearchRequestIdRef.current) {
+          payload.searchRequestId = shortcutSearchRequestIdRef.current;
+        }
         const requestStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
         const response = await runSearch({
           kind: 'structured',

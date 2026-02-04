@@ -22,7 +22,7 @@ import {
 } from '../constants/search';
 
 import styles from '../styles';
-import { haversineDistanceMiles } from '../utils/geo';
+import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
 import {
   getViewportMercatorPolygonForMarkerVisibility,
   isPointInPolygon,
@@ -150,6 +150,7 @@ export type RestaurantFeatureProperties = {
   contextualScore: number;
   markerKey?: string;
   rank: number;
+  displayPercentile?: number | null;
   pinColor: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
@@ -201,14 +202,22 @@ const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
+const DOT_TEXT_SIZE = 17;
+// Use a stable "anchor" layer to guarantee dot layers are always inserted below pins/labels
+// regardless of mount order (e.g. dots arriving later via pagination).
+const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
+const OVERLAY_Z_ANCHOR_LAYER_ID = 'search-overlay-z-anchor-layer';
+const EMPTY_POINT_FEATURES: FeatureCollection<Point, RestaurantFeatureProperties> = {
+  type: 'FeatureCollection',
+  features: [],
+};
+const OVERLAY_Z_ANCHOR_STYLE: MapboxGL.SymbolLayerStyle = {
+  // Render nothing; the layer exists purely as an ordering anchor.
+  textField: '',
+  textOpacity: 0,
+} as MapboxGL.SymbolLayerStyle;
 const RESTAURANT_LABEL_SOURCE_ID = 'restaurant-source';
 const RESTAURANT_LABEL_COLLISION_SOURCE_ID = 'restaurant-label-collision-source';
-const DOT_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
-  circleColor: ['get', 'pinColor'],
-  circleOpacity: 1,
-  circleRadius: ['interpolate', ['linear'], ['zoom'], 8, 2, 12, 3, 16, 4, 20, 6],
-  circleStrokeWidth: 0,
-};
 
 const LABEL_OPACITY_STEP_MS = 80;
 
@@ -244,6 +253,7 @@ const LABEL_MUTEX_ICON_OFFSET_IMAGE_PX = 1600;
 // Move the mutex into screen pixel space via a constant viewport translation so it doesn't depend
 // on iconSize/image pixels.
 const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
+const PIN_PRESS_ANCHOR_SHIFT_Y_PX = PIN_MARKER_RENDER_SIZE * 0.42;
 
 const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
@@ -303,6 +313,85 @@ const getLabelCandidateInfoFromRenderedFeature = (
   }
 
   return null;
+};
+
+const getRestaurantIdFromPressFeature = (feature: unknown): string | null => {
+  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
+    return null;
+  }
+  const record = feature as Record<string, unknown>;
+  const props =
+    record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)
+      ? (record.properties as Record<string, unknown>)
+      : null;
+  const restaurantId = props?.restaurantId;
+  if (typeof restaurantId !== 'string' || restaurantId.length === 0) {
+    return null;
+  }
+  return restaurantId;
+};
+
+const getCoordinateFromPressFeature = (feature: unknown): Coordinate | null => {
+  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
+    return null;
+  }
+  const geometry = (feature as { geometry?: unknown }).geometry;
+  if (!geometry || typeof geometry !== 'object' || Array.isArray(geometry)) {
+    return null;
+  }
+  const coords = (geometry as { coordinates?: unknown }).coordinates;
+  if (!isLngLatTuple(coords)) {
+    return null;
+  }
+  return { lng: coords[0], lat: coords[1] };
+};
+
+const getCoordinateFromPressEvent = (event: OnPressEvent): Coordinate | null => {
+  const coords = event?.coordinates as unknown;
+  if (coords && typeof coords === 'object' && !Array.isArray(coords)) {
+    const record = coords as Record<string, unknown>;
+    const lng = record.longitude;
+    const lat = record.latitude;
+    if (
+      typeof lng === 'number' &&
+      Number.isFinite(lng) &&
+      typeof lat === 'number' &&
+      Number.isFinite(lat)
+    ) {
+      return { lng, lat };
+    }
+  }
+
+  // Defensive fallback (some Mapbox APIs use `[lng, lat]` arrays)
+  if (isLngLatTuple(coords)) {
+    return { lng: coords[0], lat: coords[1] };
+  }
+
+  return null;
+};
+
+const pickClosestRestaurantIdFromPressFeatures = (
+  features: unknown[],
+  target: Coordinate
+): string | null => {
+  let bestId: string | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const feature of features) {
+    const restaurantId = getRestaurantIdFromPressFeature(feature);
+    if (!restaurantId) {
+      continue;
+    }
+    const coordinate = getCoordinateFromPressFeature(feature);
+    if (!coordinate) {
+      continue;
+    }
+    const distance = haversineDistanceMiles(target, coordinate);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestId = restaurantId;
+    }
+  }
+  return bestId;
 };
 
 const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -495,6 +584,30 @@ const SearchMap: React.FC<SearchMapProps> = ({
     !shouldDisableMarkers &&
     dotRestaurantFeatures != null &&
     dotRestaurantFeatures.features.length > 0;
+  const dotLayerStyle = React.useMemo(() => {
+    return {
+      symbolZOrder: 'source',
+      textField: '●',
+      textAnchor: 'center',
+      textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],
+      textAllowOverlap: false,
+      textIgnorePlacement: false,
+      // Reduce collision buffer so dots can pack tighter before culling.
+      textPadding: 0,
+      // Keep the collision box closer to the actual glyph bounds.
+      textLineHeight: 1,
+      textOpacity: 1,
+      // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
+      // Mapbox placement, but it won't scale with zoom.
+      textSize: DOT_TEXT_SIZE,
+      textColor: [
+        'case',
+        ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
+        PRIMARY_COLOR,
+        ['get', 'pinColor'],
+      ],
+    } as MapboxGL.SymbolLayerStyle;
+  }, [selectedRestaurantId]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -1078,24 +1191,28 @@ const SearchMap: React.FC<SearchMapProps> = ({
         <MapboxGL.SymbolLayer
           key={`shadow-${entry.markerKey}`}
           id={`restaurant-style-pins-shadow-${stackSuffix}`}
+          slot="top"
           style={STYLE_PINS_SHADOW_STYLE}
           filter={featureFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`base-${entry.markerKey}`}
           id={`restaurant-style-pins-base-${stackSuffix}`}
+          slot="top"
           style={STYLE_PINS_OUTLINE_STYLE}
           filter={featureFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`fill-${entry.markerKey}`}
           id={`restaurant-style-pins-fill-${stackSuffix}`}
+          slot="top"
           style={stylePinsFillStyle}
           filter={featureFilter}
         />,
         <MapboxGL.SymbolLayer
           key={`rank-${entry.markerKey}`}
           id={`restaurant-style-pins-rank-${stackSuffix}`}
+          slot="top"
           style={STYLE_PINS_RANK_STYLE}
           filter={featureFilter}
         />,
@@ -1105,14 +1222,71 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const handleStylePinPress = React.useCallback(
     (event: OnPressEvent) => {
-      const feature = event?.features?.[0];
-      const restaurantId = feature?.properties?.restaurantId;
-      if (typeof restaurantId !== 'string') {
+      if (!onMarkerPress) {
         return;
       }
-      onMarkerPress?.(restaurantId);
+
+      const features = event?.features ?? [];
+      if (features.length === 0) {
+        return;
+      }
+
+      const baseTarget =
+        getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
+      if (!baseTarget) {
+        const restaurantId = getRestaurantIdFromPressFeature(features[0]);
+        if (restaurantId) {
+          onMarkerPress(restaurantId);
+        }
+        return;
+      }
+      const mapInstance = mapRef.current;
+      const rawPoint = (event as unknown as { point?: unknown }).point;
+      const point =
+        rawPoint && typeof rawPoint === 'object' && !Array.isArray(rawPoint)
+          ? (rawPoint as Record<string, unknown>)
+          : null;
+      const x = typeof point?.x === 'number' ? point.x : null;
+      const y = typeof point?.y === 'number' ? point.y : null;
+
+      // When pins are anchored at their tip (`iconAnchor: 'bottom'`), taps on the visual pin body
+      // correspond to a map coordinate slightly north of the restaurant coordinate. Shift the tap
+      // point downward in screen space and convert it back into a map coordinate to better align
+      // selection when zoomed out and icons overlap.
+      if (mapInstance?.getCoordinateFromView && x != null && y != null) {
+        void mapInstance
+          .getCoordinateFromView([x, y + PIN_PRESS_ANCHOR_SHIFT_Y_PX])
+          .then((shifted) => {
+            const target = isLngLatTuple(shifted)
+              ? ({ lng: shifted[0], lat: shifted[1] } as Coordinate)
+              : baseTarget;
+            const restaurantId =
+              pickClosestRestaurantIdFromPressFeatures(features, target) ??
+              getRestaurantIdFromPressFeature(features[0]);
+            if (restaurantId) {
+              onMarkerPress(restaurantId);
+            }
+          })
+          .catch(() => {
+            const restaurantId =
+              pickClosestRestaurantIdFromPressFeatures(features, baseTarget) ??
+              getRestaurantIdFromPressFeature(features[0]);
+            if (restaurantId) {
+              onMarkerPress(restaurantId);
+            }
+          });
+        return;
+      }
+
+      const restaurantId =
+        pickClosestRestaurantIdFromPressFeatures(features, baseTarget) ??
+        getRestaurantIdFromPressFeature(features[0]);
+      if (!restaurantId) {
+        return;
+      }
+      onMarkerPress(restaurantId);
     },
-    [onMarkerPress]
+    [mapRef, onMarkerPress]
   );
 
   React.useEffect(() => {
@@ -1493,9 +1667,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const handleDotPress = React.useCallback(
     (event: OnPressEvent) => {
-      const feature = event?.features?.[0];
-      const restaurantId = feature?.properties?.restaurantId;
-      if (typeof restaurantId !== 'string') {
+      const features = event?.features ?? [];
+      if (features.length === 0) {
+        return;
+      }
+      const target = getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
+      if (!target) {
+        const restaurantId = getRestaurantIdFromPressFeature(features[0]);
+        if (restaurantId) {
+          onMarkerPress?.(restaurantId);
+        }
+        return;
+      }
+      const restaurantId =
+        pickClosestRestaurantIdFromPressFeatures(features, target) ??
+        getRestaurantIdFromPressFeature(features[0]);
+      if (!restaurantId) {
         return;
       }
       onMarkerPress?.(restaurantId);
@@ -1649,12 +1836,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
     }
 
+    const isActivelyMoving = isMapMovingRef.current;
+
     const stickyMap = labelStickyCandidateByMarkerKeyRef.current;
     const lastSeenAt = labelStickyLastSeenAtByMarkerKeyRef.current;
     const missingStreak = labelStickyMissingStreakByMarkerKeyRef.current;
     const proposedCandidate = labelStickyProposedCandidateByMarkerKeyRef.current;
     const proposedSinceAt = labelStickyProposedSinceAtByMarkerKeyRef.current;
-    const isActivelyMoving = isMapMovingRef.current;
     let didChange = false;
 
     for (const [markerKey, candidate] of renderedCandidateByMarkerKey) {
@@ -1910,19 +2098,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
         onDidFinishLoadingMap={handleMapLoadedMap}
         onMapLoadingError={handleMapLoadError}
       >
-        {USE_STYLE_LAYER_PINS ? (
-          <MapboxGL.Images
-            images={{
-              [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
-              // Used only for the shadow layer (tinted + translated). Keep the outline itself as
-              // a non-SDF image so we preserve the original asset as-is.
-              [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
-              // `iconColor` only applies to SDF images. Our RN MarkerView path relies on `tintColor`,
-              // so we mark the fill as SDF here to enable color tinting via `SymbolLayer.iconColor`.
-              [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
-            }}
-          />
-        ) : null}
+        <MapboxGL.Images
+          images={{
+            [STYLE_PIN_OUTLINE_IMAGE_ID]: pinAsset,
+            // Used only for the shadow layer (tinted + translated). Keep the outline itself as
+            // a non-SDF image so we preserve the original asset as-is.
+            [STYLE_PIN_SHADOW_IMAGE_ID]: pinShadowAsset,
+            // `iconColor` only applies to SDF images. Our RN MarkerView path relies on `tintColor`,
+            // so we mark the fill as SDF here to enable color tinting via `SymbolLayer.iconColor`.
+            [STYLE_PIN_FILL_IMAGE_ID]: { image: pinFillAsset, sdf: true },
+          }}
+        />
         <MapboxGL.Camera
           ref={cameraRef}
           centerCoordinate={mapCenter ?? USA_FALLBACK_CENTER}
@@ -1935,6 +2121,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
           animationMode="none"
           animationDuration={0}
         />
+        <MapboxGL.ShapeSource
+          id={OVERLAY_Z_ANCHOR_SOURCE_ID}
+          shape={EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>}
+        >
+          <MapboxGL.SymbolLayer
+            id={OVERLAY_Z_ANCHOR_LAYER_ID}
+            slot="top"
+            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+            style={OVERLAY_Z_ANCHOR_STYLE}
+          />
+        </MapboxGL.ShapeSource>
         {shouldRenderDots ? (
           <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
             <MapboxGL.ShapeSource
@@ -1942,7 +2139,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
               shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
               onPress={handleDotPress}
             >
-              <MapboxGL.CircleLayer id={DOT_LAYER_ID} style={DOT_LAYER_STYLE} />
+              <MapboxGL.SymbolLayer
+                id={DOT_LAYER_ID}
+                slot="top"
+                belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                style={dotLayerStyle}
+                sourceID={DOT_SOURCE_ID}
+              />
             </MapboxGL.ShapeSource>
           </React.Profiler>
         ) : null}

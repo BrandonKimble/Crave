@@ -1,12 +1,14 @@
 import type {
   Coordinate,
   EntityScope,
+  FoodResult,
   MapBounds,
   NaturalSearchRequest,
   OperatingStatus,
   Pagination,
   SearchResponse,
 } from '../types';
+import type { FeatureCollection, Point } from 'geojson';
 import api from './api';
 
 export interface StructuredSearchRequest {
@@ -26,6 +28,7 @@ export interface StructuredSearchRequest {
   submissionSource?: NaturalSearchRequest['submissionSource'];
   submissionContext?: NaturalSearchRequest['submissionContext'];
   sourceQuery?: string;
+  searchRequestId?: string;
 }
 
 export type RecentSearch = {
@@ -119,6 +122,17 @@ export const searchService = {
       signal: options.signal,
       transformResponse,
     });
+    return data;
+  },
+  shortcutCoverage: async (payload: {
+    entities?: StructuredSearchRequest['entities'];
+    bounds: MapBounds;
+  }): Promise<FeatureCollection<Point>> => {
+    const { data } = await api.post<FeatureCollection<Point>>('/search/shortcut/coverage', payload);
+    return data;
+  },
+  restaurantDishes: async (restaurantId: string): Promise<FoodResult[]> => {
+    const { data } = await api.get<FoodResult[]>(`/search/restaurants/${restaurantId}/dishes`);
     return data;
   },
   recentHistory: async (limit = 8): Promise<RecentSearch[]> => {

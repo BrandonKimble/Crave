@@ -157,8 +157,8 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
               <Text
                 variant="subtitle"
                 weight="semibold"
-                style={styles.textSlate900}
-                numberOfLines={1}
+                style={[styles.textSlate900, styles.cardTitleText]}
+                numberOfLines={2}
               >
                 {item.foodName}
               </Text>

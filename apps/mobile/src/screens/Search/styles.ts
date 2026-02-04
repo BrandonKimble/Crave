@@ -35,6 +35,7 @@ import {
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SHORTCUTS_BOTTOM_MARGIN,
   SEARCH_THIS_AREA_COLOR,
+  TOP_FOOD_INLINE_RIGHT_PADDING,
   RANK_BADGE_WIDTH,
   RESULT_DETAILS_INDENT,
   RESULT_TITLE_RIGHT_PADDING,
@@ -1041,9 +1042,16 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingBottom: 0,
     paddingLeft: RESULT_DETAILS_INDENT,
+    paddingRight: TOP_FOOD_INLINE_RIGHT_PADDING,
+    alignSelf: 'stretch',
+    width: '100%',
+    minWidth: 0,
   },
   resultContentStack: {
     gap: CARD_LINE_GAP,
+    alignSelf: 'stretch',
+    width: '100%',
+    minWidth: 0,
   },
   secondaryMetricsRow: {
     flexDirection: 'row',
@@ -1115,6 +1123,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0,
     gap: CARD_LINE_GAP,
+    alignSelf: 'stretch',
   },
   topFoodLabel: {
     color: themeColors.textBody,
@@ -1145,8 +1154,37 @@ const styles = StyleSheet.create({
     marginTop: 0,
     minWidth: 0,
     width: '100%',
+    alignSelf: 'stretch',
     columnGap: CARD_LINE_GAP,
     rowGap: CARD_LINE_GAP,
+  },
+  topFoodInlineLineContainer: {
+    flex: 1,
+    minWidth: 0,
+  },
+  topFoodInlineLineText: {
+    color: themeColors.textBody,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  topFoodInlineLinePlaceholder: {
+    opacity: 0,
+  },
+  topFoodInlineLineMeasureContainer: {
+    position: 'absolute',
+    opacity: 0,
+    left: -10000,
+    top: 0,
+    pointerEvents: 'none',
+  },
+  topFoodInlineEllipsisRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+  topFoodInlineEllipsisToken: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   topFoodInlineList: {
     flex: 1,
@@ -1183,7 +1221,7 @@ const styles = StyleSheet.create({
   topFoodInlineMeasure: {
     position: 'absolute',
     opacity: 0,
-    left: 0,
+    left: -10000,
     top: 0,
     pointerEvents: 'none',
     flexDirection: 'row',
@@ -1191,6 +1229,10 @@ const styles = StyleSheet.create({
     flexWrap: 'nowrap',
     columnGap: CARD_LINE_GAP,
     alignSelf: 'flex-start',
+  },
+  cardTitleText: {
+    flexShrink: 1,
+    minWidth: 0,
   },
   topFoodMeasureText: {
     color: themeColors.textBody,
