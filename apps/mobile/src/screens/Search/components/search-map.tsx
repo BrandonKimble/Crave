@@ -1671,7 +1671,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (features.length === 0) {
         return;
       }
-      const target = getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
+      const target =
+        getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
       if (!target) {
         const restaurantId = getRestaurantIdFromPressFeature(features[0]);
         if (restaurantId) {

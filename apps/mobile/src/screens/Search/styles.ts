@@ -35,10 +35,9 @@ import {
   SEARCH_HORIZONTAL_PADDING,
   SEARCH_SHORTCUTS_BOTTOM_MARGIN,
   SEARCH_THIS_AREA_COLOR,
-  TOP_FOOD_INLINE_RIGHT_PADDING,
+  RESULT_ACTIONS_LEFT_GAP,
   RANK_BADGE_WIDTH,
   RESULT_DETAILS_INDENT,
-  RESULT_TITLE_RIGHT_PADDING,
   SPACING_SM,
   SPACING_XS,
 } from './constants/search';
@@ -784,19 +783,17 @@ const styles = StyleSheet.create({
   resultHeader: {
     position: 'relative',
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+    alignItems: 'flex-start',
+    gap: RESULT_ACTIONS_LEFT_GAP,
     minHeight: 32,
     marginBottom: 0,
   },
   resultActions: {
-    position: 'absolute',
-    top: 0,
-    right: -(CONTENT_HORIZONTAL_PADDING / 2),
     width: 32,
     flexDirection: 'column',
     alignItems: 'center',
     gap: 4,
+    marginRight: -(CONTENT_HORIZONTAL_PADDING / 2),
   },
   resultTitleContainer: {
     flex: 1,
@@ -813,7 +810,7 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
   },
   titleRowWithActions: {
-    paddingRight: RESULT_TITLE_RIGHT_PADDING,
+    paddingRight: 0,
   },
   rankBadge: {
     width: RANK_BADGE_WIDTH,
@@ -1042,10 +1039,6 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingBottom: 0,
     paddingLeft: RESULT_DETAILS_INDENT,
-    paddingRight: TOP_FOOD_INLINE_RIGHT_PADDING,
-    alignSelf: 'stretch',
-    width: '100%',
-    minWidth: 0,
   },
   resultContentStack: {
     gap: CARD_LINE_GAP,

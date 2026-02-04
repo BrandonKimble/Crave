@@ -1647,15 +1647,18 @@ const SearchScreen: React.FC = () => {
     },
     [applyResultsSheetSnapChange]
   );
-  const handleRestaurantOverlaySnapStart = React.useCallback((snap: OverlaySheetSnap | 'hidden') => {
-    if (snap === 'hidden') {
-      return;
-    }
-    if (profileDismissBehaviorRef.current !== 'restore') {
-      return;
-    }
-    profileTransitionRef.current.savedSheetSnap = snap;
-  }, []);
+  const handleRestaurantOverlaySnapStart = React.useCallback(
+    (snap: OverlaySheetSnap | 'hidden') => {
+      if (snap === 'hidden') {
+        return;
+      }
+      if (profileDismissBehaviorRef.current !== 'restore') {
+        return;
+      }
+      profileTransitionRef.current.savedSheetSnap = snap;
+    },
+    []
+  );
   const handleRestaurantOverlaySnapChange = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
       if (snap === 'hidden') {
@@ -4053,8 +4056,9 @@ const SearchScreen: React.FC = () => {
     }> = [];
     let primaryCount = 0;
     const isDishesTab = activeTab === 'dishes';
-    const selectedRestaurantId =
-      isRestaurantOverlayVisible ? restaurantProfile?.restaurant.restaurantId ?? null : null;
+    const selectedRestaurantId = isRestaurantOverlayVisible
+      ? restaurantProfile?.restaurant.restaurantId ?? null
+      : null;
     const searchCenter = resolveSearchViewportCenter();
 
     if (isDishesTab) {
@@ -4266,7 +4270,10 @@ const SearchScreen: React.FC = () => {
     );
     if (selectedEntries.length === 0) {
       if (shouldLogSearchComputes) {
-        logSearchCompute(`fullMarkerCandidates count=${base.length} mode=lod`, getPerfNow() - start);
+        logSearchCompute(
+          `fullMarkerCandidates count=${base.length} mode=lod`,
+          getPerfNow() - start
+        );
       }
       return base;
     }
@@ -4350,7 +4357,12 @@ const SearchScreen: React.FC = () => {
       return;
     }
     shortcutPinnedMarkersByRequestIdRef.current.set(requestId, sortedRestaurantMarkers);
-  }, [results?.metadata?.page, results?.metadata?.searchRequestId, searchMode, sortedRestaurantMarkers]);
+  }, [
+    results?.metadata?.page,
+    results?.metadata?.searchRequestId,
+    searchMode,
+    sortedRestaurantMarkers,
+  ]);
 
   const effectiveSortedRestaurantMarkers = React.useMemo(() => {
     if (searchMode !== 'shortcut') {
@@ -4390,9 +4402,8 @@ const SearchScreen: React.FC = () => {
   );
 
   const shortcutCoverageFetchKeyRef = React.useRef<string | null>(null);
-  const [shortcutCoverageDotFeatures, setShortcutCoverageDotFeatures] = React.useState<
-    FeatureCollection<Point, RestaurantFeatureProperties> | null
-  >(null);
+  const [shortcutCoverageDotFeatures, setShortcutCoverageDotFeatures] =
+    React.useState<FeatureCollection<Point, RestaurantFeatureProperties> | null>(null);
   React.useEffect(() => {
     if (searchMode !== 'shortcut') {
       shortcutCoverageFetchKeyRef.current = null;
@@ -4478,10 +4489,7 @@ const SearchScreen: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [
-    results?.metadata?.searchRequestId,
-    searchMode,
-  ]);
+  }, [results?.metadata?.searchRequestId, searchMode]);
 
   const dotRestaurantMarkers = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
@@ -6578,7 +6586,12 @@ const SearchScreen: React.FC = () => {
       forceRestaurantProfileMiddleSnapRef.current = true;
       openRestaurantProfile(restaurant, undefined, 'results_sheet');
     },
-    [openRestaurantProfile, openRestaurantProfilePreview, restaurants, shortcutCoverageRestaurantNameById]
+    [
+      openRestaurantProfile,
+      openRestaurantProfilePreview,
+      restaurants,
+      shortcutCoverageRestaurantNameById,
+    ]
   );
 
   const handleMapPressRef = React.useRef(handleMapPress);

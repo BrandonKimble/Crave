@@ -115,9 +115,7 @@ export const RESULT_HEADER_ICON_SIZE = 35;
 export const RESULT_CLOSE_ICON_SIZE = RESULT_HEADER_ICON_SIZE;
 export const SECONDARY_METRIC_ICON_SIZE = 14;
 export const VOTE_ICON_SIZE = SECONDARY_METRIC_ICON_SIZE;
-// Reserve space for the (absolute-positioned) like/share buttons so the top dishes line never
-// renders underneath them.
-export const TOP_FOOD_INLINE_RIGHT_PADDING = RESULT_TITLE_RIGHT_PADDING + 48;
+export const RESULT_ACTIONS_LEFT_GAP = 24;
 export const SPACING_XS = 2;
 export const SPACING_SM = 3;
 export const SPACING_MD = 5;

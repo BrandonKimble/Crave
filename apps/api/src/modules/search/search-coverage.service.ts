@@ -60,7 +60,9 @@ export class SearchCoverageService {
 
     if (restaurantEntityIds.length) {
       conditions.push(
-        Prisma.sql`e.entity_id = ANY(ARRAY[${Prisma.join(restaurantEntityIds)}]::uuid[])`,
+        Prisma.sql`e.entity_id = ANY(ARRAY[${Prisma.join(
+          restaurantEntityIds,
+        )}]::uuid[])`,
       );
     }
 
@@ -89,7 +91,9 @@ export class SearchCoverageService {
           SELECT 1
           FROM core_connections c
           WHERE c.restaurant_id = e.entity_id
-            AND c.food_attributes && ARRAY[${Prisma.join(foodAttributeIds)}]::uuid[]
+            AND c.food_attributes && ARRAY[${Prisma.join(
+              foodAttributeIds,
+            )}]::uuid[]
         )`,
       );
     }

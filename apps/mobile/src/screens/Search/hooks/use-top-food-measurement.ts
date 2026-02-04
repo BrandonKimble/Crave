@@ -306,7 +306,10 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
       // so measurements can complete promptly when the sheet is animating.
       const isResultsSheetDragging = snapshot.isResultsSheetDragging;
       const isResultsListScrolling = snapshot.isResultsListScrolling;
-      if (typeof isResultsSheetDragging === 'boolean' || typeof isResultsListScrolling === 'boolean') {
+      if (
+        typeof isResultsSheetDragging === 'boolean' ||
+        typeof isResultsListScrolling === 'boolean'
+      ) {
         return Boolean(isResultsSheetDragging) || Boolean(isResultsListScrolling);
       }
       return Boolean(snapshot.isInteracting);
@@ -447,7 +450,8 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
         };
       } else {
         const measuredWidths = candidateTopFoods.map(
-          (food) => itemWidths.get(food.connectionId) ?? topFoodItemWidthCache.get(food.connectionId)
+          (food) =>
+            itemWidths.get(food.connectionId) ?? topFoodItemWidthCache.get(food.connectionId)
         );
         const resolvedMeasuredWidths = measuredWidths.filter(
           (width): width is number => typeof width === 'number'
@@ -478,13 +482,10 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
           };
         } else {
           const getMoreWidth = (hiddenCount: number): number | undefined => {
-            const direct =
-              moreWidths.get(hiddenCount) ?? topFoodMoreWidthCache.get(hiddenCount);
+            const direct = moreWidths.get(hiddenCount) ?? topFoodMoreWidthCache.get(hiddenCount);
             if (typeof direct === 'number') return direct;
             const templateCount = getMoreWidthTemplateCount(hiddenCount);
-            return (
-              moreWidths.get(templateCount) ?? topFoodMoreWidthCache.get(templateCount)
-            );
+            return moreWidths.get(templateCount) ?? topFoodMoreWidthCache.get(templateCount);
           };
 
           let hasMeasurements = false;
@@ -493,9 +494,7 @@ function useTopFoodMeasurement(options: TopFoodMeasurementOptions): TopFoodMeasu
           for (let count = candidateTopFoods.length; count >= 0; count--) {
             const hiddenCount = resolvedTotalTopFoodCount - count;
             const needsMore = hiddenCount > 0;
-            const moreWidth = needsMore
-              ? getMoreWidth(hiddenCount)
-              : 0;
+            const moreWidth = needsMore ? getMoreWidth(hiddenCount) : 0;
             if (needsMore && typeof moreWidth !== 'number') {
               continue;
             }

@@ -10,7 +10,10 @@ import BottomSheetWithFlashList, {
 import { OVERLAY_STACK_ZINDEX, overlaySheetStyles } from './overlaySheetStyles';
 import { useOverlayStore } from '../store/overlayStore';
 import type { OverlayContentSpec, OverlayKey, OverlaySheetSnap } from './types';
-import { useOverlayHeaderActionController, type OverlayHeaderActionMode } from './useOverlayHeaderActionController';
+import {
+  useOverlayHeaderActionController,
+  type OverlayHeaderActionMode,
+} from './useOverlayHeaderActionController';
 import { TAB_OVERLAY_SNAP_KEY, useOverlaySheetPositionStore } from './useOverlaySheetPositionStore';
 
 type OverlaySheetShellProps = {
@@ -148,7 +151,13 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         });
       }
     },
-    [activeOverlayKey, recordPersistentSnap, recordUserSnap, resolvedSnapPersistenceKey, rootOverlay]
+    [
+      activeOverlayKey,
+      recordPersistentSnap,
+      recordUserSnap,
+      resolvedSnapPersistenceKey,
+      rootOverlay,
+    ]
   );
 
   const handleDragStateChange = React.useCallback(

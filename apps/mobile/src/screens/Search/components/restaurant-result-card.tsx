@@ -17,10 +17,7 @@ import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
 import styles from '../styles';
-import {
-  SECONDARY_METRIC_ICON_SIZE,
-  TOP_FOOD_RENDER_LIMIT,
-} from '../constants/search';
+import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { formatDistanceMiles, resolveCoverageDisplayLabel } from '../utils/format';
 import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
@@ -137,7 +134,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     const ids = candidateTopFoods.map((food) => food.connectionId).join('|');
     const primaryKey = primaryFoodSingleWord ? primaryFoodTerm?.toLowerCase() ?? '' : '';
     return `${restaurant.restaurantId}:${totalDishCount}:${candidateTopFoods.length}:${primaryKey}:${ids}`;
-  }, [candidateTopFoods, primaryFoodSingleWord, primaryFoodTerm, restaurant.restaurantId, totalDishCount]);
+  }, [
+    candidateTopFoods,
+    primaryFoodSingleWord,
+    primaryFoodTerm,
+    restaurant.restaurantId,
+    totalDishCount,
+  ]);
   const fitCacheKey = React.useMemo(() => {
     if (typeof topFoodLineWidth !== 'number' || topFoodLineWidth <= 0) {
       return null;
@@ -294,12 +297,22 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         const food = candidateTopFoods[idx];
         if (!food) continue;
         parts.push(
-          <Text key={`rank-${food.connectionId}`} variant="body" weight="semibold" style={styles.topFoodRankInline}>
+          <Text
+            key={`rank-${food.connectionId}`}
+            variant="body"
+            weight="semibold"
+            style={styles.topFoodRankInline}
+          >
             {idx + 1}.
           </Text>
         );
         parts.push(
-          <Text key={`name-${food.connectionId}`} variant="body" weight="regular" style={styles.topFoodNameInline}>
+          <Text
+            key={`name-${food.connectionId}`}
+            variant="body"
+            weight="regular"
+            style={styles.topFoodNameInline}
+          >
             {' '}
             {renderHighlightedFoodName(food.foodName)}
           </Text>
@@ -342,11 +355,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     const shouldShowMore = Boolean(moreLabel);
     return (
       <View style={styles.topFoodInlineEllipsisRow}>
-        <Text
-          style={styles.topFoodInlineEllipsisToken}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
+        <Text style={styles.topFoodInlineEllipsisToken} numberOfLines={1} ellipsizeMode="tail">
           <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
             1.
           </Text>
@@ -363,7 +372,13 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
         ) : null}
       </View>
     );
-  }, [candidateTopFoods, dishCountLabel, renderHighlightedFoodName, resolveMoreLabel, totalDishCount]);
+  }, [
+    candidateTopFoods,
+    dishCountLabel,
+    renderHighlightedFoodName,
+    resolveMoreLabel,
+    totalDishCount,
+  ]);
 
   const settleFitVariant = React.useCallback(
     (nextVariant: TopFoodFitVariant) => {
@@ -421,7 +436,8 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     [fitCacheKey, maybeResolveFitVariant, topFoodLineWidth]
   );
 
-  const shouldMeasureFit = fitVariant === null && fitCacheKey !== null && candidateTopFoods.length > 0;
+  const shouldMeasureFit =
+    fitVariant === null && fitCacheKey !== null && candidateTopFoods.length > 0;
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -571,12 +587,12 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                 </View>
               ) : null}
               {candidateTopFoods.length > 0 ? (
-                  <View style={styles.topFoodSection}>
-                    <View style={styles.topFoodInlineRow}>
-                      <View
-                        style={styles.topFoodInlineLineContainer}
-                        onLayout={handleTopFoodLineLayout}
-                      >
+                <View style={styles.topFoodSection}>
+                  <View style={styles.topFoodInlineRow}>
+                    <View
+                      style={styles.topFoodInlineLineContainer}
+                      onLayout={handleTopFoodLineLayout}
+                    >
                       {fitVariant?.kind === 'ellipsis_more' ? (
                         renderEllipsisMoreRow()
                       ) : fitVariant?.kind === 'count' ? (
@@ -603,11 +619,18 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                         <Text
                           variant="body"
                           weight="regular"
-                          style={[styles.topFoodInlineLineText, styles.topFoodInlineLinePlaceholder]}
+                          style={[
+                            styles.topFoodInlineLineText,
+                            styles.topFoodInlineLinePlaceholder,
+                          ]}
                           numberOfLines={1}
                           ellipsizeMode="clip"
                         >
-                          {renderTopFoodInlineChildren({ kind: 'tokens', shownCount: 1, includeMore: false })}
+                          {renderTopFoodInlineChildren({
+                            kind: 'tokens',
+                            shownCount: 1,
+                            includeMore: false,
+                          })}
                         </Text>
                       )}
                       {shouldMeasureFit && typeof topFoodLineWidth === 'number' ? (
