@@ -146,11 +146,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       return restaurant.restaurantQualityScore;
     }
     return null;
-  }, [
-    restaurant.displayScore,
-    restaurant.restaurantQualityScore,
-    scoreMode,
-  ]);
+  }, [restaurant.displayScore, restaurant.restaurantQualityScore, scoreMode]);
   const coverageLabel =
     showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
       ? resolveCoverageDisplayLabel(restaurant.coverageName, restaurant.coverageKey)

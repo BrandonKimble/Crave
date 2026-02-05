@@ -4307,7 +4307,13 @@ const SearchScreen: React.FC = () => {
     lodPinnedKeyRef.current = '';
     lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
     lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
-  }, [activeTab, results?.metadata?.requestId, results?.metadata?.searchRequestId, scoreMode, searchMode]);
+  }, [
+    activeTab,
+    results?.metadata?.requestId,
+    results?.metadata?.searchRequestId,
+    scoreMode,
+    searchMode,
+  ]);
 
   const updateLodPinnedMarkers = React.useCallback(
     (bounds: MapBounds | null) => {
@@ -4726,7 +4732,9 @@ const SearchScreen: React.FC = () => {
                 ? (properties['restaurantQualityScore'] as number)
                 : null;
             const displayScore =
-              typeof properties['displayScore'] === 'number' ? (properties['displayScore'] as number) : null;
+              typeof properties['displayScore'] === 'number'
+                ? (properties['displayScore'] as number)
+                : null;
             const displayPercentile =
               typeof properties['displayPercentile'] === 'number'
                 ? (properties['displayPercentile'] as number)
@@ -4745,15 +4753,15 @@ const SearchScreen: React.FC = () => {
                   ? topDishDisplayScore
                   : displayScore
                 : includeTopDish
-                  ? contextualScore
-                  : typeof restaurantQualityScore === 'number'
-                    ? restaurantQualityScore
-                    : null;
+                ? contextualScore
+                : typeof restaurantQualityScore === 'number'
+                ? restaurantQualityScore
+                : null;
             const globalScoreForColor = includeTopDish
               ? contextualScore
               : typeof restaurantQualityScore === 'number'
-                ? restaurantQualityScore
-                : null;
+              ? restaurantQualityScore
+              : null;
             const localScoreForColor = includeTopDish ? topDishDisplayScore : displayScore;
             const pinColorGlobal = getQualityColorFromScore(globalScoreForColor);
             const pinColorLocal = getQualityColorFromScore(localScoreForColor);
@@ -5197,32 +5205,32 @@ const SearchScreen: React.FC = () => {
     submittedQuery,
   ]);
 
-  const scheduleFilterToggleSearch = React.useCallback((
-    runSearch: () => Promise<void>,
-    options?: { showOverlay?: boolean }
-  ) => {
-    const shouldShowOverlay = options?.showOverlay !== false;
-    if (shouldShowOverlay) {
-      setIsFilterTogglePending(true);
-    }
-    const requestId = (filterToggleRequestRef.current += 1);
-    if (toggleFilterDebounceRef.current) {
-      clearTimeout(toggleFilterDebounceRef.current);
-    }
-    toggleFilterDebounceRef.current = setTimeout(() => {
-      toggleFilterDebounceRef.current = null;
-      const execute = async () => {
-        try {
-          await runSearch();
-        } finally {
-          if (shouldShowOverlay && filterToggleRequestRef.current === requestId) {
-            setIsFilterTogglePending(false);
+  const scheduleFilterToggleSearch = React.useCallback(
+    (runSearch: () => Promise<void>, options?: { showOverlay?: boolean }) => {
+      const shouldShowOverlay = options?.showOverlay !== false;
+      if (shouldShowOverlay) {
+        setIsFilterTogglePending(true);
+      }
+      const requestId = (filterToggleRequestRef.current += 1);
+      if (toggleFilterDebounceRef.current) {
+        clearTimeout(toggleFilterDebounceRef.current);
+      }
+      toggleFilterDebounceRef.current = setTimeout(() => {
+        toggleFilterDebounceRef.current = null;
+        const execute = async () => {
+          try {
+            await runSearch();
+          } finally {
+            if (shouldShowOverlay && filterToggleRequestRef.current === requestId) {
+              setIsFilterTogglePending(false);
+            }
           }
-        }
-      };
-      void execute();
-    }, FILTER_TOGGLE_DEBOUNCE_MS);
-  }, []);
+        };
+        void execute();
+      }, FILTER_TOGGLE_DEBOUNCE_MS);
+    },
+    []
+  );
 
   const toggleVotesFilter = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
@@ -5274,15 +5282,18 @@ const SearchScreen: React.FC = () => {
       if (!shouldRunShortcut && !shouldRunNatural) {
         return;
       }
-      scheduleFilterToggleSearch(async () => {
-        if (shouldRunShortcut) {
-          const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
-          const label = submittedQuery || fallbackLabel;
-          await runBestHere(activeTab, label, { preserveSheetState: true, scoreMode: nextMode });
-          return;
-        }
-        await submitSearch({ preserveSheetState: true, scoreMode: nextMode }, committedQuery);
-      }, { showOverlay: false });
+      scheduleFilterToggleSearch(
+        async () => {
+          if (shouldRunShortcut) {
+            const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+            const label = submittedQuery || fallbackLabel;
+            await runBestHere(activeTab, label, { preserveSheetState: true, scoreMode: nextMode });
+            return;
+          }
+          await submitSearch({ preserveSheetState: true, scoreMode: nextMode }, committedQuery);
+        },
+        { showOverlay: false }
+      );
     },
     [
       activeTab,
@@ -8271,16 +8282,16 @@ const SearchScreen: React.FC = () => {
       <View style={styles.container}>
         {isInitialCameraReady ? (
           <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
-	            <SearchMap
-	              mapRef={mapRef}
-	              cameraRef={cameraRef}
-	              styleURL={mapStyleURL}
-	              scoreMode={scoreMode}
-	              mapCenter={mapCenter}
-	              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
-	              cameraPadding={mapCameraPadding}
-	              isFollowingUser={isFollowingUser}
-	              onPress={stableHandleMapPress}
+            <SearchMap
+              mapRef={mapRef}
+              cameraRef={cameraRef}
+              styleURL={mapStyleURL}
+              scoreMode={scoreMode}
+              mapCenter={mapCenter}
+              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+              cameraPadding={mapCameraPadding}
+              isFollowingUser={isFollowingUser}
+              onPress={stableHandleMapPress}
               onTouchStart={handleMapTouchStart}
               onTouchEnd={handleMapTouchEnd}
               onCameraChanged={stableHandleCameraChanged}
@@ -8739,15 +8750,15 @@ const SearchScreen: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Use ${option.label.toLowerCase()} ranking`}
                         accessibilityState={{ selected }}
-                        style={[
-                          styles.rankSheetOption,
-                          selected && styles.rankSheetOptionSelected,
-                        ]}
+                        style={[styles.rankSheetOption, selected && styles.rankSheetOptionSelected]}
                       >
                         <Text
                           variant="body"
                           weight={selected ? 'semibold' : 'regular'}
-                          style={[styles.rankSheetOptionText, selected && styles.rankSheetOptionTextSelected]}
+                          style={[
+                            styles.rankSheetOptionText,
+                            selected && styles.rankSheetOptionTextSelected,
+                          ]}
                         >
                           {option.label}
                         </Text>

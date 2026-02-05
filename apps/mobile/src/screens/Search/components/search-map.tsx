@@ -1688,7 +1688,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    const resetKey = `${styleURL}::${markersRenderKey}::${dotRestaurantFeatures?.features.length ?? 0}`;
+    const resetKey = `${styleURL}::${markersRenderKey}::${
+      dotRestaurantFeatures?.features.length ?? 0
+    }`;
     let previous = dotPinnedKeysRef.current;
     if (dotPinnedStateResetKeyRef.current !== resetKey) {
       // When the dot ShapeSource is replaced/updated, Mapbox can drop feature-state for that source.
@@ -1701,13 +1703,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     previous.forEach((key) => {
       if (next.has(key)) return;
-      void mapInstance.setFeatureState(key, { isPinned: false }, DOT_SOURCE_ID).catch(() => undefined);
+      void mapInstance
+        .setFeatureState(key, { isPinned: false }, DOT_SOURCE_ID)
+        .catch(() => undefined);
     });
     next.forEach((key) => {
       if (previous.has(key)) return;
-      void mapInstance.setFeatureState(key, { isPinned: true }, DOT_SOURCE_ID).catch(() => undefined);
+      void mapInstance
+        .setFeatureState(key, { isPinned: true }, DOT_SOURCE_ID)
+        .catch(() => undefined);
     });
-  }, [dotRestaurantFeatures, markersRenderKey, pinnedDotKeys, pinsRenderKey, shouldRenderDots, styleURL]);
+  }, [
+    dotRestaurantFeatures,
+    markersRenderKey,
+    pinnedDotKeys,
+    pinsRenderKey,
+    shouldRenderDots,
+    styleURL,
+  ]);
   const profilerCallback =
     onProfilerRender ??
     ((() => {

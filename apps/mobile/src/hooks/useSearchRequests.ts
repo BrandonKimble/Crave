@@ -178,11 +178,16 @@ export const useSearchRequests = () => {
           return null;
         }
         const status = axios.isAxiosError(error)
-          ? (typeof error.response?.status === 'number' ? error.response.status : null)
+          ? typeof error.response?.status === 'number'
+            ? error.response.status
+            : null
           : null;
         if (status === 429) {
           const retryAfterMs = getRetryAfterMs(error) ?? 2000;
-          rateLimitUntilRef.current = Math.max(rateLimitUntilRef.current, Date.now() + retryAfterMs);
+          rateLimitUntilRef.current = Math.max(
+            rateLimitUntilRef.current,
+            Date.now() + retryAfterMs
+          );
         }
         throw error;
       } finally {

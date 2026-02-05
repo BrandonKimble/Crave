@@ -352,7 +352,10 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   <Text
                     variant="body"
                     weight="semibold"
-                    style={[styles.rankButtonLabel, rankButtonActive && styles.rankButtonLabelActive]}
+                    style={[
+                      styles.rankButtonLabel,
+                      rankButtonActive && styles.rankButtonLabelActive,
+                    ]}
                   >
                     Rank
                   </Text>
