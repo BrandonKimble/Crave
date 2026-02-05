@@ -175,6 +175,16 @@ export class SearchQueryBuilder {
       ? `WHERE COALESCE(rvt.total_upvotes, 0) >= ${filters.minimumVotes}`
       : '';
 
+    const restaurantOrder = this.resolveRestaurantOrderSql(
+      plan.ranking.restaurantOrder,
+    );
+    const restaurantTopDishOrder = this.resolveTopDishOrderSql(
+      plan.ranking.foodOrder,
+    );
+    const restaurantTopDishRankOrder = this.resolveTopDishRankOrderSql(
+      plan.ranking.foodOrder,
+    );
+
     // Build the ranked restaurants CTE with LATERAL JOIN for top dishes
     const rankedRestaurantsCte = Prisma.sql`
 ranked_restaurants AS (
@@ -218,14 +228,12 @@ ranked_restaurants AS (
     ON drr.subject_type = 'restaurant'
     AND drr.subject_id = fr.entity_id
     AND drr.location_key = fr.location_key
-  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
-  ${minimumVotesWhereSql}
-  ORDER BY COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) DESC,
-           COALESCE(rvt.total_upvotes, 0) DESC,
-           fr.entity_id ASC
-  OFFSET ${pagination.skip}
-  LIMIT ${pagination.take}
-)`;
+	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
+	  ${minimumVotesWhereSql}
+	  ORDER BY ${restaurantOrder.sql}
+	  OFFSET ${pagination.skip}
+	  LIMIT ${pagination.take}
+	)`;
 
     const rankedRestaurantsCtePreview = `
 ranked_restaurants AS (
@@ -240,12 +248,12 @@ ranked_restaurants AS (
   FROM filtered_restaurants fr
   JOIN selected_locations sl ON sl.restaurant_id = fr.entity_id
   LEFT JOIN restaurant_vote_totals rvt ON rvt.restaurant_id = fr.entity_id
-  LEFT JOIN core_display_rank_scores drr ON drr.subject_type = 'restaurant' AND drr.subject_id = fr.entity_id AND drr.location_key = fr.location_key
-  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
-  ${minimumVotesWherePreview}
-  ORDER BY COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) DESC, COALESCE(rvt.total_upvotes, 0) DESC, fr.entity_id ASC
-  OFFSET ${pagination.skip} LIMIT ${pagination.take}
-)`.trim();
+	  LEFT JOIN core_display_rank_scores drr ON drr.subject_type = 'restaurant' AND drr.subject_id = fr.entity_id AND drr.location_key = fr.location_key
+	  LEFT JOIN location_aggregates la ON la.restaurant_id = fr.entity_id
+	  ${minimumVotesWherePreview}
+	  ORDER BY ${restaurantOrder.preview}
+	  OFFSET ${pagination.skip} LIMIT ${pagination.take}
+	)`.trim();
 
     // Build WITH clause
     const withClause = Prisma.sql`
@@ -276,33 +284,33 @@ SELECT
 FROM ranked_restaurants rr
 LEFT JOIN LATERAL (
   SELECT
-    json_agg(
-      json_build_object(
-        'connectionId', sub.connection_id,
-        'foodId', sub.food_id,
-        'foodName', sub.food_name,
-        'qualityScore', sub.food_quality_score,
-        'displayScore', sub.display_score,
-        'displayPercentile', sub.display_percentile,
-        'activityLevel', sub.activity_level
-      )
-      ORDER BY COALESCE(sub.display_percentile, sub.food_quality_score / 100) DESC
-    ) FILTER (WHERE sub.rn <= ${topDishesLimit}) AS top_dishes,
-    COUNT(*)::int AS total_dish_count
-  FROM (
-    SELECT
+	    json_agg(
+	      json_build_object(
+	        'connectionId', sub.connection_id,
+	        'foodId', sub.food_id,
+	        'foodName', sub.food_name,
+	        'qualityScore', sub.food_quality_score,
+	        'displayScore', sub.display_score,
+	        'displayPercentile', sub.display_percentile,
+	        'activityLevel', sub.activity_level
+	      )
+	      ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
+	    ) FILTER (WHERE sub.rn <= ${topDishesLimit}) AS top_dishes,
+	    COUNT(*)::int AS total_dish_count
+	  FROM (
+	    SELECT
       c.connection_id,
       c.food_id,
       f.name AS food_name,
       c.food_quality_score,
-      drc.rank_score_display AS display_score,
-      drc.rank_percentile AS display_percentile,
-      c.activity_level,
-      ROW_NUMBER() OVER (ORDER BY COALESCE(drc.rank_percentile, c.food_quality_score / 100) DESC, c.total_upvotes DESC) AS rn
-    FROM core_connections c
-    JOIN core_entities f ON f.entity_id = c.food_id
-    LEFT JOIN core_display_rank_scores drc
-      ON drc.subject_type = 'connection'
+	      drc.rank_score_display AS display_score,
+	      drc.rank_percentile AS display_percentile,
+	      c.activity_level,
+	      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
+	    FROM core_connections c
+	    JOIN core_entities f ON f.entity_id = c.food_id
+	    LEFT JOIN core_display_rank_scores drc
+	      ON drc.subject_type = 'connection'
       AND drc.subject_id = c.connection_id
       AND drc.location_key = rr.location_key
     WHERE c.restaurant_id = rr.restaurant_id
@@ -1040,13 +1048,85 @@ location_aggregates AS (
   } {
     const normalized = (order || '').toLowerCase();
     const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    const isQualityScore = normalized.includes('quality_score');
+    const scoreSql = isQualityScore
+      ? Prisma.sql`fc.food_quality_score`
+      : Prisma.sql`COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100)`;
+    const scorePreview = isQualityScore
+      ? 'fc.food_quality_score'
+      : 'COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100)';
     return {
-      sql: Prisma.sql`COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100) ${Prisma.raw(
+      sql: Prisma.sql`${scoreSql} ${Prisma.raw(direction)}, fc.connection_id ASC`,
+      preview: `${scorePreview} ${direction}, fc.connection_id ASC`,
+    };
+  }
+
+  private resolveRestaurantOrderSql(order?: string): {
+    sql: Prisma.Sql;
+    preview: string;
+  } {
+    const normalized = (order || '').toLowerCase();
+    const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    const isQualityScore = normalized.includes('quality_score');
+    if (isQualityScore) {
+      return {
+        sql: Prisma.sql`fr.restaurant_quality_score ${Prisma.raw(
+          direction,
+        )}, fr.entity_id ASC`,
+        preview: `fr.restaurant_quality_score ${direction}, fr.entity_id ASC`,
+      };
+    }
+    return {
+      sql: Prisma.sql`COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) ${Prisma.raw(
         direction,
-      )}, fc.total_upvotes ${Prisma.raw(
+      )},
+      COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
+      fr.entity_id ASC`,
+      preview: `COALESCE(drr.rank_percentile, fr.restaurant_quality_score / 100) ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, fr.entity_id ASC`,
+    };
+  }
+
+  private resolveTopDishOrderSql(order?: string): {
+    sql: Prisma.Sql;
+    preview: string;
+  } {
+    const normalized = (order || '').toLowerCase();
+    const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    const isQualityScore = normalized.includes('quality_score');
+    if (isQualityScore) {
+      return {
+        sql: Prisma.sql`sub.food_quality_score ${Prisma.raw(direction)}`,
+        preview: `sub.food_quality_score ${direction}`,
+      };
+    }
+    return {
+      sql: Prisma.sql`COALESCE(sub.display_percentile, sub.food_quality_score / 100) ${Prisma.raw(
         direction,
-      )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`,
-      preview: `COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100) ${direction}, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`,
+      )}`,
+      preview: `COALESCE(sub.display_percentile, sub.food_quality_score / 100) ${direction}`,
+    };
+  }
+
+  private resolveTopDishRankOrderSql(order?: string): {
+    sql: Prisma.Sql;
+    preview: string;
+  } {
+    const normalized = (order || '').toLowerCase();
+    const direction = normalized.includes('asc') ? 'ASC' : 'DESC';
+    const isQualityScore = normalized.includes('quality_score');
+    if (isQualityScore) {
+      return {
+        sql: Prisma.sql`c.food_quality_score ${Prisma.raw(
+          direction,
+        )}, c.connection_id ASC`,
+        preview: `c.food_quality_score ${direction}, c.connection_id ASC`,
+      };
+    }
+    return {
+      sql: Prisma.sql`COALESCE(drc.rank_percentile, c.food_quality_score / 100) ${Prisma.raw(
+        direction,
+      )}, c.total_upvotes ${Prisma.raw(direction)}, c.connection_id ASC`,
+      preview: `COALESCE(drc.rank_percentile, c.food_quality_score / 100) ${direction}, c.total_upvotes ${direction}, c.connection_id ASC`,
     };
   }
 

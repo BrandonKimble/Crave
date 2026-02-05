@@ -36,6 +36,15 @@ export const getQualityColorFromPercentile = (percentile?: number | null): strin
   return getQualityColorForT(1 - normalizedPercentile);
 };
 
+export const getQualityColorFromScore = (score?: number | null): string => {
+  const normalizedScore =
+    typeof score === 'number' && Number.isFinite(score) ? clamp01(score / 100) : null;
+  if (normalizedScore === null) {
+    return getQualityColorForT(0.5);
+  }
+  return getQualityColorForT(1 - normalizedScore);
+};
+
 export const getQualityColor = (
   index: number,
   total: number,

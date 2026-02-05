@@ -24,6 +24,7 @@ export interface ConstraintResolvedIds {
 export interface SearchConstraints {
   stage: RelaxationStage;
   format: 'dual_list';
+  scoreMode: 'global_quality' | 'coverage_display';
   inputPresence: ConstraintInputPresence;
   stagePresence: ConstraintInputPresence;
   hadFoodGroup: boolean;

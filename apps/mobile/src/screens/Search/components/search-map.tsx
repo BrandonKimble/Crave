@@ -90,8 +90,6 @@ const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
   0,
   1.25 + 18 * (PIN_MARKER_RENDER_SIZE / 98),
 ];
-const STYLE_PIN_LAYER_ID_SAFE_MAX_LEN = 120;
-
 // `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
 // These values are derived to match the existing RN pin layout in `styles.ts` + `constants/search.ts`.
 const PIN_OUTLINE_IMAGE_HEIGHT_PX = 98;
@@ -150,7 +148,10 @@ export type RestaurantFeatureProperties = {
   contextualScore: number;
   markerKey?: string;
   rank: number;
+  // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
+  lodZ?: number;
   displayPercentile?: number | null;
+  restaurantQualityScore?: number | null;
   pinColor: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
@@ -158,14 +159,7 @@ export type RestaurantFeatureProperties = {
   isDishPin?: boolean;
   dishName?: string;
   connectionId?: string;
-};
-
-const toSafeLayerIdPart = (value: string) => {
-  const normalized = value.replace(/[^a-zA-Z0-9_-]/g, '_');
-  if (normalized.length <= STYLE_PIN_LAYER_ID_SAFE_MAX_LEN) {
-    return normalized;
-  }
-  return normalized.slice(0, STYLE_PIN_LAYER_ID_SAFE_MAX_LEN);
+  topDishDisplayPercentile?: number | null;
 };
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
@@ -203,6 +197,9 @@ const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, p
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
 const DOT_TEXT_SIZE = 17;
+// Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
+// even as the pinned set changes during live LOD updates.
+const STYLE_PIN_STACK_SLOTS = 30;
 // Use a stable "anchor" layer to guarantee dot layers are always inserted below pins/labels
 // regardless of mount order (e.g. dots arriving later via pagination).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -528,6 +525,7 @@ type SearchMapProps = {
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
   markersRenderKey: string;
+  pinsRenderKey: string;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   shouldAnimateMarkerReveal?: boolean;
   markerRevealChunk?: number;
@@ -562,6 +560,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   sortedRestaurantMarkers,
   dotRestaurantFeatures,
   markersRenderKey,
+  pinsRenderKey,
   buildMarkerKey,
   shouldAnimateMarkerReveal = false,
   markerRevealChunk = 1,
@@ -584,19 +583,40 @@ const SearchMap: React.FC<SearchMapProps> = ({
     !shouldDisableMarkers &&
     dotRestaurantFeatures != null &&
     dotRestaurantFeatures.features.length > 0;
+  const pinnedRestaurantIds = React.useMemo(
+    () => new Set(sortedRestaurantMarkers.map((feature) => feature.properties.restaurantId)),
+    [sortedRestaurantMarkers]
+  );
+  const pinnedRestaurantIdList = React.useMemo(
+    () => Array.from(pinnedRestaurantIds),
+    [pinnedRestaurantIds]
+  );
+  const pinnedDotKeys = React.useMemo(
+    () => new Set(sortedRestaurantMarkers.map((feature) => buildMarkerKey(feature))),
+    [buildMarkerKey, sortedRestaurantMarkers]
+  );
   const dotLayerStyle = React.useMemo(() => {
     return {
       symbolZOrder: 'source',
+      // Use a font/glyph combo that reliably renders as a true circle (avoid tofu/missing-glyph boxes).
       textField: '●',
       textAnchor: 'center',
-      textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],
+      textFont: ['Arial Unicode MS Regular', 'Open Sans Semibold'],
       textAllowOverlap: false,
       textIgnorePlacement: false,
       // Reduce collision buffer so dots can pack tighter before culling.
       textPadding: 0,
       // Keep the collision box closer to the actual glyph bounds.
       textLineHeight: 1,
-      textOpacity: 1,
+      // Hide dots that correspond to currently-pinned restaurants. Using feature-state is
+      // unreliable because Mapbox can drop source feature-state when ShapeSource data updates.
+      // A property-based expression keeps dots/pins mutually exclusive deterministically.
+      textOpacity: [
+        'case',
+        ['in', ['get', 'restaurantId'], ['literal', pinnedRestaurantIdList]],
+        0,
+        1,
+      ],
       // Keep dots a constant screen size (like pins). The symbol can still cull/collide based on
       // Mapbox placement, but it won't scale with zoom.
       textSize: DOT_TEXT_SIZE,
@@ -607,12 +627,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ['get', 'pinColor'],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [selectedRestaurantId]);
+  }, [pinnedRestaurantIdList, selectedRestaurantId]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
   });
   const [visibleMarkerKeys, setVisibleMarkerKeys] = React.useState<Set<string>>(() => new Set());
+  const dotPinnedKeysRef = React.useRef<Set<string>>(new Set());
+  const dotPinnedStateResetKeyRef = React.useRef<string | null>(null);
   const labelRevealRegistryRef = React.useRef<Set<string>>(new Set());
   const previousShouldAnimateMarkerRevealRef = React.useRef(false);
   // Marker visibility refreshes are async (Mapbox view->coordinate conversion) and can complete
@@ -946,57 +968,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     return { ...restaurantLabelFeaturesWithIds, features: nextFeatures };
   }, [labelStickyEpoch, restaurantLabelFeaturesWithIds]);
 
-  const stylePinDrawOrder = React.useMemo(() => {
-    if (!restaurantLabelFeaturesWithIds.features.length) {
-      return [];
-    }
-
-    const user = userLocation ? { lng: userLocation.lng, lat: userLocation.lat } : null;
-    const missingDistanceMiles = 1e12;
-
-    const entries = restaurantLabelFeaturesWithIds.features
-      .map((feature) => {
-        const markerKey = buildMarkerKey(feature);
-        const rank = feature.properties.rank;
-        const coordinates = feature.geometry.coordinates as [number, number];
-        const lng = coordinates?.[0];
-        const lat = coordinates?.[1];
-        const distanceMiles =
-          user &&
-          typeof lng === 'number' &&
-          Number.isFinite(lng) &&
-          typeof lat === 'number' &&
-          Number.isFinite(lat)
-            ? haversineDistanceMiles(user, { lng, lat })
-            : missingDistanceMiles;
-        return { markerKey, rank, distanceMiles };
-      })
-      .filter(
-        (entry) =>
-          typeof entry.markerKey === 'string' &&
-          entry.markerKey.length > 0 &&
-          typeof entry.rank === 'number' &&
-          Number.isFinite(entry.rank) &&
-          entry.rank > 0
-      );
-
-    // Layer order determines draw order: earlier layers are under later layers.
-    // We want:
-    //   - rank 50 underneath rank 1
-    //   - within same rank: farther underneath closer
-    return entries.sort((a, b) => {
-      const rankDelta = b.rank - a.rank;
-      if (rankDelta !== 0) {
-        return rankDelta;
-      }
-      const distDelta = b.distanceMiles - a.distanceMiles;
-      if (distDelta !== 0) {
-        return distDelta;
-      }
-      return a.markerKey.localeCompare(b.markerKey);
-    });
-  }, [buildMarkerKey, restaurantLabelFeaturesWithIds.features, userLocation]);
-
   const labelFeatureIdSet = React.useMemo(() => {
     if (!restaurantLabelCandidateFeaturesWithIds.features.length) {
       return new Set<string>();
@@ -1174,51 +1145,45 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [selectedRestaurantId]);
 
   const stylePinLayerStack = React.useMemo(() => {
-    if (!stylePinDrawOrder.length) {
-      return null;
-    }
-
-    // Critical: we need per-pin layer stacks so overlap renders like:
-    //   shadow+base+fill+text (pin A), then shadow+base+fill+text (pin B), etc.
-    //
-    // Mapbox cannot interleave per-feature across separate layers, but it *can* interleave by
-    // layer order. Creating a layer stack per pin guarantees perfect interleaving even when
-    // multiple pins share the same rank.
-    return stylePinDrawOrder.flatMap((entry) => {
-      const stackSuffix = toSafeLayerIdPart(entry.markerKey);
-      const featureFilter = ['==', ['id'], entry.markerKey] as const;
+    // Deterministic pin stacking while moving:
+    // - We keep a fixed number of "z slots" as separate layer stacks.
+    // - Each pinned feature is assigned a `lodZ` slot (0..39) at the call site.
+    // - Because layer IDs do not come/go as the pinned set changes, Mapbox can't "promote"
+    //   newly-added pins above older ones just because their layers were inserted later.
+    return Array.from({ length: STYLE_PIN_STACK_SLOTS }, (_, slotIndex) => {
+      const filter = ['==', ['coalesce', ['get', 'lodZ'], -1], slotIndex] as const;
       return [
         <MapboxGL.SymbolLayer
-          key={`shadow-${entry.markerKey}`}
-          id={`restaurant-style-pins-shadow-${stackSuffix}`}
+          key={`shadow-slot-${slotIndex}`}
+          id={`restaurant-style-pins-shadow-slot-${slotIndex}`}
           slot="top"
           style={STYLE_PINS_SHADOW_STYLE}
-          filter={featureFilter}
+          filter={filter}
         />,
         <MapboxGL.SymbolLayer
-          key={`base-${entry.markerKey}`}
-          id={`restaurant-style-pins-base-${stackSuffix}`}
+          key={`base-slot-${slotIndex}`}
+          id={`restaurant-style-pins-base-slot-${slotIndex}`}
           slot="top"
           style={STYLE_PINS_OUTLINE_STYLE}
-          filter={featureFilter}
+          filter={filter}
         />,
         <MapboxGL.SymbolLayer
-          key={`fill-${entry.markerKey}`}
-          id={`restaurant-style-pins-fill-${stackSuffix}`}
+          key={`fill-slot-${slotIndex}`}
+          id={`restaurant-style-pins-fill-slot-${slotIndex}`}
           slot="top"
           style={stylePinsFillStyle}
-          filter={featureFilter}
+          filter={filter}
         />,
         <MapboxGL.SymbolLayer
-          key={`rank-${entry.markerKey}`}
-          id={`restaurant-style-pins-rank-${stackSuffix}`}
+          key={`rank-slot-${slotIndex}`}
+          id={`restaurant-style-pins-rank-slot-${slotIndex}`}
           slot="top"
           style={STYLE_PINS_RANK_STYLE}
-          filter={featureFilter}
+          filter={filter}
         />,
       ];
-    });
-  }, [stylePinDrawOrder, stylePinsFillStyle]);
+    }).flat();
+  }, [stylePinsFillStyle]);
 
   const handleStylePinPress = React.useCallback(
     (event: OnPressEvent) => {
@@ -1686,10 +1651,45 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (!restaurantId) {
         return;
       }
+      if (pinnedRestaurantIds.has(restaurantId)) {
+        return;
+      }
       onMarkerPress?.(restaurantId);
     },
-    [onMarkerPress]
+    [onMarkerPress, pinnedRestaurantIds]
   );
+
+  React.useEffect(() => {
+    if (!shouldRenderDots) {
+      dotPinnedKeysRef.current = new Set();
+      dotPinnedStateResetKeyRef.current = null;
+      return;
+    }
+    const mapInstance = mapRef.current;
+    if (!mapInstance?.setFeatureState) {
+      return;
+    }
+
+    const resetKey = `${styleURL}::${markersRenderKey}::${dotRestaurantFeatures?.features.length ?? 0}`;
+    let previous = dotPinnedKeysRef.current;
+    if (dotPinnedStateResetKeyRef.current !== resetKey) {
+      // When the dot ShapeSource is replaced/updated, Mapbox can drop feature-state for that source.
+      // Re-apply pinned state deterministically so dots don't show under pins.
+      dotPinnedStateResetKeyRef.current = resetKey;
+      previous = new Set();
+    }
+    const next = pinnedDotKeys;
+    dotPinnedKeysRef.current = new Set(next);
+
+    previous.forEach((key) => {
+      if (next.has(key)) return;
+      void mapInstance.setFeatureState(key, { isPinned: false }, DOT_SOURCE_ID).catch(() => undefined);
+    });
+    next.forEach((key) => {
+      if (previous.has(key)) return;
+      void mapInstance.setFeatureState(key, { isPinned: true }, DOT_SOURCE_ID).catch(() => undefined);
+    });
+  }, [dotRestaurantFeatures, markersRenderKey, pinnedDotKeys, pinsRenderKey, shouldRenderDots, styleURL]);
   const profilerCallback =
     onProfilerRender ??
     ((() => {
@@ -1909,12 +1909,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
     if (didChange) {
       setLabelStickyEpoch((value) => value + 1);
-      // While the user is actively gesturing, forcing a full SymbolLayer re-mount is both expensive
-      // and can cause placement “thrash” (layers reset -> query sees empty -> locks churn). Updating
-      // the source data is enough for Mapbox to re-run placement; reserve the hard re-mount for idle.
-      if (!isActivelyMoving) {
-        setLabelPlacementEpoch((value) => value + 1);
-      }
+      // Updating the source data is enough for Mapbox to re-run placement. Forcing a full
+      // SymbolLayer re-mount here causes a visible "flash" (labels disappear/reappear) when the
+      // user releases a gesture, so we avoid it during steady-state refreshes.
     }
   }, [mapRef, restaurantLabelPinCollisionLayerId]);
 
@@ -2314,6 +2311,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.markersRenderKey !== next.markersRenderKey) {
+    return false;
+  }
+  if (prev.pinsRenderKey !== next.pinsRenderKey) {
     return false;
   }
   if (prev.shouldAnimateMarkerReveal !== next.shouldAnimateMarkerReveal) {

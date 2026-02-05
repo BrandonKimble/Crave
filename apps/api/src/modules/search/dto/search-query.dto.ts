@@ -199,6 +199,11 @@ export class SearchQueryRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['global_quality', 'coverage_display'])
+  scoreMode?: 'global_quality' | 'coverage_display';
 }
 
 export const EntityScope = {
@@ -302,6 +307,11 @@ export class NaturalSearchRequestDto {
   @ValidateNested()
   @Type(() => SearchSubmissionContextDto)
   submissionContext?: SearchSubmissionContextDto;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['global_quality', 'coverage_display'])
+  scoreMode?: 'global_quality' | 'coverage_display';
 }
 
 export class SearchResultClickDto {

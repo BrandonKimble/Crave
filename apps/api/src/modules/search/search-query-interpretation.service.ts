@@ -620,6 +620,7 @@ export class SearchQueryInterpretationService {
       priceLevels: request.priceLevels,
       minimumVotes: request.minimumVotes,
       sourceQuery: request.query,
+      scoreMode: request.scoreMode,
     };
   }
 

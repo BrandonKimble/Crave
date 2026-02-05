@@ -30,6 +30,7 @@ type TopFoodFitVariant =
   | { kind: 'ellipsis_more' }
   | { kind: 'count' };
 const topFoodFitCache = new Map<string, TopFoodFitVariant>();
+const topFoodFitSignatureCache = new Map<string, TopFoodFitVariant>();
 const getCachedTopFoodFit = (key: string): TopFoodFitVariant | null => {
   const value = topFoodFitCache.get(key);
   if (!value) return null;
@@ -37,6 +38,7 @@ const getCachedTopFoodFit = (key: string): TopFoodFitVariant | null => {
   topFoodFitCache.set(key, value);
   return value;
 };
+const hasCachedTopFoodFit = (key: string): boolean => topFoodFitCache.has(key);
 const setCachedTopFoodFit = (key: string, value: TopFoodFitVariant): void => {
   if (topFoodFitCache.has(key)) {
     topFoodFitCache.delete(key);
@@ -46,6 +48,26 @@ const setCachedTopFoodFit = (key: string, value: TopFoodFitVariant): void => {
     const oldestKey = topFoodFitCache.keys().next().value as string | undefined;
     if (oldestKey) {
       topFoodFitCache.delete(oldestKey);
+    }
+  }
+};
+
+const getCachedTopFoodFitBySignature = (signature: string): TopFoodFitVariant | null => {
+  const value = topFoodFitSignatureCache.get(signature);
+  if (!value) return null;
+  topFoodFitSignatureCache.delete(signature);
+  topFoodFitSignatureCache.set(signature, value);
+  return value;
+};
+const setCachedTopFoodFitBySignature = (signature: string, value: TopFoodFitVariant): void => {
+  if (topFoodFitSignatureCache.has(signature)) {
+    topFoodFitSignatureCache.delete(signature);
+  }
+  topFoodFitSignatureCache.set(signature, value);
+  if (topFoodFitSignatureCache.size > MAX_TOP_FOOD_FIT_CACHE_ITEMS) {
+    const oldestKey = topFoodFitSignatureCache.keys().next().value as string | undefined;
+    if (oldestKey) {
+      topFoodFitSignatureCache.delete(oldestKey);
     }
   }
 };
@@ -63,6 +85,7 @@ type RestaurantResultCardProps = {
   index: number;
   qualityColor: string;
   isLiked: boolean;
+  scoreMode?: 'global_quality' | 'coverage_display';
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
   onSavePress: () => void;
@@ -80,6 +103,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   index,
   qualityColor,
   isLiked,
+  scoreMode = 'global_quality',
   primaryCoverageKey = null,
   showCoverageLabel = false,
   onSavePress,
@@ -108,7 +132,32 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     restaurant.totalDishCount ?? topFoodItems.length,
     topFoodItems.length
   );
-  const displayScoreValue = restaurant.displayScore ?? restaurant.restaurantQualityScore;
+  const displayScoreValue = React.useMemo(() => {
+    if (scoreMode === 'coverage_display') {
+      if (typeof restaurant.displayScore === 'number' && Number.isFinite(restaurant.displayScore)) {
+        return restaurant.displayScore;
+      }
+      if (
+        typeof restaurant.displayPercentile === 'number' &&
+        Number.isFinite(restaurant.displayPercentile)
+      ) {
+        return restaurant.displayPercentile * 100;
+      }
+      return null;
+    }
+    if (
+      typeof restaurant.restaurantQualityScore === 'number' &&
+      Number.isFinite(restaurant.restaurantQualityScore)
+    ) {
+      return restaurant.restaurantQualityScore;
+    }
+    return null;
+  }, [
+    restaurant.displayPercentile,
+    restaurant.displayScore,
+    restaurant.restaurantQualityScore,
+    scoreMode,
+  ]);
   const coverageLabel =
     showCoverageLabel && restaurant.coverageKey && restaurant.coverageKey !== primaryCoverageKey
       ? resolveCoverageDisplayLabel(restaurant.coverageName, restaurant.coverageKey)
@@ -148,13 +197,26 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     return `${Math.round(topFoodLineWidth)}:${fitSignature}`;
   }, [fitSignature, topFoodLineWidth]);
 
-  const [fitVariant, setFitVariant] = React.useState<TopFoodFitVariant | null>(null);
+  const [fitVariant, setFitVariant] = React.useState<TopFoodFitVariant | null>(() =>
+    getCachedTopFoodFitBySignature(fitSignature)
+  );
+  React.useEffect(() => {
+    const cached = getCachedTopFoodFitBySignature(fitSignature);
+    if (cached) {
+      setFitVariant(cached);
+      return;
+    }
+    setFitVariant(null);
+  }, [fitSignature]);
   React.useEffect(() => {
     if (!fitCacheKey) {
       return;
     }
     const cached = getCachedTopFoodFit(fitCacheKey);
-    setFitVariant(cached);
+    if (cached) {
+      setCachedTopFoodFitBySignature(fitSignature, cached);
+      setFitVariant(cached);
+    }
   }, [fitCacheKey]);
 
   type CandidateVariant = { id: string; variant: TopFoodFitVariant };
@@ -384,11 +446,12 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     (nextVariant: TopFoodFitVariant) => {
       if (!fitCacheKey) return;
       setCachedTopFoodFit(fitCacheKey, nextVariant);
+      setCachedTopFoodFitBySignature(fitSignature, nextVariant);
       setFitVariant(nextVariant);
       const snapshot = fitMeasurementsRef.current;
       snapshot.settled = true;
     },
-    [fitCacheKey]
+    [fitCacheKey, fitSignature]
   );
 
   const maybeResolveFitVariant = React.useCallback(() => {
@@ -437,7 +500,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   );
 
   const shouldMeasureFit =
-    fitVariant === null && fitCacheKey !== null && candidateTopFoods.length > 0;
+    fitCacheKey !== null && candidateTopFoods.length > 0 && !hasCachedTopFoodFit(fitCacheKey);
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -616,22 +679,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                           {renderTopFoodInlineChildren(fitVariant)}
                         </Text>
                       ) : (
-                        <Text
-                          variant="body"
-                          weight="regular"
-                          style={[
-                            styles.topFoodInlineLineText,
-                            styles.topFoodInlineLinePlaceholder,
-                          ]}
-                          numberOfLines={1}
-                          ellipsizeMode="clip"
-                        >
-                          {renderTopFoodInlineChildren({
-                            kind: 'tokens',
-                            shownCount: 1,
-                            includeMore: false,
-                          })}
-                        </Text>
+                        renderEllipsisMoreRow()
                       )}
                       {shouldMeasureFit && typeof topFoodLineWidth === 'number' ? (
                         <View

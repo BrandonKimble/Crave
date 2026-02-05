@@ -1160,9 +1160,6 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     minWidth: 0,
   },
-  topFoodInlineLinePlaceholder: {
-    opacity: 0,
-  },
   topFoodInlineLineMeasureContainer: {
     position: 'absolute',
     opacity: 0,

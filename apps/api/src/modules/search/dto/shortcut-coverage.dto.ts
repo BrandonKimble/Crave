@@ -1,5 +1,11 @@
 import { Type } from 'class-transformer';
-import { IsOptional, ValidateNested } from 'class-validator';
+import {
+  IsBoolean,
+  IsIn,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 
 import { MapBoundsDto, QueryEntityGroupDto } from './search-query.dto';
 
@@ -12,4 +18,13 @@ export class ShortcutCoverageRequestDto {
   @ValidateNested()
   @Type(() => MapBoundsDto)
   bounds!: MapBoundsDto;
+
+  @IsOptional()
+  @IsBoolean()
+  includeTopDish?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['global_quality', 'coverage_display'])
+  scoreMode?: 'global_quality' | 'coverage_display';
 }

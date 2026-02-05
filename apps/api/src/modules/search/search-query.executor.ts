@@ -1444,6 +1444,9 @@ export class SearchQueryExecutor {
       if (sortByContextual) {
         return restaurant.contextualScore ?? 0;
       }
+      if (order.includes('quality_score')) {
+        return restaurant.restaurantQualityScore ?? 0;
+      }
       if (restaurant.displayPercentile != null) {
         return restaurant.displayPercentile;
       }

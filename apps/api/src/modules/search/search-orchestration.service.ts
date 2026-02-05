@@ -67,6 +67,7 @@ export class SearchOrchestrationService {
         searchRequestId: request.searchRequestId,
         submissionSource: 'shortcut',
         submissionContext: request.submissionContext,
+        scoreMode: request.scoreMode,
       });
 
       response.metadata.sourceQuery = originalQuery;

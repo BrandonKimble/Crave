@@ -272,6 +272,7 @@ export class SearchService {
         totalRestaurantResults: 0,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
+        scoreMode: request.scoreMode ?? 'global_quality',
         boundsApplied: false,
         openNowApplied: false,
         openNowSupportedRestaurants: 0,
@@ -834,6 +835,7 @@ export class SearchService {
         totalRestaurantResults,
         queryExecutionTimeMs: Date.now() - start,
         searchRequestId,
+        scoreMode: request.scoreMode ?? 'global_quality',
         boundsApplied:
           strictPage.exec.metadata.boundsApplied ||
           relaxed.exec.metadata.boundsApplied,
@@ -1250,6 +1252,7 @@ export class SearchService {
     return {
       stage,
       format: inputs.format,
+      scoreMode: request.scoreMode ?? 'global_quality',
       inputPresence,
       stagePresence,
       hadFoodGroup,

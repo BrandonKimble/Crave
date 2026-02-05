@@ -395,6 +395,7 @@ const useSearchSubmit = ({
         entities: {},
         pagination,
         includeSqlPreview: false,
+        scoreMode: searchPerfDebug.scoreMode,
       };
 
       const effectiveOpenNow = filters.openNow ?? openNow;
@@ -551,11 +552,15 @@ const useSearchSubmit = ({
           logSearchPhase('submitSearch:loading-state');
         }
 
-        const payload: NaturalSearchRequest = {
-          query: trimmed,
-          pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
-          includeSqlPreview: false,
-        };
+	        const payload: NaturalSearchRequest = {
+	          query: trimmed,
+	          pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
+	          includeSqlPreview: false,
+	          scoreMode: searchPerfDebug.scoreMode,
+	        };
+	        if (append && lastSearchRequestIdRef.current) {
+	          payload.searchRequestId = lastSearchRequestIdRef.current;
+	        }
 
         if (!append) {
           payload.submissionSource = options?.submission?.source ?? 'manual';

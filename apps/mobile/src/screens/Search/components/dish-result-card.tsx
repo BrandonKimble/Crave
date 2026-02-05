@@ -29,6 +29,7 @@ type DishResultCardProps = {
   index: number;
   qualityColor: string;
   isLiked: boolean;
+  scoreMode?: 'global_quality' | 'coverage_display';
   primaryCoverageKey?: string | null;
   showCoverageLabel?: boolean;
   restaurantForDish?: RestaurantResult;
@@ -46,6 +47,7 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
   index,
   qualityColor,
   isLiked,
+  scoreMode = 'global_quality',
   primaryCoverageKey = null,
   showCoverageLabel = false,
   restaurantForDish,
@@ -73,7 +75,20 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
     true,
     true
   );
-  const displayScoreValue = item.displayScore ?? item.qualityScore;
+  const displayScoreValue = React.useMemo(() => {
+    if (scoreMode === 'coverage_display') {
+      if (typeof item.displayScore === 'number' && Number.isFinite(item.displayScore)) {
+        return item.displayScore;
+      }
+      if (typeof item.displayPercentile === 'number' && Number.isFinite(item.displayPercentile)) {
+        return item.displayPercentile * 100;
+      }
+      return null;
+    }
+    return typeof item.qualityScore === 'number' && Number.isFinite(item.qualityScore)
+      ? item.qualityScore
+      : null;
+  }, [item.displayPercentile, item.displayScore, item.qualityScore, scoreMode]);
   const coverageLabel =
     showCoverageLabel && item.coverageKey && item.coverageKey !== primaryCoverageKey
       ? resolveCoverageDisplayLabel(item.coverageName, item.coverageKey)

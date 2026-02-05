@@ -6,6 +6,8 @@ export type QueryFormat = 'dual_list';
 
 export type FilterStage = 'restaurant' | 'connection';
 
+export type SearchScoreMode = 'global_quality' | 'coverage_display';
+
 export interface FilterClause {
   scope: FilterStage;
   description: string;
@@ -204,6 +206,7 @@ export interface SearchResponseMetadata {
   }>;
   sourceQuery?: string;
   searchRequestId?: string;
+  scoreMode?: SearchScoreMode;
   analysisMetadata?: Record<string, unknown>;
   primaryFoodTerm?: string;
   coverageKey?: string | null;
@@ -249,6 +252,7 @@ export interface Pagination {
 export interface NaturalSearchRequest {
   query: string;
   searchRequestId?: string;
+  scoreMode?: SearchScoreMode;
   submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
   submissionContext?: Record<string, unknown>;
   bounds?: MapBounds;

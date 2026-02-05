@@ -161,8 +161,8 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import { getMarkerColorForRestaurant } from './utils/marker-lod';
-import { getQualityColorFromPercentile } from './utils/quality';
+	import { getMarkerColorForDish, getMarkerColorForRestaurant } from './utils/marker-lod';
+	import { getQualityColorFromPercentile, getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
 import {
@@ -213,11 +213,8 @@ const MARKER_REVEAL_STAGGER_MS = 12;
 const MARKER_REVEAL_ANIM_MS = 2000;
 const MARKER_REVEAL_WINDOW_MS =
   MARKER_REVEAL_ANIM_MS + (MARKER_REVEAL_CHUNK - 1) * MARKER_REVEAL_STAGGER_MS + 60;
-const MARKER_DOT_HEAVY_ZOOM_ENTER = 12.0;
-const MARKER_DOT_HEAVY_ZOOM_EXIT = 12.4;
-const MARKER_DOT_HEAVY_COUNT_ENTER = 180;
-const MARKER_DOT_HEAVY_COUNT_EXIT = 150;
-const MAX_FULL_MARKERS = 100;
+const MAX_FULL_PINS = 30;
+const LOD_CAMERA_THROTTLE_MS = 80;
 const MAP_GRID_MINOR_SIZE = 32;
 const MAP_GRID_MAJOR_SIZE = 128;
 const SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER = SCREEN_HEIGHT;
@@ -3212,10 +3209,12 @@ const SearchScreen: React.FC = () => {
     setIsAutocompleteSuppressed(false);
     setQuery(value);
   }, []);
-  const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
-  const dishes = results?.dishes ?? EMPTY_DISHES;
-  const resultsHydrationCandidate =
-    results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
+	  const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
+	  const dishes = results?.dishes ?? EMPTY_DISHES;
+	  const scoreMode: NaturalSearchRequest['scoreMode'] =
+	    results?.metadata?.scoreMode ?? searchPerfDebug.scoreMode;
+	  const resultsHydrationCandidate =
+	    results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
   const storedResultsScrollOffset = useOverlayStore(
     (state) => state.overlayScrollOffsets.search ?? 0
   );
@@ -3250,7 +3249,6 @@ const SearchScreen: React.FC = () => {
   }, [results, resultsHydrationCandidate]);
   const [markerRestaurants, setMarkerRestaurants] =
     React.useState<RestaurantResult[]>(EMPTY_RESTAURANTS);
-  const [isMarkerDotHeavyMode, setIsMarkerDotHeavyMode] = React.useState(false);
   const [hydratedResultsKey, setHydratedResultsKey] = React.useState<string | null>(null);
   const hydratedResultsKeyRef = React.useRef<string | null>(null);
   React.useEffect(() => {
@@ -3925,61 +3923,76 @@ const SearchScreen: React.FC = () => {
     runAutocomplete,
   ]);
 
-  const resolveRestaurantMapLocations = React.useCallback((restaurant: RestaurantResult) => {
-    const fallbackLocation =
-      typeof restaurant.latitude === 'number' && typeof restaurant.longitude === 'number'
-        ? {
-            locationId: restaurant.restaurantLocationId ?? restaurant.restaurantId,
-            latitude: restaurant.latitude,
-            longitude: restaurant.longitude,
-          }
-        : null;
-    const displayLocation = restaurant.displayLocation ?? null;
-    const listLocations =
-      Array.isArray(restaurant.locations) && restaurant.locations.length > 0
-        ? restaurant.locations
-        : [];
-    const primaryLocation =
-      displayLocation ?? (listLocations.length > 0 ? listLocations[0] : fallbackLocation);
-    const seen = new Set<string>();
-    const resolved: Array<{
-      locationId: string;
-      latitude: number;
-      longitude: number;
-      isPrimary: boolean;
-      locationIndex: number;
-    }> = [];
+	  const resolveRestaurantMapLocations = React.useCallback((restaurant: RestaurantResult) => {
+	    const displayLocation = restaurant.displayLocation ?? null;
+	    const listLocations =
+	      Array.isArray(restaurant.locations) && restaurant.locations.length > 0
+	        ? restaurant.locations
+	        : [];
 
-    const addLocation = (
-      location: { latitude: number; longitude: number; locationId?: string } | null,
-      options: { isPrimary: boolean; locationIndex: number }
-    ) => {
-      if (
-        !location ||
-        typeof location.latitude !== 'number' ||
-        !Number.isFinite(location.latitude) ||
-        typeof location.longitude !== 'number' ||
-        !Number.isFinite(location.longitude)
-      ) {
-        return;
-      }
-      const dedupeKey = `${Math.round(location.latitude * 1e5)}:${Math.round(
-        location.longitude * 1e5
-      )}`;
+	    const isValidMapLocation = (
+	      location: {
+	        latitude?: number | null;
+	        longitude?: number | null;
+	        googlePlaceId?: string | null;
+	      } | null
+	    ) => {
+	      if (
+	        !location ||
+	        typeof location.latitude !== 'number' ||
+	        !Number.isFinite(location.latitude) ||
+	        typeof location.longitude !== 'number' ||
+	        !Number.isFinite(location.longitude)
+	      ) {
+	        return false;
+	      }
+	      // Guardrail: don't render pins for unresolved placeholder locations.
+	      return typeof location.googlePlaceId === 'string' && location.googlePlaceId.length > 0;
+	    };
+
+	    const primaryLocation =
+	      (isValidMapLocation(displayLocation) ? displayLocation : null) ??
+	      (listLocations.find((location) => isValidMapLocation(location)) ?? null);
+	    const seen = new Set<string>();
+	    const resolved: Array<{
+	      locationId: string;
+	      latitude: number;
+	      longitude: number;
+	      googlePlaceId: string;
+	      isPrimary: boolean;
+	      locationIndex: number;
+	    }> = [];
+
+	    const addLocation = (
+	      location: {
+	        latitude?: number | null;
+	        longitude?: number | null;
+	        locationId?: string | null;
+	        googlePlaceId?: string | null;
+	      } | null,
+	      options: { isPrimary: boolean; locationIndex: number }
+	    ) => {
+	      if (!isValidMapLocation(location)) {
+	        return;
+	      }
+	      const dedupeKey = `${Math.round(location.latitude * 1e5)}:${Math.round(
+	        location.longitude * 1e5
+	      )}`;
       if (seen.has(dedupeKey)) {
         return;
       }
       seen.add(dedupeKey);
-      const locationId =
-        location.locationId ?? `${restaurant.restaurantId}-loc-${options.locationIndex}`;
-      resolved.push({
-        locationId,
-        latitude: location.latitude,
-        longitude: location.longitude,
-        isPrimary: options.isPrimary,
-        locationIndex: options.locationIndex,
-      });
-    };
+	      const locationId =
+	        location.locationId ?? `${restaurant.restaurantId}-loc-${options.locationIndex}`;
+	      resolved.push({
+	        locationId,
+	        latitude: location.latitude as number,
+	        longitude: location.longitude as number,
+	        googlePlaceId: location.googlePlaceId as string,
+	        isPrimary: options.isPrimary,
+	        locationIndex: options.locationIndex,
+	      });
+	    };
 
     if (primaryLocation) {
       addLocation(primaryLocation, { isPrimary: true, locationIndex: 0 });
@@ -3992,13 +4005,14 @@ const SearchScreen: React.FC = () => {
     return resolved;
   }, []);
 
-  type ResolvedRestaurantMapLocation = {
-    locationId: string;
-    latitude: number;
-    longitude: number;
-    isPrimary: boolean;
-    locationIndex: number;
-  };
+	  type ResolvedRestaurantMapLocation = {
+	    locationId: string;
+	    latitude: number;
+	    longitude: number;
+	    googlePlaceId: string;
+	    isPrimary: boolean;
+	    locationIndex: number;
+	  };
 
   const resolveSearchViewportCenter = React.useCallback((): Coordinate | null => {
     const bounds = lastSearchBoundsRef.current ?? latestBoundsRef.current;
@@ -4089,27 +4103,39 @@ const SearchScreen: React.FC = () => {
         }
       });
 
-      // Convert grouped dishes to features
-      dishesByLocation.forEach(({ dish, rank }, _locationKey) => {
-        const pinColor = getQualityColorFromPercentile(dish.displayPercentile);
-        const featureId = `dish-${dish.connectionId}`;
-        const feature: Feature<Point, RestaurantFeatureProperties> = {
-          type: 'Feature',
-          id: featureId,
+	      // Convert grouped dishes to features
+	      dishesByLocation.forEach(({ dish, rank }, _locationKey) => {
+	        const pinColor =
+	          scoreMode === 'coverage_display'
+	            ? getQualityColorFromPercentile(dish.displayPercentile)
+	            : getQualityColorFromScore(dish.qualityScore);
+	        const contextualScore =
+	          scoreMode === 'coverage_display'
+	            ? typeof dish.displayScore === 'number' && Number.isFinite(dish.displayScore)
+	              ? dish.displayScore
+	              : typeof dish.displayPercentile === 'number' &&
+	                Number.isFinite(dish.displayPercentile)
+	              ? dish.displayPercentile * 100
+	              : dish.qualityScore
+	            : dish.qualityScore;
+	        const featureId = `dish-${dish.connectionId}`;
+	        const feature: Feature<Point, RestaurantFeatureProperties> = {
+	          type: 'Feature',
+	          id: featureId,
           geometry: {
             type: 'Point',
             coordinates: [dish.restaurantLongitude!, dish.restaurantLatitude!],
           },
-          properties: {
-            restaurantId: dish.restaurantId,
-            restaurantName: dish.restaurantName,
-            contextualScore: dish.qualityScore,
-            rank,
-            pinColor,
-            isDishPin: true,
-            dishName: dish.foodName,
-            connectionId: dish.connectionId,
-          },
+	          properties: {
+	            restaurantId: dish.restaurantId,
+	            restaurantName: dish.restaurantName,
+	            contextualScore,
+	            rank,
+	            pinColor,
+	            isDishPin: true,
+	            dishName: dish.foodName,
+	            connectionId: dish.connectionId,
+	          },
         };
         entries.push({
           feature,
@@ -4120,13 +4146,13 @@ const SearchScreen: React.FC = () => {
       });
     } else {
       // Restaurant mode: existing logic
-      markerRestaurants.forEach((restaurant, restaurantIndex) => {
+	      markerRestaurants.forEach((restaurant, restaurantIndex) => {
         if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
           return;
-        }
-        const rank = restaurantIndex + 1;
-        const pinColor = getMarkerColorForRestaurant(restaurant);
-        const locations = resolveRestaurantMapLocations(restaurant);
+	        }
+	        const rank = restaurantIndex + 1;
+	        const pinColor = getMarkerColorForRestaurant(restaurant, scoreMode);
+	        const locations = resolveRestaurantMapLocations(restaurant);
         const shouldRenderAllLocations =
           selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
         const closestLocation = shouldRenderAllLocations
@@ -4221,7 +4247,6 @@ const SearchScreen: React.FC = () => {
   const selectedRestaurantId = isRestaurantOverlayVisible
     ? restaurantProfile?.restaurant.restaurantId ?? null
     : null;
-  const effectiveMapZoom = mapZoom ?? USA_FALLBACK_ZOOM;
 
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
@@ -4234,146 +4259,133 @@ const SearchScreen: React.FC = () => {
     return markerCatalogEntries;
   }, [getPerfNow, logSearchCompute, markerCatalogEntries, shouldLogSearchComputes]);
 
+  const markerCandidatesRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
   React.useEffect(() => {
-    const visibleCount = visibleMarkerCandidates.length;
-    const zoom = effectiveMapZoom;
-    setIsMarkerDotHeavyMode((previous) => {
-      const shouldEnter =
-        zoom <= MARKER_DOT_HEAVY_ZOOM_ENTER || visibleCount >= MARKER_DOT_HEAVY_COUNT_ENTER;
-      const shouldExit =
-        zoom >= MARKER_DOT_HEAVY_ZOOM_EXIT && visibleCount <= MARKER_DOT_HEAVY_COUNT_EXIT;
-      if (previous) {
-        return shouldExit ? false : true;
-      }
-      return shouldEnter ? true : false;
-    });
-  }, [effectiveMapZoom, visibleMarkerCandidates.length]);
+    markerCandidatesRef.current = visibleMarkerCandidates.map((entry) => entry.feature);
+  }, [visibleMarkerCandidates]);
 
-  const fullMarkerCandidates = React.useMemo(() => {
-    const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    const base = isMarkerDotHeavyMode
-      ? visibleMarkerCandidates.slice(0, MAX_FULL_MARKERS)
-      : visibleMarkerCandidates;
-
-    if (!isMarkerDotHeavyMode || !selectedRestaurantId) {
-      if (shouldLogSearchComputes) {
-        logSearchCompute(
-          `fullMarkerCandidates count=${base.length} mode=${isMarkerDotHeavyMode ? 'lod' : 'full'}`,
-          getPerfNow() - start
-        );
-      }
-      return base;
-    }
-
-    const selectedEntries = visibleMarkerCandidates.filter(
-      (entry) => entry.feature.properties.restaurantId === selectedRestaurantId
-    );
-    if (selectedEntries.length === 0) {
-      if (shouldLogSearchComputes) {
-        logSearchCompute(
-          `fullMarkerCandidates count=${base.length} mode=lod`,
-          getPerfNow() - start
-        );
-      }
-      return base;
-    }
-
-    const baseSelectedKeys = new Set(
-      base
-        .filter((entry) => entry.feature.properties.restaurantId === selectedRestaurantId)
-        .map((entry) => buildMarkerKey(entry.feature))
-    );
-    const hasAllSelected = selectedEntries.every((entry) =>
-      baseSelectedKeys.has(buildMarkerKey(entry.feature))
-    );
-    if (hasAllSelected) {
-      if (shouldLogSearchComputes) {
-        logSearchCompute(
-          `fullMarkerCandidates count=${base.length} mode=lod+selected`,
-          getPerfNow() - start
-        );
-      }
-      return base;
-    }
-
-    const nextByKey = new Map<string, (typeof base)[number]>();
-    const nonSelected = base.filter(
-      (entry) => entry.feature.properties.restaurantId !== selectedRestaurantId
-    );
-    const nonSelectedBudget = Math.max(0, MAX_FULL_MARKERS - selectedEntries.length);
-    for (const entry of nonSelected.slice(0, nonSelectedBudget)) {
-      nextByKey.set(buildMarkerKey(entry.feature), entry);
-    }
-    for (const entry of selectedEntries) {
-      nextByKey.set(buildMarkerKey(entry.feature), entry);
-    }
-    const next = Array.from(nextByKey.values());
-    if (shouldLogSearchComputes) {
-      logSearchCompute(
-        `fullMarkerCandidates count=${next.length} mode=lod+selected`,
-        getPerfNow() - start
-      );
-    }
-    return next;
-  }, [
-    buildMarkerKey,
-    getPerfNow,
-    isMarkerDotHeavyMode,
-    logSearchCompute,
+  const shortcutCoverageRankedRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>(
+    []
+  );
+  const [lodPinnedMarkers, setLodPinnedMarkers] = React.useState<
+    Array<Feature<Point, RestaurantFeatureProperties>>
+  >([]);
+  const lodPinnedKeyRef = React.useRef<string>('');
+  const lodContextRef = React.useRef({
+    searchMode,
+    activeTab,
     selectedRestaurantId,
-    shouldLogSearchComputes,
-    visibleMarkerCandidates,
-  ]);
-
-  const sortedRestaurantMarkers = React.useMemo(() => {
-    const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    const sorted = fullMarkerCandidates.map((entry) => entry.feature);
-    if (shouldLogSearchComputes) {
-      logSearchCompute(`sortedRestaurantMarkers count=${sorted.length}`, getPerfNow() - start);
-    }
-    return sorted;
-  }, [fullMarkerCandidates, getPerfNow, logSearchCompute, shouldLogSearchComputes]);
-
-  const shortcutPinnedMarkersByRequestIdRef = React.useRef<
-    Map<string, Array<Feature<Point, RestaurantFeatureProperties>>>
-  >(new Map());
+  });
   React.useEffect(() => {
-    if (searchMode !== 'shortcut') {
-      shortcutPinnedMarkersByRequestIdRef.current.clear();
-      return;
-    }
-    const requestId = results?.metadata?.searchRequestId ?? null;
-    if (!requestId) {
-      return;
-    }
-    const page = results?.metadata?.page;
-    if (page !== 1) {
-      return;
-    }
-    if (shortcutPinnedMarkersByRequestIdRef.current.has(requestId)) {
-      return;
-    }
-    if (sortedRestaurantMarkers.length === 0) {
-      return;
-    }
-    shortcutPinnedMarkersByRequestIdRef.current.set(requestId, sortedRestaurantMarkers);
+    lodContextRef.current = { searchMode, activeTab, selectedRestaurantId };
+  }, [activeTab, searchMode, selectedRestaurantId]);
+
+  const updateLodPinnedMarkers = React.useCallback(
+    (bounds: MapBounds | null) => {
+      const start = shouldLogSearchComputes ? getPerfNow() : 0;
+      if (!bounds) {
+        if (lodPinnedKeyRef.current !== '') {
+          lodPinnedKeyRef.current = '';
+          setLodPinnedMarkers([]);
+        }
+        return;
+      }
+
+      const context = lodContextRef.current;
+      const rankedCandidates =
+        context.searchMode === 'shortcut' && shortcutCoverageRankedRef.current.length
+          ? shortcutCoverageRankedRef.current
+          : markerCandidatesRef.current;
+
+      if (!rankedCandidates.length) {
+        if (lodPinnedKeyRef.current !== '') {
+          lodPinnedKeyRef.current = '';
+          setLodPinnedMarkers([]);
+        }
+        return;
+      }
+
+	      const selectedId = context.selectedRestaurantId;
+	      const selectedEntries: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+	      const others: Array<Feature<Point, RestaurantFeatureProperties>> = [];
+
+      for (const feature of rankedCandidates) {
+        const coordinate = feature.geometry.coordinates as [number, number];
+        const lng = coordinate[0];
+        const lat = coordinate[1];
+        const isVisible =
+          lat >= bounds.southWest.lat &&
+          lat <= bounds.northEast.lat &&
+          lng >= bounds.southWest.lng &&
+          lng <= bounds.northEast.lng;
+        if (!isVisible) {
+          continue;
+        }
+
+	        if (selectedId && feature.properties.restaurantId === selectedId) {
+	          selectedEntries.push(feature);
+	          continue;
+	        }
+
+        others.push(feature);
+        if (others.length >= MAX_FULL_PINS) {
+          break;
+	        }
+	      }
+
+	      if (selectedEntries.length > MAX_FULL_PINS) {
+	        selectedEntries.length = MAX_FULL_PINS;
+	      }
+
+	      const remainingBudget = Math.max(0, MAX_FULL_PINS - selectedEntries.length);
+	      const next = [...selectedEntries, ...others.slice(0, remainingBudget)];
+
+	      const zSorted = [...next].sort((a, b) => {
+	        const rankDiff = a.properties.rank - b.properties.rank;
+	        if (rankDiff !== 0) {
+	          return rankDiff;
+	        }
+	        return buildMarkerKey(a).localeCompare(buildMarkerKey(b));
+	      });
+	      const zSlots = MAX_FULL_PINS;
+	      const zByMarkerKey = new Map<string, number>();
+	      zSorted.forEach((feature, index) => {
+	        const slot = zSlots - 1 - index;
+	        zByMarkerKey.set(buildMarkerKey(feature), slot);
+	      });
+	      const nextWithZ = next.map((feature) => ({
+	        ...feature,
+	        properties: {
+	          ...feature.properties,
+	          lodZ: zByMarkerKey.get(buildMarkerKey(feature)) ?? 0,
+	        },
+	      }));
+
+	      const nextKey = nextWithZ.map((feature) => buildMarkerKey(feature)).join('|');
+	      if (nextKey === lodPinnedKeyRef.current) {
+	        return;
+	      }
+	      lodPinnedKeyRef.current = nextKey;
+	      setLodPinnedMarkers(nextWithZ);
+
+	      if (shouldLogSearchComputes) {
+	        logSearchCompute(`lodPinnedMarkers pins=${next.length}`, getPerfNow() - start);
+	      }
+	    },
+	    [buildMarkerKey, getPerfNow, logSearchCompute, shouldLogSearchComputes]
+	  );
+
+  React.useEffect(() => {
+    updateLodPinnedMarkers(latestBoundsRef.current);
   }, [
-    results?.metadata?.page,
+    activeTab,
     results?.metadata?.searchRequestId,
     searchMode,
-    sortedRestaurantMarkers,
+    updateLodPinnedMarkers,
+    visibleMarkerCandidates.length,
   ]);
 
-  const effectiveSortedRestaurantMarkers = React.useMemo(() => {
-    if (searchMode !== 'shortcut') {
-      return sortedRestaurantMarkers;
-    }
-    const requestId = results?.metadata?.searchRequestId ?? null;
-    if (!requestId) {
-      return sortedRestaurantMarkers;
-    }
-    return shortcutPinnedMarkersByRequestIdRef.current.get(requestId) ?? sortedRestaurantMarkers;
-  }, [results?.metadata?.searchRequestId, searchMode, sortedRestaurantMarkers]);
+  const sortedRestaurantMarkers = lodPinnedMarkers;
 
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<
@@ -4409,11 +4421,13 @@ const SearchScreen: React.FC = () => {
       shortcutCoverageFetchKeyRef.current = null;
       shortcutCoverageSnapshotByRequestIdRef.current.clear();
       setShortcutCoverageDotFeatures(null);
+      shortcutCoverageRankedRef.current = [];
       return;
     }
     const requestId = results?.metadata?.searchRequestId ?? null;
     if (!requestId) {
       setShortcutCoverageDotFeatures(null);
+      shortcutCoverageRankedRef.current = [];
       return;
     }
     const snapshot = shortcutCoverageSnapshotByRequestIdRef.current.get(requestId) ?? null;
@@ -4421,14 +4435,16 @@ const SearchScreen: React.FC = () => {
     const entitiesSnapshot = snapshot?.entities ?? undefined;
     if (!boundsSnapshot) {
       setShortcutCoverageDotFeatures(null);
+      shortcutCoverageRankedRef.current = [];
       return;
     }
+	    const includeTopDish = activeTab === 'dishes';
     const boundsKey = boundsSnapshot
       ? `${boundsSnapshot.northEast.lat.toFixed(4)},${boundsSnapshot.northEast.lng.toFixed(
           4
         )},${boundsSnapshot.southWest.lat.toFixed(4)},${boundsSnapshot.southWest.lng.toFixed(4)}`
       : 'no-bounds';
-    const fetchKey = `${requestId}::${boundsKey}`;
+    const fetchKey = `${requestId}::${boundsKey}::${includeTopDish ? 'dishes' : 'restaurants'}::${scoreMode}`;
     if (shortcutCoverageFetchKeyRef.current === fetchKey) {
       return;
     }
@@ -4436,45 +4452,138 @@ const SearchScreen: React.FC = () => {
 
     let cancelled = false;
     void searchService
-      .shortcutCoverage({ entities: entitiesSnapshot, bounds: boundsSnapshot })
+      .shortcutCoverage({
+        entities: entitiesSnapshot,
+        bounds: boundsSnapshot,
+        includeTopDish,
+        scoreMode,
+      })
       .then((collection) => {
         if (cancelled) {
           return;
         }
+	        const features = (collection?.features ?? [])
+	          .map((feature) => {
+            const properties =
+              feature?.properties && typeof feature.properties === 'object'
+                ? (feature.properties as Record<string, unknown>)
+                : {};
+            const restaurantId = (properties.restaurantId as string) ?? '';
+            const restaurantName = (properties.restaurantName as string) ?? '';
+            if (!restaurantId || !restaurantName) {
+              return null;
+            }
+            const contextualScore =
+              typeof properties['contextualScore'] === 'number'
+                ? (properties['contextualScore'] as number)
+                : 0;
+	            const restaurantQualityScore =
+	              typeof properties['restaurantQualityScore'] === 'number'
+	                ? (properties['restaurantQualityScore'] as number)
+	                : null;
+	            const displayPercentile =
+	              typeof properties['displayPercentile'] === 'number'
+	                ? (properties['displayPercentile'] as number)
+	                : null;
+	            const topDishDisplayPercentile =
+	              includeTopDish && typeof properties['topDishDisplayPercentile'] === 'number'
+	                ? (properties['topDishDisplayPercentile'] as number)
+	                : null;
+	            const scoreForColor = includeTopDish
+	              ? contextualScore
+	              : typeof restaurantQualityScore === 'number'
+	              ? restaurantQualityScore
+	              : null;
+	            const pinColor =
+	              scoreMode === 'coverage_display'
+	                ? getQualityColorFromPercentile(
+	                    includeTopDish
+	                      ? topDishDisplayPercentile ?? displayPercentile
+	                      : displayPercentile
+	                  )
+	                : getQualityColorFromScore(scoreForColor);
+	            const isDishPin = includeTopDish ? true : false;
+	            const dishName =
+	              includeTopDish && typeof properties['dishName'] === 'string'
+	                ? (properties['dishName'] as string)
+                : undefined;
+            const connectionId =
+              includeTopDish && typeof properties['connectionId'] === 'string'
+                ? (properties['connectionId'] as string)
+                : undefined;
+            return {
+              ...feature,
+              id: feature.id ?? restaurantId,
+              properties: {
+                restaurantId,
+	                restaurantName,
+	                contextualScore,
+	                rank:
+	                  typeof properties['rank'] === 'number' ? (properties['rank'] as number) : 9999,
+	                displayPercentile,
+	                restaurantQualityScore:
+	                  typeof restaurantQualityScore === 'number' ? restaurantQualityScore : null,
+	                pinColor,
+	                ...(isDishPin
+	                  ? {
+	                      isDishPin: true,
+	                      dishName,
+	                      connectionId,
+	                      topDishDisplayPercentile,
+	                    }
+	                  : null),
+	              },
+	            } as Feature<Point, RestaurantFeatureProperties>;
+	          })
+	          .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
+
+	        const scoreForRank = (feature: Feature<Point, RestaurantFeatureProperties>) => {
+	          if (scoreMode === 'coverage_display') {
+	            const restaurantPercentile = feature.properties.displayPercentile ?? 0;
+	            if (!includeTopDish) {
+	              return restaurantPercentile;
+	            }
+	            return feature.properties.topDishDisplayPercentile ?? restaurantPercentile;
+	          }
+	          if (includeTopDish) {
+	            return feature.properties.contextualScore ?? 0;
+	          }
+	          return feature.properties.restaurantQualityScore ?? 0;
+	        };
+        const ranked = [...features].sort((a, b) => {
+          const scoreDiff = scoreForRank(b) - scoreForRank(a);
+          if (scoreDiff !== 0) {
+            return scoreDiff;
+          }
+          return a.properties.restaurantId.localeCompare(b.properties.restaurantId);
+        });
+
+        const rankByRestaurantId = new Map<string, number>();
+        ranked.forEach((feature, index) => {
+          rankByRestaurantId.set(feature.properties.restaurantId, index + 1);
+        });
+        const featuresWithRank = features.map((feature) => ({
+          ...feature,
+          properties: {
+            ...feature.properties,
+            rank: rankByRestaurantId.get(feature.properties.restaurantId) ?? feature.properties.rank,
+          },
+        }));
+
+        shortcutCoverageRankedRef.current = ranked.map((feature) => ({
+          ...feature,
+          properties: {
+            ...feature.properties,
+            rank: rankByRestaurantId.get(feature.properties.restaurantId) ?? feature.properties.rank,
+          },
+        }));
+
         const next: FeatureCollection<Point, RestaurantFeatureProperties> = {
           type: 'FeatureCollection',
-          features: (collection?.features ?? [])
-            .map((feature) => {
-              const properties =
-                feature?.properties && typeof feature.properties === 'object'
-                  ? (feature.properties as Partial<RestaurantFeatureProperties>)
-                  : {};
-              const restaurantId = properties.restaurantId ?? '';
-              const restaurantName = properties.restaurantName ?? '';
-              if (!restaurantId || !restaurantName) {
-                return null;
-              }
-              const displayPercentile =
-                typeof properties.displayPercentile === 'number'
-                  ? properties.displayPercentile
-                  : null;
-              const pinColor = getQualityColorFromPercentile(displayPercentile);
-              return {
-                ...feature,
-                id: feature.id ?? restaurantId,
-                properties: {
-                  restaurantId,
-                  restaurantName,
-                  contextualScore: properties.contextualScore ?? 0,
-                  rank: properties.rank ?? 9999,
-                  displayPercentile,
-                  pinColor,
-                },
-              } as Feature<Point, RestaurantFeatureProperties>;
-            })
-            .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>,
+          features: featuresWithRank,
         };
         setShortcutCoverageDotFeatures(next);
+        updateLodPinnedMarkers(latestBoundsRef.current);
       })
       .catch((err) => {
         if (cancelled) {
@@ -4485,69 +4594,32 @@ const SearchScreen: React.FC = () => {
           requestId,
         });
         setShortcutCoverageDotFeatures(null);
+        shortcutCoverageRankedRef.current = [];
       });
     return () => {
       cancelled = true;
     };
-  }, [results?.metadata?.searchRequestId, searchMode]);
+	  }, [
+	    activeTab,
+	    results?.metadata?.searchRequestId,
+	    scoreMode,
+	    searchMode,
+	    updateLodPinnedMarkers,
+	  ]);
 
-  const dotRestaurantMarkers = React.useMemo(() => {
-    const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    if (!isMarkerDotHeavyMode) {
-      return [];
-    }
-    if (visibleMarkerCandidates.length === 0) {
-      return [];
-    }
-    if (sortedRestaurantMarkers.length === 0) {
-      return visibleMarkerCandidates.map((entry) => entry.feature);
-    }
-    const fullKeys = new Set(sortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)));
-    const dots = visibleMarkerCandidates
-      .filter((entry) => !fullKeys.has(buildMarkerKey(entry.feature)))
-      .map((entry) => entry.feature);
-    if (shouldLogSearchComputes) {
-      logSearchCompute(`dotRestaurantMarkers count=${dots.length}`, getPerfNow() - start);
-    }
-    return dots;
-  }, [
-    buildMarkerKey,
-    getPerfNow,
-    isMarkerDotHeavyMode,
-    logSearchCompute,
-    shouldLogSearchComputes,
-    sortedRestaurantMarkers,
-    visibleMarkerCandidates,
-  ]);
   const dotRestaurantFeatures = React.useMemo<FeatureCollection<
     Point,
     RestaurantFeatureProperties
   > | null>(() => {
-    if (searchMode === 'shortcut' && shortcutCoverageDotFeatures?.features?.length) {
-      const pinnedRestaurantIds = new Set(
-        effectiveSortedRestaurantMarkers.map((feature) => feature.properties.restaurantId)
-      );
-      const dotFeatures = shortcutCoverageDotFeatures.features.filter(
-        (feature) => !pinnedRestaurantIds.has(feature.properties.restaurantId)
-      );
-      if (dotFeatures.length === 0) {
-        return null;
-      }
-      return { type: 'FeatureCollection', features: dotFeatures };
+    if (searchMode === 'shortcut') {
+      return shortcutCoverageDotFeatures?.features?.length ? shortcutCoverageDotFeatures : null;
     }
-    if (!isMarkerDotHeavyMode || dotRestaurantMarkers.length === 0) {
-      return null;
-    }
-    return {
-      type: 'FeatureCollection',
-      features: dotRestaurantMarkers,
-    };
+    const features = visibleMarkerCandidates.map((entry) => entry.feature);
+    return features.length ? { type: 'FeatureCollection', features } : null;
   }, [
-    dotRestaurantMarkers,
-    isMarkerDotHeavyMode,
-    effectiveSortedRestaurantMarkers,
     searchMode,
     shortcutCoverageDotFeatures,
+    visibleMarkerCandidates,
   ]);
   const restaurantFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
@@ -4555,34 +4627,32 @@ const SearchScreen: React.FC = () => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
     const collection = {
       type: 'FeatureCollection',
-      features: effectiveSortedRestaurantMarkers,
+      features: sortedRestaurantMarkers,
     };
     if (shouldLogSearchComputes) {
       logSearchCompute(
-        `restaurantFeatures markers=${effectiveSortedRestaurantMarkers.length}`,
+        `restaurantFeatures markers=${sortedRestaurantMarkers.length}`,
         getPerfNow() - start
       );
     }
     return collection;
-  }, [effectiveSortedRestaurantMarkers, getPerfNow, logSearchCompute, shouldLogSearchComputes]);
-  const markersRenderKey = React.useMemo(() => {
-    const start = shouldLogSearchComputes ? getPerfNow() : 0;
-    const key = sortedRestaurantMarkers
-      .map((feature) => {
-        const id = feature.id ?? feature.properties.restaurantId;
-        const name = feature.properties.restaurantName ?? '';
-        const color = feature.properties.pinColor ?? '';
-        const coordinates = feature.geometry.coordinates as [number, number];
-        const lng = Math.round(coordinates[0] * CAMERA_CENTER_PRECISION);
-        const lat = Math.round(coordinates[1] * CAMERA_CENTER_PRECISION);
-        return `${id}-${feature.properties.rank}-${name}-${color}-${lng}-${lat}`;
-      })
-      .join('|');
-    if (shouldLogSearchComputes) {
-      logSearchCompute('markersRenderKey', getPerfNow() - start);
-    }
-    return key;
   }, [getPerfNow, logSearchCompute, shouldLogSearchComputes, sortedRestaurantMarkers]);
+	  const markersRenderKey = React.useMemo(() => {
+	    const requestId =
+	      results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? 'no-request';
+	    return `${requestId}::${searchMode ?? 'none'}::${activeTab}::${scoreMode}`;
+	  }, [
+	    activeTab,
+	    results?.metadata?.requestId,
+	    results?.metadata?.searchRequestId,
+	    searchMode,
+	    scoreMode,
+	  ]);
+
+  const pinsRenderKey = React.useMemo(
+    () => sortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)).join('|'),
+    [buildMarkerKey, sortedRestaurantMarkers]
+  );
 
   React.useEffect(() => {
     return () => {
@@ -5815,7 +5885,7 @@ const SearchScreen: React.FC = () => {
       mapGestureActiveRef.current = isGestureActive;
 
       const now = Date.now();
-      const throttleMs = 120;
+      const throttleMs = LOD_CAMERA_THROTTLE_MS;
       if (now - lastCameraChangedHandledRef.current < throttleMs) {
         return;
       }
@@ -5826,6 +5896,7 @@ const SearchScreen: React.FC = () => {
         return;
       }
       latestBoundsRef.current = bounds;
+      updateLodPinnedMarkers(bounds);
 
       if (searchInteractionRef.current.isInteracting || anySheetDraggingRef.current) {
         cancelMapUpdateTimeouts();
@@ -5928,6 +5999,7 @@ const SearchScreen: React.FC = () => {
       shouldLogSearchStateChanges,
       shouldLogMapEventRates,
       shouldDisableResultsSheetInteraction,
+      updateLodPinnedMarkers,
     ]
   );
 
@@ -6873,7 +6945,7 @@ const SearchScreen: React.FC = () => {
     restoreSearchSheetState,
     setProfileTransitionStatusState,
   ]);
-  const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
+	  const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
   const hasCrossCoverage = React.useMemo(() => {
     const coverageKeys = new Set<string>();
     dishes.forEach((dish) => {
@@ -6889,87 +6961,91 @@ const SearchScreen: React.FC = () => {
     return coverageKeys.size > 1;
   }, [dishes, restaurants]);
 
-  const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
-  const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
-  const restaurantQualityColorById = React.useMemo(() => {
-    const map = new Map<string, string>();
-    restaurants.forEach((restaurant) => {
-      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant));
-    });
-    return map;
-  }, [restaurants]);
-  const dishQualityColorByConnectionId = React.useMemo(() => {
-    const map = new Map<string, string>();
-    dishes.forEach((dish) => {
-      map.set(dish.connectionId, getQualityColorFromPercentile(dish.displayPercentile));
-    });
-    return map;
-  }, [dishes]);
+	  const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
+	  const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
+	  const restaurantQualityColorById = React.useMemo(() => {
+	    const map = new Map<string, string>();
+	    restaurants.forEach((restaurant) => {
+	      map.set(restaurant.restaurantId, getMarkerColorForRestaurant(restaurant, scoreMode));
+	    });
+	    return map;
+	  }, [restaurants, scoreMode]);
+	  const dishQualityColorByConnectionId = React.useMemo(() => {
+	    const map = new Map<string, string>();
+	    dishes.forEach((dish) => {
+	      map.set(dish.connectionId, getMarkerColorForDish(dish, scoreMode));
+	    });
+	    return map;
+	  }, [dishes, scoreMode]);
   restaurantQualityColorByIdRef.current = restaurantQualityColorById;
   dishQualityColorByConnectionIdRef.current = dishQualityColorByConnectionId;
 
-  const renderDishCard = React.useCallback(
-    (item: FoodResult, index: number) => {
-      const restaurantForDish = restaurantsById.get(item.restaurantId);
-      const isLiked = false;
-      const qualityColor =
-        dishQualityColorByConnectionIdRef.current.get(item.connectionId) ??
-        getQualityColorFromPercentile(item.displayPercentile);
-      return (
-        <DishResultCard
-          item={item}
-          index={index}
-          qualityColor={qualityColor}
-          isLiked={isLiked}
-          primaryCoverageKey={primaryCoverageKey}
-          showCoverageLabel={hasCrossCoverage}
-          restaurantForDish={restaurantForDish}
-          onSavePress={getDishSaveHandler(item.connectionId)}
-          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
-          openScoreInfo={openScoreInfo}
-        />
-      );
-    },
-    [
-      getDishSaveHandler,
-      hasCrossCoverage,
-      stableOpenRestaurantProfileFromResults,
-      openScoreInfo,
-      primaryCoverageKey,
-      restaurantsById,
-    ]
-  );
+	  const renderDishCard = React.useCallback(
+	    (item: FoodResult, index: number) => {
+	      const restaurantForDish = restaurantsById.get(item.restaurantId);
+	      const isLiked = false;
+	      const qualityColor =
+	        dishQualityColorByConnectionIdRef.current.get(item.connectionId) ??
+	        getMarkerColorForDish(item, scoreMode);
+	      return (
+	        <DishResultCard
+	          item={item}
+	          index={index}
+	          qualityColor={qualityColor}
+	          isLiked={isLiked}
+	          scoreMode={scoreMode}
+	          primaryCoverageKey={primaryCoverageKey}
+	          showCoverageLabel={hasCrossCoverage}
+	          restaurantForDish={restaurantForDish}
+	          onSavePress={getDishSaveHandler(item.connectionId)}
+	          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
+	          openScoreInfo={openScoreInfo}
+	        />
+	      );
+	    },
+	    [
+	      getDishSaveHandler,
+	      hasCrossCoverage,
+	      scoreMode,
+	      stableOpenRestaurantProfileFromResults,
+	      openScoreInfo,
+	      primaryCoverageKey,
+	      restaurantsById,
+	    ]
+	  );
 
-  const renderRestaurantCard = React.useCallback(
-    (restaurant: RestaurantResult, index: number) => {
-      const isLiked = false;
-      const qualityColor =
-        restaurantQualityColorByIdRef.current.get(restaurant.restaurantId) ??
-        getMarkerColorForRestaurant(restaurant);
-      return (
-        <RestaurantResultCard
-          restaurant={restaurant}
-          index={index}
-          qualityColor={qualityColor}
-          isLiked={isLiked}
-          primaryCoverageKey={primaryCoverageKey}
-          showCoverageLabel={hasCrossCoverage}
-          onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
-          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
-          openScoreInfo={openScoreInfo}
-          primaryFoodTerm={primaryFoodTerm}
-        />
-      );
-    },
-    [
-      getRestaurantSaveHandler,
-      hasCrossCoverage,
-      stableOpenRestaurantProfileFromResults,
-      openScoreInfo,
-      primaryFoodTerm,
-      primaryCoverageKey,
-    ]
-  );
+	  const renderRestaurantCard = React.useCallback(
+	    (restaurant: RestaurantResult, index: number) => {
+	      const isLiked = false;
+	      const qualityColor =
+	        restaurantQualityColorByIdRef.current.get(restaurant.restaurantId) ??
+	        getMarkerColorForRestaurant(restaurant, scoreMode);
+	      return (
+	        <RestaurantResultCard
+	          restaurant={restaurant}
+	          index={index}
+	          qualityColor={qualityColor}
+	          isLiked={isLiked}
+	          scoreMode={scoreMode}
+	          primaryCoverageKey={primaryCoverageKey}
+	          showCoverageLabel={hasCrossCoverage}
+	          onSavePress={getRestaurantSaveHandler(restaurant.restaurantId)}
+	          openRestaurantProfile={stableOpenRestaurantProfileFromResults}
+	          openScoreInfo={openScoreInfo}
+	          primaryFoodTerm={primaryFoodTerm}
+	        />
+	      );
+	    },
+	    [
+	      getRestaurantSaveHandler,
+	      hasCrossCoverage,
+	      scoreMode,
+	      stableOpenRestaurantProfileFromResults,
+	      openScoreInfo,
+	      primaryFoodTerm,
+	      primaryCoverageKey,
+	    ]
+	  );
 
   const filtersHeader = React.useMemo(
     () => (
@@ -7864,6 +7940,7 @@ const SearchScreen: React.FC = () => {
               sortedRestaurantMarkers={sortedRestaurantMarkers}
               dotRestaurantFeatures={dotRestaurantFeatures}
               markersRenderKey={markersRenderKey}
+              pinsRenderKey={pinsRenderKey}
               buildMarkerKey={buildMarkerKey}
               shouldAnimateMarkerReveal={shouldAnimateMarkerReveal}
               markerRevealChunk={MARKER_REVEAL_CHUNK}

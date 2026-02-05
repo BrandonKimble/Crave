@@ -91,6 +91,7 @@ export type SearchFiltersLayoutCache = {
   viewportWidth: number;
   rowHeight: number;
   holeMap: Record<string, MaskedHole>;
+  segmentLayouts?: Partial<Record<SegmentValue, LayoutRectangle>>;
 };
 
 type SearchFiltersProps = {
@@ -137,13 +138,17 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   const [holeMap, setHoleMap] = React.useState<Record<string, MaskedHole>>(
     initialLayoutCache?.holeMap ?? {}
   );
-  const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>({});
-  const highlightReadyRef = React.useRef(false);
+  const segmentLayoutsRef = React.useRef<Partial<Record<SegmentValue, LayoutRectangle>>>(
+    initialLayoutCache?.segmentLayouts ? { ...initialLayoutCache.segmentLayouts } : {}
+  );
+  const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
+  const initialActiveLayout = segmentLayoutsRef.current[activeTab];
+  const highlightReadyRef = React.useRef(Boolean(initialActiveLayout && initialActiveLayout.width > 0));
 
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
-  const highlightTranslateX = useSharedValue(0);
-  const highlightWidth = useSharedValue(0);
+  const highlightTranslateX = useSharedValue(initialActiveLayout?.x ?? 0);
+  const highlightWidth = useSharedValue(initialActiveLayout?.width ?? 0);
 
   const onScroll = useAnimatedScrollHandler((event) => {
     scrollX.value = event.contentOffset.x;
@@ -204,6 +209,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
         return;
       }
       segmentLayoutsRef.current[value] = layout;
+      setSegmentLayoutsVersion((prevVersion) => prevVersion + 1);
       if (value === activeTab) {
         const didUpdate = updateSegmentHighlight(value, highlightReadyRef.current);
         if (didUpdate && !highlightReadyRef.current) {
@@ -282,8 +288,13 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
     if (viewportWidth <= 0 || rowHeight <= 0) {
       return;
     }
-    onLayoutCacheChange({ viewportWidth, rowHeight, holeMap });
-  }, [holeMap, onLayoutCacheChange, rowHeight, viewportWidth]);
+    onLayoutCacheChange({
+      viewportWidth,
+      rowHeight,
+      holeMap,
+      segmentLayouts: { ...segmentLayoutsRef.current },
+    });
+  }, [holeMap, onLayoutCacheChange, rowHeight, segmentLayoutsVersion, viewportWidth]);
 
   return (
     <View style={styles.resultFiltersWrapper}>

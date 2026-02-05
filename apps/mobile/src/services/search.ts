@@ -29,6 +29,7 @@ export interface StructuredSearchRequest {
   submissionContext?: NaturalSearchRequest['submissionContext'];
   sourceQuery?: string;
   searchRequestId?: string;
+  scoreMode?: NaturalSearchRequest['scoreMode'];
 }
 
 export type RecentSearch = {
@@ -127,6 +128,8 @@ export const searchService = {
   shortcutCoverage: async (payload: {
     entities?: StructuredSearchRequest['entities'];
     bounds: MapBounds;
+    includeTopDish?: boolean;
+    scoreMode?: NaturalSearchRequest['scoreMode'];
   }): Promise<FeatureCollection<Point>> => {
     const { data } = await api.post<FeatureCollection<Point>>('/search/shortcut/coverage', payload);
     return data;
