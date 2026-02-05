@@ -80,15 +80,12 @@ const DishResultCard: React.FC<DishResultCardProps> = ({
       if (typeof item.displayScore === 'number' && Number.isFinite(item.displayScore)) {
         return item.displayScore;
       }
-      if (typeof item.displayPercentile === 'number' && Number.isFinite(item.displayPercentile)) {
-        return item.displayPercentile * 100;
-      }
       return null;
     }
     return typeof item.qualityScore === 'number' && Number.isFinite(item.qualityScore)
       ? item.qualityScore
       : null;
-  }, [item.displayPercentile, item.displayScore, item.qualityScore, scoreMode]);
+  }, [item.displayScore, item.qualityScore, scoreMode]);
   const coverageLabel =
     showCoverageLabel && item.coverageKey && item.coverageKey !== primaryCoverageKey
       ? resolveCoverageDisplayLabel(item.coverageName, item.coverageKey)

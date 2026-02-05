@@ -7,6 +7,7 @@ import {
 } from './dto/autocomplete.dto';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { CurrentUser } from '../../shared';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 
 @Controller('autocomplete')
 @UseGuards(ClerkAuthGuard)
@@ -14,6 +15,7 @@ export class AutocompleteController {
   constructor(private readonly autocompleteService: AutocompleteService) {}
 
   @Post('entities')
+  @RateLimitTier('autocomplete')
   autocompleteEntities(
     @Body() dto: AutocompleteRequestDto,
     @CurrentUser() user: User,

@@ -97,6 +97,9 @@ export type SearchFiltersLayoutCache = {
 type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
+  rankButtonActive: boolean;
+  onToggleRankSelector: () => void;
+  isRankSelectorVisible: boolean;
   openNow: boolean;
   onToggleOpenNow: () => void;
   votesFilterActive: boolean;
@@ -115,6 +118,9 @@ type SearchFiltersProps = {
 const SearchFilters: React.FC<SearchFiltersProps> = ({
   activeTab,
   onTabChange,
+  rankButtonActive,
+  onToggleRankSelector,
+  isRankSelectorVisible,
   openNow,
   onToggleOpenNow,
   votesFilterActive,
@@ -329,6 +335,34 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
               }}
             >
               <View style={styles.toggleRow}>
+                <Pressable
+                  onLayout={registerHole('toggle-rank')}
+                  onPress={onToggleRankSelector}
+                  accessibilityRole="button"
+                  accessibilityLabel="Select rank mode"
+                  accessibilityState={{
+                    expanded: isRankSelectorVisible,
+                    selected: rankButtonActive,
+                  }}
+                  style={[
+                    styles.rankButton,
+                    rankButtonActive && [styles.rankButtonActive, { backgroundColor: accentColor }],
+                  ]}
+                >
+                  <Text
+                    variant="body"
+                    weight="semibold"
+                    style={[styles.rankButtonLabel, rankButtonActive && styles.rankButtonLabelActive]}
+                  >
+                    Rank
+                  </Text>
+                  <Feather
+                    name={isRankSelectorVisible ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color={rankButtonActive ? '#ffffff' : '#111827'}
+                    style={styles.rankButtonChevron}
+                  />
+                </Pressable>
                 <View
                   style={styles.segmentedControl}
                   onLayout={registerHole('segment-group', TOGGLE_BORDER_RADIUS)}
@@ -538,6 +572,21 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     flexShrink: 0,
     overflow: 'hidden',
+  },
+  rankButton: {
+    ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),
+    paddingRight: PRICE_TOGGLE_RIGHT_PADDING,
+  },
+  rankButtonActive: {},
+  rankButtonLabel: {
+    color: '#111827',
+  },
+  rankButtonLabelActive: {
+    color: '#ffffff',
+  },
+  rankButtonChevron: {
+    marginLeft: 6,
+    marginTop: 0,
   },
   segmentedOption: {
     ...buildToggleBaseStyle(TOGGLE_MIN_HEIGHT),

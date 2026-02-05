@@ -24,6 +24,7 @@ import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
 import { SearchCoverageService } from './search-coverage.service';
 import type { FoodResultDto } from './dto/search-query.dto';
+import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 
 @Controller('search')
 @UseGuards(ClerkAuthGuard)
@@ -40,12 +41,14 @@ export class SearchController {
   }
 
   @Post('plan')
+  @RateLimitTier('search')
   plan(@Body() request: SearchQueryRequestDto): SearchPlanResponseDto {
     this.logger.debug('Received search plan request');
     return this.searchService.buildPlanResponse(request);
   }
 
   @Post('run')
+  @RateLimitTier('search')
   async run(
     @Body() request: SearchQueryRequestDto,
     @CurrentUser() user: User,
@@ -56,6 +59,7 @@ export class SearchController {
   }
 
   @Post('natural')
+  @RateLimitTier('naturalSearch')
   async runNatural(
     @Body() request: NaturalSearchRequestDto,
     @CurrentUser() user: User,
@@ -80,6 +84,7 @@ export class SearchController {
   }
 
   @Post('shortcut/coverage')
+  @RateLimitTier('search')
   async shortcutCoverage(
     @Body() request: ShortcutCoverageRequestDto,
   ): Promise<unknown> {

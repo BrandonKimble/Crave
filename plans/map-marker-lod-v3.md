@@ -62,20 +62,20 @@ These are computed via `PERCENT_RANK() OVER (PARTITION BY location_key ...)`, so
 Completed:
 
 - ✅ **API `scoreMode` end-to-end (ordering + metadata)** for natural + structured searches.
-- ✅ **Shortcut coverage map endpoint** returns (a) global restaurant score + (b) coverage percentile, and supports `includeTopDish` for dish-tab shortcut pins.
-- ✅ **Mobile cards + colors** are `scoreMode` aware (global vs coverage).
+- ✅ **Shortcut coverage map endpoint** returns (a) global quality scores + (b) coverage-scoped `displayScore`, and supports `includeTopDish` for dish-tab shortcut pins.
+- ✅ **Mobile cards + colors** are `scoreMode` aware (global vs local `displayScore`).
 - ✅ **Live LOD while moving**: top **30** visible candidates render as pins; remainder are dots.
 - ✅ **Deterministic pin stacking under LOD** via fixed “z-slot” SymbolLayer stacks (prevents “newly mounted pin draws on top”).
 - ✅ **Dots/pins mutual exclusion**: dots are hidden under pinned restaurants using a property-based expression (not feature-state).
 - ✅ **Pins require `googlePlaceId`**:
   - Shortcut coverage: filtered server-side (`pl.google_place_id IS NOT NULL`).
   - Normal search pins: filtered client-side (skip locations without `googlePlaceId`) to prevent “73 restaurants at one coordinate” stacks.
-- ✅ **Label flash on gesture end**: removed the forced label-layer remount that caused all labels to blink when releasing the map.
 - ✅ **LOD boundary hysteresis**: added per-marker promote/demote stability gating to reduce 30/31 flip-flop while moving.
 
 Not completed / still open:
 
 - ⏳ **True label ordering invariance** while moving (we accept that collision + candidate layers can reorder).
+- ⏳ **Label flash on gesture end**: still observed intermittently; likely triggered by a placement pass after idle (needs repro + targeted fix).
 - ⏳ **Fine-tuning for LOD hysteresis constants** if it still feels “indecisive” in very dense areas.
 
 ### Phase 0 — Flag & invariants
@@ -212,7 +212,7 @@ Implementation notes:
 Goal: add a UI toggle (left of the dishes/restaurants segment toggle) that lets the user switch between:
 
 - **Global** ranking (quality score)
-- **Local** ranking (coverage percentile / display score)
+- **Local** ranking (coverage-scoped `displayScore`)
 
 Desired UX:
 
@@ -224,7 +224,7 @@ Desired UX:
 
 There are two viable strategies; which one we choose determines correctness vs instantness:
 
-**Option A (recommended v1): view-only toggle, no refetch**
+**Option A: view-only toggle, no refetch (future improvement)**
 
 - Toggle only changes **how we rank / color / display** within the already-loaded dataset.
 - Pros: instant; feels like a “display mode” switch.
@@ -234,17 +234,17 @@ How to keep it correct enough:
 
 - On toggle:
   - Recompute the “rank key” per item from existing fields:
-    - restaurants: global => `restaurantQualityScore`; local => `displayScore` or `displayPercentile * 100`
-    - dishes: global => `qualityScore`; local => `displayScore` or `displayPercentile * 100`
-  - Resort the *currently loaded* arrays for the sheet and rebuild marker ranks accordingly.
+    - restaurants: global => `restaurantQualityScore`; local => `displayScore`
+    - dishes: global => `qualityScore`; local => `displayScore`
+  - Resort the _currently loaded_ arrays for the sheet and rebuild marker ranks accordingly.
 - Keep API pagination stable:
   - Latch `scoreModeAtSubmit` per search session and keep all API calls for that session using that mode (prevents duplicates/skips).
   - The toggle affects only the client-side ordering view for that session.
 
-**Option B: toggle triggers a new search (refetch page 1)**
+**Option B: toggle triggers a new search (refetch page 1) — implemented**
 
 - Toggle behaves like Open Now (but likely faster), resetting to page 1 under the new ordering.
-- Pros: list ordering is *actually correct* for the selected mode from the start.
+- Pros: list ordering is _actually correct_ for the selected mode from the start.
 - Cons: not “friction free”; requires network; may feel like a new search.
 
 Hybrid (best UX, more work):
@@ -252,26 +252,23 @@ Hybrid (best UX, more work):
 - Do Option A immediately (instant resort of loaded data), then background fetch Option B and swap in when ready.
 - Requires careful UI so results don’t “snap twice” confusingly.
 
-### Recommended implementation approach (Option A)
+### Implemented approach (Option B v1)
 
-Core principle: the toggle should not require unmounting Mapbox layers; it should flow through existing memoization.
+Core principle: the toggle is a persisted preference, and it flows through the same memoization paths as other filters.
 
-1) Introduce a single `scoreModePreference` state in `SearchScreen` (default `global_quality`).
-2) Use `scoreModePreference` for:
-   - card display score selection
-   - card + marker colors
-   - marker ranking + `rank` assignment (drives label sort priority + pin stacking slots + LOD selection)
-3) Keep `scoreModeAtSubmit` (latched when search is submitted) to avoid changing API pagination ordering mid-session.
-4) Refactor to make “ordering” a pure function:
-   - `getRestaurantRankValue(restaurant, mode)`
-   - `getDishRankValue(dish, mode)`
-   - `getRestaurantColor(restaurant, mode)`
-   - `getDishColor(dish, mode)`
-5) Ensure the toggle only invalidates the minimal memo sets:
-   - resorted restaurant/dish arrays
-   - marker catalog / pinned set
-   - dot color expressions + pin colors
-   - avoid bumping label epochs (no forced remount).
+1. Persist `scoreMode` in `useSearchStore` (default `global_quality`).
+2. Plumb `scoreMode` through:
+   - card display scores (local uses `displayScore` only)
+   - marker colors (local uses `displayScore` only)
+   - shortcut coverage dot fetch (`scoreMode` request param)
+3. On toggle:
+   - update the persisted preference
+   - rerun the current search (shortcut => `runBestHere`, natural => `submitSearch`) with `preserveSheetState: true`
+   - reset to page 1 under the new ordering (keeps pagination correct).
+
+Future improvement (if we want “instant”):
+
+- Add Option A (view-only resort of loaded data) as a fast path, and optionally background-fetch Option B to reconcile.
 
 ### UI placement
 
@@ -280,14 +277,8 @@ Core principle: the toggle should not require unmounting Mapbox layers; it shoul
 
 ### Open questions / decisions needed
 
-- Should the toggle affect:
-  - only ordering + color + score display, or
-  - also which sections/meta copy we show (e.g., disclose “local mode uses coverage percentile”)?
-- What to label it:
-  - “Global / Local”
-  - “US / City”
-  - “Overall / Nearby”
-- Should the selection persist across app launches (AsyncStorage), or be session-only?
+- Labeling: “Global / Local” vs “Overall / Nearby” (we can iterate).
+- Copy: whether to disclose that local mode is coverage-scoped (e.g., in meta line / score info sheet).
 
 ## “Done” checklist
 

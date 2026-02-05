@@ -10,11 +10,13 @@ type CoverageRestaurantRow = {
   restaurant_name: string;
   longitude: unknown;
   latitude: unknown;
+  display_score: unknown;
   display_percentile: unknown;
   restaurant_quality_score: unknown;
   top_connection_id?: unknown;
   top_food_name?: unknown;
   top_food_quality_score?: unknown;
+  top_food_display_score?: unknown;
   top_food_display_percentile?: unknown;
 };
 
@@ -112,6 +114,9 @@ export class SearchCoverageService {
     const maxLat = Math.max(swLat, neLat);
     conditions.push(Prisma.sql`pl.longitude BETWEEN ${minLng} AND ${maxLng}`);
     conditions.push(Prisma.sql`pl.latitude BETWEEN ${minLat} AND ${maxLat}`);
+    // Guardrail: prevent placeholder/unsourced restaurants (often sharing the same coordinate)
+    // from appearing as stacked pins/dots in shortcut searches.
+    conditions.push(Prisma.sql`pl.google_place_id IS NOT NULL`);
 
     const maxRestaurants = 50000;
     const includeTopDish = request.includeTopDish === true;
@@ -128,6 +133,7 @@ export class SearchCoverageService {
         td.connection_id AS top_connection_id,
         td.food_name AS top_food_name,
         td.food_quality_score AS top_food_quality_score,
+        td.display_score AS top_food_display_score,
         td.display_percentile AS top_food_display_percentile`
       : Prisma.sql``;
     const startedAt = Date.now();
@@ -139,6 +145,7 @@ export class SearchCoverageService {
         e.name AS restaurant_name,
         pl.longitude AS longitude,
         pl.latitude AS latitude,
+        drs.rank_score_display AS display_score,
         drs.rank_percentile AS display_percentile,
         e.restaurant_quality_score AS restaurant_quality_score
         ${topDishSelectSql}
@@ -169,8 +176,10 @@ export class SearchCoverageService {
             return null;
           }
           const displayPercentile = Number(row.display_percentile);
+          const displayScore = Number(row.display_score);
           const restaurantQualityScore = Number(row.restaurant_quality_score);
           const topFoodQualityScore = Number(row.top_food_quality_score);
+          const topFoodDisplayScore = Number(row.top_food_display_score);
           const topFoodDisplayPercentile = Number(
             row.top_food_display_percentile,
           );
@@ -186,6 +195,7 @@ export class SearchCoverageService {
                   ? topFoodQualityScore
                   : 0,
               rank: 9999,
+              displayScore: Number.isFinite(displayScore) ? displayScore : null,
               displayPercentile: Number.isFinite(displayPercentile)
                 ? displayPercentile
                 : null,
@@ -204,6 +214,10 @@ export class SearchCoverageService {
               topDishDisplayPercentile:
                 includeTopDish && Number.isFinite(topFoodDisplayPercentile)
                   ? topFoodDisplayPercentile
+                  : null,
+              topDishDisplayScore:
+                includeTopDish && Number.isFinite(topFoodDisplayScore)
+                  ? topFoodDisplayScore
                   : null,
             },
           };
@@ -239,7 +253,7 @@ export class SearchCoverageService {
     const orderSql =
       scoreMode === 'global_quality'
         ? Prisma.sql`c.food_quality_score DESC, c.connection_id ASC`
-        : Prisma.sql`COALESCE(drc.rank_percentile, c.food_quality_score / 100) DESC, c.connection_id ASC`;
+        : Prisma.sql`COALESCE(drc.rank_score_raw, -1) DESC, c.connection_id ASC`;
 
     return Prisma.sql`
       LEFT JOIN LATERAL (
@@ -247,6 +261,7 @@ export class SearchCoverageService {
           c.connection_id,
           f.name AS food_name,
           c.food_quality_score,
+          drc.rank_score_display AS display_score,
           drc.rank_percentile AS display_percentile
         FROM core_connections c
         JOIN core_entities f ON f.entity_id = c.food_id

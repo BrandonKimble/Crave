@@ -1,13 +1,13 @@
 import type { Coordinate, FoodResult, MapBounds, RestaurantResult } from '../../../types';
 
-import { getQualityColorFromPercentile, getQualityColorFromScore } from './quality';
+import { getQualityColorFromScore } from './quality';
 
 export const getMarkerColorForRestaurant = (
   restaurant: RestaurantResult,
   scoreMode: 'global_quality' | 'coverage_display' = 'global_quality'
 ): string => {
   if (scoreMode === 'coverage_display') {
-    return getQualityColorFromPercentile(restaurant.displayPercentile);
+    return getQualityColorFromScore(restaurant.displayScore);
   }
   return getQualityColorFromScore(restaurant.restaurantQualityScore);
 };
@@ -17,7 +17,7 @@ export const getMarkerColorForDish = (
   scoreMode: 'global_quality' | 'coverage_display' = 'global_quality'
 ): string => {
   if (scoreMode === 'coverage_display') {
-    return getQualityColorFromPercentile(dish.displayPercentile);
+    return getQualityColorFromScore(dish.displayScore);
   }
   return getQualityColorFromScore(dish.qualityScore);
 };

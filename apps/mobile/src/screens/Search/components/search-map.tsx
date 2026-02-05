@@ -150,9 +150,12 @@ export type RestaurantFeatureProperties = {
   rank: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
   lodZ?: number;
+  displayScore?: number | null;
   displayPercentile?: number | null;
   restaurantQualityScore?: number | null;
   pinColor: string;
+  pinColorGlobal?: string;
+  pinColorLocal?: string;
   anchor?: 'top' | 'bottom' | 'left' | 'right';
   labelCandidate?: LabelCandidate;
   // Dish-specific fields (populated when rendering dish pins)
@@ -160,6 +163,7 @@ export type RestaurantFeatureProperties = {
   dishName?: string;
   connectionId?: string;
   topDishDisplayPercentile?: number | null;
+  topDishDisplayScore?: number | null;
 };
 
 export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
@@ -510,6 +514,7 @@ type SearchMapProps = {
   mapRef: React.RefObject<MapboxMapRef | null>;
   cameraRef: React.RefObject<MapboxGL.Camera | null>;
   styleURL: string;
+  scoreMode: 'global_quality' | 'coverage_display';
   mapCenter: [number, number] | null;
   mapZoom: number;
   cameraPadding?: CameraPadding | null;
@@ -545,6 +550,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   mapRef,
   cameraRef,
   styleURL,
+  scoreMode,
   mapCenter,
   mapZoom,
   cameraPadding,
@@ -596,6 +602,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     [buildMarkerKey, sortedRestaurantMarkers]
   );
   const dotLayerStyle = React.useMemo(() => {
+    const scoreModeLiteral = scoreMode;
     return {
       symbolZOrder: 'source',
       // Use a font/glyph combo that reliably renders as a true circle (avoid tofu/missing-glyph boxes).
@@ -624,10 +631,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
         'case',
         ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
         PRIMARY_COLOR,
-        ['get', 'pinColor'],
+        [
+          'case',
+          ['==', ['literal', scoreModeLiteral], 'coverage_display'],
+          ['coalesce', ['get', 'pinColorLocal'], ['get', 'pinColor']],
+          ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
+        ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [pinnedRestaurantIdList, selectedRestaurantId]);
+  }, [pinnedRestaurantIdList, scoreMode, selectedRestaurantId]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -1131,6 +1143,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const stylePinsFillStyle = React.useMemo(() => {
+    const scoreModeLiteral = scoreMode;
     return {
       ...STYLE_PINS_FILL_STYLE,
       // NOTE: `iconColor` only tints SDF icons. If `pinFillAsset` isn't SDF, this will no-op and
@@ -1139,10 +1152,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
         'case',
         ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
         PRIMARY_COLOR,
-        ['get', 'pinColor'],
+        [
+          'case',
+          ['==', ['literal', scoreModeLiteral], 'coverage_display'],
+          ['coalesce', ['get', 'pinColorLocal'], ['get', 'pinColor']],
+          ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
+        ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [selectedRestaurantId]);
+  }, [scoreMode, selectedRestaurantId]);
 
   const stylePinLayerStack = React.useMemo(() => {
     // Deterministic pin stacking while moving:
@@ -2287,6 +2305,9 @@ const areUserLocationsEqual = (left?: Coordinate | null, right?: Coordinate | nu
 
 const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.styleURL !== next.styleURL) {
+    return false;
+  }
+  if (prev.scoreMode !== next.scoreMode) {
     return false;
   }
   if (prev.isMapStyleReady !== next.isMapStyleReady) {

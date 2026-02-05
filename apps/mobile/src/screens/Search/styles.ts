@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
   priceSheetHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     gap: 12,
     marginBottom: 10,
   },
@@ -705,6 +705,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
     marginTop: 0,
     marginBottom: 8,
+  },
+  rankSheetHeaderRow: {
+    marginBottom: 10,
+  },
+  rankSheetHeadline: {
+    color: '#0f172a',
+  },
+  rankSheetOptions: {
+    width: '100%',
+    gap: 10,
+    marginBottom: 10,
+  },
+  rankSheetOption: {
+    height: CONTROL_HEIGHT,
+    borderRadius: CONTROL_RADIUS,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 4,
+    paddingVertical: CONTROL_VERTICAL_PADDING,
+    justifyContent: 'center',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  rankSheetOptionSelected: {
+    backgroundColor: `${themeColors.primary}14`,
+    borderColor: themeColors.primary,
+  },
+  rankSheetOptionText: {
+    color: '#0f172a',
+  },
+  rankSheetOptionTextSelected: {
+    color: themeColors.primary,
+  },
+  sheetActionsRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+    marginBottom: 6,
   },
   priceTrackContainer: {
     width: '100%',
@@ -738,10 +776,11 @@ const styles = StyleSheet.create({
     backgroundColor: themeColors.primary,
   },
   priceSheetDoneButton: {
-    height: CONTROL_HEIGHT,
+    height: CONTROL_HEIGHT + 12,
     borderRadius: CONTROL_RADIUS,
-    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 4,
-    paddingVertical: CONTROL_VERTICAL_PADDING,
+    minWidth: 140,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 20,
+    paddingVertical: CONTROL_VERTICAL_PADDING + 4,
     alignItems: 'center',
     justifyContent: 'center',
     alignSelf: 'flex-end',

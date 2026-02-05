@@ -50,6 +50,25 @@ import { ThrottlerRedisStorage } from './throttler-redis.storage';
           },
         ],
         storage: new ThrottlerRedisStorage(redisService),
+        // Prefer per-user throttling for authenticated routes (fall back to IP).
+        getTracker: (req: Record<string, unknown>) => {
+          const userId = (() => {
+            const user = (req as { user?: unknown }).user;
+            if (!user || typeof user !== 'object') return null;
+            const userIdValue = (user as { userId?: unknown }).userId;
+            return typeof userIdValue === 'string' && userIdValue.trim()
+              ? userIdValue
+              : null;
+          })();
+          if (userId) {
+            return userId;
+          }
+
+          const ipValue = (req as { ip?: unknown }).ip;
+          return typeof ipValue === 'string' && ipValue.trim()
+            ? ipValue
+            : 'unknown';
+        },
         // Skip rate limiting for these routes
         skipIf: (context: ExecutionContext) => {
           const request = context.switchToHttp().getRequest<{ url?: string }>();

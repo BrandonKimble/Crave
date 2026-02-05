@@ -1,5 +1,6 @@
 import React from 'react';
 import { InteractionManager, Keyboard, unstable_batchedUpdates } from 'react-native';
+import axios from 'axios';
 
 import type { UseSearchRequestsResult } from '../../../hooks/useSearchRequests';
 import { logger } from '../../../utils';
@@ -24,6 +25,7 @@ type SubmitSearchOptions = {
   page?: number;
   append?: boolean;
   preserveSheetState?: boolean;
+  scoreMode?: NaturalSearchRequest['scoreMode'];
   submission?: {
     source: NaturalSearchRequest['submissionSource'];
     context?: NaturalSearchRequest['submissionContext'];
@@ -47,6 +49,7 @@ type UseSearchSubmitOptions = {
   setSubmittedQuery: React.Dispatch<React.SetStateAction<string>>;
   activeTab: SegmentValue;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
+  scoreMode: NaturalSearchRequest['scoreMode'];
   setHasMoreFood: React.Dispatch<React.SetStateAction<boolean>>;
   setHasMoreRestaurants: React.Dispatch<React.SetStateAction<boolean>>;
   currentPage: number;
@@ -123,6 +126,21 @@ const getPerfNow = () => {
   return Date.now();
 };
 
+const isRateLimitError = (error: unknown) => {
+  if (error && typeof error === 'object') {
+    const maybeCode = (error as { code?: unknown }).code;
+    if (typeof maybeCode === 'string' && maybeCode === 'RATE_LIMITED') {
+      return true;
+    }
+  }
+
+  if (axios.isAxiosError(error)) {
+    return error.response?.status === 429;
+  }
+
+  return false;
+};
+
 const useSearchSubmit = ({
   query,
   isLoading,
@@ -134,6 +152,7 @@ const useSearchSubmit = ({
   submittedQuery,
   setSubmittedQuery,
   setActiveTab,
+  scoreMode,
   setHasMoreFood,
   setHasMoreRestaurants,
   currentPage,
@@ -170,6 +189,8 @@ const useSearchSubmit = ({
   const activeSearchRequestRef = React.useRef(0);
   const shortcutBoundsSnapshotRef = React.useRef<MapBounds | null>(null);
   const shortcutSearchRequestIdRef = React.useRef<string | null>(null);
+  const loadingMoreTokenSeqRef = React.useRef(0);
+  const activeLoadingMoreTokenRef = React.useRef<number | null>(null);
   const shouldLogSearchResponsePayload = searchPerfDebug.logSearchResponsePayload;
   const shouldLogSearchResponseTimings =
     searchPerfDebug.enabled && searchPerfDebug.logSearchResponseTimings;
@@ -210,6 +231,24 @@ const useSearchSubmit = ({
     console.log('[SearchPerf] response timing logs enabled');
   }, [shouldLogSearchResponseTimings]);
 
+  const beginLoadingMore = React.useCallback(() => {
+    const token = ++loadingMoreTokenSeqRef.current;
+    activeLoadingMoreTokenRef.current = token;
+    setIsLoadingMore(true);
+    return token;
+  }, [setIsLoadingMore]);
+
+  const endLoadingMore = React.useCallback(
+    (token: number) => {
+      if (activeLoadingMoreTokenRef.current !== token) {
+        return;
+      }
+      activeLoadingMoreTokenRef.current = null;
+      setIsLoadingMore(false);
+    },
+    [setIsLoadingMore]
+  );
+
   const cancelActiveSearchRequest = React.useCallback(() => {
     cancelSearch();
     activeSearchRequestRef.current = ++searchRequestSeqRef.current;
@@ -217,6 +256,7 @@ const useSearchSubmit = ({
       setIsLoading(false);
       setIsLoadingMore(false);
     });
+    activeLoadingMoreTokenRef.current = null;
   }, [cancelSearch, setIsLoading, setIsLoadingMore]);
 
   const handleSearchResponse = React.useCallback(
@@ -387,7 +427,8 @@ const useSearchSubmit = ({
   const buildStructuredSearchPayload = React.useCallback(
     async (
       page: number,
-      filters: StructuredSearchFilters = {}
+      filters: StructuredSearchFilters = {},
+      scoreModeOverride?: NaturalSearchRequest['scoreMode']
     ): Promise<StructuredSearchRequest> => {
       const buildStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
       const pagination = { page, pageSize: DEFAULT_PAGE_SIZE };
@@ -395,7 +436,7 @@ const useSearchSubmit = ({
         entities: {},
         pagination,
         includeSqlPreview: false,
-        scoreMode: searchPerfDebug.scoreMode,
+        scoreMode: scoreModeOverride ?? scoreMode,
       };
 
       const effectiveOpenNow = filters.openNow ?? openNow;
@@ -470,6 +511,7 @@ const useSearchSubmit = ({
       mapRef,
       openNow,
       priceLevels,
+      scoreMode,
       shouldLogSearchResponseTimings,
       userLocationRef,
       votes100Plus,
@@ -516,8 +558,10 @@ const useSearchSubmit = ({
           setShowSuggestions(false);
           setHasMoreFood(false);
           setHasMoreRestaurants(false);
+          setIsLoadingMore(false);
           setCurrentPage(targetPage);
         });
+        activeLoadingMoreTokenRef.current = null;
         logSearchPhase('submitSearch:ui-prep');
         lastAutoOpenKeyRef.current = null;
       }
@@ -533,11 +577,10 @@ const useSearchSubmit = ({
           ? MINIMUM_VOTES_FILTER
           : null;
 
+      let loadingMoreToken: number | null = null;
       try {
         if (append) {
-          unstable_batchedUpdates(() => {
-            setIsLoadingMore(true);
-          });
+          loadingMoreToken = beginLoadingMore();
           logSearchPhase('submitSearch:loading-more');
         } else {
           unstable_batchedUpdates(() => {
@@ -556,7 +599,7 @@ const useSearchSubmit = ({
           query: trimmed,
           pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
           includeSqlPreview: false,
-          scoreMode: searchPerfDebug.scoreMode,
+          scoreMode: options?.scoreMode ?? scoreMode,
         };
         if (append && lastSearchRequestIdRef.current) {
           payload.searchRequestId = lastSearchRequestIdRef.current;
@@ -651,21 +694,27 @@ const useSearchSubmit = ({
           if (!append) {
             setError(null);
           } else {
-            setError('Unable to load more results. Please try again.');
+            setError(
+              isRateLimitError(err)
+                ? 'Too many requests. Please wait a moment and try again.'
+                : 'Unable to load more results. Please try again.'
+            );
           }
         }
       } finally {
-        if (requestId === activeSearchRequestRef.current) {
-          if (append) {
-            setIsLoadingMore(false);
-          } else {
-            setIsLoading(false);
+        if (append) {
+          if (loadingMoreToken != null) {
+            endLoadingMore(loadingMoreToken);
           }
+        } else if (requestId === activeSearchRequestRef.current) {
+          setIsLoading(false);
         }
       }
     },
     [
+      beginLoadingMore,
       ensureUserLocation,
+      endLoadingMore,
       handleSearchResponse,
       isLoading,
       isLoadingMore,
@@ -676,6 +725,7 @@ const useSearchSubmit = ({
       mapRef,
       openNow,
       priceLevels,
+      scoreMode,
       query,
       resetMapMoveFlag,
       resetSheetToHidden,
@@ -837,7 +887,11 @@ const useSearchSubmit = ({
     async (
       targetTab: SegmentValue,
       submittedLabel: string,
-      options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
+      options?: {
+        preserveSheetState?: boolean;
+        filters?: StructuredSearchFilters;
+        scoreMode?: NaturalSearchRequest['scoreMode'];
+      }
     ) => {
       logSearchPhase('runBestHere:start', { reset: true });
       const requestId = ++searchRequestSeqRef.current;
@@ -898,7 +952,7 @@ const useSearchSubmit = ({
           });
           logSearchPhase('runBestHere:loading-state');
         }
-        const payload = await buildStructuredSearchPayload(1, options?.filters);
+        const payload = await buildStructuredSearchPayload(1, options?.filters, options?.scoreMode);
         shortcutBoundsSnapshotRef.current = payload.bounds ?? null;
         const shortcutCoverageSnapshot = {
           bounds: payload.bounds ?? null,
@@ -990,10 +1044,10 @@ const useSearchSubmit = ({
     }
 
     const nextPage = currentPage + 1;
+    const loadingMoreToken = beginLoadingMore();
 
     const run = async () => {
       try {
-        setIsLoadingMore(true);
         const payload = await buildStructuredSearchPayload(nextPage);
         if (shortcutBoundsSnapshotRef.current) {
           payload.bounds = shortcutBoundsSnapshotRef.current;
@@ -1030,17 +1084,23 @@ const useSearchSubmit = ({
         logger.error('Best dishes here pagination failed', {
           message: err instanceof Error ? err.message : 'unknown error',
         });
-        setError('Unable to load more results. Please try again.');
+        setError(
+          isRateLimitError(err)
+            ? 'Too many requests. Please wait a moment and try again.'
+            : 'Unable to load more results. Please try again.'
+        );
       } finally {
-        setIsLoadingMore(false);
+        endLoadingMore(loadingMoreToken);
       }
     };
 
     void run();
   }, [
+    beginLoadingMore,
     buildStructuredSearchPayload,
     canLoadMore,
     currentPage,
+    endLoadingMore,
     getPerfNow,
     handleSearchResponse,
     isLoading,
@@ -1051,7 +1111,6 @@ const useSearchSubmit = ({
     runSearch,
     searchResponseTimingMinMs,
     setError,
-    setIsLoadingMore,
     shouldLogSearchResponsePayload,
     shouldLogSearchResponseTimings,
     submittedQuery,

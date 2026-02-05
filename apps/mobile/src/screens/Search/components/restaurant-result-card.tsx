@@ -137,12 +137,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       if (typeof restaurant.displayScore === 'number' && Number.isFinite(restaurant.displayScore)) {
         return restaurant.displayScore;
       }
-      if (
-        typeof restaurant.displayPercentile === 'number' &&
-        Number.isFinite(restaurant.displayPercentile)
-      ) {
-        return restaurant.displayPercentile * 100;
-      }
       return null;
     }
     if (
@@ -153,7 +147,6 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     }
     return null;
   }, [
-    restaurant.displayPercentile,
     restaurant.displayScore,
     restaurant.restaurantQualityScore,
     scoreMode,

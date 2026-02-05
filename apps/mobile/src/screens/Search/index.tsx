@@ -162,7 +162,7 @@ import {
   type PriceRangeTuple,
 } from './utils/price';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from './utils/marker-lod';
-import { getQualityColorFromPercentile, getQualityColorFromScore } from './utils/quality';
+import { getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
 import { resolveSingleRestaurantCandidate } from './utils/response';
 import {
@@ -778,6 +778,7 @@ const SearchScreen: React.FC = () => {
     dishes: null,
   });
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
+  const [isRankSelectorVisible, setIsRankSelectorVisible] = React.useState(false);
   const {
     recentSearches,
     isRecentLoading,
@@ -2064,6 +2065,8 @@ const SearchScreen: React.FC = () => {
   const votes100Plus = useSearchStore((state) => state.votes100Plus);
   const setVotes100Plus = useSearchStore((state) => state.setVotes100Plus);
   const resetFilters = useSearchStore((state) => state.resetFilters);
+  const scoreMode = useSearchStore((state) => state.scoreMode);
+  const setScoreMode = useSearchStore((state) => state.setScoreMode);
   const isOffline = useSystemStatusStore((state) => state.isOffline);
   const hasSystemStatusBanner = useSystemStatusStore(
     (state) => state.isOffline || Boolean(state.serviceIssue)
@@ -2071,6 +2074,7 @@ const SearchScreen: React.FC = () => {
   const [pendingPriceRange, setPendingPriceRange] = React.useState<PriceRangeTuple>(() =>
     getRangeFromLevels(priceLevels)
   );
+  const [pendingScoreMode, setPendingScoreMode] = React.useState<typeof scoreMode>(() => scoreMode);
   const priceFiltersActive = priceLevels.length > 0;
   const priceButtonSummary = React.useMemo(() => {
     if (!priceLevels.length) {
@@ -2865,6 +2869,7 @@ const SearchScreen: React.FC = () => {
     [shouldSuppressRestaurantOverlay]
   );
   const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
+  const rankButtonIsActive = scoreMode === 'coverage_display' || isRankSelectorVisible;
   const votesFilterActive = votes100Plus;
   const canLoadMore =
     Boolean(results) && !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants);
@@ -3215,8 +3220,6 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.dishes ?? EMPTY_DISHES;
-  const scoreMode: NaturalSearchRequest['scoreMode'] =
-    results?.metadata?.scoreMode ?? searchPerfDebug.scoreMode;
   const resultsHydrationCandidate =
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
   const storedResultsScrollOffset = useOverlayStore(
@@ -4110,18 +4113,14 @@ const SearchScreen: React.FC = () => {
 
       // Convert grouped dishes to features
       dishesByLocation.forEach(({ dish, rank }, _locationKey) => {
-        const pinColor =
-          scoreMode === 'coverage_display'
-            ? getQualityColorFromPercentile(dish.displayPercentile)
-            : getQualityColorFromScore(dish.qualityScore);
+        const pinColorGlobal = getQualityColorFromScore(dish.qualityScore);
+        const pinColorLocal = getQualityColorFromScore(dish.displayScore);
+        const pinColor = scoreMode === 'coverage_display' ? pinColorLocal : pinColorGlobal;
         const contextualScore =
           scoreMode === 'coverage_display'
             ? typeof dish.displayScore === 'number' && Number.isFinite(dish.displayScore)
               ? dish.displayScore
-              : typeof dish.displayPercentile === 'number' &&
-                Number.isFinite(dish.displayPercentile)
-              ? dish.displayPercentile * 100
-              : dish.qualityScore
+              : 0
             : dish.qualityScore;
         const featureId = `dish-${dish.connectionId}`;
         const feature: Feature<Point, RestaurantFeatureProperties> = {
@@ -4137,6 +4136,8 @@ const SearchScreen: React.FC = () => {
             contextualScore,
             rank,
             pinColor,
+            pinColorGlobal,
+            pinColorLocal,
             isDishPin: true,
             dishName: dish.foodName,
             connectionId: dish.connectionId,
@@ -4156,7 +4157,9 @@ const SearchScreen: React.FC = () => {
           return;
         }
         const rank = restaurantIndex + 1;
-        const pinColor = getMarkerColorForRestaurant(restaurant, scoreMode);
+        const pinColorGlobal = getQualityColorFromScore(restaurant.restaurantQualityScore);
+        const pinColorLocal = getQualityColorFromScore(restaurant.displayScore);
+        const pinColor = scoreMode === 'coverage_display' ? pinColorLocal : pinColorGlobal;
         const locations = resolveRestaurantMapLocations(restaurant);
         const shouldRenderAllLocations =
           selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
@@ -4184,6 +4187,8 @@ const SearchScreen: React.FC = () => {
               contextualScore: restaurant.contextualScore,
               rank,
               pinColor,
+              pinColorGlobal,
+              pinColorLocal,
             },
           };
           entries.push({
@@ -4240,6 +4245,7 @@ const SearchScreen: React.FC = () => {
     getPerfNow,
     logSearchCompute,
     markerRestaurants,
+    scoreMode,
     resolveRestaurantMapLocations,
     resolveSearchViewportCenter,
     pickClosestLocationToCenter,
@@ -4272,13 +4278,10 @@ const SearchScreen: React.FC = () => {
   const shortcutCoverageRankedRef = React.useRef<
     Array<Feature<Point, RestaurantFeatureProperties>>
   >([]);
-  const [lodPinnedMarkers, setLodPinnedMarkers] = React.useState<
-    Array<Feature<Point, RestaurantFeatureProperties>>
+  const [lodPinnedMarkerMeta, setLodPinnedMarkerMeta] = React.useState<
+    Array<{ markerKey: string; lodZ: number }>
   >([]);
   const lodPinnedMarkersRef = React.useRef<Array<Feature<Point, RestaurantFeatureProperties>>>([]);
-  React.useEffect(() => {
-    lodPinnedMarkersRef.current = lodPinnedMarkers;
-  }, [lodPinnedMarkers]);
   const lodPinnedKeyRef = React.useRef<string>('');
   const lodPinProposedPromoteSinceByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
   const lodPinProposedDemoteSinceByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
@@ -4294,14 +4297,17 @@ const SearchScreen: React.FC = () => {
   React.useEffect(() => {
     const resetKey = `${searchMode ?? 'none'}::${activeTab}::${
       results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? 'no-request'
-    }`;
+    }::${scoreMode}`;
     if (lodPinnedResetKeyRef.current === resetKey) {
       return;
     }
     lodPinnedResetKeyRef.current = resetKey;
+    // Force the next LOD refresh to re-emit pinned features even if the set of pinned keys is
+    // unchanged (e.g. scoreMode toggles can change pin colors without changing membership).
+    lodPinnedKeyRef.current = '';
     lodPinProposedPromoteSinceByMarkerKeyRef.current.clear();
     lodPinProposedDemoteSinceByMarkerKeyRef.current.clear();
-  }, [activeTab, results?.metadata?.requestId, results?.metadata?.searchRequestId, searchMode]);
+  }, [activeTab, results?.metadata?.requestId, results?.metadata?.searchRequestId, scoreMode, searchMode]);
 
   const updateLodPinnedMarkers = React.useCallback(
     (bounds: MapBounds | null) => {
@@ -4309,7 +4315,8 @@ const SearchScreen: React.FC = () => {
       if (!bounds) {
         if (lodPinnedKeyRef.current !== '') {
           lodPinnedKeyRef.current = '';
-          setLodPinnedMarkers([]);
+          lodPinnedMarkersRef.current = [];
+          setLodPinnedMarkerMeta([]);
         }
         return;
       }
@@ -4323,7 +4330,8 @@ const SearchScreen: React.FC = () => {
       if (!rankedCandidates.length) {
         if (lodPinnedKeyRef.current !== '') {
           lodPinnedKeyRef.current = '';
-          setLodPinnedMarkers([]);
+          lodPinnedMarkersRef.current = [];
+          setLodPinnedMarkerMeta([]);
         }
         return;
       }
@@ -4554,7 +4562,12 @@ const SearchScreen: React.FC = () => {
       }
       lodPinnedKeyRef.current = nextKey;
       lodPinnedMarkersRef.current = nextWithZ;
-      setLodPinnedMarkers(nextWithZ);
+      setLodPinnedMarkerMeta(
+        nextWithZ.map((feature) => ({
+          markerKey: buildMarkerKey(feature),
+          lodZ: feature.properties.lodZ ?? 0,
+        }))
+      );
 
       if (shouldLogSearchComputes) {
         logSearchCompute(`lodPinnedMarkers pins=${next.length}`, getPerfNow() - start);
@@ -4569,11 +4582,52 @@ const SearchScreen: React.FC = () => {
     activeTab,
     results?.metadata?.searchRequestId,
     searchMode,
+    scoreMode,
     updateLodPinnedMarkers,
     visibleMarkerCandidates.length,
   ]);
 
-  const sortedRestaurantMarkers = lodPinnedMarkers;
+  const lodPinnedMarkerFeatureByKey = React.useMemo(() => {
+    const map = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+    if (searchMode === 'shortcut') {
+      const shortcutFeatures = shortcutCoverageDotFeatures?.features ?? [];
+      shortcutFeatures.forEach((feature) => {
+        map.set(buildMarkerKey(feature), feature);
+      });
+      return map;
+    }
+    visibleMarkerCandidates.forEach((entry) => {
+      map.set(buildMarkerKey(entry.feature), entry.feature);
+    });
+    return map;
+  }, [buildMarkerKey, searchMode, shortcutCoverageDotFeatures?.features, visibleMarkerCandidates]);
+
+  const sortedRestaurantMarkers = React.useMemo(() => {
+    if (!lodPinnedMarkerMeta.length) {
+      return [];
+    }
+    const fallbackByKey = new Map<string, Feature<Point, RestaurantFeatureProperties>>();
+    lodPinnedMarkersRef.current.forEach((feature) => {
+      fallbackByKey.set(buildMarkerKey(feature), feature);
+    });
+
+    return lodPinnedMarkerMeta
+      .map(({ markerKey, lodZ }) => {
+        const feature =
+          lodPinnedMarkerFeatureByKey.get(markerKey) ?? fallbackByKey.get(markerKey) ?? null;
+        if (!feature) {
+          return null;
+        }
+        return {
+          ...feature,
+          properties: {
+            ...feature.properties,
+            lodZ,
+          },
+        };
+      })
+      .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
+  }, [buildMarkerKey, lodPinnedMarkerFeatureByKey, lodPinnedMarkerMeta]);
 
   const shortcutCoverageSnapshotByRequestIdRef = React.useRef<
     Map<
@@ -4671,6 +4725,8 @@ const SearchScreen: React.FC = () => {
               typeof properties['restaurantQualityScore'] === 'number'
                 ? (properties['restaurantQualityScore'] as number)
                 : null;
+            const displayScore =
+              typeof properties['displayScore'] === 'number' ? (properties['displayScore'] as number) : null;
             const displayPercentile =
               typeof properties['displayPercentile'] === 'number'
                 ? (properties['displayPercentile'] as number)
@@ -4679,19 +4735,29 @@ const SearchScreen: React.FC = () => {
               includeTopDish && typeof properties['topDishDisplayPercentile'] === 'number'
                 ? (properties['topDishDisplayPercentile'] as number)
                 : null;
-            const scoreForColor = includeTopDish
+            const topDishDisplayScore =
+              includeTopDish && typeof properties['topDishDisplayScore'] === 'number'
+                ? (properties['topDishDisplayScore'] as number)
+                : null;
+            const scoreForColor =
+              scoreMode === 'coverage_display'
+                ? includeTopDish
+                  ? topDishDisplayScore
+                  : displayScore
+                : includeTopDish
+                  ? contextualScore
+                  : typeof restaurantQualityScore === 'number'
+                    ? restaurantQualityScore
+                    : null;
+            const globalScoreForColor = includeTopDish
               ? contextualScore
               : typeof restaurantQualityScore === 'number'
-              ? restaurantQualityScore
-              : null;
-            const pinColor =
-              scoreMode === 'coverage_display'
-                ? getQualityColorFromPercentile(
-                    includeTopDish
-                      ? topDishDisplayPercentile ?? displayPercentile
-                      : displayPercentile
-                  )
-                : getQualityColorFromScore(scoreForColor);
+                ? restaurantQualityScore
+                : null;
+            const localScoreForColor = includeTopDish ? topDishDisplayScore : displayScore;
+            const pinColorGlobal = getQualityColorFromScore(globalScoreForColor);
+            const pinColorLocal = getQualityColorFromScore(localScoreForColor);
+            const pinColor = getQualityColorFromScore(scoreForColor);
             const isDishPin = includeTopDish ? true : false;
             const dishName =
               includeTopDish && typeof properties['dishName'] === 'string'
@@ -4710,16 +4776,20 @@ const SearchScreen: React.FC = () => {
                 contextualScore,
                 rank:
                   typeof properties['rank'] === 'number' ? (properties['rank'] as number) : 9999,
+                displayScore,
                 displayPercentile,
                 restaurantQualityScore:
                   typeof restaurantQualityScore === 'number' ? restaurantQualityScore : null,
                 pinColor,
+                pinColorGlobal,
+                pinColorLocal,
                 ...(isDishPin
                   ? {
                       isDishPin: true,
                       dishName,
                       connectionId,
                       topDishDisplayPercentile,
+                      topDishDisplayScore,
                     }
                   : null),
               },
@@ -4729,11 +4799,11 @@ const SearchScreen: React.FC = () => {
 
         const scoreForRank = (feature: Feature<Point, RestaurantFeatureProperties>) => {
           if (scoreMode === 'coverage_display') {
-            const restaurantPercentile = feature.properties.displayPercentile ?? 0;
+            const restaurantDisplayScore = feature.properties.displayScore ?? 0;
             if (!includeTopDish) {
-              return restaurantPercentile;
+              return restaurantDisplayScore;
             }
-            return feature.properties.topDishDisplayPercentile ?? restaurantPercentile;
+            return feature.properties.topDishDisplayScore ?? restaurantDisplayScore;
           }
           if (includeTopDish) {
             return feature.properties.contextualScore ?? 0;
@@ -4920,20 +4990,34 @@ const SearchScreen: React.FC = () => {
   }, [panelVisible, isPriceSelectorVisible]);
 
   React.useEffect(() => {
+    if (!panelVisible && isRankSelectorVisible) {
+      setIsRankSelectorVisible(false);
+    }
+  }, [panelVisible, isRankSelectorVisible]);
+
+  React.useEffect(() => {
     if (!isPriceSelectorVisible) {
       setPendingPriceRange(getRangeFromLevels(priceLevels));
     }
   }, [isPriceSelectorVisible, priceLevels]);
+
+  React.useEffect(() => {
+    if (!isRankSelectorVisible) {
+      setPendingScoreMode(scoreMode);
+    }
+  }, [isRankSelectorVisible, scoreMode]);
 
   const hidePanel = React.useCallback(() => {
     if (!panelVisible) {
       return;
     }
     setIsPriceSelectorVisible(false);
+    setIsRankSelectorVisible(false);
     animateSheetTo('hidden');
   }, [panelVisible, animateSheetTo]);
 
   const togglePriceSelector = React.useCallback(() => {
+    setIsRankSelectorVisible(false);
     if (isPriceSelectorVisible) {
       commitPriceSelection();
       return;
@@ -4973,6 +5057,7 @@ const SearchScreen: React.FC = () => {
     setSubmittedQuery,
     activeTab,
     setActiveTab,
+    scoreMode,
     setHasMoreFood,
     setHasMoreRestaurants,
     currentPage,
@@ -5112,8 +5197,14 @@ const SearchScreen: React.FC = () => {
     submittedQuery,
   ]);
 
-  const scheduleFilterToggleSearch = React.useCallback((runSearch: () => Promise<void>) => {
-    setIsFilterTogglePending(true);
+  const scheduleFilterToggleSearch = React.useCallback((
+    runSearch: () => Promise<void>,
+    options?: { showOverlay?: boolean }
+  ) => {
+    const shouldShowOverlay = options?.showOverlay !== false;
+    if (shouldShowOverlay) {
+      setIsFilterTogglePending(true);
+    }
     const requestId = (filterToggleRequestRef.current += 1);
     if (toggleFilterDebounceRef.current) {
       clearTimeout(toggleFilterDebounceRef.current);
@@ -5124,7 +5215,7 @@ const SearchScreen: React.FC = () => {
         try {
           await runSearch();
         } finally {
-          if (filterToggleRequestRef.current === requestId) {
+          if (shouldShowOverlay && filterToggleRequestRef.current === requestId) {
             setIsFilterTogglePending(false);
           }
         }
@@ -5134,6 +5225,8 @@ const SearchScreen: React.FC = () => {
   }, []);
 
   const toggleVotesFilter = React.useCallback(() => {
+    setIsPriceSelectorVisible(false);
+    setIsRankSelectorVisible(false);
     const currentVotes = useSearchStore.getState().votes100Plus;
     const nextValue = !currentVotes;
     setVotes100Plus(nextValue);
@@ -5167,6 +5260,43 @@ const SearchScreen: React.FC = () => {
     submitSearch,
     submittedQuery,
   ]);
+
+  const handleScoreModeChange = React.useCallback(
+    (nextMode: typeof scoreMode) => {
+      if (nextMode === scoreMode) {
+        return;
+      }
+      setScoreMode(nextMode);
+
+      const shouldRunShortcut = searchMode === 'shortcut';
+      const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+      const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
+      if (!shouldRunShortcut && !shouldRunNatural) {
+        return;
+      }
+      scheduleFilterToggleSearch(async () => {
+        if (shouldRunShortcut) {
+          const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+          const label = submittedQuery || fallbackLabel;
+          await runBestHere(activeTab, label, { preserveSheetState: true, scoreMode: nextMode });
+          return;
+        }
+        await submitSearch({ preserveSheetState: true, scoreMode: nextMode }, committedQuery);
+      }, { showOverlay: false });
+    },
+    [
+      activeTab,
+      isSearchSessionActive,
+      query,
+      runBestHere,
+      scheduleFilterToggleSearch,
+      scoreMode,
+      searchMode,
+      setScoreMode,
+      submitSearch,
+      submittedQuery,
+    ]
+  );
 
   const dismissSearchKeyboard = React.useCallback(() => {
     const shouldLog = searchPerfDebug.enabled;
@@ -6255,6 +6385,7 @@ const SearchScreen: React.FC = () => {
 
   const toggleOpenNow = React.useCallback(() => {
     setIsPriceSelectorVisible(false);
+    setIsRankSelectorVisible(false);
     const currentOpenNow = useSearchStore.getState().openNow;
     const nextValue = !currentOpenNow;
     setOpenNow(nextValue);
@@ -6343,16 +6474,37 @@ const SearchScreen: React.FC = () => {
     setIsPriceSelectorVisible(false);
   }, []);
 
+  const commitRankSelection = React.useCallback(() => {
+    setIsRankSelectorVisible(false);
+    handleScoreModeChange(pendingScoreMode);
+  }, [handleScoreModeChange, pendingScoreMode]);
+
+  const closeRankSelector = React.useCallback(() => {
+    setIsRankSelectorVisible(false);
+  }, []);
+
+  const toggleRankSelector = React.useCallback(() => {
+    if (isRankSelectorVisible) {
+      commitRankSelection();
+      return;
+    }
+    setIsPriceSelectorVisible(false);
+    setPendingScoreMode(scoreMode);
+    setIsRankSelectorVisible(true);
+  }, [commitRankSelection, isRankSelectorVisible, scoreMode]);
+
   React.useEffect(() => {
     return registerTransientDismissor(() => {
       if (!isSuggestionPanelActive && !isSuggestionPanelVisible) {
         setRestaurantOverlayVisible(false);
       }
       closePriceSelector();
+      closeRankSelector();
       closeScoreInfo();
     });
   }, [
     closePriceSelector,
+    closeRankSelector,
     closeScoreInfo,
     isSuggestionPanelActive,
     isSuggestionPanelVisible,
@@ -6362,6 +6514,10 @@ const SearchScreen: React.FC = () => {
   const handlePriceDone = React.useCallback(() => {
     commitPriceSelection();
   }, [commitPriceSelection]);
+
+  const handleRankDone = React.useCallback(() => {
+    commitRankSelection();
+  }, [commitRankSelection]);
 
   const recordRestaurantView = React.useCallback(
     async (
@@ -7240,6 +7396,9 @@ const SearchScreen: React.FC = () => {
       <SearchFilters
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        rankButtonActive={rankButtonIsActive}
+        onToggleRankSelector={toggleRankSelector}
+        isRankSelectorVisible={isRankSelectorVisible}
         openNow={openNow}
         onToggleOpenNow={toggleOpenNow}
         votesFilterActive={votesFilterActive}
@@ -7262,7 +7421,10 @@ const SearchScreen: React.FC = () => {
       priceButtonLabelText,
       priceButtonIsActive,
       isPriceSelectorVisible,
+      rankButtonIsActive,
+      isRankSelectorVisible,
       toggleOpenNow,
+      toggleRankSelector,
       toggleVotesFilter,
       togglePriceSelector,
       handleSearchFiltersLayoutCache,
@@ -8109,15 +8271,16 @@ const SearchScreen: React.FC = () => {
       <View style={styles.container}>
         {isInitialCameraReady ? (
           <React.Profiler id="SearchMapTree" onRender={handleProfilerRender}>
-            <SearchMap
-              mapRef={mapRef}
-              cameraRef={cameraRef}
-              styleURL={mapStyleURL}
-              mapCenter={mapCenter}
-              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
-              cameraPadding={mapCameraPadding}
-              isFollowingUser={isFollowingUser}
-              onPress={stableHandleMapPress}
+	            <SearchMap
+	              mapRef={mapRef}
+	              cameraRef={cameraRef}
+	              styleURL={mapStyleURL}
+	              scoreMode={scoreMode}
+	              mapCenter={mapCenter}
+	              mapZoom={mapZoom ?? USA_FALLBACK_ZOOM}
+	              cameraPadding={mapCameraPadding}
+	              isFollowingUser={isFollowingUser}
+	              onPress={stableHandleMapPress}
               onTouchStart={handleMapTouchStart}
               onTouchEnd={handleMapTouchEnd}
               onCameraChanged={stableHandleCameraChanged}
@@ -8549,6 +8712,63 @@ const SearchScreen: React.FC = () => {
         )}
         <React.Profiler id="Overlays" onRender={handleProfilerRender}>
           <>
+            <React.Profiler id="RankSheet" onRender={handleProfilerRender}>
+              <MemoOverlayModalSheet
+                visible={isRankSelectorVisible}
+                onRequestClose={closeRankSelector}
+                paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
+                paddingTop={12}
+              >
+                <View style={styles.rankSheetHeaderRow}>
+                  <Text variant="body" weight="semibold" style={styles.rankSheetHeadline}>
+                    Rank
+                  </Text>
+                </View>
+                <View style={styles.rankSheetOptions}>
+                  {(
+                    [
+                      { value: 'global_quality', label: 'Global' },
+                      { value: 'coverage_display', label: 'Local' },
+                    ] as const
+                  ).map((option) => {
+                    const selected = pendingScoreMode === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => setPendingScoreMode(option.value)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Use ${option.label.toLowerCase()} ranking`}
+                        accessibilityState={{ selected }}
+                        style={[
+                          styles.rankSheetOption,
+                          selected && styles.rankSheetOptionSelected,
+                        ]}
+                      >
+                        <Text
+                          variant="body"
+                          weight={selected ? 'semibold' : 'regular'}
+                          style={[styles.rankSheetOptionText, selected && styles.rankSheetOptionTextSelected]}
+                        >
+                          {option.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View style={styles.sheetActionsRow}>
+                  <Pressable
+                    onPress={handleRankDone}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply rank mode"
+                    style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
+                  >
+                    <Text variant="body" weight="semibold" style={styles.priceSheetDoneText}>
+                      Done
+                    </Text>
+                  </Pressable>
+                </View>
+              </MemoOverlayModalSheet>
+            </React.Profiler>
             <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
               <MemoOverlayModalSheet
                 visible={isPriceSelectorVisible}
@@ -8566,16 +8786,6 @@ const SearchScreen: React.FC = () => {
                   >
                     {priceSheetHeadline}
                   </Text>
-                  <Pressable
-                    onPress={handlePriceDone}
-                    accessibilityRole="button"
-                    accessibilityLabel="Apply price filters"
-                    style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
-                  >
-                    <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
-                      Done
-                    </Text>
-                  </Pressable>
                 </View>
                 <View style={styles.priceSheetSliderWrapper}>
                   <PriceRangeSlider
@@ -8583,6 +8793,18 @@ const SearchScreen: React.FC = () => {
                     onRangePreview={setPendingPriceRange}
                     onRangeCommit={setPendingPriceRange}
                   />
+                </View>
+                <View style={styles.sheetActionsRow}>
+                  <Pressable
+                    onPress={handlePriceDone}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apply price filters"
+                    style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
+                  >
+                    <Text variant="body" weight="semibold" style={styles.priceSheetDoneText}>
+                      Done
+                    </Text>
+                  </Pressable>
                 </View>
               </MemoOverlayModalSheet>
             </React.Profiler>

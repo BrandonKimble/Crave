@@ -5,7 +5,9 @@ import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 1;
+const SEARCH_STORE_VERSION = 2;
+
+export type SearchScoreMode = 'global_quality' | 'coverage_display';
 
 const normalizePriceLevels = (levels: unknown): number[] => {
   if (!Array.isArray(levels)) {
@@ -40,6 +42,7 @@ export interface SearchFilters {
 interface SearchState extends SearchFilters {
   query: string;
   page: number;
+  scoreMode: SearchScoreMode;
   history: SearchHistoryEntry[];
   setQuery: (query: string) => void;
   clearQuery: () => void;
@@ -56,6 +59,7 @@ interface SearchState extends SearchFilters {
   removeHistoryEntry: (query: string) => void;
   clearHistory: () => void;
   setVotes100Plus: (enabled: boolean) => void;
+  setScoreMode: (mode: SearchScoreMode) => void;
 }
 
 const defaultState = {
@@ -67,6 +71,7 @@ const defaultState = {
   boundsPresetId: null,
   priceLevels: [],
   votes100Plus: false,
+  scoreMode: 'global_quality' as SearchScoreMode,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
@@ -78,6 +83,7 @@ const defaultState = {
   | 'boundsPresetId'
   | 'priceLevels'
   | 'votes100Plus'
+  | 'scoreMode'
   | 'history'
 >;
 
@@ -128,6 +134,10 @@ export const useSearchStore = create<SearchState>()(
         set(() => ({
           votes100Plus: Boolean(enabled),
         })),
+      setScoreMode: (mode) =>
+        set(() => ({
+          scoreMode: mode,
+        })),
       recordSearch: (query) => {
         const trimmed = query.trim();
         if (!trimmed) {
@@ -172,6 +182,10 @@ export const useSearchStore = create<SearchState>()(
         return {
           ...state,
           priceLevels: normalizePriceLevels((state as SearchState).priceLevels),
+          scoreMode:
+            state.scoreMode === 'coverage_display' || state.scoreMode === 'global_quality'
+              ? state.scoreMode
+              : defaultState.scoreMode,
         };
       },
       storage: createJSONStorage(() => {

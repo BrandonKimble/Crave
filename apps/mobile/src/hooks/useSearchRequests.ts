@@ -1,4 +1,5 @@
 import * as React from 'react';
+import axios from 'axios';
 
 import {
   searchService,
@@ -35,6 +36,36 @@ export const useSearchRequests = () => {
   const searchControllerRef = React.useRef<AbortController | null>(null);
   const autocompleteControllerRef = React.useRef<AbortController | null>(null);
   const autocompleteDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rateLimitUntilRef = React.useRef(0);
+
+  const getRetryAfterMs = React.useCallback((error: unknown) => {
+    if (!axios.isAxiosError(error)) {
+      return null;
+    }
+    const headers = error.response?.headers;
+    if (!headers) {
+      return null;
+    }
+
+    const candidates = [
+      headers['retry-after-long'],
+      headers['retry-after-medium'],
+      headers['retry-after-short'],
+      headers['retry-after'],
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string' && typeof candidate !== 'number') {
+        continue;
+      }
+      const value = typeof candidate === 'number' ? candidate : Number.parseFloat(candidate);
+      if (!Number.isFinite(value) || value <= 0) {
+        continue;
+      }
+      return value * 1000;
+    }
+
+    return null;
+  }, []);
 
   const [isSearching, setIsSearching] = React.useState(false);
   const [isAutocompleteLoading, setIsAutocompleteLoading] = React.useState(false);
@@ -106,6 +137,16 @@ export const useSearchRequests = () => {
 
   const runSearch = React.useCallback(
     async (request: RunSearchParams): Promise<SearchResponse | null> => {
+      const now = Date.now();
+      if (now < rateLimitUntilRef.current) {
+        const waitMs = rateLimitUntilRef.current - now;
+        const rateLimitError = new Error(
+          `Too many requests. Try again in ${Math.ceil(waitMs / 100) / 10}s.`
+        );
+        (rateLimitError as Error & { code?: string }).code = 'RATE_LIMITED';
+        throw rateLimitError;
+      }
+
       cancelSearch();
       const controller = new AbortController();
       searchControllerRef.current = controller;
@@ -136,6 +177,13 @@ export const useSearchRequests = () => {
         if (controller.signal.aborted) {
           return null;
         }
+        const status = axios.isAxiosError(error)
+          ? (typeof error.response?.status === 'number' ? error.response.status : null)
+          : null;
+        if (status === 429) {
+          const retryAfterMs = getRetryAfterMs(error) ?? 2000;
+          rateLimitUntilRef.current = Math.max(rateLimitUntilRef.current, Date.now() + retryAfterMs);
+        }
         throw error;
       } finally {
         if (searchControllerRef.current === controller) {
@@ -144,7 +192,7 @@ export const useSearchRequests = () => {
         }
       }
     },
-    [cancelSearch]
+    [cancelSearch, getRetryAfterMs]
   );
 
   React.useEffect(() => cancelAll, [cancelAll]);
