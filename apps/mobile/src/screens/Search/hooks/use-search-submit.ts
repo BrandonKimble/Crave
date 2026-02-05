@@ -552,15 +552,15 @@ const useSearchSubmit = ({
           logSearchPhase('submitSearch:loading-state');
         }
 
-	        const payload: NaturalSearchRequest = {
-	          query: trimmed,
-	          pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
-	          includeSqlPreview: false,
-	          scoreMode: searchPerfDebug.scoreMode,
-	        };
-	        if (append && lastSearchRequestIdRef.current) {
-	          payload.searchRequestId = lastSearchRequestIdRef.current;
-	        }
+        const payload: NaturalSearchRequest = {
+          query: trimmed,
+          pagination: { page: targetPage, pageSize: DEFAULT_PAGE_SIZE },
+          includeSqlPreview: false,
+          scoreMode: searchPerfDebug.scoreMode,
+        };
+        if (append && lastSearchRequestIdRef.current) {
+          payload.searchRequestId = lastSearchRequestIdRef.current;
+        }
 
         if (!append) {
           payload.submissionSource = options?.submission?.source ?? 'manual';

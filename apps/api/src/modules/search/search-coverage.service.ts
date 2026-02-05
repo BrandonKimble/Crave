@@ -223,12 +223,16 @@ export class SearchCoverageService {
     ];
     if (foodEntityIds.length) {
       conditions.push(
-        Prisma.sql`c.food_id = ANY(ARRAY[${Prisma.join(foodEntityIds)}]::uuid[])`,
+        Prisma.sql`c.food_id = ANY(ARRAY[${Prisma.join(
+          foodEntityIds,
+        )}]::uuid[])`,
       );
     }
     if (foodAttributeIds.length) {
       conditions.push(
-        Prisma.sql`c.food_attributes && ARRAY[${Prisma.join(foodAttributeIds)}]::uuid[]`,
+        Prisma.sql`c.food_attributes && ARRAY[${Prisma.join(
+          foodAttributeIds,
+        )}]::uuid[]`,
       );
     }
 

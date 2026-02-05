@@ -1056,7 +1056,9 @@ location_aggregates AS (
       ? 'fc.food_quality_score'
       : 'COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100)';
     return {
-      sql: Prisma.sql`${scoreSql} ${Prisma.raw(direction)}, fc.connection_id ASC`,
+      sql: Prisma.sql`${scoreSql} ${Prisma.raw(
+        direction,
+      )}, fc.connection_id ASC`,
       preview: `${scorePreview} ${direction}, fc.connection_id ASC`,
     };
   }

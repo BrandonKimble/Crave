@@ -30,7 +30,7 @@ This plan replaces/overhauls `plans/map-marker-lod-v2.md` to match the newer “
 
 - No clustering / dot splitting.
 - No “fancy” pin↔dot transitions (snap only).
-- No pin↔dot collision enforcement yet (pins may overlap; dots/labels collision rules remain as-is).
+- No “fancy” pin↔dot collision tuning yet (pins may overlap; dots avoid rendering on top of pins, but we’re not doing clustering/packing heuristics).
 - No edge culling / offscreen fade behavior (SymbolLayers are efficient; revisit later if needed).
 
 ## Current architecture anchors (important context)
@@ -56,6 +56,27 @@ These are computed by quality-score processing and are intended to be comparable
 These are computed via `PERCENT_RANK() OVER (PARTITION BY location_key ...)`, so each coverage can have its own “top” restaurant at/near 100th percentile.
 
 ## Proposed implementation (Phase-based)
+
+## Current status (as of 2026-02-05)
+
+Completed:
+
+- ✅ **API `scoreMode` end-to-end (ordering + metadata)** for natural + structured searches.
+- ✅ **Shortcut coverage map endpoint** returns (a) global restaurant score + (b) coverage percentile, and supports `includeTopDish` for dish-tab shortcut pins.
+- ✅ **Mobile cards + colors** are `scoreMode` aware (global vs coverage).
+- ✅ **Live LOD while moving**: top **30** visible candidates render as pins; remainder are dots.
+- ✅ **Deterministic pin stacking under LOD** via fixed “z-slot” SymbolLayer stacks (prevents “newly mounted pin draws on top”).
+- ✅ **Dots/pins mutual exclusion**: dots are hidden under pinned restaurants using a property-based expression (not feature-state).
+- ✅ **Pins require `googlePlaceId`**:
+  - Shortcut coverage: filtered server-side (`pl.google_place_id IS NOT NULL`).
+  - Normal search pins: filtered client-side (skip locations without `googlePlaceId`) to prevent “73 restaurants at one coordinate” stacks.
+- ✅ **Label flash on gesture end**: removed the forced label-layer remount that caused all labels to blink when releasing the map.
+- ✅ **LOD boundary hysteresis**: added per-marker promote/demote stability gating to reduce 30/31 flip-flop while moving.
+
+Not completed / still open:
+
+- ⏳ **True label ordering invariance** while moving (we accept that collision + candidate layers can reorder).
+- ⏳ **Fine-tuning for LOD hysteresis constants** if it still feels “indecisive” in very dense areas.
 
 ### Phase 0 — Flag & invariants
 
@@ -160,7 +181,7 @@ Algorithm:
    - global mode: full-precision `restaurantQualityScore DESC`
    - coverage mode: `displayPercentile DESC` (or `displayScore DESC` if we prefer)
    - tie-break: see “Open questions”
-2. Define `MAX_FULL_PINS` as a tunable constant (start at **40**).
+2. Define `MAX_FULL_PINS` as a tunable constant (start at **30**).
 3. On camera change (zoom/pan), determine which candidates are currently within viewport bounds.
 4. Promote the **top `MAX_FULL_PINS` among the visible subset** to full pins; render the rest as dots.
 5. On dataset growth (pagination adds more candidates), recompute ranking maps once, then re-run step (4).
@@ -182,7 +203,91 @@ Implementation notes:
 - Trigger LOD recomputation from camera-change events (the same class of events that currently drive dot visibility).
 - Throttle to a small cadence while moving (e.g., once per animation frame or every ~50–100ms) to avoid saturating JS.
 - Keep Mapbox layers stable; prefer updating ShapeSource data / feature-state instead of unmounting/remounting layers while moving.
-- Optional: small hysteresis to avoid “rank 40/41” flicker (tunable) without waiting for idle.
+- Optional: small hysteresis to avoid “rank 30/31” flicker (tunable) without waiting for idle.
+
+---
+
+## Phase 5 — Global vs Local ranking toggle (UX + perf)
+
+Goal: add a UI toggle (left of the dishes/restaurants segment toggle) that lets the user switch between:
+
+- **Global** ranking (quality score)
+- **Local** ranking (coverage percentile / display score)
+
+Desired UX:
+
+- Switching feels like a UI toggle (instant or near-instant), without “submit new search” friction.
+- Map pins/dots/labels update smoothly while moving (no big remount flashes).
+- List ordering updates consistently with the map ordering.
+
+### Key design decision: “view switch” vs “new search”
+
+There are two viable strategies; which one we choose determines correctness vs instantness:
+
+**Option A (recommended v1): view-only toggle, no refetch**
+
+- Toggle only changes **how we rank / color / display** within the already-loaded dataset.
+- Pros: instant; feels like a “display mode” switch.
+- Cons: if the user has not loaded all pages, the list cannot be “globally correct” for the alternate mode (because pagination was fetched using the other ordering).
+
+How to keep it correct enough:
+
+- On toggle:
+  - Recompute the “rank key” per item from existing fields:
+    - restaurants: global => `restaurantQualityScore`; local => `displayScore` or `displayPercentile * 100`
+    - dishes: global => `qualityScore`; local => `displayScore` or `displayPercentile * 100`
+  - Resort the *currently loaded* arrays for the sheet and rebuild marker ranks accordingly.
+- Keep API pagination stable:
+  - Latch `scoreModeAtSubmit` per search session and keep all API calls for that session using that mode (prevents duplicates/skips).
+  - The toggle affects only the client-side ordering view for that session.
+
+**Option B: toggle triggers a new search (refetch page 1)**
+
+- Toggle behaves like Open Now (but likely faster), resetting to page 1 under the new ordering.
+- Pros: list ordering is *actually correct* for the selected mode from the start.
+- Cons: not “friction free”; requires network; may feel like a new search.
+
+Hybrid (best UX, more work):
+
+- Do Option A immediately (instant resort of loaded data), then background fetch Option B and swap in when ready.
+- Requires careful UI so results don’t “snap twice” confusingly.
+
+### Recommended implementation approach (Option A)
+
+Core principle: the toggle should not require unmounting Mapbox layers; it should flow through existing memoization.
+
+1) Introduce a single `scoreModePreference` state in `SearchScreen` (default `global_quality`).
+2) Use `scoreModePreference` for:
+   - card display score selection
+   - card + marker colors
+   - marker ranking + `rank` assignment (drives label sort priority + pin stacking slots + LOD selection)
+3) Keep `scoreModeAtSubmit` (latched when search is submitted) to avoid changing API pagination ordering mid-session.
+4) Refactor to make “ordering” a pure function:
+   - `getRestaurantRankValue(restaurant, mode)`
+   - `getDishRankValue(dish, mode)`
+   - `getRestaurantColor(restaurant, mode)`
+   - `getDishColor(dish, mode)`
+5) Ensure the toggle only invalidates the minimal memo sets:
+   - resorted restaurant/dish arrays
+   - marker catalog / pinned set
+   - dot color expressions + pin colors
+   - avoid bumping label epochs (no forced remount).
+
+### UI placement
+
+- Add the toggle to `apps/mobile/src/screens/Search/components/SearchFilters.tsx` as a compact two-state control (Global/Local) immediately left of the existing segment toggle.
+- Keep the existing segment highlight animations; the new toggle should be visually “first-class” but small.
+
+### Open questions / decisions needed
+
+- Should the toggle affect:
+  - only ordering + color + score display, or
+  - also which sections/meta copy we show (e.g., disclose “local mode uses coverage percentile”)?
+- What to label it:
+  - “Global / Local”
+  - “US / City”
+  - “Overall / Nearby”
+- Should the selection persist across app launches (AsyncStorage), or be session-only?
 
 ## “Done” checklist
 
@@ -215,7 +320,7 @@ Implementation notes:
 - Fixed number (e.g., 35/50/75/100), or scale by device size?
 - Separate counts per shortcut type (restaurants vs dishes)?
   Decision (v1):
-- Fixed and tunable; start at `MAX_FULL_PINS = 40`.
+- Fixed and tunable; start at `MAX_FULL_PINS = 30`.
 - Always compute top-N over the **currently visible subset** (viewport-relative).
 
 ### 2) Tie-breaker for identical scores (global mode)

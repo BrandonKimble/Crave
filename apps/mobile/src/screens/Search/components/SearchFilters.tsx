@@ -143,7 +143,9 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
   );
   const [segmentLayoutsVersion, setSegmentLayoutsVersion] = React.useState(0);
   const initialActiveLayout = segmentLayoutsRef.current[activeTab];
-  const highlightReadyRef = React.useRef(Boolean(initialActiveLayout && initialActiveLayout.width > 0));
+  const highlightReadyRef = React.useRef(
+    Boolean(initialActiveLayout && initialActiveLayout.width > 0)
+  );
 
   const inset = contentHorizontalPadding;
   const scrollX = useSharedValue(0);
