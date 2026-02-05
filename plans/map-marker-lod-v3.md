@@ -30,7 +30,7 @@ This plan replaces/overhauls `plans/map-marker-lod-v2.md` to match the newer “
 
 - No clustering / dot splitting.
 - No “fancy” pin↔dot transitions (snap only).
-- No “fancy” pin↔dot collision tuning yet (pins may overlap; dots avoid rendering on top of pins, but we’re not doing clustering/packing heuristics).
+- No “fancy” pin↔dot collision tuning yet (pins may overlap; we’re not doing clustering/packing heuristics).
 - No edge culling / offscreen fade behavior (SymbolLayers are efficient; revisit later if needed).
 
 ## Current architecture anchors (important context)
