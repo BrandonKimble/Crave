@@ -432,7 +432,7 @@ const PIN_GLYPH_OUTLINE = '\ue900';
 const PIN_GLYPH_FILL = '\ue901';
 // IcoMoon fonts often have extra vertical bearing/whitespace below the visible glyph.
 // Nudge the glyph down so the pin tip sits on the coordinate point (matching the raster pin).
-const PIN_GLYPH_TRANSLATE_Y_PX = Math.round(PIN_MARKER_RENDER_SIZE * 0.30);
+const PIN_GLYPH_TRANSLATE_Y_PX = Math.round(PIN_MARKER_RENDER_SIZE * 0.3);
 // Fill glyph tends to sit slightly lower than the raster fill due to font bearings. Negative
 // values move the fill up relative to the base.
 const PIN_GLYPH_FILL_RELATIVE_TRANSLATE_Y_PX = -2;
