@@ -317,12 +317,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       if (hiddenCount <= 0) {
         return null;
       }
-      if (primaryFoodSingleWord && primaryFoodTerm) {
-        return `+${hiddenCount} ${primaryFoodTerm}`;
-      }
       return `+${hiddenCount} more`;
     },
-    [primaryFoodSingleWord, primaryFoodTerm]
+    []
   );
 
   const renderTopFoodInlineChildren = React.useCallback(

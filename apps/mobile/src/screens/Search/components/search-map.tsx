@@ -92,11 +92,17 @@ const STYLE_PINS_SHADOW_TRANSLATE: [number, number] = [
 ];
 // `SymbolLayer.iconSize` scales relative to the source image's pixel dimensions.
 // These values are derived to match the existing RN pin layout in `styles.ts` + `constants/search.ts`.
-const PIN_OUTLINE_IMAGE_HEIGHT_PX = 98;
-const PIN_FILL_IMAGE_HEIGHT_PX = 72;
+// `SymbolLayer.iconSize` scales relative to the source image's logical pixel dimensions.
+// We keep the pin's on-screen size fixed, but provide `pin@2x.png` / `pin@3x.png` so RN resolves
+// the correct density for the device (sharper while keeping layout stable).
+const PIN_OUTLINE_LOGICAL_HEIGHT_PX = 480;
+const PIN_FILL_LOGICAL_HEIGHT_PX = 360;
 
-const STYLE_PINS_OUTLINE_ICON_SIZE = PIN_MARKER_RENDER_SIZE / PIN_OUTLINE_IMAGE_HEIGHT_PX;
-const STYLE_PINS_FILL_ICON_SIZE = PIN_FILL_RENDER_HEIGHT / PIN_FILL_IMAGE_HEIGHT_PX;
+const STYLE_PINS_OUTLINE_ICON_SIZE = PIN_MARKER_RENDER_SIZE / PIN_OUTLINE_LOGICAL_HEIGHT_PX;
+// `pin-shadow.png` is generated from a downscaled ~98px-tall silhouette for perf / bundle size.
+// Keep its on-screen size aligned with the base pin by scaling against the same 98px baseline.
+const STYLE_PINS_SHADOW_ICON_SIZE = PIN_MARKER_RENDER_SIZE / 98;
+const STYLE_PINS_FILL_ICON_SIZE = PIN_FILL_RENDER_HEIGHT / PIN_FILL_LOGICAL_HEIGHT_PX;
 // `SymbolLayer.iconOffset` is specified in the *source image's pixel units* (and then scaled by
 // `iconSize`). Our pin layout constants are in "rendered wrapper pixels", so we convert.
 const STYLE_PINS_FILL_OFFSET_RENDER_PX = -(
@@ -242,7 +248,7 @@ const LABEL_LAYER_IDS_BY_CANDIDATE = {
 
 // Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
 // once we shift the ring upward to align with the pin fill centerline.
-const LABEL_MIN_BOTTOM_GAP_PX = 4.01;
+const LABEL_MIN_BOTTOM_GAP_PX = 3.5;
 const LABEL_MIN_TOP_GAP_PX = 4;
 const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 6;
 
@@ -408,7 +414,7 @@ const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
 const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
   // `pin-shadow.png` includes padding so blur isn't clipped; keep size aligned with the base pin.
-  iconSize: STYLE_PINS_OUTLINE_ICON_SIZE,
+  iconSize: STYLE_PINS_SHADOW_ICON_SIZE,
   iconAnchor: 'bottom',
   symbolZOrder: 'source',
   iconAllowOverlap: true,
@@ -614,7 +620,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // Reduce collision buffer so dots can pack tighter before culling.
       textPadding: 0,
       // Keep the collision box closer to the actual glyph bounds.
-      textLineHeight: 1,
+      textLineHeight: 0.5,
       // Hide dots that correspond to currently-pinned restaurants. Using feature-state is
       // unreliable because Mapbox can drop source feature-state when ShapeSource data updates.
       // A property-based expression keeps dots/pins mutually exclusive deterministically.

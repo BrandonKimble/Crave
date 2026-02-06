@@ -7,7 +7,7 @@ import {
   type LayoutChangeEvent,
   type LayoutRectangle,
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import Reanimated, {
   Easing,
   useAnimatedScrollHandler,
@@ -97,6 +97,7 @@ export type SearchFiltersLayoutCache = {
 type SearchFiltersProps = {
   activeTab: SegmentValue;
   onTabChange: (value: SegmentValue) => void;
+  rankButtonLabel: string;
   rankButtonActive: boolean;
   onToggleRankSelector: () => void;
   isRankSelectorVisible: boolean;
@@ -118,6 +119,7 @@ type SearchFiltersProps = {
 const SearchFilters: React.FC<SearchFiltersProps> = ({
   activeTab,
   onTabChange,
+  rankButtonLabel,
   rankButtonActive,
   onToggleRankSelector,
   isRankSelectorVisible,
@@ -321,8 +323,6 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
             directionalLockEnabled
             scrollEventThrottle={16}
             onScroll={onScroll}
-            scrollEnabled={!isPriceSelectorVisible}
-            bounces={!isPriceSelectorVisible}
             alwaysBounceHorizontal
             contentContainerStyle={[styles.filterButtonsContent, { paddingHorizontal: inset }]}
             style={styles.filterButtonsScroll}
@@ -350,21 +350,30 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="body"
+                    variant="caption"
                     weight="semibold"
                     style={[
                       styles.rankButtonLabel,
                       rankButtonActive && styles.rankButtonLabelActive,
                     ]}
                   >
-                    Rank
+                    {rankButtonLabel}
                   </Text>
-                  <Feather
-                    name={isRankSelectorVisible ? 'chevron-up' : 'chevron-down'}
-                    size={14}
-                    color={rankButtonActive ? '#ffffff' : '#111827'}
-                    style={styles.rankButtonChevron}
-                  />
+                  {isRankSelectorVisible ? (
+                    <ChevronUp
+                      size={16}
+                      strokeWidth={3}
+                      color={rankButtonActive ? '#ffffff' : '#111827'}
+                      style={styles.rankButtonChevron}
+                    />
+                  ) : (
+                    <ChevronDown
+                      size={16}
+                      strokeWidth={3}
+                      color={rankButtonActive ? '#ffffff' : '#111827'}
+                      style={styles.rankButtonChevron}
+                    />
+                  )}
                 </Pressable>
                 <View
                   style={styles.segmentedControl}
@@ -392,7 +401,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                       >
                         <Text
                           numberOfLines={1}
-                          variant="body"
+                          variant="caption"
                           weight="semibold"
                           style={[styles.segmentedLabel, selected && styles.segmentedLabelActive]}
                         >
@@ -414,7 +423,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="body"
+                    variant="caption"
                     weight="semibold"
                     style={[styles.openNowText, openNow && styles.openNowTextActive]}
                   >
@@ -439,7 +448,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="body"
+                    variant="caption"
                     weight="semibold"
                     style={[
                       styles.priceButtonLabel,
@@ -448,12 +457,21 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   >
                     {priceButtonLabel}
                   </Text>
-                  <Feather
-                    name={isPriceSelectorVisible ? 'chevron-up' : 'chevron-down'}
-                    size={14}
-                    color={priceButtonActive ? '#ffffff' : '#111827'}
-                    style={styles.priceButtonChevron}
-                  />
+                  {isPriceSelectorVisible ? (
+                    <ChevronUp
+                      size={16}
+                      strokeWidth={3}
+                      color={priceButtonActive ? '#ffffff' : '#111827'}
+                      style={styles.priceButtonChevron}
+                    />
+                  ) : (
+                    <ChevronDown
+                      size={16}
+                      strokeWidth={3}
+                      color={priceButtonActive ? '#ffffff' : '#111827'}
+                      style={styles.priceButtonChevron}
+                    />
+                  )}
                 </Pressable>
                 <Pressable
                   onLayout={registerHole('toggle-votes')}
@@ -470,7 +488,7 @@ const SearchFilters: React.FC<SearchFiltersProps> = ({
                   ]}
                 >
                   <Text
-                    variant="body"
+                    variant="caption"
                     weight="semibold"
                     style={[styles.votesText, votesFilterActive && styles.votesTextActive]}
                   >

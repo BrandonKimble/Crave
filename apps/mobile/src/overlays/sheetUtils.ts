@@ -26,8 +26,8 @@ export const SHEET_SPRING_CONFIG: WithSpringConfig = {
   restSpeedThreshold: 0.5,
 };
 export const OVERLAY_TIMING_CONFIG = {
-  enterDurationMs: 380,
-  exitDurationMs: 340,
+  enterDurationMs: 260,
+  exitDurationMs: 220,
 };
 
 export const SMALL_MOVEMENT_THRESHOLD = 30;

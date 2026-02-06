@@ -20,8 +20,8 @@ const outputPath = path.join(repoRoot, 'apps/mobile/src/assets/pin-shadow.png');
 //   the PNG itself.
 //
 // Tunables:
-// - `sigmaPx`: blur sigma in *source pixels* (pin.png is 96x98). Rendered size is ~28px tall, so
-//   sigma 4–6 generally matches the old subtle shadow.
+// - `sigmaPx`: blur sigma in *shadow-source pixels* (we downscale pin.png to ~98px tall first).
+//   Rendered size is ~28px tall, so sigma 4–6 generally matches the old subtle shadow.
 // - `alphaScale`: overall strength of the shadow.
 const sigmaPx = 5;
 const alphaScale = 0.32;
@@ -34,6 +34,44 @@ const padBottomPx = 18;
 
 const readPng = (filePath) => PNG.sync.read(fs.readFileSync(filePath));
 const writePng = (filePath, png) => fs.writeFileSync(filePath, PNG.sync.write(png));
+
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+const readAlpha = (png, x, y) => {
+  const ix = clamp(x, 0, png.width - 1);
+  const iy = clamp(y, 0, png.height - 1);
+  return png.data[(png.width * iy + ix) * 4 + 3] / 255;
+};
+
+const resizeAlphaBilinear = (png, targetWidth, targetHeight) => {
+  const out = new Float32Array(targetWidth * targetHeight);
+  const scaleX = png.width / targetWidth;
+  const scaleY = png.height / targetHeight;
+
+  for (let y = 0; y < targetHeight; y++) {
+    const sy = (y + 0.5) * scaleY - 0.5;
+    const y0 = Math.floor(sy);
+    const y1 = y0 + 1;
+    const ty = sy - y0;
+    for (let x = 0; x < targetWidth; x++) {
+      const sx = (x + 0.5) * scaleX - 0.5;
+      const x0 = Math.floor(sx);
+      const x1 = x0 + 1;
+      const tx = sx - x0;
+
+      const a00 = readAlpha(png, x0, y0);
+      const a10 = readAlpha(png, x1, y0);
+      const a01 = readAlpha(png, x0, y1);
+      const a11 = readAlpha(png, x1, y1);
+
+      const ax0 = a00 * (1 - tx) + a10 * tx;
+      const ax1 = a01 * (1 - tx) + a11 * tx;
+      out[targetWidth * y + x] = ax0 * (1 - ty) + ax1 * ty;
+    }
+  }
+
+  return out;
+};
 
 const gaussianKernel1D = (sigma) => {
   const radius = Math.max(1, Math.ceil(sigma * 3));
@@ -92,16 +130,23 @@ const main = () => {
   }
 
   const input = readPng(inputPath);
-  const { width, height } = input;
+  // Keep the shadow sprite small and stable regardless of how large the source pin asset is.
+  // This avoids bundling multi-megapixel shadow PNGs and keeps the blur kernel cost bounded.
+  const targetHeight = 98;
+  const targetWidth = Math.max(1, Math.round((input.width * targetHeight) / input.height));
+
+  const width = targetWidth;
+  const height = targetHeight;
   const outWidth = width + padXpx * 2;
   const outHeight = height + padTopPx + padBottomPx;
 
   const alpha = new Float32Array(outWidth * outHeight);
+  const resizedAlpha = resizeAlphaBilinear(input, width, height);
   for (let y = 0; y < height; y++) {
+    const rowOffset = width * y;
+    const outRowOffset = outWidth * (y + padTopPx) + padXpx;
     for (let x = 0; x < width; x++) {
-      const inIdx = (width * y + x) * 4 + 3;
-      const outIdx = outWidth * (y + padTopPx) + (x + padXpx);
-      alpha[outIdx] = input.data[inIdx] / 255;
+      alpha[outRowOffset + x] = resizedAlpha[rowOffset + x];
     }
   }
 

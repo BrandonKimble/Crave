@@ -20,8 +20,11 @@ export const ACTIVE_TAB_COLOR = themeColors.primary;
 export const MINIMUM_VOTES_FILTER = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 export const RESULTS_BOTTOM_PADDING = 200;
-export const PRICE_THUMB_SIZE = 20;
-export const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 4;
+// Slider thumb: visible "thumbprint" is intentionally larger than the inner dot for easier grabs.
+export const PRICE_THUMB_SIZE = 32;
+export const PRICE_THUMB_DOT_SIZE = 20;
+export const PRICE_THUMB_HIT_SIZE = 72;
+export const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 12;
 
 export const DISTANCE_MIN_DECIMALS = 1;
 export const DISTANCE_MAX_DECIMALS = 0;
@@ -44,7 +47,7 @@ export const PIN_FILL_WIDTH = 80;
 export const PIN_FILL_HEIGHT = 72;
 export const PIN_FILL_SCALE = 1.0;
 export const PIN_BASE_SCALE = PIN_MARKER_RENDER_SIZE / PIN_BASE_HEIGHT;
-export const PIN_FILL_VERTICAL_BIAS = -5.5; // Shift up so top gap = side gap
+export const PIN_FILL_VERTICAL_BIAS = -4; // Shift up so top gap = side gap
 export const PIN_FILL_HORIZONTAL_BIAS = 0;
 export const PIN_FILL_RENDER_WIDTH = PIN_FILL_WIDTH * PIN_BASE_SCALE * PIN_FILL_SCALE;
 export const PIN_FILL_RENDER_HEIGHT = PIN_FILL_HEIGHT * PIN_BASE_SCALE * PIN_FILL_SCALE;

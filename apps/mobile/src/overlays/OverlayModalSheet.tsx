@@ -29,7 +29,11 @@ type OverlayModalSheetProps = {
   backdropColor?: string;
 };
 
-const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
+export type OverlayModalSheetHandle = {
+  requestClose: () => void;
+};
+
+const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModalSheetProps>(({
   visible,
   onRequestClose,
   onDismiss,
@@ -41,14 +45,48 @@ const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
   paddingTop = 8,
   minBottomPadding = 12,
   backdropColor = '#0f172a',
-}) => {
+}, ref) => {
   const insets = useSafeAreaInsets();
   const [mounted, setMounted] = React.useState(visible);
   const progress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
+  const isExitingRef = React.useRef(false);
 
-  React.useEffect(() => {
+  const startExit = React.useCallback(() => {
+    if (!mounted || isExitingRef.current) {
+      return;
+    }
+    isExitingRef.current = true;
     progress.stopAnimation();
+    Animated.timing(progress, {
+      toValue: 0,
+      duration: OVERLAY_TIMING_CONFIG.exitDurationMs,
+      easing: RNEasing.in(RNEasing.cubic),
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (!finished) {
+        return;
+      }
+      isExitingRef.current = false;
+      setMounted(false);
+      onDismiss?.();
+    });
+  }, [mounted, onDismiss, progress]);
+
+  const requestClose = React.useCallback(() => {
+    // Start the exit animation immediately so it doesn't wait on a heavy parent re-render.
+    startExit();
+    // Defer notifying the parent until the next frame to keep the close snappy.
+    requestAnimationFrame(() => {
+      onRequestClose();
+    });
+  }, [onRequestClose, startExit]);
+
+  React.useImperativeHandle(ref, () => ({ requestClose }), [requestClose]);
+
+  React.useLayoutEffect(() => {
     if (visible) {
+      isExitingRef.current = false;
+      progress.stopAnimation();
       setMounted(true);
       progress.setValue(0);
       Animated.timing(progress, {
@@ -60,23 +98,11 @@ const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
       return;
     }
 
-    if (!mounted) {
+    if (!mounted || isExitingRef.current) {
       return;
     }
-
-    Animated.timing(progress, {
-      toValue: 0,
-      duration: OVERLAY_TIMING_CONFIG.exitDurationMs,
-      easing: RNEasing.in(RNEasing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (!finished) {
-        return;
-      }
-      setMounted(false);
-      onDismiss?.();
-    });
-  }, [mounted, onDismiss, progress, visible]);
+    startExit();
+  }, [mounted, progress, startExit, visible]);
 
   const translateY = progress.interpolate({
     inputRange: [0, 1],
@@ -93,14 +119,14 @@ const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
   }
 
   return (
-    <View style={[styles.overlay, { zIndex }]} pointerEvents="box-none">
+    <View style={[styles.overlay, { zIndex, elevation: zIndex }]} pointerEvents="box-none">
       <Animated.View
         style={[styles.backdrop, { backgroundColor: backdropColor, opacity: backdropOpacity }]}
         pointerEvents={visible ? 'auto' : 'none'}
       >
         <Pressable
           style={StyleSheet.absoluteFill}
-          onPress={onRequestClose}
+          onPress={requestClose}
           accessibilityRole="button"
           accessibilityLabel="Close sheet"
         />
@@ -122,7 +148,7 @@ const OverlayModalSheet: React.FC<OverlayModalSheetProps> = ({
       </Animated.View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   overlay: {

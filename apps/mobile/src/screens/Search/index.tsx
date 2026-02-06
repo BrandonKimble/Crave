@@ -22,6 +22,7 @@ import Reanimated, {
   useDerivedValue,
   useSharedValue,
   withTiming,
+  LinearTransition,
 } from 'react-native-reanimated';
 import MapboxGL, { type MapState as MapboxMapState } from '@rnmapbox/maps';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -45,7 +46,7 @@ import {
 } from '../../overlays/overlaySheetStyles';
 import OverlaySheetShell from '../../overlays/OverlaySheetShell';
 import OverlayHeaderActionButton from '../../overlays/OverlayHeaderActionButton';
-import OverlayModalSheet from '../../overlays/OverlayModalSheet';
+import OverlayModalSheet, { type OverlayModalSheetHandle } from '../../overlays/OverlayModalSheet';
 import OverlaySheetHeaderChrome from '../../overlays/OverlaySheetHeaderChrome';
 import { createOverlayRegistry } from '../../overlays/OverlayRegistry';
 import { calculateSnapPoints, resolveExpandedTop } from '../../overlays/sheetUtils';
@@ -149,6 +150,13 @@ import {
   type SegmentValue,
 } from './constants/search';
 
+const RANK_MODE_OPTIONS = [
+  { value: 'coverage_display', label: 'Local' },
+  { value: 'global_quality', label: 'Global' },
+] as const;
+const RANK_SEGMENT_PADDING = 2;
+const RANK_SEGMENT_ANIMATION_MS = 180;
+
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
 const EMPTY_RESULTS: Array<FoodResult | RestaurantResult> = [];
@@ -161,6 +169,7 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
+import { formatPriceRangeText } from '../../constants/pricing';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from './utils/marker-lod';
 import { getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
@@ -178,16 +187,30 @@ MapboxGL.setTelemetryEnabled(false);
 
 const AnimatedPressable = Reanimated.createAnimatedComponent(Pressable);
 
-const memoizeHiddenOverlay = <P extends { visible: boolean }>(Component: React.ComponentType<P>) =>
-  React.memo(Component, (prev, next) => !prev.visible && !next.visible);
-
-const MemoOverlayModalSheet = memoizeHiddenOverlay(OverlayModalSheet);
+const MemoOverlayModalSheet = React.memo(
+  OverlayModalSheet,
+  (prev, next) => !prev.visible && !next.visible
+);
 
 type OverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidden';
 const PIXEL_SCALE = PixelRatio.get();
 const CUTOUT_EDGE_SLOP = 1 / PIXEL_SCALE;
 const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_SCALE;
 const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
+const arePriceRangesEqual = (a: PriceRangeTuple, b: PriceRangeTuple) =>
+  a[0] === b[0] && a[1] === b[1];
+const PRICE_SUMMARY_CANDIDATES = (() => {
+  const labels = new Set<string>();
+  for (let min = 1; min <= 4; min += 1) {
+    for (let max = min; max <= 4; max += 1) {
+      labels.add(formatPriceRangeText([min, max]));
+    }
+  }
+  labels.add('Any price');
+  return Array.from(labels);
+})();
+const PRICE_SUMMARY_PILL_PADDING_X = 8;
+const PRICE_SUMMARY_FLIP_OFFSET_Y = 8;
 const shadowFadeStyle = (baseOpacity: number, baseElevation: number, alpha: number) => {
   'worklet';
   const clampedAlpha = Math.max(0, Math.min(alpha, 1));
@@ -779,6 +802,9 @@ const SearchScreen: React.FC = () => {
   });
   const [isPriceSelectorVisible, setIsPriceSelectorVisible] = React.useState(false);
   const [isRankSelectorVisible, setIsRankSelectorVisible] = React.useState(false);
+  const [isPriceSheetContentReady, setIsPriceSheetContentReady] = React.useState(false);
+  const rankSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
+  const priceSheetRef = React.useRef<OverlayModalSheetHandle | null>(null);
   const {
     recentSearches,
     isRecentLoading,
@@ -2075,6 +2101,11 @@ const SearchScreen: React.FC = () => {
     getRangeFromLevels(priceLevels)
   );
   const [pendingScoreMode, setPendingScoreMode] = React.useState<typeof scoreMode>(() => scoreMode);
+  const [rankSegmentContainerWidth, setRankSegmentContainerWidth] = React.useState(0);
+  const rankSegmentHighlightTranslateX = useSharedValue(0);
+  const rankSegmentHighlightWidth = useSharedValue(0);
+  const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
+  const pendingScoreModeRef = React.useRef<typeof scoreMode>(pendingScoreMode);
   const priceFiltersActive = priceLevels.length > 0;
   const priceButtonSummary = React.useMemo(() => {
     if (!priceLevels.length) {
@@ -2087,10 +2118,78 @@ const SearchScreen: React.FC = () => {
     () => formatPriceRangeSummary(pendingPriceRange),
     [pendingPriceRange]
   );
-  const priceSheetHeadline = React.useMemo(
-    () => `${priceSheetSummary} per person`,
-    [priceSheetSummary]
+  const [priceSummaryPillWidth, setPriceSummaryPillWidth] = React.useState<number | null>(null);
+  const priceSheetSummaryTransition = useSharedValue(1);
+  const [priceSheetSummaryPrev, setPriceSheetSummaryPrev] = React.useState<string | null>(null);
+  const [priceSheetSummaryNext, setPriceSheetSummaryNext] = React.useState(priceSheetSummary);
+  const priceSheetSummaryPrevRef = React.useRef(priceSheetSummary);
+
+  React.useEffect(() => {
+    if (priceSheetSummary === priceSheetSummaryPrevRef.current) {
+      return;
+    }
+    setPriceSheetSummaryPrev(priceSheetSummaryPrevRef.current);
+    setPriceSheetSummaryNext(priceSheetSummary);
+    priceSheetSummaryPrevRef.current = priceSheetSummary;
+    priceSheetSummaryTransition.value = 0;
+    priceSheetSummaryTransition.value = withTiming(1, {
+      duration: 220,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  }, [priceSheetSummary, priceSheetSummaryTransition]);
+
+  const priceSheetSummaryPrevAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: 1 - priceSheetSummaryTransition.value,
+    transform: [
+      { translateY: -PRICE_SUMMARY_FLIP_OFFSET_Y * priceSheetSummaryTransition.value },
+      { scale: 1 - priceSheetSummaryTransition.value * 0.06 },
+    ],
+  }));
+
+  const priceSheetSummaryNextAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: priceSheetSummaryTransition.value,
+    transform: [
+      { translateY: PRICE_SUMMARY_FLIP_OFFSET_Y * (1 - priceSheetSummaryTransition.value) },
+      { scale: 0.94 + priceSheetSummaryTransition.value * 0.06 },
+    ],
+  }));
+  const updateRankSegmentHighlight = React.useCallback(
+    (mode: typeof pendingScoreMode, animated: boolean) => {
+      if (rankSegmentContainerWidth <= RANK_SEGMENT_PADDING * 2 + 1) {
+        return;
+      }
+      const index = RANK_MODE_OPTIONS.findIndex((option) => option.value === mode);
+      if (index < 0) {
+        return;
+      }
+      const innerWidth = Math.max(0, rankSegmentContainerWidth - RANK_SEGMENT_PADDING * 2);
+      const segmentWidth = innerWidth / RANK_MODE_OPTIONS.length;
+      const targetX = RANK_SEGMENT_PADDING + index * segmentWidth;
+      if (animated) {
+        rankSegmentHighlightTranslateX.value = withTiming(targetX, {
+          duration: RANK_SEGMENT_ANIMATION_MS,
+          easing: Easing.out(Easing.cubic),
+        });
+        rankSegmentHighlightWidth.value = withTiming(segmentWidth, {
+          duration: RANK_SEGMENT_ANIMATION_MS,
+          easing: Easing.out(Easing.cubic),
+        });
+        return;
+      }
+      rankSegmentHighlightTranslateX.value = targetX;
+      rankSegmentHighlightWidth.value = segmentWidth;
+    },
+    [
+      rankSegmentContainerWidth,
+      rankSegmentHighlightTranslateX,
+      rankSegmentHighlightWidth,
+    ]
   );
+  const rankSegmentHighlightAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: rankSegmentHighlightWidth.value > 0 ? 1 : 0,
+    transform: [{ translateX: rankSegmentHighlightTranslateX.value }],
+    width: rankSegmentHighlightWidth.value,
+  }));
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const hasRecentlyViewedFoods = recentlyViewedFoods.length > 0;
@@ -2131,6 +2230,18 @@ const SearchScreen: React.FC = () => {
     setSuggestions,
     setShowSuggestions,
   ]);
+
+  React.useEffect(() => {
+    updateRankSegmentHighlight(pendingScoreMode, true);
+  }, [pendingScoreMode, updateRankSegmentHighlight]);
+
+  React.useEffect(() => {
+    pendingPriceRangeRef.current = pendingPriceRange;
+  }, [pendingPriceRange]);
+
+  React.useEffect(() => {
+    pendingScoreModeRef.current = pendingScoreMode;
+  }, [pendingScoreMode]);
   const isSuggestionScreenVisible = isSuggestionPanelVisible;
   React.useEffect(() => {
     if (suggestionLayoutHoldTimeoutRef.current) {
@@ -2312,35 +2423,38 @@ const SearchScreen: React.FC = () => {
       ? sharedSnap
       : 'expanded'
     : 'collapsed';
-  const shouldRenderSearchOverlay =
-    isSearchOverlay ||
-    shouldShowPollsSheet ||
-    showBookmarksOverlay ||
-    showProfileOverlay ||
-    showSaveListOverlay;
-  const shouldShowSearchShortcuts =
-    !shouldDisableSearchShortcuts &&
-    shouldRenderSearchOverlay &&
-    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true) &&
-    !hasSearchChromeRawQuery;
-  const shouldRenderSearchShortcuts =
-    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
-  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
-    useTransitionDriver({
-      enabled: true,
-      target: shouldRenderSearchShortcuts ? 1 : 0,
-      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-      getEasing: () => Easing.linear,
-      resetOnShowKey: searchShortcutsFadeResetKey,
-    });
-  const shouldUseSearchShortcutFrames = shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
-  const shouldIncludeShortcutHoles = shouldRenderSearchShortcuts;
-  const shouldIncludeShortcutLayout = shouldRenderSearchShortcuts;
-  const resolvedSearchShortcutsFrame = React.useMemo(() => {
-    if (!shouldUseSearchShortcutFrames) {
-      return null;
-    }
-    if (searchShortcutsFrame) {
+	  const shouldRenderSearchOverlay =
+	    isSearchOverlay ||
+	    shouldShowPollsSheet ||
+	    showBookmarksOverlay ||
+	    showProfileOverlay ||
+	    showSaveListOverlay;
+	  const shouldShowSearchShortcuts =
+	    !shouldDisableSearchShortcuts &&
+	    shouldRenderSearchOverlay &&
+	    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true) &&
+	    !hasSearchChromeRawQuery;
+	  const shouldRenderSearchShortcuts =
+	    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
+	  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
+	    useTransitionDriver({
+	      enabled: true,
+	      target: shouldRenderSearchShortcuts ? 1 : 0,
+	      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+	      getEasing: () => Easing.linear,
+	      resetOnShowKey: searchShortcutsFadeResetKey,
+	    });
+	  const shouldMountSearchShortcuts =
+	    !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
+	  const shouldUseSearchShortcutFrames =
+	    shouldMountSearchShortcuts || shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
+	  const shouldIncludeShortcutHoles = shouldMountSearchShortcuts;
+	  const shouldIncludeShortcutLayout = shouldMountSearchShortcuts;
+	  const resolvedSearchShortcutsFrame = React.useMemo(() => {
+	    if (!shouldUseSearchShortcutFrames) {
+	      return null;
+	    }
+	    if (searchShortcutsFrame) {
       return searchShortcutsFrame;
     }
     return searchShortcutsLayoutCacheRef.current.frame;
@@ -2868,8 +2982,9 @@ const SearchScreen: React.FC = () => {
     }),
     [shouldSuppressRestaurantOverlay]
   );
-  const priceButtonIsActive = priceFiltersActive || isPriceSelectorVisible;
-  const rankButtonIsActive = scoreMode === 'coverage_display' || isRankSelectorVisible;
+  const priceButtonIsActive = priceFiltersActive;
+  const rankButtonIsActive = scoreMode === 'global_quality';
+  const rankButtonLabelText = rankButtonIsActive ? 'Global' : 'Rank';
   const votesFilterActive = votes100Plus;
   const canLoadMore =
     Boolean(results) && !isPaginationExhausted && (hasMoreFood || hasMoreRestaurants);
@@ -3471,7 +3586,6 @@ const SearchScreen: React.FC = () => {
             saveSheetState.target.restaurantId ?? 'none'
           }`
         : null,
-      isPriceSelectorVisible,
       isFilterTogglePending,
       shouldSuspendResultsSheet,
     };
@@ -3490,7 +3604,6 @@ const SearchScreen: React.FC = () => {
     isLoading,
     isLoadingMore,
     isPaginationExhausted,
-    isPriceSelectorVisible,
     isSearchFocused,
     isSearchOverlay,
     isSearchSessionActive,
@@ -5005,9 +5118,25 @@ const SearchScreen: React.FC = () => {
 
   React.useEffect(() => {
     if (!isPriceSelectorVisible) {
-      setPendingPriceRange(getRangeFromLevels(priceLevels));
+      const nextRange = getRangeFromLevels(priceLevels);
+      setPendingPriceRange((prev) => (arePriceRangesEqual(prev, nextRange) ? prev : nextRange));
     }
   }, [isPriceSelectorVisible, priceLevels]);
+
+  React.useEffect(() => {
+    if (!isPriceSelectorVisible) {
+      setIsPriceSheetContentReady(false);
+      return;
+    }
+
+    setIsPriceSheetContentReady(false);
+    const raf = requestAnimationFrame(() => {
+      setIsPriceSheetContentReady(true);
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  }, [isPriceSelectorVisible]);
 
   React.useEffect(() => {
     if (!isRankSelectorVisible) {
@@ -5030,9 +5159,8 @@ const SearchScreen: React.FC = () => {
       commitPriceSelection();
       return;
     }
-    setPendingPriceRange(getRangeFromLevels(priceLevels));
     setIsPriceSelectorVisible(true);
-  }, [isPriceSelectorVisible, commitPriceSelection, priceLevels]);
+  }, [isPriceSelectorVisible, commitPriceSelection]);
 
   const scrollResultsToTop = React.useCallback(() => {
     const listRef = resultsScrollRef.current;
@@ -6431,48 +6559,59 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const commitPriceSelection = React.useCallback(() => {
-    const normalizedRange = normalizePriceRangeValues(pendingPriceRange);
-    setPendingPriceRange(normalizedRange);
-    const shouldClear = isFullPriceRange(normalizedRange);
-    const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
-    const hasChanged =
-      nextLevels.length !== priceLevels.length ||
-      nextLevels.some((value, index) => value !== priceLevels[index]);
-    setIsPriceSelectorVisible(false);
-    if (!hasChanged) {
-      return;
+    // Intentionally keep this as a thin wrapper for legacy call sites.
+    // Use handlePriceDone for snappy sheet dismissal before applying work.
+    const snapshot = pendingPriceRangeRef.current;
+
+    const sheet = priceSheetRef.current;
+    if (sheet) {
+      sheet.requestClose();
+    } else {
+      setIsPriceSelectorVisible(false);
     }
-    setPriceLevels(nextLevels);
-    const shouldRunShortcut = searchMode === 'shortcut';
-    const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
-    const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
-    if (!shouldRunShortcut && !shouldRunNatural) {
-      return;
-    }
-    if (filterDebounceRef.current) {
-      clearTimeout(filterDebounceRef.current);
-    }
-    filterDebounceRef.current = setTimeout(() => {
-      filterDebounceRef.current = null;
-      if (shouldRunShortcut) {
-        const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
-        const label = submittedQuery || fallbackLabel;
-        void runBestHere(activeTab, label, {
-          preserveSheetState: true,
-          filters: { priceLevels: nextLevels },
-        });
-        return;
-      }
-      void submitSearch(
-        { priceLevels: nextLevels, page: 1, preserveSheetState: true },
-        committedQuery
-      );
-    }, 150);
+    requestAnimationFrame(() => {
+      void InteractionManager.runAfterInteractions(() => {
+        const normalizedRange = normalizePriceRangeValues(snapshot);
+        const shouldClear = isFullPriceRange(normalizedRange);
+        const nextLevels = shouldClear ? [] : buildLevelsFromRange(normalizedRange);
+        const currentLevels = useSearchStore.getState().priceLevels;
+        const hasChanged =
+          nextLevels.length !== currentLevels.length ||
+          nextLevels.some((value, index) => value !== currentLevels[index]);
+        if (!hasChanged) {
+          return;
+        }
+        setPriceLevels(nextLevels);
+        const shouldRunShortcut = searchMode === 'shortcut';
+        const committedQuery = (isSearchSessionActive ? submittedQuery : query).trim();
+        const shouldRunNatural = !shouldRunShortcut && Boolean(committedQuery);
+        if (!shouldRunShortcut && !shouldRunNatural) {
+          return;
+        }
+        if (filterDebounceRef.current) {
+          clearTimeout(filterDebounceRef.current);
+        }
+        filterDebounceRef.current = setTimeout(() => {
+          filterDebounceRef.current = null;
+          if (shouldRunShortcut) {
+            const fallbackLabel = activeTab === 'restaurants' ? 'Best restaurants' : 'Best dishes';
+            const label = submittedQuery || fallbackLabel;
+            void runBestHere(activeTab, label, {
+              preserveSheetState: true,
+              filters: { priceLevels: nextLevels },
+            });
+            return;
+          }
+          void submitSearch(
+            { priceLevels: nextLevels, page: 1, preserveSheetState: true },
+            committedQuery
+          );
+        }, 150);
+      });
+    });
   }, [
     activeTab,
     isSearchSessionActive,
-    pendingPriceRange,
-    priceLevels,
     query,
     runBestHere,
     searchMode,
@@ -6485,14 +6624,43 @@ const SearchScreen: React.FC = () => {
     setIsPriceSelectorVisible(false);
   }, []);
 
+  const dismissPriceSelector = React.useCallback(() => {
+    const sheet = priceSheetRef.current;
+    if (sheet) {
+      sheet.requestClose();
+      return;
+    }
+    closePriceSelector();
+  }, [closePriceSelector]);
+
   const commitRankSelection = React.useCallback(() => {
-    setIsRankSelectorVisible(false);
-    handleScoreModeChange(pendingScoreMode);
-  }, [handleScoreModeChange, pendingScoreMode]);
+    const snapshot = pendingScoreModeRef.current;
+
+    const sheet = rankSheetRef.current;
+    if (sheet) {
+      sheet.requestClose();
+    } else {
+      setIsRankSelectorVisible(false);
+    }
+    requestAnimationFrame(() => {
+      void InteractionManager.runAfterInteractions(() => {
+        handleScoreModeChange(snapshot);
+      });
+    });
+  }, [handleScoreModeChange]);
 
   const closeRankSelector = React.useCallback(() => {
     setIsRankSelectorVisible(false);
   }, []);
+
+  const dismissRankSelector = React.useCallback(() => {
+    const sheet = rankSheetRef.current;
+    if (sheet) {
+      sheet.requestClose();
+      return;
+    }
+    closeRankSelector();
+  }, [closeRankSelector]);
 
   const toggleRankSelector = React.useCallback(() => {
     if (isRankSelectorVisible) {
@@ -7407,6 +7575,7 @@ const SearchScreen: React.FC = () => {
       <SearchFilters
         activeTab={activeTab}
         onTabChange={setActiveTab}
+        rankButtonLabel={rankButtonLabelText}
         rankButtonActive={rankButtonIsActive}
         onToggleRankSelector={toggleRankSelector}
         isRankSelectorVisible={isRankSelectorVisible}
@@ -7432,6 +7601,7 @@ const SearchScreen: React.FC = () => {
       priceButtonLabelText,
       priceButtonIsActive,
       isPriceSelectorVisible,
+      rankButtonLabelText,
       rankButtonIsActive,
       isRankSelectorVisible,
       toggleOpenNow,
@@ -8058,8 +8228,7 @@ const SearchScreen: React.FC = () => {
 
   const searchPanelSpec = useSearchPanelSpec<ResultsListItem>({
     visible: shouldRenderResultsSheet,
-    listScrollEnabled:
-      !isPriceSelectorVisible && !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
+    listScrollEnabled: !isFilterTogglePending && !shouldDisableResultsSheetInteraction,
     snapPoints,
     initialSnapPoint: sheetState === 'hidden' ? 'middle' : sheetState,
     snapTo: resultsSheetSnapTo,
@@ -8409,17 +8578,18 @@ const SearchScreen: React.FC = () => {
                   ]}
                 >
                   {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-                  {shouldShowSuggestionSurface ? (
-                    <MaskedHoleOverlay
-                      holes={resolvedSuggestionHeaderHoles}
-                      backgroundColor="#ffffff"
-                      style={[
-                        styles.searchSuggestionHeaderSurface,
-                        suggestionHeaderHeightAnimatedStyle,
-                      ]}
-                      pointerEvents="none"
-                    />
-                  ) : null}
+	                  {shouldShowSuggestionSurface ? (
+	                    <MaskedHoleOverlay
+	                      holes={resolvedSuggestionHeaderHoles}
+	                      backgroundColor="#ffffff"
+	                      renderWhenEmpty
+	                      style={[
+	                        styles.searchSuggestionHeaderSurface,
+	                        suggestionHeaderHeightAnimatedStyle,
+	                      ]}
+	                      pointerEvents="none"
+	                    />
+	                  ) : null}
                   <Reanimated.ScrollView
                     style={[
                       styles.searchSurfaceScroll,
@@ -8529,98 +8699,108 @@ const SearchScreen: React.FC = () => {
                     focusProgress={searchHeaderFocusProgress}
                   />
                 </View>
-                <Reanimated.View
-                  style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
-                  pointerEvents={shouldRenderSearchShortcutsRow ? 'box-none' : 'none'}
-                  onLayout={({ nativeEvent: { layout } }) => {
-                    searchShortcutsLayoutCacheRef.current.frame = layout;
-                    setSearchShortcutsFrame((prev) => {
-                      if (
-                        prev &&
-                        Math.abs(prev.x - layout.x) < 0.5 &&
-                        Math.abs(prev.y - layout.y) < 0.5 &&
-                        Math.abs(prev.width - layout.width) < 0.5 &&
-                        Math.abs(prev.height - layout.height) < 0.5
-                      ) {
-                        return prev;
-                      }
-                      return layout;
-                    });
-                  }}
-                >
-                  <AnimatedPressable
-                    onPress={handleBestRestaurantsHere}
-                    style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Show best restaurants here"
-                    hitSlop={8}
-                    onLayout={({ nativeEvent: { layout } }) => {
-                      setSearchShortcutChipFrames((prev) => {
-                        const prevLayout = prev.restaurants;
-                        if (
-                          prevLayout &&
-                          Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                          Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                          Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                          Math.abs(prevLayout.height - layout.height) < 0.5
-                        ) {
-                          return prev;
-                        }
-                        const next = { ...prev, restaurants: layout };
-                        searchShortcutsLayoutCacheRef.current.chipFrames = {
-                          ...searchShortcutsLayoutCacheRef.current.chipFrames,
-                          restaurants: layout,
-                        };
-                        return next;
-                      });
-                    }}
-                  >
-                    <Reanimated.View
-                      style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-                    >
-                      <Store size={18} color="#0f172a" strokeWidth={2} />
-                      <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                        Best restaurants
-                      </Text>
-                    </Reanimated.View>
-                  </AnimatedPressable>
-                  <AnimatedPressable
-                    onPress={handleBestDishesHere}
-                    style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Show best dishes here"
-                    hitSlop={8}
-                    onLayout={({ nativeEvent: { layout } }) => {
-                      setSearchShortcutChipFrames((prev) => {
-                        const prevLayout = prev.dishes;
-                        if (
-                          prevLayout &&
-                          Math.abs(prevLayout.x - layout.x) < 0.5 &&
-                          Math.abs(prevLayout.y - layout.y) < 0.5 &&
-                          Math.abs(prevLayout.width - layout.width) < 0.5 &&
-                          Math.abs(prevLayout.height - layout.height) < 0.5
-                        ) {
-                          return prev;
-                        }
-                        const next = { ...prev, dishes: layout };
-                        searchShortcutsLayoutCacheRef.current.chipFrames = {
-                          ...searchShortcutsLayoutCacheRef.current.chipFrames,
-                          dishes: layout,
-                        };
-                        return next;
-                      });
-                    }}
-                  >
-                    <Reanimated.View
-                      style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-                    >
-                      <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-                      <Text variant="body" weight="semibold" style={styles.searchShortcutChipText}>
-                        Best dishes
-                      </Text>
-                    </Reanimated.View>
-                  </AnimatedPressable>
-                </Reanimated.View>
+	                {shouldMountSearchShortcuts ? (
+	                  <Reanimated.View
+	                    style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
+	                    pointerEvents={shouldRenderSearchShortcuts ? 'box-none' : 'none'}
+	                    onLayout={({ nativeEvent: { layout } }) => {
+	                      searchShortcutsLayoutCacheRef.current.frame = layout;
+	                      setSearchShortcutsFrame((prev) => {
+	                        if (
+	                          prev &&
+	                          Math.abs(prev.x - layout.x) < 0.5 &&
+	                          Math.abs(prev.y - layout.y) < 0.5 &&
+	                          Math.abs(prev.width - layout.width) < 0.5 &&
+	                          Math.abs(prev.height - layout.height) < 0.5
+	                        ) {
+	                          return prev;
+	                        }
+	                        return layout;
+	                      });
+	                    }}
+	                  >
+	                    <AnimatedPressable
+	                      onPress={handleBestRestaurantsHere}
+	                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+	                      accessibilityRole="button"
+	                      accessibilityLabel="Show best restaurants here"
+	                      hitSlop={8}
+	                      onLayout={({ nativeEvent: { layout } }) => {
+	                        setSearchShortcutChipFrames((prev) => {
+	                          const prevLayout = prev.restaurants;
+	                          if (
+	                            prevLayout &&
+	                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+	                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+	                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+	                            Math.abs(prevLayout.height - layout.height) < 0.5
+	                          ) {
+	                            return prev;
+	                          }
+	                          const next = { ...prev, restaurants: layout };
+	                          searchShortcutsLayoutCacheRef.current.chipFrames = {
+	                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
+	                            restaurants: layout,
+	                          };
+	                          return next;
+	                        });
+	                      }}
+	                    >
+	                      <Reanimated.View
+	                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+	                      >
+	                        <Store size={18} color="#0f172a" strokeWidth={2} />
+	                        <Text
+	                          variant="body"
+	                          weight="semibold"
+	                          style={styles.searchShortcutChipText}
+	                        >
+	                          Best restaurants
+	                        </Text>
+	                      </Reanimated.View>
+	                    </AnimatedPressable>
+	                    <AnimatedPressable
+	                      onPress={handleBestDishesHere}
+	                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+	                      accessibilityRole="button"
+	                      accessibilityLabel="Show best dishes here"
+	                      hitSlop={8}
+	                      onLayout={({ nativeEvent: { layout } }) => {
+	                        setSearchShortcutChipFrames((prev) => {
+	                          const prevLayout = prev.dishes;
+	                          if (
+	                            prevLayout &&
+	                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+	                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+	                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+	                            Math.abs(prevLayout.height - layout.height) < 0.5
+	                          ) {
+	                            return prev;
+	                          }
+	                          const next = { ...prev, dishes: layout };
+	                          searchShortcutsLayoutCacheRef.current.chipFrames = {
+	                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
+	                            dishes: layout,
+	                          };
+	                          return next;
+	                        });
+	                      }}
+	                    >
+	                      <Reanimated.View
+	                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+	                      >
+	                        <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+	                        <Text
+	                          variant="body"
+	                          weight="semibold"
+	                          style={styles.searchShortcutChipText}
+	                        >
+	                          Best dishes
+	                        </Text>
+	                      </Reanimated.View>
+	                    </AnimatedPressable>
+	                  </Reanimated.View>
+	                ) : null}
                 <Reanimated.View
                   pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
                   style={[
@@ -8725,23 +8905,31 @@ const SearchScreen: React.FC = () => {
           <>
             <React.Profiler id="RankSheet" onRender={handleProfilerRender}>
               <MemoOverlayModalSheet
+                ref={rankSheetRef}
                 visible={isRankSelectorVisible}
                 onRequestClose={closeRankSelector}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
                 paddingTop={12}
               >
                 <View style={styles.rankSheetHeaderRow}>
-                  <Text variant="body" weight="semibold" style={styles.rankSheetHeadline}>
+                  <Text variant="subtitle" weight="semibold" style={styles.rankSheetHeadline}>
                     Rank
                   </Text>
                 </View>
-                <View style={styles.rankSheetOptions}>
-                  {(
-                    [
-                      { value: 'global_quality', label: 'Global' },
-                      { value: 'coverage_display', label: 'Local' },
-                    ] as const
-                  ).map((option) => {
+                <View
+                  style={styles.rankSheetOptions}
+                  onLayout={(event) => {
+                    const nextWidth = event.nativeEvent.layout.width;
+                    setRankSegmentContainerWidth((prev) =>
+                      Math.abs(prev - nextWidth) < 0.5 ? prev : nextWidth
+                    );
+                  }}
+                >
+                  <Reanimated.View
+                    pointerEvents="none"
+                    style={[styles.rankSheetOptionHighlight, rankSegmentHighlightAnimatedStyle]}
+                  />
+                  {RANK_MODE_OPTIONS.map((option) => {
                     const selected = pendingScoreMode === option.value;
                     return (
                       <Pressable
@@ -8750,7 +8938,7 @@ const SearchScreen: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Use ${option.label.toLowerCase()} ranking`}
                         accessibilityState={{ selected }}
-                        style={[styles.rankSheetOption, selected && styles.rankSheetOptionSelected]}
+                        style={styles.rankSheetOption}
                       >
                         <Text
                           variant="body"
@@ -8768,12 +8956,22 @@ const SearchScreen: React.FC = () => {
                 </View>
                 <View style={styles.sheetActionsRow}>
                   <Pressable
+                    onPress={dismissRankSelector}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel rank mode changes"
+                    style={styles.sheetCancelButton}
+                  >
+                    <Text variant="caption" weight="semibold" style={styles.sheetCancelText}>
+                      Cancel
+                    </Text>
+                  </Pressable>
+                  <Pressable
                     onPress={handleRankDone}
                     accessibilityRole="button"
                     accessibilityLabel="Apply rank mode"
                     style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
                   >
-                    <Text variant="body" weight="semibold" style={styles.priceSheetDoneText}>
+                    <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
                       Done
                     </Text>
                   </Pressable>
@@ -8782,37 +8980,128 @@ const SearchScreen: React.FC = () => {
             </React.Profiler>
             <React.Profiler id="PriceSheet" onRender={handleProfilerRender}>
               <MemoOverlayModalSheet
+                ref={priceSheetRef}
                 visible={isPriceSelectorVisible}
                 onRequestClose={closePriceSelector}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
-                paddingTop={12}
+                paddingTop={16}
               >
                 <View style={styles.priceSheetHeaderRow}>
-                  <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    variant="body"
-                    weight="semibold"
-                    style={styles.priceSheetHeadline}
-                  >
-                    {priceSheetHeadline}
-                  </Text>
+                  <View style={styles.priceSheetSummaryMeasureContainer} pointerEvents="none">
+                    {PRICE_SUMMARY_CANDIDATES.map((label) => (
+                      <Text
+                        key={label}
+                        variant="subtitle"
+                        weight="semibold"
+                        style={styles.priceSheetSummaryText}
+                        onLayout={(event) => {
+                          const next =
+                            Math.ceil(event.nativeEvent.layout.width) +
+                            PRICE_SUMMARY_PILL_PADDING_X * 2;
+                          setPriceSummaryPillWidth((prev) =>
+                            prev != null && prev >= next ? prev : next
+                          );
+                        }}
+                      >
+                        {label}
+                      </Text>
+                    ))}
+                  </View>
+                  <View style={styles.priceSheetHeaderContentRow} pointerEvents="none">
+                    <Reanimated.View
+                      style={[
+                        styles.priceSheetSummaryPill,
+                        priceSummaryPillWidth ? { width: priceSummaryPillWidth } : null,
+                      ]}
+                      layout={LinearTransition.duration(180)}
+                      pointerEvents="none"
+                    >
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        variant="subtitle"
+                        weight="semibold"
+                        style={[styles.priceSheetSummaryText, styles.priceSheetSummaryMeasureText]}
+                      >
+                        {priceSheetSummaryNext}
+                      </Text>
+                      {priceSheetSummaryPrev ? (
+                        <Reanimated.View
+                          style={[
+                            styles.priceSheetHeadlineAnimatedLayer,
+                            priceSheetSummaryPrevAnimatedStyle,
+                          ]}
+                          pointerEvents="none"
+                        >
+                          <Text
+                            numberOfLines={1}
+                            ellipsizeMode="tail"
+                            variant="subtitle"
+                            weight="semibold"
+                            style={styles.priceSheetSummaryText}
+                          >
+                            {priceSheetSummaryPrev}
+                          </Text>
+                        </Reanimated.View>
+                      ) : null}
+                      <Reanimated.View
+                        style={[
+                          styles.priceSheetHeadlineAnimatedLayer,
+                          priceSheetSummaryNextAnimatedStyle,
+                        ]}
+                        pointerEvents="none"
+                      >
+                        <Text
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                          variant="subtitle"
+                          weight="semibold"
+                          style={styles.priceSheetSummaryText}
+                        >
+                          {priceSheetSummaryNext}
+                        </Text>
+                      </Reanimated.View>
+                    </Reanimated.View>
+                    <Text
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                      variant="subtitle"
+                      weight="semibold"
+                      style={styles.priceSheetHeadlineSuffix}
+                    >
+                      per person
+                    </Text>
+                  </View>
                 </View>
                 <View style={styles.priceSheetSliderWrapper}>
-                  <PriceRangeSlider
-                    range={pendingPriceRange}
-                    onRangePreview={setPendingPriceRange}
-                    onRangeCommit={setPendingPriceRange}
-                  />
+                  {isPriceSheetContentReady ? (
+                    <PriceRangeSlider
+                      range={pendingPriceRange}
+                      onRangePreview={setPendingPriceRange}
+                      onRangeCommit={setPendingPriceRange}
+                    />
+                  ) : (
+                    <View style={styles.priceTrackContainer} pointerEvents="none" />
+                  )}
                 </View>
                 <View style={styles.sheetActionsRow}>
+                  <Pressable
+                    onPress={dismissPriceSelector}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel price changes"
+                    style={styles.sheetCancelButton}
+                  >
+                    <Text variant="caption" weight="semibold" style={styles.sheetCancelText}>
+                      Cancel
+                    </Text>
+                  </Pressable>
                   <Pressable
                     onPress={handlePriceDone}
                     accessibilityRole="button"
                     accessibilityLabel="Apply price filters"
                     style={[styles.priceSheetDoneButton, { backgroundColor: ACTIVE_TAB_COLOR }]}
                   >
-                    <Text variant="body" weight="semibold" style={styles.priceSheetDoneText}>
+                    <Text variant="caption" weight="semibold" style={styles.priceSheetDoneText}>
                       Done
                     </Text>
                   </Pressable>

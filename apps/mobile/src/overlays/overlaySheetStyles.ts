@@ -2,7 +2,7 @@ import { StyleSheet } from 'react-native';
 import { CONTROL_HEIGHT } from '../screens/Search/constants/ui';
 import { OVERLAY_SHEET_SHADOW_SHELL } from '../constants/shadows';
 
-export const OVERLAY_HORIZONTAL_PADDING = 12;
+export const OVERLAY_HORIZONTAL_PADDING = 20;
 export const OVERLAY_CORNER_RADIUS = 22;
 export const OVERLAY_HEADER_CLOSE_BUTTON_SIZE = CONTROL_HEIGHT;
 export const OVERLAY_STACK_ZINDEX = 10;
