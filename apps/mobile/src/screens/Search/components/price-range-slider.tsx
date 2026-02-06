@@ -271,11 +271,11 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
     });
 
     const lowDotAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: 1 - lowActiveProgress.value * 0.04 }],
+      transform: [{ scale: 1 + lowActiveProgress.value * 0.16 }],
     }));
 
     const highDotAnimatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: 1 - highActiveProgress.value * 0.04 }],
+      transform: [{ scale: 1 + highActiveProgress.value * 0.16 }],
     }));
 
     const selectedRailAnimatedStyle = useAnimatedStyle(() => {
@@ -336,7 +336,9 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
           />
         ))}
         <GestureDetector gesture={lowGesture}>
-          <Reanimated.View style={[styles.priceSliderThumbHitTarget, lowThumbTranslateAnimatedStyle]}>
+          <Reanimated.View
+            style={[styles.priceSliderThumbHitTarget, lowThumbTranslateAnimatedStyle]}
+          >
             <View pointerEvents="none" style={styles.priceSliderThumb}>
               <Reanimated.View
                 pointerEvents="none"
@@ -350,7 +352,9 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
           </Reanimated.View>
         </GestureDetector>
         <GestureDetector gesture={highGesture}>
-          <Reanimated.View style={[styles.priceSliderThumbHitTarget, highThumbTranslateAnimatedStyle]}>
+          <Reanimated.View
+            style={[styles.priceSliderThumbHitTarget, highThumbTranslateAnimatedStyle]}
+          >
             <View pointerEvents="none" style={styles.priceSliderThumb}>
               <Reanimated.View
                 pointerEvents="none"

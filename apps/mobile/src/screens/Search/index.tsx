@@ -154,8 +154,6 @@ const RANK_MODE_OPTIONS = [
   { value: 'coverage_display', label: 'Local' },
   { value: 'global_quality', label: 'Global' },
 ] as const;
-const RANK_SEGMENT_PADDING = 2;
-const RANK_SEGMENT_ANIMATION_MS = 180;
 
 const EMPTY_DISHES: FoodResult[] = [];
 const EMPTY_RESTAURANTS: RestaurantResult[] = [];
@@ -2101,9 +2099,6 @@ const SearchScreen: React.FC = () => {
     getRangeFromLevels(priceLevels)
   );
   const [pendingScoreMode, setPendingScoreMode] = React.useState<typeof scoreMode>(() => scoreMode);
-  const [rankSegmentContainerWidth, setRankSegmentContainerWidth] = React.useState(0);
-  const rankSegmentHighlightTranslateX = useSharedValue(0);
-  const rankSegmentHighlightWidth = useSharedValue(0);
   const pendingPriceRangeRef = React.useRef<PriceRangeTuple>(pendingPriceRange);
   const pendingScoreModeRef = React.useRef<typeof scoreMode>(pendingScoreMode);
   const priceFiltersActive = priceLevels.length > 0;
@@ -2153,43 +2148,6 @@ const SearchScreen: React.FC = () => {
       { scale: 0.94 + priceSheetSummaryTransition.value * 0.06 },
     ],
   }));
-  const updateRankSegmentHighlight = React.useCallback(
-    (mode: typeof pendingScoreMode, animated: boolean) => {
-      if (rankSegmentContainerWidth <= RANK_SEGMENT_PADDING * 2 + 1) {
-        return;
-      }
-      const index = RANK_MODE_OPTIONS.findIndex((option) => option.value === mode);
-      if (index < 0) {
-        return;
-      }
-      const innerWidth = Math.max(0, rankSegmentContainerWidth - RANK_SEGMENT_PADDING * 2);
-      const segmentWidth = innerWidth / RANK_MODE_OPTIONS.length;
-      const targetX = RANK_SEGMENT_PADDING + index * segmentWidth;
-      if (animated) {
-        rankSegmentHighlightTranslateX.value = withTiming(targetX, {
-          duration: RANK_SEGMENT_ANIMATION_MS,
-          easing: Easing.out(Easing.cubic),
-        });
-        rankSegmentHighlightWidth.value = withTiming(segmentWidth, {
-          duration: RANK_SEGMENT_ANIMATION_MS,
-          easing: Easing.out(Easing.cubic),
-        });
-        return;
-      }
-      rankSegmentHighlightTranslateX.value = targetX;
-      rankSegmentHighlightWidth.value = segmentWidth;
-    },
-    [
-      rankSegmentContainerWidth,
-      rankSegmentHighlightTranslateX,
-      rankSegmentHighlightWidth,
-    ]
-  );
-  const rankSegmentHighlightAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: rankSegmentHighlightWidth.value > 0 ? 1 : 0,
-    transform: [{ translateX: rankSegmentHighlightTranslateX.value }],
-    width: rankSegmentHighlightWidth.value,
-  }));
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const hasRecentlyViewedFoods = recentlyViewedFoods.length > 0;
@@ -2230,10 +2188,6 @@ const SearchScreen: React.FC = () => {
     setSuggestions,
     setShowSuggestions,
   ]);
-
-  React.useEffect(() => {
-    updateRankSegmentHighlight(pendingScoreMode, true);
-  }, [pendingScoreMode, updateRankSegmentHighlight]);
 
   React.useEffect(() => {
     pendingPriceRangeRef.current = pendingPriceRange;
@@ -2423,38 +2377,38 @@ const SearchScreen: React.FC = () => {
       ? sharedSnap
       : 'expanded'
     : 'collapsed';
-	  const shouldRenderSearchOverlay =
-	    isSearchOverlay ||
-	    shouldShowPollsSheet ||
-	    showBookmarksOverlay ||
-	    showProfileOverlay ||
-	    showSaveListOverlay;
-	  const shouldShowSearchShortcuts =
-	    !shouldDisableSearchShortcuts &&
-	    shouldRenderSearchOverlay &&
-	    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true) &&
-	    !hasSearchChromeRawQuery;
-	  const shouldRenderSearchShortcuts =
-	    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
-	  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
-	    useTransitionDriver({
-	      enabled: true,
-	      target: shouldRenderSearchShortcuts ? 1 : 0,
-	      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
-	      getEasing: () => Easing.linear,
-	      resetOnShowKey: searchShortcutsFadeResetKey,
-	    });
-	  const shouldMountSearchShortcuts =
-	    !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
-	  const shouldUseSearchShortcutFrames =
-	    shouldMountSearchShortcuts || shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
-	  const shouldIncludeShortcutHoles = shouldMountSearchShortcuts;
-	  const shouldIncludeShortcutLayout = shouldMountSearchShortcuts;
-	  const resolvedSearchShortcutsFrame = React.useMemo(() => {
-	    if (!shouldUseSearchShortcutFrames) {
-	      return null;
-	    }
-	    if (searchShortcutsFrame) {
+  const shouldRenderSearchOverlay =
+    isSearchOverlay ||
+    shouldShowPollsSheet ||
+    showBookmarksOverlay ||
+    showProfileOverlay ||
+    showSaveListOverlay;
+  const shouldShowSearchShortcuts =
+    !shouldDisableSearchShortcuts &&
+    shouldRenderSearchOverlay &&
+    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true) &&
+    !hasSearchChromeRawQuery;
+  const shouldRenderSearchShortcuts =
+    (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
+  const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
+    useTransitionDriver({
+      enabled: true,
+      target: shouldRenderSearchShortcuts ? 1 : 0,
+      getDurationMs: () => SEARCH_SHORTCUTS_FADE_MS,
+      getEasing: () => Easing.linear,
+      resetOnShowKey: searchShortcutsFadeResetKey,
+    });
+  const shouldMountSearchShortcuts =
+    !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
+  const shouldUseSearchShortcutFrames =
+    shouldMountSearchShortcuts || shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
+  const shouldIncludeShortcutHoles = shouldMountSearchShortcuts;
+  const shouldIncludeShortcutLayout = shouldMountSearchShortcuts;
+  const resolvedSearchShortcutsFrame = React.useMemo(() => {
+    if (!shouldUseSearchShortcutFrames) {
+      return null;
+    }
+    if (searchShortcutsFrame) {
       return searchShortcutsFrame;
     }
     return searchShortcutsLayoutCacheRef.current.frame;
@@ -8578,18 +8532,18 @@ const SearchScreen: React.FC = () => {
                   ]}
                 >
                   {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-	                  {shouldShowSuggestionSurface ? (
-	                    <MaskedHoleOverlay
-	                      holes={resolvedSuggestionHeaderHoles}
-	                      backgroundColor="#ffffff"
-	                      renderWhenEmpty
-	                      style={[
-	                        styles.searchSuggestionHeaderSurface,
-	                        suggestionHeaderHeightAnimatedStyle,
-	                      ]}
-	                      pointerEvents="none"
-	                    />
-	                  ) : null}
+                  {shouldShowSuggestionSurface ? (
+                    <MaskedHoleOverlay
+                      holes={resolvedSuggestionHeaderHoles}
+                      backgroundColor="#ffffff"
+                      renderWhenEmpty
+                      style={[
+                        styles.searchSuggestionHeaderSurface,
+                        suggestionHeaderHeightAnimatedStyle,
+                      ]}
+                      pointerEvents="none"
+                    />
+                  ) : null}
                   <Reanimated.ScrollView
                     style={[
                       styles.searchSurfaceScroll,
@@ -8699,108 +8653,108 @@ const SearchScreen: React.FC = () => {
                     focusProgress={searchHeaderFocusProgress}
                   />
                 </View>
-	                {shouldMountSearchShortcuts ? (
-	                  <Reanimated.View
-	                    style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
-	                    pointerEvents={shouldRenderSearchShortcuts ? 'box-none' : 'none'}
-	                    onLayout={({ nativeEvent: { layout } }) => {
-	                      searchShortcutsLayoutCacheRef.current.frame = layout;
-	                      setSearchShortcutsFrame((prev) => {
-	                        if (
-	                          prev &&
-	                          Math.abs(prev.x - layout.x) < 0.5 &&
-	                          Math.abs(prev.y - layout.y) < 0.5 &&
-	                          Math.abs(prev.width - layout.width) < 0.5 &&
-	                          Math.abs(prev.height - layout.height) < 0.5
-	                        ) {
-	                          return prev;
-	                        }
-	                        return layout;
-	                      });
-	                    }}
-	                  >
-	                    <AnimatedPressable
-	                      onPress={handleBestRestaurantsHere}
-	                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-	                      accessibilityRole="button"
-	                      accessibilityLabel="Show best restaurants here"
-	                      hitSlop={8}
-	                      onLayout={({ nativeEvent: { layout } }) => {
-	                        setSearchShortcutChipFrames((prev) => {
-	                          const prevLayout = prev.restaurants;
-	                          if (
-	                            prevLayout &&
-	                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
-	                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
-	                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
-	                            Math.abs(prevLayout.height - layout.height) < 0.5
-	                          ) {
-	                            return prev;
-	                          }
-	                          const next = { ...prev, restaurants: layout };
-	                          searchShortcutsLayoutCacheRef.current.chipFrames = {
-	                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-	                            restaurants: layout,
-	                          };
-	                          return next;
-	                        });
-	                      }}
-	                    >
-	                      <Reanimated.View
-	                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-	                      >
-	                        <Store size={18} color="#0f172a" strokeWidth={2} />
-	                        <Text
-	                          variant="body"
-	                          weight="semibold"
-	                          style={styles.searchShortcutChipText}
-	                        >
-	                          Best restaurants
-	                        </Text>
-	                      </Reanimated.View>
-	                    </AnimatedPressable>
-	                    <AnimatedPressable
-	                      onPress={handleBestDishesHere}
-	                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
-	                      accessibilityRole="button"
-	                      accessibilityLabel="Show best dishes here"
-	                      hitSlop={8}
-	                      onLayout={({ nativeEvent: { layout } }) => {
-	                        setSearchShortcutChipFrames((prev) => {
-	                          const prevLayout = prev.dishes;
-	                          if (
-	                            prevLayout &&
-	                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
-	                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
-	                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
-	                            Math.abs(prevLayout.height - layout.height) < 0.5
-	                          ) {
-	                            return prev;
-	                          }
-	                          const next = { ...prev, dishes: layout };
-	                          searchShortcutsLayoutCacheRef.current.chipFrames = {
-	                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
-	                            dishes: layout,
-	                          };
-	                          return next;
-	                        });
-	                      }}
-	                    >
-	                      <Reanimated.View
-	                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
-	                      >
-	                        <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
-	                        <Text
-	                          variant="body"
-	                          weight="semibold"
-	                          style={styles.searchShortcutChipText}
-	                        >
-	                          Best dishes
-	                        </Text>
-	                      </Reanimated.View>
-	                    </AnimatedPressable>
-	                  </Reanimated.View>
-	                ) : null}
+                {shouldMountSearchShortcuts ? (
+                  <Reanimated.View
+                    style={[styles.searchShortcutsRow, searchShortcutsAnimatedStyle]}
+                    pointerEvents={shouldRenderSearchShortcuts ? 'box-none' : 'none'}
+                    onLayout={({ nativeEvent: { layout } }) => {
+                      searchShortcutsLayoutCacheRef.current.frame = layout;
+                      setSearchShortcutsFrame((prev) => {
+                        if (
+                          prev &&
+                          Math.abs(prev.x - layout.x) < 0.5 &&
+                          Math.abs(prev.y - layout.y) < 0.5 &&
+                          Math.abs(prev.width - layout.width) < 0.5 &&
+                          Math.abs(prev.height - layout.height) < 0.5
+                        ) {
+                          return prev;
+                        }
+                        return layout;
+                      });
+                    }}
+                  >
+                    <AnimatedPressable
+                      onPress={handleBestRestaurantsHere}
+                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Show best restaurants here"
+                      hitSlop={8}
+                      onLayout={({ nativeEvent: { layout } }) => {
+                        setSearchShortcutChipFrames((prev) => {
+                          const prevLayout = prev.restaurants;
+                          if (
+                            prevLayout &&
+                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                            Math.abs(prevLayout.height - layout.height) < 0.5
+                          ) {
+                            return prev;
+                          }
+                          const next = { ...prev, restaurants: layout };
+                          searchShortcutsLayoutCacheRef.current.chipFrames = {
+                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
+                            restaurants: layout,
+                          };
+                          return next;
+                        });
+                      }}
+                    >
+                      <Reanimated.View
+                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+                      >
+                        <Store size={18} color="#0f172a" strokeWidth={2} />
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
+                          Best restaurants
+                        </Text>
+                      </Reanimated.View>
+                    </AnimatedPressable>
+                    <AnimatedPressable
+                      onPress={handleBestDishesHere}
+                      style={[styles.searchShortcutChip, searchShortcutChipAnimatedStyle]}
+                      accessibilityRole="button"
+                      accessibilityLabel="Show best dishes here"
+                      hitSlop={8}
+                      onLayout={({ nativeEvent: { layout } }) => {
+                        setSearchShortcutChipFrames((prev) => {
+                          const prevLayout = prev.dishes;
+                          if (
+                            prevLayout &&
+                            Math.abs(prevLayout.x - layout.x) < 0.5 &&
+                            Math.abs(prevLayout.y - layout.y) < 0.5 &&
+                            Math.abs(prevLayout.width - layout.width) < 0.5 &&
+                            Math.abs(prevLayout.height - layout.height) < 0.5
+                          ) {
+                            return prev;
+                          }
+                          const next = { ...prev, dishes: layout };
+                          searchShortcutsLayoutCacheRef.current.chipFrames = {
+                            ...searchShortcutsLayoutCacheRef.current.chipFrames,
+                            dishes: layout,
+                          };
+                          return next;
+                        });
+                      }}
+                    >
+                      <Reanimated.View
+                        style={[styles.searchShortcutContent, searchShortcutContentAnimatedStyle]}
+                      >
+                        <HandPlatter size={18} color="#0f172a" strokeWidth={2} />
+                        <Text
+                          variant="body"
+                          weight="semibold"
+                          style={styles.searchShortcutChipText}
+                        >
+                          Best dishes
+                        </Text>
+                      </Reanimated.View>
+                    </AnimatedPressable>
+                  </Reanimated.View>
+                ) : null}
                 <Reanimated.View
                   pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
                   style={[
@@ -8916,20 +8870,8 @@ const SearchScreen: React.FC = () => {
                     Rank
                   </Text>
                 </View>
-                <View
-                  style={styles.rankSheetOptions}
-                  onLayout={(event) => {
-                    const nextWidth = event.nativeEvent.layout.width;
-                    setRankSegmentContainerWidth((prev) =>
-                      Math.abs(prev - nextWidth) < 0.5 ? prev : nextWidth
-                    );
-                  }}
-                >
-                  <Reanimated.View
-                    pointerEvents="none"
-                    style={[styles.rankSheetOptionHighlight, rankSegmentHighlightAnimatedStyle]}
-                  />
-                  {RANK_MODE_OPTIONS.map((option) => {
+                <View style={styles.rankSheetOptions}>
+                  {RANK_MODE_OPTIONS.map((option, index) => {
                     const selected = pendingScoreMode === option.value;
                     return (
                       <Pressable
@@ -8938,11 +8880,36 @@ const SearchScreen: React.FC = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Use ${option.label.toLowerCase()} ranking`}
                         accessibilityState={{ selected }}
-                        style={styles.rankSheetOption}
+                        style={({ pressed }) => [
+                          styles.rankSheetOption,
+                          index === 0 && { marginRight: 10 },
+                          selected && styles.rankSheetOptionSelected,
+                          pressed && { opacity: 0.92 },
+                        ]}
                       >
+                        {selected ? (
+                          <LinearGradient
+                            pointerEvents="none"
+                            colors={[
+                              `${themeColors.primary}1f`,
+                              `${themeColors.primary}0a`,
+                              'transparent',
+                            ]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              bottom: 0,
+                              left: 0,
+                              right: 0,
+                              borderRadius: 12,
+                            }}
+                          />
+                        ) : null}
                         <Text
                           variant="body"
-                          weight={selected ? 'semibold' : 'regular'}
+                          weight="semibold"
                           style={[
                             styles.rankSheetOptionText,
                             selected && styles.rankSheetOptionTextSelected,

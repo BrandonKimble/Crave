@@ -8,11 +8,24 @@ const buildMapStyleURL = (accessToken: string): string => {
       ? process.env.EXPO_PUBLIC_MAPBOX_STYLE_URL
       : DEFAULT_STYLE_URL;
   if (!styleEnv.startsWith('mapbox://styles/')) {
+    // If a raw Mapbox Styles API URL is provided, it can be cached aggressively. Add a cachebuster
+    // so edits (e.g. glyph changes for custom fonts) are picked up immediately in dev.
+    if (styleEnv.startsWith('https://api.mapbox.com/styles/v1/')) {
+      const params: string[] = [];
+      if (accessToken && !styleEnv.includes('access_token=')) {
+        params.push(`access_token=${encodeURIComponent(accessToken)}`);
+      }
+      params.push('fresh=true');
+      params.push(`cachebuster=${Date.now()}`);
+      const joiner = styleEnv.includes('?') ? '&' : '?';
+      return `${styleEnv}${joiner}${params.join('&')}`;
+    }
+
     return styleEnv;
   }
 
   const stylePath = styleEnv.replace('mapbox://styles/', '');
-  const params = [`cachebuster=${Date.now()}`];
+  const params = ['fresh=true', `cachebuster=${Date.now()}`];
   if (accessToken) {
     params.push(`access_token=${encodeURIComponent(accessToken)}`);
   }

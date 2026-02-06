@@ -119,10 +119,17 @@ const STYLE_PINS_RANK_TRANSLATE_Y = PIN_FILL_CENTER_Y - PIN_MARKER_RENDER_SIZE;
 // NOTE: Must use `iconOffset` (layout) instead of `iconTranslate` (paint), otherwise collision won't
 // move even if the visualization does.
 const PIN_COLLISION_OFFSET_Y_PX = -Math.round(PIN_MARKER_RENDER_SIZE * 0.25);
+// Extra left/right collision padding between pins and labels. This does NOT move the restaurant's
+// own label candidates; it widens the effective pin obstacle by adding two side-offset obstacles.
+const PIN_COLLISION_SIDE_PAD_PX = 3;
 const PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const PIN_COLLISION_FILL_OFFSET_IMAGE_PX =
   PIN_COLLISION_OFFSET_Y_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
+const PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX =
+  PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_OUTLINE_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
+const PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX =
+  PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 
 const getSafeStyleUrlForLogs = (value: string) => {
   const trimmed = value.trim();
@@ -210,10 +217,12 @@ const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
 // even as the pinned set changes during live LOD updates.
 const STYLE_PIN_STACK_SLOTS = 30;
-// Use a stable "anchor" layer to guarantee dot layers are always inserted below pins/labels
-// regardless of mount order (e.g. dots arriving later via pagination).
+// Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
+// remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
 const OVERLAY_Z_ANCHOR_LAYER_ID = 'search-overlay-z-anchor-layer';
+const SEARCH_LABELS_Z_ANCHOR_LAYER_ID = 'search-labels-z-anchor-layer';
+const SEARCH_PINS_Z_ANCHOR_LAYER_ID = 'search-pins-z-anchor-layer';
 const EMPTY_POINT_FEATURES: FeatureCollection<Point, RestaurantFeatureProperties> = {
   type: 'FeatureCollection',
   features: [],
@@ -253,7 +262,11 @@ const LABEL_MIN_TOP_GAP_PX = 4;
 const LABEL_MIN_HORIZONTAL_GAP_PX = Math.ceil(PIN_MARKER_RENDER_SIZE / 2) + 6;
 
 // Tiny icon used as a per-restaurant "mutex" so only one candidate label can place.
-const LABEL_MUTEX_ICON_SIZE = 0.03;
+// IMPORTANT: `iconSize` is a scale factor relative to the source image pixel dimensions. Since
+// `pin-outline.png` can be exported at very high resolution, derive `iconSize` from a desired
+// on-screen size so label placement doesn't change when the asset resolution changes.
+const LABEL_MUTEX_ICON_RENDER_SIZE_PX = 0.8;
+const LABEL_MUTEX_ICON_SIZE = LABEL_MUTEX_ICON_RENDER_SIZE_PX / PIN_OUTLINE_LOGICAL_HEIGHT_PX;
 // Offset the mutex icon away from the pin base collision region so it doesn't get blocked by the
 // dedicated pin-obstacle layer. This is in *source image pixels* (scaled by `iconSize`).
 const LABEL_MUTEX_ICON_OFFSET_IMAGE_PX = 1600;
@@ -411,6 +424,35 @@ const STYLE_PINS_OUTLINE_STYLE: MapboxGL.SymbolLayerStyle = {
   iconIgnorePlacement: true,
 } as MapboxGL.SymbolLayerStyle;
 
+// Pin glyph rendering (crisper than raster sprites at small sizes).
+// Requires style `glyphs` to point at the account that hosts `icomoon Regular`.
+const USE_PIN_GLYPHS = true;
+const PIN_GLYPH_FONT_STACK = ['icomoon Regular'];
+const PIN_GLYPH_OUTLINE = '\ue900';
+const PIN_GLYPH_FILL = '\ue901';
+// IcoMoon fonts often have extra vertical bearing/whitespace below the visible glyph.
+// Nudge the glyph down so the pin tip sits on the coordinate point (matching the raster pin).
+const PIN_GLYPH_TRANSLATE_Y_PX = Math.round(PIN_MARKER_RENDER_SIZE * 0.30);
+// Fill glyph tends to sit slightly lower than the raster fill due to font bearings. Negative
+// values move the fill up relative to the base.
+const PIN_GLYPH_FILL_RELATIVE_TRANSLATE_Y_PX = -2;
+// Fine-tune fill glyph x alignment relative to the base. Negative moves left.
+const PIN_GLYPH_FILL_RELATIVE_TRANSLATE_X_PX = -0.3;
+
+const STYLE_PINS_OUTLINE_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
+  textField: PIN_GLYPH_OUTLINE,
+  textFont: PIN_GLYPH_FONT_STACK,
+  textSize: PIN_MARKER_RENDER_SIZE,
+  textColor: '#ffffff',
+  textAnchor: 'bottom',
+  textTranslate: [0, PIN_GLYPH_TRANSLATE_Y_PX],
+  textTranslateAnchor: 'viewport',
+  symbolZOrder: 'source',
+  textAllowOverlap: true,
+  // Visual-only: label placement is handled by the label layer itself (see `restaurantLabelStyle`).
+  textIgnorePlacement: true,
+} as MapboxGL.SymbolLayerStyle;
+
 const STYLE_PINS_SHADOW_STYLE: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_SHADOW_IMAGE_ID,
   // `pin-shadow.png` includes padding so blur isn't clipped; keep size aligned with the base pin.
@@ -437,6 +479,27 @@ const STYLE_PINS_FILL_STYLE: MapboxGL.SymbolLayerStyle = {
   iconAllowOverlap: true,
   // Fill should never affect placement/collision decisions for labels (only the base does).
   iconIgnorePlacement: true,
+} as MapboxGL.SymbolLayerStyle;
+
+const STYLE_PINS_FILL_GLYPH_STYLE: MapboxGL.SymbolLayerStyle = {
+  textField: PIN_GLYPH_FILL,
+  textFont: PIN_GLYPH_FONT_STACK,
+  // Match `PIN_FILL_RENDER_HEIGHT` within the same wrapper footprint.
+  textSize: PIN_FILL_RENDER_HEIGHT,
+  textColor: '#ffffff',
+  textAnchor: 'bottom',
+  // Match `styles.pinFill` layout (positioned within the base image bounds).
+  textTranslate: [
+    PIN_GLYPH_FILL_RELATIVE_TRANSLATE_X_PX,
+    STYLE_PINS_FILL_OFFSET_RENDER_PX +
+      PIN_GLYPH_TRANSLATE_Y_PX +
+      PIN_GLYPH_FILL_RELATIVE_TRANSLATE_Y_PX,
+  ],
+  textTranslateAnchor: 'viewport',
+  symbolZOrder: 'source',
+  textAllowOverlap: true,
+  // Fill should never affect placement/collision decisions for labels (only the base does).
+  textIgnorePlacement: true,
 } as MapboxGL.SymbolLayerStyle;
 
 const STYLE_PINS_RANK_STYLE: MapboxGL.SymbolLayerStyle = {
@@ -482,6 +545,16 @@ const LABEL_PIN_COLLISION_STYLE: MapboxGL.SymbolLayerStyle = {
   iconOpacity: 0.001,
 } as MapboxGL.SymbolLayerStyle;
 
+const LABEL_PIN_COLLISION_STYLE_SIDE_LEFT: MapboxGL.SymbolLayerStyle = {
+  ...LABEL_PIN_COLLISION_STYLE,
+  iconOffset: [-PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
+} as MapboxGL.SymbolLayerStyle;
+
+const LABEL_PIN_COLLISION_STYLE_SIDE_RIGHT: MapboxGL.SymbolLayerStyle = {
+  ...LABEL_PIN_COLLISION_STYLE,
+  iconOffset: [PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX, PIN_COLLISION_OUTLINE_OFFSET_IMAGE_PX],
+} as MapboxGL.SymbolLayerStyle;
+
 const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconImage: STYLE_PIN_FILL_IMAGE_ID,
   iconSize: STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE,
@@ -496,6 +569,22 @@ const LABEL_PIN_COLLISION_STYLE_FILL: MapboxGL.SymbolLayerStyle = {
   iconPadding: 0,
   // Keep it invisible while still participating in placement.
   iconOpacity: 0.001,
+} as MapboxGL.SymbolLayerStyle;
+
+const LABEL_PIN_COLLISION_STYLE_FILL_SIDE_LEFT: MapboxGL.SymbolLayerStyle = {
+  ...LABEL_PIN_COLLISION_STYLE_FILL,
+  iconOffset: [
+    -PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX,
+    STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX,
+  ],
+} as MapboxGL.SymbolLayerStyle;
+
+const LABEL_PIN_COLLISION_STYLE_FILL_SIDE_RIGHT: MapboxGL.SymbolLayerStyle = {
+  ...LABEL_PIN_COLLISION_STYLE_FILL,
+  iconOffset: [
+    PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX,
+    STYLE_PINS_FILL_OFFSET_IMAGE_PX + PIN_COLLISION_FILL_OFFSET_IMAGE_PX,
+  ],
 } as MapboxGL.SymbolLayerStyle;
 
 const areStringSetsEqual = (left: Set<string>, right: Set<string>) => {
@@ -1133,14 +1222,25 @@ const SearchMap: React.FC<SearchMapProps> = ({
   ]);
 
   const restaurantLabelPinCollisionLayerId = 'restaurant-labels-pin-collision';
+  const restaurantLabelPinCollisionLayerIdSideLeft = 'restaurant-labels-pin-collision-side-left';
+  const restaurantLabelPinCollisionLayerIdSideRight = 'restaurant-labels-pin-collision-side-right';
   const restaurantLabelPinCollisionLayerKey = `${restaurantLabelPinCollisionLayerId}-${labelPlacementEpoch}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
-  const restaurantLabelPinCollisionStyle = React.useMemo(
-    () =>
-      PIN_COLLISION_OBSTACLE_GEOMETRY === 'fill'
-        ? LABEL_PIN_COLLISION_STYLE_FILL
-        : LABEL_PIN_COLLISION_STYLE,
-    []
-  );
+  const restaurantLabelPinCollisionLayerKeySideLeft = `${restaurantLabelPinCollisionLayerIdSideLeft}-${labelPlacementEpoch}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
+  const restaurantLabelPinCollisionLayerKeySideRight = `${restaurantLabelPinCollisionLayerIdSideRight}-${labelPlacementEpoch}-${PIN_COLLISION_OBSTACLE_GEOMETRY}`;
+  const restaurantLabelPinCollisionStyles = React.useMemo(() => {
+    if (PIN_COLLISION_OBSTACLE_GEOMETRY === 'fill') {
+      return {
+        center: LABEL_PIN_COLLISION_STYLE_FILL,
+        left: LABEL_PIN_COLLISION_STYLE_FILL_SIDE_LEFT,
+        right: LABEL_PIN_COLLISION_STYLE_FILL_SIDE_RIGHT,
+      };
+    }
+    return {
+      center: LABEL_PIN_COLLISION_STYLE,
+      left: LABEL_PIN_COLLISION_STYLE_SIDE_LEFT,
+      right: LABEL_PIN_COLLISION_STYLE_SIDE_RIGHT,
+    };
+  }, []);
 
   const getCandidateFeatureIdsForMarkerKey = React.useCallback(
     (markerKey: string) =>
@@ -1150,6 +1250,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
 
   const stylePinsFillStyle = React.useMemo(() => {
     const scoreModeLiteral = scoreMode;
+    if (USE_PIN_GLYPHS) {
+      return {
+        ...STYLE_PINS_FILL_GLYPH_STYLE,
+        textColor: [
+          'case',
+          ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
+          PRIMARY_COLOR,
+          [
+            'case',
+            ['==', ['literal', scoreModeLiteral], 'coverage_display'],
+            ['coalesce', ['get', 'pinColorLocal'], ['get', 'pinColor']],
+            ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
+          ],
+        ],
+      } as MapboxGL.SymbolLayerStyle;
+    }
     return {
       ...STYLE_PINS_FILL_STYLE,
       // NOTE: `iconColor` only tints SDF icons. If `pinFillAsset` isn't SDF, this will no-op and
@@ -1181,6 +1297,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           key={`shadow-slot-${slotIndex}`}
           id={`restaurant-style-pins-shadow-slot-${slotIndex}`}
           slot="top"
+          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={STYLE_PINS_SHADOW_STYLE}
           filter={filter}
         />,
@@ -1188,13 +1305,15 @@ const SearchMap: React.FC<SearchMapProps> = ({
           key={`base-slot-${slotIndex}`}
           id={`restaurant-style-pins-base-slot-${slotIndex}`}
           slot="top"
-          style={STYLE_PINS_OUTLINE_STYLE}
+          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+          style={USE_PIN_GLYPHS ? STYLE_PINS_OUTLINE_GLYPH_STYLE : STYLE_PINS_OUTLINE_STYLE}
           filter={filter}
         />,
         <MapboxGL.SymbolLayer
           key={`fill-slot-${slotIndex}`}
           id={`restaurant-style-pins-fill-slot-${slotIndex}`}
           slot="top"
+          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={stylePinsFillStyle}
           filter={filter}
         />,
@@ -1202,6 +1321,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           key={`rank-slot-${slotIndex}`}
           id={`restaurant-style-pins-rank-slot-${slotIndex}`}
           slot="top"
+          belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
           style={STYLE_PINS_RANK_STYLE}
           filter={filter}
         />,
@@ -1775,7 +1895,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
         USE_STYLE_LAYER_PINS &&
         !runtime.shouldDisableMarkers &&
         PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off'
-          ? [restaurantLabelPinCollisionLayerId]
+          ? [
+              restaurantLabelPinCollisionLayerId,
+              restaurantLabelPinCollisionLayerIdSideLeft,
+              restaurantLabelPinCollisionLayerIdSideRight,
+            ]
           : null;
 
       let probeControlRendered = 0;
@@ -1950,7 +2074,12 @@ const SearchMap: React.FC<SearchMapProps> = ({
       // SymbolLayer re-mount here causes a visible "flash" (labels disappear/reappear) when the
       // user releases a gesture, so we avoid it during steady-state refreshes.
     }
-  }, [mapRef, restaurantLabelPinCollisionLayerId]);
+  }, [
+    mapRef,
+    restaurantLabelPinCollisionLayerId,
+    restaurantLabelPinCollisionLayerIdSideLeft,
+    restaurantLabelPinCollisionLayerIdSideRight,
+  ]);
 
   const handleMapIdle = React.useCallback(
     (state: MapboxMapState) => {
@@ -1974,11 +2103,18 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const handleMapLoaded = React.useCallback(() => {
-    visibilityRefreshQueuedRef.current = true;
-    runVisibleMarkerRefreshRef.current();
-    labelStickyRefreshQueuedRef.current = true;
-    runStickyLabelRefreshRef.current();
+    // IMPORTANT: mark the map as ready first. Refresh routines can fail transiently during early
+    // initialization (e.g. before the view->coordinate APIs are fully warm), and we don't want
+    // those failures to prevent labels from mounting.
     onMapLoaded();
+    try {
+      visibilityRefreshQueuedRef.current = true;
+      runVisibleMarkerRefreshRef.current();
+      labelStickyRefreshQueuedRef.current = true;
+      runStickyLabelRefreshRef.current();
+    } catch (error: unknown) {
+      logger.error('Mapbox post-load refresh failed', { error });
+    }
   }, [onMapLoaded]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
@@ -2166,6 +2302,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
             sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
             style={OVERLAY_Z_ANCHOR_STYLE}
           />
+          <MapboxGL.SymbolLayer
+            id={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+            slot="top"
+            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+            style={OVERLAY_Z_ANCHOR_STYLE}
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+          />
+          <MapboxGL.SymbolLayer
+            id={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+            slot="top"
+            sourceID={OVERLAY_Z_ANCHOR_SOURCE_ID}
+            style={OVERLAY_Z_ANCHOR_STYLE}
+            belowLayerID={SEARCH_LABELS_Z_ANCHOR_LAYER_ID}
+          />
         </MapboxGL.ShapeSource>
         {shouldRenderDots ? (
           <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
@@ -2177,7 +2327,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
               <MapboxGL.SymbolLayer
                 id={DOT_LAYER_ID}
                 slot="top"
-                belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
                 style={dotLayerStyle}
                 sourceID={DOT_SOURCE_ID}
               />
@@ -2206,6 +2356,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
                     id={LABEL_LAYER_IDS_BY_CANDIDATE[candidate]}
                     slot="top"
                     sourceID={RESTAURANT_LABEL_SOURCE_ID}
+                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
                     style={labelCandidateStyles[candidate]}
                     filter={['==', ['get', 'labelCandidate'], candidate]}
                   />
@@ -2223,7 +2374,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
                     id={restaurantLabelPinCollisionLayerId}
                     slot="top"
                     sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
-                    style={restaurantLabelPinCollisionStyle}
+                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                    style={restaurantLabelPinCollisionStyles.center}
+                  />
+                  <MapboxGL.SymbolLayer
+                    key={restaurantLabelPinCollisionLayerKeySideLeft}
+                    id={restaurantLabelPinCollisionLayerIdSideLeft}
+                    slot="top"
+                    sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                    style={restaurantLabelPinCollisionStyles.left}
+                  />
+                  <MapboxGL.SymbolLayer
+                    key={restaurantLabelPinCollisionLayerKeySideRight}
+                    id={restaurantLabelPinCollisionLayerIdSideRight}
+                    slot="top"
+                    sourceID={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
+                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                    style={restaurantLabelPinCollisionStyles.right}
                   />
                 </MapboxGL.ShapeSource>
               ) : null}

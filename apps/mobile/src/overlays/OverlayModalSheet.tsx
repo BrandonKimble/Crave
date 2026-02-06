@@ -33,122 +33,127 @@ export type OverlayModalSheetHandle = {
   requestClose: () => void;
 };
 
-const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModalSheetProps>(({
-  visible,
-  onRequestClose,
-  onDismiss,
-  children,
-  sheetStyle,
-  zIndex = 130,
-  maxBackdropOpacity = 0.2,
-  paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
-  paddingTop = 8,
-  minBottomPadding = 12,
-  backdropColor = '#0f172a',
-}, ref) => {
-  const insets = useSafeAreaInsets();
-  const [mounted, setMounted] = React.useState(visible);
-  const progress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
-  const isExitingRef = React.useRef(false);
+const OverlayModalSheet = React.forwardRef<OverlayModalSheetHandle, OverlayModalSheetProps>(
+  (
+    {
+      visible,
+      onRequestClose,
+      onDismiss,
+      children,
+      sheetStyle,
+      zIndex = 130,
+      maxBackdropOpacity = 0.2,
+      paddingHorizontal = OVERLAY_HORIZONTAL_PADDING,
+      paddingTop = 8,
+      minBottomPadding = 12,
+      backdropColor = '#0f172a',
+    },
+    ref
+  ) => {
+    const insets = useSafeAreaInsets();
+    const [mounted, setMounted] = React.useState(visible);
+    const progress = React.useRef(new Animated.Value(visible ? 1 : 0)).current;
+    const isExitingRef = React.useRef(false);
 
-  const startExit = React.useCallback(() => {
-    if (!mounted || isExitingRef.current) {
-      return;
-    }
-    isExitingRef.current = true;
-    progress.stopAnimation();
-    Animated.timing(progress, {
-      toValue: 0,
-      duration: OVERLAY_TIMING_CONFIG.exitDurationMs,
-      easing: RNEasing.in(RNEasing.cubic),
-      useNativeDriver: true,
-    }).start(({ finished }) => {
-      if (!finished) {
+    const startExit = React.useCallback(() => {
+      if (!mounted || isExitingRef.current) {
         return;
       }
-      isExitingRef.current = false;
-      setMounted(false);
-      onDismiss?.();
-    });
-  }, [mounted, onDismiss, progress]);
-
-  const requestClose = React.useCallback(() => {
-    // Start the exit animation immediately so it doesn't wait on a heavy parent re-render.
-    startExit();
-    // Defer notifying the parent until the next frame to keep the close snappy.
-    requestAnimationFrame(() => {
-      onRequestClose();
-    });
-  }, [onRequestClose, startExit]);
-
-  React.useImperativeHandle(ref, () => ({ requestClose }), [requestClose]);
-
-  React.useLayoutEffect(() => {
-    if (visible) {
-      isExitingRef.current = false;
+      isExitingRef.current = true;
       progress.stopAnimation();
-      setMounted(true);
-      progress.setValue(0);
       Animated.timing(progress, {
-        toValue: 1,
-        duration: OVERLAY_TIMING_CONFIG.enterDurationMs,
-        easing: RNEasing.out(RNEasing.cubic),
+        toValue: 0,
+        duration: OVERLAY_TIMING_CONFIG.exitDurationMs,
+        easing: RNEasing.in(RNEasing.cubic),
         useNativeDriver: true,
-      }).start();
-      return;
+      }).start(({ finished }) => {
+        if (!finished) {
+          return;
+        }
+        isExitingRef.current = false;
+        setMounted(false);
+        onDismiss?.();
+      });
+    }, [mounted, onDismiss, progress]);
+
+    const requestClose = React.useCallback(() => {
+      // Start the exit animation immediately so it doesn't wait on a heavy parent re-render.
+      startExit();
+      // Defer notifying the parent until the next frame to keep the close snappy.
+      requestAnimationFrame(() => {
+        onRequestClose();
+      });
+    }, [onRequestClose, startExit]);
+
+    React.useImperativeHandle(ref, () => ({ requestClose }), [requestClose]);
+
+    React.useLayoutEffect(() => {
+      if (visible) {
+        isExitingRef.current = false;
+        progress.stopAnimation();
+        setMounted(true);
+        progress.setValue(0);
+        Animated.timing(progress, {
+          toValue: 1,
+          duration: OVERLAY_TIMING_CONFIG.enterDurationMs,
+          easing: RNEasing.out(RNEasing.cubic),
+          useNativeDriver: true,
+        }).start();
+        return;
+      }
+
+      if (!mounted || isExitingRef.current) {
+        return;
+      }
+      startExit();
+    }, [mounted, progress, startExit, visible]);
+
+    const translateY = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [SCREEN_HEIGHT, 0],
+      extrapolate: 'clamp',
+    });
+    const backdropOpacity = progress.interpolate({
+      inputRange: [0, 1],
+      outputRange: [0, maxBackdropOpacity],
+    });
+
+    if (!mounted) {
+      return null;
     }
 
-    if (!mounted || isExitingRef.current) {
-      return;
-    }
-    startExit();
-  }, [mounted, progress, startExit, visible]);
-
-  const translateY = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_HEIGHT, 0],
-    extrapolate: 'clamp',
-  });
-  const backdropOpacity = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, maxBackdropOpacity],
-  });
-
-  if (!mounted) {
-    return null;
+    return (
+      <View style={[styles.overlay, { zIndex, elevation: zIndex }]} pointerEvents="box-none">
+        <Animated.View
+          style={[styles.backdrop, { backgroundColor: backdropColor, opacity: backdropOpacity }]}
+          pointerEvents={visible ? 'auto' : 'none'}
+        >
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={requestClose}
+            accessibilityRole="button"
+            accessibilityLabel="Close sheet"
+          />
+        </Animated.View>
+        <Animated.View
+          style={[
+            styles.sheet,
+            {
+              paddingHorizontal,
+              paddingTop,
+              paddingBottom: Math.max(insets.bottom, minBottomPadding),
+              transform: [{ translateY }],
+            },
+            sheetStyle,
+          ]}
+          pointerEvents="auto"
+        >
+          {children}
+        </Animated.View>
+      </View>
+    );
   }
-
-  return (
-    <View style={[styles.overlay, { zIndex, elevation: zIndex }]} pointerEvents="box-none">
-      <Animated.View
-        style={[styles.backdrop, { backgroundColor: backdropColor, opacity: backdropOpacity }]}
-        pointerEvents={visible ? 'auto' : 'none'}
-      >
-        <Pressable
-          style={StyleSheet.absoluteFill}
-          onPress={requestClose}
-          accessibilityRole="button"
-          accessibilityLabel="Close sheet"
-        />
-      </Animated.View>
-      <Animated.View
-        style={[
-          styles.sheet,
-          {
-            paddingHorizontal,
-            paddingTop,
-            paddingBottom: Math.max(insets.bottom, minBottomPadding),
-            transform: [{ translateY }],
-          },
-          sheetStyle,
-        ]}
-        pointerEvents="auto"
-      >
-        {children}
-      </Animated.View>
-    </View>
-  );
-});
+);
 
 const styles = StyleSheet.create({
   overlay: {

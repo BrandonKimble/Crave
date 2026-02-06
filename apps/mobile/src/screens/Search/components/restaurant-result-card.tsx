@@ -312,15 +312,12 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     [primaryFoodSingleWord, primaryFoodTerm]
   );
 
-  const resolveMoreLabel = React.useCallback(
-    (hiddenCount: number): string | null => {
-      if (hiddenCount <= 0) {
-        return null;
-      }
-      return `+${hiddenCount} more`;
-    },
-    []
-  );
+  const resolveMoreLabel = React.useCallback((hiddenCount: number): string | null => {
+    if (hiddenCount <= 0) {
+      return null;
+    }
+    return `+${hiddenCount} more`;
+  }, []);
 
   const renderTopFoodInlineChildren = React.useCallback(
     (variant: TopFoodFitVariant): React.ReactNode => {

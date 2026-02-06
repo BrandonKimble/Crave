@@ -43,7 +43,12 @@ import {
   SPACING_SM,
   SPACING_XS,
 } from './constants/search';
-import { CONTROL_HEIGHT } from './constants/ui';
+import {
+  CONTROL_HEIGHT,
+  CONTROL_HORIZONTAL_PADDING,
+  CONTROL_RADIUS,
+  CONTROL_VERTICAL_PADDING,
+} from './constants/ui';
 
 const styles = StyleSheet.create({
   container: {
@@ -758,32 +763,29 @@ const styles = StyleSheet.create({
   },
   rankSheetOptions: {
     width: '100%',
-    position: 'relative',
     flexDirection: 'row',
-    padding: 2,
-    borderRadius: 12,
-    backgroundColor: '#f1f5f9',
-    overflow: 'hidden',
-    gap: 0,
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
     marginBottom: 20,
   },
-  rankSheetOptionHighlight: {
-    position: 'absolute',
-    top: 2,
-    bottom: 2,
-    left: 0,
-    borderRadius: 10,
-    backgroundColor: `${themeColors.primary}14`,
-  },
   rankSheetOption: {
-    height: CONTROL_HEIGHT,
-    flex: 1,
+    height: CONTROL_HEIGHT + 12,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 0,
+    borderRadius: CONTROL_RADIUS + 4,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 6,
+    paddingVertical: CONTROL_VERTICAL_PADDING + 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
   },
   rankSheetOptionSelected: {
-    backgroundColor: 'transparent',
+    backgroundColor: `${themeColors.primary}14`,
+    borderColor: themeColors.primary,
   },
   rankSheetOptionText: {
     color: '#0f172a',
