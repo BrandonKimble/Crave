@@ -6,7 +6,7 @@ const frostedStyles = StyleSheet.create({
   blur: StyleSheet.absoluteFillObject,
   tint: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(248, 251, 255, 0.35)',
+    backgroundColor: 'rgba(248, 251, 255, 0.30)',
   },
 });
 

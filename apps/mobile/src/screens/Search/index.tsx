@@ -222,12 +222,13 @@ const PRICE_SUMMARY_REEL_ENTRIES = PRICE_SUMMARY_REEL_RANGES.map((range) => ({
   range,
   label: formatPriceRangeSummary(range),
 }));
-const PRICE_SUMMARY_REEL_INDEX_BY_KEY = PRICE_SUMMARY_REEL_ENTRIES.reduce<
-  Record<string, number>
->((indexByKey, entry, index) => {
-  indexByKey[entry.key] = index;
-  return indexByKey;
-}, {});
+const PRICE_SUMMARY_REEL_INDEX_BY_KEY = PRICE_SUMMARY_REEL_ENTRIES.reduce<Record<string, number>>(
+  (indexByKey, entry, index) => {
+    indexByKey[entry.key] = index;
+    return indexByKey;
+  },
+  {}
+);
 const PRICE_SUMMARY_REEL_LABELS = PRICE_SUMMARY_REEL_ENTRIES.map((entry) => entry.label);
 const PRICE_SUMMARY_CANDIDATES = PRICE_SUMMARY_REEL_LABELS;
 const PRICE_SUMMARY_PILL_PADDING_X = 12;
@@ -327,8 +328,7 @@ const getPriceSummaryReelIndexFromBoundaries = (
     }
     const key = `${cornerLow}-${cornerHigh}`;
     const cornerIndex = PRICE_SUMMARY_REEL_INDEX_BY_KEY[key];
-    const resolvedIndex =
-      cornerIndex == null ? PRICE_SUMMARY_REEL_DEFAULT_INDEX : cornerIndex;
+    const resolvedIndex = cornerIndex == null ? PRICE_SUMMARY_REEL_DEFAULT_INDEX : cornerIndex;
     weightedIndex += resolvedIndex * weight;
     totalWeight += weight;
   };
@@ -8783,7 +8783,7 @@ const SearchScreen: React.FC = () => {
                     onPressIn={handleSearchPressIn}
                     onInputTouchStart={handleSearchPressIn}
                     accentColor={ACTIVE_TAB_COLOR}
-                    showBack={Boolean(isSearchOverlay && isSuggestionPanelActive)}
+                    showBack={Boolean(isSuggestionPanelActive)}
                     onBackPress={handleSearchBack}
                     onLayout={handleSearchHeaderLayout}
                     inputRef={inputRef}
@@ -8947,12 +8947,7 @@ const SearchScreen: React.FC = () => {
                 onLayout={handleBottomNavLayout}
               >
                 <View style={styles.bottomNavBackground} pointerEvents="none">
-                  {!shouldDisableSearchBlur && (
-                    <>
-                      <FrostedGlassBackground />
-                      <FrostedGlassBackground />
-                    </>
-                  )}
+                  {!shouldDisableSearchBlur && <FrostedGlassBackground />}
                 </View>
                 {navItems.map((item) => {
                   const active = rootOverlay === item.key;
