@@ -779,9 +779,9 @@ export const usePollsPanelSpec = ({
           new poll
         </Text>
       </TouchableOpacity>
-      {loading || (isSystemUnavailable && polls.length === 0) ? (
+      {loading && polls.length > 0 ? (
         <View style={styles.loader}>
-          <SquircleSpinner size={22} color="#A78BFA" />
+          <SquircleSpinner size={18} color={ACCENT} />
         </View>
       ) : null}
     </View>
@@ -790,8 +790,8 @@ export const usePollsPanelSpec = ({
   const listEmptyComponent = useCallback(() => {
     if (loading || (isSystemUnavailable && polls.length === 0)) {
       return (
-        <View style={styles.loader}>
-          <SquircleSpinner size={22} color="#A78BFA" />
+        <View style={styles.loaderCentered}>
+          <SquircleSpinner size={22} color={ACCENT} />
         </View>
       );
     }
@@ -995,6 +995,10 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 12,
+  },
+  loaderCentered: {
+    marginTop: 12,
+    alignSelf: 'center',
   },
   pollCard: {
     paddingVertical: 16,

@@ -29,7 +29,7 @@ import { colors } from './src/constants/theme';
 
 const queryClient = new QueryClient();
 const SYSTEM_BANNER_PUSH_HEIGHT = 32;
-const BANNER_BACKGROUND = '#0b0b0f';
+const BANNER_BACKGROUND = '#000000';
 
 enableScreens();
 WebBrowser.maybeCompleteAuthSession();

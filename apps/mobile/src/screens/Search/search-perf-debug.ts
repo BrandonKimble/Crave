@@ -38,7 +38,7 @@ const isDevEnvironment = __DEV__;
 
 const DEV_FLAGS = {
   // Master toggle for perf logging (commit info, js stalls, map events, etc.)
-  perfLogsEnabled: true,
+  perfLogsEnabled: false,
   // Select which score model to use end-to-end (API ordering + UI display + map colors).
   scoreMode: 'global_quality' as const,
   // Overlay state logging

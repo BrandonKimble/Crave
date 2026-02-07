@@ -161,6 +161,8 @@ export type RestaurantFeatureProperties = {
   contextualScore: number;
   markerKey?: string;
   rank: number;
+  // Stable per-frame ordering key for label placement tie-breaks.
+  labelOrder?: number;
   // For pin SymbolLayer z-ordering: fixed slot index (0 = bottom ... 39 = top).
   lodZ?: number;
   displayScore?: number | null;
@@ -926,13 +928,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
 
     let didChange = false;
-    const nextFeatures = restaurantFeatures.features.map((feature) => {
+    const nextFeatures = restaurantFeatures.features.map((feature, index) => {
       const markerKey = buildMarkerKey(feature);
-      if (feature.id === markerKey) {
+      const labelOrder = index + 1;
+      if (feature.id === markerKey && feature.properties.labelOrder === labelOrder) {
         return feature;
       }
       didChange = true;
-      return { ...feature, id: markerKey };
+      return {
+        ...feature,
+        id: markerKey,
+        properties: {
+          ...feature.properties,
+          labelOrder,
+        },
+      };
     });
 
     if (!didChange) {
@@ -1104,8 +1114,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
       ...restaurantLabelStyle,
       symbolZOrder: 'source',
       // Higher sort keys are drawn/placed on top (higher priority).
-      // Rank 1 should win over rank 50, and ordering should remain stable as the camera moves.
-      symbolSortKey: ['-', 10000, ['coalesce', ['get', 'rank'], 9999]],
+      // Use a stable, explicit ordering key first so ties (e.g. same rank across multiple
+      // locations) don't bounce due to placement pass ordering differences.
+      symbolSortKey: [
+        '-',
+        100000,
+        ['coalesce', ['get', 'labelOrder'], ['coalesce', ['get', 'rank'], 9999]],
+      ],
     } as MapboxGL.SymbolLayerStyle;
   }, [restaurantLabelStyle]);
 

@@ -544,26 +544,6 @@ const styles = StyleSheet.create({
   resultsListBackgroundLoading: {
     backgroundColor: '#ffffff',
   },
-  resultsLoadingOverlay: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 52,
-    backgroundColor: '#ffffff',
-    zIndex: 2,
-    elevation: 2,
-  },
-  resultsLoadingOverlayBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
-    opacity: 1,
-  },
-  resultsLoadingOverlaySpinner: {
-    paddingTop: 0,
-  },
   resultsWashOverlay: {
     position: 'absolute',
     left: 0,
@@ -620,12 +600,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  resultsListHeaderBottomStrip: {
+    height: 8,
+    width: '100%',
+    backgroundColor: '#ffffff',
+  },
   resultsEmptyArea: {
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: 'transparent',
   },
   onDemandNotice: {
     alignSelf: 'stretch',
@@ -728,10 +713,10 @@ const styles = StyleSheet.create({
   },
   priceSheetSummaryPill: {
     position: 'relative',
-    height: 32,
+    height: CONTROL_HEIGHT,
     justifyContent: 'center',
-    paddingHorizontal: 8,
-    borderRadius: 12,
+    paddingHorizontal: CONTROL_HORIZONTAL_PADDING + 4,
+    borderRadius: CONTROL_RADIUS,
     backgroundColor: `${themeColors.primary}14`,
     overflow: 'hidden',
     flexShrink: 0,
@@ -746,7 +731,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING,
     marginTop: 0,
-    marginBottom: 16,
+    marginBottom: 4,
   },
   rankSheetHeaderRow: {
     flexDirection: 'row',
@@ -778,6 +763,8 @@ const styles = StyleSheet.create({
     paddingVertical: CONTROL_VERTICAL_PADDING + 1,
     justifyContent: 'center',
     alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
     backgroundColor: '#f8fafc',
     borderWidth: 1,
     borderColor: '#e5e7eb',
@@ -801,7 +788,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
     marginTop: 4,
-    marginBottom: 6,
+    marginBottom: 8,
   },
   sheetCancelButton: {
     height: 40,
@@ -813,39 +800,28 @@ const styles = StyleSheet.create({
     backgroundColor: `${themeColors.primary}14`,
   },
   sheetCancelText: {
-    color: themeColors.primary,
+    color: '#000000',
   },
   priceTrackContainer: {
     width: '100%',
     height: PRICE_THUMB_HIT_SIZE,
     justifyContent: 'center',
   },
-  priceSliderRail: {
+  priceSliderRailSegment: {
     position: 'absolute',
-    left: PRICE_THUMB_SIZE / 2,
-    right: PRICE_THUMB_SIZE / 2,
     height: 4,
     borderRadius: 999,
     backgroundColor: `${themeColors.primary}17`,
     top: '50%',
     marginTop: -2,
   },
-  priceSliderRailSelected: {
+  priceSliderRailSelectedSegment: {
     position: 'absolute',
     height: 4,
     borderRadius: 999,
     backgroundColor: themeColors.primary,
     top: '50%',
     marginTop: -2,
-  },
-  priceSliderGap: {
-    position: 'absolute',
-    width: 4,
-    height: 10,
-    borderRadius: 2,
-    backgroundColor: themeColors.surface,
-    top: '50%',
-    marginTop: -5,
   },
   priceSliderThumbHitTarget: {
     position: 'absolute',
@@ -910,7 +886,7 @@ const styles = StyleSheet.create({
   },
   firstResultItem: {
     paddingTop:
-      CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE + FIRST_RESULT_TOP_PADDING_EXTRA,
+      CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE + FIRST_RESULT_TOP_PADDING_EXTRA - 8,
   },
   resultItemWithFilters: {
     paddingTop: CARD_VERTICAL_PADDING - CARD_VERTICAL_PADDING_BALANCE,

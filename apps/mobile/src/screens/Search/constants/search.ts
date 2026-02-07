@@ -24,6 +24,7 @@ export const RESULTS_BOTTOM_PADDING = 200;
 export const PRICE_THUMB_SIZE = 32;
 export const PRICE_THUMB_DOT_SIZE = 20;
 export const PRICE_THUMB_HIT_SIZE = 72;
+export const PRICE_SLIDER_GAP_WIDTH = 4;
 export const PRICE_SLIDER_WRAPPER_HORIZONTAL_PADDING = 12;
 
 export const DISTANCE_MIN_DECIMALS = 1;

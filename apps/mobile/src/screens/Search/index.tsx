@@ -18,6 +18,7 @@ import Reanimated, {
   Extrapolation,
   interpolate,
   runOnUI,
+  type SharedValue,
   useAnimatedStyle,
   useDerivedValue,
   useSharedValue,
@@ -36,7 +37,15 @@ import MaskedView from '@react-native-masked-view/masked-view';
 import type { Feature, FeatureCollection, Point } from 'geojson';
 import { Text } from '../../components';
 import AppBlurView from '../../components/app-blur-view';
-import { ChartNoAxesColumn, HandPlatter, Heart, Store, X as LucideX } from 'lucide-react-native';
+import {
+  Building2,
+  ChartNoAxesColumn,
+  Earth,
+  HandPlatter,
+  Heart,
+  Store,
+  X as LucideX,
+} from 'lucide-react-native';
 import Svg, { Defs, Path, Pattern, Rect } from 'react-native-svg';
 import { colors as themeColors } from '../../constants/theme';
 import {
@@ -167,7 +176,6 @@ import {
   normalizePriceRangeValues,
   type PriceRangeTuple,
 } from './utils/price';
-import { formatPriceRangeText } from '../../constants/pricing';
 import { getMarkerColorForDish, getMarkerColorForRestaurant } from './utils/marker-lod';
 import { getQualityColorFromScore } from './utils/quality';
 import { formatCompactCount } from './utils/format';
@@ -197,18 +205,105 @@ const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_
 const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
 const arePriceRangesEqual = (a: PriceRangeTuple, b: PriceRangeTuple) =>
   a[0] === b[0] && a[1] === b[1];
-const PRICE_SUMMARY_CANDIDATES = (() => {
-  const labels = new Set<string>();
-  for (let min = 1; min <= 4; min += 1) {
-    for (let max = min; max <= 4; max += 1) {
-      labels.add(formatPriceRangeText([min, max]));
+const PRICE_SUMMARY_REEL_ENTRIES = (() => {
+  const entries: Array<{ key: string; range: PriceRangeTuple; label: string }> = [];
+  for (let minBoundary = 1; minBoundary <= 4; minBoundary += 1) {
+    for (let maxBoundary = minBoundary + 1; maxBoundary <= 5; maxBoundary += 1) {
+      const range: PriceRangeTuple = [minBoundary, maxBoundary];
+      entries.push({
+        key: `${minBoundary}-${maxBoundary}`,
+        range,
+        label: formatPriceRangeSummary(range),
+      });
     }
   }
-  labels.add('Any price');
-  return Array.from(labels);
+  return entries;
 })();
-const PRICE_SUMMARY_PILL_PADDING_X = 8;
-const PRICE_SUMMARY_FLIP_OFFSET_Y = 8;
+const PRICE_SUMMARY_REEL_LABELS = PRICE_SUMMARY_REEL_ENTRIES.map((entry) => entry.label);
+const PRICE_SUMMARY_CANDIDATES = PRICE_SUMMARY_REEL_LABELS;
+const PRICE_SUMMARY_PILL_PADDING_X = 12;
+const PRICE_SUMMARY_REEL_STEP_Y = 16;
+const PRICE_SUMMARY_REEL_ROTATE_DEG = 82;
+const PRICE_SUMMARY_REEL_PERSPECTIVE = 900;
+const PRICE_SUMMARY_REEL_MAX_INDEX = PRICE_SUMMARY_REEL_LABELS.length - 1;
+
+type PriceSummaryReelItemProps = {
+  label: string;
+  index: number;
+  reelPosition: SharedValue<number>;
+  nearestIndex: SharedValue<number>;
+  neighborVisibility: SharedValue<number>;
+};
+
+const PriceSummaryReelItem: React.FC<PriceSummaryReelItemProps> = React.memo(
+  ({ label, index, reelPosition, nearestIndex, neighborVisibility }) => {
+    const animatedStyle = useAnimatedStyle(() => {
+      const distance = index - reelPosition.value;
+      const absDistance = Math.abs(distance);
+      if (absDistance > 1.1) {
+        return {
+          opacity: 0,
+          zIndex: 0,
+          backfaceVisibility: 'hidden',
+          transform: [{ translateY: 0 }],
+        };
+      }
+      const isNearest = index === nearestIndex.value;
+      const clampedAbsDistance = Math.min(absDistance, 1.1);
+      const baseOpacity = interpolate(
+        absDistance,
+        [0, 0.55, 0.9, 1.1],
+        [1, 0.8, 0.12, 0],
+        Extrapolation.CLAMP
+      );
+      const opacity = isNearest
+        ? baseOpacity
+        : baseOpacity * neighborVisibility.value * 0.85;
+      const spacingCompensation = 1 - Math.min(absDistance, 1.5) * 0.1;
+
+      return {
+        opacity,
+        zIndex: Math.round(200 - clampedAbsDistance * 90),
+        backfaceVisibility: 'hidden',
+        transform: [
+          { perspective: PRICE_SUMMARY_REEL_PERSPECTIVE },
+          { translateY: distance * PRICE_SUMMARY_REEL_STEP_Y * spacingCompensation },
+          { rotateX: `${-distance * PRICE_SUMMARY_REEL_ROTATE_DEG}deg` },
+        ],
+      };
+    }, [index, nearestIndex, neighborVisibility, reelPosition]);
+
+    return (
+      <Reanimated.View
+        pointerEvents="none"
+        renderToHardwareTextureAndroid
+        shouldRasterizeIOS
+        style={[styles.priceSheetHeadlineAnimatedLayer, animatedStyle]}
+      >
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          variant="subtitle"
+          weight="semibold"
+          style={styles.priceSheetSummaryText}
+        >
+          {label}
+        </Text>
+      </Reanimated.View>
+    );
+  }
+);
+
+PriceSummaryReelItem.displayName = 'PriceSummaryReelItem';
+
+const getPriceSummaryReelIndexFromBoundaries = (lowBoundary: number, highBoundary: number): number => {
+  'worklet';
+  const low = Math.min(4, Math.max(1, lowBoundary));
+  const high = Math.min(5, Math.max(low + 1, highBoundary));
+  const index = -0.5 * low * low + 4.5 * low + high - 6;
+  return Math.max(0, Math.min(PRICE_SUMMARY_REEL_MAX_INDEX, index));
+};
+
 const shadowFadeStyle = (baseOpacity: number, baseElevation: number, alpha: number) => {
   'worklet';
   const clampedAlpha = Math.max(0, Math.min(alpha, 1));
@@ -236,10 +331,10 @@ const MARKER_REVEAL_WINDOW_MS =
   MARKER_REVEAL_ANIM_MS + (MARKER_REVEAL_CHUNK - 1) * MARKER_REVEAL_STAGGER_MS + 60;
 const MAX_FULL_PINS = 30;
 const LOD_CAMERA_THROTTLE_MS = 80;
-const LOD_PIN_TOGGLE_STABLE_MS_MOVING = 160;
+const LOD_PIN_TOGGLE_STABLE_MS_MOVING = 190;
 const LOD_PIN_TOGGLE_STABLE_MS_IDLE = 0;
-const LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING = 80;
-const LOD_VISIBLE_CANDIDATE_BUFFER = 12;
+const LOD_PIN_OFFSCREEN_TOGGLE_STABLE_MS_MOVING = 120;
+const LOD_VISIBLE_CANDIDATE_BUFFER = 16;
 const MAP_GRID_MINOR_SIZE = 32;
 const MAP_GRID_MAJOR_SIZE = 128;
 const SUGGESTION_SCROLL_WHITE_OVERSCROLL_BUFFER = SCREEN_HEIGHT;
@@ -1357,8 +1452,12 @@ const SearchScreen: React.FC = () => {
     bottomNavFrame?.height && bottomNavFrame.height > 0
       ? bottomNavFrame.height
       : resolvedEstimatedNavBarHeight;
-  // Snap points should behave as if the nav bar is present (even when it isn't rendered).
-  const navBarTopForSnaps = SCREEN_HEIGHT - fallbackNavBarHeight;
+  // Snap points should track the measured nav-bar top when available. This keeps collapsed
+  // overlays flush to the nav edge even when root-level layout shifts (e.g. status banner push).
+  const navBarTopForSnaps =
+    bottomNavFrame && Number.isFinite(bottomNavFrame.y) && bottomNavFrame.y > 0
+      ? bottomNavFrame.y
+      : SCREEN_HEIGHT - fallbackNavBarHeight;
   const navBarTop = shouldHideBottomNav ? SCREEN_HEIGHT : navBarTopForSnaps;
   const navBarHeight = shouldHideBottomNav ? 0 : fallbackNavBarHeight;
 
@@ -2114,40 +2213,46 @@ const SearchScreen: React.FC = () => {
     [pendingPriceRange]
   );
   const [priceSummaryPillWidth, setPriceSummaryPillWidth] = React.useState<number | null>(null);
-  const priceSheetSummaryTransition = useSharedValue(1);
-  const [priceSheetSummaryPrev, setPriceSheetSummaryPrev] = React.useState<string | null>(null);
-  const [priceSheetSummaryNext, setPriceSheetSummaryNext] = React.useState(priceSheetSummary);
-  const priceSheetSummaryPrevRef = React.useRef(priceSheetSummary);
+  const priceSliderLowValue = useSharedValue(pendingPriceRange[0]);
+  const priceSliderHighValue = useSharedValue(pendingPriceRange[1]);
+  const priceSheetSummaryReelPosition = useDerivedValue(() =>
+    getPriceSummaryReelIndexFromBoundaries(priceSliderLowValue.value, priceSliderHighValue.value)
+  );
+  const priceSheetSummaryReelNearestIndex = useDerivedValue(() =>
+    Math.round(priceSheetSummaryReelPosition.value)
+  );
+  const priceSheetSummaryNeighborVisibility = useDerivedValue(() => {
+    const centerOffset = Math.abs(
+      priceSheetSummaryReelPosition.value - priceSheetSummaryReelNearestIndex.value
+    );
+    if (centerOffset < 0.001) {
+      return 0;
+    }
+    return interpolate(centerOffset, [0, 0.03, 0.2], [0, 0.3, 1], Extrapolation.CLAMP);
+  });
+  const wasPriceSelectorVisibleRef = React.useRef(false);
+
+  const handlePriceSliderCommit = React.useCallback(
+    (range: PriceRangeTuple) => {
+      const applyUpdate = () => {
+        setPendingPriceRange((prev) => (arePriceRangesEqual(prev, range) ? prev : range));
+      };
+      if (typeof React.startTransition === 'function') {
+        React.startTransition(applyUpdate);
+      } else {
+        applyUpdate();
+      }
+    },
+    []
+  );
 
   React.useEffect(() => {
-    if (priceSheetSummary === priceSheetSummaryPrevRef.current) {
-      return;
+    if (isPriceSelectorVisible && !wasPriceSelectorVisibleRef.current) {
+      priceSliderLowValue.value = pendingPriceRange[0];
+      priceSliderHighValue.value = pendingPriceRange[1];
     }
-    setPriceSheetSummaryPrev(priceSheetSummaryPrevRef.current);
-    setPriceSheetSummaryNext(priceSheetSummary);
-    priceSheetSummaryPrevRef.current = priceSheetSummary;
-    priceSheetSummaryTransition.value = 0;
-    priceSheetSummaryTransition.value = withTiming(1, {
-      duration: 220,
-      easing: Easing.inOut(Easing.cubic),
-    });
-  }, [priceSheetSummary, priceSheetSummaryTransition]);
-
-  const priceSheetSummaryPrevAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: 1 - priceSheetSummaryTransition.value,
-    transform: [
-      { translateY: -PRICE_SUMMARY_FLIP_OFFSET_Y * priceSheetSummaryTransition.value },
-      { scale: 1 - priceSheetSummaryTransition.value * 0.06 },
-    ],
-  }));
-
-  const priceSheetSummaryNextAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: priceSheetSummaryTransition.value,
-    transform: [
-      { translateY: PRICE_SUMMARY_FLIP_OFFSET_Y * (1 - priceSheetSummaryTransition.value) },
-      { scale: 0.94 + priceSheetSummaryTransition.value * 0.06 },
-    ],
-  }));
+    wasPriceSelectorVisibleRef.current = isPriceSelectorVisible;
+  }, [isPriceSelectorVisible, pendingPriceRange, priceSliderHighValue, priceSliderLowValue]);
   const hasRecentSearches = recentSearches.length > 0;
   const hasRecentlyViewedRestaurants = recentlyViewedRestaurants.length > 0;
   const hasRecentlyViewedFoods = recentlyViewedFoods.length > 0;
@@ -2386,8 +2491,7 @@ const SearchScreen: React.FC = () => {
   const shouldShowSearchShortcuts =
     !shouldDisableSearchShortcuts &&
     shouldRenderSearchOverlay &&
-    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true) &&
-    !hasSearchChromeRawQuery;
+    (isSearchOverlay ? isSuggestionPanelActive || !isSearchSessionActive : true);
   const shouldRenderSearchShortcuts =
     (shouldShowSearchShortcuts || shouldHoldShortcuts) && !shouldForceHideShortcuts;
   const { progress: searchShortcutsFadeProgress, isVisible: shouldRenderSearchShortcutsRow } =
@@ -6448,19 +6552,25 @@ const SearchScreen: React.FC = () => {
       ) {
         return;
       }
+      // Keep the controlled Camera synced with the exact idle state to avoid a visible
+      // post-gesture "snap" caused by feeding rounded zoom/center values back into Mapbox.
+      const exactCenter: [number, number] = [nextCenter[0], nextCenter[1]];
+      const exactZoom = nextZoom;
+      lastCameraStateRef.current = { center: exactCenter, zoom: exactZoom };
+      setMapCenter(exactCenter);
+      setMapZoom(exactZoom);
+
+      // Persist a rounded snapshot only for storage stability/churn control.
       const roundedCenter: [number, number] = [
-        roundCameraCenterValue(nextCenter[0]),
-        roundCameraCenterValue(nextCenter[1]),
+        roundCameraCenterValue(exactCenter[0]),
+        roundCameraCenterValue(exactCenter[1]),
       ];
-      const roundedZoom = roundCameraZoomValue(nextZoom);
+      const roundedZoom = roundCameraZoomValue(exactZoom);
       const payload = JSON.stringify({ center: roundedCenter, zoom: roundedZoom });
       if (payload === lastPersistedCameraRef.current) {
         return;
       }
       lastPersistedCameraRef.current = payload;
-      lastCameraStateRef.current = { center: roundedCenter, zoom: roundedZoom };
-      setMapCenter(roundedCenter);
-      setMapZoom(roundedZoom);
       void AsyncStorage.setItem(CAMERA_STORAGE_KEY, payload).catch(() => undefined);
     },
     [
@@ -7710,7 +7820,6 @@ const SearchScreen: React.FC = () => {
     showAllExactRestaurants,
   ]);
 
-  const shouldShowResultsOverlay = isFilterTogglePending && safeResultsData.length > 0;
   const estimatedDishItemSize = 240;
   const estimatedRestaurantItemSize = 270;
   const estimatedItemSize = isDishesTab ? estimatedDishItemSize : estimatedRestaurantItemSize;
@@ -7795,6 +7904,7 @@ const SearchScreen: React.FC = () => {
     const targetCount = Math.min(6, sectionedResultsData.length);
     return targetCount > 0 ? sectionedResultsData.slice(0, targetCount) : sectionedResultsData;
   }, [shouldHydrateResultsForRender, sectionedResultsData]);
+  const resultsListDataForRender = isFilterTogglePending ? EMPTY_RESULTS : resultsListData;
   React.useEffect(() => {
     if (!resultsHydrationKey) {
       if (hydratedResultsKey !== null) {
@@ -7834,6 +7944,7 @@ const SearchScreen: React.FC = () => {
     return (
       <View style={styles.resultsListHeader} onLayout={handleFiltersHeaderLayout}>
         {filtersHeader}
+        <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     );
   }, [filtersHeader, handleFiltersHeaderLayout, shouldDisableFiltersHeader]);
@@ -7857,24 +7968,6 @@ const SearchScreen: React.FC = () => {
     }
     return <FrostedGlassBackground />;
   }, [shouldDisableSearchBlur, shouldShowResultsSurface]);
-  const resultsLoadingOverlay = React.useMemo(() => {
-    if (!shouldShowResultsOverlay) {
-      return null;
-    }
-    const topOffset = Math.max(0, effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight);
-    const pointerEvents = topOffset > 0 ? 'auto' : 'none';
-    return (
-      <View
-        pointerEvents={pointerEvents}
-        style={[styles.resultsLoadingOverlay, { top: topOffset }]}
-      >
-        <View style={styles.resultsLoadingOverlayBackdrop} />
-        <View style={styles.resultsLoadingOverlaySpinner}>
-          <SquircleSpinner size={22} color={ACTIVE_TAB_COLOR} />
-        </View>
-      </View>
-    );
-  }, [effectiveFiltersHeaderHeight, effectiveResultsHeaderHeight, shouldShowResultsOverlay]);
   const resultsWashTopOffset = Math.max(
     0,
     effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight
@@ -7890,10 +7983,9 @@ const SearchScreen: React.FC = () => {
             resultsWashAnimatedStyle,
           ]}
         />
-        {resultsLoadingOverlay}
       </>
     ),
-    [resultsLoadingOverlay, resultsWashAnimatedStyle, resultsWashTopOffset]
+    [resultsWashAnimatedStyle, resultsWashTopOffset]
   );
 
   const ResultItemSeparator = React.useCallback(
@@ -7902,18 +7994,20 @@ const SearchScreen: React.FC = () => {
   );
 
   const resultsListFooterComponent = React.useMemo(() => {
-    const shouldShowNotice = Boolean(onDemandNotice && safeResultsData.length > 0);
+    const shouldShowNotice = Boolean(
+      onDemandNotice && safeResultsData.length > 0 && !isFilterTogglePending
+    );
     return (
       <View style={styles.loadMoreSpacer}>
         {shouldShowNotice ? onDemandNotice : null}
-        {isLoadingMore && canLoadMore ? (
+        {!isFilterTogglePending && isLoadingMore && canLoadMore ? (
           <View style={styles.loadMoreSpinner}>
             <SquircleSpinner size={18} color={ACTIVE_TAB_COLOR} />
           </View>
         ) : null}
       </View>
     );
-  }, [canLoadMore, isLoadingMore, onDemandNotice, safeResultsData.length]);
+  }, [canLoadMore, isFilterTogglePending, isLoadingMore, onDemandNotice, safeResultsData.length]);
 
   const resultsListEmptyComponent = React.useMemo(() => {
     const visibleSheetHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle);
@@ -8070,9 +8164,9 @@ const SearchScreen: React.FC = () => {
   ]);
   const resultsContentContainerStyle = React.useMemo(
     () => ({
-      paddingBottom: safeResultsData.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
+      paddingBottom: resultsListDataForRender.length > 0 ? RESULTS_BOTTOM_PADDING : 0,
     }),
-    [safeResultsData.length]
+    [resultsListDataForRender.length]
   );
   const shouldHydrateResults = shouldHydrateResultsForRender;
   const resultsDrawDistance = shouldHydrateResults ? 360 : 900;
@@ -8195,7 +8289,7 @@ const SearchScreen: React.FC = () => {
     interactionEnabled: !shouldDisableResultsSheetInteraction,
     onEndReached: handleResultsEndReached,
     scrollIndicatorInsets: { top: effectiveResultsHeaderHeight, bottom: RESULTS_BOTTOM_PADDING },
-    data: resultsListData,
+    data: resultsListDataForRender,
     renderItem: resultsRenderItem,
     keyExtractor: resultsKeyExtractor,
     estimatedItemSize,
@@ -8862,6 +8956,7 @@ const SearchScreen: React.FC = () => {
                 ref={rankSheetRef}
                 visible={isRankSelectorVisible}
                 onRequestClose={closeRankSelector}
+                maxBackdropOpacity={0.42}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
                 paddingTop={12}
               >
@@ -8907,6 +9002,19 @@ const SearchScreen: React.FC = () => {
                             }}
                           />
                         ) : null}
+                        {option.value === 'coverage_display' ? (
+                          <Building2
+                            size={16}
+                            strokeWidth={2.5}
+                            color={selected ? themeColors.primary : themeColors.textPrimary}
+                          />
+                        ) : (
+                          <Earth
+                            size={16}
+                            strokeWidth={2.5}
+                            color={selected ? themeColors.primary : themeColors.textPrimary}
+                          />
+                        )}
                         <Text
                           variant="body"
                           weight="semibold"
@@ -8950,6 +9058,7 @@ const SearchScreen: React.FC = () => {
                 ref={priceSheetRef}
                 visible={isPriceSelectorVisible}
                 onRequestClose={closePriceSelector}
+                maxBackdropOpacity={0.42}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
                 paddingTop={16}
               >
@@ -8990,44 +9099,18 @@ const SearchScreen: React.FC = () => {
                         weight="semibold"
                         style={[styles.priceSheetSummaryText, styles.priceSheetSummaryMeasureText]}
                       >
-                        {priceSheetSummaryNext}
+                        {priceSheetSummary}
                       </Text>
-                      {priceSheetSummaryPrev ? (
-                        <Reanimated.View
-                          style={[
-                            styles.priceSheetHeadlineAnimatedLayer,
-                            priceSheetSummaryPrevAnimatedStyle,
-                          ]}
-                          pointerEvents="none"
-                        >
-                          <Text
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            variant="subtitle"
-                            weight="semibold"
-                            style={styles.priceSheetSummaryText}
-                          >
-                            {priceSheetSummaryPrev}
-                          </Text>
-                        </Reanimated.View>
-                      ) : null}
-                      <Reanimated.View
-                        style={[
-                          styles.priceSheetHeadlineAnimatedLayer,
-                          priceSheetSummaryNextAnimatedStyle,
-                        ]}
-                        pointerEvents="none"
-                      >
-                        <Text
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                          variant="subtitle"
-                          weight="semibold"
-                          style={styles.priceSheetSummaryText}
-                        >
-                          {priceSheetSummaryNext}
-                        </Text>
-                      </Reanimated.View>
+                      {PRICE_SUMMARY_REEL_ENTRIES.map((entry, index) => (
+                        <PriceSummaryReelItem
+                          key={entry.key}
+                          label={entry.label}
+                          index={index}
+                          reelPosition={priceSheetSummaryReelPosition}
+                          nearestIndex={priceSheetSummaryReelNearestIndex}
+                          neighborVisibility={priceSheetSummaryNeighborVisibility}
+                        />
+                      ))}
                     </Reanimated.View>
                     <Text
                       numberOfLines={1}
@@ -9043,9 +9126,9 @@ const SearchScreen: React.FC = () => {
                 <View style={styles.priceSheetSliderWrapper}>
                   {isPriceSheetContentReady ? (
                     <PriceRangeSlider
-                      range={pendingPriceRange}
-                      onRangePreview={setPendingPriceRange}
-                      onRangeCommit={setPendingPriceRange}
+                      motionLow={priceSliderLowValue}
+                      motionHigh={priceSliderHighValue}
+                      onRangeCommit={handlePriceSliderCommit}
                     />
                   ) : (
                     <View style={styles.priceTrackContainer} pointerEvents="none" />
