@@ -205,27 +205,36 @@ const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_
 const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
 const arePriceRangesEqual = (a: PriceRangeTuple, b: PriceRangeTuple) =>
   a[0] === b[0] && a[1] === b[1];
-const PRICE_SUMMARY_REEL_ENTRIES = (() => {
-  const entries: Array<{ key: string; range: PriceRangeTuple; label: string }> = [];
-  for (let minBoundary = 1; minBoundary <= 4; minBoundary += 1) {
-    for (let maxBoundary = minBoundary + 1; maxBoundary <= 5; maxBoundary += 1) {
-      const range: PriceRangeTuple = [minBoundary, maxBoundary];
-      entries.push({
-        key: `${minBoundary}-${maxBoundary}`,
-        range,
-        label: formatPriceRangeSummary(range),
-      });
-    }
-  }
-  return entries;
-})();
+const PRICE_SUMMARY_REEL_RANGES: PriceRangeTuple[] = [
+  [1, 2],
+  [1, 3],
+  [2, 3],
+  [1, 4],
+  [2, 4],
+  [1, 5],
+  [2, 5],
+  [3, 4],
+  [3, 5],
+  [4, 5],
+];
+const PRICE_SUMMARY_REEL_ENTRIES = PRICE_SUMMARY_REEL_RANGES.map((range) => ({
+  key: `${range[0]}-${range[1]}`,
+  range,
+  label: formatPriceRangeSummary(range),
+}));
+const PRICE_SUMMARY_REEL_INDEX_BY_KEY = PRICE_SUMMARY_REEL_ENTRIES.reduce<
+  Record<string, number>
+>((indexByKey, entry, index) => {
+  indexByKey[entry.key] = index;
+  return indexByKey;
+}, {});
 const PRICE_SUMMARY_REEL_LABELS = PRICE_SUMMARY_REEL_ENTRIES.map((entry) => entry.label);
 const PRICE_SUMMARY_CANDIDATES = PRICE_SUMMARY_REEL_LABELS;
 const PRICE_SUMMARY_PILL_PADDING_X = 12;
 const PRICE_SUMMARY_REEL_STEP_Y = 16;
 const PRICE_SUMMARY_REEL_ROTATE_DEG = 82;
 const PRICE_SUMMARY_REEL_PERSPECTIVE = 900;
-const PRICE_SUMMARY_REEL_MAX_INDEX = PRICE_SUMMARY_REEL_LABELS.length - 1;
+const PRICE_SUMMARY_REEL_DEFAULT_INDEX = PRICE_SUMMARY_REEL_INDEX_BY_KEY['1-5'] ?? 0;
 
 type PriceSummaryReelItemProps = {
   label: string;
@@ -256,9 +265,7 @@ const PriceSummaryReelItem: React.FC<PriceSummaryReelItemProps> = React.memo(
         [1, 0.8, 0.12, 0],
         Extrapolation.CLAMP
       );
-      const opacity = isNearest
-        ? baseOpacity
-        : baseOpacity * neighborVisibility.value * 0.85;
+      const opacity = isNearest ? baseOpacity : baseOpacity * neighborVisibility.value * 0.85;
       const spacingCompensation = 1 - Math.min(absDistance, 1.5) * 0.1;
 
       return {
@@ -296,12 +303,45 @@ const PriceSummaryReelItem: React.FC<PriceSummaryReelItemProps> = React.memo(
 
 PriceSummaryReelItem.displayName = 'PriceSummaryReelItem';
 
-const getPriceSummaryReelIndexFromBoundaries = (lowBoundary: number, highBoundary: number): number => {
+const getPriceSummaryReelIndexFromBoundaries = (
+  lowBoundary: number,
+  highBoundary: number
+): number => {
   'worklet';
   const low = Math.min(4, Math.max(1, lowBoundary));
   const high = Math.min(5, Math.max(low + 1, highBoundary));
-  const index = -0.5 * low * low + 4.5 * low + high - 6;
-  return Math.max(0, Math.min(PRICE_SUMMARY_REEL_MAX_INDEX, index));
+  const lowFloor = Math.floor(low);
+  const lowCeil = Math.min(4, lowFloor + 1);
+  const highFloor = Math.floor(high);
+  const highCeil = Math.min(5, highFloor + 1);
+  const lowFraction = low - lowFloor;
+  const highFraction = high - highFloor;
+
+  let weightedIndex = 0;
+  let totalWeight = 0;
+
+  const applyCorner = (cornerLow: number, cornerHigh: number, weight: number) => {
+    'worklet';
+    if (weight <= 0 || cornerLow >= cornerHigh) {
+      return;
+    }
+    const key = `${cornerLow}-${cornerHigh}`;
+    const cornerIndex = PRICE_SUMMARY_REEL_INDEX_BY_KEY[key];
+    const resolvedIndex =
+      cornerIndex == null ? PRICE_SUMMARY_REEL_DEFAULT_INDEX : cornerIndex;
+    weightedIndex += resolvedIndex * weight;
+    totalWeight += weight;
+  };
+
+  applyCorner(lowFloor, highFloor, (1 - lowFraction) * (1 - highFraction));
+  applyCorner(lowCeil, highFloor, lowFraction * (1 - highFraction));
+  applyCorner(lowFloor, highCeil, (1 - lowFraction) * highFraction);
+  applyCorner(lowCeil, highCeil, lowFraction * highFraction);
+
+  if (totalWeight <= 0.000001) {
+    return PRICE_SUMMARY_REEL_DEFAULT_INDEX;
+  }
+  return weightedIndex / totalWeight;
 };
 
 const shadowFadeStyle = (baseOpacity: number, baseElevation: number, alpha: number) => {
@@ -2232,19 +2272,16 @@ const SearchScreen: React.FC = () => {
   });
   const wasPriceSelectorVisibleRef = React.useRef(false);
 
-  const handlePriceSliderCommit = React.useCallback(
-    (range: PriceRangeTuple) => {
-      const applyUpdate = () => {
-        setPendingPriceRange((prev) => (arePriceRangesEqual(prev, range) ? prev : range));
-      };
-      if (typeof React.startTransition === 'function') {
-        React.startTransition(applyUpdate);
-      } else {
-        applyUpdate();
-      }
-    },
-    []
-  );
+  const handlePriceSliderCommit = React.useCallback((range: PriceRangeTuple) => {
+    const applyUpdate = () => {
+      setPendingPriceRange((prev) => (arePriceRangesEqual(prev, range) ? prev : range));
+    };
+    if (typeof React.startTransition === 'function') {
+      React.startTransition(applyUpdate);
+    } else {
+      applyUpdate();
+    }
+  }, []);
 
   React.useEffect(() => {
     if (isPriceSelectorVisible && !wasPriceSelectorVisibleRef.current) {
@@ -2505,9 +2542,10 @@ const SearchScreen: React.FC = () => {
   const shouldMountSearchShortcuts =
     !shouldForceHideShortcuts && (shouldRenderSearchShortcuts || shouldRenderSearchShortcutsRow);
   const shouldUseSearchShortcutFrames =
-    shouldMountSearchShortcuts || shouldRenderSearchShortcuts || shouldShowSearchShortcuts;
-  const shouldIncludeShortcutHoles = shouldMountSearchShortcuts;
-  const shouldIncludeShortcutLayout = shouldMountSearchShortcuts;
+    shouldDriveSuggestionLayout ||
+    shouldMountSearchShortcuts ||
+    shouldRenderSearchShortcuts ||
+    shouldShowSearchShortcuts;
   const resolvedSearchShortcutsFrame = React.useMemo(() => {
     if (!shouldUseSearchShortcutFrames) {
       return null;
@@ -2524,6 +2562,16 @@ const SearchScreen: React.FC = () => {
     const cachedFrames = searchShortcutsLayoutCacheRef.current.chipFrames;
     return { ...cachedFrames, ...searchShortcutChipFrames };
   }, [searchShortcutChipFrames, shouldUseSearchShortcutFrames]);
+  const hasResolvedSearchShortcutsFrame = Boolean(resolvedSearchShortcutsFrame);
+  const shouldIncludeShortcutCutout =
+    shouldDriveSuggestionLayout &&
+    !shouldForceHideShortcuts &&
+    (shouldRenderSearchShortcuts ||
+      shouldRenderSearchShortcutsRow ||
+      shouldHoldShortcuts ||
+      hasResolvedSearchShortcutsFrame);
+  const shouldIncludeShortcutHoles = shouldIncludeShortcutCutout;
+  const shouldIncludeShortcutLayout = shouldIncludeShortcutCutout;
   const resolvedSearchContainerFrame = React.useMemo(() => {
     const isUsable = (frame: LayoutRectangle | null) =>
       Boolean(frame && frame.width > 0 && frame.height > SEARCH_CONTAINER_PADDING_TOP + 0.5);
@@ -9060,7 +9108,7 @@ const SearchScreen: React.FC = () => {
                 onRequestClose={closePriceSelector}
                 maxBackdropOpacity={0.42}
                 paddingHorizontal={OVERLAY_HORIZONTAL_PADDING}
-                paddingTop={16}
+                paddingTop={12}
               >
                 <View style={styles.priceSheetHeaderRow}>
                   <View style={styles.priceSheetSummaryMeasureContainer} pointerEvents="none">

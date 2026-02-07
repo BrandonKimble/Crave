@@ -160,14 +160,7 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
           runOnJS(onRangeCommit)(snapped);
         }
       });
-    }, [
-      highValue,
-      lastCommittedHigh,
-      lastCommittedLow,
-      lowValue,
-      normalizeWorklet,
-      onRangeCommit,
-    ]);
+    }, [highValue, lastCommittedHigh, lastCommittedLow, lowValue, normalizeWorklet, onRangeCommit]);
 
     const lowGesture = React.useMemo(
       () =>
@@ -355,7 +348,9 @@ const PriceRangeSlider: React.FC<PriceRangeSliderProps> = React.memo(
 
     const trackSegments = React.useMemo<TrackSegment[]>(() => {
       const measuredWidth =
-        trackLayoutWidth > 0 ? trackLayoutWidth : PRICE_SLIDER_TRACK_WIDTH_ESTIMATE + PRICE_THUMB_SIZE;
+        trackLayoutWidth > 0
+          ? trackLayoutWidth
+          : PRICE_SLIDER_TRACK_WIDTH_ESTIMATE + PRICE_THUMB_SIZE;
       const usable = Math.max(0, measuredWidth - PRICE_THUMB_SIZE);
       if (usable <= 0) {
         return [];

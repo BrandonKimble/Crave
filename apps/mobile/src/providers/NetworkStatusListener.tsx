@@ -14,10 +14,15 @@ const isOnlineState = (state: NetInfoState) => {
 
 const NetworkStatusListener: React.FC = () => {
   const setOffline = useSystemStatusStore((state) => state.setOffline);
+  const lastOnlineRef = React.useRef<boolean | null>(null);
 
   React.useEffect(() => {
     const handleState = (state: NetInfoState) => {
       const online = isOnlineState(state);
+      if (lastOnlineRef.current === online) {
+        return;
+      }
+      lastOnlineRef.current = online;
       onlineManager.setOnline(online);
       setOffline(!online);
     };

@@ -15,13 +15,14 @@ import { useSystemStatusStore } from '../store/systemStatusStore';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import { OVERLAY_CORNER_RADIUS } from '../overlays/overlaySheetStyles';
 
-const CONTENT_HEIGHT = 32;
+const CONTENT_HEIGHT = 20;
 
 const DEFAULT_SERVICE_MESSAGE = 'Service temporarily unavailable.';
-const OFFLINE_MESSAGE = "You're offline.";
+const OFFLINE_MESSAGE = 'Your device is offline.';
 const BANNER_BACKGROUND = '#000000';
 const BANNER_CONCAVE_RADIUS = OVERLAY_CORNER_RADIUS;
 const BANNER_SIDE_EXTENSION = 8;
+const CONTENT_VERTICAL_OFFSET = -8;
 
 const SystemStatusBanner: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -92,7 +93,12 @@ const SystemStatusBanner: React.FC = () => {
       pointerEvents="none"
       style={[styles.container, { height: fullHeight }, containerAnimatedStyle]}
     >
-      <Svg pointerEvents="none" width={windowWidth} height={fullHeight} style={styles.backgroundShape}>
+      <Svg
+        pointerEvents="none"
+        width={windowWidth}
+        height={fullHeight}
+        style={styles.backgroundShape}
+      >
         <Path d={shapePath} fill={BANNER_BACKGROUND} />
       </Svg>
       <View style={[styles.safeAreaSpacer, { height: insets.top }]} />
@@ -131,6 +137,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+    transform: [{ translateY: CONTENT_VERTICAL_OFFSET }],
   },
   contentRowHidden: {
     opacity: 0,
