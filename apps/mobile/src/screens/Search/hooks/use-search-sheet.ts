@@ -1,16 +1,11 @@
 import React from 'react';
 
-import {
-  Extrapolation,
-  interpolate,
-  type SharedValue,
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import { type SharedValue, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 import type { SnapPoints } from '../../../overlays/BottomSheetWithFlashList';
 import { calculateSnapPoints, type SheetPosition } from '../../../overlays/sheetUtils';
 import { SCREEN_HEIGHT } from '../constants/search';
+import useScrollDividerStyle from './use-scroll-divider-style';
 
 type UseSearchSheetOptions = {
   isSearchOverlay: boolean;
@@ -58,13 +53,7 @@ const useSearchSheet = ({
   const snapToRef = React.useRef<SheetPosition | null>(null);
 
   const snapPoints = React.useMemo<SnapPoints>(() => {
-    return calculateSnapPoints(
-      SCREEN_HEIGHT,
-      searchBarTop,
-      insetTop,
-      navBarTop,
-      headerHeight ?? 0
-    );
+    return calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insetTop, navBarTop, headerHeight ?? 0);
   }, [headerHeight, insetTop, navBarTop, searchBarTop]);
 
   const shouldRenderSheet = isSearchOverlay && (panelVisible || sheetState !== 'hidden');
@@ -160,9 +149,7 @@ const useSearchSheet = ({
     transform: [{ translateY: sheetTranslateY.value }],
   }));
 
-  const headerDividerAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(resultsScrollOffset.value, [0, 24], [0, 1], Extrapolation.CLAMP),
-  }));
+  const headerDividerAnimatedStyle = useScrollDividerStyle(resultsScrollOffset);
 
   return {
     panelVisible,

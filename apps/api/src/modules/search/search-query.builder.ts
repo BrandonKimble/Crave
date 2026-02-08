@@ -294,19 +294,21 @@ LEFT JOIN LATERAL (
 	        'displayPercentile', sub.display_percentile,
 	        'activityLevel', sub.activity_level
 	      )
-	      ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
+      ORDER BY ${restaurantTopDishOrder.sql}, sub.connection_id ASC
 	    ) FILTER (WHERE sub.rn <= ${topDishesLimit}) AS top_dishes,
 	    COUNT(*)::int AS total_dish_count
 	  FROM (
 	    SELECT
-      c.connection_id,
-      c.food_id,
-      f.name AS food_name,
-      c.food_quality_score,
-	      drc.rank_score_display AS display_score,
-	      drc.rank_percentile AS display_percentile,
-	      c.activity_level,
-	      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
+	      c.connection_id,
+	      c.food_id,
+	      f.name AS food_name,
+	      c.food_quality_score,
+	      c.total_upvotes,
+	      c.mention_count,
+		      drc.rank_score_display AS display_score,
+		      drc.rank_percentile AS display_percentile,
+		      c.activity_level,
+		      ROW_NUMBER() OVER (ORDER BY ${restaurantTopDishRankOrder.sql}) AS rn
 	    FROM core_connections c
 	    JOIN core_entities f ON f.entity_id = c.food_id
 	    LEFT JOIN core_display_rank_scores drc
@@ -1055,11 +1057,17 @@ location_aggregates AS (
     const scorePreview = isQualityScore
       ? 'fc.food_quality_score'
       : 'COALESCE(fc.connection_display_percentile, fc.food_quality_score / 100)';
+    const tieBreakerSql = isQualityScore
+      ? Prisma.sql`, fc.total_upvotes ${Prisma.raw(
+          direction,
+        )}, fc.mention_count ${Prisma.raw(direction)}, fc.connection_id ASC`
+      : Prisma.sql`, fc.connection_id ASC`;
+    const tieBreakerPreview = isQualityScore
+      ? `, fc.total_upvotes ${direction}, fc.mention_count ${direction}, fc.connection_id ASC`
+      : ', fc.connection_id ASC';
     return {
-      sql: Prisma.sql`${scoreSql} ${Prisma.raw(
-        direction,
-      )}, fc.connection_id ASC`,
-      preview: `${scorePreview} ${direction}, fc.connection_id ASC`,
+      sql: Prisma.sql`${scoreSql} ${Prisma.raw(direction)}${tieBreakerSql}`,
+      preview: `${scorePreview} ${direction}${tieBreakerPreview}`,
     };
   }
 
@@ -1072,10 +1080,11 @@ location_aggregates AS (
     const isQualityScore = normalized.includes('quality_score');
     if (isQualityScore) {
       return {
-        sql: Prisma.sql`fr.restaurant_quality_score ${Prisma.raw(
-          direction,
-        )}, fr.entity_id ASC`,
-        preview: `fr.restaurant_quality_score ${direction}, fr.entity_id ASC`,
+        sql: Prisma.sql`fr.restaurant_quality_score ${Prisma.raw(direction)},
+        COALESCE(rvt.total_upvotes, 0) ${Prisma.raw(direction)},
+        COALESCE(rvt.total_mentions, 0) ${Prisma.raw(direction)},
+        fr.entity_id ASC`,
+        preview: `fr.restaurant_quality_score ${direction}, COALESCE(rvt.total_upvotes, 0) ${direction}, COALESCE(rvt.total_mentions, 0) ${direction}, fr.entity_id ASC`,
       };
     }
     return {
@@ -1097,8 +1106,11 @@ location_aggregates AS (
     const isQualityScore = normalized.includes('quality_score');
     if (isQualityScore) {
       return {
-        sql: Prisma.sql`sub.food_quality_score ${Prisma.raw(direction)}`,
-        preview: `sub.food_quality_score ${direction}`,
+        sql: Prisma.sql`sub.food_quality_score ${Prisma.raw(direction)},
+        sub.total_upvotes ${Prisma.raw(direction)},
+        sub.mention_count ${Prisma.raw(direction)},
+        sub.connection_id ASC`,
+        preview: `sub.food_quality_score ${direction}, sub.total_upvotes ${direction}, sub.mention_count ${direction}, sub.connection_id ASC`,
       };
     }
     return {
@@ -1118,10 +1130,11 @@ location_aggregates AS (
     const isQualityScore = normalized.includes('quality_score');
     if (isQualityScore) {
       return {
-        sql: Prisma.sql`c.food_quality_score ${Prisma.raw(
-          direction,
-        )}, c.connection_id ASC`,
-        preview: `c.food_quality_score ${direction}, c.connection_id ASC`,
+        sql: Prisma.sql`c.food_quality_score ${Prisma.raw(direction)},
+        c.total_upvotes ${Prisma.raw(direction)},
+        c.mention_count ${Prisma.raw(direction)},
+        c.connection_id ASC`,
+        preview: `c.food_quality_score ${direction}, c.total_upvotes ${direction}, c.mention_count ${direction}, c.connection_id ASC`,
       };
     }
     return {

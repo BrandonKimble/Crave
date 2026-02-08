@@ -9,7 +9,7 @@ import type { Coordinate, MapBounds, NaturalSearchRequest, SearchResponse } from
 import type { RecentSearch, StructuredSearchRequest } from '../../../services/search';
 import { useSystemStatusStore } from '../../../store/systemStatusStore';
 import type { SegmentValue } from '../constants/search';
-import { DEFAULT_PAGE_SIZE, MINIMUM_VOTES_FILTER } from '../constants/search';
+import { DEFAULT_PAGE_SIZE, DEFAULT_SEGMENT, MINIMUM_VOTES_FILTER } from '../constants/search';
 import type { MapboxMapRef } from '../components/search-map';
 import { boundsFromPairs, isLngLatTuple } from '../utils/geo';
 import { mergeSearchResponses } from '../utils/merge';
@@ -48,7 +48,9 @@ type UseSearchSubmitOptions = {
   submittedQuery: string;
   setSubmittedQuery: React.Dispatch<React.SetStateAction<string>>;
   activeTab: SegmentValue;
+  preferredActiveTab: SegmentValue;
   setActiveTab: React.Dispatch<React.SetStateAction<SegmentValue>>;
+  hasActiveTabPreference: boolean;
   scoreMode: NaturalSearchRequest['scoreMode'];
   setHasMoreFood: React.Dispatch<React.SetStateAction<boolean>>;
   setHasMoreRestaurants: React.Dispatch<React.SetStateAction<boolean>>;
@@ -80,6 +82,7 @@ type UseSearchSubmitOptions = {
   resetMapMoveFlag: () => void;
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
+  isRestaurantOverlayVisibleRef?: React.MutableRefObject<boolean>;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
     bounds: MapBounds | null;
@@ -110,6 +113,49 @@ type UseSearchSubmitResult = {
   ) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   cancelActiveSearchRequest: () => void;
+};
+
+const resolveIntentDefaultTab = (response: SearchResponse): SegmentValue | null => {
+  const filters = [
+    ...(response.plan?.restaurantFilters ?? []),
+    ...(response.plan?.connectionFilters ?? []),
+  ];
+  const hasRestaurantAttributeFilter = filters.some(
+    (filter) =>
+      filter.entityType === 'restaurant_attribute' &&
+      Array.isArray(filter.entityIds) &&
+      filter.entityIds.length > 0
+  );
+  if (hasRestaurantAttributeFilter) {
+    return 'restaurants';
+  }
+
+  const hasFoodFilter = filters.some(
+    (filter) =>
+      filter.entityType === 'food' && Array.isArray(filter.entityIds) && filter.entityIds.length > 0
+  );
+  if (hasFoodFilter) {
+    return 'dishes';
+  }
+
+  return null;
+};
+
+const resolveSubmissionDefaultTab = (
+  submissionContext: NaturalSearchRequest['submissionContext']
+): SegmentValue | null => {
+  const contextRecord =
+    submissionContext && typeof submissionContext === 'object' && !Array.isArray(submissionContext)
+      ? (submissionContext as Record<string, unknown>)
+      : null;
+  const selectedEntityType = contextRecord?.selectedEntityType;
+  if (selectedEntityType === 'restaurant' || selectedEntityType === 'restaurant_attribute') {
+    return 'restaurants';
+  }
+  if (selectedEntityType === 'food') {
+    return 'dishes';
+  }
+  return null;
 };
 
 const logSearchResponsePayload = (label: string, response: SearchResponse, enabled: boolean) => {
@@ -151,7 +197,9 @@ const useSearchSubmit = ({
   setResults,
   submittedQuery,
   setSubmittedQuery,
+  preferredActiveTab,
   setActiveTab,
+  hasActiveTabPreference,
   scoreMode,
   setHasMoreFood,
   setHasMoreRestaurants,
@@ -183,6 +231,7 @@ const useSearchSubmit = ({
   resetMapMoveFlag,
   loadRecentHistory,
   updateLocalRecentSearches,
+  isRestaurantOverlayVisibleRef,
   onShortcutSearchCoverageSnapshot,
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
@@ -296,6 +345,33 @@ const useSearchSubmit = ({
           return merged;
         });
 
+        if (!append && singleRestaurantCandidate) {
+          setActiveTab('restaurants');
+        } else if (!append) {
+          const hasFoodResults = response?.dishes?.length > 0;
+          const hasRestaurantsResults = (response?.restaurants?.length ?? 0) > 0;
+          const intentDefaultTab = resolveIntentDefaultTab(response);
+
+          setActiveTab((prevTab) => {
+            if (!hasActiveTabPreference && intentDefaultTab) {
+              if (intentDefaultTab === 'dishes' && hasFoodResults) {
+                return 'dishes';
+              }
+              if (intentDefaultTab === 'restaurants' && hasRestaurantsResults) {
+                return 'restaurants';
+              }
+              return hasFoodResults ? 'dishes' : 'restaurants';
+            }
+            if (prevTab === 'dishes' && hasFoodResults) {
+              return 'dishes';
+            }
+            if (prevTab === 'restaurants' && hasRestaurantsResults) {
+              return 'restaurants';
+            }
+            return hasFoodResults ? 'dishes' : 'restaurants';
+          });
+        }
+
         if (!singleRestaurantCandidate) {
           const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
           const totalRestaurantAvailable =
@@ -334,25 +410,12 @@ const useSearchSubmit = ({
               setSubmittedQuery('');
             }
 
-            if (!singleRestaurantCandidate) {
-              const hasFoodResults = response?.dishes?.length > 0;
-              const hasRestaurantsResults = (response?.restaurants?.length ?? 0) > 0;
-
-              setActiveTab((prevTab) => {
-                if (prevTab === 'dishes' && hasFoodResults) {
-                  return 'dishes';
-                }
-                if (prevTab === 'restaurants' && hasRestaurantsResults) {
-                  return 'restaurants';
-                }
-                return hasFoodResults ? 'dishes' : 'restaurants';
-              });
-            }
-
             setIsPaginationExhausted(false);
 
             if (singleRestaurantCandidate) {
-              resetSheetToHidden();
+              if (!isRestaurantOverlayVisibleRef?.current) {
+                resetSheetToHidden();
+              }
             } else if (options.showPanelOnResponse) {
               showPanel();
             }
@@ -409,6 +472,8 @@ const useSearchSubmit = ({
       lastSearchRequestIdRef,
       loadRecentHistory,
       logSearchPhase,
+      hasActiveTabPreference,
+      isRestaurantOverlayVisibleRef,
       resetSheetToHidden,
       scrollResultsToTop,
       setActiveTab,
@@ -548,10 +613,15 @@ const useSearchSubmit = ({
 
       if (!append) {
         const preserveSheetState = Boolean(options?.preserveSheetState);
+        const submissionContextTab = resolveSubmissionDefaultTab(options?.submission?.context);
+        const preRequestTab =
+          submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
         unstable_batchedUpdates(() => {
-          if (!preserveSheetState) {
+          const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
+          if (!preserveSheetState && !shouldHoldRestaurantOverlaySheet) {
             resetSheetToHidden();
           }
+          setActiveTab(preRequestTab);
           setSearchMode('natural');
           setIsSearchSessionActive(true);
           setIsAutocompleteSuppressed(true);
@@ -589,7 +659,9 @@ const useSearchSubmit = ({
             if (!options?.preserveSheetState) {
               setResults(null);
               setSubmittedQuery(trimmed);
-              showPanel();
+              if (!isRestaurantOverlayVisibleRef?.current) {
+                showPanel();
+              }
             }
           });
           logSearchPhase('submitSearch:loading-state');
@@ -715,9 +787,12 @@ const useSearchSubmit = ({
       beginLoadingMore,
       ensureUserLocation,
       endLoadingMore,
+      preferredActiveTab,
       handleSearchResponse,
       isLoading,
       isLoadingMore,
+      hasActiveTabPreference,
+      isRestaurantOverlayVisibleRef,
       lastAutoOpenKeyRef,
       latestBoundsRef,
       logSearchPhase,
@@ -767,13 +842,18 @@ const useSearchSubmit = ({
       resetMapMoveFlag();
       const preserveSheetState = Boolean(params.preserveSheetState);
       setSearchMode('natural');
+      setActiveTab('restaurants');
       setIsSearchSessionActive(true);
       setError(null);
       if (!preserveSheetState) {
-        resetSheetToHidden();
+        if (!isRestaurantOverlayVisibleRef?.current) {
+          resetSheetToHidden();
+        }
         setResults(null);
         setSubmittedQuery(trimmedName);
-        showPanel();
+        if (!isRestaurantOverlayVisibleRef?.current) {
+          showPanel();
+        }
       }
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
@@ -876,10 +956,12 @@ const useSearchSubmit = ({
       setIsPaginationExhausted,
       setIsSearchSessionActive,
       setSearchMode,
+      setActiveTab,
       setShowSuggestions,
       showPanel,
       logSearchResponseTiming,
       shouldLogSearchResponseTimings,
+      isRestaurantOverlayVisibleRef,
     ]
   );
 

@@ -259,6 +259,19 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  searchSuggestionHeaderBottomSeparatorContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    overflow: 'hidden',
+    justifyContent: 'flex-end',
+    zIndex: 2,
+  },
+  searchSuggestionHeaderBottomSeparator: {
+    height: 1,
+    backgroundColor: themeColors.border,
+  },
   searchSuggestionScrollSurface: {
     backgroundColor: 'transparent',
   },
@@ -878,11 +891,6 @@ const styles = StyleSheet.create({
     height: 8,
     width: '100%',
     backgroundColor: 'transparent',
-  },
-  resultItemSeparatorLine: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginHorizontal: CONTENT_HORIZONTAL_PADDING,
   },
   firstResultItem: {
     paddingTop:

@@ -12,7 +12,7 @@ export const colors = {
   textMuted: '#6c7380',
   text: '#1A1A1A',
   muted: '#6c7380',
-  border: '#E5E7EB',
+  border: '#f1f5f9',
   secondaryAccent: '#5c5bff',
 };
 

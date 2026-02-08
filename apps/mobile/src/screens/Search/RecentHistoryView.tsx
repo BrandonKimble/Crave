@@ -1,17 +1,11 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Clock, HandPlatter, View as ViewIcon } from 'lucide-react-native';
 import { useAuth } from '@clerk/clerk-expo';
 import { CommonActions, StackActions, useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import Reanimated, { useAnimatedScrollHandler, useSharedValue } from 'react-native-reanimated';
 
 import { Text } from '../../components';
 import { colors as themeColors } from '../../constants/theme';
@@ -27,6 +21,7 @@ import useSearchHistory from './hooks/use-search-history';
 import { CONTENT_HORIZONTAL_PADDING } from './constants/search';
 import { filterRecentlyViewedByRecentSearches } from './utils/history';
 import { renderMetaDetailLine } from './components/render-meta-detail-line';
+import useScrollDividerStyle from './hooks/use-scroll-divider-style';
 
 type HistoryMode = 'recentSearches' | 'recentlyViewed';
 
@@ -205,6 +200,13 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
 
   const hasSections = sections.length > 0;
   const emptyLabel = isRecentMode ? 'No recent searches yet' : 'No recently viewed items yet';
+  const historyScrollOffset = useSharedValue(0);
+  const headerDividerAnimatedStyle = useScrollDividerStyle(historyScrollOffset, 16);
+  const historyScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      historyScrollOffset.value = event.contentOffset.y;
+    },
+  });
   const contentStyle = React.useMemo(
     () => [styles.content, { paddingBottom: 32 + insets.bottom }],
     [insets.bottom]
@@ -395,11 +397,14 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
           {title}
         </Text>
         <View style={styles.headerSpacer} />
+        <Reanimated.View style={[styles.headerDivider, headerDividerAnimatedStyle]} />
       </View>
-      <ScrollView
+      <Reanimated.ScrollView
         contentContainerStyle={contentStyle}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        onScroll={historyScrollHandler}
+        scrollEventThrottle={16}
       >
         {isLoading && !hasSections ? (
           <View style={styles.loadingRow}>
@@ -422,7 +427,7 @@ const RecentHistoryView: React.FC<RecentHistoryViewProps> = ({
             </View>
           ))
         )}
-      </ScrollView>
+      </Reanimated.ScrollView>
     </SafeAreaView>
   );
 };
@@ -433,12 +438,20 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   header: {
+    position: 'relative',
+    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
     paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+  },
+  headerDivider: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: themeColors.border,
   },
   backButton: {
     width: 40,
@@ -456,7 +469,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: CONTENT_HORIZONTAL_PADDING,
-    paddingTop: 12,
+    paddingTop: 16,
   },
   loadingRow: {
     paddingVertical: 24,
@@ -491,7 +504,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: ROW_HEIGHT,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: themeColors.border,
     justifyContent: 'center',
   },
   recentRowTextGroup: {

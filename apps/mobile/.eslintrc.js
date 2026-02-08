@@ -15,6 +15,11 @@ module.exports = {
       env: {
         node: true,
       },
+      globals: {
+        __DEV__: 'readonly',
+        requestAnimationFrame: 'readonly',
+        cancelAnimationFrame: 'readonly',
+      },
       rules: {
         '@typescript-eslint/no-unsafe-call': 'off',
         '@typescript-eslint/no-unsafe-member-access': 'off',

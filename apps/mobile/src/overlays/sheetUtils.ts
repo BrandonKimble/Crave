@@ -18,12 +18,12 @@ export const clampValue = (value: number, lowerBound: number, upperBound: number
 };
 
 export const SHEET_SPRING_CONFIG: WithSpringConfig = {
-  damping: 30,
-  stiffness: 120,
-  mass: 1.2,
+  damping: 28,
+  stiffness: 320,
+  mass: 1,
   overshootClamping: false,
-  restDisplacementThreshold: 0.5,
-  restSpeedThreshold: 0.5,
+  restDisplacementThreshold: 0.35,
+  restSpeedThreshold: 0.35,
 };
 export const OVERLAY_TIMING_CONFIG = {
   enterDurationMs: 260,

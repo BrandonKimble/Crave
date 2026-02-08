@@ -385,7 +385,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: ROW_HEIGHT,
     borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
+    borderBottomColor: themeColors.border,
   },
   autocompleteItemLast: {
     borderBottomWidth: 0,
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   },
   recentSection: {
     paddingHorizontal: 0,
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 0,
   },
   recentSectionGap: {
@@ -456,7 +456,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: ROW_HEIGHT,
     borderTopWidth: 1,
-    borderTopColor: '#f1f5f9',
+    borderTopColor: themeColors.border,
     justifyContent: 'center',
   },
   recentRowTextGroup: {

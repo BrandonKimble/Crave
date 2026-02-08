@@ -5,3 +5,4 @@ metro.config.js
 tailwind.config.js
 src/shims/**
 AppEntry.js
+**/*.d.ts

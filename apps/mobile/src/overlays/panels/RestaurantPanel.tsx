@@ -101,13 +101,12 @@ export const useRestaurantPanelSpec = ({
   }, [restaurantId]);
 
   const emptyAreaMinHeight = Math.max(0, SCREEN_HEIGHT - snapPoints.middle - headerHeight);
-  const priceLabel =
-    restaurant
-      ? getPriceRangeLabel(restaurant.priceLevel) ??
-        restaurant.priceText ??
-        restaurant.priceSymbol ??
-        null
-      : null;
+  const priceLabel = restaurant
+    ? getPriceRangeLabel(restaurant.priceLevel) ??
+      restaurant.priceText ??
+      restaurant.priceSymbol ??
+      null
+    : null;
   const locationCandidates = React.useMemo(() => {
     if (!restaurant) {
       return [];
@@ -289,14 +288,14 @@ export const useRestaurantPanelSpec = ({
                 color={isFavorite ? '#ef4444' : '#1f2937'}
                 {...(isFavorite ? { fill: '#ef4444' } : {})}
               />
-          </Pressable>
-          <Pressable
-            onPress={() => void handleShare()}
-            style={styles.headerIconButton}
-            accessibilityLabel="Share"
-          >
-            <Feather name="share-2" size={18} color="#1f2937" />
-          </Pressable>
+            </Pressable>
+            <Pressable
+              onPress={() => void handleShare()}
+              style={styles.headerIconButton}
+              accessibilityLabel="Share"
+            >
+              <Feather name="share-2" size={18} color="#1f2937" />
+            </Pressable>
           </View>
           <OverlayHeaderActionButton
             progress={closeButtonProgress}
@@ -543,6 +542,9 @@ export const useRestaurantPanelSpec = ({
 
   return {
     overlayKey: 'restaurant',
+    // Restaurant profile should always open from its default snap; restoring a persisted hidden
+    // snap can immediately dismiss the panel on exact-restaurant opens.
+    snapPersistenceKey: null,
     snapPoints,
     initialSnapPoint: 'middle',
     animateOnMount: true,

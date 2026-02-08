@@ -47,6 +47,7 @@ type UseSearchPanelSpecOptions<T> = {
   resultsContainerAnimatedStyle: StyleProp<ViewStyle>;
   listRef?: React.RefObject<FlashListRef<T>>;
   onHidden: () => void;
+  onSnapStart?: BottomSheetWithFlashListProps<T>['onSnapStart'];
   onSnapChange: (snap: OverlaySheetSnap) => void;
   style?: StyleProp<ViewStyle>;
   surfaceStyle?: StyleProp<ViewStyle>;
@@ -88,6 +89,7 @@ export const useSearchPanelSpec = <T,>({
   resultsContainerAnimatedStyle,
   listRef,
   onHidden,
+  onSnapStart,
   onSnapChange,
   style,
   surfaceStyle,
@@ -229,6 +231,7 @@ export const useSearchPanelSpec = <T,>({
 
   return {
     overlayKey: 'search',
+    snapPersistenceKey: null,
     snapPoints,
     listScrollEnabled,
     initialSnapPoint,
@@ -269,6 +272,7 @@ export const useSearchPanelSpec = <T,>({
     style: [overlaySheetStyles.container, style],
     surfaceStyle: surfaceStyle ?? [overlaySheetStyles.surface, searchStyles.resultsSheetSurface],
     onHidden,
+    onSnapStart,
     onSnapChange,
     interactionEnabled,
     flashListProps: resolvedFlashListProps,

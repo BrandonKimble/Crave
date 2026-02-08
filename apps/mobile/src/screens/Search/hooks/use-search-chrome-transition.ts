@@ -8,6 +8,8 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 
+import { SEARCH_CHROME_FADE_ZONE_PX } from '../constants/search';
+
 type SearchChromeTransitionOptions = {
   sheetY: SharedValue<number>;
   expanded: number;
@@ -23,12 +25,18 @@ const useSearchChromeTransition = ({ sheetY, expanded, middle }: SearchChromeTra
     middleSnap.value = middle;
   }, [expanded, expandedSnap, middle, middleSnap]);
 
-  const progress = useDerivedValue(() =>
-    interpolate(sheetY.value, [expandedSnap.value, middleSnap.value], [0, 1], Extrapolation.CLAMP)
-  );
+  const progress = useDerivedValue(() => {
+    const expandedY = expandedSnap.value;
+    const middleY = middleSnap.value;
+    const fadeEndY = Math.min(middleY, expandedY + SEARCH_CHROME_FADE_ZONE_PX);
+    if (fadeEndY <= expandedY) {
+      return middleY <= expandedY ? 1 : 0;
+    }
+    return interpolate(sheetY.value, [expandedY, fadeEndY], [0, 1], Extrapolation.CLAMP);
+  });
 
   const chromeOpacity = useDerivedValue(() =>
-    interpolate(progress.value, [0, 0.3, 0.5, 0.7, 1], [0, 0, 0.15, 0.9, 1], Extrapolation.CLAMP)
+    interpolate(progress.value, [0, 0.45, 0.62, 0.8, 1], [0, 0, 0.15, 0.9, 1], Extrapolation.CLAMP)
   );
 
   const chromeScale = useDerivedValue(() =>
@@ -44,9 +52,7 @@ const useSearchChromeTransition = ({ sheetY, expanded, middle }: SearchChromeTra
     )
   );
 
-  const inputVisibility = useDerivedValue(() =>
-    interpolate(sheetY.value, [expandedSnap.value, middleSnap.value], [0, 1], Extrapolation.CLAMP)
-  );
+  const inputVisibility = useDerivedValue(() => progress.value);
 
   const inputAnimatedStyle = useAnimatedStyle(() => {
     return { opacity: inputVisibility.value };

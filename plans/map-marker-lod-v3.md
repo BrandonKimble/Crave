@@ -57,7 +57,7 @@ These are computed via `PERCENT_RANK() OVER (PARTITION BY location_key ...)`, so
 
 ## Proposed implementation (Phase-based)
 
-## Current status (as of 2026-02-05)
+## Current status (as of 2026-02-07)
 
 Completed:
 
@@ -71,12 +71,25 @@ Completed:
   - Shortcut coverage: filtered server-side (`pl.google_place_id IS NOT NULL`).
   - Normal search pins: filtered client-side (skip locations without `googlePlaceId`) to prevent “73 restaurants at one coordinate” stacks.
 - ✅ **LOD boundary hysteresis**: added per-marker promote/demote stability gating to reduce 30/31 flip-flop while moving.
+- ✅ **Label order stabilization (pragmatic)**:
+  - Stable `markerKey` ids are assigned for label features.
+  - `labelOrder` is injected and used for stable `symbolSortKey`.
+  - This improves ordering determinism, though Mapbox collision can still cause placement-level variation.
+- ✅ **Gesture-end label flash mitigation**:
+  - Steady-state sticky-label refresh avoids forced SymbolLayer remounts.
+  - This reduced label disappear/reappear behavior during normal camera idle transitions.
 
-Not completed / still open:
+Implemented with slightly different shape than originally written:
 
-- ⏳ **True label ordering invariance** while moving (we accept that collision + candidate layers can reorder).
-- ⏳ **Label flash on gesture end**: still observed intermittently; likely triggered by a placement pass after idle (needs repro + targeted fix).
-- ⏳ **Fine-tuning for LOD hysteresis constants** if it still feels “indecisive” in very dense areas.
+- ℹ️ **Single score-selector helper** was implemented as mode-aware inline selectors in cards/marker construction (same behavior, different structure).
+- ℹ️ **Score mode toggle strategy** shipped as Option B (re-run search under new ordering), not instant local resort (Option A).
+
+Still open:
+
+- ⏳ **Pin↔dot transition animations** (fade/morph) are still not implemented; transitions are snap-only.
+- ⏳ **Absolute label ordering invariance** is not guaranteed across every Mapbox collision pass.
+- ⏳ **`scoreMode` cold-start persistence** is incomplete (stored in Zustand state, but not currently included in persisted partialization).
+- ⏳ **Further hysteresis tuning** in very dense areas may still be beneficial.
 
 ### Phase 0 — Flag & invariants
 
@@ -254,21 +267,22 @@ Hybrid (best UX, more work):
 
 ### Implemented approach (Option B v1)
 
-Core principle: the toggle is a persisted preference, and it flows through the same memoization paths as other filters.
+Core principle: the toggle flows through the same memoization paths as other filters, and re-runs the active search with the selected mode.
 
-1. Persist `scoreMode` in `useSearchStore` (default `global_quality`).
+1. Store `scoreMode` in `useSearchStore` (default `global_quality`).
 2. Plumb `scoreMode` through:
    - card display scores (local uses `displayScore` only)
    - marker colors (local uses `displayScore` only)
    - shortcut coverage dot fetch (`scoreMode` request param)
 3. On toggle:
-   - update the persisted preference
+   - update the current preference in store
    - rerun the current search (shortcut => `runBestHere`, natural => `submitSearch`) with `preserveSheetState: true`
    - reset to page 1 under the new ordering (keeps pagination correct).
 
 Future improvement (if we want “instant”):
 
 - Add Option A (view-only resort of loaded data) as a fast path, and optionally background-fetch Option B to reconcile.
+- Persist `scoreMode` across cold starts if we want the mode to survive app relaunch.
 
 ### UI placement
 
@@ -282,10 +296,14 @@ Future improvement (if we want “instant”):
 
 ## “Done” checklist
 
-- Shortcut coverage map returns global score.
-- Shortcut list uses global score ordering in global mode.
-- Map + cards use a single score selector and produce consistent colors.
-- LOD logic yields stable top N pins from snapshot dataset (no map churn on pagination).
+- ✅ Shortcut coverage map returns global + coverage score fields (and top-dish metadata for dish mode).
+- ✅ Shortcut list and natural search honor `scoreMode` ordering from API.
+- ✅ Map + cards are mode-aware and keep color/score presentation aligned.
+- ✅ LOD logic yields stable top-N pins from the snapshot dataset with live camera updates.
+- ✅ Deterministic pin z-order under LOD is in place.
+- ⏳ Pin↔dot animation transitions are not implemented (snap only).
+- ⏳ True absolute label ordering invariance is not fully guaranteed.
+- ⏳ `scoreMode` persistence across app relaunch is not complete.
 
 ## Likely code touch points (implementation map)
 
@@ -304,51 +322,10 @@ Future improvement (if we want “instant”):
 - Color helpers: `apps/mobile/src/screens/Search/utils/quality.ts`, `apps/mobile/src/screens/Search/utils/marker-lod.ts`
 - Card score display: `apps/mobile/src/screens/Search/components/restaurant-result-card.tsx`, `apps/mobile/src/screens/Search/components/dish-result-card.tsx`
 
-## Open questions (need decisions before implementation)
+## Open items (remaining)
 
-### 1) Top N pin count
-
-- Fixed number (e.g., 35/50/75/100), or scale by device size?
-- Separate counts per shortcut type (restaurants vs dishes)?
-  Decision (v1):
-- Fixed and tunable; start at `MAX_FULL_PINS = 30`.
-- Always compute top-N over the **currently visible subset** (viewport-relative).
-
-### 2) Tie-breaker for identical scores (global mode)
-
-Options (in order of simplicity):
-
-1. `restaurantId ASC` (stable, cheap, but not “best” among equals)
-2. Use **full-precision** quality score for ordering (DB stores decimals) and only round to 1 decimal for display (reduces ties without extra joins)
-3. `totalUpvotes DESC, mentionCount DESC, restaurantId ASC` (more meaningful, requires extra fields for coverage dataset)
-4. `distanceMiles ASC` (only meaningful if we define “center” distance; also changes with viewport)
-
-Recommendation for v1:
-
-- Order by full-precision quality score, then `restaurantId` (cheap + stable); revisit votes/mentions later if needed.
-
-### 3) Restaurants with missing scores
-
-- We expect “no missing score” for returned restaurants/dishes. Confirm and enforce at query time if needed.
-
-### 4) Dish-search marker semantics
-
-Decision (v1):
-
-- Dish searches stay “one marker per restaurant”.
-- The restaurant marker label uses the **top dish for that restaurant** (highest-rated among the dishes returned for that restaurant in the current search).
-
-### 5) Score rounding
-
-- Always show `toFixed(1)` on 0–100 scale (including “100.0”)?
-- Any special-case for null/undefined scores?
-
-### 6) Should we ship LOD in the same PR as the score-mode switch?
-
-Recommendation:
-
-- Yes, but as 2 sequential commits/PR steps:
-  1. global score mode end-to-end (API + card + color)
-  2. LOD switching (snap dot↔pin) using the same score selector
-
-This keeps debugging crisp and avoids conflating “color/score correctness” with “LOD correctness”.
+1. Implement smooth pin↔dot visual transitions (fade/morph) while preserving current LOD stability and z-order guarantees.
+2. Decide whether we need stronger label ordering guarantees than current `labelOrder` + sticky-candidate stabilization.
+3. Persist `scoreMode` through cold start if we want user preference retention after app relaunch.
+4. Continue tuning hysteresis constants if dense-map behavior still feels indecisive.
+5. Consider Option A/Hybrid toggle UX (instant client-side resort + background reconciliation) if Option B feels too network-bound.

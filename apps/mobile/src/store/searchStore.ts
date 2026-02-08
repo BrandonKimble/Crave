@@ -1,13 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { SetStateAction } from 'react';
 import type { MapBounds } from '../types';
 import { logger } from '../utils';
 
 const HISTORY_LIMIT = 8;
-const SEARCH_STORE_VERSION = 2;
+const SEARCH_STORE_VERSION = 5;
 
 export type SearchScoreMode = 'global_quality' | 'coverage_display';
+export type SearchActiveTab = 'restaurants' | 'dishes';
 
 const normalizePriceLevels = (levels: unknown): number[] => {
   if (!Array.isArray(levels)) {
@@ -42,7 +44,11 @@ export interface SearchFilters {
 interface SearchState extends SearchFilters {
   query: string;
   page: number;
+  activeTab: SearchActiveTab;
+  preferredActiveTab: SearchActiveTab;
+  hasActiveTabPreference: boolean;
   scoreMode: SearchScoreMode;
+  hasScoreModePreference: boolean;
   history: SearchHistoryEntry[];
   setQuery: (query: string) => void;
   clearQuery: () => void;
@@ -60,23 +66,33 @@ interface SearchState extends SearchFilters {
   clearHistory: () => void;
   setVotes100Plus: (enabled: boolean) => void;
   setScoreMode: (mode: SearchScoreMode) => void;
+  setPreferredScoreMode: (mode: SearchScoreMode) => void;
+  setActiveTab: (tab: SetStateAction<SearchActiveTab>) => void;
+  setPreferredActiveTab: (tab: SearchActiveTab) => void;
 }
 
 const defaultState = {
   query: '',
   page: 1,
+  activeTab: 'dishes' as SearchActiveTab,
+  preferredActiveTab: 'dishes' as SearchActiveTab,
+  hasActiveTabPreference: false,
   openNow: false,
   bounds: null,
   boundsLabel: null,
   boundsPresetId: null,
   priceLevels: [],
   votes100Plus: false,
-  scoreMode: 'global_quality' as SearchScoreMode,
+  scoreMode: 'coverage_display' as SearchScoreMode,
+  hasScoreModePreference: false,
   history: [] as SearchHistoryEntry[],
 } as const satisfies Pick<
   SearchState,
   | 'query'
   | 'page'
+  | 'activeTab'
+  | 'preferredActiveTab'
+  | 'hasActiveTabPreference'
   | 'openNow'
   | 'bounds'
   | 'boundsLabel'
@@ -84,8 +100,23 @@ const defaultState = {
   | 'priceLevels'
   | 'votes100Plus'
   | 'scoreMode'
+  | 'hasScoreModePreference'
   | 'history'
 >;
+
+const normalizeScoreMode = (mode: unknown): SearchScoreMode => {
+  if (mode === 'coverage_display' || mode === 'global_quality') {
+    return mode;
+  }
+  return defaultState.scoreMode;
+};
+
+const normalizeActiveTab = (tab: unknown): SearchActiveTab => {
+  if (tab === 'restaurants' || tab === 'dishes') {
+    return tab;
+  }
+  return defaultState.activeTab;
+};
 
 export const useSearchStore = create<SearchState>()(
   persist(
@@ -136,8 +167,32 @@ export const useSearchStore = create<SearchState>()(
         })),
       setScoreMode: (mode) =>
         set(() => ({
-          scoreMode: mode,
+          scoreMode: normalizeScoreMode(mode),
         })),
+      setPreferredScoreMode: (mode) =>
+        set(() => ({
+          scoreMode: normalizeScoreMode(mode),
+          hasScoreModePreference: true,
+        })),
+      setActiveTab: (tab) =>
+        set((state) => {
+          const resolved =
+            typeof tab === 'function'
+              ? (tab as (previousState: SearchActiveTab) => SearchActiveTab)(state.activeTab)
+              : tab;
+          return {
+            activeTab: normalizeActiveTab(resolved),
+          };
+        }),
+      setPreferredActiveTab: (tab) =>
+        set(() => {
+          const normalized = normalizeActiveTab(tab);
+          return {
+            activeTab: normalized,
+            preferredActiveTab: normalized,
+            hasActiveTabPreference: true,
+          };
+        }),
       recordSearch: (query) => {
         const trimmed = query.trim();
         if (!trimmed) {
@@ -178,14 +233,19 @@ export const useSearchStore = create<SearchState>()(
           return persistedState as SearchState;
         }
 
-        const state = persistedState as SearchState;
+        const state = persistedState as Partial<SearchState>;
+        const normalizedPreferredActiveTab = normalizeActiveTab(
+          state.preferredActiveTab ?? state.activeTab
+        );
+        const normalizedScoreMode = normalizeScoreMode(state.scoreMode);
         return {
           ...state,
-          priceLevels: normalizePriceLevels((state as SearchState).priceLevels),
-          scoreMode:
-            state.scoreMode === 'coverage_display' || state.scoreMode === 'global_quality'
-              ? state.scoreMode
-              : defaultState.scoreMode,
+          activeTab: normalizedPreferredActiveTab,
+          preferredActiveTab: normalizedPreferredActiveTab,
+          hasActiveTabPreference: state.hasActiveTabPreference === true,
+          priceLevels: normalizePriceLevels(state.priceLevels),
+          scoreMode: normalizedScoreMode,
+          hasScoreModePreference: state.hasScoreModePreference === true,
         };
       },
       storage: createJSONStorage(() => {
@@ -236,12 +296,16 @@ export const useSearchStore = create<SearchState>()(
       partialize: (state) => ({
         query: state.query,
         page: state.page,
+        preferredActiveTab: state.preferredActiveTab,
+        hasActiveTabPreference: state.hasActiveTabPreference,
         openNow: state.openNow,
         bounds: state.bounds,
         boundsLabel: state.boundsLabel,
         boundsPresetId: state.boundsPresetId,
         priceLevels: state.priceLevels,
         votes100Plus: state.votes100Plus,
+        scoreMode: state.scoreMode,
+        hasScoreModePreference: state.hasScoreModePreference,
         history: state.history,
       }),
     }
