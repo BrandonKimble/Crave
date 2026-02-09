@@ -34,16 +34,18 @@ We frequently run multiple Codex chat sessions in parallel on the same repo. Tre
 Goal: multiple Codex chat sessions can safely work in the same checkout without deleting/overwriting each other’s work.
 
 One-time setup (developer machine):
+
 - Run `bash scripts/install-agent-hooks.sh` (enables `.githooks/` and enforces the log at commit time).
 
 For every task (every session):
-1) Claim the work:
+
+1. Claim the work:
    - Append a bullet under `plans/agent-log.md` → `## Entries` describing your task + the files/areas you expect to touch.
-2) Before editing each file:
+2. Before editing each file:
    - Run `git status --porcelain` and inspect existing diffs for that file (assume they’re intentional from another session).
    - Merge your change into the current state; do not revert or delete others’ changes.
    - Update your log bullet if you start touching new files/areas.
-3) When committing:
+3. When committing:
    - `plans/agent-log.md` must contain at least one bullet under `## Entries` (pre-commit hook enforces this).
    - After a successful commit, the log is automatically reset (post-commit hook).
 

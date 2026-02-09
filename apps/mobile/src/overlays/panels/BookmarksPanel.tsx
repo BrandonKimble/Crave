@@ -70,6 +70,7 @@ type UseBookmarksPanelSpecOptions = {
   snapPoints?: SnapPoints;
   sheetY: SharedValue<number>;
   headerActionProgress?: SharedValue<number>;
+  onSnapStart?: (snap: OverlaySheetSnap) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: OverlaySheetSnap | null;
 };
@@ -91,6 +92,7 @@ export const useBookmarksPanelSpec = ({
   snapPoints: snapPointsOverride,
   sheetY: _sheetY,
   headerActionProgress: headerActionProgressProp,
+  onSnapStart,
   onSnapChange,
   snapTo,
 }: UseBookmarksPanelSpecOptions): OverlayContentSpec<FavoriteListSummary> => {
@@ -466,6 +468,7 @@ export const useBookmarksPanelSpec = ({
     contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent: headerComponent,
     style: overlaySheetStyles.container,
+    onSnapStart,
     onSnapChange,
     dismissThreshold,
     preventSwipeDismiss: true,

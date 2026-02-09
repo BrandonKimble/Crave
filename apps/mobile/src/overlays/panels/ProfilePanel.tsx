@@ -49,6 +49,7 @@ type UseProfilePanelSpecOptions = {
   snapPoints?: SnapPoints;
   sheetY: SharedValue<number>;
   headerActionProgress?: SharedValue<number>;
+  onSnapStart?: (snap: OverlaySheetSnap) => void;
   onSnapChange?: (snap: OverlaySheetSnap) => void;
   snapTo?: Exclude<OverlaySheetSnap, 'hidden'> | null;
 };
@@ -91,6 +92,7 @@ export const useProfilePanelSpec = ({
   snapPoints: snapPointsOverride,
   sheetY: _sheetY,
   headerActionProgress: headerActionProgressProp,
+  onSnapStart,
   onSnapChange,
   snapTo,
 }: UseProfilePanelSpecOptions): OverlayContentSpec<unknown> => {
@@ -497,6 +499,7 @@ export const useProfilePanelSpec = ({
     backgroundComponent: <FrostedGlassBackground />,
     contentSurfaceStyle: overlaySheetStyles.contentSurfaceWhite,
     headerComponent: headerComponent,
+    onSnapStart,
     onSnapChange,
     dismissThreshold,
     preventSwipeDismiss: true,

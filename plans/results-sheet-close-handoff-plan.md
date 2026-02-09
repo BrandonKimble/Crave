@@ -2,10 +2,10 @@
 
 ## What You Were Asking For (Exact Product Contract)
 
-### Close behavior contract (search results -> polls handoff)
+### Close behavior contract (search results -> contextual collapsed handoff)
 
 1. Keep results content unchanged while the sheet is moving downward.
-2. At the instant the sheet reaches `collapsed`, switch to persistent polls at that same position.
+2. At the instant the sheet reaches `collapsed`, switch to the correct persistent collapsed header for the current root context (polls, favorites/bookmarks, profile, etc.).
 3. Do not add a second `collapsed -> hidden` dismissal leg.
 4. Nav transition should feel like part of the same handoff, not a separate delayed phase.
 
@@ -17,7 +17,7 @@
 4. Nav bar should still run the same in/out transition pattern during search enter/exit.
 5. Closing search should not force users back to `search` root unless search truly originated there.
 
-In short: search is a temporary session layered over the current tab context, not a permanent root switch.
+In short: search is a temporary session layered over the current tab context, not a permanent root switch; handoff target is contextual, not always polls.
 
 ## Why The Earlier Attempt Became Janky
 
@@ -50,10 +50,12 @@ In short: search is a temporary session layered over the current tab context, no
 ### Option A: Keep current structure and patch each close/launch path
 
 Pros:
+
 1. Lowest immediate code churn.
 2. Fast to attempt incremental fixes.
 
 Cons:
+
 1. Reintroduces race bugs quickly.
 2. High regression risk as more entrypoints are added.
 3. Hard to reason about ownership and restoration.
@@ -63,10 +65,12 @@ Decision: reject.
 ### Option B: Store just `previousOverlay`/snap and restore on close
 
 Pros:
+
 1. Smaller than full coordinator.
 2. Better than ad-hoc patches.
 
 Cons:
+
 1. Insufficient for nested transitions (restaurant/profile-on-top, suggestion flow, tab switch mid-search).
 2. Still leaves close timing ownership fragmented.
 
@@ -75,12 +79,14 @@ Decision: reject.
 ### Option C (recommended): Introduce explicit Search Session Coordinator state machine
 
 Pros:
+
 1. Single owner for search launch, active, close, and restore.
 2. Solves close-handoff correctness and cross-tab restoration in the same model.
 3. Creates a stable surface for nav/cutout timing rules.
 4. Removes duplicated restore triggers and implicit root mutations.
 
 Cons:
+
 1. Medium refactor in `Search/index.tsx` and related hooks.
 2. Requires deliberate migration of all launch/close entrypoints.
 
@@ -101,6 +107,7 @@ Create `SearchSessionContext` captured only once at search start:
 - `sessionId: number`
 
 Contract:
+
 1. Captured at first transition from non-active-search to active-search.
 2. Frozen for the session (no mid-session overwrite).
 3. Consumed exactly once at close commit.
@@ -116,6 +123,7 @@ Add a dedicated orchestrator/hook:
 - `restoreOriginOverlayContext()`
 
 State machine:
+
 1. `idle`
 2. `launching`
 3. `active`
@@ -124,6 +132,7 @@ State machine:
 6. back to `idle`
 
 Rules:
+
 1. Only coordinator can mutate search session active/close flags.
 2. Only coordinator commits close at `collapsed`.
 3. No direct `clearSearchState()` from UI handlers.
@@ -131,7 +140,12 @@ Rules:
 ### 3) Separate visual handoff from logical cleanup
 
 At `collapsed` during close:
-1. Swap overlay content target immediately (to origin context or docked polls if origin was search).
+
+1. Swap overlay content target immediately to `resolveCollapsedHost(originContext)`:
+   - `search` origin -> docked polls collapsed host
+   - `bookmarks` origin -> bookmarks collapsed host
+   - `profile` origin -> profile collapsed host
+   - `polls` origin -> polls collapsed host
 2. Keep nav/cutout timing in same transaction window.
 3. Clear search data/session in same commit block.
 4. Never force `hidden` in this path.
@@ -139,10 +153,22 @@ At `collapsed` during close:
 ### 4) Restore origin context, not hard-coded search home
 
 Current behavior forces search-root restoration. Replace with:
+
 1. If origin root was `bookmarks`, restore `bookmarks` and its snap.
 2. If origin root was `profile`, restore `profile` and its snap.
 3. If origin root was `polls`, restore `polls` and its snap mode.
 4. If origin root was `search`, restore docked polls/search contract.
+
+### 4.1) Collapsed Host Resolver (explicit)
+
+Define one resolver function so handoff destination is deterministic and shared:
+
+- `resolveCollapsedHost(originRootOverlay, originActiveOverlay, originOverlayStack)`
+
+Contract:
+1. Returns the exact collapsed host overlay key + snap for post-search handoff.
+2. Never defaults to polls unless origin context requires it.
+3. Used by both close and cancel/restore paths to keep behavior identical.
 
 ### 5) Centralize nav/cutout transition ownership
 
@@ -154,14 +180,25 @@ Introduce a single `navChromeTransitionState` derived from coordinator state:
 - `showing_after_restore`
 
 Rules:
+
 1. Nav opacity stays constant (as requested), only translate changes.
 2. Cutout follows the same progress source as nav position.
 3. No independent nav restore triggers outside coordinator.
+
+### 5.1) Shared nav behavior parity (hard requirement)
+
+Treat current search-page nav behavior as the canonical motion contract and reuse it globally:
+
+1. Launching search from any tab uses the same nav slide-out behavior as search root.
+2. Closing search back to any tab uses the same nav slide-in behavior timing/curve.
+3. Nav/cutout timing source is identical regardless of whether collapsed host is polls, bookmarks, or profile.
+4. No per-tab nav logic forks beyond host selection.
 
 ### 6) Restrict root overlay mutations
 
 `ensureSearchOverlay()` should no longer hard-reset root overlay blindly.
 Replace with coordinator-aware launch intent:
+
 1. Preserve origin in session context.
 2. Mark search surface active without destroying root ownership metadata.
 
@@ -184,9 +221,15 @@ Keep behavior work scoped but organized:
 3. Shortcut launched from docked polls collapsed -> handoff still atomic at `collapsed`.
 4. User starts close then re-expands before `collapsed` -> cancel pending close.
 5. Restaurant overlay open during clear path -> preserve existing restaurant-dismiss semantics.
-6. User switches tab while search active -> define rule: either lock origin for session or replace origin on explicit tab switch (recommended: lock origin).
-7. Polls hidden via gesture before search launch -> restore hidden/dismissed state correctly.
+6. User switches tab while search active -> not applicable in intended UX (nav hidden while active search), so origin remains locked to launch tab/session.
+7. Polls hidden via gesture before search launch -> on search close, restore polls as `collapsed` and visible (do not restore hidden).
 8. Repeated rapid shortcut taps -> session token prevents stale commits.
+
+## Product Decisions Locked
+
+1. Active search keeps nav hidden and prevents tab switching, matching current search-page behavior.
+2. Origin context is captured once at search launch and remains fixed for that session.
+3. If origin polls was hidden/dismissed before launch, close restoration still returns to `collapsed` visible state.
 
 ## Rollout Phases (No Patch-Stitching)
 
@@ -222,6 +265,9 @@ Keep behavior work scoped but organized:
    - no every-other failure
    - no stuck collapsed state
 5. Confirm no duplicate restore churn in logs (single owner per side effect).
+6. Nav parity check:
+   - Launch shortcut from `search`, `polls`, `bookmarks`, `profile` and verify identical nav motion signature (duration/easing/progress shape).
+   - Close search from each origin and verify identical nav re-entry signature.
 
 ## Non-Goals
 

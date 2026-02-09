@@ -678,11 +678,11 @@ const useSearchSubmit = ({
         const submissionContextTab = resolveSubmissionDefaultTab(options?.submission?.context);
         const preRequestTab =
           submissionContextTab ?? (hasActiveTabPreference ? preferredActiveTab : DEFAULT_SEGMENT);
+        const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
+        if (!preserveSheetState && !shouldHoldRestaurantOverlaySheet) {
+          prepareShortcutSheetTransition?.();
+        }
         unstable_batchedUpdates(() => {
-          const shouldHoldRestaurantOverlaySheet = isRestaurantOverlayVisibleRef?.current === true;
-          if (!preserveSheetState && !shouldHoldRestaurantOverlaySheet) {
-            resetSheetToHidden();
-          }
           setActiveTab(preRequestTab);
           setSearchMode('natural');
           setIsSearchSessionActive(true);
@@ -866,7 +866,7 @@ const useSearchSubmit = ({
       scoreMode,
       query,
       resetMapMoveFlag,
-      resetSheetToHidden,
+      prepareShortcutSheetTransition,
       runSearch,
       setCurrentPage,
       setError,

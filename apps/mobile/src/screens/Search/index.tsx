@@ -121,6 +121,7 @@ import useScrollDividerStyle from './hooks/use-scroll-divider-style';
 import useSearchSubmit from './hooks/use-search-submit';
 import useSearchTransition from './hooks/use-search-transition';
 import { SearchInteractionProvider } from './context/SearchInteractionContext';
+import { useSearchSessionCoordinator } from './session/use-search-session-coordinator';
 import searchPerfDebug from './search-perf-debug';
 import styles from './styles';
 import { SEARCH_BAR_SHADOW, SEARCH_SHORTCUT_SHADOW } from './shadows';
@@ -1041,17 +1042,39 @@ const SearchScreen: React.FC = () => {
   const ignoreDockedPollsHiddenUntilMsRef = React.useRef(0);
   const dockedPollsRestoreInFlightRef = React.useRef(false);
 
-  const requestDockedPollsRestore = React.useCallback(() => {
-    ignoreDockedPollsHiddenUntilMsRef.current = Date.now() + 650;
-    dockedPollsRestoreInFlightRef.current = true;
-    setIsDockedPollsDismissed(false);
-    pollsDockedSnapTokenRef.current += 1;
-    // Always force docked polls back to the low snap to avoid falling back to persisted tab snaps.
-    setPollsDockedSnapRequest({
-      snap: 'collapsed',
-      token: pollsDockedSnapTokenRef.current,
-    });
-  }, [setIsDockedPollsDismissed, setPollsDockedSnapRequest]);
+  const requestDockedPollsRestore = React.useCallback(
+    (snap?: Exclude<OverlaySheetSnap, 'hidden'>) => {
+      const resolvedSnap: Exclude<OverlaySheetSnap, 'hidden'> =
+        snap ??
+        (pollsSheetSnap !== 'hidden'
+          ? pollsSheetSnap
+          : hasUserSharedSnap
+          ? sharedSnap
+          : 'collapsed');
+      ignoreDockedPollsHiddenUntilMsRef.current = Date.now() + 650;
+      dockedPollsRestoreInFlightRef.current = true;
+      setIsDockedPollsDismissed(false);
+      setPollsDockedSnapRequest((previous) => {
+        // Keep explicit non-collapsed restore requests from being overwritten by
+        // a generic docked-polls "show again" request.
+        if (resolvedSnap === 'collapsed' && previous && previous.snap !== 'collapsed') {
+          return previous;
+        }
+        pollsDockedSnapTokenRef.current += 1;
+        return {
+          snap: resolvedSnap,
+          token: pollsDockedSnapTokenRef.current,
+        };
+      });
+    },
+    [
+      hasUserSharedSnap,
+      pollsSheetSnap,
+      setIsDockedPollsDismissed,
+      setPollsDockedSnapRequest,
+      sharedSnap,
+    ]
+  );
   const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
@@ -1498,6 +1521,26 @@ const SearchScreen: React.FC = () => {
       : searchLayout.top + SEARCH_CONTAINER_PADDING_TOP;
     return Math.max(rawTop, 0);
   }, [searchBarFrame, searchLayout.top]);
+  const {
+    isSearchOriginRestorePending,
+    captureSearchSessionOrigin,
+    beginSearchCloseRestore,
+    flushPendingSearchOriginRestore,
+    requestDefaultPostSearchRestore,
+  } = useSearchSessionCoordinator({
+    rootOverlay,
+    pollsSheetSnap,
+    bookmarksSheetSnap,
+    profileSheetSnap,
+    isDockedPollsDismissed,
+    hasUserSharedSnap,
+    sharedSnap,
+    requestDockedPollsRestore,
+    setIsNavRestorePending,
+    setTabOverlaySnapRequest,
+    setIsDockedPollsDismissed,
+    setOverlay,
+  });
   const ensureSearchOverlay = React.useCallback(() => {
     if (rootOverlay !== 'search') {
       unstable_batchedUpdates(() => {
@@ -1596,6 +1639,7 @@ const SearchScreen: React.FC = () => {
     !isSuggestionPanelActive &&
     !isSearchSessionActive &&
     !isSearchLoading &&
+    !isSearchOriginRestorePending &&
     !isDockedPollsDismissed;
   const {
     panelVisible,
@@ -1625,9 +1669,24 @@ const SearchScreen: React.FC = () => {
     if (!shouldShowDockedPolls) {
       return false;
     }
-    showPanelInstant('collapsed');
+    const transitionSnap: Exclude<OverlaySheetSnap, 'hidden'> =
+      pollsSheetSnap !== 'hidden'
+        ? pollsSheetSnap
+        : isDockedPollsDismissed
+        ? 'collapsed'
+        : hasUserSharedSnap
+        ? sharedSnap
+        : 'expanded';
+    showPanelInstant(transitionSnap);
     return true;
-  }, [shouldShowDockedPolls, showPanelInstant]);
+  }, [
+    hasUserSharedSnap,
+    isDockedPollsDismissed,
+    pollsSheetSnap,
+    sharedSnap,
+    shouldShowDockedPolls,
+    showPanelInstant,
+  ]);
   React.useEffect(() => {
     if (!isNavRestorePending) {
       return;
@@ -1639,7 +1698,7 @@ const SearchScreen: React.FC = () => {
     if (!shouldShowDockedPolls) {
       return;
     }
-    if (pollsSheetSnap !== 'collapsed') {
+    if (pollsSheetSnap === 'hidden') {
       return;
     }
     setIsNavRestorePending(false);
@@ -1943,8 +2002,11 @@ const SearchScreen: React.FC = () => {
   const applyResultsSheetSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
       handleSheetSnapChange(snap);
+      if (snap === 'hidden') {
+        flushPendingSearchOriginRestore();
+      }
     },
-    [handleSheetSnapChange]
+    [flushPendingSearchOriginRestore, handleSheetSnapChange]
   );
   const handleResultsSheetSnapStart = React.useCallback(
     (snap: OverlaySheetSnap | 'hidden') => {
@@ -2186,6 +2248,12 @@ const SearchScreen: React.FC = () => {
     },
     [pollCreationSnapRequest]
   );
+  const handleBookmarksSnapStart = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      setBookmarksSheetSnap(snap);
+    },
+    [setBookmarksSheetSnap]
+  );
 
   const handleBookmarksSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
@@ -2208,6 +2276,12 @@ const SearchScreen: React.FC = () => {
       setOverlay,
       tabOverlaySnapRequest,
     ]
+  );
+  const handleProfileSnapStart = React.useCallback(
+    (snap: OverlaySheetSnap) => {
+      setProfileSheetSnap(snap);
+    },
+    [setProfileSheetSnap]
   );
   const handleProfileSnapChange = React.useCallback(
     (snap: OverlaySheetSnap) => {
@@ -3628,17 +3702,19 @@ const SearchScreen: React.FC = () => {
   const overlaySelectedRestaurantId = isRestaurantOverlayVisible
     ? restaurantProfile?.restaurant.restaurantId ?? null
     : null;
-  const [activeMarkerRestaurantId, setActiveMarkerRestaurantId] = React.useState<string | null>(
+  const [mapHighlightedRestaurantId, setMapHighlightedRestaurantId] = React.useState<string | null>(
     null
   );
+  const pendingMarkerOpenAnimationFrameRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    if (!overlaySelectedRestaurantId) {
-      return;
-    }
-    setActiveMarkerRestaurantId((prev) =>
-      prev === overlaySelectedRestaurantId ? prev : overlaySelectedRestaurantId
-    );
-  }, [overlaySelectedRestaurantId]);
+    return () => {
+      const pendingFrame = pendingMarkerOpenAnimationFrameRef.current;
+      if (pendingFrame != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingFrame);
+      }
+      pendingMarkerOpenAnimationFrameRef.current = null;
+    };
+  }, []);
   const resultsHydrationCandidate = resultsRequestKey;
   const storedResultsScrollOffset = useOverlayStore(
     (state) => state.overlayScrollOffsets.search ?? 0
@@ -4673,7 +4749,7 @@ const SearchScreen: React.FC = () => {
   ]);
   const markerCatalogEntries = markerCatalog.catalog;
   const selectedRestaurantId = overlaySelectedRestaurantId;
-  const highlightedRestaurantId = activeMarkerRestaurantId ?? overlaySelectedRestaurantId;
+  const highlightedRestaurantId = mapHighlightedRestaurantId;
   const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
     const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
     return {
@@ -5379,15 +5455,6 @@ const SearchScreen: React.FC = () => {
     }
   }, [isRankSelectorVisible, scoreMode]);
 
-  const hidePanel = React.useCallback(() => {
-    if (!panelVisible) {
-      return;
-    }
-    setIsPriceSelectorVisible(false);
-    setIsRankSelectorVisible(false);
-    animateSheetTo('hidden');
-  }, [panelVisible, animateSheetTo]);
-
   const togglePriceSelector = React.useCallback(() => {
     setIsRankSelectorVisible(false);
     if (isPriceSelectorVisible) {
@@ -5758,6 +5825,13 @@ const SearchScreen: React.FC = () => {
   }, []);
 
   const handleSubmit = React.useCallback(() => {
+    const trimmed = query.trim();
+    const normalized = trimmed.toLowerCase();
+    if (normalized === 'best dishes' || normalized === 'best restaurants' || normalized === 'food') {
+      captureSearchSessionOrigin('shortcut');
+    } else if (trimmed.length > 0) {
+      captureSearchSessionOrigin('manual');
+    }
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
@@ -5773,9 +5847,6 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
-
-    const trimmed = query.trim();
-    const normalized = trimmed.toLowerCase();
     if (normalized === 'best dishes') {
       void runBestHere('dishes', 'Best dishes', {
         transitionFromDockedPolls: shouldShowDockedPolls,
@@ -5797,6 +5868,7 @@ const SearchScreen: React.FC = () => {
 
     void submitSearch();
   }, [
+    captureSearchSessionOrigin,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
@@ -5814,6 +5886,7 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const handleBestDishesHere = React.useCallback(() => {
+    captureSearchSessionOrigin('shortcut');
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
@@ -5830,6 +5903,7 @@ const SearchScreen: React.FC = () => {
       transitionFromDockedPolls: shouldShowDockedPolls,
     });
   }, [
+    captureSearchSessionOrigin,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
@@ -5843,6 +5917,7 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
+    captureSearchSessionOrigin('shortcut');
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
@@ -5859,6 +5934,7 @@ const SearchScreen: React.FC = () => {
       transitionFromDockedPolls: shouldShowDockedPolls,
     });
   }, [
+    captureSearchSessionOrigin,
     dismissSearchKeyboard,
     ensureSearchOverlay,
     isSuggestionPanelActive,
@@ -5906,6 +5982,7 @@ const SearchScreen: React.FC = () => {
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
+      captureSearchSessionOrigin('autocomplete');
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -5953,6 +6030,7 @@ const SearchScreen: React.FC = () => {
     },
     [
       cancelAutocomplete,
+      captureSearchSessionOrigin,
       dismissSearchKeyboard,
       ensureSearchOverlay,
       query,
@@ -5987,6 +6065,9 @@ const SearchScreen: React.FC = () => {
           return;
         }
       }
+      const hasOriginRestorePending = beginSearchCloseRestore({
+        allowFallback: isSearchSessionActive || Boolean(results) || submittedQuery.length > 0,
+      });
       isClearingSearchRef.current = true;
       if (isSearchSessionActive || Boolean(results) || submittedQuery.length > 0) {
         setSearchShortcutsFadeResetKey((current) => current + 1);
@@ -6045,15 +6126,16 @@ const SearchScreen: React.FC = () => {
       if (!deferSuggestionClear) {
         setSuggestions([]);
       }
-      if (skipSheetAnimation) {
-        resetSheetToHidden();
-      } else {
-        hidePanel();
-      }
       setIsSearchSessionActive(false);
       setSearchMode(null);
-      // Reactivate persistent polls when search is cleared
-      requestDockedPollsRestore();
+      if (skipSheetAnimation) {
+        resetSheetToHidden();
+      }
+      if (hasOriginRestorePending) {
+        flushPendingSearchOriginRestore();
+      } else {
+        requestDefaultPostSearchRestore();
+      }
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
       setCurrentPage(1);
@@ -6085,7 +6167,8 @@ const SearchScreen: React.FC = () => {
     [
       cancelActiveSearchRequest,
       cancelAutocomplete,
-      hidePanel,
+      beginSearchCloseRestore,
+      flushPendingSearchOriginRestore,
       isRestaurantOverlayVisible,
       isSearchSessionActive,
       results,
@@ -6093,7 +6176,7 @@ const SearchScreen: React.FC = () => {
       resetFilters,
       resetFocusedMapState,
       resetMapMoveFlag,
-      requestDockedPollsRestore,
+      requestDefaultPostSearchRestore,
       setRestaurantOnlyIntent,
       setIsSearchSessionActive,
       setSearchMode,
@@ -6145,13 +6228,11 @@ const SearchScreen: React.FC = () => {
     setIsNavRestorePending(true);
     setSearchHeaderActionModeOverride('follow-collapse');
     setPollsHeaderActionAnimationToken((current) => current + 1);
-    requestDockedPollsRestore();
     clearSearchState({
       skipProfileDismissWait: true,
     });
   }, [
     clearSearchState,
-    requestDockedPollsRestore,
     setIsNavRestorePending,
     setPollsHeaderActionAnimationToken,
     setSearchHeaderActionModeOverride,
@@ -6284,6 +6365,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      captureSearchSessionOrigin('recent');
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6328,6 +6410,7 @@ const SearchScreen: React.FC = () => {
     },
     [
       cancelAutocomplete,
+      captureSearchSessionOrigin,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
       ensureSearchOverlay,
@@ -6349,6 +6432,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      captureSearchSessionOrigin('recently_viewed');
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6385,6 +6469,7 @@ const SearchScreen: React.FC = () => {
     },
     [
       cancelAutocomplete,
+      captureSearchSessionOrigin,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
       ensureSearchOverlay,
@@ -6405,6 +6490,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
+      captureSearchSessionOrigin('recently_viewed');
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6441,6 +6527,7 @@ const SearchScreen: React.FC = () => {
     },
     [
       cancelAutocomplete,
+      captureSearchSessionOrigin,
       deferRecentSearchUpsert,
       dismissSearchKeyboard,
       ensureSearchOverlay,
@@ -6572,7 +6659,13 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions(false);
       setSuggestions([]);
     }
-    setActiveMarkerRestaurantId(null);
+    if (pendingMarkerOpenAnimationFrameRef.current != null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingMarkerOpenAnimationFrameRef.current);
+      }
+      pendingMarkerOpenAnimationFrameRef.current = null;
+    }
+    setMapHighlightedRestaurantId(null);
     cancelAutocomplete();
   }, [
     beginSuggestionCloseHold,
@@ -6580,7 +6673,7 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard,
     isRestaurantOverlayVisible,
     isSearchSessionActive,
-    setActiveMarkerRestaurantId,
+    setMapHighlightedRestaurantId,
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
@@ -7433,7 +7526,7 @@ const SearchScreen: React.FC = () => {
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
       }
-      setActiveMarkerRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
+      setMapHighlightedRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
       ensureSearchOverlay();
       dismissTransientOverlays();
       const shouldDeferSuggestionClear = beginSuggestionCloseHold();
@@ -7536,7 +7629,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions,
       setSuggestions,
       suppressMapMoved,
-      setActiveMarkerRestaurantId,
+      setMapHighlightedRestaurantId,
     ]
   );
   openRestaurantProfilePreviewRef.current = openRestaurantProfilePreview;
@@ -7558,7 +7651,7 @@ const SearchScreen: React.FC = () => {
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
       }
-      setActiveMarkerRestaurantId((prev) =>
+      setMapHighlightedRestaurantId((prev) =>
         prev === restaurant.restaurantId ? prev : restaurant.restaurantId
       );
       ensureSearchOverlay();
@@ -7647,7 +7740,7 @@ const SearchScreen: React.FC = () => {
       setProfileTransitionStatus,
       setShowSuggestions,
       setSuggestions,
-      setActiveMarkerRestaurantId,
+      setMapHighlightedRestaurantId,
       submittedQuery,
       trimmedQuery,
       recordRestaurantView,
@@ -7709,24 +7802,40 @@ const SearchScreen: React.FC = () => {
 
   const handleMarkerPress = React.useCallback(
     (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
-      setActiveMarkerRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
-      const restaurant = restaurants.find((r) => r.restaurantId === restaurantId);
-      if (!restaurant) {
-        const fallbackName = shortcutCoverageRestaurantNameById.get(restaurantId);
-        if (fallbackName) {
-          forceRestaurantProfileMiddleSnapRef.current = true;
-          openRestaurantProfilePreview(restaurantId, fallbackName, pressedCoordinate ?? null);
+      setMapHighlightedRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
+      if (pendingMarkerOpenAnimationFrameRef.current != null) {
+        if (typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(pendingMarkerOpenAnimationFrameRef.current);
         }
+        pendingMarkerOpenAnimationFrameRef.current = null;
+      }
+      const restaurant = restaurants.find((r) => r.restaurantId === restaurantId);
+      const openProfile = () => {
+        if (!restaurant) {
+          const fallbackName = shortcutCoverageRestaurantNameById.get(restaurantId);
+          if (fallbackName) {
+            forceRestaurantProfileMiddleSnapRef.current = true;
+            openRestaurantProfilePreview(restaurantId, fallbackName, pressedCoordinate ?? null);
+          }
+          return;
+        }
+        forceRestaurantProfileMiddleSnapRef.current = true;
+        openRestaurantProfile(restaurant, undefined, pressedCoordinate, 'results_sheet');
+      };
+      if (typeof requestAnimationFrame === 'function') {
+        pendingMarkerOpenAnimationFrameRef.current = requestAnimationFrame(() => {
+          pendingMarkerOpenAnimationFrameRef.current = null;
+          openProfile();
+        });
         return;
       }
-      forceRestaurantProfileMiddleSnapRef.current = true;
-      openRestaurantProfile(restaurant, undefined, pressedCoordinate, 'results_sheet');
+      openProfile();
     },
     [
       openRestaurantProfile,
       openRestaurantProfilePreview,
       restaurants,
-      setActiveMarkerRestaurantId,
+      setMapHighlightedRestaurantId,
       shortcutCoverageRestaurantNameById,
     ]
   );
@@ -7964,6 +8073,13 @@ const SearchScreen: React.FC = () => {
     if (!restaurantProfile && !isRestaurantOverlayVisible) {
       return;
     }
+    if (pendingMarkerOpenAnimationFrameRef.current != null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(pendingMarkerOpenAnimationFrameRef.current);
+      }
+      pendingMarkerOpenAnimationFrameRef.current = null;
+    }
+    setMapHighlightedRestaurantId(null);
     const transition = profileTransitionRef.current;
     if (transition.status !== 'closing') {
       setProfileTransitionStatus('closing');
@@ -7987,12 +8103,14 @@ const SearchScreen: React.FC = () => {
     resetSheetToHidden,
     resultsHydrationKey,
     setProfileTransitionStatus,
+    setMapHighlightedRestaurantId,
   ]);
   closeRestaurantProfileRef.current = closeRestaurantProfile;
 
   const handleRestaurantOverlayRequestClose = React.useCallback(() => {
+    setMapHighlightedRestaurantId(null);
     closeRestaurantProfile();
-  }, [closeRestaurantProfile]);
+  }, [closeRestaurantProfile, setMapHighlightedRestaurantId]);
 
   const handleRestaurantOverlayDismissed = React.useCallback(() => {
     if (restaurantOverlayDismissHandledRef.current) {
@@ -8006,7 +8124,7 @@ const SearchScreen: React.FC = () => {
     const shouldRestoreSearchSheet = profileDismissBehaviorRef.current !== 'clear';
     const shouldClearSearch = shouldClearSearchOnProfileDismissRef.current;
     setRestaurantSnapRequest(null);
-    setActiveMarkerRestaurantId(null);
+    setMapHighlightedRestaurantId(null);
     setRestaurantProfile(null);
     setRestaurantOverlayVisible(false);
     restaurantFocusSessionRef.current = {
@@ -8050,7 +8168,7 @@ const SearchScreen: React.FC = () => {
     restoreRestaurantProfileMap,
     restoreSearchSheetState,
     sheetState,
-    setActiveMarkerRestaurantId,
+    setMapHighlightedRestaurantId,
     setProfileTransitionStatusState,
   ]);
   const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
@@ -8501,6 +8619,16 @@ const SearchScreen: React.FC = () => {
     Boolean(results);
   const effectiveFiltersHeaderHeight = shouldRenderFiltersHeader ? filtersHeaderHeight : 0;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
+  const resultsWashTopOffset = Math.max(
+    0,
+    effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight
+  );
+  const initialResultsLoadingFillTopOffset = Math.max(
+    resultsWashTopOffset,
+    shouldDisableResultsHeader ? 0 : OVERLAY_TAB_HEADER_HEIGHT + effectiveFiltersHeaderHeight
+  );
+  const shouldRenderInitialResultsLoadingFill =
+    shouldShowInitialResultsLoadingPhase && shouldShowResultsLoadingState;
   const resultsListBackground = React.useMemo(() => {
     if (!shouldShowResultsSurface) {
       return null;
@@ -8508,12 +8636,27 @@ const SearchScreen: React.FC = () => {
     if (shouldDisableSearchBlur) {
       return <View style={[styles.resultsListBackground, { top: 0 }]} />;
     }
-    return <FrostedGlassBackground />;
-  }, [shouldDisableSearchBlur, shouldShowResultsSurface]);
-  const resultsWashTopOffset = Math.max(
-    0,
-    effectiveResultsHeaderHeight + effectiveFiltersHeaderHeight
-  );
+    return (
+      <>
+        <FrostedGlassBackground />
+        {shouldRenderInitialResultsLoadingFill ? (
+          <View
+            style={[
+              styles.resultsListBackground,
+              styles.resultsListBackgroundLoading,
+              { top: initialResultsLoadingFillTopOffset },
+            ]}
+          />
+        ) : null}
+      </>
+    );
+  }, [
+    initialResultsLoadingFillTopOffset,
+    resultsWashTopOffset,
+    shouldDisableSearchBlur,
+    shouldRenderInitialResultsLoadingFill,
+    shouldShowResultsSurface,
+  ]);
   const resultsOverlayComponent = React.useMemo(
     () => (
       <>
@@ -8569,7 +8712,6 @@ const SearchScreen: React.FC = () => {
           style={[
             styles.resultsEmptyArea,
             emptyAreaStyle,
-            shouldShowInitialResultsLoadingPhase ? styles.resultsListBackgroundLoading : null,
             { justifyContent: 'flex-start', paddingTop: RESULTS_LOADING_SPINNER_OFFSET },
           ]}
         >
@@ -8595,7 +8737,6 @@ const SearchScreen: React.FC = () => {
     isFilterTogglePending,
     onDemandNotice,
     results,
-    shouldShowInitialResultsLoadingPhase,
     shouldShowResultsLoadingState,
     snapPoints.middle,
   ]);
@@ -8656,7 +8797,7 @@ const SearchScreen: React.FC = () => {
     return (
       <OverlaySheetHeaderChrome
         onLayout={handleResultsHeaderLayout}
-        onGrabHandlePress={hidePanel}
+        onGrabHandlePress={handleCloseResults}
         grabHandleAccessibilityLabel="Hide results"
         paddingHorizontal={CONTENT_HORIZONTAL_PADDING}
         transparent={shouldUseResultsHeaderBlur}
@@ -8700,7 +8841,6 @@ const SearchScreen: React.FC = () => {
     handleCloseResults,
     handleResultsHeaderLayout,
     headerDividerAnimatedStyle,
-    hidePanel,
     overlayHeaderActionProgress,
     shouldDisableResultsHeader,
     shouldUseResultsHeaderBlur,
@@ -8887,6 +9027,7 @@ const SearchScreen: React.FC = () => {
     snapPoints,
     sheetY: sheetTranslateY,
     headerActionProgress: overlayHeaderActionProgress,
+    onSnapStart: handleBookmarksSnapStart,
     onSnapChange: handleBookmarksSnapChange,
     snapTo: tabOverlaySnapRequest,
   });
@@ -8898,6 +9039,7 @@ const SearchScreen: React.FC = () => {
     snapPoints,
     sheetY: sheetTranslateY,
     headerActionProgress: overlayHeaderActionProgress,
+    onSnapStart: handleProfileSnapStart,
     onSnapChange: handleProfileSnapChange,
     snapTo: tabOverlaySnapRequest,
   });

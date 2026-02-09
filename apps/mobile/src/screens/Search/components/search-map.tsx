@@ -498,6 +498,14 @@ const getPointFromPressEvent = (event: OnPressEvent): { x: number; y: number } |
   return { x, y };
 };
 
+const pressEventTargetsMarkerFeature = (event: OnPressEvent): boolean => {
+  const features: unknown[] = event?.features ?? [];
+  if (features.length === 0) {
+    return false;
+  }
+  return features.some((feature) => Boolean(getRestaurantIdFromPressFeature(feature)));
+};
+
 const isTapInsidePinInteractionGeometry = ({
   mapInstance,
   tapPoint,
@@ -584,15 +592,13 @@ const getNumericPressFeatureProperty = (feature: unknown, key: string): number |
 const pickTopRestaurantIdFromPressFeatures = (
   features: unknown[]
 ): { restaurantId: string; coordinate: Coordinate | null } | null => {
-  let best:
-    | {
-        restaurantId: string;
-        coordinate: Coordinate | null;
-        lodZ: number;
-        rank: number;
-        featureIndex: number;
-      }
-    | null = null;
+  let best: {
+    restaurantId: string;
+    coordinate: Coordinate | null;
+    lodZ: number;
+    rank: number;
+    featureIndex: number;
+  } | null = null;
 
   for (const [featureIndex, feature] of features.entries()) {
     const restaurantId = getRestaurantIdFromPressFeature(feature);
@@ -1385,6 +1391,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     demotingRestaurantIdList.forEach((restaurantId) => next.add(restaurantId));
     return Array.from(next);
   }, [demotingRestaurantIdList, pinnedRestaurantIdList]);
+  const [optimisticSelectedRestaurantId, setOptimisticSelectedRestaurantId] = React.useState<
+    string | null
+  >(null);
+  const effectiveSelectedRestaurantId = optimisticSelectedRestaurantId ?? selectedRestaurantId;
+  React.useEffect(() => {
+    setOptimisticSelectedRestaurantId(null);
+  }, [selectedRestaurantId]);
   const dotLayerStyle = React.useMemo(() => {
     const scoreModeLiteral = scoreMode;
     return {
@@ -1413,7 +1426,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       textSize: DOT_TEXT_SIZE,
       textColor: [
         'case',
-        ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
+        ['==', ['get', 'restaurantId'], effectiveSelectedRestaurantId ?? ''],
         PRIMARY_COLOR,
         [
           'case',
@@ -1423,7 +1436,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ],
       ],
     } as MapboxGL.SymbolLayerStyle;
-  }, [hiddenDotRestaurantIdList, scoreMode, selectedRestaurantId]);
+  }, [effectiveSelectedRestaurantId, hiddenDotRestaurantIdList, scoreMode]);
   const [mapViewportSize, setMapViewportSize] = React.useState<{ width: number; height: number }>({
     width: 0,
     height: 0,
@@ -1987,7 +2000,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
     const scoreModeLiteral = scoreMode;
     return [
       'case',
-      ['==', ['get', 'restaurantId'], selectedRestaurantId ?? ''],
+      ['==', ['get', 'restaurantId'], effectiveSelectedRestaurantId ?? ''],
       PRIMARY_COLOR,
       [
         'case',
@@ -1996,7 +2009,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         ['coalesce', ['get', 'pinColorGlobal'], ['get', 'pinColor']],
       ],
     ] as const;
-  }, [scoreMode, selectedRestaurantId]);
+  }, [effectiveSelectedRestaurantId, scoreMode]);
 
   const stylePinsShadowSteadyStyle = React.useMemo(
     () =>
@@ -2178,9 +2191,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   const labelInteractionStyles = React.useMemo(() => {
-    const toInteractionStyle = (
-      style: MapboxGL.SymbolLayerStyle
-    ): MapboxGL.SymbolLayerStyle =>
+    const toInteractionStyle = (style: MapboxGL.SymbolLayerStyle): MapboxGL.SymbolLayerStyle =>
       ({
         ...style,
         // Interaction layers should never influence placement. We separately filter interaction
@@ -2194,7 +2205,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         textAllowOverlap: true,
         textIgnorePlacement: true,
         textPadding: 0,
-      }) as MapboxGL.SymbolLayerStyle;
+      } as MapboxGL.SymbolLayerStyle);
 
     return {
       bottom: toInteractionStyle(labelCandidateStyles.bottom),
@@ -2259,7 +2270,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           ['==', ['get', 'labelCandidate'], 'left'],
           ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
         ] as unknown[],
-      }) satisfies Record<LabelCandidate, unknown[]>,
+      } satisfies Record<LabelCandidate, unknown[]>),
     [visibleLabelFeatureIdList]
   );
 
@@ -2398,34 +2409,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
       if (!onMarkerPress) {
         return;
       }
-
-      const mapInstance = mapRef.current;
-      const point = getPointFromPressEvent(event);
-      if (!mapInstance?.queryRenderedFeaturesAtPoint || !point) {
+      const features = event?.features ?? [];
+      if (features.length === 0) {
         return;
       }
-
-      void mapInstance
-        .queryRenderedFeaturesAtPoint([point.x, point.y], [], PIN_INTERACTION_LAYER_IDS)
-        .then((renderedAtPoint) => {
-          const topMatch = pickTopRestaurantIdFromPressFeatures(renderedAtPoint?.features ?? []);
-          if (!topMatch) {
-            return;
-          }
-          void isTapInsidePinInteractionGeometry({
-            mapInstance,
-            tapPoint: point,
-            coordinate: topMatch.coordinate,
-          }).then((isIntentional) => {
-            if (!isIntentional) {
-              return;
-            }
-            onMarkerPress(topMatch.restaurantId, topMatch.coordinate);
-          });
-        })
-        .catch(() => undefined);
+      const topMatch = pickTopRestaurantIdFromPressFeatures(features);
+      if (!topMatch) {
+        return;
+      }
+      setOptimisticSelectedRestaurantId(topMatch.restaurantId);
+      onMarkerPress(
+        topMatch.restaurantId,
+        topMatch.coordinate ?? getCoordinateFromPressEvent(event) ?? null
+      );
     },
-    [mapRef, onMarkerPress]
+    [onMarkerPress]
   );
 
   const handleLabelPress = React.useCallback(
@@ -2463,6 +2461,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
           if (!isIntentional) {
             return;
           }
+          setOptimisticSelectedRestaurantId(restaurantId);
           onMarkerPress(restaurantId, coordinate);
         });
       };
@@ -2495,6 +2494,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
               selectLabelIfIntentional();
               return;
             }
+            setOptimisticSelectedRestaurantId(topPinMatch.restaurantId);
             onMarkerPress(topPinMatch.restaurantId, topPinMatch.coordinate);
           });
         })
@@ -2661,7 +2661,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
             return;
           }
           const target =
-            getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
+            getCoordinateFromPressEvent(event) ??
+            getCoordinateFromPressFeature(features[0]) ??
+            null;
           if (!target) {
             return;
           }
@@ -2685,6 +2687,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             if (!isIntentional) {
               return;
             }
+            setOptimisticSelectedRestaurantId(restaurantId);
             onMarkerPress?.(restaurantId, coordinate);
           });
         })
@@ -3131,6 +3134,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
     onTouchEnd?.();
   }, [onTouchEnd]);
 
+  const handleMapViewPress = React.useCallback(
+    (event: OnPressEvent) => {
+      if (pressEventTargetsMarkerFeature(event)) {
+        return;
+      }
+      setOptimisticSelectedRestaurantId(null);
+      onPress();
+    },
+    [onPress]
+  );
+
   return (
     <View style={styles.mapViewport} onLayout={handleMapViewportLayout}>
       <MapboxGL.MapView
@@ -3143,7 +3157,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         attributionEnabled={false}
         scaleBarEnabled={false}
         gestureSettings={{ panDecelerationFactor: MAP_PAN_DECELERATION_FACTOR }}
-        onPress={onPress}
+        onPress={handleMapViewPress}
         onTouchStartCapture={handleTouchStart}
         onTouchEndCapture={handleTouchEnd}
         onTouchCancelCapture={handleTouchEnd}
