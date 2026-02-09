@@ -166,6 +166,7 @@ Define one resolver function so handoff destination is deterministic and shared:
 - `resolveCollapsedHost(originRootOverlay, originActiveOverlay, originOverlayStack)`
 
 Contract:
+
 1. Returns the exact collapsed host overlay key + snap for post-search handoff.
 2. Never defaults to polls unless origin context requires it.
 3. Used by both close and cancel/restore paths to keep behavior identical.

@@ -5827,7 +5827,11 @@ const SearchScreen: React.FC = () => {
   const handleSubmit = React.useCallback(() => {
     const trimmed = query.trim();
     const normalized = trimmed.toLowerCase();
-    if (normalized === 'best dishes' || normalized === 'best restaurants' || normalized === 'food') {
+    if (
+      normalized === 'best dishes' ||
+      normalized === 'best restaurants' ||
+      normalized === 'food'
+    ) {
       captureSearchSessionOrigin('shortcut');
     } else if (trimmed.length > 0) {
       captureSearchSessionOrigin('manual');
