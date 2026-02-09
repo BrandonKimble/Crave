@@ -61,10 +61,6 @@ export class SearchCoverageService {
 
     const conditions: Prisma.Sql[] = [
       Prisma.sql`e.type = 'restaurant'`,
-      Prisma.sql`pl.longitude IS NOT NULL`,
-      Prisma.sql`pl.latitude IS NOT NULL`,
-      // Filter out placeholder/unresolved locations so we don't render huge marker stacks.
-      Prisma.sql`pl.google_place_id IS NOT NULL`,
       Prisma.sql`EXISTS (SELECT 1 FROM core_connections c WHERE c.restaurant_id = e.entity_id)`,
     ];
 
@@ -112,11 +108,8 @@ export class SearchCoverageService {
     const maxLng = Math.max(swLng, neLng);
     const minLat = Math.min(swLat, neLat);
     const maxLat = Math.max(swLat, neLat);
-    conditions.push(Prisma.sql`pl.longitude BETWEEN ${minLng} AND ${maxLng}`);
-    conditions.push(Prisma.sql`pl.latitude BETWEEN ${minLat} AND ${maxLat}`);
-    // Guardrail: prevent placeholder/unsourced restaurants (often sharing the same coordinate)
-    // from appearing as stacked pins/dots in shortcut searches.
-    conditions.push(Prisma.sql`pl.google_place_id IS NOT NULL`);
+    const centerLng = (minLng + maxLng) / 2;
+    const centerLat = (minLat + maxLat) / 2;
 
     const maxRestaurants = 50000;
     const includeTopDish = request.includeTopDish === true;
@@ -136,6 +129,26 @@ export class SearchCoverageService {
         td.display_score AS top_food_display_score,
         td.display_percentile AS top_food_display_percentile`
       : Prisma.sql``;
+    const locationJoinSql = Prisma.sql`
+      JOIN LATERAL (
+        SELECT
+          rl.location_id,
+          rl.longitude,
+          rl.latitude
+        FROM core_restaurant_locations rl
+        WHERE rl.restaurant_id = e.entity_id
+          AND rl.longitude IS NOT NULL
+          AND rl.latitude IS NOT NULL
+          AND rl.google_place_id IS NOT NULL
+          AND rl.address IS NOT NULL
+          AND rl.longitude BETWEEN ${minLng} AND ${maxLng}
+          AND rl.latitude BETWEEN ${minLat} AND ${maxLat}
+        ORDER BY
+          POWER(rl.latitude - ${centerLat}, 2) + POWER(rl.longitude - ${centerLng}, 2) ASC,
+          rl.updated_at DESC
+        LIMIT 1
+      ) pl ON true
+    `;
     const startedAt = Date.now();
     const rows = await this.prisma.$queryRaw<
       CoverageRestaurantRow[]
@@ -150,8 +163,7 @@ export class SearchCoverageService {
         e.restaurant_quality_score AS restaurant_quality_score
         ${topDishSelectSql}
       FROM core_entities e
-      JOIN core_restaurant_locations pl
-        ON pl.location_id = e.primary_location_id
+      ${locationJoinSql}
       LEFT JOIN core_display_rank_scores drs
         ON drs.location_key = e.location_key
         AND drs.subject_type = 'restaurant'

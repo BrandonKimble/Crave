@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -23,7 +24,10 @@ import { SearchOrchestrationService } from './search-orchestration.service';
 import { ClerkAuthGuard } from '../identity/auth/clerk-auth.guard';
 import { ListSearchHistoryDto } from './dto/list-search-history.dto';
 import { SearchCoverageService } from './search-coverage.service';
-import type { FoodResultDto } from './dto/search-query.dto';
+import type {
+  FoodResultDto,
+  RestaurantProfileDto,
+} from './dto/search-query.dto';
 import { RateLimitTier } from '../infrastructure/throttler/throttler.decorator';
 
 @Controller('search')
@@ -97,5 +101,17 @@ export class SearchController {
     restaurantId: string,
   ): Promise<FoodResultDto[]> {
     return this.searchService.listRestaurantDishes(restaurantId);
+  }
+
+  @Get('restaurants/:restaurantId/profile')
+  async restaurantProfile(
+    @Param('restaurantId', new ParseUUIDPipe({ version: '4' }))
+    restaurantId: string,
+  ): Promise<RestaurantProfileDto> {
+    const profile = await this.searchService.getRestaurantProfile(restaurantId);
+    if (!profile) {
+      throw new NotFoundException('Restaurant profile not found');
+    }
+    return profile;
   }
 }

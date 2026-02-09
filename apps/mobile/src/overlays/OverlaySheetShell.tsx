@@ -1,8 +1,8 @@
 import React from 'react';
-import { InteractionManager, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { InteractionManager, StyleSheet, useWindowDimensions } from 'react-native';
 
 import type { FlashListRef } from '@shopify/flash-list';
-import type { SharedValue } from 'react-native-reanimated';
+import Reanimated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import BottomSheetWithFlashList, {
   type BottomSheetWithFlashListProps,
@@ -27,6 +27,9 @@ type OverlaySheetShellProps = {
   headerActionMode?: OverlayHeaderActionMode;
   navBarHeight?: number;
   applyNavBarCutout?: boolean;
+  navBarCutoutProgress?: SharedValue<number>;
+  navBarHiddenTranslateY?: number;
+  navBarCutoutIsHiding?: boolean;
 };
 
 const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
@@ -40,6 +43,9 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   headerActionMode = 'fixed-close',
   navBarHeight = 0,
   applyNavBarCutout = false,
+  navBarCutoutProgress,
+  navBarHiddenTranslateY = 0,
+  navBarCutoutIsHiding = false,
 }) => {
   const { height: screenHeight } = useWindowDimensions();
   const setOverlayScrollOffset = useOverlayStore((state) => state.setOverlayScrollOffset);
@@ -274,7 +280,32 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
     };
   }, [activeOverlayKey, internalListRef, scrollOffset, setOverlayScrollOffset, specRef, visible]);
 
-  const bottomInset = applyNavBarCutout ? Math.max(navBarHeight, 0) : 0;
+  const resolvedNavBarHeight = Math.max(navBarHeight, 0);
+  const sheetClipAnimatedStyle = useAnimatedStyle(
+    () => {
+      if (!applyNavBarCutout) {
+        return { bottom: 0 };
+      }
+      const progress = navBarCutoutProgress
+        ? Math.max(0, Math.min(1, navBarCutoutProgress.value))
+        : 1;
+      const navTranslateY = Math.max(0, (1 - progress) * Math.max(0, navBarHiddenTranslateY));
+      const hideLead = navBarCutoutIsHiding ? 1.18 : 1;
+      // Keep the cutout attached to the moving nav object, not animation progress itself.
+      const cutout = Math.max(
+        0,
+        Math.min(resolvedNavBarHeight, resolvedNavBarHeight - navTranslateY * hideLead)
+      );
+      return { bottom: cutout };
+    },
+    [
+      applyNavBarCutout,
+      navBarCutoutIsHiding,
+      navBarCutoutProgress,
+      navBarHiddenTranslateY,
+      resolvedNavBarHeight,
+    ]
+  );
 
   useOverlayHeaderActionController({
     visible: visible && Boolean(spec),
@@ -295,9 +326,9 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   const resolvedInteractionEnabled = spec.interactionEnabled ?? true;
 
   return (
-    <View
+    <Reanimated.View
       pointerEvents="box-none"
-      style={[styles.sheetClip, bottomInset > 0 ? { bottom: bottomInset } : null]}
+      style={[styles.sheetClip, sheetClipAnimatedStyle]}
     >
       {spec.underlayComponent ?? null}
       <BottomSheetWithFlashList
@@ -319,7 +350,7 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
         onSettleStateChange={handleSettleStateChange}
         style={spec.style ?? overlaySheetStyles.container}
       />
-    </View>
+    </Reanimated.View>
   );
 };
 

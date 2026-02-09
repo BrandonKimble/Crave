@@ -61,9 +61,16 @@ type UsePollsPanelSpecOptions = {
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  onSnapStart?: (snap: OverlaySheetSnap) => void;
-  onSnapChange?: (snap: OverlaySheetSnap) => void;
+  onSnapStart?: (
+    snap: OverlaySheetSnap,
+    meta?: { source: 'gesture' | 'programmatic' }
+  ) => void;
+  onSnapChange?: (
+    snap: OverlaySheetSnap,
+    meta?: { source: 'gesture' | 'programmatic' }
+  ) => void;
   snapTo?: OverlaySheetSnap | null;
+  snapToToken?: number;
   onRequestPollCreationExpand?: () => void;
   onRequestReturnToSearch?: () => void;
   sheetY: SharedValue<number>;
@@ -91,6 +98,7 @@ export const usePollsPanelSpec = ({
   onSnapStart,
   onSnapChange,
   snapTo,
+  snapToToken,
   onRequestPollCreationExpand,
   onRequestReturnToSearch,
   sheetY: _sheetY,
@@ -140,7 +148,7 @@ export const usePollsPanelSpec = ({
   const pendingPollIdRef = useRef<string | null>(null);
   const lastResolvedCoverageKeyRef = useRef<string | null>(null);
   const activeSnapRequest = snapTo ?? snapRequest?.snap ?? null;
-  const activeSnapRequestToken = snapTo ? undefined : snapRequest?.token;
+  const activeSnapRequestToken = snapTo ? snapToToken : snapRequest?.token;
 
   useEffect(() => {
     if (snapTo) {
@@ -679,8 +687,11 @@ export const usePollsPanelSpec = ({
   const headerActionProgress = headerActionProgressProp ?? localHeaderActionProgress;
 
   const handleSnapChange = useCallback(
-    (snap: 'expanded' | 'middle' | 'collapsed' | 'hidden') => {
-      onSnapChange?.(snap);
+    (
+      snap: 'expanded' | 'middle' | 'collapsed' | 'hidden',
+      meta?: { source: 'gesture' | 'programmatic' }
+    ) => {
+      onSnapChange?.(snap, meta);
       if (snapRequest && snapRequest.snap === snap) {
         setSnapRequest(null);
       }
@@ -689,8 +700,8 @@ export const usePollsPanelSpec = ({
   );
 
   const handleSnapStart = useCallback<NonNullable<OverlayContentSpec<Poll>['onSnapStart']>>(
-    (snap) => {
-      onSnapStart?.(snap);
+    (snap, meta) => {
+      onSnapStart?.(snap, meta);
     },
     [onSnapStart]
   );

@@ -83,6 +83,7 @@ type ScoreInfoPayload = {
 type RestaurantResultCardProps = {
   restaurant: RestaurantResult;
   index: number;
+  rank: number;
   qualityColor: string;
   isLiked: boolean;
   scoreMode?: 'global_quality' | 'coverage_display';
@@ -101,6 +102,7 @@ type RestaurantResultCardProps = {
 const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   restaurant,
   index,
+  rank,
   qualityColor,
   isLiked,
   scoreMode = 'global_quality',
@@ -539,7 +541,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
             <View style={[styles.titleRow, styles.titleRowWithActions]}>
               <View style={[styles.rankBadge, { backgroundColor: qualityColor }]}>
                 <Text variant="body" style={styles.rankBadgeText}>
-                  {index + 1}
+                  {rank}
                 </Text>
               </View>
               <Text

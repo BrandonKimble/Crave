@@ -83,6 +83,8 @@ type UseSearchSubmitOptions = {
   loadRecentHistory: (options?: { force?: boolean }) => Promise<void>;
   updateLocalRecentSearches: (value: string | RecentSearchInput) => void;
   isRestaurantOverlayVisibleRef?: React.MutableRefObject<boolean>;
+  prepareShortcutSheetTransition?: () => boolean;
+  onPageOneResultsCommitted?: () => void;
   onShortcutSearchCoverageSnapshot?: (snapshot: {
     searchRequestId: string;
     bounds: MapBounds | null;
@@ -109,7 +111,12 @@ type UseSearchSubmitResult = {
   runBestHere: (
     targetTab: SegmentValue,
     submittedLabel: string,
-    options?: { preserveSheetState?: boolean; filters?: StructuredSearchFilters }
+    options?: {
+      preserveSheetState?: boolean;
+      transitionFromDockedPolls?: boolean;
+      filters?: StructuredSearchFilters;
+      scoreMode?: NaturalSearchRequest['scoreMode'];
+    }
   ) => Promise<void>;
   loadMoreResults: (searchMode: SearchMode) => void;
   cancelActiveSearchRequest: () => void;
@@ -156,6 +163,47 @@ const resolveSubmissionDefaultTab = (
     return 'dishes';
   }
   return null;
+};
+
+const resolveResponsePage = (response: SearchResponse, targetPage: number): number => {
+  const page = response.metadata?.page;
+  if (typeof page === 'number' && Number.isFinite(page) && page > 0) {
+    return page;
+  }
+  return targetPage;
+};
+
+const normalizeSearchResponse = (
+  response: SearchResponse,
+  targetPage: number,
+  fallbackSearchRequestId?: string
+): SearchResponse => {
+  const normalizedPage = resolveResponsePage(response, targetPage);
+  const hasSearchRequestId =
+    typeof response.metadata?.searchRequestId === 'string' &&
+    response.metadata.searchRequestId.length > 0;
+  const normalizedSearchRequestId = hasSearchRequestId
+    ? response.metadata.searchRequestId
+    : fallbackSearchRequestId;
+
+  const shouldPatchPage = normalizedPage !== response.metadata?.page;
+  const shouldPatchSearchRequestId =
+    typeof normalizedSearchRequestId === 'string' &&
+    normalizedSearchRequestId.length > 0 &&
+    normalizedSearchRequestId !== response.metadata?.searchRequestId;
+
+  if (!shouldPatchPage && !shouldPatchSearchRequestId) {
+    return response;
+  }
+
+  return {
+    ...response,
+    metadata: {
+      ...response.metadata,
+      page: normalizedPage,
+      ...(shouldPatchSearchRequestId ? { searchRequestId: normalizedSearchRequestId } : {}),
+    },
+  };
 };
 
 const logSearchResponsePayload = (label: string, response: SearchResponse, enabled: boolean) => {
@@ -232,6 +280,8 @@ const useSearchSubmit = ({
   loadRecentHistory,
   updateLocalRecentSearches,
   isRestaurantOverlayVisibleRef,
+  prepareShortcutSheetTransition,
+  onPageOneResultsCommitted,
   onShortcutSearchCoverageSnapshot,
 }: UseSearchSubmitOptions): UseSearchSubmitResult => {
   const searchRequestSeqRef = React.useRef(0);
@@ -314,6 +364,7 @@ const useSearchSubmit = ({
       options: {
         append: boolean;
         targetPage: number;
+        fallbackSearchRequestId?: string;
         submittedLabel?: string;
         pushToHistory?: boolean;
         submissionContext?: NaturalSearchRequest['submissionContext'];
@@ -321,22 +372,28 @@ const useSearchSubmit = ({
       }
     ) => {
       const handleStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-      const { append, targetPage, submittedLabel, pushToHistory } = options;
+      const { append, targetPage, submittedLabel, pushToHistory, fallbackSearchRequestId } =
+        options;
+      const normalizedResponse = normalizeSearchResponse(
+        response,
+        targetPage,
+        fallbackSearchRequestId
+      );
 
       logSearchPhase('handleSearchResponse:start');
       let previousFoodCountSnapshot = 0;
       let previousRestaurantCountSnapshot = 0;
-      let mergedFoodCount = response.dishes?.length ?? 0;
-      let mergedRestaurantCount = response.restaurants?.length ?? 0;
+      let mergedFoodCount = normalizedResponse.dishes?.length ?? 0;
+      let mergedRestaurantCount = normalizedResponse.restaurants?.length ?? 0;
 
-      const singleRestaurantCandidate = resolveSingleRestaurantCandidate(response);
+      const singleRestaurantCandidate = resolveSingleRestaurantCandidate(normalizedResponse);
       unstable_batchedUpdates(() => {
         setResults((prev) => {
           const base = append ? prev : null;
           previousFoodCountSnapshot = base?.dishes?.length ?? 0;
           previousRestaurantCountSnapshot = base?.restaurants?.length ?? 0;
           const mergeStart = shouldLogSearchResponseTimings ? getPerfNow() : 0;
-          const merged = mergeSearchResponses(base, response, append);
+          const merged = mergeSearchResponses(base, normalizedResponse, append);
           if (shouldLogSearchResponseTimings) {
             logSearchResponseTiming('mergeSearchResponses', getPerfNow() - mergeStart);
           }
@@ -344,13 +401,16 @@ const useSearchSubmit = ({
           mergedRestaurantCount = merged.restaurants?.length ?? 0;
           return merged;
         });
+        if (!append && normalizedResponse.metadata.page === 1) {
+          onPageOneResultsCommitted?.();
+        }
 
         if (!append && singleRestaurantCandidate) {
           setActiveTab('restaurants');
         } else if (!append) {
-          const hasFoodResults = response?.dishes?.length > 0;
-          const hasRestaurantsResults = (response?.restaurants?.length ?? 0) > 0;
-          const intentDefaultTab = resolveIntentDefaultTab(response);
+          const hasFoodResults = normalizedResponse?.dishes?.length > 0;
+          const hasRestaurantsResults = (normalizedResponse?.restaurants?.length ?? 0) > 0;
+          const intentDefaultTab = resolveIntentDefaultTab(normalizedResponse);
 
           setActiveTab((prevTab) => {
             if (!hasActiveTabPreference && intentDefaultTab) {
@@ -373,13 +433,13 @@ const useSearchSubmit = ({
         }
 
         if (!singleRestaurantCandidate) {
-          const totalFoodAvailable = response.metadata.totalFoodResults ?? mergedFoodCount;
+          const totalFoodAvailable = normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
           const totalRestaurantAvailable =
-            response.metadata.totalRestaurantResults ?? mergedRestaurantCount;
+            normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 
           const nextHasMoreFood = mergedFoodCount < totalFoodAvailable;
           const nextHasMoreRestaurants =
-            response.format === 'dual_list'
+            normalizedResponse.format === 'dual_list'
               ? mergedRestaurantCount < totalRestaurantAvailable
               : false;
 
@@ -403,7 +463,7 @@ const useSearchSubmit = ({
       if (!append) {
         requestAnimationFrame(() => {
           unstable_batchedUpdates(() => {
-            lastSearchRequestIdRef.current = response.metadata.searchRequestId ?? null;
+            lastSearchRequestIdRef.current = normalizedResponse.metadata.searchRequestId ?? null;
             if (submittedLabel) {
               setSubmittedQuery(submittedLabel);
             } else {
@@ -426,8 +486,8 @@ const useSearchSubmit = ({
 
       if (!append && submittedLabel && pushToHistory) {
         const hasEntityTargets = [
-          ...(response.plan?.restaurantFilters ?? []),
-          ...(response.plan?.connectionFilters ?? []),
+          ...(normalizedResponse.plan?.restaurantFilters ?? []),
+          ...(normalizedResponse.plan?.connectionFilters ?? []),
         ].some((filter) => Array.isArray(filter.entityIds) && filter.entityIds.length > 0);
 
         const enqueueHistoryUpdate = () => {
@@ -486,6 +546,7 @@ const useSearchSubmit = ({
       showPanel,
       updateLocalRecentSearches,
       isSearchEditingRef,
+      onPageOneResultsCommitted,
     ]
   );
 
@@ -754,6 +815,7 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append,
             targetPage,
+            fallbackSearchRequestId: append ? undefined : `natural:${requestId}`,
             submittedLabel,
             pushToHistory: !append,
             submissionContext: options?.submission?.context,
@@ -917,6 +979,7 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
+            fallbackSearchRequestId: `restaurant-entity:${requestId}`,
             submittedLabel: trimmedName,
             pushToHistory: true,
             submissionContext,
@@ -971,6 +1034,7 @@ const useSearchSubmit = ({
       submittedLabel: string,
       options?: {
         preserveSheetState?: boolean;
+        transitionFromDockedPolls?: boolean;
         filters?: StructuredSearchFilters;
         scoreMode?: NaturalSearchRequest['scoreMode'];
       }
@@ -981,6 +1045,11 @@ const useSearchSubmit = ({
 
       resetMapMoveFlag();
       const preserveSheetState = Boolean(options?.preserveSheetState);
+      const transitionFromDockedPolls =
+        !preserveSheetState && Boolean(options?.transitionFromDockedPolls);
+      if (transitionFromDockedPolls) {
+        prepareShortcutSheetTransition?.();
+      }
       const suppressSuggestionsNow = () => {
         unstable_batchedUpdates(() => {
           setIsAutocompleteSuppressed(true);
@@ -995,7 +1064,9 @@ const useSearchSubmit = ({
           setActiveTab(targetTab);
           setError(null);
           if (!preserveSheetState) {
-            resetSheetToHidden();
+            if (!transitionFromDockedPolls) {
+              resetSheetToHidden();
+            }
             setResults(null);
             setSubmittedQuery(submittedLabel);
           }
@@ -1028,9 +1099,7 @@ const useSearchSubmit = ({
         if (!shouldDeferBestHereUi) {
           unstable_batchedUpdates(() => {
             setIsLoading(true);
-            if (!preserveSheetState) {
-              showPanel();
-            }
+            showPanel();
           });
           logSearchPhase('runBestHere:loading-state');
         }
@@ -1074,6 +1143,7 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: false,
             targetPage: 1,
+            fallbackSearchRequestId: `shortcut:${requestId}`,
             submittedLabel,
             pushToHistory: false,
             showPanelOnResponse: shouldDeferBestHereUi && !preserveSheetState,
@@ -1116,6 +1186,7 @@ const useSearchSubmit = ({
       setShowSuggestions,
       showPanel,
       shouldDeferBestHereUi,
+      prepareShortcutSheetTransition,
       onShortcutSearchCoverageSnapshot,
     ]
   );
@@ -1157,6 +1228,7 @@ const useSearchSubmit = ({
           handleSearchResponse(response, {
             append: true,
             targetPage: nextPage,
+            fallbackSearchRequestId: undefined,
             submittedLabel: submittedQuery || 'Best dishes here',
             pushToHistory: false,
             showPanelOnResponse: false,

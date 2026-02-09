@@ -6,6 +6,7 @@ import type {
   NaturalSearchRequest,
   OperatingStatus,
   Pagination,
+  RestaurantProfile,
   SearchResponse,
 } from '../types';
 import type { FeatureCollection, Point } from 'geojson';
@@ -136,6 +137,10 @@ export const searchService = {
   },
   restaurantDishes: async (restaurantId: string): Promise<FoodResult[]> => {
     const { data } = await api.get<FoodResult[]>(`/search/restaurants/${restaurantId}/dishes`);
+    return data;
+  },
+  restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
+    const { data } = await api.get<RestaurantProfile>(`/search/restaurants/${restaurantId}/profile`);
     return data;
   },
   recentHistory: async (limit = 8): Promise<RecentSearch[]> => {

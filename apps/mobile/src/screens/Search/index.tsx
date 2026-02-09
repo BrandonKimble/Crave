@@ -76,6 +76,7 @@ import type {
   SearchResponse,
   FoodResult,
   RestaurantResult,
+  RestaurantProfile,
   MapBounds,
   Coordinate,
 } from '../../types';
@@ -131,6 +132,7 @@ import {
 } from './utils/bottom-nav-metrics-cache';
 import {
   ACTIVE_TAB_COLOR,
+  ACTIVE_TAB_COLOR_DARK,
   AUTOCOMPLETE_CACHE_TTL_MS,
   AUTOCOMPLETE_MIN_CHARS,
   CAMERA_STORAGE_KEY,
@@ -239,6 +241,20 @@ const PRICE_SUMMARY_REEL_STEP_Y = 16;
 const PRICE_SUMMARY_REEL_ROTATE_DEG = 82;
 const PRICE_SUMMARY_REEL_PERSPECTIVE = 900;
 const PRICE_SUMMARY_REEL_DEFAULT_INDEX = PRICE_SUMMARY_REEL_INDEX_BY_KEY['1-5'] ?? 0;
+type DockedPollsSnapRequest = {
+  snap: OverlaySheetSnap;
+  token: number;
+};
+const resolveResultsPage = (response: SearchResponse | null): number | null => {
+  if (!response) {
+    return null;
+  }
+  const page = response.metadata?.page;
+  if (typeof page === 'number' && Number.isFinite(page) && page > 0) {
+    return page;
+  }
+  return 1;
+};
 
 type PriceSummaryReelItemProps = {
   label: string;
@@ -390,6 +406,8 @@ const PROFILE_CAMERA_ANIMATION_MS = 800;
 const PROFILE_RESTORE_ANIMATION_MS = 650;
 const PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA = 0.55;
 const PROFILE_MULTI_LOCATION_MIN_ZOOM = 3.5;
+const RESTAURANT_FOCUS_CENTER_EPSILON = 1e-5;
+const RESTAURANT_FOCUS_ZOOM_EPSILON = 0.01;
 const PROFILE_TRANSITION_LOCK_MS = 750;
 const FIT_BOUNDS_SYNC_BUFFER_MS = 160;
 const RESULTS_WASH_FADE_MS = 220;
@@ -417,6 +435,17 @@ type SearchShortcutsLayoutCache = {
 };
 
 type ProfileTransitionStatus = 'idle' | 'opening' | 'open' | 'closing';
+
+type RestaurantFocusSession = {
+  restaurantId: string | null;
+  locationKey: string | null;
+  hasAppliedInitialMultiLocationZoomOut: boolean;
+};
+
+type HydratedRestaurantProfile = {
+  restaurant: RestaurantResult;
+  dishes: FoodResult[];
+};
 
 type CameraSnapshot = {
   center: [number, number];
@@ -855,42 +884,6 @@ const SearchScreen: React.FC = () => {
   }, [isInitialCameraHydrated, userLocation]);
 
   const mapStyleURL = React.useMemo(() => buildMapStyleURL(accessToken), [accessToken]);
-  const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
-    const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
-    return {
-      // For dish pins: show dish name + restaurant name on two lines
-      // For restaurant pins: show just restaurant name
-      textField: [
-        'case',
-        ['==', ['get', 'isDishPin'], true],
-        // Dish pin: two-line label using format for different sizes
-        [
-          'format',
-          ['coalesce', ['get', 'dishName'], ''],
-          { 'font-scale': 1.0 },
-          '\n',
-          {},
-          ['coalesce', ['get', 'restaurantName'], ''],
-          { 'font-scale': secondaryTextSize / LABEL_TEXT_SIZE },
-        ],
-        // Restaurant pin: single line
-        ['coalesce', ['get', 'restaurantName'], ''],
-      ],
-      textJustify: 'auto',
-      textAllowOverlap: false,
-      textOptional: false,
-      textIgnorePlacement: false,
-      textSize: LABEL_TEXT_SIZE,
-      textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],
-      textColor: '#374151', // dark gray
-      textHaloColor: 'rgba(255, 255, 255, 0.9)',
-      textHaloWidth: 1.2,
-      textHaloBlur: 0.9,
-      symbolZOrder: 'viewport-y',
-    };
-    // Depend on the exported geometry constants so Fast Refresh picks up tuning changes without
-    // requiring a full app reload.
-  }, [LABEL_TEXT_SIZE]);
 
   const [query, setQuery] = React.useState('');
   const [results, setResults] = React.useState<SearchResponse | null>(null);
@@ -920,7 +913,12 @@ const SearchScreen: React.FC = () => {
   }, []);
   const resultsRequestKey =
     results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null;
-  const resultsVisualSyncCandidate = results?.metadata?.page === 1 ? resultsRequestKey : null;
+  const resultsPage = resolveResultsPage(results);
+  const [resultsVisualSyncCandidate, setResultsVisualSyncCandidate] = React.useState<string | null>(
+    null
+  );
+  const [markerRevealCommitId, setMarkerRevealCommitId] = React.useState<number | null>(null);
+  const markerRevealCommitSeqRef = React.useRef(0);
   const isVisualSyncPending =
     resultsVisualSyncCandidate != null && resultsVisualSyncCandidate !== visualReadyRequestKey;
   const isSearchLoading = isLoading || isVisualSyncPending;
@@ -929,6 +927,12 @@ const SearchScreen: React.FC = () => {
       return;
     }
     setVisualReadyRequestKey((prev) => (prev === requestKey ? prev : requestKey));
+  }, []);
+  const handlePageOneResultsCommitted = React.useCallback(() => {
+    markerRevealCommitSeqRef.current += 1;
+    const commitId = markerRevealCommitSeqRef.current;
+    setMarkerRevealCommitId(commitId);
+    setResultsVisualSyncCandidate(`visual-commit:${commitId}`);
   }, []);
   React.useEffect(
     () => () => {
@@ -1018,7 +1022,8 @@ const SearchScreen: React.FC = () => {
   });
   const [pollsSheetSnap, setPollsSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [pollsDockedSnapRequest, setPollsDockedSnapRequest] =
-    React.useState<OverlaySheetSnap | null>(null);
+    React.useState<DockedPollsSnapRequest | null>(null);
+  const pollsDockedSnapTokenRef = React.useRef(0);
   const [pollCreationSnapRequest, setPollCreationSnapRequest] = React.useState<Exclude<
     OverlaySheetSnap,
     'hidden'
@@ -1029,16 +1034,24 @@ const SearchScreen: React.FC = () => {
     'hidden'
   > | null>(null);
   const [isDockedPollsDismissed, setIsDockedPollsDismissed] = React.useState(false);
+  const [isNavRestorePending, setIsNavRestorePending] = React.useState(false);
   const [bookmarksSheetSnap, setBookmarksSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [profileSheetSnap, setProfileSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const overlaySwitchInFlightRef = React.useRef(false);
   const ignoreDockedPollsHiddenUntilMsRef = React.useRef(0);
+  const dockedPollsRestoreInFlightRef = React.useRef(false);
 
   const requestDockedPollsRestore = React.useCallback(() => {
     ignoreDockedPollsHiddenUntilMsRef.current = Date.now() + 650;
+    dockedPollsRestoreInFlightRef.current = true;
     setIsDockedPollsDismissed(false);
-    setPollsDockedSnapRequest(pollsSheetSnap === 'collapsed' ? null : 'collapsed');
-  }, [pollsSheetSnap, setIsDockedPollsDismissed, setPollsDockedSnapRequest]);
+    pollsDockedSnapTokenRef.current += 1;
+    // Always force docked polls back to the low snap to avoid falling back to persisted tab snaps.
+    setPollsDockedSnapRequest({
+      snap: 'collapsed',
+      token: pollsDockedSnapTokenRef.current,
+    });
+  }, [setIsDockedPollsDismissed, setPollsDockedSnapRequest]);
   const [saveSheetSnap, setSaveSheetSnap] = React.useState<OverlaySheetSnap>('hidden');
   const [saveSheetState, setSaveSheetState] = React.useState<{
     visible: boolean;
@@ -1073,6 +1086,11 @@ const SearchScreen: React.FC = () => {
   const [isRestaurantOverlayVisible, setRestaurantOverlayVisible] = React.useState(false);
   const isRestaurantOverlayVisibleRef = React.useRef(false);
   const restaurantProfileRequestSeqRef = React.useRef(0);
+  const restaurantProfileCacheRef = React.useRef<Map<string, HydratedRestaurantProfile>>(new Map());
+  const restaurantProfileRequestByIdRef = React.useRef<
+    Map<string, Promise<HydratedRestaurantProfile>>
+  >(new Map());
+  const restaurantOverlayDismissHandledRef = React.useRef(false);
   const forceRestaurantProfileMiddleSnapRef = React.useRef(false);
   const restaurantSnapRequestTokenRef = React.useRef(0);
   const [restaurantSnapRequest, setRestaurantSnapRequest] = React.useState<{
@@ -1421,6 +1439,11 @@ const SearchScreen: React.FC = () => {
   const locationPulse = React.useRef(new Animated.Value(0)).current;
   const locationPulseAnimationRef = React.useRef<Animated.CompositeAnimation | null>(null);
   const hasCenteredOnLocationRef = React.useRef(false);
+  const restaurantFocusSessionRef = React.useRef<RestaurantFocusSession>({
+    restaurantId: null,
+    locationKey: null,
+    hasAppliedInitialMultiLocationZoomOut: false,
+  });
   const filterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const toggleFilterDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const filterToggleRequestRef = React.useRef(0);
@@ -1502,7 +1525,11 @@ const SearchScreen: React.FC = () => {
   // from non-search root tabs so tab chrome doesn't show through the suggestion surface.
   const shouldHideBottomNav =
     shouldHideBottomNavForTabSuggestions ||
-    (isSearchOverlay && (isSearchSessionActive || isSuggestionPanelActive || isSearchLoading));
+    (isSearchOverlay &&
+      (isSearchSessionActive ||
+        isSuggestionPanelActive ||
+        isSearchLoading ||
+        isNavRestorePending));
   const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
     const cached = getCachedBottomNavMetrics();
     if (!cached) {
@@ -1542,6 +1569,20 @@ const SearchScreen: React.FC = () => {
     bottomNavFrame?.height && bottomNavFrame.height > 0
       ? bottomNavFrame.height
       : resolvedEstimatedNavBarHeight;
+  const bottomNavHideProgress = useSharedValue(shouldHideBottomNav ? 0 : 1);
+  const bottomNavHiddenTranslateY = Math.max(24, fallbackNavBarHeight + bottomInset + 12);
+  React.useEffect(() => {
+    bottomNavHideProgress.value = withTiming(shouldHideBottomNav ? 0 : 1, {
+      duration: 260,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  }, [bottomNavHideProgress, shouldHideBottomNav]);
+  const bottomNavAnimatedStyle = useAnimatedStyle(
+    () => ({
+      transform: [{ translateY: (1 - bottomNavHideProgress.value) * bottomNavHiddenTranslateY }],
+    }),
+    [bottomNavHiddenTranslateY]
+  );
   // Snap points should track the measured nav-bar top when available. This keeps collapsed
   // overlays flush to the nav edge even when root-level layout shifts (e.g. status banner push).
   const navBarTopForSnaps =
@@ -1550,6 +1591,7 @@ const SearchScreen: React.FC = () => {
       : SCREEN_HEIGHT - fallbackNavBarHeight;
   const navBarTop = shouldHideBottomNav ? SCREEN_HEIGHT : navBarTopForSnaps;
   const navBarHeight = shouldHideBottomNav ? 0 : fallbackNavBarHeight;
+  const navBarCutoutHeight = fallbackNavBarHeight;
 
   const [resultsSheetHeaderHeight, setResultsSheetHeaderHeight] = React.useState(0);
   const shouldShowDockedPolls =
@@ -1568,6 +1610,7 @@ const SearchScreen: React.FC = () => {
     resetSheetToHidden,
     animateSheetTo,
     showPanel,
+    showPanelInstant,
     handleSheetSnapChange,
     resultsContainerAnimatedStyle,
     resultsScrollOffset,
@@ -1581,6 +1624,29 @@ const SearchScreen: React.FC = () => {
     navBarTop: navBarTopForSnaps,
     headerHeight: OVERLAY_TAB_HEADER_HEIGHT,
   });
+  const prepareShortcutSheetTransition = React.useCallback(() => {
+    if (!shouldShowDockedPolls) {
+      return false;
+    }
+    showPanelInstant('collapsed');
+    return true;
+  }, [shouldShowDockedPolls, showPanelInstant]);
+  React.useEffect(() => {
+    if (!isNavRestorePending) {
+      return;
+    }
+    if (!isSearchOverlay) {
+      setIsNavRestorePending(false);
+      return;
+    }
+    if (!shouldShowDockedPolls) {
+      return;
+    }
+    if (pollsSheetSnap !== 'collapsed') {
+      return;
+    }
+    setIsNavRestorePending(false);
+  }, [isNavRestorePending, isSearchOverlay, pollsSheetSnap, shouldShowDockedPolls]);
   const lastNavBarTopForSnapsRef = React.useRef(navBarTopForSnaps);
   React.useEffect(() => {
     const previous = lastNavBarTopForSnapsRef.current;
@@ -1883,10 +1949,6 @@ const SearchScreen: React.FC = () => {
       if (snap === 'hidden') {
         return;
       }
-      if (profileDismissBehaviorRef.current !== 'restore') {
-        return;
-      }
-      profileTransitionRef.current.savedSheetSnap = snap;
     },
     []
   );
@@ -1899,10 +1961,6 @@ const SearchScreen: React.FC = () => {
       if (request && request.snap === snap) {
         setRestaurantSnapRequest(null);
       }
-      if (profileDismissBehaviorRef.current !== 'restore') {
-        return;
-      }
-      profileTransitionRef.current.savedSheetSnap = snap;
     },
     [restaurantSnapRequest]
   );
@@ -2034,9 +2092,15 @@ const SearchScreen: React.FC = () => {
     [setPollsSheetSnap]
   );
   const handlePollsSnapChange = React.useCallback(
-    (snap: OverlaySheetSnap) => {
+    (
+      snap: OverlaySheetSnap,
+      meta?: { source: 'gesture' | 'programmatic' }
+    ) => {
       setPollsSheetSnap(snap);
-      if (pollsDockedSnapRequest && pollsDockedSnapRequest === snap) {
+      if (snap === 'collapsed') {
+        dockedPollsRestoreInFlightRef.current = false;
+      }
+      if (pollsDockedSnapRequest && pollsDockedSnapRequest.snap === snap) {
         setPollsDockedSnapRequest(null);
       }
       if (tabOverlaySnapRequest && tabOverlaySnapRequest === snap) {
@@ -2044,9 +2108,20 @@ const SearchScreen: React.FC = () => {
       }
       if (snap === 'hidden') {
         if (rootOverlay === 'search') {
+          const isGestureHidden = meta?.source === 'gesture';
+          if (!isGestureHidden) {
+            return;
+          }
+          if (
+            dockedPollsRestoreInFlightRef.current ||
+            pollsDockedSnapRequest?.snap === 'collapsed'
+          ) {
+            return;
+          }
           if (Date.now() < ignoreDockedPollsHiddenUntilMsRef.current) {
             return;
           }
+          dockedPollsRestoreInFlightRef.current = false;
           setIsDockedPollsDismissed(true);
           return;
         }
@@ -3531,6 +3606,20 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.dishes ?? EMPTY_DISHES;
+  const overlaySelectedRestaurantId = isRestaurantOverlayVisible
+    ? restaurantProfile?.restaurant.restaurantId ?? null
+    : null;
+  const [activeMarkerRestaurantId, setActiveMarkerRestaurantId] = React.useState<string | null>(
+    null
+  );
+  React.useEffect(() => {
+    if (!overlaySelectedRestaurantId) {
+      return;
+    }
+    setActiveMarkerRestaurantId((prev) =>
+      prev === overlaySelectedRestaurantId ? prev : overlaySelectedRestaurantId
+    );
+  }, [overlaySelectedRestaurantId]);
   const resultsHydrationCandidate = resultsRequestKey;
   const storedResultsScrollOffset = useOverlayStore(
     (state) => state.overlayScrollOffsets.search ?? 0
@@ -3546,11 +3635,8 @@ const SearchScreen: React.FC = () => {
     hydratedResultsKeyRef.current = next;
     setHydratedResultsKey(next);
   }, []);
-  const resultsHydrationKey = results
-    ? results.metadata.page === 1
-      ? resultsHydrationCandidate
-      : hydratedResultsKey
-    : null;
+  const resultsHydrationKey =
+    results == null ? null : resultsPage === 1 ? resultsHydrationCandidate : hydratedResultsKey;
   const needsResultsHydration =
     resultsHydrationKey != null &&
     resultsHydrationKey !== (hydratedResultsKeyRef.current ?? hydratedResultsKey);
@@ -4301,10 +4387,36 @@ const SearchScreen: React.FC = () => {
     locationIndex: number;
   };
 
-  const resolveSearchViewportCenter = React.useCallback((): Coordinate | null => {
-    const bounds = lastSearchBoundsRef.current ?? latestBoundsRef.current;
-    return bounds ? getBoundsCenter(bounds) : null;
-  }, [lastSearchBoundsRef, latestBoundsRef]);
+  const resolveSearchViewportBounds = React.useCallback(
+    (): MapBounds | null => lastSearchBoundsRef.current ?? latestBoundsRef.current ?? null,
+    []
+  );
+  const isCoordinateWithinBounds = React.useCallback(
+    (coordinate: Coordinate, bounds: MapBounds): boolean => {
+      const minLat = Math.min(bounds.southWest.lat, bounds.northEast.lat);
+      const maxLat = Math.max(bounds.southWest.lat, bounds.northEast.lat);
+      const latWithinRange = coordinate.lat >= minLat && coordinate.lat <= maxLat;
+      const minLng = bounds.southWest.lng;
+      const maxLng = bounds.northEast.lng;
+      const lngWithinRange =
+        minLng <= maxLng
+          ? coordinate.lng >= minLng && coordinate.lng <= maxLng
+          : coordinate.lng >= minLng || coordinate.lng <= maxLng;
+      return latWithinRange && lngWithinRange;
+    },
+    []
+  );
+  const resolveRestaurantLocationSelectionAnchor = React.useCallback((): Coordinate | null => {
+    const bounds = resolveSearchViewportBounds();
+    if (!bounds) {
+      return null;
+    }
+    const currentUserLocation = userLocation ?? userLocationRef.current;
+    if (currentUserLocation && isCoordinateWithinBounds(currentUserLocation, bounds)) {
+      return currentUserLocation;
+    }
+    return getBoundsCenter(bounds);
+  }, [isCoordinateWithinBounds, resolveSearchViewportBounds, userLocation]);
 
   const pickClosestLocationToCenter = React.useCallback(
     (
@@ -4342,6 +4454,16 @@ const SearchScreen: React.FC = () => {
     },
     []
   );
+  const pickPreferredRestaurantMapLocation = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      anchor: Coordinate | null
+    ): ResolvedRestaurantMapLocation | null => {
+      const locations = resolveRestaurantMapLocations(restaurant);
+      return pickClosestLocationToCenter(locations, anchor) ?? locations[0] ?? null;
+    },
+    [pickClosestLocationToCenter, resolveRestaurantMapLocations]
+  );
 
   const buildMarkerKey = React.useCallback(
     (feature: Feature<Point, RestaurantFeatureProperties>) =>
@@ -4357,10 +4479,8 @@ const SearchScreen: React.FC = () => {
     }> = [];
     let primaryCount = 0;
     const isDishesTab = activeTab === 'dishes';
-    const selectedRestaurantId = isRestaurantOverlayVisible
-      ? restaurantProfile?.restaurant.restaurantId ?? null
-      : null;
-    const searchCenter = resolveSearchViewportCenter();
+    const selectedRestaurantId = overlaySelectedRestaurantId;
+    const locationSelectionAnchor = resolveRestaurantLocationSelectionAnchor();
 
     if (isDishesTab) {
       // Dish mode: generate pins from dishes, grouped by restaurant location
@@ -4444,7 +4564,7 @@ const SearchScreen: React.FC = () => {
           selectedRestaurantId !== null && restaurant.restaurantId === selectedRestaurantId;
         const closestLocation = shouldRenderAllLocations
           ? null
-          : pickClosestLocationToCenter(locations, searchCenter);
+          : pickPreferredRestaurantMapLocation(restaurant, locationSelectionAnchor);
         const locationsToRender = shouldRenderAllLocations
           ? locations
           : closestLocation
@@ -4526,17 +4646,56 @@ const SearchScreen: React.FC = () => {
     markerRestaurants,
     scoreMode,
     resolveRestaurantMapLocations,
-    resolveSearchViewportCenter,
-    pickClosestLocationToCenter,
+    resolveRestaurantLocationSelectionAnchor,
+    pickPreferredRestaurantMapLocation,
     restaurantOnlyId,
-    isRestaurantOverlayVisible,
-    restaurantProfile?.restaurant.restaurantId,
+    overlaySelectedRestaurantId,
     shouldLogSearchComputes,
   ]);
   const markerCatalogEntries = markerCatalog.catalog;
-  const selectedRestaurantId = isRestaurantOverlayVisible
-    ? restaurantProfile?.restaurant.restaurantId ?? null
-    : null;
+  const selectedRestaurantId = overlaySelectedRestaurantId;
+  const highlightedRestaurantId = activeMarkerRestaurantId ?? overlaySelectedRestaurantId;
+  const restaurantLabelStyle = React.useMemo<MapboxGL.SymbolLayerStyle>(() => {
+    const secondaryTextSize = LABEL_TEXT_SIZE * 0.85;
+    return {
+      // For dish pins: show dish name + restaurant name on two lines
+      // For restaurant pins: show just restaurant name
+      textField: [
+        'case',
+        ['==', ['get', 'isDishPin'], true],
+        // Dish pin: two-line label using format for different sizes
+        [
+          'format',
+          ['coalesce', ['get', 'dishName'], ''],
+          { 'font-scale': 1.0 },
+          '\n',
+          {},
+          ['coalesce', ['get', 'restaurantName'], ''],
+          { 'font-scale': secondaryTextSize / LABEL_TEXT_SIZE },
+        ],
+        // Restaurant pin: single line
+        ['coalesce', ['get', 'restaurantName'], ''],
+      ],
+      textJustify: 'auto',
+      textAllowOverlap: false,
+      textOptional: false,
+      textIgnorePlacement: false,
+      textSize: LABEL_TEXT_SIZE,
+      textFont: ['Open Sans Semibold', 'Arial Unicode MS Regular'],
+      textColor: [
+        'case',
+        ['==', ['get', 'restaurantId'], highlightedRestaurantId ?? ''],
+        ACTIVE_TAB_COLOR_DARK,
+        '#374151',
+      ],
+      textHaloColor: 'rgba(255, 255, 255, 0.9)',
+      textHaloWidth: 1.2,
+      textHaloBlur: 0.9,
+      symbolZOrder: 'viewport-y',
+    };
+    // Depend on the exported geometry constants so Fast Refresh picks up tuning changes without
+    // requiring a full app reload.
+  }, [ACTIVE_TAB_COLOR_DARK, LABEL_TEXT_SIZE, highlightedRestaurantId]);
 
   const visibleMarkerCandidates = React.useMemo(() => {
     const start = shouldLogSearchComputes ? getPerfNow() : 0;
@@ -4708,7 +4867,7 @@ const SearchScreen: React.FC = () => {
     return lodPinnedMarkerMeta
       .map(({ markerKey, lodZ }) => {
         const feature =
-          lodPinnedMarkerFeatureByKey.get(markerKey) ?? fallbackByKey.get(markerKey) ?? null;
+          fallbackByKey.get(markerKey) ?? lodPinnedMarkerFeatureByKey.get(markerKey) ?? null;
         if (!feature) {
           return null;
         }
@@ -4935,21 +5094,11 @@ const SearchScreen: React.FC = () => {
           },
         }));
 
-        shortcutCoverageRankedRef.current = ranked.map((feature) => ({
-          ...feature,
-          properties: {
-            ...feature.properties,
-            rank:
-              rankByRestaurantId.get(feature.properties.restaurantId) ?? feature.properties.rank,
-          },
-        }));
-
         const next: FeatureCollection<Point, RestaurantFeatureProperties> = {
           type: 'FeatureCollection',
           features: featuresWithRank,
         };
         setShortcutCoverageDotFeatures(next);
-        updateLodPinnedMarkers(latestBoundsRef.current);
       })
       .catch((err) => {
         if (cancelled || fetchSeq !== shortcutCoverageFetchSeqRef.current) {
@@ -4974,19 +5123,103 @@ const SearchScreen: React.FC = () => {
     results?.metadata?.searchRequestId,
     scoreMode,
     searchMode,
-    updateLodPinnedMarkers,
   ]);
+
+  const projectShortcutFeatureToSelectedLocation = React.useCallback(
+    (
+      feature: Feature<Point, RestaurantFeatureProperties>,
+      anchor: Coordinate | null
+    ): Feature<Point, RestaurantFeatureProperties> => {
+      const restaurantId = feature.properties.restaurantId;
+      const restaurant = restaurantsById.get(restaurantId);
+      if (!restaurant) {
+        return feature;
+      }
+      const selectedLocation = pickPreferredRestaurantMapLocation(restaurant, anchor);
+      if (!selectedLocation) {
+        return feature;
+      }
+      const [currentLng, currentLat] = feature.geometry.coordinates;
+      if (
+        Math.abs(currentLng - selectedLocation.longitude) < 1e-6 &&
+        Math.abs(currentLat - selectedLocation.latitude) < 1e-6
+      ) {
+        return feature;
+      }
+      return {
+        ...feature,
+        geometry: {
+          ...feature.geometry,
+          coordinates: [selectedLocation.longitude, selectedLocation.latitude],
+        },
+      };
+    },
+    [pickPreferredRestaurantMapLocation, restaurantsById]
+  );
+  const shortcutCoverageAnchoredDotFeatures = React.useMemo<FeatureCollection<
+    Point,
+    RestaurantFeatureProperties
+  > | null>(() => {
+    const collection = shortcutCoverageDotFeatures;
+    const features = collection?.features ?? [];
+    if (!features.length) {
+      return null;
+    }
+    const anchor = resolveRestaurantLocationSelectionAnchor();
+    let hasCoordinateOverrides = false;
+    const projectedFeatures = features.map((feature) => {
+      const projectedFeature = projectShortcutFeatureToSelectedLocation(feature, anchor);
+      if (projectedFeature !== feature) {
+        hasCoordinateOverrides = true;
+      }
+      return projectedFeature;
+    });
+    if (!hasCoordinateOverrides) {
+      return collection;
+    }
+    return {
+      type: 'FeatureCollection',
+      features: projectedFeatures,
+    };
+  }, [
+    projectShortcutFeatureToSelectedLocation,
+    resolveRestaurantLocationSelectionAnchor,
+    shortcutCoverageDotFeatures,
+  ]);
+  const shortcutCoverageAnchoredRankedFeatures = React.useMemo(() => {
+    const features = shortcutCoverageAnchoredDotFeatures?.features ?? [];
+    return [...features].sort((left, right) => {
+      const leftRank = left.properties.rank ?? 9999;
+      const rightRank = right.properties.rank ?? 9999;
+      const rankDiff = leftRank - rightRank;
+      if (rankDiff !== 0) {
+        return rankDiff;
+      }
+      return left.properties.restaurantId.localeCompare(right.properties.restaurantId);
+    });
+  }, [shortcutCoverageAnchoredDotFeatures?.features]);
+  React.useEffect(() => {
+    shortcutCoverageRankedRef.current =
+      searchMode === 'shortcut' ? shortcutCoverageAnchoredRankedFeatures : [];
+    if (searchMode !== 'shortcut') {
+      return;
+    }
+    lodPinnedKeyRef.current = '';
+    updateLodPinnedMarkers(latestBoundsRef.current);
+  }, [searchMode, shortcutCoverageAnchoredRankedFeatures, updateLodPinnedMarkers]);
 
   const dotRestaurantFeatures = React.useMemo<FeatureCollection<
     Point,
     RestaurantFeatureProperties
   > | null>(() => {
     if (searchMode === 'shortcut') {
-      return shortcutCoverageDotFeatures?.features?.length ? shortcutCoverageDotFeatures : null;
+      return shortcutCoverageAnchoredDotFeatures?.features?.length
+        ? shortcutCoverageAnchoredDotFeatures
+        : null;
     }
     const features = visibleMarkerCandidates.map((entry) => entry.feature);
     return features.length ? { type: 'FeatureCollection', features } : null;
-  }, [searchMode, shortcutCoverageDotFeatures, visibleMarkerCandidates]);
+  }, [searchMode, shortcutCoverageAnchoredDotFeatures, visibleMarkerCandidates]);
   const hasRenderableMarkerVisuals =
     sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
   const hasAnySearchResults =
@@ -5215,6 +5448,8 @@ const SearchScreen: React.FC = () => {
     loadRecentHistory,
     updateLocalRecentSearches: deferRecentSearchUpsert,
     isRestaurantOverlayVisibleRef,
+    prepareShortcutSheetTransition,
+    onPageOneResultsCommitted: handlePageOneResultsCommitted,
     onShortcutSearchCoverageSnapshot: handleShortcutSearchCoverageSnapshot,
   });
 
@@ -5528,15 +5763,21 @@ const SearchScreen: React.FC = () => {
     const trimmed = query.trim();
     const normalized = trimmed.toLowerCase();
     if (normalized === 'best dishes') {
-      void runBestHere('dishes', 'Best dishes');
+      void runBestHere('dishes', 'Best dishes', {
+        transitionFromDockedPolls: shouldShowDockedPolls,
+      });
       return;
     }
     if (normalized === 'best restaurants') {
-      void runBestHere('restaurants', 'Best restaurants');
+      void runBestHere('restaurants', 'Best restaurants', {
+        transitionFromDockedPolls: shouldShowDockedPolls,
+      });
       return;
     }
     if (normalized === 'food') {
-      void runBestHere('dishes', 'Food');
+      void runBestHere('dishes', 'Food', {
+        transitionFromDockedPolls: shouldShowDockedPolls,
+      });
       return;
     }
 
@@ -5552,6 +5793,7 @@ const SearchScreen: React.FC = () => {
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
+    shouldShowDockedPolls,
     beginSubmitTransition,
     suppressAutocompleteResults,
     submitSearch,
@@ -5570,7 +5812,9 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
-    void runBestHere('dishes', 'Best dishes');
+    void runBestHere('dishes', 'Best dishes', {
+      transitionFromDockedPolls: shouldShowDockedPolls,
+    });
   }, [
     dismissSearchKeyboard,
     ensureSearchOverlay,
@@ -5580,6 +5824,7 @@ const SearchScreen: React.FC = () => {
     setRestaurantOnlyIntent,
     setIsSuggestionPanelActive,
     setIsSearchFocused,
+    shouldShowDockedPolls,
     beginSubmitTransition,
   ]);
 
@@ -5596,7 +5841,9 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard();
     resetFocusedMapState();
     setRestaurantOnlyIntent(null);
-    void runBestHere('restaurants', 'Best restaurants');
+    void runBestHere('restaurants', 'Best restaurants', {
+      transitionFromDockedPolls: shouldShowDockedPolls,
+    });
   }, [
     dismissSearchKeyboard,
     ensureSearchOverlay,
@@ -5606,6 +5853,7 @@ const SearchScreen: React.FC = () => {
     setRestaurantOnlyIntent,
     setIsSuggestionPanelActive,
     setIsSearchFocused,
+    shouldShowDockedPolls,
     beginSubmitTransition,
   ]);
 
@@ -5791,13 +6039,18 @@ const SearchScreen: React.FC = () => {
       setIsSearchSessionActive(false);
       setSearchMode(null);
       // Reactivate persistent polls when search is cleared
-      setIsDockedPollsDismissed(false);
+      requestDockedPollsRestore();
       setHasMoreFood(false);
       setHasMoreRestaurants(false);
       setCurrentPage(1);
       setIsLoadingMore(false);
       setIsPaginationExhausted(false);
       lastAutoOpenKeyRef.current = null;
+      restaurantFocusSessionRef.current = {
+        restaurantId: null,
+        locationKey: null,
+        hasAppliedInitialMultiLocationZoomOut: false,
+      };
       resetFocusedMapState();
       setRestaurantOnlyIntent(null);
       searchSessionQueryRef.current = '';
@@ -5826,8 +6079,8 @@ const SearchScreen: React.FC = () => {
       resetFilters,
       resetFocusedMapState,
       resetMapMoveFlag,
+      requestDockedPollsRestore,
       setRestaurantOnlyIntent,
-      setIsDockedPollsDismissed,
       setIsSearchSessionActive,
       setSearchMode,
       setSearchTransitionVariant,
@@ -5875,15 +6128,17 @@ const SearchScreen: React.FC = () => {
 
   const handleCloseResults = React.useCallback(() => {
     ignoreNextSearchBlurRef.current = true;
+    setIsNavRestorePending(true);
     setSearchHeaderActionModeOverride('follow-collapse');
     setPollsHeaderActionAnimationToken((current) => current + 1);
-    setPollsDockedSnapRequest('collapsed');
+    requestDockedPollsRestore();
     clearSearchState({
       skipProfileDismissWait: true,
     });
   }, [
     clearSearchState,
-    setPollsDockedSnapRequest,
+    requestDockedPollsRestore,
+    setIsNavRestorePending,
     setPollsHeaderActionAnimationToken,
     setSearchHeaderActionModeOverride,
   ]);
@@ -5950,9 +6205,8 @@ const SearchScreen: React.FC = () => {
       cancelAutocomplete();
       setIsAutocompleteSuppressed(false);
       setQuery('');
-      setIsDockedPollsDismissed(false);
       if (!showPollsOverlay && !isSearchLoading) {
-        setPollsDockedSnapRequest('collapsed');
+        requestDockedPollsRestore();
       }
       pendingResultsSheetRevealRef.current = false;
       return;
@@ -5968,13 +6222,12 @@ const SearchScreen: React.FC = () => {
     isSearchLoading,
     isSearchSessionActive,
     query,
-    setIsDockedPollsDismissed,
     setIsAutocompleteSuppressed,
     setIsSearchFocused,
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
-    setPollsDockedSnapRequest,
+    requestDockedPollsRestore,
     showPollsOverlay,
   ]);
 
@@ -6305,6 +6558,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions(false);
       setSuggestions([]);
     }
+    setActiveMarkerRestaurantId(null);
     cancelAutocomplete();
   }, [
     beginSuggestionCloseHold,
@@ -6312,6 +6566,7 @@ const SearchScreen: React.FC = () => {
     dismissSearchKeyboard,
     isRestaurantOverlayVisible,
     isSearchSessionActive,
+    setActiveMarkerRestaurantId,
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
@@ -6370,9 +6625,6 @@ const SearchScreen: React.FC = () => {
 
       if (searchInteractionRef.current.isInteracting || anySheetDraggingRef.current) {
         cancelMapUpdateTimeouts();
-        if (isSearchOverlay && isSearchSessionActive && markMapMovedIfNeeded(bounds)) {
-          scheduleMapIdleReveal();
-        }
         return;
       }
       const zoomCandidate = state?.properties?.zoom as unknown;
@@ -6445,10 +6697,9 @@ const SearchScreen: React.FC = () => {
       if (!isSearchOverlay || !isSearchSessionActive) {
         return;
       }
-
-      if (markMapMovedIfNeeded(bounds)) {
-        scheduleMapIdleReveal();
-      }
+      // Do not surface "Search this area" from non-gesture map changes.
+      // Programmatic camera moves (pin open/close, restore, autofocus) should not count as
+      // user-driven exploration.
     },
     [
       animateSheetTo,
@@ -6484,9 +6735,6 @@ const SearchScreen: React.FC = () => {
         }
         if (!isBusy && shouldShowPollsSheet) {
           schedulePollBoundsUpdate(bounds);
-        }
-        if (isSearchOverlay && isSearchSessionActive && markMapMovedIfNeeded(bounds)) {
-          scheduleMapIdleReveal();
         }
         latestBoundsRef.current = bounds;
       }
@@ -6527,11 +6775,7 @@ const SearchScreen: React.FC = () => {
     },
     [
       cancelMapUpdateTimeouts,
-      isSearchOverlay,
-      isSearchSessionActive,
       logMapEventRates,
-      markMapMovedIfNeeded,
-      scheduleMapIdleReveal,
       schedulePollBoundsUpdate,
       shouldShowPollsSheet,
       shouldLogMapEventRates,
@@ -6751,10 +6995,7 @@ const SearchScreen: React.FC = () => {
       cancelAnimationFrame(cameraCommandFrameRef.current);
       cameraCommandFrameRef.current = null;
     }
-    cameraCommandFrameRef.current = requestAnimationFrame(() => {
-      cameraCommandFrameRef.current = null;
-      command();
-    });
+    command();
   }, []);
 
   const commitCameraState = React.useCallback(
@@ -6819,10 +7060,33 @@ const SearchScreen: React.FC = () => {
 
   const ensureProfileTransitionSnapshot = React.useCallback(() => {
     const transition = profileTransitionRef.current;
+    const captureCurrentResultsSheetSnap = (): Exclude<OverlaySheetSnap, 'hidden'> => {
+      const y = sheetTranslateY.value;
+      if (typeof y === 'number' && Number.isFinite(y)) {
+        const candidates: Array<Exclude<OverlaySheetSnap, 'hidden'>> = [
+          'expanded',
+          'middle',
+          'collapsed',
+        ];
+        let bestSnap: Exclude<OverlaySheetSnap, 'hidden'> = lastVisibleSheetStateRef.current;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (const candidate of candidates) {
+          const targetY = snapPoints[candidate];
+          const distance = Math.abs(y - targetY);
+          if (distance < bestDistance) {
+            bestSnap = candidate;
+            bestDistance = distance;
+          }
+        }
+        return bestSnap;
+      }
+      if (sheetState !== 'hidden') {
+        return sheetState;
+      }
+      return lastVisibleSheetStateRef.current;
+    };
     if (!transition.savedSheetSnap) {
-      const candidate = sheetState === 'hidden' ? lastVisibleSheetStateRef.current : sheetState;
-      transition.savedSheetSnap =
-        candidate === 'hidden' ? lastVisibleSheetStateRef.current : candidate;
+      transition.savedSheetSnap = captureCurrentResultsSheetSnap();
     }
     if (!transition.savedCamera) {
       const snapshot = captureCameraSnapshot();
@@ -6833,7 +7097,7 @@ const SearchScreen: React.FC = () => {
     if (transition.savedResultsScrollOffset === null) {
       transition.savedResultsScrollOffset = resultsScrollOffset.value;
     }
-  }, [captureCameraSnapshot, sheetState]);
+  }, [captureCameraSnapshot, resultsScrollOffset, sheetState, sheetTranslateY, snapPoints]);
 
   const resolveProfileCameraPadding = React.useCallback((): MapCameraPadding => {
     const snaps = calculateSnapPoints(SCREEN_HEIGHT, searchBarTop, insets.top, navBarTop, 0);
@@ -6850,6 +7114,297 @@ const SearchScreen: React.FC = () => {
     };
   }, [insets.top, navBarTop, searchBarFrame?.height, searchBarTop]);
 
+  const loadRestaurantProfileData = React.useCallback((restaurantId: string) => {
+    const cached = restaurantProfileCacheRef.current.get(restaurantId);
+    if (cached) {
+      return Promise.resolve(cached);
+    }
+    const inFlight = restaurantProfileRequestByIdRef.current.get(restaurantId);
+    if (inFlight) {
+      return inFlight;
+    }
+    const request = searchService
+      .restaurantProfile(restaurantId)
+      .then((profile) => {
+        const payload = profile as RestaurantProfile | null;
+        const restaurant = payload?.restaurant;
+        if (!restaurant || restaurant.restaurantId !== restaurantId) {
+          throw new Error('restaurant profile payload mismatch');
+        }
+        const dishes = Array.isArray(payload?.dishes) ? payload.dishes : [];
+        const normalized: HydratedRestaurantProfile = {
+          restaurant,
+          dishes,
+        };
+        restaurantProfileCacheRef.current.set(restaurantId, normalized);
+        return normalized;
+      })
+      .catch((err) => {
+        logger.warn('Restaurant profile fetch failed', {
+          message: err instanceof Error ? err.message : 'unknown error',
+          restaurantId,
+        });
+        throw err;
+      })
+      .finally(() => {
+        restaurantProfileRequestByIdRef.current.delete(restaurantId);
+      });
+    restaurantProfileRequestByIdRef.current.set(restaurantId, request);
+    return request;
+  }, []);
+
+  const seedRestaurantProfile = React.useCallback(
+    (restaurant: RestaurantResult, queryLabel: string) => {
+      const restaurantId = restaurant.restaurantId;
+      const cachedProfile = restaurantProfileCacheRef.current.get(restaurantId);
+      setRestaurantProfile((prev) => {
+        const isSameRestaurant = prev?.restaurant.restaurantId === restaurantId;
+        const existingDishes = isSameRestaurant ? prev?.dishes ?? [] : [];
+        const nextDishes = cachedProfile?.dishes ?? existingDishes;
+        const seededRestaurant = cachedProfile
+          ? {
+              ...cachedProfile.restaurant,
+              contextualScore: restaurant.contextualScore,
+            }
+          : restaurant;
+        const shouldShowLoading = !cachedProfile && nextDishes.length === 0;
+        return {
+          restaurant: seededRestaurant,
+          dishes: nextDishes,
+          queryLabel,
+          isFavorite: isSameRestaurant ? prev?.isFavorite ?? false : false,
+          isLoading: shouldShowLoading,
+        };
+      });
+      restaurantOverlayDismissHandledRef.current = false;
+      setRestaurantOverlayVisible(true);
+    },
+    []
+  );
+
+  const hydrateRestaurantProfileById = React.useCallback(
+    (restaurantId: string) => {
+      if (!restaurantId) {
+        return;
+      }
+      const requestSeq = (restaurantProfileRequestSeqRef.current += 1);
+      const cachedProfile = restaurantProfileCacheRef.current.get(restaurantId);
+      if (cachedProfile) {
+        setRestaurantProfile((prev) => {
+          if (!prev || prev.restaurant.restaurantId !== restaurantId) {
+            return prev;
+          }
+          const contextualScore =
+            typeof prev.restaurant.contextualScore === 'number' && prev.restaurant.contextualScore > 0
+              ? prev.restaurant.contextualScore
+              : cachedProfile.restaurant.contextualScore;
+          return {
+            ...prev,
+            restaurant: {
+              ...cachedProfile.restaurant,
+              contextualScore,
+            },
+            dishes: cachedProfile.dishes,
+            isLoading: false,
+          };
+        });
+        return;
+      }
+      setRestaurantProfile((prev) => {
+        if (!prev || prev.restaurant.restaurantId !== restaurantId) {
+          return prev;
+        }
+        if (prev.dishes.length > 0 || prev.isLoading) {
+          return prev;
+        }
+        return {
+          ...prev,
+          isLoading: true,
+        };
+      });
+      void loadRestaurantProfileData(restaurantId)
+        .then((loadedProfile) => {
+          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
+            return;
+          }
+          setRestaurantProfile((prev) => {
+            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
+              return prev;
+            }
+            const contextualScore =
+              typeof prev.restaurant.contextualScore === 'number' &&
+              prev.restaurant.contextualScore > 0
+                ? prev.restaurant.contextualScore
+                : loadedProfile.restaurant.contextualScore;
+            return {
+              ...prev,
+              restaurant: {
+                ...loadedProfile.restaurant,
+                contextualScore,
+              },
+              dishes: loadedProfile.dishes,
+              isLoading: false,
+            };
+          });
+        })
+        .catch(() => {
+          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
+            return;
+          }
+          setRestaurantProfile((prev) => {
+            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
+              return prev;
+            }
+            return {
+              ...prev,
+              isLoading: false,
+            };
+          });
+        });
+    },
+    [loadRestaurantProfileData]
+  );
+
+  const focusRestaurantProfileCamera = React.useCallback(
+    (
+      restaurant: RestaurantResult,
+      source: 'results_sheet' | 'auto_open_single_candidate' | 'autocomplete' | 'dish_card',
+      options?: {
+        pressedCoordinate?: Coordinate | null;
+        preferPressedCoordinate?: boolean;
+      }
+    ) => {
+      const shouldMoveCameraForProfileOpen =
+        source === 'results_sheet' ||
+        source === 'dish_card' ||
+        source === 'autocomplete' ||
+        source === 'auto_open_single_candidate';
+      if (!shouldMoveCameraForProfileOpen) {
+        return;
+      }
+      const pressedCoordinate = options?.pressedCoordinate ?? null;
+      const preferPressedCoordinate = options?.preferPressedCoordinate === true;
+      const profilePadding = resolveProfileCameraPadding();
+      const restaurantLocations = resolveRestaurantMapLocations(restaurant);
+      const locationSelectionAnchor = resolveRestaurantLocationSelectionAnchor();
+      const pressedFocusLocation =
+        preferPressedCoordinate && pressedCoordinate
+          ? pickClosestLocationToCenter(restaurantLocations, pressedCoordinate)
+          : null;
+      const focusLocation =
+        pressedFocusLocation ??
+        pickPreferredRestaurantMapLocation(restaurant, locationSelectionAnchor) ??
+        null;
+      const focusCoordinate = focusLocation
+        ? ({ lng: focusLocation.longitude, lat: focusLocation.latitude } as Coordinate)
+        : pressedCoordinate ?? null;
+      if (!focusCoordinate) {
+        return;
+      }
+      const focusLocationKey = focusLocation
+        ? `${restaurant.restaurantId}:${focusLocation.locationId}`
+        : pressedCoordinate
+        ? `${restaurant.restaurantId}:${pressedCoordinate.lng.toFixed(
+            5
+          )}:${pressedCoordinate.lat.toFixed(5)}`
+        : `${restaurant.restaurantId}:anchor`;
+      const previousFocusSession = restaurantFocusSessionRef.current;
+      const isSameRestaurantFocusSession = previousFocusSession.restaurantId === restaurant.restaurantId;
+      const shouldApplyInitialMultiLocationZoomOut =
+        restaurantLocations.length > 1 &&
+        (source === 'results_sheet' ||
+          source === 'auto_open_single_candidate' ||
+          source === 'autocomplete') &&
+        (!isSameRestaurantFocusSession ||
+          !previousFocusSession.hasAppliedInitialMultiLocationZoomOut);
+      const hasAppliedMultiLocationZoomOut =
+        (isSameRestaurantFocusSession &&
+          previousFocusSession.hasAppliedInitialMultiLocationZoomOut) ||
+        shouldApplyInitialMultiLocationZoomOut;
+      const nextCenter: [number, number] = [focusCoordinate.lng, focusCoordinate.lat];
+      const currentZoom =
+        lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
+      if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
+        const nextZoom = shouldApplyInitialMultiLocationZoomOut
+          ? Math.max(
+              currentZoom - PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA,
+              PROFILE_MULTI_LOCATION_MIN_ZOOM
+            )
+          : currentZoom;
+        const isSameFocusedLocation =
+          isSameRestaurantFocusSession && previousFocusSession.locationKey === focusLocationKey;
+        const currentCenter = lastCameraStateRef.current?.center ?? null;
+        const isAlreadyCenteredOnTarget =
+          currentCenter != null &&
+          Math.abs(currentCenter[0] - nextCenter[0]) <= RESTAURANT_FOCUS_CENTER_EPSILON &&
+          Math.abs(currentCenter[1] - nextCenter[1]) <= RESTAURANT_FOCUS_CENTER_EPSILON;
+        const isAlreadyAtTargetZoom =
+          Math.abs(currentZoom - nextZoom) <= RESTAURANT_FOCUS_ZOOM_EPSILON;
+        if (
+          isSameFocusedLocation &&
+          (cameraStateSyncTimeoutRef.current != null ||
+            (isAlreadyCenteredOnTarget && isAlreadyAtTargetZoom))
+        ) {
+          return;
+        }
+        restaurantFocusSessionRef.current = {
+          restaurantId: restaurant.restaurantId,
+          locationKey: focusLocationKey,
+          hasAppliedInitialMultiLocationZoomOut: hasAppliedMultiLocationZoomOut,
+        };
+        scheduleCameraCommand(() => {
+          clearCameraPersistTimeout();
+          setIsFollowingUser(false);
+          suppressMapMoved();
+          if (!cameraRef.current?.setCamera) {
+            commitCameraState({
+              center: nextCenter,
+              zoom: nextZoom,
+              padding: profilePadding,
+            });
+            return;
+          }
+          cameraRef.current.setCamera({
+            centerCoordinate: nextCenter,
+            zoomLevel: nextZoom,
+            padding: profilePadding,
+            animationDuration: PROFILE_CAMERA_ANIMATION_MS,
+            animationMode: 'easeTo',
+          });
+          scheduleCameraStateCommit(
+            {
+              center: nextCenter,
+              zoom: nextZoom,
+              padding: profilePadding,
+            },
+            PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS
+          );
+        });
+      } else if (lastCameraStateRef.current) {
+        restaurantFocusSessionRef.current = {
+          restaurantId: restaurant.restaurantId,
+          locationKey: focusLocationKey,
+          hasAppliedInitialMultiLocationZoomOut: hasAppliedMultiLocationZoomOut,
+        };
+        lastCameraStateRef.current = { ...lastCameraStateRef.current, center: nextCenter };
+      }
+    },
+    [
+      clearCameraPersistTimeout,
+      commitCameraState,
+      mapZoom,
+      pickClosestLocationToCenter,
+      pickPreferredRestaurantMapLocation,
+      resolveRestaurantMapLocations,
+      resolveRestaurantLocationSelectionAnchor,
+      resolveProfileCameraPadding,
+      scheduleCameraCommand,
+      scheduleCameraStateCommit,
+      setIsFollowingUser,
+      suppressMapMoved,
+    ]
+  );
+
   const openRestaurantProfilePreview = React.useCallback(
     (restaurantId: string, restaurantName: string, pressedCoordinate?: Coordinate | null) => {
       const trimmedName = restaurantName.trim();
@@ -6862,6 +7417,7 @@ const SearchScreen: React.FC = () => {
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
       }
+      setActiveMarkerRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
       ensureSearchOverlay();
       dismissTransientOverlays();
       const shouldDeferSuggestionClear = beginSuggestionCloseHold();
@@ -6876,16 +7432,6 @@ const SearchScreen: React.FC = () => {
       profileDismissBehaviorRef.current = forceMiddleSnap ? 'restore' : 'clear';
       shouldClearSearchOnProfileDismissRef.current = false;
       ensureProfileTransitionSnapshot();
-      if (forceMiddleSnap) {
-        const overlaySnapStore = useOverlaySheetPositionStore.getState();
-        overlaySnapStore.setSharedSnap('middle');
-      } else {
-        transition.savedSheetSnap = 'hidden';
-      }
-      setRestaurantSnapRequest({
-        snap: 'middle',
-        token: (restaurantSnapRequestTokenRef.current += 1),
-      });
       clearCameraPersistTimeout();
       clearCameraStateSync();
       if (fitBoundsSyncTimeoutRef.current) {
@@ -6930,55 +7476,28 @@ const SearchScreen: React.FC = () => {
           lastCameraStateRef.current = { ...lastCameraStateRef.current, center: nextCenter };
         }
       }
+      if (forceMiddleSnap) {
+        const overlaySnapStore = useOverlaySheetPositionStore.getState();
+        overlaySnapStore.setSharedSnap('middle');
+      } else {
+        transition.savedSheetSnap = 'hidden';
+      }
+      setRestaurantSnapRequest({
+        snap: 'middle',
+        token: (restaurantSnapRequestTokenRef.current += 1),
+      });
       setProfileTransitionStatus(forceMiddleSnap ? 'opening' : 'open', 'open');
-      setRestaurantProfile({
-        restaurant: {
+      seedRestaurantProfile(
+        {
           restaurantId,
           restaurantName: trimmedName,
           restaurantAliases: [],
           contextualScore: 0,
           topFood: [],
         },
-        dishes: [],
-        queryLabel: trimmedName,
-        isFavorite: false,
-        isLoading: true,
-      });
-      setRestaurantOverlayVisible(true);
-
-      const requestSeq = (restaurantProfileRequestSeqRef.current += 1);
-      void searchService
-        .restaurantDishes(restaurantId)
-        .then((loadedDishes) => {
-          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
-            return;
-          }
-          setRestaurantProfile((prev) => {
-            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
-              return prev;
-            }
-            return {
-              ...prev,
-              dishes: Array.isArray(loadedDishes) ? loadedDishes : [],
-              isLoading: false,
-            };
-          });
-        })
-        .catch((err) => {
-          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
-            return;
-          }
-          logger.warn('Restaurant dish fetch failed', {
-            message: err instanceof Error ? err.message : 'unknown error',
-            restaurantId,
-          });
-          setRestaurantProfile((prev) => {
-            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
-              return prev;
-            }
-            return { ...prev, dishes: [], isLoading: false };
-          });
-        });
+        trimmedName
+      );
+      hydrateRestaurantProfileById(restaurantId);
     },
     [
       beginSuggestionCloseHold,
@@ -6988,11 +7507,12 @@ const SearchScreen: React.FC = () => {
       dismissTransientOverlays,
       ensureSearchOverlay,
       ensureProfileTransitionSnapshot,
+      hydrateRestaurantProfileById,
       mapZoom,
       resolveProfileCameraPadding,
-      restaurantProfileRequestSeqRef,
       scheduleCameraCommand,
       scheduleCameraStateCommit,
+      seedRestaurantProfile,
       setIsFollowingUser,
       setRestaurantSnapRequest,
       setIsSearchFocused,
@@ -7000,6 +7520,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions,
       setSuggestions,
       suppressMapMoved,
+      setActiveMarkerRestaurantId,
     ]
   );
   openRestaurantProfilePreviewRef.current = openRestaurantProfilePreview;
@@ -7021,6 +7542,9 @@ const SearchScreen: React.FC = () => {
       if (transition.status === 'opening' || transition.status === 'closing') {
         return;
       }
+      setActiveMarkerRestaurantId((prev) =>
+        prev === restaurant.restaurantId ? prev : restaurant.restaurantId
+      );
       ensureSearchOverlay();
       dismissTransientOverlays();
       const shouldDeferSuggestionClear = beginSuggestionCloseHold();
@@ -7032,14 +7556,31 @@ const SearchScreen: React.FC = () => {
       }
       inputRef.current?.blur();
       Keyboard.dismiss();
+      const isRestaurantOnlyContext =
+        source === 'autocomplete' ||
+        restaurantOnlySearchRef.current === restaurant.restaurantId ||
+        restaurantOnlyId === restaurant.restaurantId;
       const shouldClearOnDismiss =
-        !forceMiddleSnap &&
-        (source === 'auto_open_single_candidate' ||
-          restaurantOnlySearchRef.current === restaurant.restaurantId);
+        source === 'auto_open_single_candidate' || isRestaurantOnlyContext;
       profileDismissBehaviorRef.current = shouldClearOnDismiss ? 'clear' : 'restore';
       shouldClearSearchOnProfileDismissRef.current = shouldClearOnDismiss;
       const label = (submittedQuery || trimmedQuery || 'Search').trim();
       ensureProfileTransitionSnapshot();
+      clearCameraPersistTimeout();
+      clearCameraStateSync();
+      if (fitBoundsSyncTimeoutRef.current) {
+        clearTimeout(fitBoundsSyncTimeoutRef.current);
+        fitBoundsSyncTimeoutRef.current = null;
+      }
+      const shouldPreferPressedCoordinate =
+        source === 'results_sheet' &&
+        Boolean(pressedCoordinate) &&
+        isRestaurantOverlayVisible &&
+        restaurantProfile?.restaurant.restaurantId === restaurant.restaurantId;
+      focusRestaurantProfileCamera(restaurant, source, {
+        pressedCoordinate,
+        preferPressedCoordinate: shouldPreferPressedCoordinate,
+      });
       if (forceMiddleSnap) {
         const overlaySnapStore = useOverlaySheetPositionStore.getState();
         overlaySnapStore.setSharedSnap('middle');
@@ -7054,123 +7595,14 @@ const SearchScreen: React.FC = () => {
         setIsInitialCameraReady(true);
       }
       setProfileTransitionStatus('opening', 'open');
-      clearCameraPersistTimeout();
-      clearCameraStateSync();
-      if (fitBoundsSyncTimeoutRef.current) {
-        clearTimeout(fitBoundsSyncTimeoutRef.current);
-        fitBoundsSyncTimeoutRef.current = null;
-      }
       // Store and hide save sheet if visible
       if (saveSheetState.visible && !previousSaveSheetStateRef.current) {
         previousSaveSheetStateRef.current = saveSheetState;
         setSaveSheetState((prev) => ({ ...prev, visible: false }));
       }
 
-      const shouldMoveCameraForProfileOpen = source === 'results_sheet' || source === 'dish_card';
-      if (shouldMoveCameraForProfileOpen) {
-        const profilePadding = resolveProfileCameraPadding();
-        const restaurantLocations = resolveRestaurantMapLocations(restaurant);
-        const searchCenter = resolveSearchViewportCenter();
-        const isPressedMapPin = source === 'results_sheet' && Boolean(pressedCoordinate);
-        const shouldZoomOutForMultiLocation = isPressedMapPin && restaurantLocations.length > 1;
-        const focusLocation =
-          (pressedCoordinate
-            ? pickClosestLocationToCenter(restaurantLocations, pressedCoordinate)
-            : null) ??
-          pickClosestLocationToCenter(restaurantLocations, searchCenter) ??
-          restaurantLocations[0] ??
-          null;
-        const focusCoordinate = focusLocation
-          ? ({ lng: focusLocation.longitude, lat: focusLocation.latitude } as Coordinate)
-          : pressedCoordinate ?? null;
-        if (focusCoordinate) {
-          const nextCenter: [number, number] = [focusCoordinate.lng, focusCoordinate.lat];
-          const currentZoom =
-            lastCameraStateRef.current?.zoom ?? (typeof mapZoom === 'number' ? mapZoom : null);
-          if (typeof currentZoom === 'number' && Number.isFinite(currentZoom)) {
-            const nextZoom = shouldZoomOutForMultiLocation
-              ? Math.max(
-                  currentZoom - PROFILE_MULTI_LOCATION_ZOOM_OUT_DELTA,
-                  PROFILE_MULTI_LOCATION_MIN_ZOOM
-                )
-              : currentZoom;
-            scheduleCameraCommand(() => {
-              clearCameraPersistTimeout();
-              setIsFollowingUser(false);
-              suppressMapMoved();
-              if (!cameraRef.current?.setCamera) {
-                commitCameraState({
-                  center: nextCenter,
-                  zoom: nextZoom,
-                  padding: profilePadding,
-                });
-                return;
-              }
-              cameraRef.current.setCamera({
-                centerCoordinate: nextCenter,
-                zoomLevel: nextZoom,
-                padding: profilePadding,
-                animationDuration: PROFILE_CAMERA_ANIMATION_MS,
-                animationMode: 'easeTo',
-              });
-              scheduleCameraStateCommit(
-                {
-                  center: nextCenter,
-                  zoom: nextZoom,
-                  padding: profilePadding,
-                },
-                PROFILE_CAMERA_ANIMATION_MS + FIT_BOUNDS_SYNC_BUFFER_MS
-              );
-            });
-          } else if (lastCameraStateRef.current) {
-            lastCameraStateRef.current = { ...lastCameraStateRef.current, center: nextCenter };
-          }
-        }
-      }
-
-      setRestaurantProfile({
-        restaurant,
-        dishes: [],
-        queryLabel: label,
-        isFavorite: false,
-        isLoading: true,
-      });
-      setRestaurantOverlayVisible(true);
-
-      const restaurantId = restaurant.restaurantId;
-      const requestSeq = (restaurantProfileRequestSeqRef.current += 1);
-      void searchService
-        .restaurantDishes(restaurantId)
-        .then((loadedDishes) => {
-          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
-            return;
-          }
-          setRestaurantProfile((prev) => {
-            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
-              return prev;
-            }
-            return {
-              ...prev,
-              dishes: Array.isArray(loadedDishes) ? loadedDishes : [],
-              isLoading: false,
-            };
-          });
-        })
-        .catch((err) => {
-          if (requestSeq !== restaurantProfileRequestSeqRef.current) {
-            return;
-          }
-          logger.warn('Restaurant dish fetch failed', {
-            message: err instanceof Error ? err.message : 'unknown error',
-            restaurantId,
-          });
-          setRestaurantProfile((prev) => {
-            if (!prev || prev.restaurant.restaurantId !== restaurantId) {
-              return prev;
-            }
-            return { ...prev, dishes: [], isLoading: false };
-          });
-        });
+      seedRestaurantProfile(restaurant, label);
+      hydrateRestaurantProfileById(restaurant.restaurantId);
 
       if (source !== 'autocomplete' && source !== 'dish_card') {
         deferRecentlyViewedTrack(restaurant.restaurantId, restaurant.restaurantName);
@@ -7185,27 +7617,24 @@ const SearchScreen: React.FC = () => {
       dismissTransientOverlays,
       ensureSearchOverlay,
       ensureProfileTransitionSnapshot,
+      focusRestaurantProfileCamera,
+      hydrateRestaurantProfileById,
       isInitialCameraReady,
-      mapZoom,
-      pickClosestLocationToCenter,
-      resolveRestaurantMapLocations,
-      resolveProfileCameraPadding,
-      resolveSearchViewportCenter,
+      isRestaurantOverlayVisible,
+      restaurantOnlyId,
+      restaurantProfile,
       saveSheetState,
-      scheduleCameraCommand,
-      scheduleCameraStateCommit,
+      seedRestaurantProfile,
       setIsSearchFocused,
       setIsInitialCameraReady,
       setRestaurantSnapRequest,
       setProfileTransitionStatus,
       setShowSuggestions,
       setSuggestions,
+      setActiveMarkerRestaurantId,
       submittedQuery,
-      suppressMapMoved,
       trimmedQuery,
-      trackRecentlyViewedRestaurant,
       recordRestaurantView,
-      restaurantProfileRequestSeqRef,
     ]
   );
 
@@ -7250,7 +7679,7 @@ const SearchScreen: React.FC = () => {
 
   const shortcutCoverageRestaurantNameById = React.useMemo(() => {
     const map = new Map<string, string>();
-    const features = shortcutCoverageDotFeatures?.features ?? [];
+    const features = shortcutCoverageAnchoredDotFeatures?.features ?? [];
     for (const feature of features) {
       const props = feature.properties;
       const restaurantId = props?.restaurantId;
@@ -7260,10 +7689,11 @@ const SearchScreen: React.FC = () => {
       }
     }
     return map;
-  }, [shortcutCoverageDotFeatures?.features]);
+  }, [shortcutCoverageAnchoredDotFeatures?.features]);
 
   const handleMarkerPress = React.useCallback(
     (restaurantId: string, pressedCoordinate?: Coordinate | null) => {
+      setActiveMarkerRestaurantId((prev) => (prev === restaurantId ? prev : restaurantId));
       const restaurant = restaurants.find((r) => r.restaurantId === restaurantId);
       if (!restaurant) {
         const fallbackName = shortcutCoverageRestaurantNameById.get(restaurantId);
@@ -7280,6 +7710,7 @@ const SearchScreen: React.FC = () => {
       openRestaurantProfile,
       openRestaurantProfilePreview,
       restaurants,
+      setActiveMarkerRestaurantId,
       shortcutCoverageRestaurantNameById,
     ]
   );
@@ -7343,8 +7774,39 @@ const SearchScreen: React.FC = () => {
         return;
       }
       pendingRestaurantSelectionRef.current = null;
-      openRestaurantProfile(targetRestaurant, results.dishes ?? [], null, 'autocomplete');
       const queryKey = (submittedQuery || trimmedQuery).trim();
+      const isTargetProfileAlreadyOpen =
+        isRestaurantOverlayVisible &&
+        restaurantProfile?.restaurant.restaurantId === targetRestaurant.restaurantId;
+      if (isTargetProfileAlreadyOpen) {
+        const queryLabel = queryKey || targetRestaurant.restaurantName || 'Search';
+        const cachedProfile = restaurantProfileCacheRef.current.get(targetRestaurant.restaurantId);
+        setRestaurantProfile((prev) => {
+          if (!prev || prev.restaurant.restaurantId !== targetRestaurant.restaurantId) {
+            return prev;
+          }
+          const nextDishes = cachedProfile?.dishes ?? prev.dishes;
+          const nextRestaurant = cachedProfile
+            ? {
+                ...cachedProfile.restaurant,
+                contextualScore: targetRestaurant.contextualScore,
+              }
+            : targetRestaurant;
+          return {
+            ...prev,
+            restaurant: nextRestaurant,
+            queryLabel,
+            dishes: nextDishes,
+            isLoading: !cachedProfile && nextDishes.length === 0,
+          };
+        });
+        restaurantOverlayDismissHandledRef.current = false;
+        setRestaurantOverlayVisible(true);
+        focusRestaurantProfileCamera(targetRestaurant, 'autocomplete');
+        hydrateRestaurantProfileById(targetRestaurant.restaurantId);
+      } else {
+        openRestaurantProfile(targetRestaurant, results.dishes ?? [], null, 'autocomplete');
+      }
       if (queryKey) {
         lastAutoOpenKeyRef.current = `${queryKey.toLowerCase()}::${targetRestaurant.restaurantId}`;
       }
@@ -7370,10 +7832,16 @@ const SearchScreen: React.FC = () => {
     );
     lastAutoOpenKeyRef.current = autoOpenKey;
   }, [
+    focusRestaurantProfileCamera,
+    hydrateRestaurantProfileById,
     isSearchFocused,
+    isRestaurantOverlayVisible,
     isSuggestionPanelActive,
     openRestaurantProfile,
+    restaurantProfile,
     results,
+    setRestaurantProfile,
+    setRestaurantOverlayVisible,
     submittedQuery,
     trimmedQuery,
   ]);
@@ -7469,40 +7937,11 @@ const SearchScreen: React.FC = () => {
     const transition = profileTransitionRef.current;
     const fallbackState = lastVisibleSheetStateRef.current;
     const targetState = transition.savedSheetSnap ?? fallbackState;
-    if (targetState && targetState !== 'hidden' && targetState !== sheetState) {
+    if (targetState && targetState !== 'hidden') {
       animateSheetTo(targetState);
     }
     transition.savedSheetSnap = null;
-  }, [animateSheetTo, sheetState]);
-
-  const restaurantOverlaySnapPointsRef = React.useRef<typeof snapPoints | null>(null);
-  const captureNearestSnapFromPoints = React.useCallback(
-    (points: typeof snapPoints | null): Exclude<OverlaySheetSnap, 'hidden'> => {
-      const candidates: Array<Exclude<OverlaySheetSnap, 'hidden'>> = [
-        'expanded',
-        'middle',
-        'collapsed',
-      ];
-      const y = sheetTranslateY.value;
-      if (typeof y !== 'number' || !Number.isFinite(y)) {
-        return lastVisibleSheetStateRef.current;
-      }
-
-      const resolvedPoints = points ?? snapPoints;
-      let best: Exclude<OverlaySheetSnap, 'hidden'> = 'middle';
-      let bestDistance = Number.POSITIVE_INFINITY;
-      for (const snap of candidates) {
-        const target = resolvedPoints[snap];
-        const distance = Math.abs(y - target);
-        if (distance < bestDistance) {
-          best = snap;
-          bestDistance = distance;
-        }
-      }
-      return best;
-    },
-    [sheetTranslateY, snapPoints]
-  );
+  }, [animateSheetTo]);
 
   const closeRestaurantProfile = React.useCallback(() => {
     // Guard against calling close when already closed or nothing to close
@@ -7520,17 +7959,11 @@ const SearchScreen: React.FC = () => {
       }
       setHydratedResultsKeySync(resultsHydrationKey);
     }
-    if (profileDismissBehaviorRef.current === 'restore') {
-      transition.savedSheetSnap = captureNearestSnapFromPoints(
-        restaurantOverlaySnapPointsRef.current
-      );
-    }
     if (profileDismissBehaviorRef.current === 'clear') {
       resetSheetToHidden();
     }
     handleRestaurantOverlayDismissed();
   }, [
-    captureNearestSnapFromPoints,
     handleRestaurantOverlayDismissed,
     hydratedResultsKey,
     isRestaurantOverlayVisible,
@@ -7546,10 +7979,25 @@ const SearchScreen: React.FC = () => {
   }, [closeRestaurantProfile]);
 
   const handleRestaurantOverlayDismissed = React.useCallback(() => {
+    if (restaurantOverlayDismissHandledRef.current) {
+      return;
+    }
+    if (!restaurantProfile && !isRestaurantOverlayVisible) {
+      return;
+    }
+    restaurantOverlayDismissHandledRef.current = true;
+    restaurantProfileRequestSeqRef.current += 1;
     const shouldRestoreSearchSheet = profileDismissBehaviorRef.current !== 'clear';
     const shouldClearSearch = shouldClearSearchOnProfileDismissRef.current;
+    setRestaurantSnapRequest(null);
+    setActiveMarkerRestaurantId(null);
     setRestaurantProfile(null);
     setRestaurantOverlayVisible(false);
+    restaurantFocusSessionRef.current = {
+      restaurantId: null,
+      locationKey: null,
+      hasAppliedInitialMultiLocationZoomOut: false,
+    };
     restoreRestaurantProfileMap();
     if (isSearchOverlay && shouldRestoreSearchSheet) {
       restoreSearchSheetState();
@@ -7586,6 +8034,7 @@ const SearchScreen: React.FC = () => {
     restoreRestaurantProfileMap,
     restoreSearchSheetState,
     sheetState,
+    setActiveMarkerRestaurantId,
     setProfileTransitionStatusState,
   ]);
   const primaryCoverageKey = results?.metadata?.coverageKey ?? null;
@@ -7606,6 +8055,13 @@ const SearchScreen: React.FC = () => {
 
   const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
   const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
+  const restaurantRankById = React.useMemo(() => {
+    const map = new Map<string, number>();
+    restaurants.forEach((restaurant, index) => {
+      map.set(restaurant.restaurantId, index + 1);
+    });
+    return map;
+  }, [restaurants]);
   const restaurantQualityColorById = React.useMemo(() => {
     const map = new Map<string, string>();
     restaurants.forEach((restaurant) => {
@@ -7660,6 +8116,7 @@ const SearchScreen: React.FC = () => {
   const renderRestaurantCard = React.useCallback(
     (restaurant: RestaurantResult, index: number) => {
       const isLiked = false;
+      const rank = restaurantRankById.get(restaurant.restaurantId) ?? index + 1;
       const qualityColor =
         restaurantQualityColorByIdRef.current.get(restaurant.restaurantId) ??
         getMarkerColorForRestaurant(restaurant, scoreMode);
@@ -7667,6 +8124,7 @@ const SearchScreen: React.FC = () => {
         <RestaurantResultCard
           restaurant={restaurant}
           index={index}
+          rank={rank}
           qualityColor={qualityColor}
           isLiked={isLiked}
           scoreMode={scoreMode}
@@ -7687,6 +8145,7 @@ const SearchScreen: React.FC = () => {
       openScoreInfo,
       primaryFoodTerm,
       primaryCoverageKey,
+      restaurantRankById,
     ]
   );
 
@@ -8386,7 +8845,9 @@ const SearchScreen: React.FC = () => {
     snapPoints,
     onSnapStart: handlePollsSnapStart,
     onSnapChange: handlePollsSnapChange,
-    snapTo: pollsOverlayMode === 'overlay' ? tabOverlaySnapRequest : pollsDockedSnapRequest,
+    snapTo:
+      pollsOverlayMode === 'overlay' ? tabOverlaySnapRequest : pollsDockedSnapRequest?.snap ?? null,
+    snapToToken: pollsOverlayMode === 'overlay' ? undefined : pollsDockedSnapRequest?.token,
     onRequestReturnToSearch: requestReturnToSearchFromPolls,
     onRequestPollCreationExpand: requestPollCreationExpand,
     sheetY: sheetTranslateY,
@@ -8427,7 +8888,6 @@ const SearchScreen: React.FC = () => {
     interactionEnabled: shouldEnableRestaurantOverlayInteraction,
     containerStyle: restaurantOverlayAnimatedStyle,
   });
-  restaurantOverlaySnapPointsRef.current = restaurantPanelSpecBase?.snapPoints ?? null;
   const restaurantPanelSpec = React.useMemo(() => {
     if (!restaurantPanelSpecBase) {
       return null;
@@ -8545,7 +9005,7 @@ const SearchScreen: React.FC = () => {
     shouldSuppressTabOverlaySheetForSuggestions,
   ]);
   const overlaySheetVisible = Boolean(overlaySheetSpec && overlaySheetKey);
-  const overlaySheetApplyNavBarCutout = overlaySheetVisible && !shouldHideBottomNav;
+  const overlaySheetApplyNavBarCutout = overlaySheetVisible;
 
   React.useEffect(() => {
     if (overlaySheetKey === 'search') {
@@ -8588,12 +9048,14 @@ const SearchScreen: React.FC = () => {
               onMapLoaded={stableHandleMapLoaded}
               onMarkerPress={stableHandleMarkerPress}
               onVisualReady={stableHandleMapVisualReady}
-              selectedRestaurantId={selectedRestaurantId}
+              selectedRestaurantId={highlightedRestaurantId}
               sortedRestaurantMarkers={visibleSortedRestaurantMarkers}
               dotRestaurantFeatures={visibleDotRestaurantFeatures}
               markersRenderKey={visibleMarkersRenderKey}
               pinsRenderKey={visiblePinsRenderKey}
-              pinRevealRequestKey={resultsVisualSyncCandidate}
+              markerRevealCommitId={
+                resultsVisualSyncCandidate != null ? markerRevealCommitId : null
+              }
               visualReadyRequestKey={resultsVisualSyncCandidate}
               shouldSignalVisualReady={shouldSignalMapVisualReady}
               requireMarkerVisualsForVisualReady={hasAnySearchResults}
@@ -8951,7 +9413,7 @@ const SearchScreen: React.FC = () => {
                   </Reanimated.View>
                 ) : null}
                 <Reanimated.View
-                  pointerEvents={shouldShowSearchThisArea ? 'auto' : 'none'}
+                  pointerEvents={shouldShowSearchThisArea ? 'box-none' : 'none'}
                   style={[
                     styles.searchThisAreaContainer,
                     { top: searchThisAreaTop },
@@ -8984,59 +9446,36 @@ const SearchScreen: React.FC = () => {
                     momentumFlag={resultsMomentum}
                     headerActionProgress={overlayHeaderActionProgress}
                     headerActionMode={overlayHeaderActionMode}
-                    navBarHeight={navBarHeight}
+                    navBarHeight={navBarCutoutHeight}
                     applyNavBarCutout={overlaySheetApplyNavBarCutout}
+                    navBarCutoutProgress={bottomNavHideProgress}
+                    navBarHiddenTranslateY={bottomNavHiddenTranslateY}
+                    navBarCutoutIsHiding={shouldHideBottomNav}
                   />
                 ) : null}
               </React.Profiler>
             </SearchInteractionProvider>
           </>
         )}
-        {!shouldHideBottomNav && (
-          <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
-            <View style={styles.bottomNavWrapper} pointerEvents="box-none">
-              <View
-                style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
-                onLayout={handleBottomNavLayout}
-              >
-                <View style={styles.bottomNavBackground} pointerEvents="none">
-                  {!shouldDisableSearchBlur && <FrostedGlassBackground />}
-                </View>
-                {navItems.map((item) => {
-                  const active = rootOverlay === item.key;
-                  const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
-                  const renderIcon = navIconRenderers[item.key];
-                  if (item.key === 'profile') {
-                    return (
-                      <TouchableOpacity
-                        key={item.key}
-                        style={styles.navButton}
-                        onPress={handleProfilePress}
-                      >
-                        <Reanimated.View
-                          style={[
-                            { alignItems: 'center', justifyContent: 'center' },
-                            bottomNavItemVisibilityAnimatedStyle,
-                          ]}
-                        >
-                          <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
-                          <Text
-                            variant="body"
-                            weight={active ? 'semibold' : 'regular'}
-                            style={[styles.navLabel, active && styles.navLabelActive]}
-                          >
-                            {item.label}
-                          </Text>
-                        </Reanimated.View>
-                      </TouchableOpacity>
-                    );
-                  }
+        <React.Profiler id="BottomNav" onRender={handleProfilerRender}>
+          <Reanimated.View
+            style={[styles.bottomNavWrapper, bottomNavAnimatedStyle]}
+            pointerEvents={shouldHideBottomNav ? 'none' : 'box-none'}
+          >
+            <View
+              style={[styles.bottomNav, { paddingBottom: bottomInset + NAV_BOTTOM_PADDING }]}
+              onLayout={handleBottomNavLayout}
+            >
+              <View style={styles.bottomNavBackground} pointerEvents="none">
+                {!shouldDisableSearchBlur && <FrostedGlassBackground />}
+              </View>
+              {navItems.map((item) => {
+                const active = rootOverlay === item.key;
+                const iconColor = active ? ACTIVE_TAB_COLOR : themeColors.textBody;
+                const renderIcon = navIconRenderers[item.key];
+                if (item.key === 'profile') {
                   return (
-                    <TouchableOpacity
-                      key={item.key}
-                      style={styles.navButton}
-                      onPress={() => handleOverlaySelect(item.key)}
-                    >
+                    <TouchableOpacity key={item.key} style={styles.navButton} onPress={handleProfilePress}>
                       <Reanimated.View
                         style={[
                           { alignItems: 'center', justifyContent: 'center' },
@@ -9054,11 +9493,34 @@ const SearchScreen: React.FC = () => {
                       </Reanimated.View>
                     </TouchableOpacity>
                   );
-                })}
-              </View>
+                }
+                return (
+                  <TouchableOpacity
+                    key={item.key}
+                    style={styles.navButton}
+                    onPress={() => handleOverlaySelect(item.key)}
+                  >
+                    <Reanimated.View
+                      style={[
+                        { alignItems: 'center', justifyContent: 'center' },
+                        bottomNavItemVisibilityAnimatedStyle,
+                      ]}
+                    >
+                      <View style={styles.navIcon}>{renderIcon(iconColor, active)}</View>
+                      <Text
+                        variant="body"
+                        weight={active ? 'semibold' : 'regular'}
+                        style={[styles.navLabel, active && styles.navLabelActive]}
+                      >
+                        {item.label}
+                      </Text>
+                    </Reanimated.View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
-          </React.Profiler>
-        )}
+          </Reanimated.View>
+        </React.Profiler>
         <React.Profiler id="Overlays" onRender={handleProfilerRender}>
           <>
             <React.Profiler id="RankSheet" onRender={handleProfilerRender}>
@@ -9146,7 +9608,11 @@ const SearchScreen: React.FC = () => {
                     accessibilityLabel="Cancel rank mode changes"
                     style={styles.sheetCancelButton}
                   >
-                    <Text variant="caption" weight="semibold" style={styles.sheetCancelText}>
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.sheetCancelText, { color: ACTIVE_TAB_COLOR_DARK }]}
+                    >
                       Cancel
                     </Text>
                   </Pressable>
@@ -9251,7 +9717,11 @@ const SearchScreen: React.FC = () => {
                     accessibilityLabel="Cancel price changes"
                     style={styles.sheetCancelButton}
                   >
-                    <Text variant="caption" weight="semibold" style={styles.sheetCancelText}>
+                    <Text
+                      variant="caption"
+                      weight="semibold"
+                      style={[styles.sheetCancelText, { color: ACTIVE_TAB_COLOR_DARK }]}
+                    >
                       Cancel
                     </Text>
                   </Pressable>

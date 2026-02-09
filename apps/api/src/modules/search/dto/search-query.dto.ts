@@ -27,6 +27,7 @@ import type {
   QueryFormat as SharedQueryFormat,
   QueryPlan as SharedQueryPlan,
   RestaurantFoodSnippet as SharedRestaurantFoodSnippet,
+  RestaurantProfile as SharedRestaurantProfile,
   RestaurantResult as SharedRestaurantResult,
   SearchResponse as SharedSearchResponse,
   SearchResponseMetadata as SharedSearchResponseMetadata,
@@ -236,6 +237,8 @@ export interface RestaurantResultDto extends SharedRestaurantResult {
   distanceMiles?: number | null;
   coverageName?: string | null;
 }
+
+export type RestaurantProfileDto = SharedRestaurantProfile;
 
 export type DishRestaurantLocationDto = SharedDishRestaurantLocation;
 export type DishRestaurantDataDto = SharedDishRestaurantData;

@@ -16,6 +16,7 @@ import {
   QueryEntityDto,
   QueryPlan,
   SearchQueryRequestDto,
+  RestaurantProfileDto,
   SearchResponseDto,
   SearchResponseMetadataDto,
   PaginationDto,
@@ -44,6 +45,10 @@ import {
   summarizeUnresolvedEntities,
   type SearchDebugMode,
 } from './utils/search-debug';
+import {
+  buildOperatingMetadata,
+  evaluateOperatingStatus,
+} from './utils/restaurant-status';
 
 type RestaurantDishRow = {
   connection_id: string;
@@ -1122,6 +1127,282 @@ export class SearchService {
         restaurantLongitude: null,
       };
     });
+  }
+
+  async getRestaurantProfile(
+    restaurantId: string,
+  ): Promise<RestaurantProfileDto | null> {
+    const startedAt = Date.now();
+    const referenceDate = new Date();
+    const toOptionalNumber = (value: unknown): number | null => {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      if (value && typeof value === 'object' && 'toNumber' in value) {
+        const numeric = (value as { toNumber: () => number }).toNumber();
+        return Number.isFinite(numeric) ? numeric : null;
+      }
+      return null;
+    };
+    const describePriceLevel = (
+      level: number | null,
+    ): { symbol: string | null; text: string | null } => {
+      if (level === null || !Number.isFinite(level)) {
+        return { symbol: null, text: null };
+      }
+      const normalized = Math.max(0, Math.min(4, Math.round(level)));
+      const symbols = ['Free', '$', '$$', '$$$', '$$$$'] as const;
+      const descriptions = [
+        'Free',
+        'Budget friendly',
+        'Moderate',
+        'Expensive',
+        'Very expensive',
+      ] as const;
+      return {
+        symbol: symbols[normalized] ?? null,
+        text: descriptions[normalized] ?? null,
+      };
+    };
+    const asRecord = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+
+    const restaurant = await this.prisma.entity.findFirst({
+      where: {
+        entityId: restaurantId,
+        type: EntityType.restaurant,
+      },
+      select: {
+        entityId: true,
+        name: true,
+        aliases: true,
+        locationKey: true,
+        restaurantQualityScore: true,
+        latitude: true,
+        longitude: true,
+        address: true,
+        city: true,
+        region: true,
+        country: true,
+        postalCode: true,
+        restaurantMetadata: true,
+        primaryLocationId: true,
+        priceLevel: true,
+        priceLevelUpdatedAt: true,
+        locations: {
+          select: {
+            locationId: true,
+            googlePlaceId: true,
+            latitude: true,
+            longitude: true,
+            address: true,
+            city: true,
+            region: true,
+            country: true,
+            postalCode: true,
+            phoneNumber: true,
+            websiteUrl: true,
+            hours: true,
+            utcOffsetMinutes: true,
+            timeZone: true,
+            isPrimary: true,
+            lastPolledAt: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: [
+            { isPrimary: 'desc' },
+            { lastPolledAt: 'desc' },
+            { createdAt: 'asc' },
+          ],
+        },
+        _count: {
+          select: {
+            locations: true,
+          },
+        },
+      },
+    });
+
+    if (!restaurant) {
+      return null;
+    }
+
+    const [displayRank, aggregate, dishes] = await Promise.all([
+      this.prisma.displayRankScore.findUnique({
+        where: {
+          locationKey_subjectType_subjectId: {
+            locationKey: restaurant.locationKey,
+            subjectType: 'restaurant',
+            subjectId: restaurant.entityId,
+          },
+        },
+        select: {
+          rankScoreDisplay: true,
+          rankPercentile: true,
+        },
+      }),
+      this.prisma.connection.aggregate({
+        where: {
+          restaurantId: restaurant.entityId,
+        },
+        _sum: {
+          mentionCount: true,
+          totalUpvotes: true,
+        },
+        _count: {
+          _all: true,
+        },
+      }),
+      this.listRestaurantDishes(restaurant.entityId),
+    ]);
+
+    type RestaurantProfileLocation = NonNullable<
+      RestaurantProfileDto['restaurant']['locations']
+    >[number];
+
+    const mapLocation = (
+      location: (typeof restaurant.locations)[number],
+    ): RestaurantProfileLocation => {
+      const metadata = buildOperatingMetadata({
+        hoursValue: location.hours,
+        utcOffsetMinutesValue: location.utcOffsetMinutes,
+        timeZoneValue: location.timeZone,
+        restaurantMetadataValue: restaurant.restaurantMetadata,
+      });
+      const operatingStatus = metadata
+        ? evaluateOperatingStatus(metadata, referenceDate)
+        : null;
+      return {
+        locationId: location.locationId,
+        googlePlaceId: location.googlePlaceId ?? null,
+        latitude: toOptionalNumber(location.latitude),
+        longitude: toOptionalNumber(location.longitude),
+        address: location.address ?? null,
+        city: location.city ?? null,
+        region: location.region ?? null,
+        country: location.country ?? null,
+        postalCode: location.postalCode ?? null,
+        phoneNumber: location.phoneNumber ?? null,
+        websiteUrl: location.websiteUrl ?? null,
+        hours: asRecord(location.hours),
+        utcOffsetMinutes: toOptionalNumber(location.utcOffsetMinutes),
+        timeZone: location.timeZone ?? null,
+        operatingStatus,
+        isPrimary: Boolean(location.isPrimary),
+        lastPolledAt: location.lastPolledAt?.toISOString() ?? null,
+        createdAt: location.createdAt?.toISOString() ?? null,
+        updatedAt: location.updatedAt?.toISOString() ?? null,
+      };
+    };
+
+    const locationResults: RestaurantProfileLocation[] =
+      restaurant.locations.map(mapLocation);
+    const fallbackMetadata = buildOperatingMetadata({
+      restaurantMetadataValue: restaurant.restaurantMetadata,
+    });
+    if (locationResults.length === 0) {
+      locationResults.push({
+        locationId: restaurant.primaryLocationId ?? restaurant.entityId,
+        googlePlaceId: null,
+        latitude: toOptionalNumber(restaurant.latitude),
+        longitude: toOptionalNumber(restaurant.longitude),
+        address: restaurant.address ?? null,
+        city: restaurant.city ?? null,
+        region: restaurant.region ?? null,
+        country: restaurant.country ?? null,
+        postalCode: restaurant.postalCode ?? null,
+        phoneNumber: null,
+        websiteUrl: null,
+        hours: asRecord(fallbackMetadata?.hours),
+        utcOffsetMinutes: toOptionalNumber(
+          fallbackMetadata?.utc_offset_minutes,
+        ),
+        timeZone:
+          typeof fallbackMetadata?.timezone === 'string'
+            ? fallbackMetadata.timezone
+            : null,
+        operatingStatus: fallbackMetadata
+          ? evaluateOperatingStatus(fallbackMetadata, referenceDate)
+          : null,
+        isPrimary: true,
+        lastPolledAt: null,
+        createdAt: null,
+        updatedAt: null,
+      });
+    }
+    const displayLocation =
+      locationResults.find((location) => location.isPrimary) ??
+      locationResults[0];
+    const parsedPriceLevel = toOptionalNumber(restaurant.priceLevel);
+    const priceDetails = describePriceLevel(parsedPriceLevel);
+    const topFood = dishes.slice(0, 10).map((dish) => ({
+      connectionId: dish.connectionId,
+      foodId: dish.foodId,
+      foodName: dish.foodName,
+      qualityScore: dish.qualityScore,
+      displayScore: dish.displayScore ?? null,
+      displayPercentile: dish.displayPercentile ?? null,
+      activityLevel: dish.activityLevel,
+    }));
+    const totalDishCount =
+      typeof aggregate._count?._all === 'number'
+        ? aggregate._count._all
+        : dishes.length;
+    const profile: RestaurantProfileDto = {
+      restaurant: {
+        restaurantId: restaurant.entityId,
+        restaurantName: restaurant.name,
+        restaurantAliases: Array.isArray(restaurant.aliases)
+          ? restaurant.aliases
+          : [],
+        contextualScore: 0,
+        restaurantQualityScore: toOptionalNumber(
+          restaurant.restaurantQualityScore,
+        ),
+        displayScore: toOptionalNumber(displayRank?.rankScoreDisplay),
+        displayPercentile: toOptionalNumber(displayRank?.rankPercentile),
+        coverageKey: restaurant.locationKey,
+        mentionCount: aggregate._sum.mentionCount ?? 0,
+        totalUpvotes: aggregate._sum.totalUpvotes ?? 0,
+        latitude:
+          displayLocation.latitude ?? toOptionalNumber(restaurant.latitude),
+        longitude:
+          displayLocation.longitude ?? toOptionalNumber(restaurant.longitude),
+        address: displayLocation.address ?? restaurant.address ?? null,
+        restaurantLocationId: displayLocation.locationId,
+        priceLevel: parsedPriceLevel ?? null,
+        priceSymbol: priceDetails.symbol,
+        priceText: priceDetails.text,
+        priceLevelUpdatedAt:
+          restaurant.priceLevelUpdatedAt?.toISOString() ?? null,
+        topFood,
+        totalDishCount,
+        operatingStatus: displayLocation.operatingStatus ?? null,
+        distanceMiles: null,
+        displayLocation,
+        locations: locationResults,
+        locationCount:
+          typeof restaurant._count.locations === 'number'
+            ? restaurant._count.locations
+            : locationResults.length,
+      },
+      dishes,
+    };
+
+    this.logger.debug('Loaded restaurant profile', {
+      restaurantId: restaurant.entityId,
+      dishCount: dishes.length,
+      durationMs: Date.now() - startedAt,
+    });
+
+    return profile;
   }
 
   private buildExecutionDirectives(

@@ -19,6 +19,21 @@ export const FIRST_RESULT_TOP_PADDING_EXTRA = 8;
 export const SECTION_GAP = SHARED_SECTION_GAP;
 export const TOP_FOOD_INLINE_WIDTH_BUFFER = CONTENT_HORIZONTAL_PADDING;
 export const ACTIVE_TAB_COLOR = themeColors.primary;
+const deriveDarkerHexColor = (hexColor: string, factor = 0.72) => {
+  const raw = hexColor.replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(raw)) {
+    return hexColor;
+  }
+
+  const clampByte = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+  const r = clampByte(parseInt(raw.slice(0, 2), 16) * factor);
+  const g = clampByte(parseInt(raw.slice(2, 4), 16) * factor);
+  const b = clampByte(parseInt(raw.slice(4, 6), 16) * factor);
+  const toHex = (value: number) => value.toString(16).padStart(2, '0');
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+};
+export const ACTIVE_TAB_COLOR_DARK = deriveDarkerHexColor(ACTIVE_TAB_COLOR);
 export const MINIMUM_VOTES_FILTER = 100;
 export const DEFAULT_PAGE_SIZE = 20;
 export const RESULTS_BOTTOM_PADDING = 200;

@@ -130,6 +130,11 @@ export interface RestaurantResult {
   locationCount?: number;
 }
 
+export interface RestaurantProfile {
+  restaurant: RestaurantResult;
+  dishes: FoodResult[];
+}
+
 export interface DishRestaurantLocation {
   locationId: string;
   latitude: number;

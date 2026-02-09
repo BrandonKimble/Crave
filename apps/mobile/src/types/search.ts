@@ -14,6 +14,7 @@ export type {
   QueryFormat,
   QueryPlan,
   RestaurantFoodSnippet,
+  RestaurantProfile,
   RestaurantResult,
   SearchResponse,
   SearchResponseMetadata,
