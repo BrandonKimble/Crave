@@ -1487,6 +1487,34 @@ const SearchScreen: React.FC = () => {
   const showPollsOverlay = rootOverlay === 'polls';
   const showProfileOverlay = rootOverlay === 'profile';
   const showSaveListOverlay = saveSheetState.visible;
+  const restoreDockedPolls = React.useCallback(
+    ({
+      snap,
+      clearTabSnapRequest = false,
+    }: {
+      snap?: Exclude<OverlaySheetSnap, 'hidden'>;
+      clearTabSnapRequest?: boolean;
+    } = {}) => {
+      if (clearTabSnapRequest) {
+        setTabOverlaySnapRequest(null);
+      }
+      requestDockedPollsRestore(snap);
+    },
+    [requestDockedPollsRestore, setTabOverlaySnapRequest]
+  );
+  const switchToSearchRootWithDockedPolls = React.useCallback(
+    ({
+      snap,
+      clearTabSnapRequest = true,
+    }: {
+      snap?: Exclude<OverlaySheetSnap, 'hidden'>;
+      clearTabSnapRequest?: boolean;
+    } = {}) => {
+      restoreDockedPolls({ snap, clearTabSnapRequest });
+      setOverlay('search');
+    },
+    [restoreDockedPolls, setOverlay]
+  );
   const previousRootOverlayRef = React.useRef<OverlayKey | null>(null);
   React.useEffect(() => {
     const previous = previousRootOverlayRef.current;
@@ -1498,10 +1526,9 @@ const SearchScreen: React.FC = () => {
       return;
     }
     unstable_batchedUpdates(() => {
-      setTabOverlaySnapRequest(null);
-      requestDockedPollsRestore();
+      restoreDockedPolls({ clearTabSnapRequest: true });
     });
-  }, [requestDockedPollsRestore, rootOverlay, setTabOverlaySnapRequest]);
+  }, [restoreDockedPolls, rootOverlay]);
   const pollOverlayParams = overlayParams.polls;
   const { progress: suggestionProgress, isVisible: isSuggestionPanelVisible } = useSearchTransition(
     {
@@ -1544,9 +1571,7 @@ const SearchScreen: React.FC = () => {
   const ensureSearchOverlay = React.useCallback(() => {
     if (rootOverlay !== 'search') {
       unstable_batchedUpdates(() => {
-        requestDockedPollsRestore();
-        setTabOverlaySnapRequest(null);
-        setOverlay('search');
+        switchToSearchRootWithDockedPolls();
       });
       return;
     }
@@ -1556,10 +1581,8 @@ const SearchScreen: React.FC = () => {
   }, [
     activeOverlay,
     popToRootOverlay,
-    requestDockedPollsRestore,
     rootOverlay,
-    setOverlay,
-    setTabOverlaySnapRequest,
+    switchToSearchRootWithDockedPolls,
   ]);
 
   const bottomInset = Math.max(insets.bottom, 12);
@@ -2116,9 +2139,7 @@ const SearchScreen: React.FC = () => {
       if (target === 'search') {
         overlaySwitchInFlightRef.current = true;
         unstable_batchedUpdates(() => {
-          requestDockedPollsRestore();
-          setTabOverlaySnapRequest(null);
-          setOverlay('search');
+          switchToSearchRootWithDockedPolls();
           setIsSearchFocused(false);
           setIsAutocompleteSuppressed(true);
           if (!shouldDeferSuggestionClear) {
@@ -2155,7 +2176,6 @@ const SearchScreen: React.FC = () => {
       beginSuggestionCloseHold,
       dismissTransientOverlays,
       isRestaurantOverlayVisible,
-      requestDockedPollsRestore,
       rootOverlay,
       setIsAutocompleteSuppressed,
       setIsSearchFocused,
@@ -2163,6 +2183,7 @@ const SearchScreen: React.FC = () => {
       setShowSuggestions,
       setSuggestions,
       setTabOverlaySnapRequest,
+      switchToSearchRootWithDockedPolls,
     ]
   );
   const requestReturnToSearchFromPolls = React.useCallback(
@@ -2210,8 +2231,7 @@ const SearchScreen: React.FC = () => {
         // Immediately switch to search when polls overlay is dismissed (unless we're switching tabs).
         if (rootOverlay === 'polls' && !overlaySwitchInFlightRef.current) {
           unstable_batchedUpdates(() => {
-            requestDockedPollsRestore();
-            setOverlay('search');
+            switchToSearchRootWithDockedPolls();
           });
         }
       }
@@ -2222,12 +2242,11 @@ const SearchScreen: React.FC = () => {
       pollsDockedSnapRequest,
       tabOverlaySnapRequest,
       rootOverlay,
-      requestDockedPollsRestore,
       setIsDockedPollsDismissed,
-      setOverlay,
       setPollsSheetSnap,
       setPollsDockedSnapRequest,
       setTabOverlaySnapRequest,
+      switchToSearchRootWithDockedPolls,
     ]
   );
 
@@ -2264,17 +2283,15 @@ const SearchScreen: React.FC = () => {
       if (snap === 'hidden' && rootOverlay === 'bookmarks' && !overlaySwitchInFlightRef.current) {
         setTabOverlaySnapRequest(null);
         unstable_batchedUpdates(() => {
-          requestDockedPollsRestore();
-          setOverlay('search');
+          switchToSearchRootWithDockedPolls();
         });
       }
     },
     [
       overlaySwitchInFlightRef,
-      requestDockedPollsRestore,
       rootOverlay,
-      setOverlay,
       tabOverlaySnapRequest,
+      switchToSearchRootWithDockedPolls,
     ]
   );
   const handleProfileSnapStart = React.useCallback(
@@ -2292,17 +2309,15 @@ const SearchScreen: React.FC = () => {
       if (snap === 'hidden' && rootOverlay === 'profile' && !overlaySwitchInFlightRef.current) {
         setTabOverlaySnapRequest(null);
         unstable_batchedUpdates(() => {
-          requestDockedPollsRestore();
-          setOverlay('search');
+          switchToSearchRootWithDockedPolls();
         });
       }
     },
     [
       overlaySwitchInFlightRef,
-      requestDockedPollsRestore,
       rootOverlay,
-      setOverlay,
       tabOverlaySnapRequest,
+      switchToSearchRootWithDockedPolls,
     ]
   );
   const { runAutocomplete, runSearch, cancelAutocomplete, cancelSearch, isAutocompleteLoading } =
@@ -2750,9 +2765,9 @@ const SearchScreen: React.FC = () => {
     const wasShowing = lastShowDockedPollsRef.current;
     lastShowDockedPollsRef.current = showDockedPolls;
     if (showDockedPolls && !wasShowing) {
-      requestDockedPollsRestore();
+      restoreDockedPolls();
     }
-  }, [requestDockedPollsRestore, showDockedPolls]);
+  }, [restoreDockedPolls, showDockedPolls]);
   const pollsOverlaySnapPoint = showPollsOverlay
     ? hasUserSharedSnap
       ? sharedSnap
@@ -5827,14 +5842,8 @@ const SearchScreen: React.FC = () => {
   const handleSubmit = React.useCallback(() => {
     const trimmed = query.trim();
     const normalized = trimmed.toLowerCase();
-    if (
-      normalized === 'best dishes' ||
-      normalized === 'best restaurants' ||
-      normalized === 'food'
-    ) {
-      captureSearchSessionOrigin('shortcut');
-    } else if (trimmed.length > 0) {
-      captureSearchSessionOrigin('manual');
+    if (trimmed.length > 0) {
+      captureSearchSessionOrigin();
     }
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
@@ -5890,7 +5899,7 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const handleBestDishesHere = React.useCallback(() => {
-    captureSearchSessionOrigin('shortcut');
+    captureSearchSessionOrigin();
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
@@ -5921,7 +5930,7 @@ const SearchScreen: React.FC = () => {
   ]);
 
   const handleBestRestaurantsHere = React.useCallback(() => {
-    captureSearchSessionOrigin('shortcut');
+    captureSearchSessionOrigin();
     ensureSearchOverlay();
     isSearchEditingRef.current = false;
     pendingResultsSheetRevealRef.current = false;
@@ -5986,7 +5995,7 @@ const SearchScreen: React.FC = () => {
 
   const handleSuggestionPress = React.useCallback(
     (match: AutocompleteMatch) => {
-      captureSearchSessionOrigin('autocomplete');
+      captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6305,7 +6314,7 @@ const SearchScreen: React.FC = () => {
       setIsAutocompleteSuppressed(false);
       setQuery('');
       if (!showPollsOverlay && !isSearchLoading) {
-        requestDockedPollsRestore();
+        restoreDockedPolls();
       }
       pendingResultsSheetRevealRef.current = false;
       return;
@@ -6326,7 +6335,7 @@ const SearchScreen: React.FC = () => {
     setIsSuggestionPanelActive,
     setShowSuggestions,
     setSuggestions,
-    requestDockedPollsRestore,
+    restoreDockedPolls,
     showPollsOverlay,
   ]);
 
@@ -6369,7 +6378,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
-      captureSearchSessionOrigin('recent');
+      captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6436,7 +6445,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
-      captureSearchSessionOrigin('recently_viewed');
+      captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -6494,7 +6503,7 @@ const SearchScreen: React.FC = () => {
       if (!trimmedValue) {
         return;
       }
-      captureSearchSessionOrigin('recently_viewed');
+      captureSearchSessionOrigin();
       ensureSearchOverlay();
       isSearchEditingRef.current = false;
       pendingResultsSheetRevealRef.current = false;
@@ -8596,19 +8605,30 @@ const SearchScreen: React.FC = () => {
     (didSearchSessionJustActivate || isInitialResultsLoadPending) &&
     isSearchLoading &&
     !isFilterTogglePending;
-  const shouldRenderFiltersHeader =
-    !shouldDisableFiltersHeader && !shouldShowInitialResultsLoadingPhase;
+  const shouldHideFiltersHeaderDuringInitialLoad =
+    !shouldDisableFiltersHeader && shouldShowInitialResultsLoadingPhase;
   const listHeader = React.useMemo(() => {
-    if (!shouldRenderFiltersHeader) {
+    if (shouldDisableFiltersHeader) {
       return null;
     }
     return (
-      <View style={styles.resultsListHeader} onLayout={handleFiltersHeaderLayout}>
+      <View
+        style={[
+          styles.resultsListHeader,
+          shouldHideFiltersHeaderDuringInitialLoad ? styles.resultsListHeaderHidden : null,
+        ]}
+        onLayout={handleFiltersHeaderLayout}
+      >
         {filtersHeader}
         <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     );
-  }, [filtersHeader, handleFiltersHeaderLayout, shouldRenderFiltersHeader]);
+  }, [
+    filtersHeader,
+    handleFiltersHeaderLayout,
+    shouldDisableFiltersHeader,
+    shouldHideFiltersHeaderDuringInitialLoad,
+  ]);
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const shouldShowResultsLoadingState =
     (isSearchLoading ||
@@ -8621,7 +8641,8 @@ const SearchScreen: React.FC = () => {
     shouldUsePlaceholderRows ||
     safeResultsData.length > 0 ||
     Boolean(results);
-  const effectiveFiltersHeaderHeight = shouldRenderFiltersHeader ? filtersHeaderHeight : 0;
+  const effectiveFiltersHeaderHeight =
+    shouldDisableFiltersHeader || shouldHideFiltersHeaderDuringInitialLoad ? 0 : filtersHeaderHeight;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
   const resultsWashTopOffset = Math.max(
     0,

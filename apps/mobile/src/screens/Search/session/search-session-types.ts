@@ -4,15 +4,7 @@ export type SearchOverlaySheetSnap = 'expanded' | 'middle' | 'collapsed' | 'hidd
 
 export type TabOverlaySnap = Exclude<SearchOverlaySheetSnap, 'hidden'>;
 
-export type SearchLaunchSource =
-  | 'manual'
-  | 'shortcut'
-  | 'autocomplete'
-  | 'recent'
-  | 'recently_viewed';
-
 export type SearchSessionOriginContext = {
   rootOverlay: OverlayKey;
   tabSnap: TabOverlaySnap;
-  launchSource: SearchLaunchSource;
 };

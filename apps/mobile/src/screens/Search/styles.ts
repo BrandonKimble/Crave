@@ -613,6 +613,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     paddingVertical: 0,
   },
+  resultsListHeaderHidden: {
+    opacity: 0,
+  },
   resultsListHeaderBottomStrip: {
     height: 8,
     width: '100%',
