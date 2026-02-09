@@ -61,14 +61,8 @@ type UsePollsPanelSpecOptions = {
   navBarHeight?: number;
   searchBarTop?: number;
   snapPoints?: SnapPoints;
-  onSnapStart?: (
-    snap: OverlaySheetSnap,
-    meta?: { source: 'gesture' | 'programmatic' }
-  ) => void;
-  onSnapChange?: (
-    snap: OverlaySheetSnap,
-    meta?: { source: 'gesture' | 'programmatic' }
-  ) => void;
+  onSnapStart?: (snap: OverlaySheetSnap, meta?: { source: 'gesture' | 'programmatic' }) => void;
+  onSnapChange?: (snap: OverlaySheetSnap, meta?: { source: 'gesture' | 'programmatic' }) => void;
   snapTo?: OverlaySheetSnap | null;
   snapToToken?: number;
   onRequestPollCreationExpand?: () => void;

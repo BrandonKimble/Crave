@@ -134,7 +134,7 @@ const withIconOpacity = (
   ({
     ...baseStyle,
     iconOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
+  } as MapboxGL.SymbolLayerStyle);
 
 const withScaledIconTransition = ({
   baseStyle,
@@ -152,7 +152,7 @@ const withScaledIconTransition = ({
     iconSize: ['*', baseIconSize, PIN_TRANSITION_SCALE_EXPRESSION],
     ...(iconColor === undefined ? {} : { iconColor }),
     iconOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
+  } as MapboxGL.SymbolLayerStyle);
 
 const withTextOpacity = ({
   baseStyle,
@@ -167,7 +167,7 @@ const withTextOpacity = ({
     ...baseStyle,
     ...(textColor === undefined ? {} : { textColor }),
     textOpacity,
-  }) as MapboxGL.SymbolLayerStyle;
+  } as MapboxGL.SymbolLayerStyle);
 
 const getSafeStyleUrlForLogs = (value: string) => {
   const trimmed = value.trim();
@@ -263,13 +263,16 @@ const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
 // even as the pinned set changes during live LOD updates.
 const STYLE_PIN_STACK_SLOTS = 30;
-const STYLE_PIN_INTERACTIVE_LAYER_IDS = Array.from({ length: STYLE_PIN_STACK_SLOTS }, (_, slotIndex) => [
-  `restaurant-style-pins-base-slot-${slotIndex}`,
-  `restaurant-style-pins-fill-slot-${slotIndex}`,
-  `restaurant-style-pins-base-transition-slot-${slotIndex}`,
-  `restaurant-style-pins-fill-transition-slot-${slotIndex}`,
-  `restaurant-style-pins-rank-slot-${slotIndex}`,
-]).flat();
+const STYLE_PIN_INTERACTIVE_LAYER_IDS = Array.from(
+  { length: STYLE_PIN_STACK_SLOTS },
+  (_, slotIndex) => [
+    `restaurant-style-pins-base-slot-${slotIndex}`,
+    `restaurant-style-pins-fill-slot-${slotIndex}`,
+    `restaurant-style-pins-base-transition-slot-${slotIndex}`,
+    `restaurant-style-pins-fill-transition-slot-${slotIndex}`,
+    `restaurant-style-pins-rank-slot-${slotIndex}`,
+  ]
+).flat();
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -552,7 +555,8 @@ const getStringPressFeatureProperty = (feature: unknown, key: string): string | 
 const getLabelTextFromPressFeature = (feature: unknown): string | null => {
   const dishName = getStringPressFeatureProperty(feature, 'dishName');
   const restaurantName = getStringPressFeatureProperty(feature, 'restaurantName');
-  const isDishPin = (feature as { properties?: { isDishPin?: unknown } })?.properties?.isDishPin === true;
+  const isDishPin =
+    (feature as { properties?: { isDishPin?: unknown } })?.properties?.isDishPin === true;
 
   if (isDishPin && dishName && restaurantName) {
     return `${dishName}\n${restaurantName}`;
@@ -579,7 +583,10 @@ type PressFeatureCandidate = {
   featureIndex: number;
 };
 
-const comparePressFeatureCandidates = (a: PressFeatureCandidate, b: PressFeatureCandidate): number => {
+const comparePressFeatureCandidates = (
+  a: PressFeatureCandidate,
+  b: PressFeatureCandidate
+): number => {
   const aHasDistance = a.distanceMiles != null;
   const bHasDistance = b.distanceMiles != null;
   if (aHasDistance && bHasDistance) {
@@ -622,8 +629,7 @@ const pickBestRestaurantIdFromPressFeatures = (
     }
 
     const coordinate = getCoordinateFromPressFeature(feature);
-    const distanceMiles =
-      target && coordinate ? haversineDistanceMiles(target, coordinate) : null;
+    const distanceMiles = target && coordinate ? haversineDistanceMiles(target, coordinate) : null;
     const candidate: PressFeatureCandidate = {
       restaurantId,
       coordinate,
@@ -915,7 +921,10 @@ type PinTransitionDemotionEntry = {
 type PinTransitionState = {
   promoteStartedAtByMarkerKey: Map<string, number>;
   pendingPromoteDelayByMarkerKey: Map<string, number>;
-  demoteFeatureByMarkerKey: Map<string, { startedAtMs: number; feature: Feature<Point, RestaurantFeatureProperties> }>;
+  demoteFeatureByMarkerKey: Map<
+    string,
+    { startedAtMs: number; feature: Feature<Point, RestaurantFeatureProperties> }
+  >;
   previousPinnedFeatureByMarkerKey: Map<string, Feature<Point, RestaurantFeatureProperties>>;
   pendingInitialRevealCommitId: number | null;
   appliedInitialRevealCommitId: number | null;
@@ -2307,7 +2316,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
         void mapInstance
           .queryRenderedFeaturesAtPoint([point.x, point.y], [], STYLE_PIN_INTERACTIVE_LAYER_IDS)
           .then((renderedAtPoint) => {
-            const topMatch = pickFirstRestaurantIdFromPressFeatures(renderedAtPoint?.features ?? []);
+            const topMatch = pickFirstRestaurantIdFromPressFeatures(
+              renderedAtPoint?.features ?? []
+            );
             if (!topMatch) {
               fallbackToGeometrySelection();
               return;
@@ -2938,17 +2949,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
   }, [onMapLoaded]);
 
-  const remountPinLayerTree = React.useCallback(
-    (reason: 'style-load' | 'missing-source-error') => {
-      const nowMs = Date.now();
-      if (reason === 'missing-source-error' && nowMs - pinLayerRecoveryLastAttemptAtRef.current < 400) {
-        return;
-      }
-      pinLayerRecoveryLastAttemptAtRef.current = nowMs;
-      setPinLayerTreeEpoch((value) => value + 1);
-    },
-    []
-  );
+  const remountPinLayerTree = React.useCallback((reason: 'style-load' | 'missing-source-error') => {
+    const nowMs = Date.now();
+    if (
+      reason === 'missing-source-error' &&
+      nowMs - pinLayerRecoveryLastAttemptAtRef.current < 400
+    ) {
+      return;
+    }
+    pinLayerRecoveryLastAttemptAtRef.current = nowMs;
+    setPinLayerTreeEpoch((value) => value + 1);
+  }, []);
 
   const handleMapLoadedStyle = React.useCallback(() => {
     remountPinLayerTree('style-load');

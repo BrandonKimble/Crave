@@ -433,7 +433,8 @@ const useSearchSubmit = ({
         }
 
         if (!singleRestaurantCandidate) {
-          const totalFoodAvailable = normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
+          const totalFoodAvailable =
+            normalizedResponse.metadata.totalFoodResults ?? mergedFoodCount;
           const totalRestaurantAvailable =
             normalizedResponse.metadata.totalRestaurantResults ?? mergedRestaurantCount;
 

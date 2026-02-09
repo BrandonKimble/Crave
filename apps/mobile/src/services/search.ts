@@ -140,7 +140,9 @@ export const searchService = {
     return data;
   },
   restaurantProfile: async (restaurantId: string): Promise<RestaurantProfile> => {
-    const { data } = await api.get<RestaurantProfile>(`/search/restaurants/${restaurantId}/profile`);
+    const { data } = await api.get<RestaurantProfile>(
+      `/search/restaurants/${restaurantId}/profile`
+    );
     return data;
   },
   recentHistory: async (limit = 8): Promise<RecentSearch[]> => {

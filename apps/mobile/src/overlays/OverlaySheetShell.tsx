@@ -281,31 +281,28 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   }, [activeOverlayKey, internalListRef, scrollOffset, setOverlayScrollOffset, specRef, visible]);
 
   const resolvedNavBarHeight = Math.max(navBarHeight, 0);
-  const sheetClipAnimatedStyle = useAnimatedStyle(
-    () => {
-      if (!applyNavBarCutout) {
-        return { bottom: 0 };
-      }
-      const progress = navBarCutoutProgress
-        ? Math.max(0, Math.min(1, navBarCutoutProgress.value))
-        : 1;
-      const navTranslateY = Math.max(0, (1 - progress) * Math.max(0, navBarHiddenTranslateY));
-      const hideLead = navBarCutoutIsHiding ? 1.18 : 1;
-      // Keep the cutout attached to the moving nav object, not animation progress itself.
-      const cutout = Math.max(
-        0,
-        Math.min(resolvedNavBarHeight, resolvedNavBarHeight - navTranslateY * hideLead)
-      );
-      return { bottom: cutout };
-    },
-    [
-      applyNavBarCutout,
-      navBarCutoutIsHiding,
-      navBarCutoutProgress,
-      navBarHiddenTranslateY,
-      resolvedNavBarHeight,
-    ]
-  );
+  const sheetClipAnimatedStyle = useAnimatedStyle(() => {
+    if (!applyNavBarCutout) {
+      return { bottom: 0 };
+    }
+    const progress = navBarCutoutProgress
+      ? Math.max(0, Math.min(1, navBarCutoutProgress.value))
+      : 1;
+    const navTranslateY = Math.max(0, (1 - progress) * Math.max(0, navBarHiddenTranslateY));
+    const hideLead = navBarCutoutIsHiding ? 1.18 : 1;
+    // Keep the cutout attached to the moving nav object, not animation progress itself.
+    const cutout = Math.max(
+      0,
+      Math.min(resolvedNavBarHeight, resolvedNavBarHeight - navTranslateY * hideLead)
+    );
+    return { bottom: cutout };
+  }, [
+    applyNavBarCutout,
+    navBarCutoutIsHiding,
+    navBarCutoutProgress,
+    navBarHiddenTranslateY,
+    resolvedNavBarHeight,
+  ]);
 
   useOverlayHeaderActionController({
     visible: visible && Boolean(spec),
@@ -326,10 +323,7 @@ const OverlaySheetShell: React.FC<OverlaySheetShellProps> = ({
   const resolvedInteractionEnabled = spec.interactionEnabled ?? true;
 
   return (
-    <Reanimated.View
-      pointerEvents="box-none"
-      style={[styles.sheetClip, sheetClipAnimatedStyle]}
-    >
+    <Reanimated.View pointerEvents="box-none" style={[styles.sheetClip, sheetClipAnimatedStyle]}>
       {spec.underlayComponent ?? null}
       <BottomSheetWithFlashList
         visible={visible}

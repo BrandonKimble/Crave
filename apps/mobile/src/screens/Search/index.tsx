@@ -1526,10 +1526,7 @@ const SearchScreen: React.FC = () => {
   const shouldHideBottomNav =
     shouldHideBottomNavForTabSuggestions ||
     (isSearchOverlay &&
-      (isSearchSessionActive ||
-        isSuggestionPanelActive ||
-        isSearchLoading ||
-        isNavRestorePending));
+      (isSearchSessionActive || isSuggestionPanelActive || isSearchLoading || isNavRestorePending));
   const [bottomNavFrame, setBottomNavFrame] = React.useState<LayoutRectangle | null>(() => {
     const cached = getCachedBottomNavMetrics();
     if (!cached) {
@@ -2092,10 +2089,7 @@ const SearchScreen: React.FC = () => {
     [setPollsSheetSnap]
   );
   const handlePollsSnapChange = React.useCallback(
-    (
-      snap: OverlaySheetSnap,
-      meta?: { source: 'gesture' | 'programmatic' }
-    ) => {
+    (snap: OverlaySheetSnap, meta?: { source: 'gesture' | 'programmatic' }) => {
       setPollsSheetSnap(snap);
       if (snap === 'collapsed') {
         dockedPollsRestoreInFlightRef.current = false;
@@ -5118,12 +5112,7 @@ const SearchScreen: React.FC = () => {
         setIsShortcutCoverageLoading(false);
       }
     };
-  }, [
-    activeTab,
-    results?.metadata?.searchRequestId,
-    scoreMode,
-    searchMode,
-  ]);
+  }, [activeTab, results?.metadata?.searchRequestId, scoreMode, searchMode]);
 
   const projectShortcutFeatureToSelectedLocation = React.useCallback(
     (
@@ -7195,7 +7184,8 @@ const SearchScreen: React.FC = () => {
             return prev;
           }
           const contextualScore =
-            typeof prev.restaurant.contextualScore === 'number' && prev.restaurant.contextualScore > 0
+            typeof prev.restaurant.contextualScore === 'number' &&
+            prev.restaurant.contextualScore > 0
               ? prev.restaurant.contextualScore
               : cachedProfile.restaurant.contextualScore;
           return {
@@ -7309,7 +7299,8 @@ const SearchScreen: React.FC = () => {
           )}:${pressedCoordinate.lat.toFixed(5)}`
         : `${restaurant.restaurantId}:anchor`;
       const previousFocusSession = restaurantFocusSessionRef.current;
-      const isSameRestaurantFocusSession = previousFocusSession.restaurantId === restaurant.restaurantId;
+      const isSameRestaurantFocusSession =
+        previousFocusSession.restaurantId === restaurant.restaurantId;
       const shouldApplyInitialMultiLocationZoomOut =
         restaurantLocations.length > 1 &&
         (source === 'results_sheet' ||
@@ -9475,7 +9466,11 @@ const SearchScreen: React.FC = () => {
                 const renderIcon = navIconRenderers[item.key];
                 if (item.key === 'profile') {
                   return (
-                    <TouchableOpacity key={item.key} style={styles.navButton} onPress={handleProfilePress}>
+                    <TouchableOpacity
+                      key={item.key}
+                      style={styles.navButton}
+                      onPress={handleProfilePress}
+                    >
                       <Reanimated.View
                         style={[
                           { alignItems: 'center', justifyContent: 'center' },
