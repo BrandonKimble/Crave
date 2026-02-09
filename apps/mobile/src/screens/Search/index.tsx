@@ -1717,6 +1717,31 @@ const SearchScreen: React.FC = () => {
   const shouldRenderResultsSheet = shouldRenderSheet;
   const shouldRenderResultsSheetRef = React.useRef(shouldRenderResultsSheet);
   shouldRenderResultsSheetRef.current = shouldRenderResultsSheet;
+  const previousSearchSessionActiveRef = React.useRef(isSearchSessionActive);
+  const didSearchSessionJustActivate =
+    isSearchSessionActive && !previousSearchSessionActiveRef.current;
+  const [isInitialResultsLoadPending, setIsInitialResultsLoadPending] = React.useState(false);
+  React.useLayoutEffect(() => {
+    previousSearchSessionActiveRef.current = isSearchSessionActive;
+  }, [isSearchSessionActive]);
+  React.useEffect(() => {
+    if (didSearchSessionJustActivate) {
+      setIsInitialResultsLoadPending(true);
+      return;
+    }
+    if (!isSearchSessionActive) {
+      setIsInitialResultsLoadPending(false);
+      return;
+    }
+    if (isInitialResultsLoadPending && !isSearchLoading) {
+      setIsInitialResultsLoadPending(false);
+    }
+  }, [
+    didSearchSessionJustActivate,
+    isInitialResultsLoadPending,
+    isSearchLoading,
+    isSearchSessionActive,
+  ]);
   const shouldRenderRestaurantOverlay = Boolean(restaurantProfile);
   const shouldShowRestaurantOverlay = shouldRenderRestaurantOverlay && isRestaurantOverlayVisible;
   const shouldSuspendResultsSheet =
@@ -8445,8 +8470,14 @@ const SearchScreen: React.FC = () => {
       }
     };
   }, [activeOverlayKey, hydratedResultsKey, resultsHydrationKey, setHydratedResultsKeySync]);
+  const shouldShowInitialResultsLoadingPhase =
+    (didSearchSessionJustActivate || isInitialResultsLoadPending) &&
+    isSearchLoading &&
+    !isFilterTogglePending;
+  const shouldRenderFiltersHeader =
+    !shouldDisableFiltersHeader && !shouldShowInitialResultsLoadingPhase;
   const listHeader = React.useMemo(() => {
-    if (shouldDisableFiltersHeader) {
+    if (!shouldRenderFiltersHeader) {
       return null;
     }
     return (
@@ -8455,7 +8486,7 @@ const SearchScreen: React.FC = () => {
         <View style={styles.resultsListHeaderBottomStrip} />
       </View>
     );
-  }, [filtersHeader, handleFiltersHeaderLayout, shouldDisableFiltersHeader]);
+  }, [filtersHeader, handleFiltersHeaderLayout, shouldRenderFiltersHeader]);
   const shouldRetrySearchOnReconnect = shouldRetrySearchOnReconnectRef.current;
   const shouldShowResultsLoadingState =
     (isSearchLoading ||
@@ -8468,7 +8499,7 @@ const SearchScreen: React.FC = () => {
     shouldUsePlaceholderRows ||
     safeResultsData.length > 0 ||
     Boolean(results);
-  const effectiveFiltersHeaderHeight = shouldDisableFiltersHeader ? 0 : filtersHeaderHeight;
+  const effectiveFiltersHeaderHeight = shouldRenderFiltersHeader ? filtersHeaderHeight : 0;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
   const resultsListBackground = React.useMemo(() => {
     if (!shouldShowResultsSurface) {
@@ -8538,6 +8569,7 @@ const SearchScreen: React.FC = () => {
           style={[
             styles.resultsEmptyArea,
             emptyAreaStyle,
+            shouldShowInitialResultsLoadingPhase ? styles.resultsListBackgroundLoading : null,
             { justifyContent: 'flex-start', paddingTop: RESULTS_LOADING_SPINNER_OFFSET },
           ]}
         >
@@ -8563,6 +8595,7 @@ const SearchScreen: React.FC = () => {
     isFilterTogglePending,
     onDemandNotice,
     results,
+    shouldShowInitialResultsLoadingPhase,
     shouldShowResultsLoadingState,
     snapPoints.middle,
   ]);

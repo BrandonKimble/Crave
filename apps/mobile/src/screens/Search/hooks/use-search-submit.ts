@@ -1100,7 +1100,9 @@ const useSearchSubmit = ({
         if (!shouldDeferBestHereUi) {
           unstable_batchedUpdates(() => {
             setIsLoading(true);
-            showPanel();
+            if (!preserveSheetState) {
+              showPanel();
+            }
           });
           logSearchPhase('runBestHere:loading-state');
         }

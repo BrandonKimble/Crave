@@ -51,6 +51,8 @@ const STYLE_PIN_OUTLINE_IMAGE_ID = 'restaurant-pin-outline';
 const STYLE_PIN_SHADOW_IMAGE_ID = 'restaurant-pin-shadow';
 const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
+const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
+const LABEL_INTERACTION_SOURCE_ID = 'restaurant-label-interaction-source';
 
 // Lock each restaurant to a single chosen candidate and only reconsider when that candidate
 // disappears (i.e. it can’t be placed).
@@ -229,7 +231,6 @@ export type MapboxMapRef = InstanceType<typeof MapboxGL.MapView> & {
   getCenter?: () => Promise<[number, number]>;
   getZoom?: () => Promise<number>;
   getPointInView?: (coordinate: [number, number]) => Promise<[number, number]>;
-  getCoordinateFromView?: (point: [number, number]) => Promise<[number, number]>;
   setFeatureState?: (
     featureId: string,
     state: Record<string, unknown>,
@@ -259,20 +260,16 @@ const PRIMARY_COLOR = '#ff3368';
 const ZERO_CAMERA_PADDING = { paddingTop: 0, paddingBottom: 0, paddingLeft: 0, paddingRight: 0 };
 const DOT_SOURCE_ID = 'restaurant-dot-source';
 const DOT_LAYER_ID = 'restaurant-dot-layer';
+const DOT_INTERACTION_SOURCE_ID = 'restaurant-dot-interaction-source';
+const DOT_INTERACTION_LAYER_ID = 'restaurant-dot-interaction-layer';
 const DOT_TEXT_SIZE = 17;
 // Keep in sync with SearchScreen's MAX_FULL_PINS. These slots guarantee deterministic pin stacking
 // even as the pinned set changes during live LOD updates.
 const STYLE_PIN_STACK_SLOTS = 30;
-const STYLE_PIN_INTERACTIVE_LAYER_IDS = Array.from(
+const PIN_INTERACTION_LAYER_IDS = Array.from(
   { length: STYLE_PIN_STACK_SLOTS },
-  (_, slotIndex) => [
-    `restaurant-style-pins-base-slot-${slotIndex}`,
-    `restaurant-style-pins-fill-slot-${slotIndex}`,
-    `restaurant-style-pins-base-transition-slot-${slotIndex}`,
-    `restaurant-style-pins-fill-transition-slot-${slotIndex}`,
-    `restaurant-style-pins-rank-slot-${slotIndex}`,
-  ]
-).flat();
+  (_, slotIndex) => `restaurant-pin-interaction-slot-${slotIndex}`
+);
 // Use stable "anchor" layers to guarantee pins/dots/labels remain ordered correctly even if React
 // remounts layers (e.g. live LOD changes, style reloads).
 const OVERLAY_Z_ANCHOR_SOURCE_ID = 'search-overlay-z-anchor-source';
@@ -308,6 +305,12 @@ const LABEL_LAYER_IDS_BY_CANDIDATE = {
   top: 'restaurant-labels-candidate-top',
   left: 'restaurant-labels-candidate-left',
 } as const satisfies Record<LabelCandidate, string>;
+const LABEL_INTERACTION_LAYER_IDS_BY_CANDIDATE = {
+  bottom: 'restaurant-labels-interaction-bottom',
+  right: 'restaurant-labels-interaction-right',
+  top: 'restaurant-labels-interaction-top',
+  left: 'restaurant-labels-interaction-left',
+} as const satisfies Record<LabelCandidate, string>;
 
 // Minimum spacing to keep label candidates from being blocked by the pin's collision silhouette
 // once we shift the ring upward to align with the pin fill centerline.
@@ -327,14 +330,33 @@ const LABEL_MUTEX_ICON_OFFSET_IMAGE_PX = 1600;
 // Move the mutex into screen pixel space via a constant viewport translation so it doesn't depend
 // on iconSize/image pixels.
 const LABEL_MUTEX_TRANSLATE_Y_PX = -(PIN_MARKER_RENDER_SIZE + 12);
-const PIN_PRESS_ANCHOR_SHIFT_Y_PX = PIN_MARKER_RENDER_SIZE * 0.42;
-const PRESS_DISTANCE_EPSILON_MILES = 0.000025;
-const PIN_TAP_INTENT_RADIUS_PX = Math.max(12, PIN_MARKER_RENDER_SIZE * 0.56);
+const INTERACTION_LAYER_HIDDEN_OPACITY = 0.001;
+// Feature coordinates are anchored at the pin tip. Shift the interaction circle upward so
+// presses map to the visible pin body/base rather than the anchor point itself.
+const PIN_INTERACTION_CENTER_SHIFT_Y_PX = PIN_MARKER_RENDER_SIZE * 0.38 + 4.25;
+const PIN_TAP_INTENT_RADIUS_PX = Math.max(10, PIN_MARKER_RENDER_SIZE * 0.46) + 1;
+// Dot glyphs render notably smaller than `DOT_TEXT_SIZE` due to font metrics/line-height.
+// Keep the interaction target tight so it feels intentionally dot-sized (about ~2x visible dot).
+const DOT_TAP_INTENT_RADIUS_PX = Math.max(7, DOT_TEXT_SIZE * 0.42);
 const LABEL_TAP_CHAR_WIDTH_FACTOR = 0.56;
 const LABEL_TAP_LINE_HEIGHT_FACTOR = 1.18;
 const LABEL_TAP_PADDING_PX = 4;
 const LABEL_TAP_MIN_WIDTH_PX = 34;
 const LABEL_TAP_MAX_WIDTH_PX = 220;
+const PIN_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
+  circleRadius: PIN_TAP_INTENT_RADIUS_PX,
+  circleColor: '#000000',
+  circleOpacity: INTERACTION_LAYER_HIDDEN_OPACITY,
+  circleStrokeOpacity: 0,
+  circleTranslate: [0, -PIN_INTERACTION_CENTER_SHIFT_Y_PX],
+  circleTranslateAnchor: 'viewport',
+} as MapboxGL.CircleLayerStyle;
+const DOT_INTERACTION_LAYER_STYLE: MapboxGL.CircleLayerStyle = {
+  circleRadius: DOT_TAP_INTENT_RADIUS_PX,
+  circleColor: '#000000',
+  circleOpacity: INTERACTION_LAYER_HIDDEN_OPACITY,
+  circleStrokeOpacity: 0,
+} as MapboxGL.CircleLayerStyle;
 
 const buildLabelCandidateFeatureId = (markerKey: string, candidate: LabelCandidate) =>
   `${markerKey}::label::${candidate}`;
@@ -394,6 +416,17 @@ const getLabelCandidateInfoFromRenderedFeature = (
   }
 
   return null;
+};
+
+const getFeatureIdFromPressFeature = (feature: unknown): string | null => {
+  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
+    return null;
+  }
+  const id = (feature as Record<string, unknown>).id;
+  if (typeof id !== 'string' || id.length === 0) {
+    return null;
+  }
+  return id;
 };
 
 const getRestaurantIdFromPressFeature = (feature: unknown): string | null => {
@@ -465,30 +498,58 @@ const getPointFromPressEvent = (event: OnPressEvent): { x: number; y: number } |
   return { x, y };
 };
 
-const isTapIntentionalForPin = ({
+const isTapInsidePinInteractionGeometry = ({
   mapInstance,
   tapPoint,
   coordinate,
 }: {
   mapInstance: MapboxMapRef | null;
-  tapPoint: { x: number; y: number } | null;
+  tapPoint: { x: number; y: number };
   coordinate: Coordinate | null;
 }): Promise<boolean> => {
-  if (!tapPoint || !coordinate || !mapInstance?.getPointInView) {
-    return Promise.resolve(true);
+  if (!coordinate || !mapInstance?.getPointInView) {
+    return Promise.resolve(false);
   }
 
   return mapInstance
     .getPointInView([coordinate.lng, coordinate.lat])
     .then((pointInView) => {
       if (!pointInView || pointInView.length < 2) {
-        return true;
+        return false;
       }
-      const dx = tapPoint.x - pointInView[0];
-      const dy = tapPoint.y + PIN_PRESS_ANCHOR_SHIFT_Y_PX - pointInView[1];
+      const centerX = pointInView[0];
+      const centerY = pointInView[1] - PIN_INTERACTION_CENTER_SHIFT_Y_PX;
+      const dx = tapPoint.x - centerX;
+      const dy = tapPoint.y - centerY;
       return dx * dx + dy * dy <= PIN_TAP_INTENT_RADIUS_PX * PIN_TAP_INTENT_RADIUS_PX;
     })
-    .catch(() => true);
+    .catch(() => false);
+};
+
+const isTapInsideDotInteractionGeometry = ({
+  mapInstance,
+  tapPoint,
+  coordinate,
+}: {
+  mapInstance: MapboxMapRef | null;
+  tapPoint: { x: number; y: number };
+  coordinate: Coordinate | null;
+}): Promise<boolean> => {
+  if (!coordinate || !mapInstance?.getPointInView) {
+    return Promise.resolve(false);
+  }
+
+  return mapInstance
+    .getPointInView([coordinate.lng, coordinate.lat])
+    .then((pointInView) => {
+      if (!pointInView || pointInView.length < 2) {
+        return false;
+      }
+      const dx = tapPoint.x - pointInView[0];
+      const dy = tapPoint.y - pointInView[1];
+      return dx * dx + dy * dy <= DOT_TAP_INTENT_RADIUS_PX * DOT_TAP_INTENT_RADIUS_PX;
+    })
+    .catch(() => false);
 };
 
 const pickFirstRestaurantIdFromPressFeatures = (
@@ -502,22 +563,6 @@ const pickFirstRestaurantIdFromPressFeatures = (
     return { restaurantId, coordinate: getCoordinateFromPressFeature(feature) };
   }
   return null;
-};
-
-const getMarkerKeyFromPressFeature = (feature: unknown): string | null => {
-  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
-    return null;
-  }
-  const record = feature as Record<string, unknown>;
-  const props =
-    record.properties && typeof record.properties === 'object' && !Array.isArray(record.properties)
-      ? (record.properties as Record<string, unknown>)
-      : null;
-  const markerKey = props?.markerKey;
-  if (typeof markerKey !== 'string' || markerKey.length === 0) {
-    return null;
-  }
-  return markerKey;
 };
 
 const getNumericPressFeatureProperty = (feature: unknown, key: string): number | null => {
@@ -534,6 +579,57 @@ const getNumericPressFeatureProperty = (feature: unknown, key: string): number |
     return null;
   }
   return value;
+};
+
+const pickTopRestaurantIdFromPressFeatures = (
+  features: unknown[]
+): { restaurantId: string; coordinate: Coordinate | null } | null => {
+  let best:
+    | {
+        restaurantId: string;
+        coordinate: Coordinate | null;
+        lodZ: number;
+        rank: number;
+        featureIndex: number;
+      }
+    | null = null;
+
+  for (const [featureIndex, feature] of features.entries()) {
+    const restaurantId = getRestaurantIdFromPressFeature(feature);
+    if (!restaurantId) {
+      continue;
+    }
+    const coordinate = getCoordinateFromPressFeature(feature);
+    const lodZ = getNumericPressFeatureProperty(feature, 'lodZ') ?? Number.NEGATIVE_INFINITY;
+    const rank = getNumericPressFeatureProperty(feature, 'rank') ?? Number.POSITIVE_INFINITY;
+
+    if (!best) {
+      best = { restaurantId, coordinate, lodZ, rank, featureIndex };
+      continue;
+    }
+    if (lodZ > best.lodZ) {
+      best = { restaurantId, coordinate, lodZ, rank, featureIndex };
+      continue;
+    }
+    if (lodZ < best.lodZ) {
+      continue;
+    }
+    if (rank < best.rank) {
+      best = { restaurantId, coordinate, lodZ, rank, featureIndex };
+      continue;
+    }
+    if (rank > best.rank) {
+      continue;
+    }
+    if (featureIndex < best.featureIndex) {
+      best = { restaurantId, coordinate, lodZ, rank, featureIndex };
+    }
+  }
+
+  if (!best) {
+    return null;
+  }
+  return { restaurantId: best.restaurantId, coordinate: best.coordinate };
 };
 
 const getStringPressFeatureProperty = (feature: unknown, key: string): string | null => {
@@ -572,84 +668,8 @@ const getLabelTextFromPressFeature = (feature: unknown): string | null => {
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
-
-type PressFeatureCandidate = {
-  restaurantId: string;
-  coordinate: Coordinate | null;
-  distanceMiles: number | null;
-  lodZ: number;
-  rank: number;
-  markerKey: string;
-  featureIndex: number;
-};
-
-const comparePressFeatureCandidates = (
-  a: PressFeatureCandidate,
-  b: PressFeatureCandidate
-): number => {
-  const aHasDistance = a.distanceMiles != null;
-  const bHasDistance = b.distanceMiles != null;
-  if (aHasDistance && bHasDistance) {
-    const distanceDelta = a.distanceMiles - b.distanceMiles;
-    if (Math.abs(distanceDelta) > PRESS_DISTANCE_EPSILON_MILES) {
-      return distanceDelta < 0 ? -1 : 1;
-    }
-  } else if (aHasDistance !== bHasDistance) {
-    return aHasDistance ? -1 : 1;
-  }
-
-  if (a.lodZ !== b.lodZ) {
-    return a.lodZ > b.lodZ ? -1 : 1;
-  }
-  if (a.rank !== b.rank) {
-    return a.rank < b.rank ? -1 : 1;
-  }
-  if (a.markerKey.length > 0 && b.markerKey.length > 0 && a.markerKey !== b.markerKey) {
-    return a.markerKey < b.markerKey ? -1 : 1;
-  }
-  if (a.markerKey.length > 0 && b.markerKey.length === 0) {
-    return -1;
-  }
-  if (a.markerKey.length === 0 && b.markerKey.length > 0) {
-    return 1;
-  }
-  return a.featureIndex - b.featureIndex;
-};
-
-const pickBestRestaurantIdFromPressFeatures = (
-  features: unknown[],
-  target: Coordinate | null
-): { restaurantId: string; coordinate: Coordinate | null } | null => {
-  let best: PressFeatureCandidate | null = null;
-
-  for (const [featureIndex, feature] of features.entries()) {
-    const restaurantId = getRestaurantIdFromPressFeature(feature);
-    if (!restaurantId) {
-      continue;
-    }
-
-    const coordinate = getCoordinateFromPressFeature(feature);
-    const distanceMiles = target && coordinate ? haversineDistanceMiles(target, coordinate) : null;
-    const candidate: PressFeatureCandidate = {
-      restaurantId,
-      coordinate,
-      distanceMiles,
-      lodZ: getNumericPressFeatureProperty(feature, 'lodZ') ?? Number.NEGATIVE_INFINITY,
-      rank: getNumericPressFeatureProperty(feature, 'rank') ?? Number.POSITIVE_INFINITY,
-      markerKey: getMarkerKeyFromPressFeature(feature) ?? '',
-      featureIndex,
-    };
-
-    if (!best || comparePressFeatureCandidates(candidate, best) < 0) {
-      best = candidate;
-    }
-  }
-
-  if (!best) {
-    return null;
-  }
-  return { restaurantId: best.restaurantId, coordinate: best.coordinate };
-};
+const areStringArraysEqual = (left: string[], right: string[]) =>
+  left.length === right.length && left.every((value, index) => value === right[index]);
 
 const pickClosestRestaurantIdFromPressFeatures = (
   features: unknown[],
@@ -1408,6 +1428,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     width: 0,
     height: 0,
   });
+  const [visibleLabelFeatureIdList, setVisibleLabelFeatureIdList] = React.useState<string[]>([]);
+  const [visibleDotRestaurantIdList, setVisibleDotRestaurantIdList] = React.useState<string[]>([]);
   const dotPinnedKeysRef = React.useRef<Set<string>>(new Set());
   const dotPinnedStateResetKeyRef = React.useRef<string | null>(null);
   const labelStickyRefreshSeqRef = React.useRef(0);
@@ -2132,6 +2154,153 @@ const SearchMap: React.FC<SearchMapProps> = ({
     stylePinsTransitionFillStyle,
   ]);
 
+  const pinInteractionLayerStack = React.useMemo(
+    () =>
+      Array.from({ length: STYLE_PIN_STACK_SLOTS }, (_, slotIndex) => {
+        const lodSlotFilter = ['==', ['coalesce', ['get', 'lodZ'], -1], slotIndex] as const;
+        const steadyFilter = [
+          'all',
+          lodSlotFilter,
+          ['==', PIN_TRANSITION_ACTIVE_EXPRESSION, 0],
+        ] as const;
+        return (
+          <MapboxGL.CircleLayer
+            key={`pin-interaction-slot-${slotIndex}`}
+            id={`restaurant-pin-interaction-slot-${slotIndex}`}
+            slot="top"
+            belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+            style={PIN_INTERACTION_LAYER_STYLE}
+            filter={steadyFilter}
+          />
+        );
+      }),
+    []
+  );
+
+  const labelInteractionStyles = React.useMemo(() => {
+    const toInteractionStyle = (
+      style: MapboxGL.SymbolLayerStyle
+    ): MapboxGL.SymbolLayerStyle =>
+      ({
+        ...style,
+        // Interaction layers should never influence placement. We separately filter interaction
+        // features to IDs that are currently rendered by the visual label layers.
+        iconSize: 0,
+        iconOpacity: INTERACTION_LAYER_HIDDEN_OPACITY,
+        iconAllowOverlap: true,
+        iconIgnorePlacement: true,
+        iconPadding: 0,
+        textOpacity: INTERACTION_LAYER_HIDDEN_OPACITY,
+        textAllowOverlap: true,
+        textIgnorePlacement: true,
+        textPadding: 0,
+      }) as MapboxGL.SymbolLayerStyle;
+
+    return {
+      bottom: toInteractionStyle(labelCandidateStyles.bottom),
+      right: toInteractionStyle(labelCandidateStyles.right),
+      top: toInteractionStyle(labelCandidateStyles.top),
+      left: toInteractionStyle(labelCandidateStyles.left),
+    } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
+  }, [labelCandidateStyles]);
+
+  const refreshVisibleLabelFeatureIds = React.useCallback(() => {
+    if (!shouldRenderLabels) {
+      setVisibleLabelFeatureIdList((previous) => (previous.length === 0 ? previous : []));
+      return;
+    }
+    const mapInstance = mapRef.current;
+    if (!mapInstance?.queryRenderedFeaturesInRect) {
+      return;
+    }
+
+    void mapInstance
+      .queryRenderedFeaturesInRect([], [], Object.values(LABEL_LAYER_IDS_BY_CANDIDATE))
+      .then((rendered) => {
+        const nextSet = new Set<string>();
+        for (const feature of rendered?.features ?? []) {
+          const featureId = getFeatureIdFromPressFeature(feature);
+          if (!featureId) {
+            continue;
+          }
+          if (!parseLabelCandidateFeatureId(featureId)) {
+            continue;
+          }
+          nextSet.add(featureId);
+        }
+        const next = Array.from(nextSet).sort();
+        setVisibleLabelFeatureIdList((previous) =>
+          areStringArraysEqual(previous, next) ? previous : next
+        );
+      })
+      .catch(() => undefined);
+  }, [mapRef, shouldRenderLabels]);
+
+  const labelInteractionFilters = React.useMemo(
+    () =>
+      ({
+        bottom: [
+          'all',
+          ['==', ['get', 'labelCandidate'], 'bottom'],
+          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
+        ] as unknown[],
+        right: [
+          'all',
+          ['==', ['get', 'labelCandidate'], 'right'],
+          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
+        ] as unknown[],
+        top: [
+          'all',
+          ['==', ['get', 'labelCandidate'], 'top'],
+          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
+        ] as unknown[],
+        left: [
+          'all',
+          ['==', ['get', 'labelCandidate'], 'left'],
+          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
+        ] as unknown[],
+      }) satisfies Record<LabelCandidate, unknown[]>,
+    [visibleLabelFeatureIdList]
+  );
+
+  const refreshVisibleDotRestaurantIds = React.useCallback(() => {
+    if (!shouldRenderDots) {
+      setVisibleDotRestaurantIdList((previous) => (previous.length === 0 ? previous : []));
+      return;
+    }
+    const mapInstance = mapRef.current;
+    if (!mapInstance?.queryRenderedFeaturesInRect) {
+      return;
+    }
+
+    void mapInstance
+      .queryRenderedFeaturesInRect([], [], [DOT_LAYER_ID])
+      .then((rendered) => {
+        const nextSet = new Set<string>();
+        for (const feature of rendered?.features ?? []) {
+          const restaurantId = getRestaurantIdFromPressFeature(feature);
+          if (restaurantId) {
+            nextSet.add(restaurantId);
+          }
+        }
+        const next = Array.from(nextSet).sort();
+        setVisibleDotRestaurantIdList((previous) =>
+          areStringArraysEqual(previous, next) ? previous : next
+        );
+      })
+      .catch(() => undefined);
+  }, [mapRef, shouldRenderDots]);
+
+  const dotInteractionFilter = React.useMemo(
+    () =>
+      [
+        'all',
+        ['!', ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]]],
+        ['in', ['get', 'restaurantId'], ['literal', visibleDotRestaurantIdList]],
+      ] as unknown[],
+    [hiddenDotRestaurantIdList, visibleDotRestaurantIdList]
+  );
+
   const isTapIntentionalForLabelFeature = React.useCallback(
     ({
       mapInstance,
@@ -2230,117 +2399,31 @@ const SearchMap: React.FC<SearchMapProps> = ({
         return;
       }
 
-      const features: unknown[] = event?.features ?? [];
-      if (features.length === 0) {
-        return;
-      }
-      const firstMatch = pickFirstRestaurantIdFromPressFeatures(features);
       const mapInstance = mapRef.current;
       const point = getPointFromPressEvent(event);
+      if (!mapInstance?.queryRenderedFeaturesAtPoint || !point) {
+        return;
+      }
 
-      const fallbackToGeometrySelection = () => {
-        const baseTarget =
-          getCoordinateFromPressEvent(event) ??
-          firstMatch?.coordinate ??
-          getCoordinateFromPressFeature(features[0]) ??
-          null;
-        if (!baseTarget) {
-          const topMatch = pickBestRestaurantIdFromPressFeatures(features, null);
-          const restaurantId =
-            topMatch?.restaurantId ??
-            firstMatch?.restaurantId ??
-            getRestaurantIdFromPressFeature(features[0]);
-          if (restaurantId) {
-            const coordinate =
-              topMatch?.coordinate ??
-              firstMatch?.coordinate ??
-              getCoordinateFromPressFeature(features[0]);
-            void isTapIntentionalForPin({
-              mapInstance,
-              tapPoint: point,
-              coordinate: coordinate ?? null,
-            }).then((isIntentional) => {
-              if (!isIntentional) {
-                return;
-              }
-              onMarkerPress(restaurantId, coordinate);
-            });
-          }
-          return;
-        }
-
-        const resolvePressSelection = (target: Coordinate) => {
-          const pressMatch = pickBestRestaurantIdFromPressFeatures(features, target);
-          const restaurantId =
-            pressMatch?.restaurantId ??
-            firstMatch?.restaurantId ??
-            getRestaurantIdFromPressFeature(features[0]);
-          if (!restaurantId) {
+      void mapInstance
+        .queryRenderedFeaturesAtPoint([point.x, point.y], [], PIN_INTERACTION_LAYER_IDS)
+        .then((renderedAtPoint) => {
+          const topMatch = pickTopRestaurantIdFromPressFeatures(renderedAtPoint?.features ?? []);
+          if (!topMatch) {
             return;
           }
-          const coordinate = pressMatch?.coordinate ?? firstMatch?.coordinate ?? target;
-          void isTapIntentionalForPin({
+          void isTapInsidePinInteractionGeometry({
             mapInstance,
             tapPoint: point,
-            coordinate: coordinate ?? null,
+            coordinate: topMatch.coordinate,
           }).then((isIntentional) => {
             if (!isIntentional) {
               return;
             }
-            onMarkerPress(restaurantId, coordinate);
+            onMarkerPress(topMatch.restaurantId, topMatch.coordinate);
           });
-        };
-
-        // Pins are anchored by their tip. Shift the touch target down in screen space so body taps
-        // resolve to the intended pin coordinate, then select by nearest geometry.
-        if (mapInstance?.getCoordinateFromView && point) {
-          void mapInstance
-            .getCoordinateFromView([point.x, point.y + PIN_PRESS_ANCHOR_SHIFT_Y_PX])
-            .then((shifted) => {
-              const target = isLngLatTuple(shifted)
-                ? ({ lng: shifted[0], lat: shifted[1] } as Coordinate)
-                : baseTarget;
-              resolvePressSelection(target);
-            })
-            .catch(() => {
-              resolvePressSelection(baseTarget);
-            });
-          return;
-        }
-
-        resolvePressSelection(baseTarget);
-      };
-
-      // Prefer real render order at the touch point so stacked pins always select the front-most pin.
-      if (mapInstance?.queryRenderedFeaturesAtPoint && point) {
-        void mapInstance
-          .queryRenderedFeaturesAtPoint([point.x, point.y], [], STYLE_PIN_INTERACTIVE_LAYER_IDS)
-          .then((renderedAtPoint) => {
-            const topMatch = pickFirstRestaurantIdFromPressFeatures(
-              renderedAtPoint?.features ?? []
-            );
-            if (!topMatch) {
-              fallbackToGeometrySelection();
-              return;
-            }
-            void isTapIntentionalForPin({
-              mapInstance,
-              tapPoint: point,
-              coordinate: topMatch.coordinate,
-            }).then((isIntentional) => {
-              if (!isIntentional) {
-                return;
-              }
-              onMarkerPress(topMatch.restaurantId, topMatch.coordinate);
-            });
-          })
-          .catch(() => {
-            fallbackToGeometrySelection();
-          });
-        return;
-      }
-
-      fallbackToGeometrySelection();
+        })
+        .catch(() => undefined);
     },
     [mapRef, onMarkerPress]
   );
@@ -2357,23 +2440,17 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
 
       const firstLabelMatch = pickFirstRestaurantIdFromPressFeatures(features);
+      if (!firstLabelMatch) {
+        return;
+      }
       const mapInstance = mapRef.current;
       const point = getPointFromPressEvent(event);
-      const fallbackToLabelSelection = () => {
-        const target = getCoordinateFromPressEvent(event);
-        const pressMatch = pickBestRestaurantIdFromPressFeatures(features, target);
-        const restaurantId =
-          pressMatch?.restaurantId ??
-          firstLabelMatch?.restaurantId ??
-          getRestaurantIdFromPressFeature(features[0]);
-        if (!restaurantId) {
-          return;
-        }
+      const selectLabelIfIntentional = () => {
+        const restaurantId = firstLabelMatch.restaurantId;
         const coordinate =
-          pressMatch?.coordinate ??
-          firstLabelMatch?.coordinate ??
+          firstLabelMatch.coordinate ??
           getCoordinateFromPressFeature(features[0]) ??
-          target;
+          getCoordinateFromPressEvent(event);
         const matchedLabelFeature =
           features.find((feature) => getRestaurantIdFromPressFeature(feature) === restaurantId) ??
           features[0];
@@ -2391,39 +2468,38 @@ const SearchMap: React.FC<SearchMapProps> = ({
       };
 
       if (!mapInstance?.queryRenderedFeaturesAtPoint || !point) {
-        fallbackToLabelSelection();
+        selectLabelIfIntentional();
         return;
       }
 
       void mapInstance
-        .queryRenderedFeaturesAtPoint([point.x, point.y], [], STYLE_PIN_INTERACTIVE_LAYER_IDS)
+        .queryRenderedFeaturesAtPoint([point.x, point.y], [], PIN_INTERACTION_LAYER_IDS)
         .then((renderedAtPoint) => {
           const pinFeatures = renderedAtPoint?.features ?? [];
           if (pinFeatures.length === 0) {
-            fallbackToLabelSelection();
+            selectLabelIfIntentional();
             return;
           }
 
-          const topPinMatch = pickFirstRestaurantIdFromPressFeatures(pinFeatures);
+          const topPinMatch = pickTopRestaurantIdFromPressFeatures(pinFeatures);
           if (!topPinMatch) {
-            fallbackToLabelSelection();
+            selectLabelIfIntentional();
             return;
           }
-
-          void isTapIntentionalForPin({
+          void isTapInsidePinInteractionGeometry({
             mapInstance,
             tapPoint: point,
             coordinate: topPinMatch.coordinate,
           }).then((isIntentional) => {
             if (!isIntentional) {
-              fallbackToLabelSelection();
+              selectLabelIfIntentional();
               return;
             }
             onMarkerPress(topPinMatch.restaurantId, topPinMatch.coordinate);
           });
         })
         .catch(() => {
-          fallbackToLabelSelection();
+          selectLabelIfIntentional();
         });
     },
     [isTapIntentionalForLabelFeature, mapRef, onMarkerPress]
@@ -2548,32 +2624,73 @@ const SearchMap: React.FC<SearchMapProps> = ({
     shouldRenderLabels,
   ]);
 
+  React.useEffect(() => {
+    refreshVisibleDotRestaurantIds();
+  }, [markersRenderKey, refreshVisibleDotRestaurantIds, shouldRenderDots, styleURL]);
+
+  React.useEffect(() => {
+    refreshVisibleLabelFeatureIds();
+  }, [
+    labelPlacementEpoch,
+    markersRenderKey,
+    refreshVisibleLabelFeatureIds,
+    shouldRenderLabels,
+    styleURL,
+  ]);
+
   const handleDotPress = React.useCallback(
     (event: OnPressEvent) => {
-      const features = event?.features ?? [];
-      if (features.length === 0) {
+      const mapInstance = mapRef.current;
+      const point = getPointFromPressEvent(event);
+      if (!mapInstance?.queryRenderedFeaturesInRect || !point) {
         return;
       }
-      const target =
-        getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
-      if (!target) {
-        const restaurantId = getRestaurantIdFromPressFeature(features[0]);
-        if (restaurantId) {
-          onMarkerPress?.(restaurantId, getCoordinateFromPressFeature(features[0]));
-        }
-        return;
-      }
-      const pressMatch = pickClosestRestaurantIdFromPressFeatures(features, target);
-      const restaurantId = pressMatch?.restaurantId ?? getRestaurantIdFromPressFeature(features[0]);
-      if (!restaurantId) {
-        return;
-      }
-      if (pinnedRestaurantIds.has(restaurantId)) {
-        return;
-      }
-      onMarkerPress?.(restaurantId, pressMatch?.coordinate ?? target);
+      const radiusPx = DOT_TAP_INTENT_RADIUS_PX;
+      const queryBox = [
+        point.x - radiusPx,
+        point.y - radiusPx,
+        point.x + radiusPx,
+        point.y + radiusPx,
+      ] as [number, number, number, number];
+
+      void mapInstance
+        .queryRenderedFeaturesInRect(queryBox, [], [DOT_LAYER_ID])
+        .then((renderedAtPoint) => {
+          const features = renderedAtPoint?.features ?? [];
+          if (features.length === 0) {
+            return;
+          }
+          const target =
+            getCoordinateFromPressEvent(event) ?? getCoordinateFromPressFeature(features[0]) ?? null;
+          if (!target) {
+            return;
+          }
+          const pressMatch = pickClosestRestaurantIdFromPressFeatures(features, target);
+          const restaurantId =
+            pressMatch?.restaurantId ?? getRestaurantIdFromPressFeature(features[0]);
+          if (
+            !restaurantId ||
+            pinnedRestaurantIds.has(restaurantId) ||
+            hiddenDotRestaurantIdList.includes(restaurantId)
+          ) {
+            return;
+          }
+
+          const coordinate = pressMatch?.coordinate ?? target;
+          void isTapInsideDotInteractionGeometry({
+            mapInstance,
+            tapPoint: point,
+            coordinate,
+          }).then((isIntentional) => {
+            if (!isIntentional) {
+              return;
+            }
+            onMarkerPress?.(restaurantId, coordinate);
+          });
+        })
+        .catch(() => undefined);
     },
-    [onMarkerPress, pinnedRestaurantIds]
+    [hiddenDotRestaurantIdList, mapRef, onMarkerPress, pinnedRestaurantIds]
   );
 
   React.useEffect(() => {
@@ -2865,9 +2982,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
       labelStickyRefreshQueuedRef.current = true;
       runStickyLabelRefreshRef.current();
+      refreshVisibleLabelFeatureIds();
+      refreshVisibleDotRestaurantIds();
       onMapIdle(state);
     },
-    [onMapIdle]
+    [onMapIdle, refreshVisibleDotRestaurantIds, refreshVisibleLabelFeatureIds]
   );
   React.useEffect(() => {
     visualReadySignaledRequestKeyRef.current = null;
@@ -3088,7 +3207,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
             <MapboxGL.ShapeSource
               id={DOT_SOURCE_ID}
               shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
-              onPress={handleDotPress}
             >
               <MapboxGL.SymbolLayer
                 id={DOT_LAYER_ID}
@@ -3096,6 +3214,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
                 belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
                 style={dotLayerStyle}
                 sourceID={DOT_SOURCE_ID}
+              />
+            </MapboxGL.ShapeSource>
+            <MapboxGL.ShapeSource
+              id={DOT_INTERACTION_SOURCE_ID}
+              shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
+              onPress={handleDotPress}
+            >
+              <MapboxGL.CircleLayer
+                id={DOT_INTERACTION_LAYER_ID}
+                slot="top"
+                belowLayerID={SEARCH_PINS_Z_ANCHOR_LAYER_ID}
+                sourceID={DOT_INTERACTION_SOURCE_ID}
+                style={DOT_INTERACTION_LAYER_STYLE}
+                filter={dotInteractionFilter}
               />
             </MapboxGL.ShapeSource>
           </React.Profiler>
@@ -3109,9 +3241,22 @@ const SearchMap: React.FC<SearchMapProps> = ({
                 ? stylePinFeaturesWithTransitions
                 : EMPTY_POINT_FEATURES
             }
-            onPress={handleStylePinPress}
           >
             {stylePinLayerStack}
+          </MapboxGL.ShapeSource>
+        ) : null}
+        {USE_STYLE_LAYER_PINS && !shouldDisableMarkers ? (
+          <MapboxGL.ShapeSource
+            key={`pin-interaction-source-${pinLayerTreeEpoch}`}
+            id={PIN_INTERACTION_SOURCE_ID}
+            shape={
+              stylePinFeaturesWithTransitions.features.length > 0
+                ? stylePinFeaturesWithTransitions
+                : EMPTY_POINT_FEATURES
+            }
+            onPress={handleStylePinPress}
+          >
+            {pinInteractionLayerStack}
           </MapboxGL.ShapeSource>
         ) : null}
         {shouldRenderLabels ? (
@@ -3120,7 +3265,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
               <MapboxGL.ShapeSource
                 id={RESTAURANT_LABEL_SOURCE_ID}
                 shape={restaurantLabelCandidateFeaturesWithIds}
-                onPress={handleLabelPress}
               >
                 {LABEL_CANDIDATE_LAYER_ORDER.map((candidate) => (
                   <MapboxGL.SymbolLayer
@@ -3131,6 +3275,23 @@ const SearchMap: React.FC<SearchMapProps> = ({
                     belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
                     style={labelCandidateStyles[candidate]}
                     filter={['==', ['get', 'labelCandidate'], candidate]}
+                  />
+                ))}
+              </MapboxGL.ShapeSource>
+              <MapboxGL.ShapeSource
+                id={LABEL_INTERACTION_SOURCE_ID}
+                shape={restaurantLabelCandidateFeaturesWithIds}
+                onPress={handleLabelPress}
+              >
+                {LABEL_CANDIDATE_LAYER_ORDER.map((candidate) => (
+                  <MapboxGL.SymbolLayer
+                    key={`${LABEL_INTERACTION_LAYER_IDS_BY_CANDIDATE[candidate]}-${labelPlacementEpoch}`}
+                    id={LABEL_INTERACTION_LAYER_IDS_BY_CANDIDATE[candidate]}
+                    slot="top"
+                    sourceID={LABEL_INTERACTION_SOURCE_ID}
+                    belowLayerID={OVERLAY_Z_ANCHOR_LAYER_ID}
+                    style={labelInteractionStyles[candidate]}
+                    filter={labelInteractionFilters[candidate]}
                   />
                 ))}
               </MapboxGL.ShapeSource>

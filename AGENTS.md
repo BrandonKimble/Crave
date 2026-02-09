@@ -1,5 +1,12 @@
 # MUST READ FIRST (EVERY SESSION START)
 
+## Cleanup-First Policy (Top Priority)
+
+- Leave modules simpler than you found them: organize while you touch code, and prefer subtraction over accumulation.
+- Default to one ideal path; remove legacy/duplicate/fallback branches when they are not explicitly required.
+- Proactively spot dead or unused code and remove it; if uncertain, call it out and propose removal instead of keeping silent bloat.
+- Keep fallbacks rare and temporary: only when required, behavior-matching, and documented with a clear removal trigger.
+
 This file is intentionally front-loaded because Codex loads the repo-root `AGENTS.md` as session context.
 
 ## Shared-Checkout Workflow (Multi-Session Friendly)
