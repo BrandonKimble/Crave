@@ -105,6 +105,11 @@ export interface RestaurantResult {
   restaurantId: string;
   restaurantName: string;
   restaurantAliases: string[];
+  /**
+   * Canonical ordinal rank for the current search snapshot (1-based).
+   * This should be server-assigned and stable across cards + map pins.
+   */
+  rank?: number;
   contextualScore: number;
   restaurantQualityScore?: number | null;
   displayScore?: number | null;

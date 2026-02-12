@@ -2,12 +2,38 @@
 
 ## Cleanup-First Policy (Top Priority)
 
-- Leave modules simpler than you found them: organize while you touch code, and prefer subtraction over accumulation.
+- Leave modules simpler than you found them: organize while you touch code, and prefer subtraction/replacement over accumulation.
 - Default to one ideal path; remove legacy/duplicate/fallback branches when they are not explicitly required.
 - Proactively spot dead or unused code and remove it; if uncertain, call it out and propose removal instead of keeping silent bloat.
 - Keep fallbacks rare and temporary: only when required, behavior-matching, and documented with a clear removal trigger.
 
 This file is intentionally front-loaded because Codex loads the repo-root `AGENTS.md` as session context.
+
+## Shortcut Submit Perf Continuity (Read After Compaction)
+
+When working on shortcut-submit performance, always reload context from persistent files before coding:
+
+1. `/Users/brandonkimble/crave-search/plans/autonomy-playbook.md`
+2. `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md`
+
+Rules:
+
+- Treat `plans/shortcut-submit-investigation-log.md` as canonical memory across sessions.
+- After each instrumentation/fix/validation loop, append metrics + decision summary there.
+- Do not re-run previously failed candidates unless new instrumentation evidence justifies retrying.
+- Process posture is defined by `plans/autonomy-playbook.md`: instrumentation/synthesis loops may repeat without behavior changes, and architectural-scale rewrites are allowed when evidence shows local fixes are insufficient.
+- Preserve UX contract: user-visible behavior/look/feel should remain equivalent unless a behavior change is explicitly approved.
+
+## Strict Autonomy Latch (When Requested)
+
+If the user explicitly requests strict no-checkpoint mode (for example: "do not stop", "no-user-in-loop", "only report on success/blocker"), treat it as a persistent latch for the current investigation thread.
+
+- Do not send checkpoint/progress summaries between loops.
+- Continue loop-to-loop autonomously, including after context compaction/reload.
+- Only send a user-facing stop/update when one of these is true:
+  1. requested improvement threshold is achieved (use latest explicit user threshold in thread),
+  2. a hard blocker requires user action (device/runtime/tooling access),
+  3. the user explicitly asks for an update.
 
 ## Shared-Checkout Workflow (Multi-Session Friendly)
 

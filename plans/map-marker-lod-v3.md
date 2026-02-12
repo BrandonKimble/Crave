@@ -319,7 +319,7 @@ Future improvement (if we want “instant”):
 - Map dots/pins SymbolLayers: `apps/mobile/src/screens/Search/components/search-map.tsx`
 - Shortcut submit + request id semantics: `apps/mobile/src/screens/Search/hooks/use-search-submit.ts`, `apps/mobile/src/services/search.ts`
 - Shortcut list/map state glue + current “dot heavy mode” logic: `apps/mobile/src/screens/Search/index.tsx`
-- Color helpers: `apps/mobile/src/screens/Search/utils/quality.ts`, `apps/mobile/src/screens/Search/utils/marker-lod.ts`
+- Color helpers: `apps/mobile/src/screens/Search/utils/quality.ts`, `apps/mobile/src/screens/Search/utils/marker-colors.ts`
 - Card score display: `apps/mobile/src/screens/Search/components/restaurant-result-card.tsx`, `apps/mobile/src/screens/Search/components/dish-result-card.tsx`
 
 ## Open items (remaining)

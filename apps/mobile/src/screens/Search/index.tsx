@@ -3714,6 +3714,34 @@ const SearchScreen: React.FC = () => {
   }, []);
   const restaurants = results?.restaurants ?? EMPTY_RESTAURANTS;
   const dishes = results?.dishes ?? EMPTY_DISHES;
+  const missingRestaurantRankByIdRef = React.useRef<Set<string>>(new Set());
+  const canonicalRestaurantRankById = React.useMemo(() => {
+    const map = new Map<string, number>();
+    restaurants.forEach((restaurant) => {
+      if (
+        typeof restaurant.rank === 'number' &&
+        Number.isFinite(restaurant.rank) &&
+        restaurant.rank >= 1
+      ) {
+        map.set(restaurant.restaurantId, restaurant.rank);
+        return;
+      }
+      if (!missingRestaurantRankByIdRef.current.has(restaurant.restaurantId)) {
+        missingRestaurantRankByIdRef.current.add(restaurant.restaurantId);
+        logger.error('Restaurant missing canonical rank in search results', {
+          restaurantId: restaurant.restaurantId,
+          restaurantName: restaurant.restaurantName,
+          searchRequestId:
+            results?.metadata?.searchRequestId ?? results?.metadata?.requestId ?? null,
+        });
+      }
+    });
+    return map;
+  }, [
+    restaurants,
+    results?.metadata?.requestId,
+    results?.metadata?.searchRequestId,
+  ]);
   const overlaySelectedRestaurantId = isRestaurantOverlayVisible
     ? restaurantProfile?.restaurant.restaurantId ?? null
     : null;
@@ -4661,11 +4689,14 @@ const SearchScreen: React.FC = () => {
       });
     } else {
       // Restaurant mode: existing logic
-      markerRestaurants.forEach((restaurant, restaurantIndex) => {
+      markerRestaurants.forEach((restaurant) => {
         if (restaurantOnlyId && restaurant.restaurantId !== restaurantOnlyId) {
           return;
         }
-        const rank = restaurantIndex + 1;
+        const rank = canonicalRestaurantRankById.get(restaurant.restaurantId);
+        if (typeof rank !== 'number') {
+          return;
+        }
         const pinColorGlobal = getQualityColorFromScore(restaurant.restaurantQualityScore);
         const pinColorLocal = getQualityColorFromScore(restaurant.displayScore);
         const pinColor = scoreMode === 'coverage_display' ? pinColorLocal : pinColorGlobal;
@@ -4758,6 +4789,7 @@ const SearchScreen: React.FC = () => {
     resolveRestaurantMapLocations,
     resolveRestaurantLocationSelectionAnchor,
     pickPreferredRestaurantMapLocation,
+    canonicalRestaurantRankById,
     restaurantOnlyId,
     overlaySelectedRestaurantId,
     shouldLogSearchComputes,
@@ -5088,6 +5120,15 @@ const SearchScreen: React.FC = () => {
             if (!restaurantId || !restaurantName) {
               return null;
             }
+            const rank = properties['rank'];
+            if (typeof rank !== 'number' || !Number.isFinite(rank) || rank < 1) {
+              logger.error('Shortcut coverage feature missing canonical rank', {
+                restaurantId,
+                restaurantName,
+                searchRequestId: requestId,
+              });
+              return null;
+            }
             const contextualScore =
               typeof properties['contextualScore'] === 'number'
                 ? (properties['contextualScore'] as number)
@@ -5147,8 +5188,7 @@ const SearchScreen: React.FC = () => {
                 restaurantId,
                 restaurantName,
                 contextualScore,
-                rank:
-                  typeof properties['rank'] === 'number' ? (properties['rank'] as number) : 9999,
+                rank,
                 displayScore,
                 displayPercentile,
                 restaurantQualityScore:
@@ -5170,43 +5210,9 @@ const SearchScreen: React.FC = () => {
           })
           .filter(Boolean) as Array<Feature<Point, RestaurantFeatureProperties>>;
 
-        const scoreForRank = (feature: Feature<Point, RestaurantFeatureProperties>) => {
-          if (scoreMode === 'coverage_display') {
-            const restaurantDisplayScore = feature.properties.displayScore ?? 0;
-            if (!includeTopDish) {
-              return restaurantDisplayScore;
-            }
-            return feature.properties.topDishDisplayScore ?? restaurantDisplayScore;
-          }
-          if (includeTopDish) {
-            return feature.properties.contextualScore ?? 0;
-          }
-          return feature.properties.restaurantQualityScore ?? 0;
-        };
-        const ranked = [...features].sort((a, b) => {
-          const scoreDiff = scoreForRank(b) - scoreForRank(a);
-          if (scoreDiff !== 0) {
-            return scoreDiff;
-          }
-          return a.properties.restaurantId.localeCompare(b.properties.restaurantId);
-        });
-
-        const rankByRestaurantId = new Map<string, number>();
-        ranked.forEach((feature, index) => {
-          rankByRestaurantId.set(feature.properties.restaurantId, index + 1);
-        });
-        const featuresWithRank = features.map((feature) => ({
-          ...feature,
-          properties: {
-            ...feature.properties,
-            rank:
-              rankByRestaurantId.get(feature.properties.restaurantId) ?? feature.properties.rank,
-          },
-        }));
-
         const next: FeatureCollection<Point, RestaurantFeatureProperties> = {
           type: 'FeatureCollection',
-          features: featuresWithRank,
+          features,
         };
         setShortcutCoverageDotFeatures(next);
       })
@@ -8202,13 +8208,6 @@ const SearchScreen: React.FC = () => {
 
   const restaurantQualityColorByIdRef = React.useRef<Map<string, string>>(new Map());
   const dishQualityColorByConnectionIdRef = React.useRef<Map<string, string>>(new Map());
-  const restaurantRankById = React.useMemo(() => {
-    const map = new Map<string, number>();
-    restaurants.forEach((restaurant, index) => {
-      map.set(restaurant.restaurantId, index + 1);
-    });
-    return map;
-  }, [restaurants]);
   const restaurantQualityColorById = React.useMemo(() => {
     const map = new Map<string, string>();
     restaurants.forEach((restaurant) => {
@@ -8263,7 +8262,10 @@ const SearchScreen: React.FC = () => {
   const renderRestaurantCard = React.useCallback(
     (restaurant: RestaurantResult, index: number) => {
       const isLiked = false;
-      const rank = restaurantRankById.get(restaurant.restaurantId) ?? index + 1;
+      const rank = canonicalRestaurantRankById.get(restaurant.restaurantId);
+      if (typeof rank !== 'number') {
+        return null;
+      }
       const qualityColor =
         restaurantQualityColorByIdRef.current.get(restaurant.restaurantId) ??
         getMarkerColorForRestaurant(restaurant, scoreMode);
@@ -8292,7 +8294,7 @@ const SearchScreen: React.FC = () => {
       openScoreInfo,
       primaryFoodTerm,
       primaryCoverageKey,
-      restaurantRankById,
+      canonicalRestaurantRankById,
     ]
   );
 

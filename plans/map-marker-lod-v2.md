@@ -51,9 +51,8 @@
   - Builds `markerCatalog` sorted by `(rank, locationIndex, id)`; this order should be treated as canonical for “top N full pins”.
   - Today, “visible candidates” is effectively the full catalog (no bounds filter).
 
-### Bounds + padding utilities (use, don’t re-invent)
+### Bounds utilities (use, don’t re-invent)
 - `apps/mobile/src/screens/Search/utils/geo` (bounds conversions)
-- `apps/mobile/src/screens/Search/utils/marker-lod` (`padMapBounds`, `isCoordinateWithinBounds`)
 
 ## Architecture: Separate the three concerns
 
@@ -125,18 +124,14 @@ Implementation detail:
 - Prefer Mapbox-provided bounds from camera events when reliable; otherwise fall back to `mapRef.getVisibleBounds()`.
 - Keep camera state entirely inside `SearchMap` so `SearchScreen` doesn’t re-render on camera ticks (protects results sheet/list perf).
 
-### Step 2: Candidate bounds = viewport bounds + small pixel padding
-Goal: unmount markers when they are “safely off-screen”, without breaking the edge fade.
+### Step 2: Candidate bounds = viewport bounds (no extra padding)
+Goal: keep candidate evaluation aligned to the actual visible viewport.
 
 Algorithm:
 1) Take raw `cameraBounds` (MapBounds).
-2) Convert `padPx` → ratios:
-   - `latRatio = padPx / viewportHeightPx`
-   - `lngRatio = padPx / viewportWidthPx`
-3) `paddedBounds = padMapBounds(cameraBounds, { lat: latRatio, lng: lngRatio })`
+2) Use `cameraBounds` directly as the candidate bounds.
 
-Constants (start small; increase only if necessary):
-- `padPx = 12` (target: ≤ 20px as you requested)
+Constants:
 - leave-hold while moving: 200–300ms (prevents churn during fast pans)
 
 Candidate key set:
@@ -144,9 +139,9 @@ Candidate key set:
 - While the map is moving, if a key was previously a candidate and just left bounds, keep it in candidates until `now > expiresAt`.
 
 Why this is crucial:
-- Visibility fade works as the viewport edge passes over a marker, because the marker stays mounted slightly beyond the edge.
-- True unmount happens only after it’s well outside the viewport (past the padding), so there’s no “pop”.
-- This should not require touching the existing edge-fade computation; candidate unmounting is a separate, wider gate.
+- Candidate evaluation matches what users can actually see on-screen.
+- Bounds logic stays simple (no viewport inflation coupling).
+- Transition smoothing comes from LOD hysteresis/timing, not padded bounds.
 
 ### Step 3: Dot-heavy mode from visible candidates (with hysteresis)
 Inputs:

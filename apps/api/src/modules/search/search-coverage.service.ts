@@ -129,6 +129,18 @@ export class SearchCoverageService {
         td.display_score AS top_food_display_score,
         td.display_percentile AS top_food_display_percentile`
       : Prisma.sql``;
+    const coverageOrderSql = (() => {
+      if (scoreMode === 'coverage_display') {
+        if (includeTopDish) {
+          return Prisma.sql`COALESCE(td.display_score, drs.rank_score_display, -1) DESC, e.entity_id ASC`;
+        }
+        return Prisma.sql`COALESCE(drs.rank_score_display, -1) DESC, e.entity_id ASC`;
+      }
+      if (includeTopDish) {
+        return Prisma.sql`COALESCE(td.food_quality_score, e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
+      }
+      return Prisma.sql`COALESCE(e.restaurant_quality_score, -1) DESC, e.entity_id ASC`;
+    })();
     const locationJoinSql = Prisma.sql`
       JOIN LATERAL (
         SELECT
@@ -170,6 +182,7 @@ export class SearchCoverageService {
         AND drs.subject_id = e.entity_id
       ${topDishJoinSql}
       WHERE ${Prisma.join(conditions, ' AND ')}
+      ORDER BY ${coverageOrderSql}
       LIMIT ${maxRestaurants};
     `);
 
@@ -181,7 +194,7 @@ export class SearchCoverageService {
     return {
       type: 'FeatureCollection',
       features: rows
-        .map((row) => {
+        .map((row, index) => {
           const longitude = Number(row.longitude);
           const latitude = Number(row.latitude);
           if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
@@ -206,7 +219,7 @@ export class SearchCoverageService {
                 includeTopDish && Number.isFinite(topFoodQualityScore)
                   ? topFoodQualityScore
                   : 0,
-              rank: 9999,
+              rank: index + 1,
               displayScore: Number.isFinite(displayScore) ? displayScore : null,
               displayPercentile: Number.isFinite(displayPercentile)
                 ? displayPercentile

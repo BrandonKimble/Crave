@@ -576,6 +576,7 @@ export class SearchQueryExecutor {
       allRestaurantContexts,
       referenceDate,
       userLocation,
+      effectiveRestaurantPagination.skip + 1,
     );
     const mapRestaurantMs = performance.now() - mapRestaurantStart;
 
@@ -2312,8 +2313,9 @@ export class SearchQueryExecutor {
     contexts: Map<string, RestaurantContext>,
     referenceDate: Date,
     userLocation: UserLocationInput | null,
+    rankStart: number,
   ): RestaurantResultDto[] {
-    return rows.map((row) => {
+    return rows.map((row, index) => {
       const context = contexts.get(row.restaurant_id);
       const parsedPrice =
         context?.priceLevel ?? this.toOptionalNumber(row.price_level);
@@ -2380,6 +2382,7 @@ export class SearchQueryExecutor {
         restaurantId: row.restaurant_id,
         restaurantName: row.restaurant_name,
         restaurantAliases: row.restaurant_aliases || [],
+        rank: rankStart + index,
         contextualScore: 0, // Not applicable for dual query
         restaurantQualityScore: this.toOptionalNumber(
           row.restaurant_quality_score,

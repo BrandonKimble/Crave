@@ -11,31 +11,9 @@ import { useClerkOAuth } from '../hooks/useClerkOAuth';
 import { logger } from '../utils';
 import { authService } from '../services/auth';
 import { navigationRef } from '../navigation/navigationRef';
+import { getOAuthErrorMessage, serializeOAuthErrorForLog } from '../utils/auth-error';
 
 const CTA_COLOR = themeColors.accentDark ?? '#7c3aed';
-
-const getOAuthErrorMessage = (error: unknown) => {
-  if (error && typeof error === 'object') {
-    const record = error as Record<string, unknown>;
-    const errors = Array.isArray(record.errors) ? record.errors : undefined;
-    const firstError =
-      errors && errors[0] && typeof errors[0] === 'object' ? (errors[0] as Record<string, unknown>) : null;
-    const code = firstError && typeof firstError.code === 'string' ? firstError.code : null;
-    const longMessage = firstError && typeof firstError.longMessage === 'string' ? firstError.longMessage : null;
-    const message = firstError && typeof firstError.message === 'string' ? firstError.message : null;
-
-    if (code === 'session_exists') return "You're already signed in.";
-    if (longMessage && longMessage.trim().length) return longMessage;
-    if (message && message.trim().length) return message;
-    if (typeof record.message === 'string' && record.message.trim().length) return record.message;
-  }
-
-  if (error instanceof Error && error.message.trim().length) {
-    return error.message;
-  }
-
-  return 'Sign-in failed. Check your internet connection (captive portal/VPN) and try again.';
-};
 
 const SignInScreen: React.FC = () => {
   const auth = useAuth();
@@ -131,18 +109,7 @@ const SignInScreen: React.FC = () => {
             await setActive({ session: resolvedSessionId });
           }
         } catch (error) {
-          let raw: unknown = error;
-          if (raw && typeof raw === 'object') {
-            raw = { ...(raw as Record<string, unknown>) };
-          }
-          logger.error(
-            'OAuth sign-in failed',
-            JSON.stringify({
-              message: error instanceof Error ? error.message : undefined,
-              stack: error instanceof Error ? error.stack : undefined,
-              raw,
-            })
-          );
+          logger.error('OAuth sign-in failed', serializeOAuthErrorForLog(error));
           setAuthError(getOAuthErrorMessage(error));
         } finally {
           setOauthStatus('idle');

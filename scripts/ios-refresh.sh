@@ -11,10 +11,13 @@ IOS_DEVICE_NAME="${IOS_DEVICE_NAME:-${IOS_SIMULATOR_NAME:-}}"
 IOS_PREFER_DEVICE="${IOS_PREFER_DEVICE:-0}"
 IOS_RUN="${IOS_RUN:-1}"
 FOLLOW_METRO_LOGS="${FOLLOW_METRO_LOGS:-1}"
-METRO_LOG="/tmp/expo-metro.log"
+METRO_LOG="${EXPO_METRO_LOG_PATH:-/tmp/expo-metro.log}"
 EXPO_START_HOST="${EXPO_START_HOST:-lan}"
 EXPO_RESET_CACHE="${EXPO_RESET_CACHE:-0}"
+EXPO_START_NO_DEV="${EXPO_START_NO_DEV:-0}"
+EXPO_START_MINIFY="${EXPO_START_MINIFY:-0}"
 EXPO_FORCE_START="${EXPO_FORCE_START:-0}"
+IOS_USE_TAILSCALE="${IOS_USE_TAILSCALE:-0}"
 METRO_ALREADY_RUNNING=0
 
 is_ipv4() {
@@ -121,6 +124,28 @@ detect_lan_ip() {
   echo ""
 }
 
+detect_tailscale_ip() {
+  local ip=""
+
+  if [[ -n "${TAILSCALE_IP:-}" ]]; then
+    ip="${TAILSCALE_IP}"
+    if is_ipv4 "$ip"; then
+      echo "$ip"
+      return 0
+    fi
+  fi
+
+  if command -v tailscale >/dev/null 2>&1; then
+    ip="$(tailscale ip -4 2>/dev/null | awk 'NF{print; exit}' || true)"
+    if is_ipv4 "$ip"; then
+      echo "$ip"
+      return 0
+    fi
+  fi
+
+  echo ""
+}
+
 APP_SCHEME="${EXPO_APP_SCHEME:-}"
 APP_SLUG="${EXPO_APP_SLUG:-}"
 IOS_BUNDLE_ID="${EXPO_IOS_BUNDLE_ID:-}"
@@ -168,6 +193,17 @@ fi
 
 PACKAGER_HOSTNAME="${EXPO_PACKAGER_HOSTNAME:-}"
 if [[ -z "$PACKAGER_HOSTNAME" ]]; then
+  if [[ "$IOS_USE_TAILSCALE" == "1" ]]; then
+    PACKAGER_HOSTNAME="$(detect_tailscale_ip || true)"
+    if [[ -n "$PACKAGER_HOSTNAME" ]]; then
+      echo "Using Tailscale IP for Metro/API: ${PACKAGER_HOSTNAME}"
+    else
+      echo "Warning: IOS_USE_TAILSCALE=1 was set, but no Tailscale IPv4 was detected."
+      echo "Falling back to LAN IP detection."
+    fi
+  fi
+fi
+if [[ -z "$PACKAGER_HOSTNAME" ]]; then
   PACKAGER_HOSTNAME="$(detect_lan_ip || true)"
 fi
 if [[ -z "$PACKAGER_HOSTNAME" ]]; then
@@ -181,9 +217,13 @@ if [[ -z "$PACKAGER_HOSTNAME" ]]; then
 fi
 
 if is_cgnat_ip "$PACKAGER_HOSTNAME"; then
-  echo "Warning: EXPO_PACKAGER_HOSTNAME is ${PACKAGER_HOSTNAME} (CGNAT/Tailscale range 100.64.0.0/10)."
-  echo "If your iPhone is not on the same tailnet, it will not be able to reach Metro."
-  echo "Prefer a Wi‑Fi/Ethernet LAN IP (usually 192.168.x.x / 10.x.x.x / 172.16-31.x.x)."
+  if [[ "$IOS_USE_TAILSCALE" == "1" ]]; then
+    echo "Using Tailscale host ${PACKAGER_HOSTNAME}. Ensure Tailscale is connected on both Mac and iPhone."
+  else
+    echo "Warning: EXPO_PACKAGER_HOSTNAME is ${PACKAGER_HOSTNAME} (CGNAT/Tailscale range 100.64.0.0/10)."
+    echo "If your iPhone is not on the same tailnet, it will not be able to reach Metro."
+    echo "Prefer a Wi‑Fi/Ethernet LAN IP (usually 192.168.x.x / 10.x.x.x / 172.16-31.x.x)."
+  fi
 fi
 
 maybe_fix_invalid_api_url() {
@@ -380,8 +420,26 @@ sys.exit(1)
 PY
 }
 
+is_offline_ios_device_udid() {
+  local udid="$1"
+  if [[ -z "$udid" ]]; then
+    return 1
+  fi
+  if ! command -v xcrun >/dev/null 2>&1; then
+    return 1
+  fi
+
+  xcrun xctrace list devices 2>/dev/null | awk -v target="$udid" '
+    $0=="== Devices Offline ==" {in_offline=1; next}
+    /^== / && $0!="== Devices Offline ==" {in_offline=0}
+    in_offline && index($0, "(" target ")") {found=1}
+    END { exit(found ? 0 : 1) }
+  '
+}
+
 open_dev_client() {
   local url
+  local launched_without_deeplink=0
   while IFS= read -r url; do
     [[ -n "$url" ]] || continue
     echo "Dev client URL: ${url}"
@@ -392,11 +450,33 @@ open_dev_client() {
           echo "  ${url}"
         fi
       elif [[ -n "$IOS_BUNDLE_ID" ]]; then
-        if ! xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
-          --terminate-existing --payload-url "$url" "$IOS_BUNDLE_ID" >/dev/null 2>&1; then
+        local launch_error=""
+        if ! launch_error="$(
+          env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
+            --terminate-existing --payload-url "$url" "$IOS_BUNDLE_ID" 2>&1
+        )"; then
           echo "Note: Failed to deep-link dev client on device. Open it manually:"
           echo "  ${url}"
           echo "Or in the app, enter: $(dev_server_url)"
+          local reason=""
+          reason="$(
+            printf '%s\n' "$launch_error" | awk '
+              NF &&
+              $0 !~ /^nvm is not compatible with the "PREFIX" environment variable:/ &&
+              $0 !~ /^nvm is not compatible with the "npm_config_prefix" environment variable:/ {print; exit}
+            '
+          )"
+          if [[ -n "$reason" ]]; then
+            echo "devicectl reason: ${reason}"
+          fi
+          if is_offline_ios_device_udid "$IOS_DEVICE_UDID"; then
+            echo "Device appears offline to Xcode. Connect iPhone by USB (or re-enable Wireless Debugging) and unlock it."
+          fi
+          if [[ "$launched_without_deeplink" == "0" ]] && env -u PREFIX -u NPM_CONFIG_PREFIX -u npm_config_prefix xcrun devicectl device process launch --device "$IOS_DEVICE_UDID" \
+            --terminate-existing "$IOS_BUNDLE_ID" >/dev/null 2>&1; then
+            echo "Opened iOS app without deep-link payload."
+            launched_without_deeplink=1
+          fi
         fi
       fi
     fi
@@ -450,8 +530,14 @@ if command -v lsof >/dev/null 2>&1; then
   existing="$(lsof -ti tcp:"$PORT" || true)"
   if [[ -n "$existing" ]]; then
     if command -v curl >/dev/null 2>&1 && curl -fs "http://127.0.0.1:${PORT}/status" >/dev/null 2>&1; then
-      echo "Metro already running on port ${PORT} (reusing)."
-      METRO_ALREADY_RUNNING=1
+      if [[ "$EXPO_FORCE_START" == "1" ]]; then
+        echo "Metro already running on port ${PORT}; restarting because EXPO_FORCE_START=1."
+        kill $existing 2>/dev/null || true
+        sleep 1
+      else
+        echo "Metro already running on port ${PORT} (reusing)."
+        METRO_ALREADY_RUNNING=1
+      fi
     else
       kill $existing 2>/dev/null || true
     fi
@@ -459,6 +545,17 @@ if command -v lsof >/dev/null 2>&1; then
 fi
 
 cd "$APP_DIR"
+
+# If a physical UDID is pinned but currently offline, allow simulator fallback when not explicitly preferring device.
+if [[ -n "$IOS_DEVICE_UDID" ]]; then
+  if ! is_simulator_udid "$IOS_DEVICE_UDID" && is_offline_ios_device_udid "$IOS_DEVICE_UDID"; then
+    if [[ "$IOS_PREFER_DEVICE" != "1" ]]; then
+      echo "Pinned iOS device ${IOS_DEVICE_UDID} is offline to Xcode; ignoring it and falling back to simulator."
+      IOS_DEVICE_UDID=""
+      IOS_DEVICE_NAME=""
+    fi
+  fi
+fi
 
 if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
   if [[ "$IOS_PREFER_DEVICE" == "1" ]]; then
@@ -478,11 +575,14 @@ if [[ -z "$IOS_DEVICE_UDID" && -z "$IOS_DEVICE_NAME" ]]; then
 import json
 import subprocess
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
-data = json.loads(
-    subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"])
-)
+try:
+    raw = subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"])
+    data = json.loads(raw)
+except Exception:
+    print("")
+    raise SystemExit(0)
 
 def parse_version(key):
     match = re.search(r"iOS-([0-9-]+)$", key)
@@ -519,11 +619,14 @@ def select_device(devices):
     def booted_at(device):
         value = device.get("lastBootedAt")
         if not value:
-            return datetime.fromtimestamp(0)
+            return datetime.fromtimestamp(0, tz=timezone.utc).timestamp()
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed.timestamp()
         except ValueError:
-            return datetime.fromtimestamp(0)
+            return datetime.fromtimestamp(0, tz=timezone.utc).timestamp()
     candidates.sort(key=booted_at, reverse=True)
     return candidates[0] if candidates else None
 
@@ -565,26 +668,48 @@ if [[ -t 1 && "$FOLLOW_METRO_LOGS" != "0" ]]; then
     wait_for_metro || true
     run_ios
   ) &
+  start_cmd=(npx expo start --dev-client)
+  if [[ "$EXPO_RESET_CACHE" == "1" ]]; then
+    start_cmd+=(--clear --reset-cache)
+  fi
+  if [[ "$EXPO_START_NO_DEV" == "1" ]]; then
+    start_cmd+=(--no-dev)
+  fi
+  if [[ "$EXPO_START_MINIFY" == "1" ]]; then
+    start_cmd+=(--minify)
+  fi
+  start_cmd+=(--host "$EXPO_START_HOST" --port "$PORT")
   EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
     EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
-    npx expo start --dev-client \
-    $( [[ "$EXPO_RESET_CACHE" == "1" ]] && printf '%s' '--clear --reset-cache' ) \
-    --host "$EXPO_START_HOST" --port "$PORT"
+    "${start_cmd[@]}"
   exit 0
 fi
 
-if [[ "$METRO_ALREADY_RUNNING" == "1" && "$EXPO_FORCE_START" != "1" ]]; then
+if [[ "$METRO_ALREADY_RUNNING" == "1" ]]; then
   wait_for_metro || true
   run_ios
+  if [[ "$FOLLOW_METRO_LOGS" != "0" && -f "$METRO_LOG" ]]; then
+    echo "Tailing Metro logs from ${METRO_LOG} (Ctrl+C to stop)."
+    tail -n 200 -f "$METRO_LOG"
+  fi
   exit 0
 fi
+
+start_cmd=(npx expo start --dev-client)
+if [[ "$EXPO_RESET_CACHE" == "1" ]]; then
+  start_cmd+=(--clear --reset-cache)
+fi
+if [[ "$EXPO_START_NO_DEV" == "1" ]]; then
+  start_cmd+=(--no-dev)
+fi
+if [[ "$EXPO_START_MINIFY" == "1" ]]; then
+  start_cmd+=(--minify)
+fi
+start_cmd+=(--host "$EXPO_START_HOST" --port "$PORT")
 
 EXPO_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" REACT_NATIVE_PACKAGER_HOSTNAME="$PACKAGER_HOSTNAME" \
   EXPO_DEV_SERVER_PORT="$PORT" RCT_METRO_PORT="$PORT" \
-  nohup npx expo start --dev-client \
-  $( [[ "$EXPO_RESET_CACHE" == "1" ]] && printf '%s' '--clear --reset-cache' ) \
-  --host "$EXPO_START_HOST" --port "$PORT" \
-  >"$METRO_LOG" 2>&1 &
+  nohup "${start_cmd[@]}" >"$METRO_LOG" 2>&1 &
 
 wait_for_metro || true
 run_ios
