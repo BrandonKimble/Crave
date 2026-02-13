@@ -5744,15 +5744,11 @@ const SearchScreen: React.FC = () => {
         setPreferredScoreMode(perfHarnessConfig.shortcutLoop.scoreMode);
       }
       void runBestHereRef
-        .current(
-          perfHarnessConfig.shortcutLoop.targetTab,
-          perfHarnessConfig.shortcutLoop.label,
-          {
-            preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
-            transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
-            scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
-          }
-        )
+        .current(perfHarnessConfig.shortcutLoop.targetTab, perfHarnessConfig.shortcutLoop.label, {
+          preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
+          transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
+          scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
+        })
         .catch((error) => {
           emitSearchPerfEvent('Harness', {
             event: 'shortcut_loop_run_error',
@@ -6037,7 +6033,9 @@ const SearchScreen: React.FC = () => {
               ? null
               : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
           shortcutStageAgeMs:
-            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+            trace.stageStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
           drag: interactionState.isResultsSheetDragging,
           scroll: interactionState.isResultsListScrolling,
           settle: interactionState.isResultsSheetSettling,
@@ -6056,7 +6054,9 @@ const SearchScreen: React.FC = () => {
               ? null
               : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
           shortcutStageAgeMs:
-            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+            trace.stageStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
         });
       },
     });
@@ -6083,7 +6083,9 @@ const SearchScreen: React.FC = () => {
               ? null
               : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
           shortcutStageAgeMs:
-            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+            trace.stageStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
         });
       },
       onStall: (event) => {
@@ -6099,7 +6101,9 @@ const SearchScreen: React.FC = () => {
               ? null
               : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
           shortcutStageAgeMs:
-            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+            trace.stageStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
         });
       },
     });

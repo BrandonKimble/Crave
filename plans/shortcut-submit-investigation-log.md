@@ -40,6 +40,7 @@ Promotion mode for keep/revert confidence: `runs=6-8`.
 Metric method: per-run minimum JS sampler `floorFps` from `shortcut_loop_run_start` to `shortcut_loop_run_complete`, then mean across runs.
 
 Calibration note (2026-02-13):
+
 - parser/comparator contract is now schema-locked as `perf-shortcut-report.v1`,
 - `stallMaxMean` and `stallP95` are computed from `[SearchPerf][JsFrameSampler]` window `stallLongestMs` values only,
 - parser/comparator now also gate UI-lane metrics (`uiFloorMean`, `uiStallP95`, `uiStallMaxMean`),
@@ -74,12 +75,14 @@ Calibration note (2026-02-13):
   - dominant floor stage: `marker_reveal_state`
 
 - Candidate (`map presentation freeze during submit`):
+
   - baseline log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T024500Z-mapfreeze-off.log`
   - candidate log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260212T024620Z-mapfreeze-on.log`
   - floor delta: `-0.87` (regression)
   - stall delta: `+60.7ms` (regression)
 
 - Validation run (`P0.5 live harness wiring verification`, `runs=1`):
+
   - log: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260213T023338Z-signin-rerun.log`
   - report: `/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-loop-20260213T023338Z-signin-rerun.report.json`
   - parser schema: `perf-shortcut-report.v1`

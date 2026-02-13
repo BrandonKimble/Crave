@@ -42,11 +42,13 @@ Use this cycle for each slice/cluster:
 5. Promote only with explicit evidence; otherwise iterate the same cluster.
 
 Judgment override:
+
 - This is the default cycle, not a hard ritual checklist.
 - If a step cannot produce new signal for the active cluster, skip it and note the skip reason in one line.
 - If two cycles in a row produce no new decision signal, stop looping and switch to redesign/root-cause reframing.
 
 Status updates should stay compact:
+
 - `Now:` what is currently being changed.
 - `Evidence:` pass/fail signal from checks.
 - `Next:` immediate next action.
@@ -59,6 +61,7 @@ If the user explicitly requests strict no-checkpoint autonomy, treat it as a per
 - `investigation mode` (optional): run repeated perf loops with threshold stop condition.
 
 Common rules:
+
 - do not treat context compaction/reload as latch reset,
 - stop/update only when threshold/milestone is achieved, blocker requires user action, or user asks for an update.
 

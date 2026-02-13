@@ -5,6 +5,7 @@
 Ship the frontend refactor with steady slice-by-slice progress, strict UX parity, and promotion-quality evidence.
 
 Default posture:
+
 - implementation progress first,
 - perf loops as checkpoint validation (not always-on),
 - investigation looping only when explicitly requested.
@@ -46,6 +47,7 @@ Use only when the user explicitly asks for repeated perf probing/threshold loops
 ## Slice Card (Required Before Coding)
 
 Write this in 5 lines before each burst:
+
 - cluster,
 - target owner,
 - delete gate,
@@ -87,10 +89,12 @@ If a cycle exceeds ~2 hours without clear slice movement, split scope or ask for
 Run local perf gate when submit/map/list/hydration/gesture runtime changed, or when promoting runtime ownership slices.
 
 Commands:
+
 - Baseline refresh: `bash ./scripts/perf-shortcut-local-ci.sh record-baseline`
 - Candidate gate: `bash ./scripts/perf-shortcut-local-ci.sh gate`
 
 Notes:
+
 - Use direct script entrypoints (not plain `yarn`) in Node 24 shells.
 - Baseline is invalid for promotion if harness run completion is timeout-shaped.
 - Do not run perf gate "just because"; run it only when it is promotion-relevant for this slice.
@@ -98,6 +102,7 @@ Notes:
 ### Phase 4: Enforce Delete Gate
 
 Before promotion:
+
 - delete legacy writer path for that cluster,
 - confirm no-bypass constraints still pass,
 - update cluster state (`legacy`/`shadow`/`owned`/`deleted`) in plan evidence.
@@ -109,6 +114,7 @@ Promote only when all relevant required checks pass; otherwise keep the cluster 
 ## No-Ceremony Promotion Criteria
 
 A slice is promotion-ready when all are true:
+
 - cluster owner and delete gate are satisfied,
 - correctness/parity checks relevant to touched behavior pass,
 - perf gate passes when runtime-critical paths were touched,
@@ -118,6 +124,7 @@ A slice is promotion-ready when all are true:
 ## Promotion Packet (Minimal, Not Verbose)
 
 For each slice promotion, record:
+
 - slice + cluster,
 - files changed,
 - check results (pass/fail),
@@ -135,12 +142,14 @@ For each slice promotion, record:
 ## Strict Latch Policy
 
 When user requests strict no-checkpoint autonomy:
+
 - keep latch active across context reload/compaction,
 - respond only on milestone/threshold achieved, blocker, or explicit user update request.
 
 ## Compact Update Format
 
 Use concise updates:
+
 - `Now:` current action.
 - `Evidence:` strongest pass/fail signal.
 - `Next:` immediate next step.
