@@ -52,6 +52,7 @@ yarn ios:device:perf-shortcut-loop
 - Iteration mode: runs `1-3` only.
 - For high-impact keep/revert decisions, rerun with stronger confidence sample (`runs=6-8`) when practical.
 - Treat a run as valid only when both markers exist:
+
 1. `shortcut_loop_run_start`
 2. `shortcut_loop_run_complete`
 

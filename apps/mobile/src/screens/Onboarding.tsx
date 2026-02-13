@@ -456,8 +456,8 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           setOauthStatus(provider);
           const { createdSessionId, sessionId, setActive, authSessionResult } =
             await client.startOAuthFlow({
-            redirectUrl,
-          });
+              redirectUrl,
+            });
           const resolvedSessionId = createdSessionId ?? sessionId;
           if (!resolvedSessionId) {
             const resultType =

@@ -9,31 +9,58 @@
 
 This file is intentionally front-loaded because Codex loads the repo-root `AGENTS.md` as session context.
 
-## Shortcut Submit Perf Continuity (Read After Compaction)
+## Frontend Refactor Continuity (Read Before Coding)
 
-When working on shortcut-submit performance, always reload context from persistent files before coding:
+When working on frontend runtime implementation, always reload context in this order:
 
-1. `/Users/brandonkimble/crave-search/plans/autonomy-playbook.md`
-2. `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md`
+1. `/Users/brandonkimble/crave-search/plans/shortcut-submit-architecture-refactor-plan.md` (execution source of truth)
+2. `/Users/brandonkimble/crave-search/plans/autonomy-playbook.md` (how to execute safely)
+3. `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md` (historical evidence and rejected paths)
+4. `/Users/brandonkimble/crave-search/plans/agent-log.md` (append task entry before edits)
 
 Rules:
 
-- Treat `plans/shortcut-submit-investigation-log.md` as canonical memory across sessions.
-- After each instrumentation/fix/validation loop, append metrics + decision summary there.
-- Do not re-run previously failed candidates unless new instrumentation evidence justifies retrying.
-- Process posture is defined by `plans/autonomy-playbook.md`: instrumentation/synthesis loops may repeat without behavior changes, and architectural-scale rewrites are allowed when evidence shows local fixes are insufficient.
-- Preserve UX contract: user-visible behavior/look/feel should remain equivalent unless a behavior change is explicitly approved.
+- Treat `plans/shortcut-submit-architecture-refactor-plan.md` as the canonical implementation contract.
+- Treat `plans/shortcut-submit-investigation-log.md` as evidence memory only; do not run old probe loops by default.
+- Preserve UX contract unless a behavior change is explicitly approved.
+- This continuity section is orientation, not ritual: skip any step that cannot change a decision, risk, or promotion outcome.
+- Do not re-run rejected perf candidates unless new evidence justifies it.
 
-## Strict Autonomy Latch (When Requested)
+## Lean Execution Cycle (Refactor Default)
 
-If the user explicitly requests strict no-checkpoint mode (for example: "do not stop", "no-user-in-loop", "only report on success/blocker"), treat it as a persistent latch for the current investigation thread.
+Use this cycle for each slice/cluster:
 
-- Do not send checkpoint/progress summaries between loops.
-- Continue loop-to-loop autonomously, including after context compaction/reload.
-- Only send a user-facing stop/update when one of these is true:
-  1. requested improvement threshold is achieved (use latest explicit user threshold in thread),
-  2. a hard blocker requires user action (device/runtime/tooling access),
-  3. the user explicitly asks for an update.
+1. Define a 5-line slice card before coding:
+   - cluster,
+   - target owner,
+   - delete gate,
+   - validation required,
+   - rollback trigger.
+2. Run one focused implementation burst (single cluster only; avoid multi-cluster drift).
+3. Run quick validations (lint/tests/no-bypass/contract checks).
+4. Run local perf gate only when runtime-critical paths changed (submit/map/list/hydration/gesture lanes).
+5. Promote only with explicit evidence; otherwise iterate the same cluster.
+
+Judgment override:
+- This is the default cycle, not a hard ritual checklist.
+- If a step cannot produce new signal for the active cluster, skip it and note the skip reason in one line.
+- If two cycles in a row produce no new decision signal, stop looping and switch to redesign/root-cause reframing.
+
+Status updates should stay compact:
+- `Now:` what is currently being changed.
+- `Evidence:` pass/fail signal from checks.
+- `Next:` immediate next action.
+
+## Execution Latch (When Requested)
+
+If the user explicitly requests strict no-checkpoint autonomy, treat it as a persistent latch for that thread and declared mode:
+
+- `implementation mode` (default): execute checkpoint-to-checkpoint autonomously and report only on milestone/blocker/update-request.
+- `investigation mode` (optional): run repeated perf loops with threshold stop condition.
+
+Common rules:
+- do not treat context compaction/reload as latch reset,
+- stop/update only when threshold/milestone is achieved, blocker requires user action, or user asks for an update.
 
 ## Shared-Checkout Workflow (Multi-Session Friendly)
 
@@ -100,6 +127,8 @@ For every task (every session):
 - Mobile dev: `yarn workspace @crave-search/mobile dev`
 - Lint: `yarn lint` (API: `yarn workspace api lint`)
 - Tests: `yarn test` (API: `yarn workspace api test`)
+- Perf baseline (local): `bash ./scripts/perf-shortcut-local-ci.sh record-baseline`
+- Perf gate (local): `bash ./scripts/perf-shortcut-local-ci.sh gate`
 
 ## Style
 

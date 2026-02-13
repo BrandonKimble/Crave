@@ -101,6 +101,9 @@ import { useSearchRequests } from '../../hooks/useSearchRequests';
 import useTransitionDriver from '../../hooks/use-transition-driver';
 import { useKeyedCallback } from '../../hooks/useCallbackFactory';
 import { useDebouncedLayoutMeasurement } from '../../hooks/useDebouncedLayoutMeasurement';
+import perfHarnessConfig from '../../perf/harness-config';
+import { startJsFrameSampler } from '../../perf/js-frame-sampler';
+import { startUiFrameSampler } from '../../perf/ui-frame-sampler';
 import SquircleSpinner from '../../components/SquircleSpinner';
 import SearchHeader from './components/SearchHeader';
 import SearchSuggestions from './components/SearchSuggestions';
@@ -209,6 +212,9 @@ const PIXEL_SCALE = PixelRatio.get();
 const CUTOUT_EDGE_SLOP = 1 / PIXEL_SCALE;
 const floorToPixel = (value: number) => Math.floor(value * PIXEL_SCALE) / PIXEL_SCALE;
 const ceilToPixel = (value: number) => Math.ceil(value * PIXEL_SCALE) / PIXEL_SCALE;
+const roundPerfValue = (value: number): number => Math.round(value * 10) / 10;
+const SHORTCUT_HARNESS_RUN_TIMEOUT_MS = 45000;
+const SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS = 320;
 const arePriceRangesEqual = (a: PriceRangeTuple, b: PriceRangeTuple) =>
   a[0] === b[0] && a[1] === b[1];
 const PRICE_SUMMARY_REEL_RANGES: PriceRangeTuple[] = [
@@ -1578,12 +1584,7 @@ const SearchScreen: React.FC = () => {
     if (activeOverlay !== 'search') {
       popToRootOverlay();
     }
-  }, [
-    activeOverlay,
-    popToRootOverlay,
-    rootOverlay,
-    switchToSearchRootWithDockedPolls,
-  ]);
+  }, [activeOverlay, popToRootOverlay, rootOverlay, switchToSearchRootWithDockedPolls]);
 
   const bottomInset = Math.max(insets.bottom, 12);
   const shouldHideBottomNavForTabSuggestions = !isSearchOverlay && isSuggestionPanelActive;
@@ -3737,11 +3738,7 @@ const SearchScreen: React.FC = () => {
       }
     });
     return map;
-  }, [
-    restaurants,
-    results?.metadata?.requestId,
-    results?.metadata?.searchRequestId,
-  ]);
+  }, [restaurants, results?.metadata?.requestId, results?.metadata?.searchRequestId]);
   const overlaySelectedRestaurantId = isRestaurantOverlayVisible
     ? restaurantProfile?.restaurant.restaurantId ?? null
     : null;
@@ -5554,6 +5551,560 @@ const SearchScreen: React.FC = () => {
     onPageOneResultsCommitted: handlePageOneResultsCommitted,
     onShortcutSearchCoverageSnapshot: handleShortcutSearchCoverageSnapshot,
   });
+
+  const isShortcutPerfHarnessScenario =
+    perfHarnessConfig.enabled && perfHarnessConfig.scenario === 'search_shortcut_loop';
+  const shortcutHarnessRunId = perfHarnessConfig.runId ?? 'shortcut-loop-no-run-id';
+  const emitSearchPerfEvent = React.useCallback(
+    (
+      channel: 'Harness' | 'JsFrameSampler' | 'UiFrameSampler',
+      payload: Record<string, unknown>
+    ) => {
+      // eslint-disable-next-line no-console
+      console.log(`[SearchPerf][${channel}] ${JSON.stringify(payload)}`);
+    },
+    []
+  );
+  const runBestHereRef = React.useRef(runBestHere);
+  React.useEffect(() => {
+    runBestHereRef.current = runBestHere;
+  }, [runBestHere]);
+  const shortcutPerfTraceRef = React.useRef<{
+    sessionId: number | null;
+    sessionStartedAtMs: number | null;
+    stage: string | null;
+    stageStartedAtMs: number | null;
+  }>({
+    sessionId: null,
+    sessionStartedAtMs: null,
+    stage: null,
+    stageStartedAtMs: null,
+  });
+  const shortcutHarnessLifecycleRef = React.useRef<{
+    bootstrapped: boolean;
+    loopCompleteEmitted: boolean;
+    runNumber: number;
+    completedRuns: number;
+    runStartedAtMs: number;
+    settleCandidateAtMs: number;
+    settleCandidateRequestKey: string | null;
+    settleCandidateVisibleCount: number;
+    settleCandidateVisiblePinCount: number;
+    settleCandidateVisibleDotCount: number;
+    observedLoading: boolean;
+    inProgress: boolean;
+    launchHandle: ReturnType<typeof setTimeout> | null;
+    cooldownHandle: ReturnType<typeof setTimeout> | null;
+    runTimeoutHandle: ReturnType<typeof setTimeout> | null;
+    settleCheckHandle: ReturnType<typeof setTimeout> | null;
+  }>({
+    bootstrapped: false,
+    loopCompleteEmitted: false,
+    runNumber: 0,
+    completedRuns: 0,
+    runStartedAtMs: 0,
+    settleCandidateAtMs: 0,
+    settleCandidateRequestKey: null,
+    settleCandidateVisibleCount: 0,
+    settleCandidateVisiblePinCount: 0,
+    settleCandidateVisibleDotCount: 0,
+    observedLoading: false,
+    inProgress: false,
+    launchHandle: null,
+    cooldownHandle: null,
+    runTimeoutHandle: null,
+    settleCheckHandle: null,
+  });
+  const shortcutHarnessSnapshotRef = React.useRef<{
+    isSearchLoading: boolean;
+    isVisualSyncPending: boolean;
+    finalStage: string | null;
+    finalVisibleCount: number;
+    finalSectionedCount: number;
+    finalVisiblePinCount: number;
+    finalVisibleDotCount: number;
+    finalRequestKey: string | null;
+  }>({
+    isSearchLoading,
+    isVisualSyncPending,
+    finalStage: null,
+    finalVisibleCount: 0,
+    finalSectionedCount: 0,
+    finalVisiblePinCount: 0,
+    finalVisibleDotCount: 0,
+    finalRequestKey: resultsRequestKey,
+  });
+  const shortcutDerivedStage = React.useMemo(() => {
+    if (searchMode !== 'shortcut') {
+      return null;
+    }
+    if (shouldHoldMapMarkerReveal) {
+      return 'marker_reveal_state';
+    }
+    if (isVisualSyncPending) {
+      return 'visual_sync_state';
+    }
+    if (shouldHydrateResultsForRender) {
+      return 'results_hydration_commit';
+    }
+    if (isShortcutCoverageLoading) {
+      return 'coverage_loading';
+    }
+    if (isLoading) {
+      return 'results_list_materialization';
+    }
+    if (results) {
+      return 'results_list_ramp';
+    }
+    return null;
+  }, [
+    isLoading,
+    isShortcutCoverageLoading,
+    isVisualSyncPending,
+    results,
+    searchMode,
+    shouldHoldMapMarkerReveal,
+    shouldHydrateResultsForRender,
+  ]);
+  React.useEffect(() => {
+    const trace = shortcutPerfTraceRef.current;
+    if (trace.stage === shortcutDerivedStage) {
+      return;
+    }
+    trace.stage = shortcutDerivedStage;
+    trace.stageStartedAtMs = shortcutDerivedStage ? getPerfNow() : null;
+  }, [getPerfNow, shortcutDerivedStage]);
+  React.useEffect(() => {
+    const finalVisibleCount = (results?.dishes?.length ?? 0) + (results?.restaurants?.length ?? 0);
+    shortcutHarnessSnapshotRef.current = {
+      isSearchLoading,
+      isVisualSyncPending,
+      finalStage: shortcutPerfTraceRef.current.stage,
+      finalVisibleCount,
+      finalSectionedCount: finalVisibleCount,
+      finalVisiblePinCount: visibleSortedRestaurantMarkers.length,
+      finalVisibleDotCount: visibleDotRestaurantFeatures?.features?.length ?? 0,
+      finalRequestKey: resultsRequestKey,
+    };
+  }, [
+    isSearchLoading,
+    isVisualSyncPending,
+    results?.dishes?.length,
+    results?.restaurants?.length,
+    resultsRequestKey,
+    visibleDotRestaurantFeatures?.features?.length,
+    visibleSortedRestaurantMarkers.length,
+  ]);
+  const completeShortcutHarnessRunRef = React.useRef<(settleStatus: string) => void>(
+    () => undefined
+  );
+  const startShortcutHarnessRun = React.useCallback(
+    (runNumber: number) => {
+      if (!isShortcutPerfHarnessScenario) {
+        return;
+      }
+      const lifecycle = shortcutHarnessLifecycleRef.current;
+      if (lifecycle.loopCompleteEmitted) {
+        return;
+      }
+      if (lifecycle.runTimeoutHandle) {
+        clearTimeout(lifecycle.runTimeoutHandle);
+        lifecycle.runTimeoutHandle = null;
+      }
+      if (lifecycle.settleCheckHandle) {
+        clearTimeout(lifecycle.settleCheckHandle);
+        lifecycle.settleCheckHandle = null;
+      }
+      const now = getPerfNow();
+      lifecycle.runNumber = runNumber;
+      lifecycle.runStartedAtMs = now;
+      lifecycle.settleCandidateAtMs = 0;
+      lifecycle.settleCandidateRequestKey = null;
+      lifecycle.settleCandidateVisibleCount = 0;
+      lifecycle.settleCandidateVisiblePinCount = 0;
+      lifecycle.settleCandidateVisibleDotCount = 0;
+      lifecycle.observedLoading = false;
+      lifecycle.inProgress = true;
+      const trace = shortcutPerfTraceRef.current;
+      trace.sessionId = runNumber;
+      trace.sessionStartedAtMs = now;
+      trace.stage = 'submit_intent';
+      trace.stageStartedAtMs = now;
+      emitSearchPerfEvent('Harness', {
+        event: 'shortcut_loop_run_start',
+        harnessRunId: shortcutHarnessRunId,
+        nowMs: roundPerfValue(now),
+        runNumber,
+        totalRuns: perfHarnessConfig.runs,
+      });
+      lifecycle.runTimeoutHandle = setTimeout(() => {
+        completeShortcutHarnessRunRef.current('timeout');
+      }, SHORTCUT_HARNESS_RUN_TIMEOUT_MS);
+      if (scoreMode !== perfHarnessConfig.shortcutLoop.scoreMode) {
+        setPreferredScoreMode(perfHarnessConfig.shortcutLoop.scoreMode);
+      }
+      void runBestHereRef
+        .current(
+          perfHarnessConfig.shortcutLoop.targetTab,
+          perfHarnessConfig.shortcutLoop.label,
+          {
+            preserveSheetState: perfHarnessConfig.shortcutLoop.preserveSheetState,
+            transitionFromDockedPolls: perfHarnessConfig.shortcutLoop.transitionFromDockedPolls,
+            scoreMode: perfHarnessConfig.shortcutLoop.scoreMode,
+          }
+        )
+        .catch((error) => {
+          emitSearchPerfEvent('Harness', {
+            event: 'shortcut_loop_run_error',
+            harnessRunId: shortcutHarnessRunId,
+            nowMs: roundPerfValue(getPerfNow()),
+            runNumber,
+            message: error instanceof Error ? error.message : 'unknown error',
+          });
+        });
+    },
+    [
+      emitSearchPerfEvent,
+      getPerfNow,
+      isShortcutPerfHarnessScenario,
+      runBestHereRef,
+      scoreMode,
+      setPreferredScoreMode,
+      shortcutHarnessRunId,
+    ]
+  );
+  const completeShortcutHarnessRun = React.useCallback(
+    (settleStatus: string) => {
+      const lifecycle = shortcutHarnessLifecycleRef.current;
+      if (!lifecycle.inProgress) {
+        return;
+      }
+      lifecycle.inProgress = false;
+      if (lifecycle.runTimeoutHandle) {
+        clearTimeout(lifecycle.runTimeoutHandle);
+        lifecycle.runTimeoutHandle = null;
+      }
+      if (lifecycle.settleCheckHandle) {
+        clearTimeout(lifecycle.settleCheckHandle);
+        lifecycle.settleCheckHandle = null;
+      }
+      const trace = shortcutPerfTraceRef.current;
+      trace.sessionId = null;
+      trace.sessionStartedAtMs = null;
+      trace.stage = null;
+      trace.stageStartedAtMs = null;
+      const now = getPerfNow();
+      const snapshot = shortcutHarnessSnapshotRef.current;
+      const runNumber = lifecycle.runNumber;
+      const durationMs = Math.max(0, now - lifecycle.runStartedAtMs);
+      lifecycle.completedRuns = runNumber;
+      lifecycle.settleCandidateAtMs = 0;
+      lifecycle.settleCandidateRequestKey = null;
+      lifecycle.settleCandidateVisibleCount = 0;
+      lifecycle.settleCandidateVisiblePinCount = 0;
+      lifecycle.settleCandidateVisibleDotCount = 0;
+      emitSearchPerfEvent('Harness', {
+        event: 'shortcut_loop_run_complete',
+        harnessRunId: shortcutHarnessRunId,
+        nowMs: roundPerfValue(now),
+        runNumber,
+        durationMs: roundPerfValue(durationMs),
+        settleStatus,
+        settleWaitMs: roundPerfValue(durationMs),
+        finalStage: snapshot.finalStage,
+        finalVisualSyncPending: snapshot.isVisualSyncPending,
+        finalVisibleCount: snapshot.finalVisibleCount,
+        finalSectionedCount: snapshot.finalSectionedCount,
+        finalVisiblePinCount: snapshot.finalVisiblePinCount,
+        finalVisibleDotCount: snapshot.finalVisibleDotCount,
+        finalRequestKey: snapshot.finalRequestKey,
+      });
+      if (lifecycle.completedRuns >= perfHarnessConfig.runs) {
+        if (!lifecycle.loopCompleteEmitted) {
+          lifecycle.loopCompleteEmitted = true;
+          emitSearchPerfEvent('Harness', {
+            event: 'shortcut_loop_complete',
+            harnessRunId: shortcutHarnessRunId,
+            nowMs: roundPerfValue(now),
+            completedRuns: lifecycle.completedRuns,
+          });
+        }
+        return;
+      }
+      if (lifecycle.cooldownHandle) {
+        clearTimeout(lifecycle.cooldownHandle);
+      }
+      lifecycle.cooldownHandle = setTimeout(() => {
+        startShortcutHarnessRun(lifecycle.completedRuns + 1);
+      }, perfHarnessConfig.cooldownMs);
+    },
+    [emitSearchPerfEvent, getPerfNow, shortcutHarnessRunId, startShortcutHarnessRun]
+  );
+  completeShortcutHarnessRunRef.current = completeShortcutHarnessRun;
+  React.useEffect(() => {
+    if (!isShortcutPerfHarnessScenario) {
+      return;
+    }
+    const lifecycle = shortcutHarnessLifecycleRef.current;
+    if (!lifecycle.inProgress) {
+      return;
+    }
+    const clearSettleCheckHandle = () => {
+      if (lifecycle.settleCheckHandle) {
+        clearTimeout(lifecycle.settleCheckHandle);
+        lifecycle.settleCheckHandle = null;
+      }
+    };
+    const resetSettleCandidate = () => {
+      clearSettleCheckHandle();
+      lifecycle.settleCandidateAtMs = 0;
+      lifecycle.settleCandidateRequestKey = null;
+      lifecycle.settleCandidateVisibleCount = 0;
+      lifecycle.settleCandidateVisiblePinCount = 0;
+      lifecycle.settleCandidateVisibleDotCount = 0;
+    };
+    const scheduleSettleCheck = () => {
+      clearSettleCheckHandle();
+      lifecycle.settleCheckHandle = setTimeout(() => {
+        lifecycle.settleCheckHandle = null;
+        if (!lifecycle.inProgress || lifecycle.settleCandidateAtMs <= 0) {
+          return;
+        }
+        const now = getPerfNow();
+        if (now - lifecycle.settleCandidateAtMs < SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS) {
+          scheduleSettleCheck();
+          return;
+        }
+        completeShortcutHarnessRunRef.current('settled');
+      }, SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS);
+    };
+    if (isSearchLoading) {
+      lifecycle.observedLoading = true;
+      resetSettleCandidate();
+      return;
+    }
+    if (!lifecycle.observedLoading || searchMode !== 'shortcut') {
+      resetSettleCandidate();
+      return;
+    }
+    if (isVisualSyncPending || shouldHoldMapMarkerReveal || shouldHydrateResultsForRender) {
+      resetSettleCandidate();
+      return;
+    }
+    if (shortcutPerfTraceRef.current.stage !== 'results_list_ramp') {
+      resetSettleCandidate();
+      return;
+    }
+    const interactionState = searchInteractionRef.current;
+    if (interactionState.isInteracting || isLoadingMore) {
+      resetSettleCandidate();
+      return;
+    }
+    const snapshot = shortcutHarnessSnapshotRef.current;
+    if (!snapshot.finalRequestKey) {
+      resetSettleCandidate();
+      return;
+    }
+    const now = getPerfNow();
+    if (lifecycle.settleCandidateAtMs <= 0) {
+      lifecycle.settleCandidateAtMs = now;
+      lifecycle.settleCandidateRequestKey = snapshot.finalRequestKey;
+      lifecycle.settleCandidateVisibleCount = snapshot.finalVisibleCount;
+      lifecycle.settleCandidateVisiblePinCount = snapshot.finalVisiblePinCount;
+      lifecycle.settleCandidateVisibleDotCount = snapshot.finalVisibleDotCount;
+      scheduleSettleCheck();
+      return;
+    }
+    if (
+      lifecycle.settleCandidateRequestKey !== snapshot.finalRequestKey ||
+      lifecycle.settleCandidateVisibleCount !== snapshot.finalVisibleCount ||
+      lifecycle.settleCandidateVisiblePinCount !== snapshot.finalVisiblePinCount ||
+      lifecycle.settleCandidateVisibleDotCount !== snapshot.finalVisibleDotCount
+    ) {
+      lifecycle.settleCandidateAtMs = now;
+      lifecycle.settleCandidateRequestKey = snapshot.finalRequestKey;
+      lifecycle.settleCandidateVisibleCount = snapshot.finalVisibleCount;
+      lifecycle.settleCandidateVisiblePinCount = snapshot.finalVisiblePinCount;
+      lifecycle.settleCandidateVisibleDotCount = snapshot.finalVisibleDotCount;
+      scheduleSettleCheck();
+      return;
+    }
+    if (now - lifecycle.settleCandidateAtMs < SHORTCUT_HARNESS_SETTLE_QUIET_PERIOD_MS) {
+      scheduleSettleCheck();
+      return;
+    }
+    clearSettleCheckHandle();
+    completeShortcutHarnessRunRef.current('settled');
+  }, [
+    getPerfNow,
+    isLoadingMore,
+    isSearchLoading,
+    isShortcutPerfHarnessScenario,
+    isVisualSyncPending,
+    searchMode,
+    shouldHoldMapMarkerReveal,
+    shouldHydrateResultsForRender,
+  ]);
+  React.useEffect(() => {
+    if (!isShortcutPerfHarnessScenario || !isSearchOverlay || !isInitialCameraReady) {
+      return;
+    }
+    const lifecycle = shortcutHarnessLifecycleRef.current;
+    if (lifecycle.bootstrapped || lifecycle.loopCompleteEmitted) {
+      return;
+    }
+    lifecycle.bootstrapped = true;
+    lifecycle.runNumber = 0;
+    lifecycle.completedRuns = 0;
+    lifecycle.settleCandidateAtMs = 0;
+    lifecycle.settleCandidateRequestKey = null;
+    lifecycle.settleCandidateVisibleCount = 0;
+    lifecycle.settleCandidateVisiblePinCount = 0;
+    lifecycle.settleCandidateVisibleDotCount = 0;
+    lifecycle.observedLoading = false;
+    lifecycle.inProgress = false;
+    const now = getPerfNow();
+    emitSearchPerfEvent('Harness', {
+      event: 'shortcut_loop_start',
+      harnessRunId: shortcutHarnessRunId,
+      nowMs: roundPerfValue(now),
+      scenario: perfHarnessConfig.scenario,
+      runs: perfHarnessConfig.runs,
+      startDelayMs: perfHarnessConfig.startDelayMs,
+      cooldownMs: perfHarnessConfig.cooldownMs,
+      signature: perfHarnessConfig.signature,
+    });
+    lifecycle.launchHandle = setTimeout(() => {
+      startShortcutHarnessRun(1);
+    }, perfHarnessConfig.startDelayMs);
+    return () => {
+      if (lifecycle.launchHandle) {
+        clearTimeout(lifecycle.launchHandle);
+        lifecycle.launchHandle = null;
+      }
+      if (lifecycle.cooldownHandle) {
+        clearTimeout(lifecycle.cooldownHandle);
+        lifecycle.cooldownHandle = null;
+      }
+      if (lifecycle.runTimeoutHandle) {
+        clearTimeout(lifecycle.runTimeoutHandle);
+        lifecycle.runTimeoutHandle = null;
+      }
+      if (lifecycle.settleCheckHandle) {
+        clearTimeout(lifecycle.settleCheckHandle);
+        lifecycle.settleCheckHandle = null;
+      }
+      if (!lifecycle.loopCompleteEmitted) {
+        lifecycle.bootstrapped = false;
+        lifecycle.inProgress = false;
+        lifecycle.settleCandidateAtMs = 0;
+        lifecycle.settleCandidateRequestKey = null;
+        lifecycle.settleCandidateVisibleCount = 0;
+        lifecycle.settleCandidateVisiblePinCount = 0;
+        lifecycle.settleCandidateVisibleDotCount = 0;
+        lifecycle.observedLoading = false;
+      }
+    };
+  }, [
+    emitSearchPerfEvent,
+    getPerfNow,
+    isInitialCameraReady,
+    isSearchOverlay,
+    isShortcutPerfHarnessScenario,
+    shortcutHarnessRunId,
+    startShortcutHarnessRun,
+  ]);
+  React.useEffect(() => {
+    if (!perfHarnessConfig.jsFrameSampler.enabled) {
+      return;
+    }
+    const stop = startJsFrameSampler({
+      windowMs: perfHarnessConfig.jsFrameSampler.windowMs,
+      stallFrameMs: perfHarnessConfig.jsFrameSampler.stallFrameMs,
+      logOnlyBelowFps: perfHarnessConfig.jsFrameSampler.logOnlyBelowFps,
+      getNow: getPerfNow,
+      onWindow: (summary) => {
+        const trace = shortcutPerfTraceRef.current;
+        const interactionState = searchInteractionRef.current;
+        const traceNowMs = getPerfNow();
+        emitSearchPerfEvent('JsFrameSampler', {
+          ...summary,
+          harnessRunId: isShortcutPerfHarnessScenario ? shortcutHarnessRunId : null,
+          shortcutSessionId: trace.sessionId,
+          shortcutStage: trace.stage,
+          shortcutElapsedMs:
+            trace.sessionStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
+          shortcutStageAgeMs:
+            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+          drag: interactionState.isResultsSheetDragging,
+          scroll: interactionState.isResultsListScrolling,
+          settle: interactionState.isResultsSheetSettling,
+        });
+      },
+      onStall: (event) => {
+        const trace = shortcutPerfTraceRef.current;
+        const traceNowMs = getPerfNow();
+        emitSearchPerfEvent('JsFrameSampler', {
+          ...event,
+          harnessRunId: isShortcutPerfHarnessScenario ? shortcutHarnessRunId : null,
+          shortcutSessionId: trace.sessionId,
+          shortcutStage: trace.stage,
+          shortcutElapsedMs:
+            trace.sessionStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
+          shortcutStageAgeMs:
+            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+        });
+      },
+    });
+    return stop;
+  }, [emitSearchPerfEvent, getPerfNow, isShortcutPerfHarnessScenario, shortcutHarnessRunId]);
+  React.useEffect(() => {
+    if (!perfHarnessConfig.uiFrameSampler.enabled) {
+      return;
+    }
+    const stop = startUiFrameSampler({
+      windowMs: perfHarnessConfig.uiFrameSampler.windowMs,
+      stallFrameMs: perfHarnessConfig.uiFrameSampler.stallFrameMs,
+      logOnlyBelowFps: perfHarnessConfig.uiFrameSampler.logOnlyBelowFps,
+      onWindow: (summary) => {
+        const trace = shortcutPerfTraceRef.current;
+        const traceNowMs = getPerfNow();
+        emitSearchPerfEvent('UiFrameSampler', {
+          ...summary,
+          harnessRunId: isShortcutPerfHarnessScenario ? shortcutHarnessRunId : null,
+          shortcutSessionId: trace.sessionId,
+          shortcutStage: trace.stage,
+          shortcutElapsedMs:
+            trace.sessionStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
+          shortcutStageAgeMs:
+            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+        });
+      },
+      onStall: (event) => {
+        const trace = shortcutPerfTraceRef.current;
+        const traceNowMs = getPerfNow();
+        emitSearchPerfEvent('UiFrameSampler', {
+          ...event,
+          harnessRunId: isShortcutPerfHarnessScenario ? shortcutHarnessRunId : null,
+          shortcutSessionId: trace.sessionId,
+          shortcutStage: trace.stage,
+          shortcutElapsedMs:
+            trace.sessionStartedAtMs == null
+              ? null
+              : roundPerfValue(traceNowMs - trace.sessionStartedAtMs),
+          shortcutStageAgeMs:
+            trace.stageStartedAtMs == null ? null : roundPerfValue(traceNowMs - trace.stageStartedAtMs),
+        });
+      },
+    });
+    return stop;
+  }, [emitSearchPerfEvent, getPerfNow, isShortcutPerfHarnessScenario, shortcutHarnessRunId]);
 
   const loadMoreResultsRef = React.useRef(loadMoreResults);
   const canLoadMoreRef = React.useRef(canLoadMore);
@@ -8644,7 +9195,9 @@ const SearchScreen: React.FC = () => {
     safeResultsData.length > 0 ||
     Boolean(results);
   const effectiveFiltersHeaderHeight =
-    shouldDisableFiltersHeader || shouldHideFiltersHeaderDuringInitialLoad ? 0 : filtersHeaderHeight;
+    shouldDisableFiltersHeader || shouldHideFiltersHeaderDuringInitialLoad
+      ? 0
+      : filtersHeaderHeight;
   const effectiveResultsHeaderHeight = shouldDisableResultsHeader ? 0 : resultsSheetHeaderHeight;
   const resultsWashTopOffset = Math.max(
     0,

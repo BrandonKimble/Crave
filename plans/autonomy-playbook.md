@@ -1,195 +1,148 @@
-# Autonomy Playbook (Evidence-Scaled)
+# Autonomy Playbook (Lean Refactor Cycle)
 
 ## Mission
 
-Drive JS performance toward sustained 60 FPS for shortcut submit using an autonomous loop that never stops at a single cycle. The loop ends only when we achieve a significant, repeatable step forward or hit a concrete blocker.
+Ship the frontend refactor with steady slice-by-slice progress, strict UX parity, and promotion-quality evidence.
+
+Default posture:
+- implementation progress first,
+- perf loops as checkpoint validation (not always-on),
+- investigation looping only when explicitly requested.
+
+## Modes
+
+### Mode A: Implementation (default)
+
+Use for normal refactor execution.
+
+### Mode B: Investigation (opt-in)
+
+Use only when the user explicitly asks for repeated perf probing/threshold loops.
 
 ## Non-Negotiables
 
-- Metric-first: JS is the primary decision metric; UI FPS is secondary.
-- UX contract: user-visible behavior, look, and feel must remain equivalent unless explicitly approved otherwise.
-- Evidence before change: no speculative fixes.
-- Loop semantics: every cycle ends by immediately starting the next cycle.
-- Hard autonomous-stop rule: do not stop/exit autonomous mode until JS floor improves by at least `+25 FPS` versus the active investigation baseline, unless an explicit blocker is proven.
-- Scope is evidence-scaled: minimal patch or full architecture rewrite are both valid if evidence justifies it.
+- Preserve UX contract unless a behavior change is explicitly approved.
+- One runtime owner per concern; no long-lived dual control planes.
+- Delete-gate rule: when a cluster becomes `owned`, legacy writer path must be removed in the same promotion.
+- No speculative patch stacking.
+- Shared-checkout safety: merge around existing diffs; do not clobber unrelated work.
 
-## Strict Reply Policy (Latch)
+## Judgment Override (Anti-Ritual)
 
-When the user requests strict no-checkpoint autonomy, enforce this until the user cancels it:
-
-- Run loops back-to-back without interim "status" replies.
-- Do not treat context compaction/reload as latch reset.
-- Reply only when:
-  1. the active user-requested threshold is met (if none specified, default to this playbook's hard rule), or
-  2. a hard blocker requires user action, or
-  3. the user explicitly requests an update.
-
-## Scope Priority Rule (Explicit)
-
-- Do not default to micro-optimizations after repeated weak results.
-- When evidence shows parent orchestration/dataflow/render-topology is the bottleneck, prioritize architectural changes over additional local tuning.
-- Treat architecture work as the expected path to reach major floor lifts (for this track, ~3 -> >=25), not as an exceptional last resort.
+- Process is a decision aid, not a ceremony requirement.
+- Before each planned step, ask: "Can this step change a decision or reduce risk for the active cluster?"
+- If no, skip the step and log one-line reason in the cycle note.
+- If two consecutive cycles produce no new decision signal, stop looping and reframe architecture/hypothesis.
+- Prefer careful design work over repetitive loop execution when signal is saturated.
 
 ## Compaction-Safe Read Order
 
 1. `/Users/brandonkimble/crave-search/AGENTS.md`
-2. `/Users/brandonkimble/crave-search/plans/autonomy-playbook.md`
-3. `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md`
-4. `/Users/brandonkimble/crave-search/plans/agent-log.md` (append task entry before edits)
+2. `/Users/brandonkimble/crave-search/plans/shortcut-submit-architecture-refactor-plan.md`
+3. `/Users/brandonkimble/crave-search/plans/autonomy-playbook.md`
+4. `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md`
+5. `/Users/brandonkimble/crave-search/plans/agent-log.md`
 
-## Core Process
+## Slice Card (Required Before Coding)
 
-### Phase 0: Claim + Protect Shared Tree
+Write this in 5 lines before each burst:
+- cluster,
+- target owner,
+- delete gate,
+- required validation,
+- rollback trigger.
 
-- Run `git status --porcelain` and preserve unrelated edits.
-- Append task entry in `plans/agent-log.md` before any code/doc changes.
+## Cycle Cadence (Target)
 
-### Phase 1: Reproduce With Valid Harness Data
+- 5-10 min: contract and scope check.
+- 45-90 min: single-cluster implementation burst.
+- 15-25 min: validation pass.
+- 5 min: promote/iterate decision + log update.
 
-- Default loop config:
+If a cycle exceeds ~2 hours without clear slice movement, split scope or ask for direction.
 
-```bash
-EXPO_FORCE_START=1 \
-FOLLOW_METRO_LOGS=1 \
-EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS=3000 \
-EXPO_PUBLIC_PERF_HARNESS_RUNS=3 \
-yarn ios:device:perf-shortcut-loop
-```
+## Mode A Loop
 
-- Iteration mode: runs `1-3` only, all other knobs fixed.
-- Promotion/keep decision for high-impact changes: rerun with higher confidence sample (`runs=6-8`) when practical.
-- Valid run requires both markers:
-  - `shortcut_loop_run_start`
-  - `shortcut_loop_run_complete`
+### Phase 0: Claim + Protect
 
-### Phase 2: Deep Synthesis Checkpoint (Mandatory)
+- Run `git status --porcelain`.
+- Append task entry in `plans/agent-log.md`.
+- For each file touched, inspect existing diff before editing.
 
-Before changing behavior, explicitly produce:
-- Dominant bottleneck candidate (single sentence).
-- Ranked alternative explanations.
-- Why current data supports or rejects each explanation.
-- What remains unknown.
-- Highest-value next probe.
+### Phase 1: Implement One Cluster
 
-If confidence is weak, do instrumentation-only loops and repeat Phase 2.
+- Move one coherent concern to its target owner.
+- Keep changes inside the selected cluster boundary.
+- Avoid unrelated refactors in the same slice.
 
-### Phase 3: Instrumentation-Only Loops (As Many As Needed)
+### Phase 2: Run Always-Required Checks
 
-- Add narrow probes only for unresolved questions.
-- Prefer stage-scoped summaries over event spam.
-- Keep probe overhead low and measurable.
-- Remove or gate probes that do not move decisions.
+- Relevant lint/tests for touched runtime modules.
+- `bash ./scripts/no-bypass-search-runtime.sh`
+- Contract/fixture checks when parser/comparator/no-bypass scripts are touched.
+- Relevance rule: skip checks that cannot affect the touched cluster or promotion decision, and record the skip reason.
 
-### Phase 4: Hypothesis and Scope Selection
+### Phase 3: Run Conditional Perf Gate
 
-Write a one-line hypothesis tied to measured evidence and expected metric movement.
-Then choose scope based on bottleneck level:
-- Local: small component/state/timing change.
-- Cross-cutting: state ownership, memo boundaries, render topology, scheduling strategy.
-- Architectural: route flow, dataflow pipeline, feature decomposition, interaction model internals.
+Run local perf gate when submit/map/list/hydration/gesture runtime changed, or when promoting runtime ownership slices.
 
-Architectural changes are explicitly allowed when repeated evidence says local optimizations cannot meet target.
+Commands:
+- Baseline refresh: `bash ./scripts/perf-shortcut-local-ci.sh record-baseline`
+- Candidate gate: `bash ./scripts/perf-shortcut-local-ci.sh gate`
 
-### Phase 5: Change Implementation
+Notes:
+- Use direct script entrypoints (not plain `yarn`) in Node 24 shells.
+- Baseline is invalid for promotion if harness run completion is timeout-shaped.
+- Do not run perf gate "just because"; run it only when it is promotion-relevant for this slice.
 
-- Implement one coherent hypothesis track at a time.
-- Preserve UX contract.
-- Avoid stacking unrelated changes in the same validation loop.
-- For broad refactors, keep old/new behavior parity observable via instrumentation or assertions.
+### Phase 4: Enforce Delete Gate
 
-### Phase 6: Matched Validation
+Before promotion:
+- delete legacy writer path for that cluster,
+- confirm no-bypass constraints still pass,
+- update cluster state (`legacy`/`shadow`/`owned`/`deleted`) in plan evidence.
 
-- Re-run baseline and candidate with identical knobs.
-- Compare at minimum:
-  - JS stall max and p95
-  - JS sampler floor/avg FPS
-  - stage timings (`submit_resolved`, `coverage_fetch_success`, `visual_sync_state`, `results_list_ramp`)
-- Keep only if improvement is repeatable and causal story remains consistent.
+### Phase 5: Promote or Iterate
 
-### Phase 7: Decision + Immediate Restart
+Promote only when all relevant required checks pass; otherwise keep the cluster active and run another cycle.
 
-- Accept, reject, or park candidate.
-- Append required iteration block to canonical log.
-- Immediately restart at the appropriate phase:
-  - accepted change: restart at Phase 1 with refreshed baseline
-  - rejected/inconclusive: restart at Phase 2-3
-- Do not exit autonomous mode after a single accepted loop; continue until the hard stop rule is satisfied.
+## No-Ceremony Promotion Criteria
 
-## Evidence Ladder (When To Escalate Scope)
+A slice is promotion-ready when all are true:
+- cluster owner and delete gate are satisfied,
+- correctness/parity checks relevant to touched behavior pass,
+- perf gate passes when runtime-critical paths were touched,
+- no-bypass/static contract checks pass,
+- evidence is clear enough for another engineer to reproduce the decision.
 
-Escalate from local fixes to architecture-level redesign when any of these are true:
-- Same bottleneck window remains dominant across multiple rejected local candidates.
-- Commits/stalls concentrate in parent orchestration layers (`SearchScreen`, sheet tree, route-level coordination) rather than a single leaf component.
-- Improvements in one window reliably regress another due shared control flow.
-- Harness and instrumentation consistently show floor stuck near low single digits despite reducing isolated stall outliers.
+## Promotion Packet (Minimal, Not Verbose)
 
-## Acceptance Gates
+For each slice promotion, record:
+- slice + cluster,
+- files changed,
+- check results (pass/fail),
+- skipped checks with one-line reason,
+- perf compare summary path (if perf-required slice),
+- delete-gate evidence (what legacy path was removed).
 
-Gate A: Data validity
-- Required markers present and baseline/candidate knobs match.
+## Mode B Loop (Investigation, Opt-in)
 
-Gate B: Causal confidence
-- Hypothesis directly supported by instrumentation and synthesis.
+- Run matched baseline/candidate loops.
+- Keep metric definitions and schema version fixed.
+- Continue loop-to-loop until threshold is met or a blocker is proven.
+- Log rejected candidates in `plans/shortcut-submit-investigation-log.md`.
 
-Gate C: JS improvement
-- Directional and repeatable improvement in primary JS metrics.
+## Strict Latch Policy
 
-Gate D: UX parity
-- No unintended user-visible regression in behavior/look/feel.
+When user requests strict no-checkpoint autonomy:
+- keep latch active across context reload/compaction,
+- respond only on milestone/threshold achieved, blocker, or explicit user update request.
 
-Gate E: Sustainability
-- Change simplifies or clarifies ownership; avoids new complexity debt.
+## Compact Update Format
 
-## Significant Progress Definition
+Use concise updates:
+- `Now:` current action.
+- `Evidence:` strongest pass/fail signal.
+- `Next:` immediate next step.
 
-A loop is a meaningful step forward when it delivers repeatable gains such as:
-- material stall p95 reduction, and/or
-- clear JS floor increase across matched runs.
-
-Hard completion threshold for autonomous mode on this track:
-- validated JS floor improvement of at least `+25 FPS` relative to the active baseline snapshot used for the investigation cycle.
-- validation should be repeatable on matched runs and promoted with higher-confidence sample (`runs=6-8`) before declaring completion.
-
-Program-level milestone target for this track: major floor lift with UX parity. This usually requires architectural bottleneck removal, not only micro-tuning.
-
-## Required Iteration Log Format
-
-For every loop in `plans/shortcut-submit-investigation-log.md` include:
-- Baseline/candidate metrics (stall max/p95, sampler FPS, stage timings)
-- Dominant bottleneck statement
-- Synthesis checkpoint summary (why this hypothesis)
-- Exact change made (or `no behavior change`)
-- Validation result
-- Next loop decision
-
-## Harness As Productized Infrastructure
-
-Harness improvements are first-class work when they increase loop speed or data fidelity.
-Examples:
-- deterministic run IDs and marker-scoped parsing
-- reliable auto-stop at configured runs
-- stable startup delay/readiness behavior
-- simulator/device targeting policy that avoids accidental mode drift
-
-Any harness change must be validated before using its output for product conclusions.
-
-## Anti-Patterns (Do Not Do)
-
-- Speculative fix stacking.
-- Declaring completion after one successful loop.
-- Re-running rejected candidates without new evidence.
-- Making architecture changes without a behavior parity contract.
-- Keeping high-noise probes that no longer influence decisions.
-
-## Continuous Log Compaction (Required)
-
-- Treat log compaction as part of every loop, not a periodic cleanup task.
-- Every time you append an iteration entry to `/Users/brandonkimble/crave-search/plans/shortcut-submit-investigation-log.md`, compact older content in the same edit.
-- Keep only high-signal memory in the canonical log:
-  - accepted stack
-  - rejected/do-not-retry set
-  - latest baseline/candidate snapshots
-  - latest few loop decisions needed for continuity
-  - active hypothesis + next loop plan
-- Remove repetitive raw transcripts and collapse stale details into short summaries.
-- If the investigation log grows beyond roughly `500` lines, run a dedicated compaction pass immediately before continuing normal loop updates.
+Only expand beyond this when a blocker or decision tradeoff needs explanation.

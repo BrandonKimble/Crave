@@ -77,10 +77,14 @@ export const getOAuthErrorMessage = (
     const record = error as Record<string, unknown>;
     const errors = Array.isArray(record.errors) ? record.errors : undefined;
     const firstError =
-      errors && errors[0] && typeof errors[0] === 'object' ? (errors[0] as Record<string, unknown>) : null;
+      errors && errors[0] && typeof errors[0] === 'object'
+        ? (errors[0] as Record<string, unknown>)
+        : null;
     const code = firstError && typeof firstError.code === 'string' ? firstError.code : null;
-    const longMessage = firstError && typeof firstError.longMessage === 'string' ? firstError.longMessage : null;
-    const message = firstError && typeof firstError.message === 'string' ? firstError.message : null;
+    const longMessage =
+      firstError && typeof firstError.longMessage === 'string' ? firstError.longMessage : null;
+    const message =
+      firstError && typeof firstError.message === 'string' ? firstError.message : null;
 
     if (code === 'session_exists') return "You're already signed in.";
     if (hasText(longMessage)) return longMessage;
@@ -125,7 +129,9 @@ export const summarizeOAuthError = (error: unknown) => {
     const record = error as Record<string, unknown>;
     const errors = Array.isArray(record.errors) ? record.errors : undefined;
     const firstError =
-      errors && errors[0] && typeof errors[0] === 'object' ? (errors[0] as Record<string, unknown>) : null;
+      errors && errors[0] && typeof errors[0] === 'object'
+        ? (errors[0] as Record<string, unknown>)
+        : null;
 
     return {
       name: typeof record.name === 'string' ? record.name : undefined,
@@ -136,8 +142,8 @@ export const summarizeOAuthError = (error: unknown) => {
         typeof record.clerkTraceId === 'string'
           ? record.clerkTraceId
           : typeof record.traceId === 'string'
-            ? record.traceId
-            : undefined,
+          ? record.traceId
+          : undefined,
       firstError: firstError
         ? {
             code: typeof firstError.code === 'string' ? firstError.code : undefined,

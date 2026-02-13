@@ -34,11 +34,7 @@ type UiFrameSamplerOptions = {
 };
 
 type UiFrameSamplerNativeModule = {
-  start: (options?: {
-    windowMs?: number;
-    stallFrameMs?: number;
-    logOnlyBelowFps?: number;
-  }) => void;
+  start: (options?: { windowMs?: number; stallFrameMs?: number; logOnlyBelowFps?: number }) => void;
   stop: () => void;
 };
 

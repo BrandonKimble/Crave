@@ -134,7 +134,8 @@ const startJsFrameSampler = (options: JsFrameSamplerOptions): (() => void) => {
       droppedFrameEstimate: round1(droppedFrameEstimate),
       droppedFrameRatio: round1(droppedFrameRatio),
     };
-    const shouldLogWindow = stallCount > 0 || avgFps < logOnlyBelowFps || floorFps < logOnlyBelowFps;
+    const shouldLogWindow =
+      stallCount > 0 || avgFps < logOnlyBelowFps || floorFps < logOnlyBelowFps;
     if (shouldLogWindow) {
       options.onWindow?.(summary);
     }

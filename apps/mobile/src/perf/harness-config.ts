@@ -98,18 +98,29 @@ const parseShortcutScoreMode = (value: string | undefined): PerfShortcutScoreMod
 const isDevEnvironment = __DEV__;
 const allowHarnessOutsideDev = parseBoolean(readEnv('EXPO_PUBLIC_PERF_HARNESS_ALLOW_NON_DEV'));
 const canEnableHarness = isDevEnvironment || allowHarnessOutsideDev;
-const isHarnessEnabled = canEnableHarness && parseBoolean(readEnv('EXPO_PUBLIC_PERF_HARNESS_ENABLED'));
+const isHarnessEnabled =
+  canEnableHarness && parseBoolean(readEnv('EXPO_PUBLIC_PERF_HARNESS_ENABLED'));
 const scenario = isHarnessEnabled
   ? parseScenario(normalizeEnv(readEnv('EXPO_PUBLIC_PERF_HARNESS_SCENARIO')))
   : 'none';
 const runIdRaw = readEnv('EXPO_PUBLIC_PERF_HARNESS_RUN_ID')?.trim() ?? '';
 const runId = runIdRaw.length > 0 ? runIdRaw : null;
 const runs = parseInteger(readEnv('EXPO_PUBLIC_PERF_HARNESS_RUNS'), 3, 1, 1000);
-const startDelayMs = parseInteger(readEnv('EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS'), 3000, 0, 60000);
+const startDelayMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_HARNESS_START_DELAY_MS'),
+  3000,
+  0,
+  60000
+);
 const cooldownMs = parseInteger(readEnv('EXPO_PUBLIC_PERF_HARNESS_COOLDOWN_MS'), 1600, 0, 60000);
 const jsFrameSamplerEnabled =
   canEnableHarness && parseBoolean(readEnv('EXPO_PUBLIC_PERF_JS_FRAME_SAMPLER'), isHarnessEnabled);
-const jsFrameWindowMs = parseInteger(readEnv('EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS'), 500, 120, 60000);
+const jsFrameWindowMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_JS_FRAME_WINDOW_MS'),
+  500,
+  120,
+  60000
+);
 const jsFrameStallFrameMs = parseInteger(
   readEnv('EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS'),
   80,
@@ -124,7 +135,12 @@ const jsFrameLogOnlyBelowFps = parseInteger(
 );
 const uiFrameSamplerEnabled =
   canEnableHarness && parseBoolean(readEnv('EXPO_PUBLIC_PERF_UI_FRAME_SAMPLER'), isHarnessEnabled);
-const uiFrameWindowMs = parseInteger(readEnv('EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS'), 500, 120, 60000);
+const uiFrameWindowMs = parseInteger(
+  readEnv('EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS'),
+  500,
+  120,
+  60000
+);
 const uiFrameStallFrameMs = parseInteger(
   readEnv('EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS'),
   80,
@@ -148,7 +164,9 @@ const perfHarnessConfig: PerfHarnessConfig = {
   shortcutLoop: {
     label: readEnv('EXPO_PUBLIC_PERF_SHORTCUT_LABEL')?.trim() || 'Best restaurants',
     targetTab: parseShortcutTab(normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_TAB'))),
-    scoreMode: parseShortcutScoreMode(normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_SCORE_MODE'))),
+    scoreMode: parseShortcutScoreMode(
+      normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_SCORE_MODE'))
+    ),
     preserveSheetState: parseBoolean(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_PRESERVE_SHEET_STATE')),
     transitionFromDockedPolls: parseBoolean(
       readEnv('EXPO_PUBLIC_PERF_SHORTCUT_TRANSITION_FROM_DOCKED_POLLS'),
