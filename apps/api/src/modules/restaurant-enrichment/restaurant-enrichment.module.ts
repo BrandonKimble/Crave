@@ -12,6 +12,11 @@ import { RestaurantEntityMergeService } from './restaurant-entity-merge.service'
 import { RestaurantCuisineExtractionService } from './restaurant-cuisine-extraction.service';
 import { RestaurantCuisineExtractionQueueService } from './restaurant-cuisine-extraction-queue.service';
 import { RestaurantCuisineExtractionWorker } from './restaurant-cuisine-extraction.worker';
+import { isWorkerRuntime } from '../../shared/utils/process-role';
+
+const restaurantEnrichmentWorkerProviders = isWorkerRuntime()
+  ? [RestaurantCuisineExtractionWorker]
+  : [];
 
 @Module({
   imports: [
@@ -31,7 +36,7 @@ import { RestaurantCuisineExtractionWorker } from './restaurant-cuisine-extracti
     RestaurantEntityMergeService,
     RestaurantCuisineExtractionService,
     RestaurantCuisineExtractionQueueService,
-    RestaurantCuisineExtractionWorker,
+    ...restaurantEnrichmentWorkerProviders,
   ],
   exports: [
     RestaurantLocationEnrichmentService,

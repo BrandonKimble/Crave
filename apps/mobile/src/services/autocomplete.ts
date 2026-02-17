@@ -1,5 +1,4 @@
 import api from './api';
-import type { Coordinate, MapBounds } from '../types';
 import type { RestaurantStatusPreview } from './search';
 
 export type AutocompleteMatch = {
@@ -29,8 +28,6 @@ export type AutocompleteResponse = {
 
 type RequestOptions = {
   signal?: AbortSignal;
-  bounds?: MapBounds | null;
-  userLocation?: Coordinate | null;
   entityType?: string;
   entityTypes?: string[];
 };
@@ -39,15 +36,9 @@ export const autocompleteService = {
   async fetchEntities(query: string, options: RequestOptions = {}): Promise<AutocompleteResponse> {
     const payload: Record<string, unknown> = {
       query,
-      limit: 6,
+      limit: 7,
       enableOnDemand: false,
     };
-    if (options.bounds) {
-      payload.bounds = options.bounds;
-    }
-    if (options.userLocation) {
-      payload.userLocation = options.userLocation;
-    }
     if (options.entityType) {
       payload.entityType = options.entityType;
     }

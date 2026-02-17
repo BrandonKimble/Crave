@@ -27,10 +27,18 @@ import {
   LLMMention,
 } from '../../external-integrations/llm/llm.types';
 
+const DEFAULT_COVERAGE_KEY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_COVERAGE_KEY_CACHE_MAX_ENTRIES = 512;
+
 @Injectable()
 export class RedditBatchProcessingService implements OnModuleInit {
   private logger!: LoggerService;
-  private readonly coverageKeyCache = new Map<string, string>();
+  private readonly coverageKeyCache = new Map<
+    string,
+    { value: string; expiresAt: number }
+  >();
+  private readonly coverageKeyCacheTtlMs: number;
+  private readonly coverageKeyCacheMaxEntries: number;
   private keywordGateConfig!: {
     lookbackMs: number;
     commentSampleLimit: number;
@@ -51,7 +59,15 @@ export class RedditBatchProcessingService implements OnModuleInit {
     private readonly configService: ConfigService,
     @Inject(PrismaService) private readonly prismaService: PrismaService,
     private readonly rankScoreRefreshQueue: RankScoreRefreshQueueService,
-  ) {}
+  ) {
+    this.coverageKeyCacheTtlMs =
+      this.parsePositiveInt(process.env.REDDIT_BATCH_COVERAGE_CACHE_TTL_MS) ??
+      DEFAULT_COVERAGE_KEY_CACHE_TTL_MS;
+    this.coverageKeyCacheMaxEntries =
+      this.parsePositiveInt(
+        process.env.REDDIT_BATCH_COVERAGE_CACHE_MAX_ENTRIES,
+      ) ?? DEFAULT_COVERAGE_KEY_CACHE_MAX_ENTRIES;
+  }
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RedditBatchProcessingService');
@@ -61,6 +77,8 @@ export class RedditBatchProcessingService implements OnModuleInit {
       commentSampleLimit: this.keywordGateConfig.commentSampleLimit,
       minNewComments: this.keywordGateConfig.minNewComments,
       pipelineScope: this.keywordGateConfig.pipelineScope,
+      coverageKeyCacheTtlMs: this.coverageKeyCacheTtlMs,
+      coverageKeyCacheMaxEntries: this.coverageKeyCacheMaxEntries,
     });
   }
 
@@ -1286,7 +1304,7 @@ export class RedditBatchProcessingService implements OnModuleInit {
       return null;
     }
 
-    const cached = this.coverageKeyCache.get(normalized);
+    const cached = this.getCachedCoverageKey(normalized);
     if (cached) {
       return cached;
     }
@@ -1309,8 +1327,71 @@ export class RedditBatchProcessingService implements OnModuleInit {
           ? record.name.trim().toLowerCase()
           : normalized;
 
-    this.coverageKeyCache.set(normalized, resolved);
+    this.setCachedCoverageKey(normalized, resolved);
     return resolved;
+  }
+
+  private getCachedCoverageKey(key: string): string | null {
+    if (
+      this.coverageKeyCacheTtlMs <= 0 ||
+      this.coverageKeyCacheMaxEntries <= 0
+    ) {
+      return null;
+    }
+
+    const entry = this.coverageKeyCache.get(key);
+    if (!entry) {
+      return null;
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+      this.coverageKeyCache.delete(key);
+      return null;
+    }
+
+    // Refresh recency when a hot key is reused.
+    this.coverageKeyCache.delete(key);
+    this.coverageKeyCache.set(key, entry);
+    return entry.value;
+  }
+
+  private setCachedCoverageKey(key: string, value: string): void {
+    if (
+      this.coverageKeyCacheTtlMs <= 0 ||
+      this.coverageKeyCacheMaxEntries <= 0
+    ) {
+      return;
+    }
+
+    this.coverageKeyCache.set(key, {
+      value,
+      expiresAt: Date.now() + this.coverageKeyCacheTtlMs,
+    });
+    this.pruneCoverageKeyCache();
+  }
+
+  private pruneCoverageKeyCache(): void {
+    if (this.coverageKeyCacheMaxEntries <= 0) {
+      this.coverageKeyCache.clear();
+      return;
+    }
+
+    const now = Date.now();
+    for (const [key, entry] of this.coverageKeyCache.entries()) {
+      if (entry.expiresAt <= now) {
+        this.coverageKeyCache.delete(key);
+      }
+    }
+
+    while (this.coverageKeyCache.size > this.coverageKeyCacheMaxEntries) {
+      const oldestKey = this.coverageKeyCache.keys().next().value as
+        | string
+        | undefined;
+      if (!oldestKey) {
+        break;
+      }
+      this.coverageKeyCache.delete(oldestKey);
+    }
   }
 
   private async refreshRankScoresIfFinalBatch(

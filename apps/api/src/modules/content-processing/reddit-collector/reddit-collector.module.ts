@@ -34,6 +34,42 @@ import { RedditBatchProcessingService } from './reddit-batch-processing.service'
 import { RestaurantEnrichmentModule } from '../../restaurant-enrichment/restaurant-enrichment.module';
 import { AnalyticsModule } from '../../analytics/analytics.module';
 import { BullQueueMetricsService } from './bull-queue-metrics.service';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
+
+const redditCollectorWorkerProviders = isWorkerRuntime()
+  ? [
+      ArchiveZstdDecompressor,
+      ArchiveStreamProcessorService,
+      ArchiveIngestionService,
+      ArchiveProcessingMetricsService,
+      RedditDataExtractorService,
+      // Chronological Collection components (PRD Section 5.1.2)
+      ChronologicalCollectionWorker,
+      ChronologicalBatchProcessingWorker,
+      RedditBatchProcessingService,
+      KeywordBatchProcessingWorker,
+      KeywordSearchJobWorker,
+      ArchiveBatchProcessingWorker,
+      ArchiveCollectionWorker,
+      KeywordSearchMetricsService,
+      BullQueueMetricsService,
+      // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
+      ContentRetrievalMonitoringService,
+      // Scheduled Collection Jobs components (PRD Section 5.1.2)
+      CollectionJobSchedulerService,
+      KeywordSearchSchedulerService,
+      // Keyword Entity Search components (PRD Section 5.1.2)
+      EntityPriorityMetricsRefreshService,
+      KeywordSliceSelectionService,
+      KeywordAttemptHistoryService,
+      KeywordSearchOrchestratorService,
+      // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
+      UnifiedProcessingService,
+      // Volume Tracking components (PRD Section 5.1.2)
+      SubredditVolumeTrackingService,
+      VolumeTrackingProcessor,
+    ]
+  : [];
 
 /**
  * Reddit Collector Module
@@ -111,65 +147,7 @@ import { BullQueueMetricsService } from './bull-queue-metrics.service';
     RestaurantEnrichmentModule,
     AnalyticsModule,
   ],
-  providers: [
-    ArchiveZstdDecompressor,
-    ArchiveStreamProcessorService,
-    ArchiveIngestionService,
-    ArchiveProcessingMetricsService,
-    RedditDataExtractorService,
-    // Chronological Collection components (PRD Section 5.1.2)
-    ChronologicalCollectionWorker,
-    ChronologicalBatchProcessingWorker,
-    RedditBatchProcessingService,
-    KeywordBatchProcessingWorker,
-    KeywordSearchJobWorker,
-    ArchiveBatchProcessingWorker,
-    ArchiveCollectionWorker,
-    KeywordSearchMetricsService,
-    BullQueueMetricsService,
-    // Content Retrieval Pipeline components (PRD Section 5.1.2 & 6.1)
-    ContentRetrievalMonitoringService,
-    // Scheduled Collection Jobs components (PRD Section 5.1.2)
-    CollectionJobSchedulerService,
-    KeywordSearchSchedulerService,
-    // Keyword Entity Search components (PRD Section 5.1.2)
-    EntityPriorityMetricsRefreshService,
-    KeywordSliceSelectionService,
-    KeywordAttemptHistoryService,
-    KeywordSearchOrchestratorService,
-    // Unified Processing Integration components (PRD Section 5.1.2 & 6.1)
-    UnifiedProcessingService,
-    // Volume Tracking components (PRD Section 5.1.2)
-    SubredditVolumeTrackingService,
-    VolumeTrackingProcessor,
-  ],
-  exports: [
-    ArchiveZstdDecompressor,
-    ArchiveStreamProcessorService,
-    ArchiveIngestionService,
-    ArchiveProcessingMetricsService,
-    RedditDataExtractorService,
-    // Export chronological collection components
-    ChronologicalCollectionWorker,
-    ChronologicalBatchProcessingWorker,
-    RedditBatchProcessingService,
-    KeywordBatchProcessingWorker,
-    KeywordSearchJobWorker,
-    ArchiveBatchProcessingWorker,
-    ArchiveCollectionWorker,
-    KeywordSearchMetricsService,
-    // Export content retrieval pipeline components
-    ContentRetrievalMonitoringService,
-    // Export scheduled collection jobs components
-    CollectionJobSchedulerService,
-    KeywordSearchSchedulerService,
-    // Export keyword entity search components
-    KeywordSearchOrchestratorService,
-    // Export unified processing integration components
-    UnifiedProcessingService,
-    // Export volume tracking components
-    SubredditVolumeTrackingService,
-    VolumeTrackingProcessor,
-  ],
+  providers: [...redditCollectorWorkerProviders],
+  exports: [...redditCollectorWorkerProviders],
 })
 export class RedditCollectorModule {}

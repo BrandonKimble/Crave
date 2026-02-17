@@ -1,7 +1,7 @@
 import React from 'react';
 
 import type { AutocompleteMatch } from '../../../services/autocomplete';
-import type { Coordinate, MapBounds } from '../../../types';
+import { logger } from '../../../utils';
 
 type UseAutocompleteControllerArgs = {
   query: string;
@@ -12,13 +12,9 @@ type UseAutocompleteControllerArgs = {
     query: string,
     options?: {
       debounceMs?: number;
-      bounds?: MapBounds | null;
-      userLocation?: Coordinate | null;
     }
   ) => Promise<AutocompleteMatch[]>;
   cancelAutocomplete: () => void;
-  latestBoundsRef: React.RefObject<MapBounds | null>;
-  userLocationRef: React.RefObject<Coordinate | null>;
   setSuggestions: React.Dispatch<React.SetStateAction<AutocompleteMatch[]>>;
   setShowSuggestions: React.Dispatch<React.SetStateAction<boolean>>;
   autocompleteMinChars: number;
@@ -30,6 +26,10 @@ type CachedAutocompleteEntry = {
   matches: AutocompleteMatch[];
   updatedAtMs: number;
 };
+type CachedAutocompleteLookup = {
+  matches: AutocompleteMatch[];
+  isExactMatch: boolean;
+};
 
 type UseAutocompleteControllerResult = {
   suppressAutocompleteResults: () => void;
@@ -38,6 +38,7 @@ type UseAutocompleteControllerResult = {
 };
 
 const MAX_AUTOCOMPLETE_CACHE_ENTRIES = 64;
+const AUTOCOMPLETE_DEBOUNCE_MS = 0;
 
 const normalizeAutocompleteQuery = (value: string): string => value.trim().toLowerCase();
 
@@ -57,8 +58,6 @@ export const useAutocompleteController = ({
   isAutocompleteSuppressed,
   runAutocomplete,
   cancelAutocomplete,
-  latestBoundsRef,
-  userLocationRef,
   setSuggestions,
   setShowSuggestions,
   autocompleteMinChars,
@@ -95,24 +94,60 @@ export const useAutocompleteController = ({
     writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, []);
   }, [setShowSuggestions, setSuggestions]);
 
-  const readCache = React.useCallback(
-    (rawQuery: string): AutocompleteMatch[] | null => {
+  const lookupCache = React.useCallback(
+    (rawQuery: string): CachedAutocompleteLookup | null => {
       const normalized = normalizeAutocompleteQuery(rawQuery);
       if (!normalized) {
         return null;
       }
-      const cached = cacheRef.current.get(normalized);
-      if (!cached) {
-        return null;
-      }
-      if (Date.now() - cached.updatedAtMs > autocompleteCacheTtlMs) {
+      const now = Date.now();
+      const exact = cacheRef.current.get(normalized);
+      if (exact) {
+        if (now - exact.updatedAtMs <= autocompleteCacheTtlMs) {
+          // Refresh recency (LRU-ish)
+          cacheRef.current.delete(normalized);
+          cacheRef.current.set(normalized, exact);
+          return {
+            matches: exact.matches,
+            isExactMatch: true,
+          };
+        }
         cacheRef.current.delete(normalized);
+      }
+
+      const staleKeys: string[] = [];
+      let bestPrefixKey: string | null = null;
+      let bestPrefixEntry: CachedAutocompleteEntry | null = null;
+      for (const [key, entry] of cacheRef.current.entries()) {
+        if (now - entry.updatedAtMs > autocompleteCacheTtlMs) {
+          staleKeys.push(key);
+          continue;
+        }
+        if (normalized === key) {
+          continue;
+        }
+        if (!normalized.startsWith(key)) {
+          continue;
+        }
+        if (bestPrefixKey && key.length <= bestPrefixKey.length) {
+          continue;
+        }
+        bestPrefixKey = key;
+        bestPrefixEntry = entry;
+      }
+      staleKeys.forEach((key) => {
+        cacheRef.current.delete(key);
+      });
+      if (!bestPrefixKey || !bestPrefixEntry) {
         return null;
       }
-      // Refresh recency (LRU-ish)
-      cacheRef.current.delete(normalized);
-      cacheRef.current.set(normalized, cached);
-      return cached.matches;
+      // Refresh recency on the prefix entry we are about to reuse.
+      cacheRef.current.delete(bestPrefixKey);
+      cacheRef.current.set(bestPrefixKey, bestPrefixEntry);
+      return {
+        matches: bestPrefixEntry.matches,
+        isExactMatch: false,
+      };
     },
     [autocompleteCacheTtlMs]
   );
@@ -141,22 +176,22 @@ export const useAutocompleteController = ({
 
   const showCachedSuggestionsIfFresh = React.useCallback(
     (rawQuery: string): boolean => {
-      const cached = readCache(rawQuery);
+      const cached = lookupCache(rawQuery);
       if (!cached) {
         return false;
       }
-      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, cached);
+      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, cached.matches);
+      cancelAutocomplete();
       return true;
     },
-    [readCache, setShowSuggestions, setSuggestions]
+    [cancelAutocomplete, lookupCache, setShowSuggestions, setSuggestions]
   );
 
   const suppressAutocompleteResults = React.useCallback(() => {
     manuallySuppressedRef.current = true;
     requestSequenceRef.current += 1;
     cancelAutocomplete();
-    clearSuggestions();
-  }, [cancelAutocomplete, clearSuggestions]);
+  }, [cancelAutocomplete]);
 
   const allowAutocompleteResults = React.useCallback(() => {
     manuallySuppressedRef.current = false;
@@ -170,7 +205,7 @@ export const useAutocompleteController = ({
     if (!shouldRun) {
       requestSequenceRef.current += 1;
       cancelAutocomplete();
-      if (!isSuggestionScreenActive && !isSuggestionScreenVisible && !trimmed.length) {
+      if (!isSuggestionScreenVisible) {
         clearSuggestions();
       }
       return;
@@ -183,17 +218,24 @@ export const useAutocompleteController = ({
       return;
     }
 
-    const cached = readCache(trimmed);
+    const cached = lookupCache(trimmed);
     if (cached) {
-      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, cached);
+      writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, cached.matches);
+      if (cached.isExactMatch) {
+        cancelAutocomplete();
+        return;
+      }
     }
 
     const requestSequence = ++requestSequenceRef.current;
+    let isActive = true;
     void runAutocomplete(trimmed, {
-      bounds: latestBoundsRef.current,
-      userLocation: userLocationRef.current,
+      debounceMs: AUTOCOMPLETE_DEBOUNCE_MS,
     })
       .then((matches) => {
+        if (!isActive) {
+          return;
+        }
         if (requestSequence !== requestSequenceRef.current) {
           return;
         }
@@ -211,14 +253,26 @@ export const useAutocompleteController = ({
         writeCache(trimmed, matches);
         writeAutocompleteSuggestions(setSuggestions, setShowSuggestions, matches);
       })
-      .catch(() => {
+      .catch((error) => {
+        if (!isActive) {
+          return;
+        }
         if (requestSequence !== requestSequenceRef.current) {
           return;
         }
+        const isLatestSuppressed =
+          latestIsAutocompleteSuppressedRef.current || manuallySuppressedRef.current;
+        if (isLatestSuppressed || !latestIsSuggestionScreenActiveRef.current) {
+          return;
+        }
+        logger.warn('Autocomplete request failed', {
+          message: error instanceof Error ? error.message : 'unknown error',
+        });
         clearSuggestions();
       });
 
     return () => {
+      isActive = false;
       requestSequenceRef.current += 1;
       cancelAutocomplete();
     };
@@ -229,13 +283,11 @@ export const useAutocompleteController = ({
     isAutocompleteSuppressed,
     isSuggestionScreenActive,
     isSuggestionScreenVisible,
-    latestBoundsRef,
+    lookupCache,
     query,
-    readCache,
     runAutocomplete,
     setShowSuggestions,
     setSuggestions,
-    userLocationRef,
     writeCache,
   ]);
 

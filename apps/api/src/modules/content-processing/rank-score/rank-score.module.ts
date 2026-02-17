@@ -5,6 +5,11 @@ import { SharedModule } from '../../../shared';
 import { RankScoreService } from './rank-score.service';
 import { RankScoreRefreshQueueService } from './rank-score-refresh.service';
 import { RankScoreRefreshWorker } from './rank-score-refresh.worker';
+import { isWorkerRuntime } from '../../../shared/utils/process-role';
+
+const rankScoreWorkerProviders = isWorkerRuntime()
+  ? [RankScoreRefreshWorker]
+  : [];
 
 @Module({
   imports: [
@@ -17,7 +22,7 @@ import { RankScoreRefreshWorker } from './rank-score-refresh.worker';
   providers: [
     RankScoreService,
     RankScoreRefreshQueueService,
-    RankScoreRefreshWorker,
+    ...rankScoreWorkerProviders,
   ],
   exports: [RankScoreService, RankScoreRefreshQueueService],
 })

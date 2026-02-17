@@ -26,6 +26,10 @@
   - LLM limiter utilization (RPM/TPM), reservation wait p95, and rate limit error rate
   - Bull queue backlog/active jobs, job throughput, and p95 wait/processing times by queue/job name
   - External API coordinator utilization (minute/day) and rate limit hits (coordinator blocks vs upstream 429s)
+- **Crave Autocomplete Overview** (provisioned automatically) tracks:
+  - Autocomplete request throughput and p50/p95 latency split by cache outcome
+  - Measured DB duration p95/mean and DB share of total request time
+  - Cache lookup outcomes and 5-minute cache hit ratio
 - Prisma ORM instrumentation surfaces:
   - `prisma_query_duration_seconds` for slow queries by model/action
   - `prisma_query_errors_total` spikes when database exceptions occur

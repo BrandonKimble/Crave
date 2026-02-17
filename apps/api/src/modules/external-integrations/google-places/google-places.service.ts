@@ -271,7 +271,7 @@ export class GooglePlacesService {
     );
     const fieldMask = fieldMaskFields.join(',');
 
-    const rateLimit = this.rateLimitCoordinator.requestPermission({
+    const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'placeDetails',
     });
@@ -348,7 +348,7 @@ export class GooglePlacesService {
         axiosError.response?.status === 429 ||
         axiosError.response?.data?.error?.code === 429
       ) {
-        this.rateLimitCoordinator.reportRateLimitHit(
+        await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
           'placeDetails',
@@ -390,7 +390,7 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for autocomplete');
     }
 
-    const rateLimit = this.rateLimitCoordinator.requestPermission({
+    const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'placeAutocomplete',
     });
@@ -512,7 +512,7 @@ export class GooglePlacesService {
         axiosError.response?.status === 429 ||
         axiosError.response?.data?.error?.code === 429
       ) {
-        this.rateLimitCoordinator.reportRateLimitHit(
+        await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
           'placeAutocomplete',
@@ -552,7 +552,7 @@ export class GooglePlacesService {
       throw new BadRequestException('input is required for find place');
     }
 
-    const rateLimit = this.rateLimitCoordinator.requestPermission({
+    const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'findPlaceFromText',
     });
@@ -702,7 +702,7 @@ export class GooglePlacesService {
         axiosError.response?.status === 429 ||
         axiosError.response?.data?.error?.code === 429
       ) {
-        this.rateLimitCoordinator.reportRateLimitHit(
+        await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.GOOGLE_PLACES,
           60,
           'findPlaceFromText',

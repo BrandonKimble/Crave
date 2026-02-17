@@ -658,8 +658,8 @@ export class RedditService implements OnModuleInit {
     return { ...this.costMetrics };
   }
 
-  getRateLimitStatus(): RateLimitResponse {
-    const status = this.rateLimitCoordinator.getStatus(
+  async getRateLimitStatus(): Promise<RateLimitResponse> {
+    const status = await this.rateLimitCoordinator.getStatus(
       ExternalApiService.REDDIT,
     );
     return {
@@ -732,7 +732,7 @@ export class RedditService implements OnModuleInit {
     };
 
     const rateLimitResponse =
-      this.rateLimitCoordinator.requestPermission(rateLimitRequest);
+      await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
 
     if (!rateLimitResponse.allowed) {
       const retryAfter = rateLimitResponse.retryAfter || 60;
@@ -770,7 +770,7 @@ export class RedditService implements OnModuleInit {
         );
 
         // Report rate limit hit to coordinator
-        this.rateLimitCoordinator.reportRateLimitHit(
+        await this.rateLimitCoordinator.reportRateLimitHit(
           ExternalApiService.REDDIT,
           retryAfter,
           operation,
@@ -1225,7 +1225,7 @@ export class RedditService implements OnModuleInit {
     });
 
     const startTime = Date.now();
-    const rateLimitStatus = this.getRateLimitStatus();
+    const rateLimitStatus = await this.getRateLimitStatus();
 
     // Reddit API has a hard limit of 100 posts per request
     // To get up to 1000 posts (Reddit's max accessible), we need pagination
@@ -1374,7 +1374,7 @@ export class RedditService implements OnModuleInit {
       100,
     )}&t=${timeframe}&restrict_sr=1`;
 
-    const rateLimitStatus = this.getRateLimitStatus();
+    const rateLimitStatus = await this.getRateLimitStatus();
 
     try {
       const response = await this.makeRequest<
@@ -1470,7 +1470,7 @@ export class RedditService implements OnModuleInit {
           data: [],
           metadata: {
             totalRetrieved: 0,
-            rateLimitStatus: this.getRateLimitStatus(),
+            rateLimitStatus: await this.getRateLimitStatus(),
             costIncurred: 0,
           },
           performance: {
@@ -1532,7 +1532,7 @@ export class RedditService implements OnModuleInit {
       depth !== null ? `&depth=${depth}` : ''
     }`;
 
-    const rateLimitStatus = this.getRateLimitStatus();
+    const rateLimitStatus = await this.getRateLimitStatus();
 
     try {
       const response = await this.makeRequest<any[]>(
@@ -1814,7 +1814,7 @@ export class RedditService implements OnModuleInit {
           responseTimes.length
         : 0;
 
-    const rateLimitStatus = this.getRateLimitStatus();
+    const rateLimitStatus = await this.getRateLimitStatus();
 
     return {
       posts,
@@ -1881,7 +1881,7 @@ export class RedditService implements OnModuleInit {
       };
 
       const rateLimitResponse: RateLimitResponse =
-        this.rateLimitCoordinator.requestPermission(rateLimitRequest);
+        await this.rateLimitCoordinator.requestPermission(rateLimitRequest);
 
       if (!rateLimitResponse.allowed) {
         throw new RedditRateLimitError(
@@ -1981,7 +1981,7 @@ export class RedditService implements OnModuleInit {
         performance: {
           searchDuration: duration,
           apiCallsUsed: 1,
-          rateLimitStatus: this.getRateLimitStatus(),
+          rateLimitStatus: await this.getRateLimitStatus(),
         },
         attribution: {
           postUrls: posts.map((post) => post.url),
@@ -2196,7 +2196,7 @@ export class RedditService implements OnModuleInit {
           averageSearchTime:
             successfulSearches > 0 ? duration / successfulSearches : 0,
           totalApiCalls: successfulSearches, // Approximate
-          rateLimitStatus: this.getRateLimitStatus(),
+          rateLimitStatus: await this.getRateLimitStatus(),
         },
       };
     } catch (error: unknown) {

@@ -76,7 +76,7 @@ export class GoogleGeocodingService {
       return null;
     }
 
-    const rateLimit = this.rateLimitCoordinator.requestPermission({
+    const rateLimit = await this.rateLimitCoordinator.requestPermission({
       service: ExternalApiService.GOOGLE_PLACES,
       operation: 'geocode',
     });

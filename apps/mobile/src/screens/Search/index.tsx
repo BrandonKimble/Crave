@@ -2241,8 +2241,6 @@ const SearchScreen: React.FC = () => {
       isAutocompleteSuppressed,
       runAutocomplete,
       cancelAutocomplete,
-      latestBoundsRef,
-      userLocationRef,
       setSuggestions,
       setShowSuggestions,
       autocompleteMinChars: AUTOCOMPLETE_MIN_CHARS,

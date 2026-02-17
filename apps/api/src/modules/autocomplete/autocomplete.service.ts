@@ -1,5 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { EntityType, Prisma } from '@prisma/client';
+import { Counter, Histogram } from 'prom-client';
+import type { Redis } from 'ioredis';
+import { RedisService } from '@liaoliaots/nestjs-redis';
 import { LoggerService, TextSanitizerService } from '../../shared';
 import { EntityResolutionService } from '../content-processing/entity-resolver/entity-resolution.service';
 import {
@@ -7,7 +10,6 @@ import {
   AutocompleteResponseDto,
   AutocompleteMatchDto,
 } from './dto/autocomplete.dto';
-import { OnDemandRequestService } from '../search/on-demand-request.service';
 import { EntitySearchService } from './entity-search.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -16,22 +18,23 @@ import {
 } from '../search/search-query-suggestion.service';
 import type { User } from '@prisma/client';
 import { SearchPopularityService } from '../search/search-popularity.service';
-import { SearchSubredditResolverService } from '../search/search-subreddit-resolver.service';
-import { MapBoundsDto } from '../search/dto/search-query.dto';
 import { RestaurantStatusService } from '../search/restaurant-status.service';
+import { MetricsService } from '../metrics/metrics.service';
 
 const DEFAULT_LIMIT = 8;
 const MIN_QUERY_LENGTH = 1;
-const ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES = 2;
-const ON_DEMAND_VIEWPORT_TOLERANCE = 0.85;
-const ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES =
-  ON_DEMAND_MIN_VIEWPORT_WIDTH_MILES * ON_DEMAND_VIEWPORT_TOLERANCE;
+const REQUEST_DURATION_BUCKETS = [0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.5];
+const REQUEST_DB_DURATION_BUCKETS = [
+  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8,
+];
+type CacheResult = 'hit' | 'miss' | 'skipped';
 
 @Injectable()
 export class AutocompleteService {
   private readonly logger: LoggerService;
-  private readonly cacheTtlMs = 60000; // 60s - covers typical search session refinements
-  private readonly sessionCache = new Map<string, CacheEntry>();
+  private readonly redis: Redis;
+  private readonly cacheTtlSeconds: number;
+  private readonly cacheRedisKeyPrefix: string;
   private readonly weightConfidence: number;
   private readonly weightGlobalPopularity: number;
   private readonly weightUserAffinity: number;
@@ -43,20 +46,32 @@ export class AutocompleteService {
   private readonly querySuggestionPersonalBoost: number;
   private readonly querySuggestionMinGlobalCount: number;
   private readonly querySuggestionMinUserCount: number;
+  private readonly requestDurationHistogram: Histogram<string>;
+  private readonly requestDbDurationHistogram: Histogram<string>;
+  private readonly cacheLookupsCounter: Counter<string>;
 
   constructor(
     loggerService: LoggerService,
+    redisService: RedisService,
     private readonly entityResolutionService: EntityResolutionService,
-    private readonly onDemandRequestService: OnDemandRequestService,
     private readonly textSanitizer: TextSanitizerService,
     private readonly entitySearchService: EntitySearchService,
     private readonly prisma: PrismaService,
     private readonly searchQuerySuggestionService: SearchQuerySuggestionService,
     private readonly searchPopularityService: SearchPopularityService,
-    private readonly subredditResolver: SearchSubredditResolverService,
     private readonly restaurantStatusService: RestaurantStatusService,
+    metricsService: MetricsService,
   ) {
     this.logger = loggerService.setContext('AutocompleteService');
+    this.redis = redisService.getOrThrow();
+    this.cacheTtlSeconds = this.resolveEnvInt(
+      'AUTOCOMPLETE_CACHE_TTL_SECONDS',
+      60,
+    );
+    this.cacheRedisKeyPrefix = this.resolveEnvString(
+      'AUTOCOMPLETE_CACHE_REDIS_PREFIX',
+      'autocomplete:v1',
+    );
     this.weightConfidence = this.resolveEnvNumber(
       'AUTOCOMPLETE_WEIGHT_TEXT_CONFIDENCE',
       0.5,
@@ -101,120 +116,182 @@ export class AutocompleteService {
       'AUTOCOMPLETE_QUERY_SUGGESTION_MIN_USER_COUNT',
       1,
     );
+    this.requestDurationHistogram = metricsService.getHistogram({
+      name: 'autocomplete_request_duration_seconds',
+      help: 'Autocomplete endpoint total duration in seconds',
+      labelNames: ['cache_result'],
+      buckets: REQUEST_DURATION_BUCKETS,
+    });
+    this.requestDbDurationHistogram = metricsService.getHistogram({
+      name: 'autocomplete_request_db_duration_seconds',
+      help: 'Autocomplete endpoint measured DB duration in seconds',
+      labelNames: ['cache_result'],
+      buckets: REQUEST_DB_DURATION_BUCKETS,
+    });
+    this.cacheLookupsCounter = metricsService.getCounter({
+      name: 'autocomplete_cache_lookups_total',
+      help: 'Autocomplete cache lookups by result',
+      labelNames: ['result'],
+    });
   }
 
   async autocompleteEntities(
     dto: AutocompleteRequestDto,
     user?: User,
   ): Promise<AutocompleteResponseDto> {
-    const normalizedQuery = this.textSanitizer.sanitizeOrThrow(dto.query, {
-      maxLength: 140,
-    });
-    const limit = dto.limit ?? DEFAULT_LIMIT;
-    const entityTypes = this.resolveEntityTypes(dto);
-    const primaryEntityType = entityTypes[0] ?? EntityType.food;
-    const locationKey = await this.resolveLocationKey(dto);
+    const requestStart = process.hrtime.bigint();
+    let cacheResult: CacheResult = 'skipped';
+    let totalDbDurationSeconds = 0;
 
-    if (normalizedQuery.length < MIN_QUERY_LENGTH) {
-      return {
-        matches: [],
+    try {
+      const normalizedQuery = this.textSanitizer.sanitizeOrThrow(dto.query, {
+        maxLength: 140,
+      });
+      const limit = dto.limit ?? DEFAULT_LIMIT;
+      const entityTypes = this.resolveEntityTypes(dto);
+      const primaryEntityType = entityTypes[0] ?? EntityType.food;
+      // Contract: autocomplete is intentionally global/unscoped.
+      const locationKey: string | null = null;
+
+      if (normalizedQuery.length < MIN_QUERY_LENGTH) {
+        return {
+          matches: [],
+          query: dto.query,
+          normalizedQuery,
+          onDemandQueued: false,
+          querySuggestions: [],
+        };
+      }
+
+      const cacheKey = this.buildCacheKey(
+        user?.userId ?? null,
+        entityTypes,
+        normalizedQuery,
+      );
+      const cacheLookup = await this.getFromCache(cacheKey);
+      cacheResult = cacheLookup.result;
+      this.cacheLookupsCounter.inc({ result: cacheLookup.result });
+      if (cacheLookup.response) {
+        return cacheLookup.response;
+      }
+
+      const injectedPromise = user
+        ? this.measureDbDuration(
+            () =>
+              this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user),
+            (seconds) => {
+              totalDbDurationSeconds += seconds;
+            },
+          )
+        : Promise.resolve({ favorites: [], viewed: [] });
+      const querySuggestionPromise = this.measureDbDuration(
+        () =>
+          this.searchQuerySuggestionService.getSuggestions(
+            normalizedQuery,
+            Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
+            user?.userId,
+          ),
+        (seconds) => {
+          totalDbDurationSeconds += seconds;
+        },
+      );
+
+      const searchResults = await this.measureDbDuration(
+        () =>
+          this.entitySearchService.searchEntities(
+            normalizedQuery,
+            entityTypes,
+            Math.min(limit * entityTypes.length, limit * 3),
+            { locationKey },
+          ),
+        (seconds) => {
+          totalDbDurationSeconds += seconds;
+        },
+      );
+
+      let matches: AutocompleteMatchDto[] = searchResults
+        .slice(0, limit)
+        .map((result) => ({
+          entityId: result.entityId,
+          entityType: result.type,
+          name: result.name,
+          confidence: Number(result.similarity.toFixed(2)),
+          aliases: [],
+          matchType: 'entity',
+        }));
+
+      if (matches.length === 0 && normalizedQuery.length >= 3) {
+        matches = await this.measureDbDuration(
+          () =>
+            this.resolveViaEntityResolver(
+              dto,
+              normalizedQuery,
+              primaryEntityType,
+              limit,
+              locationKey,
+            ),
+          (seconds) => {
+            totalDbDurationSeconds += seconds;
+          },
+        );
+      }
+
+      const injected = await injectedPromise;
+
+      const candidateMatches = this.mergeEntityMatches(matches, [
+        ...injected.favorites,
+        ...injected.viewed,
+      ]);
+
+      const querySuggestions = await querySuggestionPromise;
+
+      const ranked = await this.measureDbDuration(
+        () =>
+          this.rankCandidates({
+            entityMatches: candidateMatches,
+            querySuggestions,
+            user,
+            limit,
+          }),
+        (seconds) => {
+          totalDbDurationSeconds += seconds;
+        },
+      );
+
+      const matchesWithCounts = await this.measureDbDuration(
+        () => this.attachLocationCounts(ranked.matches),
+        (seconds) => {
+          totalDbDurationSeconds += seconds;
+        },
+      );
+      const matchesWithStatus = await this.measureDbDuration(
+        () => this.attachStatusPreviews(matchesWithCounts),
+        (seconds) => {
+          totalDbDurationSeconds += seconds;
+        },
+      );
+      const response: AutocompleteResponseDto = {
+        matches: matchesWithStatus,
         query: dto.query,
         normalizedQuery,
         onDemandQueued: false,
-        querySuggestions: [],
+        onDemandReason: undefined,
+        querySuggestions: ranked.querySuggestionTexts,
       };
-    }
 
-    const cacheKey = this.buildCacheKey(
-      user?.userId ?? null,
-      entityTypes,
-      normalizedQuery,
-      locationKey,
-    );
-    const cached = this.getFromCache(cacheKey, normalizedQuery);
-    if (cached) {
-      return cached;
-    }
+      await this.setInCache(cacheKey, response);
 
-    const injectedPromise = user
-      ? this.fetchInjectedUserMatches(normalizedQuery, entityTypes, user)
-      : Promise.resolve({ favorites: [], viewed: [] });
-    const querySuggestionPromise =
-      this.searchQuerySuggestionService.getSuggestions(
-        normalizedQuery,
-        Math.min(10, Math.max(this.querySuggestionMax * 2, 6)),
-        user?.userId,
+      return response;
+    } finally {
+      this.requestDurationHistogram.observe(
+        { cache_result: cacheResult },
+        this.elapsedSeconds(requestStart),
       );
-
-    const searchResults = await this.entitySearchService.searchEntities(
-      normalizedQuery,
-      entityTypes,
-      Math.min(limit * entityTypes.length, limit * 3),
-      { locationKey },
-    );
-
-    let matches: AutocompleteMatchDto[] = searchResults
-      .slice(0, limit)
-      .map((result) => ({
-        entityId: result.entityId,
-        entityType: result.type,
-        name: result.name,
-        confidence: Number(result.similarity.toFixed(2)),
-        aliases: [],
-        matchType: 'entity',
-      }));
-
-    if (matches.length === 0 && normalizedQuery.length >= 3) {
-      matches = await this.resolveViaEntityResolver(
-        dto,
-        normalizedQuery,
-        primaryEntityType,
-        limit,
-        locationKey,
+      this.requestDbDurationHistogram.observe(
+        { cache_result: cacheResult },
+        totalDbDurationSeconds,
       );
     }
-
-    const injected = await injectedPromise;
-
-    const candidateMatches = this.mergeEntityMatches(matches, [
-      ...injected.favorites,
-      ...injected.viewed,
-    ]);
-
-    const querySuggestions = await querySuggestionPromise;
-
-    const ranked = await this.rankCandidates({
-      entityMatches: candidateMatches,
-      querySuggestions,
-      user,
-      limit,
-    });
-
-    const matchesWithCounts = await this.attachLocationCounts(ranked.matches);
-    const matchesWithStatus =
-      await this.attachStatusPreviews(matchesWithCounts);
-    const response: AutocompleteResponseDto = {
-      matches: matchesWithStatus,
-      query: dto.query,
-      normalizedQuery,
-      onDemandQueued: false,
-      onDemandReason: undefined,
-      querySuggestions: ranked.querySuggestionTexts,
-    };
-
-    this.sessionCache.set(cacheKey, {
-      normalizedQuery,
-      response,
-      expiresAt: Date.now() + this.cacheTtlMs,
-    });
-    if (this.sessionCache.size > 500) {
-      const iterator = this.sessionCache.keys().next();
-      if (!iterator.done && iterator.value) {
-        this.sessionCache.delete(iterator.value);
-      }
-    }
-
-    return response;
   }
 
   private mergeEntityMatches(
@@ -544,11 +621,7 @@ export class AutocompleteService {
       .map(({ match }) => match);
 
     const finalMatches: AutocompleteMatchDto[] = [];
-    const queryMatchIds = new Set<string>();
     for (const match of scored) {
-      if (match.matchType === 'query') {
-        queryMatchIds.add(match.entityId);
-      }
       finalMatches.push(match);
       if (finalMatches.length >= limit) break;
     }
@@ -578,130 +651,6 @@ export class AutocompleteService {
       return [dto.entityType];
     }
     return [EntityType.food, EntityType.restaurant];
-  }
-
-  private async resolveLocationKey(
-    dto: AutocompleteRequestDto,
-  ): Promise<string | null> {
-    try {
-      const fallbackLocation = this.resolveFallbackLocation(dto);
-      const match = await this.subredditResolver.resolvePrimary({
-        bounds: dto.bounds ?? null,
-        fallbackLocation: fallbackLocation ?? null,
-        referenceLocations: fallbackLocation ? [fallbackLocation] : undefined,
-      });
-
-      return match ? match.toLowerCase() : null;
-    } catch (error) {
-      this.logger.debug('Unable to resolve autocomplete location key', {
-        error:
-          error instanceof Error
-            ? { message: error.message, stack: error.stack }
-            : { message: String(error) },
-      });
-      return null;
-    }
-  }
-
-  private resolveFallbackLocation(
-    dto: AutocompleteRequestDto,
-  ): { latitude: number; longitude: number } | undefined {
-    if (
-      typeof dto.userLocation?.lat === 'number' &&
-      typeof dto.userLocation?.lng === 'number'
-    ) {
-      return {
-        latitude: dto.userLocation.lat,
-        longitude: dto.userLocation.lng,
-      };
-    }
-
-    const bounds = dto.bounds;
-    if (!bounds) {
-      return undefined;
-    }
-
-    const { northEast, southWest } = bounds;
-    if (
-      typeof northEast?.lat !== 'number' ||
-      typeof northEast?.lng !== 'number' ||
-      typeof southWest?.lat !== 'number' ||
-      typeof southWest?.lng !== 'number'
-    ) {
-      return undefined;
-    }
-
-    return {
-      latitude: (northEast.lat + southWest.lat) / 2,
-      longitude: (northEast.lng + southWest.lng) / 2,
-    };
-  }
-
-  private isViewportEligibleForOnDemand(bounds?: MapBoundsDto): boolean {
-    const widthMiles = this.calculateBoundsWidthMiles(bounds);
-    if (!widthMiles) {
-      return false;
-    }
-    return widthMiles >= ON_DEMAND_VIEWPORT_MIN_WIDTH_MILES;
-  }
-
-  private resolveBoundsCenter(
-    bounds?: MapBoundsDto,
-  ): { lat: number; lng: number } | null {
-    if (!bounds) {
-      return null;
-    }
-    const { northEast, southWest } = bounds;
-    if (
-      typeof northEast?.lat !== 'number' ||
-      typeof northEast?.lng !== 'number' ||
-      typeof southWest?.lat !== 'number' ||
-      typeof southWest?.lng !== 'number'
-    ) {
-      return null;
-    }
-
-    return {
-      lat: (northEast.lat + southWest.lat) / 2,
-      lng: (northEast.lng + southWest.lng) / 2,
-    };
-  }
-
-  private calculateBoundsWidthMiles(bounds?: MapBoundsDto): number | null {
-    if (!bounds) {
-      return null;
-    }
-    const center = this.resolveBoundsCenter(bounds);
-    if (!center) {
-      return null;
-    }
-    const { northEast, southWest } = bounds;
-    return this.haversineDistanceMiles(
-      center.lat,
-      southWest.lng,
-      center.lat,
-      northEast.lng,
-    );
-  }
-
-  private haversineDistanceMiles(
-    lat1: number,
-    lon1: number,
-    lat2: number,
-    lon2: number,
-  ): number {
-    const toRad = (value: number) => (value * Math.PI) / 180;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) *
-        Math.cos(toRad(lat2)) *
-        Math.sin(dLon / 2) *
-        Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    const earthRadiusMiles = 3958.8;
-    return earthRadiusMiles * c;
   }
 
   private async resolveViaEntityResolver(
@@ -769,51 +718,6 @@ export class AutocompleteService {
     return matches;
   }
 
-  private async applyPopularityRanking(
-    matches: AutocompleteMatchDto[],
-    user?: User,
-  ): Promise<AutocompleteMatchDto[]> {
-    if (!matches.length) {
-      return matches;
-    }
-
-    const uniqueIds = Array.from(
-      new Set(matches.map((match) => match.entityId)),
-    );
-    const [globalScores, affinityScores, favorites] = await Promise.all([
-      this.searchPopularityService.getEntityPopularityScores(uniqueIds),
-      user?.userId
-        ? this.searchPopularityService.getUserEntityAffinity(
-            user.userId,
-            uniqueIds,
-          )
-        : Promise.resolve(new Map<string, number>()),
-      user?.userId
-        ? this.prisma.userFavorite.findMany({
-            where: { userId: user.userId, entityId: { in: uniqueIds } },
-            select: { entityId: true },
-          })
-        : Promise.resolve([] as { entityId: string }[]),
-    ]);
-
-    const favoriteSet = new Set(favorites.map((fav) => fav.entityId));
-
-    return matches
-      .map((match) => {
-        const popularity = globalScores.get(match.entityId) ?? 0;
-        const affinity = affinityScores.get(match.entityId) ?? 0;
-        const favoriteBoost = favoriteSet.has(match.entityId) ? 0.05 : 0;
-        const score =
-          match.confidence * 0.5 +
-          this.normalizePopularity(popularity) * 0.35 +
-          this.normalizePopularity(affinity) * 0.1 +
-          favoriteBoost;
-        return { match, score };
-      })
-      .sort((a, b) => b.score - a.score)
-      .map(({ match }) => match);
-  }
-
   private normalizePopularity(value: number): number {
     if (!Number.isFinite(value) || value <= 0) {
       return 0;
@@ -845,61 +749,97 @@ export class AutocompleteService {
     return value;
   }
 
+  private resolveEnvString(key: string, fallback: string): string {
+    const raw = process.env[key];
+    if (typeof raw !== 'string') {
+      return fallback;
+    }
+    const normalized = raw.trim();
+    return normalized.length > 0 ? normalized : fallback;
+  }
+
   private buildCacheKey(
     userId: string | null,
     entityTypes: EntityType[],
     normalizedQuery: string,
-    locationKey: string | null,
   ): string {
     const scopeKey = entityTypes.slice().sort().join(',');
-    return `${userId ?? 'anon'}|${scopeKey}|${normalizedQuery}|${
-      locationKey ?? 'global'
-    }`;
+    const queryToken = encodeURIComponent(normalizedQuery);
+    return `${this.cacheRedisKeyPrefix}:${userId ?? 'anon'}:${scopeKey}:global:${queryToken}`;
   }
 
-  private getFromCache(
-    cacheKey: string,
-    normalizedQuery: string,
-  ): AutocompleteResponseDto | null {
-    const entry = this.sessionCache.get(cacheKey);
-    if (!entry) {
-      return null;
+  private elapsedSeconds(start: bigint): number {
+    return Number(process.hrtime.bigint() - start) / 1_000_000_000;
+  }
+
+  private async measureDbDuration<T>(
+    run: () => Promise<T>,
+    observe: (seconds: number) => void,
+  ): Promise<T> {
+    const start = process.hrtime.bigint();
+    try {
+      return await run();
+    } finally {
+      observe(this.elapsedSeconds(start));
     }
-    if (entry.expiresAt < Date.now()) {
-      this.sessionCache.delete(cacheKey);
-      return null;
+  }
+
+  private async getFromCache(cacheKey: string): Promise<{
+    response: AutocompleteResponseDto | null;
+    result: CacheResult;
+  }> {
+    if (this.cacheTtlSeconds <= 0) {
+      return { response: null, result: 'skipped' };
     }
 
-    if (entry.normalizedQuery === normalizedQuery) {
-      return entry.response;
-    }
-
-    if (
-      normalizedQuery.length > entry.normalizedQuery.length &&
-      normalizedQuery.startsWith(entry.normalizedQuery)
-    ) {
-      const filteredMatches = entry.response.matches.filter((match) =>
-        match.name.toLowerCase().includes(normalizedQuery),
-      );
-      const filteredSuggestions =
-        entry.response.querySuggestions?.filter((text) =>
-          text.toLowerCase().startsWith(normalizedQuery),
-        ) ?? [];
-      if (filteredMatches.length || filteredSuggestions.length) {
-        return {
-          ...entry.response,
-          matches: filteredMatches,
-          querySuggestions: filteredSuggestions,
-        };
+    try {
+      const raw = await this.redis.get(cacheKey);
+      if (!raw) {
+        return { response: null, result: 'miss' };
       }
+      const parsed = JSON.parse(raw) as AutocompleteResponseDto;
+      if (
+        !parsed ||
+        !Array.isArray(parsed.matches) ||
+        typeof parsed.query !== 'string' ||
+        typeof parsed.normalizedQuery !== 'string'
+      ) {
+        await this.redis.del(cacheKey);
+        return { response: null, result: 'miss' };
+      }
+      return { response: parsed, result: 'hit' };
+    } catch (error) {
+      this.logger.warn('Autocomplete cache lookup failed', {
+        operation: 'autocomplete_cache_get',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      return { response: null, result: 'skipped' };
     }
-
-    return null;
   }
-}
 
-interface CacheEntry {
-  normalizedQuery: string;
-  response: AutocompleteResponseDto;
-  expiresAt: number;
+  private async setInCache(
+    cacheKey: string,
+    response: AutocompleteResponseDto,
+  ): Promise<void> {
+    if (this.cacheTtlSeconds <= 0) {
+      return;
+    }
+    try {
+      await this.redis.set(
+        cacheKey,
+        JSON.stringify(response),
+        'EX',
+        Math.max(1, this.cacheTtlSeconds),
+      );
+    } catch (error) {
+      this.logger.warn('Autocomplete cache write failed', {
+        operation: 'autocomplete_cache_set',
+        error: {
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+  }
 }

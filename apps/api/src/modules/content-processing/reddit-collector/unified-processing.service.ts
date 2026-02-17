@@ -40,6 +40,8 @@ import { RestaurantLocationEnrichmentService } from '../../restaurant-enrichment
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_UNIFIED_PROCESSING_TX_TIMEOUT_MS = 15 * 60 * 1000;
 const DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY = 5;
+const DEFAULT_SUBREDDIT_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const DEFAULT_SUBREDDIT_CACHE_MAX_ENTRIES = 1024;
 
 type OperationSummary = {
   affectedConnectionIds: string[];
@@ -72,6 +74,11 @@ type CoverageKeyRecord = {
   coverageKey: string | null;
   name: string;
 } | null;
+
+type TimedCacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+};
 
 interface SourceMetadata {
   batchId: string;
@@ -210,11 +217,16 @@ export class UnifiedProcessingService implements OnModuleInit {
   private readonly dryRunEnabled: boolean;
   private readonly transactionTimeoutMs: number;
   private readonly restaurantEnrichmentConcurrency: number;
+  private readonly subredditCacheTtlMs: number;
+  private readonly subredditCacheMaxEntries: number;
   private readonly subredditLocationCache = new Map<
     string,
-    { latitude: number; longitude: number }
+    TimedCacheEntry<{ latitude: number; longitude: number }>
   >();
-  private readonly subredditCoverageCache = new Map<string, string>();
+  private readonly subredditCoverageCache = new Map<
+    string,
+    TimedCacheEntry<string>
+  >();
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -237,12 +249,24 @@ export class UnifiedProcessingService implements OnModuleInit {
       'RESTAURANT_ENRICHMENT_CONCURRENCY',
       DEFAULT_RESTAURANT_ENRICHMENT_CONCURRENCY,
     );
+    this.subredditCacheTtlMs = this.getNumericConfig(
+      'UNIFIED_PROCESSING_SUBREDDIT_CACHE_TTL_MS',
+      DEFAULT_SUBREDDIT_CACHE_TTL_MS,
+    );
+    this.subredditCacheMaxEntries = this.getNumericConfig(
+      'UNIFIED_PROCESSING_SUBREDDIT_CACHE_MAX_ENTRIES',
+      DEFAULT_SUBREDDIT_CACHE_MAX_ENTRIES,
+    );
     this.dryRunEnabled =
       this.configService.get<boolean>('unifiedProcessing.dryRun') === true;
   }
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('UnifiedProcessingService');
+    this.logger.debug('Initialized subreddit lookup caches', {
+      subredditCacheTtlMs: this.subredditCacheTtlMs,
+      subredditCacheMaxEntries: this.subredditCacheMaxEntries,
+    });
   }
 
   private normalizePlaceholder(term: string): string {
@@ -3214,7 +3238,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const cacheKey = subreddit.trim().toLowerCase();
-    const cached = this.subredditLocationCache.get(cacheKey);
+    const cached = this.getCachedValue(this.subredditLocationCache, cacheKey);
     if (cached) {
       return cached;
     }
@@ -3241,7 +3265,7 @@ export class UnifiedProcessingService implements OnModuleInit {
       Number.isFinite(longitude)
     ) {
       const coords = { latitude, longitude };
-      this.subredditLocationCache.set(cacheKey, coords);
+      this.setCachedValue(this.subredditLocationCache, cacheKey, coords);
       return coords;
     }
 
@@ -3256,7 +3280,7 @@ export class UnifiedProcessingService implements OnModuleInit {
     }
 
     const cacheKey = subreddit.trim().toLowerCase();
-    const cached = this.subredditCoverageCache.get(cacheKey);
+    const cached = this.getCachedValue(this.subredditCoverageCache, cacheKey);
     if (cached) {
       return cached;
     }
@@ -3279,8 +3303,70 @@ export class UnifiedProcessingService implements OnModuleInit {
           ? record.name.trim().toLowerCase()
           : cacheKey;
 
-    this.subredditCoverageCache.set(cacheKey, resolved);
+    this.setCachedValue(this.subredditCoverageCache, cacheKey, resolved);
     return resolved;
+  }
+
+  private getCachedValue<T>(
+    cache: Map<string, TimedCacheEntry<T>>,
+    key: string,
+  ): T | null {
+    if (this.subredditCacheTtlMs <= 0 || this.subredditCacheMaxEntries <= 0) {
+      return null;
+    }
+
+    const entry = cache.get(key);
+    if (!entry) {
+      return null;
+    }
+
+    if (entry.expiresAt <= Date.now()) {
+      cache.delete(key);
+      return null;
+    }
+
+    // Refresh recency for hot keys (LRU-ish).
+    cache.delete(key);
+    cache.set(key, entry);
+    return entry.value;
+  }
+
+  private setCachedValue<T>(
+    cache: Map<string, TimedCacheEntry<T>>,
+    key: string,
+    value: T,
+  ): void {
+    if (this.subredditCacheTtlMs <= 0 || this.subredditCacheMaxEntries <= 0) {
+      return;
+    }
+
+    cache.set(key, {
+      value,
+      expiresAt: Date.now() + this.subredditCacheTtlMs,
+    });
+    this.pruneCache(cache);
+  }
+
+  private pruneCache<T>(cache: Map<string, TimedCacheEntry<T>>): void {
+    if (this.subredditCacheMaxEntries <= 0) {
+      cache.clear();
+      return;
+    }
+
+    const now = Date.now();
+    for (const [key, entry] of cache.entries()) {
+      if (entry.expiresAt <= now) {
+        cache.delete(key);
+      }
+    }
+
+    while (cache.size > this.subredditCacheMaxEntries) {
+      const oldestKey = cache.keys().next().value as string | undefined;
+      if (!oldestKey) {
+        break;
+      }
+      cache.delete(oldestKey);
+    }
   }
 
   private toNumeric(

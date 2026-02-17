@@ -1,5 +1,7 @@
 import { Injectable, OnModuleInit, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { RedisService } from '@liaoliaots/nestjs-redis';
+import type { Redis } from 'ioredis';
 import { LoggerService, CorrelationUtils } from '../../../shared';
 import { MetricsService } from '../../metrics/metrics.service';
 import {
@@ -15,14 +17,23 @@ import { Counter, Gauge } from 'prom-client';
  * Rate Limiting Coordinator
  *
  * Implements PRD Section 9.2.1: "basic rate limiting for google-places, reddit-api, llm-api"
- * Provides centralized rate limiting across all external API services to prevent quota exhaustion
+ * Provides centralized rate limiting across all external API services to prevent quota exhaustion.
+ *
+ * Backing store: Redis (distributed across API replicas).
  */
 @Injectable()
 export class RateLimitCoordinatorService implements OnModuleInit {
   private logger!: LoggerService;
+  private redis!: Redis;
+  private redisKeyPrefix = '';
+
   private readonly rateLimitConfigs: Map<string, RateLimitConfig> = new Map();
-  private readonly requestCounts: Map<string, Map<string, number>> = new Map();
-  private readonly resetTimes: Map<string, Map<string, Date>> = new Map();
+  private failClosedServices = new Set<ExternalApiService>();
+  private readonly emergencyMinuteCounters = new Map<
+    string,
+    { count: number; expiresAt: number }
+  >();
+
   private requestCounter!: Counter<string>;
   private rateLimitHitCounter!: Counter<string>;
   private usageGauge!: Gauge<string>;
@@ -33,6 +44,7 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     @Inject(ConfigService) private readonly configService: ConfigService,
     @Inject(LoggerService) private readonly loggerService: LoggerService,
     private readonly metricsService: MetricsService,
+    private readonly redisService: RedisService,
   ) {}
 
   private getScopeKey(service: ExternalApiService, operation?: string): string {
@@ -69,10 +81,33 @@ export class RateLimitCoordinatorService implements OnModuleInit {
 
   onModuleInit(): void {
     this.logger = this.loggerService.setContext('RateLimitCoordinator');
-    this.logger.info('Initializing Rate Limit Coordinator');
+    this.redis = this.redisService.getOrThrow();
+    this.redisKeyPrefix = this.resolveRedisPrefix();
+    this.initializeFailureModePolicy();
+
+    this.logger.info('Initializing Rate Limit Coordinator', {
+      redisKeyPrefix: this.redisKeyPrefix,
+    });
+
     this.initializeRateLimitConfigs();
     this.initializeMetrics();
+
     this.logger.info('Rate Limit Coordinator initialized successfully');
+  }
+
+  private initializeFailureModePolicy(): void {
+    const configured = this.resolveFailClosedServices(
+      process.env.EXTERNAL_RATE_LIMIT_FAIL_CLOSED_SERVICES,
+    );
+
+    this.failClosedServices =
+      configured.size > 0
+        ? configured
+        : new Set([ExternalApiService.GOOGLE_PLACES, ExternalApiService.LLM]);
+
+    this.logger.info('Rate limit fallback policy initialized', {
+      failClosedServices: Array.from(this.failClosedServices.values()),
+    });
   }
 
   private initializeMetrics(): void {
@@ -103,37 +138,136 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     });
   }
 
+  private resolveRedisPrefix(): string {
+    const explicitPrefix = process.env.EXTERNAL_RATE_LIMIT_REDIS_PREFIX;
+    if (typeof explicitPrefix === 'string' && explicitPrefix.trim()) {
+      return explicitPrefix.trim();
+    }
+
+    const appEnvRaw =
+      process.env.APP_ENV || process.env.CRAVE_ENV || process.env.NODE_ENV;
+    const appEnv =
+      typeof appEnvRaw === 'string' && appEnvRaw.trim()
+        ? appEnvRaw.trim().toLowerCase() === 'production'
+          ? 'prod'
+          : appEnvRaw.trim().toLowerCase() === 'development'
+            ? 'dev'
+            : appEnvRaw.trim()
+        : 'dev';
+
+    return `crave:${appEnv}:external-rate-limit`;
+  }
+
+  private buildRedisKey(
+    scopeKey: string,
+    window: 'minute' | 'hour' | 'day',
+    bucket: string,
+  ): string {
+    return `${this.redisKeyPrefix}:${window}:${scopeKey}:${bucket}`;
+  }
+
+  private getWindowBucket(
+    window: 'minute' | 'hour' | 'day',
+    now: Date,
+  ): string {
+    switch (window) {
+      case 'minute':
+        return `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}-${now.getUTCHours()}-${now.getUTCMinutes()}`;
+      case 'hour':
+        return `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}-${now.getUTCHours()}`;
+      case 'day':
+        return `${now.getUTCFullYear()}-${now.getUTCMonth()}-${now.getUTCDate()}`;
+      default:
+        return 'unknown';
+    }
+  }
+
+  private getWindowResetTime(
+    window: 'minute' | 'hour' | 'day',
+    now: Date,
+  ): Date {
+    switch (window) {
+      case 'minute': {
+        const reset = new Date(now);
+        reset.setUTCSeconds(0, 0);
+        reset.setUTCMinutes(reset.getUTCMinutes() + 1);
+        return reset;
+      }
+      case 'hour': {
+        const reset = new Date(now);
+        reset.setUTCMinutes(0, 0, 0);
+        reset.setUTCHours(reset.getUTCHours() + 1);
+        return reset;
+      }
+      case 'day': {
+        const reset = new Date(now);
+        reset.setUTCHours(0, 0, 0, 0);
+        reset.setUTCDate(reset.getUTCDate() + 1);
+        return reset;
+      }
+      default:
+        return new Date(now.getTime() + 60000);
+    }
+  }
+
+  private getWindowTtlSeconds(
+    window: 'minute' | 'hour' | 'day',
+    now: Date,
+  ): number {
+    const reset = this.getWindowResetTime(window, now);
+    return Math.max(1, Math.ceil((reset.getTime() - now.getTime()) / 1000));
+  }
+
+  private async getWindowUsageCounts(
+    scopeKey: string,
+    now: Date,
+  ): Promise<{ minute: number; hour: number; day: number }> {
+    const minuteKey = this.buildRedisKey(
+      scopeKey,
+      'minute',
+      this.getWindowBucket('minute', now),
+    );
+    const hourKey = this.buildRedisKey(
+      scopeKey,
+      'hour',
+      this.getWindowBucket('hour', now),
+    );
+    const dayKey = this.buildRedisKey(
+      scopeKey,
+      'day',
+      this.getWindowBucket('day', now),
+    );
+
+    const values = await this.redis.mget(minuteKey, hourKey, dayKey);
+    return {
+      minute: Number.parseInt(values[0] ?? '0', 10) || 0,
+      hour: Number.parseInt(values[1] ?? '0', 10) || 0,
+      day: Number.parseInt(values[2] ?? '0', 10) || 0,
+    };
+  }
+
   private recordLimitSnapshot(options: {
     service: ExternalApiService;
     operation: string;
     config: RateLimitConfig;
-    scopeKey: string;
-    now: Date;
-    minuteUsage?: number;
+    usage: { minute: number; hour: number; day: number };
   }): void {
-    const { service, operation, config, scopeKey, now } = options;
-
-    const minuteUsage =
-      typeof options.minuteUsage === 'number'
-        ? options.minuteUsage
-        : this.getCurrentUsage(scopeKey, 'minute', now);
-    const hourUsage = this.getCurrentUsage(scopeKey, 'hour', now);
-    const dayUsage = this.getCurrentUsage(scopeKey, 'day', now);
+    const { service, operation, config, usage } = options;
 
     const snapshots = [
       {
         window: 'minute',
-        usage: minuteUsage,
+        usage: usage.minute,
         limit: config.requestsPerMinute,
       },
       {
         window: 'hour',
-        usage: hourUsage,
+        usage: usage.hour,
         limit: config.requestsPerHour,
       },
       {
         window: 'day',
-        usage: dayUsage,
+        usage: usage.day,
         limit: config.requestsPerDay,
       },
     ] as const;
@@ -154,11 +288,154 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     });
   }
 
+  private parseLuaNumber(value: unknown): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    return 0;
+  }
+
+  private resolveFailClosedServices(
+    raw: string | undefined,
+  ): Set<ExternalApiService> {
+    const resolved = new Set<ExternalApiService>();
+    if (!raw) {
+      return resolved;
+    }
+
+    const tokens = raw
+      .split(',')
+      .map((value) => value.trim().toLowerCase())
+      .filter((value) => value.length > 0);
+
+    for (const token of tokens) {
+      switch (token) {
+        case 'google-places':
+          resolved.add(ExternalApiService.GOOGLE_PLACES);
+          break;
+        case 'reddit':
+          resolved.add(ExternalApiService.REDDIT);
+          break;
+        case 'llm':
+          resolved.add(ExternalApiService.LLM);
+          break;
+      }
+    }
+
+    return resolved;
+  }
+
+  private pruneEmergencyMinuteCounters(nowMs: number): void {
+    for (const [key, entry] of this.emergencyMinuteCounters.entries()) {
+      if (entry.expiresAt <= nowMs) {
+        this.emergencyMinuteCounters.delete(key);
+      }
+    }
+  }
+
+  private handleRedisFailureFallback(options: {
+    request: RateLimitRequest;
+    config: RateLimitConfig;
+    scopeKey: string;
+    operationLabel: string;
+    now: Date;
+    minuteResetTime: Date;
+  }): RateLimitResponse {
+    const { request, config, scopeKey, operationLabel, now, minuteResetTime } =
+      options;
+    const shouldUseEmergencyGuard =
+      this.failClosedServices.has(request.service) &&
+      config.requestsPerMinute > 0;
+
+    if (!shouldUseEmergencyGuard) {
+      this.requestCounter.inc({
+        service: request.service,
+        operation: operationLabel,
+        decision: 'allowed_fallback',
+      });
+
+      return {
+        allowed: true,
+        currentUsage: 0,
+        limit: config.requestsPerMinute,
+        resetTime: minuteResetTime,
+      };
+    }
+
+    const nowMs = now.getTime();
+    this.pruneEmergencyMinuteCounters(nowMs);
+
+    const retryAfter = Math.max(
+      1,
+      Math.ceil((minuteResetTime.getTime() - nowMs) / 1000),
+    );
+    const emergencyKey = `${scopeKey}:${this.getWindowBucket('minute', now)}`;
+    const current = this.emergencyMinuteCounters.get(emergencyKey);
+    const currentUsage = current?.count ?? 0;
+
+    if (currentUsage >= config.requestsPerMinute) {
+      this.requestCounter.inc({
+        service: request.service,
+        operation: operationLabel,
+        decision: 'blocked_fallback',
+      });
+      this.rateLimitHitCounter.inc({
+        service: request.service,
+        operation: operationLabel,
+        source: 'coordinator_fallback',
+      });
+
+      this.logger.warn(
+        'Redis unavailable; blocking request via emergency local minute guard',
+        {
+          service: request.service,
+          operation: request.operation,
+          scopeKey,
+          currentUsage,
+          limit: config.requestsPerMinute,
+          retryAfter,
+        },
+      );
+
+      return {
+        allowed: false,
+        retryAfter,
+        currentUsage,
+        limit: config.requestsPerMinute,
+        resetTime: minuteResetTime,
+      };
+    }
+
+    const nextUsage = currentUsage + 1;
+    this.emergencyMinuteCounters.set(emergencyKey, {
+      count: nextUsage,
+      expiresAt: minuteResetTime.getTime(),
+    });
+    this.requestCounter.inc({
+      service: request.service,
+      operation: operationLabel,
+      decision: 'allowed_fallback_guarded',
+    });
+
+    return {
+      allowed: true,
+      currentUsage: nextUsage,
+      limit: config.requestsPerMinute,
+      resetTime: minuteResetTime,
+    };
+  }
+
   /**
-   * Request permission to make an API call
-   * Returns whether the request is allowed and any retry information
+   * Request permission to make an API call.
+   * Returns whether the request is allowed and any retry information.
    */
-  requestPermission(request: RateLimitRequest): RateLimitResponse {
+  async requestPermission(
+    request: RateLimitRequest,
+  ): Promise<RateLimitResponse> {
     const correlationId = CorrelationUtils.getCorrelationId();
     const { config, scopeKey } = this.resolveScope(
       request.service,
@@ -184,96 +461,204 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     }
 
     const now = new Date();
-    const currentUsage = this.getCurrentUsage(scopeKey, 'minute', now);
-    const limit = config.requestsPerMinute;
+    const minuteResetTime = this.getWindowResetTime('minute', now);
+    const minuteTtlSeconds = this.getWindowTtlSeconds('minute', now);
+    const hourTtlSeconds = this.getWindowTtlSeconds('hour', now);
+    const dayTtlSeconds = this.getWindowTtlSeconds('day', now);
 
-    // Check if we're at the rate limit
-    if (limit > 0 && currentUsage >= limit) {
-      const retryAfter = this.getRetryAfter(scopeKey, 'minute', now);
-      this.requestCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        decision: 'blocked',
-      });
-      this.rateLimitHitCounter.inc({
-        service: request.service,
-        operation: operationLabel,
-        source: 'coordinator',
-      });
+    const minuteKey = this.buildRedisKey(
+      scopeKey,
+      'minute',
+      this.getWindowBucket('minute', now),
+    );
+    const hourKey = this.buildRedisKey(
+      scopeKey,
+      'hour',
+      this.getWindowBucket('hour', now),
+    );
+    const dayKey = this.buildRedisKey(
+      scopeKey,
+      'day',
+      this.getWindowBucket('day', now),
+    );
+
+    try {
+      const lua = `
+        local minuteKey = KEYS[1]
+        local hourKey = KEYS[2]
+        local dayKey = KEYS[3]
+
+        local minuteLimit = tonumber(ARGV[1])
+        local hourLimit = tonumber(ARGV[2])
+        local dayLimit = tonumber(ARGV[3])
+
+        local minuteTtl = tonumber(ARGV[4])
+        local hourTtl = tonumber(ARGV[5])
+        local dayTtl = tonumber(ARGV[6])
+
+        local minuteCount = tonumber(redis.call('GET', minuteKey) or '0')
+        local hourCount = tonumber(redis.call('GET', hourKey) or '0')
+        local dayCount = tonumber(redis.call('GET', dayKey) or '0')
+
+        local blocked =
+          (minuteLimit > 0 and minuteCount >= minuteLimit) or
+          (hourLimit > 0 and hourCount >= hourLimit) or
+          (dayLimit > 0 and dayCount >= dayLimit)
+
+        if blocked then
+          local retryAfter = redis.call('TTL', minuteKey)
+          if retryAfter == nil or retryAfter < 0 then
+            retryAfter = minuteTtl
+          end
+          return {0, minuteCount, hourCount, dayCount, retryAfter}
+        end
+
+        minuteCount = redis.call('INCR', minuteKey)
+        if minuteCount == 1 then
+          redis.call('EXPIRE', minuteKey, minuteTtl)
+        end
+
+        hourCount = redis.call('INCR', hourKey)
+        if hourCount == 1 then
+          redis.call('EXPIRE', hourKey, hourTtl)
+        end
+
+        dayCount = redis.call('INCR', dayKey)
+        if dayCount == 1 then
+          redis.call('EXPIRE', dayKey, dayTtl)
+        end
+
+        local retryAfter = redis.call('TTL', minuteKey)
+        if retryAfter == nil or retryAfter < 0 then
+          retryAfter = minuteTtl
+        end
+
+        return {1, minuteCount, hourCount, dayCount, retryAfter}
+      `;
+
+      const raw = (await this.redis.eval(
+        lua,
+        3,
+        minuteKey,
+        hourKey,
+        dayKey,
+        String(config.requestsPerMinute),
+        String(config.requestsPerHour),
+        String(config.requestsPerDay),
+        String(minuteTtlSeconds),
+        String(hourTtlSeconds),
+        String(dayTtlSeconds),
+      )) as unknown[];
+
+      const allowed = this.parseLuaNumber(raw[0]) === 1;
+      const usage = {
+        minute: this.parseLuaNumber(raw[1]),
+        hour: this.parseLuaNumber(raw[2]),
+        day: this.parseLuaNumber(raw[3]),
+      };
+      const retryAfter = Math.max(1, this.parseLuaNumber(raw[4]));
+
       this.recordLimitSnapshot({
         service: request.service,
         operation: operationLabel,
         config,
-        scopeKey,
-        now,
-        minuteUsage: currentUsage,
+        usage,
       });
 
-      this.logger.warn(`Rate limit exceeded for ${request.service}`, {
+      if (!allowed) {
+        this.requestCounter.inc({
+          service: request.service,
+          operation: operationLabel,
+          decision: 'blocked',
+        });
+        this.rateLimitHitCounter.inc({
+          service: request.service,
+          operation: operationLabel,
+          source: 'coordinator',
+        });
+
+        this.logger.warn(`Rate limit exceeded for ${request.service}`, {
+          service: request.service,
+          operation: request.operation,
+          scopeKey,
+          currentUsage: usage.minute,
+          limit: config.requestsPerMinute,
+          retryAfter,
+          correlationId,
+        });
+
+        return {
+          allowed: false,
+          retryAfter,
+          currentUsage: usage.minute,
+          limit: config.requestsPerMinute,
+          resetTime: new Date(now.getTime() + retryAfter * 1000),
+        };
+      }
+
+      this.requestCounter.inc({
         service: request.service,
-        operation: request.operation,
-        scopeKey,
-        currentUsage,
-        limit,
-        retryAfter,
-        correlationId,
+        operation: operationLabel,
+        decision: 'allowed',
       });
+
+      if (
+        config.requestsPerMinute > 0 &&
+        usage.minute / config.requestsPerMinute >= 0.8
+      ) {
+        this.logger.info(`Approaching rate limit for ${request.service}`, {
+          service: request.service,
+          operation: request.operation,
+          scopeKey,
+          currentUsage: usage.minute,
+          limit: config.requestsPerMinute,
+          utilizationPercent: Math.round(
+            (usage.minute / config.requestsPerMinute) * 100,
+          ),
+          correlationId,
+        });
+      }
 
       return {
-        allowed: false,
-        retryAfter,
-        currentUsage,
-        limit,
-        resetTime: new Date(now.getTime() + retryAfter * 1000),
+        allowed: true,
+        currentUsage: usage.minute,
+        limit: config.requestsPerMinute,
+        resetTime: minuteResetTime,
       };
-    }
+    } catch (error) {
+      this.logger.warn(
+        'Redis rate limit check failed; applying fallback policy',
+        {
+          service: request.service,
+          operation: request.operation,
+          scopeKey,
+          correlationId,
+          error:
+            error instanceof Error
+              ? { message: error.message, stack: error.stack }
+              : { message: String(error) },
+        },
+      );
 
-    // Increment usage counter
-    this.incrementUsage(scopeKey, now);
-
-    // Only log when approaching limits (80%+) to reduce noise
-    const updatedUsage = currentUsage + 1;
-    this.requestCounter.inc({
-      service: request.service,
-      operation: operationLabel,
-      decision: 'allowed',
-    });
-    this.recordLimitSnapshot({
-      service: request.service,
-      operation: operationLabel,
-      config,
-      scopeKey,
-      now,
-      minuteUsage: updatedUsage,
-    });
-    if (limit > 0 && updatedUsage / limit >= 0.8) {
-      this.logger.info(`Approaching rate limit for ${request.service}`, {
-        service: request.service,
-        operation: request.operation,
+      return this.handleRedisFailureFallback({
+        request,
+        config,
         scopeKey,
-        currentUsage: updatedUsage,
-        limit,
-        utilizationPercent: Math.round((updatedUsage / limit) * 100),
-        correlationId,
+        operationLabel,
+        now,
+        minuteResetTime,
       });
     }
-
-    return {
-      allowed: true,
-      currentUsage: updatedUsage,
-      limit,
-      resetTime: new Date(now.getTime() + 60000), // Next minute
-    };
   }
 
   /**
-   * Report a rate limit hit from an external API
+   * Report a rate limit hit from an external API.
    */
-  reportRateLimitHit(
+  async reportRateLimitHit(
     service: ExternalApiService,
     retryAfter: number,
     operation?: string,
-  ): void {
+  ): Promise<void> {
     const correlationId = CorrelationUtils.getCorrelationId();
     const resolvedOperation = operation ?? 'unknown';
 
@@ -284,83 +669,156 @@ export class RateLimitCoordinatorService implements OnModuleInit {
       correlationId,
     });
 
-    // Update internal tracking to reflect the rate limit
-    const now = new Date();
     const { config, scopeKey } = this.resolveScope(service, operation);
-    if (config) {
-      const operationLabel = scopeKey.includes(':') ? resolvedOperation : 'all';
-      this.rateLimitHitCounter.inc({
-        service,
-        operation: operationLabel,
-        source: 'upstream',
-      });
-      // Set usage to limit to prevent further requests
-      this.setUsageToLimit(scopeKey, now, config.requestsPerMinute);
+    if (!config) {
+      return;
+    }
+
+    const operationLabel = scopeKey.includes(':') ? resolvedOperation : 'all';
+    this.rateLimitHitCounter.inc({
+      service,
+      operation: operationLabel,
+      source: 'upstream',
+    });
+
+    const now = new Date();
+    const minuteKey = this.buildRedisKey(
+      scopeKey,
+      'minute',
+      this.getWindowBucket('minute', now),
+    );
+
+    try {
+      const ttl = Math.max(
+        1,
+        retryAfter > 0
+          ? Math.ceil(retryAfter)
+          : this.getWindowTtlSeconds('minute', now),
+      );
+      await this.redis.set(
+        minuteKey,
+        String(Math.max(1, config.requestsPerMinute)),
+        'EX',
+        ttl,
+      );
+
+      const usage = await this.getWindowUsageCounts(scopeKey, now);
       this.recordLimitSnapshot({
         service,
         operation: operationLabel,
         config,
+        usage,
+      });
+    } catch (error) {
+      this.logger.warn('Failed to persist upstream rate-limit hit', {
+        service,
+        operation,
         scopeKey,
-        now,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
       });
     }
   }
 
   /**
-   * Get current rate limit status for a service
+   * Get current rate limit status for a service.
    */
-  getStatus(service: ExternalApiService): RateLimitStatus {
+  async getStatus(service: ExternalApiService): Promise<RateLimitStatus> {
     const now = new Date();
     const serviceKey = this.getScopeKey(service);
     const config = this.rateLimitConfigs.get(serviceKey);
-    const currentUsage = this.getCurrentUsage(serviceKey, 'minute', now);
     const limit = config?.requestsPerMinute || 0;
 
-    return {
-      service,
-      currentRequests: currentUsage,
-      resetTime: new Date(Math.ceil(now.getTime() / 60000) * 60000), // Next minute boundary
-      isAtLimit: currentUsage >= limit,
-      retryAfter:
-        currentUsage >= limit
-          ? this.getRetryAfter(serviceKey, 'minute', now)
-          : undefined,
-    };
+    const minuteKey = this.buildRedisKey(
+      serviceKey,
+      'minute',
+      this.getWindowBucket('minute', now),
+    );
+
+    try {
+      const [usageRaw, ttlRaw] = await Promise.all([
+        this.redis.get(minuteKey),
+        this.redis.ttl(minuteKey),
+      ]);
+      const currentRequests = Number.parseInt(usageRaw ?? '0', 10) || 0;
+      const retryAfter = ttlRaw > 0 ? ttlRaw : undefined;
+
+      return {
+        service,
+        currentRequests,
+        resetTime:
+          retryAfter !== undefined
+            ? new Date(now.getTime() + retryAfter * 1000)
+            : this.getWindowResetTime('minute', now),
+        isAtLimit: limit > 0 && currentRequests >= limit,
+        retryAfter:
+          limit > 0 && currentRequests >= limit ? retryAfter || 1 : undefined,
+      };
+    } catch (error) {
+      this.logger.warn('Failed to load rate limit status', {
+        service,
+        error:
+          error instanceof Error
+            ? { message: error.message, stack: error.stack }
+            : { message: String(error) },
+      });
+
+      return {
+        service,
+        currentRequests: 0,
+        resetTime: this.getWindowResetTime('minute', now),
+        isAtLimit: false,
+      };
+    }
   }
 
   /**
-   * Get status for all services
+   * Get status for all services.
    */
-  getAllStatuses(): RateLimitStatus[] {
-    return Object.values(ExternalApiService).map((service) =>
-      this.getStatus(service),
+  async getAllStatuses(): Promise<RateLimitStatus[]> {
+    return Promise.all(
+      Object.values(ExternalApiService).map((service) =>
+        this.getStatus(service),
+      ),
     );
   }
 
   /**
-   * Reset rate limits for a service (for testing/debugging)
+   * Reset rate limits for a service (for testing/debugging).
    */
-  resetService(service: ExternalApiService): void {
-    const serviceKey = this.getScopeKey(service);
-    const scopePrefix = `${service}:`;
+  async resetService(service: ExternalApiService): Promise<void> {
+    const servicePattern = `${this.redisKeyPrefix}:*:${service}*`;
+    let cursor = '0';
+    const keys: string[] = [];
 
-    for (const key of Array.from(this.requestCounts.keys())) {
-      if (key === serviceKey || key.startsWith(scopePrefix)) {
-        this.requestCounts.delete(key);
+    do {
+      const [nextCursor, batch] = await this.redis.scan(
+        cursor,
+        'MATCH',
+        servicePattern,
+        'COUNT',
+        '1000',
+      );
+      cursor = nextCursor;
+      if (batch.length > 0) {
+        keys.push(...batch);
       }
+    } while (cursor !== '0');
+
+    if (keys.length > 0) {
+      await this.redis.del(...keys);
     }
 
-    for (const key of Array.from(this.resetTimes.keys())) {
-      if (key === serviceKey || key.startsWith(scopePrefix)) {
-        this.resetTimes.delete(key);
-      }
-    }
-
-    this.logger.info(`Rate limits reset for ${service}`, { service });
+    this.logger.info(`Rate limits reset for ${service}`, {
+      service,
+      deletedKeys: keys.length,
+    });
   }
 
   /**
-   * Initialize rate limit configurations from environment
+   * Initialize rate limit configurations from environment.
    */
   private initializeRateLimitConfigs(): void {
     const googleRequestsPerMinute =
@@ -446,21 +904,6 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     });
   }
 
-  /**
-   * Get current usage for a service within a time window
-   */
-  private getCurrentUsage(
-    scopeKey: string,
-    window: 'minute' | 'hour' | 'day',
-    now: Date,
-  ): number {
-    const serviceMap = this.requestCounts.get(scopeKey);
-    if (!serviceMap) return 0;
-
-    const windowKey = this.getWindowKey(window, now);
-    return serviceMap.get(windowKey) || 0;
-  }
-
   private computePerSecond(requestsPerMinute: number): number {
     if (!Number.isFinite(requestsPerMinute) || requestsPerMinute <= 0) {
       return 0;
@@ -488,121 +931,5 @@ export class RateLimitCoordinatorService implements OnModuleInit {
     }
 
     return Math.min(perHour, requestsPerDay);
-  }
-
-  /**
-   * Increment usage counter for a service
-   */
-  private incrementUsage(scopeKey: string, now: Date): void {
-    if (!this.requestCounts.has(scopeKey)) {
-      this.requestCounts.set(scopeKey, new Map());
-      this.resetTimes.set(scopeKey, new Map());
-    }
-
-    const serviceMap = this.requestCounts.get(scopeKey)!;
-    const resetMap = this.resetTimes.get(scopeKey)!;
-
-    // Clean up old windows first
-    this.cleanupOldWindows(scopeKey, now);
-
-    (['minute', 'hour', 'day'] as const).forEach((window) => {
-      const windowKey = this.getWindowKey(window, now);
-      serviceMap.set(windowKey, (serviceMap.get(windowKey) || 0) + 1);
-      resetMap.set(windowKey, this.getWindowResetTime(window, now));
-    });
-  }
-
-  private getWindowResetTime(
-    window: 'minute' | 'hour' | 'day',
-    now: Date,
-  ): Date {
-    switch (window) {
-      case 'minute': {
-        const ms = now.getTime();
-        return new Date(Math.ceil(ms / 60000) * 60000);
-      }
-      case 'hour': {
-        const ms = now.getTime();
-        return new Date(Math.ceil(ms / 3600000) * 3600000);
-      }
-      case 'day': {
-        const reset = new Date(now);
-        reset.setHours(24, 0, 0, 0);
-        return reset;
-      }
-      default:
-        return new Date(now.getTime() + 60000);
-    }
-  }
-
-  /**
-   * Set usage to limit (when rate limit is hit externally)
-   */
-  private setUsageToLimit(scopeKey: string, now: Date, limit: number): void {
-    if (!this.requestCounts.has(scopeKey)) {
-      this.requestCounts.set(scopeKey, new Map());
-      this.resetTimes.set(scopeKey, new Map());
-    }
-
-    const serviceMap = this.requestCounts.get(scopeKey)!;
-    const resetMap = this.resetTimes.get(scopeKey)!;
-
-    const minuteKey = this.getWindowKey('minute', now);
-    serviceMap.set(minuteKey, limit);
-    resetMap.set(minuteKey, new Date(now.getTime() + 60000));
-  }
-
-  /**
-   * Get retry after time in seconds
-   */
-  private getRetryAfter(
-    scopeKey: string,
-    window: 'minute' | 'hour' | 'day',
-    now: Date,
-  ): number {
-    const resetMap = this.resetTimes.get(scopeKey);
-    if (!resetMap) return 60; // Default to 1 minute
-
-    const windowKey = this.getWindowKey(window, now);
-    const resetTime = resetMap.get(windowKey);
-
-    if (!resetTime) return 60;
-
-    return Math.max(1, Math.ceil((resetTime.getTime() - now.getTime()) / 1000));
-  }
-
-  /**
-   * Generate window key for time-based tracking
-   */
-  private getWindowKey(window: 'minute' | 'hour' | 'day', now: Date): string {
-    switch (window) {
-      case 'minute':
-        return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}-${now.getMinutes()}`;
-      case 'hour':
-        return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}-${now.getHours()}`;
-      case 'day':
-        return `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
-      default:
-        return 'unknown';
-    }
-  }
-
-  /**
-   * Clean up old tracking windows to prevent memory leaks
-   */
-  private cleanupOldWindows(scopeKey: string, now: Date): void {
-    const serviceMap = this.requestCounts.get(scopeKey);
-    const resetMap = this.resetTimes.get(scopeKey);
-
-    if (!serviceMap || !resetMap) return;
-
-    const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
-
-    for (const [key, resetTime] of resetMap.entries()) {
-      if (resetTime < cutoff) {
-        serviceMap.delete(key);
-        resetMap.delete(key);
-      }
-    }
   }
 }

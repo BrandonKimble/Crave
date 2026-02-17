@@ -17,6 +17,25 @@ railway logs
 curl https://your-app.up.railway.app/health
 ```
 
+## 🧩 Recommended Topology (API + Worker)
+
+Run two Railway services from the same repo/image:
+
+- `api` service:
+  - Start command: `PROCESS_ROLE=api node apps/api/dist/main.js`
+  - Public domain: enabled
+  - Scales with client traffic
+- `worker` service:
+  - Start command: `PROCESS_ROLE=worker node apps/api/dist/main.js`
+  - Public domain: disabled (private service)
+  - Usually 1 replica initially (bounded by Reddit/Gemini quotas)
+
+Notes:
+
+- Both services must share the same `DATABASE_URL`, `REDIS_*`, `APP_ENV`, and `BULL_PREFIX`.
+- Keep `BULL_PREFIX` identical across both services so API enqueue and worker consume the same queues.
+- `railway.json` is now API-oriented. `railway.worker.json` is a worker template you can copy when creating the worker service.
+
 ## 📦 First-Time Setup
 
 ### Install Railway CLI

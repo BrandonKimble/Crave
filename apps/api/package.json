@@ -20,6 +20,8 @@
     "start:debug": "nest start --debug --watch",
     "prestart:debug": "yarn workspace @crave-search/shared build",
     "start:prod": "node dist/main",
+    "start:prod:api": "PROCESS_ROLE=api node dist/main",
+    "start:prod:worker": "PROCESS_ROLE=worker node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",

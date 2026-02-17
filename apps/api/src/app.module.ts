@@ -28,6 +28,9 @@ import { SentryModule } from './sentry/sentry.module';
 import { CustomThrottlerModule } from './modules/infrastructure/throttler/throttler.module';
 import { LegalModule } from './modules/legal/legal.module';
 import { DebugModule } from './modules/debug/debug.module';
+import { isSchedulerRuntime } from './shared/utils/process-role';
+
+const runtimeWithSchedulers = isSchedulerRuntime();
 
 @Module({
   imports: [
@@ -36,7 +39,7 @@ import { DebugModule } from './modules/debug/debug.module';
       envFilePath: [join(__dirname, '..', '.env'), join(process.cwd(), '.env')],
       load: [configuration],
     }),
-    ScheduleModule.forRoot(),
+    ...(runtimeWithSchedulers ? [ScheduleModule.forRoot()] : []),
     DiscoveryModule,
     SharedModule,
     // Production readiness: Sentry for error tracking (must be early in imports)
@@ -60,6 +63,8 @@ import { DebugModule } from './modules/debug/debug.module';
         redis: {
           host: configService.get('redis.host'),
           port: configService.get('redis.port'),
+          password: configService.get('redis.password'),
+          db: configService.get('redis.db'),
         },
         prefix: configService.get('bull.prefix'),
       }),
