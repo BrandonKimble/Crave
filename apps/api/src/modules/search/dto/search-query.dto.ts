@@ -161,6 +161,10 @@ export class SearchQueryRequestDto {
   includeSqlPreview?: boolean;
 
   @IsOptional()
+  @IsBoolean()
+  compactResponse?: boolean;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => CoordinateDto)
   userLocation?: CoordinateDto;
@@ -269,6 +273,10 @@ export class NaturalSearchRequestDto {
   @IsOptional()
   @IsBoolean()
   includeSqlPreview?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  compactResponse?: boolean;
 
   @IsOptional()
   @ValidateNested()

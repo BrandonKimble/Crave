@@ -263,6 +263,7 @@ export interface NaturalSearchRequest {
   query: string;
   searchRequestId?: string;
   scoreMode?: SearchScoreMode;
+  compactResponse?: boolean;
   submissionSource?: 'manual' | 'recent' | 'autocomplete' | 'shortcut';
   submissionContext?: Record<string, unknown>;
   bounds?: MapBounds;

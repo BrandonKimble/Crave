@@ -1,6 +1,9 @@
 type PerfHarnessScenario = 'none' | 'search_shortcut_loop';
 type PerfShortcutTab = 'dishes' | 'restaurants';
 type PerfShortcutScoreMode = 'global_quality' | 'coverage_display';
+type PerfShortcutSettleBoundaryPolicy =
+  | 'quiet_snapshot_only'
+  | 'shadow_converged_or_quiet_snapshot';
 
 type PerfShortcutLoopConfig = {
   label: string;
@@ -8,6 +11,7 @@ type PerfShortcutLoopConfig = {
   scoreMode: PerfShortcutScoreMode;
   preserveSheetState: boolean;
   transitionFromDockedPolls: boolean;
+  settleBoundaryPolicy: PerfShortcutSettleBoundaryPolicy;
 };
 
 type PerfJsFrameSamplerConfig = {
@@ -95,6 +99,17 @@ const parseShortcutScoreMode = (value: string | undefined): PerfShortcutScoreMod
   return value === 'global_quality' ? 'global_quality' : 'coverage_display';
 };
 
+const parseSettleBoundaryPolicy = (
+  value: string | undefined
+): PerfShortcutSettleBoundaryPolicy => {
+  if (!value) {
+    return 'shadow_converged_or_quiet_snapshot';
+  }
+  return value === 'quiet_snapshot_only'
+    ? 'quiet_snapshot_only'
+    : 'shadow_converged_or_quiet_snapshot';
+};
+
 const isDevEnvironment = __DEV__;
 const allowHarnessOutsideDev = parseBoolean(readEnv('EXPO_PUBLIC_PERF_HARNESS_ALLOW_NON_DEV'));
 const canEnableHarness = isDevEnvironment || allowHarnessOutsideDev;
@@ -123,7 +138,7 @@ const jsFrameWindowMs = parseInteger(
 );
 const jsFrameStallFrameMs = parseInteger(
   readEnv('EXPO_PUBLIC_PERF_JS_FRAME_STALL_FRAME_MS'),
-  80,
+  50,
   16,
   5000
 );
@@ -143,7 +158,7 @@ const uiFrameWindowMs = parseInteger(
 );
 const uiFrameStallFrameMs = parseInteger(
   readEnv('EXPO_PUBLIC_PERF_UI_FRAME_STALL_FRAME_MS'),
-  80,
+  50,
   16,
   5000
 );
@@ -171,6 +186,9 @@ const perfHarnessConfig: PerfHarnessConfig = {
     transitionFromDockedPolls: parseBoolean(
       readEnv('EXPO_PUBLIC_PERF_SHORTCUT_TRANSITION_FROM_DOCKED_POLLS'),
       true
+    ),
+    settleBoundaryPolicy: parseSettleBoundaryPolicy(
+      normalizeEnv(readEnv('EXPO_PUBLIC_PERF_SHORTCUT_SETTLE_BOUNDARY_POLICY'))
     ),
   },
   jsFrameSampler: {
@@ -200,6 +218,7 @@ perfHarnessConfig.signature = [
   `score:${perfHarnessConfig.shortcutLoop.scoreMode}`,
   `preserve:${perfHarnessConfig.shortcutLoop.preserveSheetState ? 1 : 0}`,
   `dock:${perfHarnessConfig.shortcutLoop.transitionFromDockedPolls ? 1 : 0}`,
+  `settleBoundary:${perfHarnessConfig.shortcutLoop.settleBoundaryPolicy}`,
   `sampler:${perfHarnessConfig.jsFrameSampler.enabled ? 1 : 0}`,
   `window:${perfHarnessConfig.jsFrameSampler.windowMs}`,
   `stall:${perfHarnessConfig.jsFrameSampler.stallFrameMs}`,
@@ -216,6 +235,7 @@ export type {
   PerfJsFrameSamplerConfig,
   PerfUiFrameSamplerConfig,
   PerfShortcutLoopConfig,
+  PerfShortcutSettleBoundaryPolicy,
   PerfShortcutScoreMode,
   PerfShortcutTab,
 };

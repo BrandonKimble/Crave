@@ -5,6 +5,7 @@ This directory stores locked local baseline reports used by the refactor perf ga
 Default local baseline path:
 
 - `perf-shortcut-live-baseline.json`
+- `runtime-root-ownership-gates.json` (S7+ strict root ownership/function-block deletion checks)
 
 Update flow:
 
@@ -22,7 +23,12 @@ Promotion-quality baseline policy:
 
 - baseline and candidate reports must each satisfy expected/completed run minimums (default via `PERF_MIN_RUNS=3`),
 - baseline/candidate harness signature parity (`harnessSignatureStable`) and environment parity (`launchTargetMode`, `runtimeTarget`, `launchPreferDevice`) are required,
-- JS and UI metrics are both promotion-gated.
+- JS and UI metrics are both promotion-gated,
+- S7+ promotions pass strict root ownership checks (`runtime-root-ownership-gates.json` via `scripts/search-runtime-root-ownership-gate.sh`), including specific root function/block ownership bans for decomposition slices.
+- S9A promotions also enforce map-runtime budget thresholds (`PERF_S9A_*` env thresholds, with `PERF_S6_*` fallback defaults),
+- S9B promotions require directional stage-pressure improvement for `results_list_ramp` on both JS and UI stage histograms.
+- S9C/S9D/S9E promotions require mechanism telemetry counters in parser reports (`mechanismSignals.*`) to prove coalescing/cancellation/event-driven observer behavior.
+- S9A-S9F promotions enforce root complexity budgets via `runtime-root-ownership-gates.json` hook-pressure ceilings.
 
 Local CI sampler lock (applied by `scripts/perf-shortcut-local-ci.sh`):
 

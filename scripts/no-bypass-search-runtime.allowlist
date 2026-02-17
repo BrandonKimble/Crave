@@ -1,6 +1,9 @@
 # id|path|regex|max_count|description
 # Fail-on-growth policy: current legacy counts are permitted up to max_count; growth fails CI.
+# S7+ ownership promotions enforce strict zero-writer rules via
+# plans/perf-baselines/runtime-root-ownership-gates.json.
 root_set_map_center|apps/mobile/src/screens/Search/index.tsx|setMapCenter\(|6|Root map camera writes must not grow.
 root_set_map_zoom|apps/mobile/src/screens/Search/index.tsx|setMapZoom\(|6|Root map camera writes must not grow.
-root_full_catalog_fallback|apps/mobile/src/screens/Search/index.tsx|return markerCatalogEntries;|1|Full catalog candidate fallback must not grow.
-root_hydration_scheduler|apps/mobile/src/screens/Search/index.tsx|resultsHydrationTaskRef\.current = InteractionManager\.runAfterInteractions\(|1|Root hydration scheduler path must not grow.
+root_full_catalog_scan|apps/mobile/src/screens/Search/index.tsx|markerCatalogEntries\.filter\(|0|Root must not full-scan marker catalog for viewport candidates.
+root_hydration_schedule_primitive|apps/mobile/src/screens/Search/index.tsx|phaseBMaterializerRef\.current\.scheduleHydrationCommit\(|0|Root must not call hydration schedule primitive directly.
+root_hydration_cancel_primitive|apps/mobile/src/screens/Search/index.tsx|phaseBMaterializerRef\.current\.cancelHydrationCommit\(|0|Root must not call hydration cancel primitive directly.

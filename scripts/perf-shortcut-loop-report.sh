@@ -58,6 +58,131 @@ const safeNumber = (value) =>
 const safeString = (value) =>
   typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 
+const safeInteger = (value) =>
+  typeof value === 'number' && Number.isInteger(value) ? value : null;
+
+const safeNonNegativeNumber = (value) => {
+  const parsed = safeNumber(value);
+  if (parsed == null || parsed < 0) {
+    return 0;
+  }
+  return parsed;
+};
+
+const safeNonNegativeInteger = (value) => {
+  const parsed = safeInteger(value);
+  if (parsed == null || parsed < 0) {
+    return 0;
+  }
+  return parsed;
+};
+
+const parseNonNegativeNumberRecord = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+  const entries = Object.entries(value).filter(
+    ([key, rawValue]) =>
+      typeof key === 'string' &&
+      key.trim().length > 0 &&
+      typeof rawValue === 'number' &&
+      Number.isFinite(rawValue) &&
+      rawValue >= 0
+  );
+  return Object.fromEntries(entries.map(([key, rawValue]) => [key.trim(), rawValue]));
+};
+
+const parseAttributionTopContributors = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const contributor = safeString(entry.contributor);
+      const totalMs = safeNonNegativeNumber(entry.totalMs);
+      const sampleCount = safeNonNegativeInteger(entry.sampleCount);
+      const meanMs = safeNonNegativeNumber(entry.meanMs);
+      if (contributor == null) {
+        return null;
+      }
+      return {
+        contributor,
+        totalMs,
+        sampleCount,
+        meanMs,
+      };
+    })
+    .filter((entry) => entry != null);
+};
+
+const parseMapRuntimePayload = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const payload = value;
+  return {
+    fullCatalogScanCount: safeNonNegativeInteger(payload.fullCatalogScanCount),
+    indexQueryDurationP95: safeNonNegativeNumber(payload.indexQueryDurationP95),
+    readModelBuildSliceP95: safeNonNegativeNumber(payload.readModelBuildSliceP95),
+    mapDiffApplySliceP95: safeNonNegativeNumber(payload.mapDiffApplySliceP95),
+    indexQuerySampleCount: safeNonNegativeInteger(payload.indexQuerySampleCount),
+    readModelBuildSampleCount: safeNonNegativeInteger(payload.readModelBuildSampleCount),
+    mapDiffApplySampleCount: safeNonNegativeInteger(payload.mapDiffApplySampleCount),
+    runtimeAttributionTotalsMs: parseNonNegativeNumberRecord(payload.runtimeAttributionTotalsMs),
+    runtimeAttributionSampleCountByContributor: parseNonNegativeNumberRecord(
+      payload.runtimeAttributionSampleCountByContributor
+    ),
+    runtimeAttributionTopContributors: parseAttributionTopContributors(
+      payload.runtimeAttributionTopContributors
+    ),
+  };
+};
+
+const parseWindowOwnerTopComponents = (value) => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+        return null;
+      }
+      const componentId = safeString(entry.componentId);
+      if (componentId == null) {
+        return null;
+      }
+      return {
+        componentId,
+        overlapMs: safeNonNegativeNumber(entry.overlapMs),
+        maxCommitSpanMs: safeNonNegativeNumber(entry.maxCommitSpanMs),
+        spanCount: safeNonNegativeInteger(entry.spanCount),
+      };
+    })
+    .filter((entry) => entry != null);
+};
+
+const parseWindowOwnerAttribution = (payload) => {
+  const primaryComponentId = safeString(payload?.windowOwnerPrimaryComponentId);
+  const primaryOverlapMs = safeNonNegativeNumber(payload?.windowOwnerPrimaryOverlapMs);
+  const primaryMaxCommitSpanMs = safeNonNegativeNumber(payload?.windowOwnerPrimaryMaxCommitSpanMs);
+  const primarySpanCount = safeNonNegativeInteger(payload?.windowOwnerPrimarySpanCount);
+  const topComponents = parseWindowOwnerTopComponents(payload?.windowOwnerTopComponents);
+
+  if (primaryComponentId == null && topComponents.length === 0) {
+    return null;
+  }
+  return {
+    primaryComponentId,
+    primaryOverlapMs,
+    primaryMaxCommitSpanMs,
+    primarySpanCount,
+    topComponents,
+  };
+};
+
 const percentile = (values, p) => {
   if (!values.length) {
     return null;
@@ -81,6 +206,31 @@ const mean = (values) => {
     return null;
   }
   return values.reduce((sum, value) => sum + value, 0) / values.length;
+};
+
+const topStageContributors = (stageHistogram, limit = 3) => {
+  const stallTotals = stageHistogram?.byStageStallLongestTotalMs ?? {};
+  const windowCounts = stageHistogram?.byStageWindowCount ?? {};
+  const catastrophicCounts = stageHistogram?.byStageCatastrophicWindowCount ?? {};
+  const maxFrameTotals = stageHistogram?.byStageMaxFrameTotalMs ?? {};
+  return Object.entries(stallTotals)
+    .map(([stage, stallTotalMs]) => ({
+      stage,
+      stallLongestTotalMs: safeNonNegativeNumber(stallTotalMs),
+      maxFrameTotalMs: safeNonNegativeNumber(maxFrameTotals[stage]),
+      windowCount: safeNonNegativeInteger(windowCounts[stage]),
+      catastrophicWindowCount: safeNonNegativeInteger(catastrophicCounts[stage]),
+    }))
+    .sort((left, right) => {
+      if (right.stallLongestTotalMs !== left.stallLongestTotalMs) {
+        return right.stallLongestTotalMs - left.stallLongestTotalMs;
+      }
+      if (right.catastrophicWindowCount !== left.catastrophicWindowCount) {
+        return right.catastrophicWindowCount - left.catastrophicWindowCount;
+      }
+      return right.windowCount - left.windowCount;
+    })
+    .slice(0, limit);
 };
 
 const parseSignatureParts = (signature) => {
@@ -210,9 +360,24 @@ const collectWindowEvents = (events, channelTag) =>
     return safeNumber(evt.data.nowMs) != null;
   });
 
+const selectRunWindows = ({ windows, runNumber, startMs, endMs, startLine, endLine }) => {
+  const scoped = windows.filter((evt) =>
+    eventBelongsToRun({ evt, runNumber, startMs, endMs, startLine, endLine })
+  );
+  if (!scoped.length) {
+    return scoped;
+  }
+
+  // Prefer explicitly session-tagged samples. This avoids attributing startup/background
+  // sampler windows (often `shortcutSessionId: null`) into active run metrics.
+  const tagged = scoped.filter((evt) => safeNumber(evt.data.shortcutSessionId) === runNumber);
+  return tagged.length > 0 ? tagged : scoped;
+};
+
 const collectRunWindowMetrics = ({
   windows,
   runNumber,
+  runStartMs,
   stageHistogram,
   allStallValues,
   catastrophicRuns,
@@ -221,14 +386,38 @@ const collectRunWindowMetrics = ({
   let runFloorMin = null;
   let runStallMax = null;
   let runCatastrophicWindowCount = 0;
+  let firstStallOver50 = null;
+  let worstWindow = null;
 
   for (const evt of windows) {
     const floorFps = safeNumber(evt.data.floorFps);
     const stallLongestMs = safeNumber(evt.data.stallLongestMs) ?? 0;
     const maxFrameMs = safeNumber(evt.data.maxFrameMs) ?? 0;
+    const nowMs = safeNumber(evt.data.nowMs);
+    const windowMs = safeNumber(evt.data.windowMs);
+    const explicitElapsedMs = safeNumber(evt.data.shortcutElapsedMs);
+    const elapsedMs =
+      explicitElapsedMs != null
+        ? explicitElapsedMs
+        : nowMs != null && runStartMs != null
+          ? nowMs - runStartMs
+          : null;
     const stage = safeString(evt.data.shortcutStage) ?? 'none';
+    const owner = parseWindowOwnerAttribution(evt.data);
+    const windowSample = {
+      durationMs: stallLongestMs,
+      stage,
+      elapsedMs,
+      nowMs,
+      windowMs,
+      owner,
+    };
 
     stageHistogram.byStageWindowCount[stage] = (stageHistogram.byStageWindowCount[stage] || 0) + 1;
+    stageHistogram.byStageStallLongestTotalMs[stage] =
+      (stageHistogram.byStageStallLongestTotalMs[stage] || 0) + stallLongestMs;
+    stageHistogram.byStageMaxFrameTotalMs[stage] =
+      (stageHistogram.byStageMaxFrameTotalMs[stage] || 0) + maxFrameMs;
     allStallValues.push(stallLongestMs);
 
     if (maxFrameMs > CATASTROPHIC_FRAME_MS) {
@@ -245,6 +434,21 @@ const collectRunWindowMetrics = ({
     if (runStallMax == null || stallLongestMs > runStallMax) {
       runStallMax = stallLongestMs;
     }
+    if (
+      worstWindow == null ||
+      stallLongestMs > worstWindow.durationMs ||
+      (stallLongestMs === worstWindow.durationMs &&
+        (nowMs ?? Number.NEGATIVE_INFINITY) > (worstWindow.nowMs ?? Number.NEGATIVE_INFINITY))
+    ) {
+      worstWindow = windowSample;
+    }
+    if (
+      stallLongestMs > 50 &&
+      (firstStallOver50 == null ||
+        (nowMs ?? Number.POSITIVE_INFINITY) < (firstStallOver50.nowMs ?? Number.POSITIVE_INFINITY))
+    ) {
+      firstStallOver50 = windowSample;
+    }
 
     if (floorFps != null && (dominantFloor.value == null || floorFps < dominantFloor.value)) {
       dominantFloor.value = floorFps;
@@ -256,6 +460,8 @@ const collectRunWindowMetrics = ({
     floorMin: runFloorMin,
     stallLongestMax: runStallMax,
     catastrophicWindowCount: runCatastrophicWindowCount,
+    firstStallOver50,
+    worstWindow,
   };
 };
 
@@ -332,6 +538,33 @@ const runCompleteEvents = scopedHarness.filter(
   (evt) => evt.data.event === 'shortcut_loop_run_complete'
 );
 const loopCompleteEvents = scopedHarness.filter((evt) => evt.data.event === 'shortcut_loop_complete');
+const settleEvalEvents = scopedHarness.filter((evt) => evt.data.event === 'shortcut_harness_settle_eval');
+const allowedSettleEvalSources = new Set(['shadow_subscription', 'settle_retry_timeout']);
+const renderDrivenSettleEvalCount = settleEvalEvents.filter((evt) => {
+  const source = safeString(evt.data.source);
+  return source !== null && !allowedSettleEvalSources.has(source);
+}).length;
+
+const mechanismSignals = {
+  queryMutationCoalescedCount: scopedHarness.filter(
+    (evt) =>
+      evt.data.event === 'query_mutation_coalesced' &&
+      safeString(evt.data.mechanismSource) === 'runtime'
+  ).length,
+  profileIntentCancelledCount: scopedHarness.filter(
+    (evt) =>
+      evt.data.event === 'profile_intent_cancelled' &&
+      safeString(evt.data.mechanismSource) === 'runtime'
+  ).length,
+  harnessSettleEvalCount: settleEvalEvents.filter(
+    (evt) => safeString(evt.data.mechanismSource) === 'harness'
+  ).length,
+  observerRenderBumpCount: scopedHarness.filter(
+    (evt) =>
+      evt.data.event === 'shortcut_harness_observer_render_bump' &&
+      safeString(evt.data.mechanismSource) === 'harness'
+  ).length + renderDrivenSettleEvalCount,
+};
 
 const expectedRuns =
   safeNumber(runStartEvents[0]?.data.totalRuns) ??
@@ -354,6 +587,7 @@ const runCompleteByNumber = new Map();
 const runCompleteLineByNumber = new Map();
 const runDurationByNumber = new Map();
 const runFinalStageByNumber = new Map();
+const runMapRuntimeByNumber = new Map();
 for (const evt of runCompleteEvents) {
   const runNumber = safeNumber(evt.data.runNumber);
   const nowMs = safeNumber(evt.data.nowMs);
@@ -369,6 +603,10 @@ for (const evt of runCompleteEvents) {
   const finalStage = safeString(evt.data.finalStage);
   if (finalStage != null) {
     runFinalStageByNumber.set(runNumber, finalStage);
+  }
+  const mapRuntime = parseMapRuntimePayload(evt.data.mapRuntime);
+  if (mapRuntime != null) {
+    runMapRuntimeByNumber.set(runNumber, mapRuntime);
   }
 }
 
@@ -403,10 +641,14 @@ const runMetrics = [];
 const stageHistogram = {
   byStageWindowCount: {},
   byStageCatastrophicWindowCount: {},
+  byStageStallLongestTotalMs: {},
+  byStageMaxFrameTotalMs: {},
 };
 const uiStageHistogram = {
   byStageWindowCount: {},
   byStageCatastrophicWindowCount: {},
+  byStageStallLongestTotalMs: {},
+  byStageMaxFrameTotalMs: {},
 };
 const jsAllStallValues = [];
 const uiAllStallValues = [];
@@ -421,32 +663,46 @@ for (const runNumber of runNumbers) {
   const startLine = runStartLineByNumber.get(runNumber);
   const endLine = runCompleteLineByNumber.get(runNumber);
   if (startMs == null || endMs == null) {
-    runMetrics.push({
-      runNumber,
-      startMs: startMs ?? null,
-      endMs: endMs ?? null,
-      floorMin: null,
+      runMetrics.push({
+        runNumber,
+        startMs: startMs ?? null,
+        endMs: endMs ?? null,
+        floorMin: null,
       stallLongestMax: null,
       catastrophicWindowCount: 0,
       uiFloorMin: null,
       uiStallLongestMax: null,
-      uiCatastrophicWindowCount: 0,
-      durationMs: runDurationByNumber.get(runNumber) ?? null,
-      finalStage: runFinalStageByNumber.get(runNumber) ?? null,
-    });
-    continue;
-  }
+        uiCatastrophicWindowCount: 0,
+        firstOver50: null,
+        worstWindow: null,
+        durationMs: runDurationByNumber.get(runNumber) ?? null,
+        finalStage: runFinalStageByNumber.get(runNumber) ?? null,
+        mapRuntime: runMapRuntimeByNumber.get(runNumber) ?? null,
+      });
+      continue;
+    }
 
-  const jsWindows = jsWindowEvents.filter((evt) =>
-    eventBelongsToRun({ evt, runNumber, startMs, endMs, startLine, endLine })
-  );
-  const uiWindows = uiWindowEvents.filter((evt) =>
-    eventBelongsToRun({ evt, runNumber, startMs, endMs, startLine, endLine })
-  );
+  const jsWindows = selectRunWindows({
+    windows: jsWindowEvents,
+    runNumber,
+    startMs,
+    endMs,
+    startLine,
+    endLine,
+  });
+  const uiWindows = selectRunWindows({
+    windows: uiWindowEvents,
+    runNumber,
+    startMs,
+    endMs,
+    startLine,
+    endLine,
+  });
 
   const jsRunMetrics = collectRunWindowMetrics({
     windows: jsWindows,
     runNumber,
+    runStartMs: startMs,
     stageHistogram,
     allStallValues: jsAllStallValues,
     catastrophicRuns: jsCatastrophicRuns,
@@ -456,26 +712,30 @@ for (const runNumber of runNumbers) {
   const uiRunMetrics = collectRunWindowMetrics({
     windows: uiWindows,
     runNumber,
+    runStartMs: startMs,
     stageHistogram: uiStageHistogram,
     allStallValues: uiAllStallValues,
     catastrophicRuns: uiCatastrophicRuns,
     dominantFloor: dominantUiFloor,
   });
 
-  runMetrics.push({
-    runNumber,
-    startMs,
-    endMs,
+    runMetrics.push({
+      runNumber,
+      startMs,
+      endMs,
     floorMin: jsRunMetrics.floorMin,
     stallLongestMax: jsRunMetrics.stallLongestMax,
     catastrophicWindowCount: jsRunMetrics.catastrophicWindowCount,
     uiFloorMin: uiRunMetrics.floorMin,
     uiStallLongestMax: uiRunMetrics.stallLongestMax,
-    uiCatastrophicWindowCount: uiRunMetrics.catastrophicWindowCount,
-    durationMs: runDurationByNumber.get(runNumber) ?? null,
-    finalStage: runFinalStageByNumber.get(runNumber) ?? null,
-  });
-}
+      uiCatastrophicWindowCount: uiRunMetrics.catastrophicWindowCount,
+      firstOver50: jsRunMetrics.firstStallOver50,
+      worstWindow: jsRunMetrics.worstWindow,
+      durationMs: runDurationByNumber.get(runNumber) ?? null,
+      finalStage: runFinalStageByNumber.get(runNumber) ?? null,
+      mapRuntime: runMapRuntimeByNumber.get(runNumber) ?? null,
+    });
+  }
 
 const jsFloorValues = runMetrics
   .map((metric) => safeNumber(metric.floorMin))
@@ -489,6 +749,77 @@ const uiFloorValues = runMetrics
 const uiStallRunMaxValues = runMetrics
   .map((metric) => safeNumber(metric.uiStallLongestMax))
   .filter((value) => value != null);
+const mapIndexQueryP95Values = runMetrics
+  .map((metric) => safeNumber(metric?.mapRuntime?.indexQueryDurationP95))
+  .filter((value) => value != null);
+const mapReadModelBuildP95Values = runMetrics
+  .map((metric) => safeNumber(metric?.mapRuntime?.readModelBuildSliceP95))
+  .filter((value) => value != null);
+const mapDiffApplyP95Values = runMetrics
+  .map((metric) => safeNumber(metric?.mapRuntime?.mapDiffApplySliceP95))
+  .filter((value) => value != null);
+const mapFullCatalogScanCount = runMetrics.reduce(
+  (sum, metric) => sum + (safeInteger(metric?.mapRuntime?.fullCatalogScanCount) ?? 0),
+  0
+);
+const mapIndexQuerySampleCount = runMetrics.reduce(
+  (sum, metric) => sum + (safeInteger(metric?.mapRuntime?.indexQuerySampleCount) ?? 0),
+  0
+);
+const mapReadModelBuildSampleCount = runMetrics.reduce(
+  (sum, metric) => sum + (safeInteger(metric?.mapRuntime?.readModelBuildSampleCount) ?? 0),
+  0
+);
+const mapDiffApplySampleCount = runMetrics.reduce(
+  (sum, metric) => sum + (safeInteger(metric?.mapRuntime?.mapDiffApplySampleCount) ?? 0),
+  0
+);
+const mapRuntimeAttributionTotalsMs = {};
+const mapRuntimeAttributionSampleCountByContributor = {};
+for (const metric of runMetrics) {
+  const totals = metric?.mapRuntime?.runtimeAttributionTotalsMs ?? {};
+  const sampleCounts = metric?.mapRuntime?.runtimeAttributionSampleCountByContributor ?? {};
+  for (const [contributor, totalMs] of Object.entries(totals)) {
+    const value = safeNonNegativeNumber(totalMs);
+    if (value == null || value <= 0) {
+      continue;
+    }
+    mapRuntimeAttributionTotalsMs[contributor] =
+      (mapRuntimeAttributionTotalsMs[contributor] ?? 0) + value;
+  }
+  for (const [contributor, sampleCount] of Object.entries(sampleCounts)) {
+    const value = safeNonNegativeNumber(sampleCount);
+    if (value == null || value <= 0) {
+      continue;
+    }
+    mapRuntimeAttributionSampleCountByContributor[contributor] =
+      (mapRuntimeAttributionSampleCountByContributor[contributor] ?? 0) + value;
+  }
+}
+const runtimeTopContributorsByTotalMs = Object.entries(mapRuntimeAttributionTotalsMs)
+  .map(([contributor, totalMs]) => {
+    const sampleCount = safeNonNegativeNumber(
+      mapRuntimeAttributionSampleCountByContributor[contributor] ?? 0
+    );
+    return {
+      contributor,
+      totalMs: safeNonNegativeNumber(totalMs),
+      sampleCount: sampleCount ?? 0,
+      meanMs: sampleCount && sampleCount > 0 ? totalMs / sampleCount : 0,
+    };
+  })
+  .sort((left, right) => right.totalMs - left.totalMs)
+  .slice(0, 5);
+const jsTopStageContributors = topStageContributors(stageHistogram, 3);
+const uiTopStageContributors = topStageContributors(uiStageHistogram, 3);
+const firstOver50ByRun = runMetrics.map((metric) => ({
+  runNumber: metric.runNumber,
+  firstOver50: metric.firstOver50 ?? null,
+}));
+const worstWindowByRun = runMetrics.map((metric) => ({
+  runNumber: metric.runNumber,
+  worstWindow: metric.worstWindow ?? null,
+}));
 
 const report = {
   schemaVersion: SCHEMA_VERSION,
@@ -505,6 +836,14 @@ const report = {
     uiStallMaxMean:
       'Mean of per-run maximum stallLongestMs across scoped [SearchPerf][UiFrameSampler] window events.',
     uiStallP95: 'P95 of scoped [SearchPerf][UiFrameSampler] window stallLongestMs values.',
+    firstOver50ByRun:
+      'Per-run earliest JS sampler window where stallLongestMs exceeded 50ms, with stage/elapsedMs and optional owner attribution.',
+    worstWindowByRun:
+      'Per-run maximum JS sampler window with stage/elapsedMs and optional owner attribution.',
+    mapRuntime:
+      'Optional per-run map runtime budget snapshot emitted in shortcut_loop_run_complete events.',
+    mechanismSignals:
+      'Optional harness instrumentation counters emitted via [SearchPerf][Harness] events for runtime mechanisms (coalescing/cancellation/observer behavior).',
   },
   harnessRunId,
   harnessScenario,
@@ -519,6 +858,8 @@ const report = {
   runCountStarted: markerIntegrity.startedRuns.length,
   runCountCompleted: markerIntegrity.completedRuns.length,
   runMetrics,
+  firstOver50ByRun,
+  worstWindowByRun,
   floorMean: mean(jsFloorValues),
   floorMin: jsFloorValues.length ? Math.min(...jsFloorValues) : null,
   stallP95: percentile(jsAllStallValues, 95),
@@ -547,8 +888,26 @@ const report = {
   },
   stageHistogram,
   uiStageHistogram,
+  stageAttribution: {
+    jsTopByStallMs: jsTopStageContributors,
+    uiTopByStallMs: uiTopStageContributors,
+    runtimeTopByTotalMs: runtimeTopContributorsByTotalMs,
+  },
   dominantFloorStage: dominantJsFloor.stage,
   dominantUiFloorStage: dominantUiFloor.stage,
+  mapRuntime: {
+    fullCatalogScanCount: mapFullCatalogScanCount,
+    indexQueryDurationP95: percentile(mapIndexQueryP95Values, 95),
+    readModelBuildSliceP95: percentile(mapReadModelBuildP95Values, 95),
+    mapDiffApplySliceP95: percentile(mapDiffApplyP95Values, 95),
+    indexQuerySampleCount: mapIndexQuerySampleCount,
+    readModelBuildSampleCount: mapReadModelBuildSampleCount,
+    mapDiffApplySampleCount: mapDiffApplySampleCount,
+    runtimeAttributionTotalsMs: mapRuntimeAttributionTotalsMs,
+    runtimeAttributionSampleCountByContributor: mapRuntimeAttributionSampleCountByContributor,
+    runtimeTopContributorsByTotalMs,
+  },
+  mechanismSignals,
 };
 
 const payload = JSON.stringify(report, null, 2);

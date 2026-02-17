@@ -31,6 +31,7 @@ export interface StructuredSearchRequest {
   sourceQuery?: string;
   searchRequestId?: string;
   scoreMode?: NaturalSearchRequest['scoreMode'];
+  compactResponse?: boolean;
 }
 
 export type RecentSearch = {

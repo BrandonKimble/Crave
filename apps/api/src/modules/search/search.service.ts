@@ -16,6 +16,7 @@ import {
   QueryEntityDto,
   QueryPlan,
   SearchQueryRequestDto,
+  RestaurantResultDto,
   RestaurantProfileDto,
   SearchResponseDto,
   SearchResponseMetadataDto,
@@ -674,7 +675,7 @@ export class SearchService {
           openNowFilteredOut: strictPage.exec.metadata.openNowFilteredOut ?? 0,
         });
 
-        return {
+        const response: SearchResponseDto = {
           format: plan.format,
           plan,
           dishes: strictPage.exec.dishes,
@@ -684,6 +685,7 @@ export class SearchService {
             : null,
           metadata,
         };
+        return this.applySearchResponseProfile(response, request);
       }
 
       // Relaxation path (per-list; still score-ranked). Use strict IDs to exclude duplicates.
@@ -999,7 +1001,7 @@ export class SearchService {
         openNowFilteredOut: metadata.openNowFilteredOut ?? 0,
       });
 
-      return {
+      const response: SearchResponseDto = {
         format: plan.format,
         plan,
         dishes,
@@ -1009,6 +1011,7 @@ export class SearchService {
           : null,
         metadata,
       };
+      return this.applySearchResponseProfile(response, request);
     } catch (error) {
       this.searchMetrics.recordSearchFailure({
         format: plan?.format ?? 'unknown',
@@ -1017,6 +1020,90 @@ export class SearchService {
       });
       throw error;
     }
+  }
+
+  private applySearchResponseProfile(
+    response: SearchResponseDto,
+    request: SearchQueryRequestDto,
+  ): SearchResponseDto {
+    if (!request.compactResponse) {
+      return response;
+    }
+    return this.buildCompactSearchResponse(response);
+  }
+
+  private buildCompactSearchResponse(
+    response: SearchResponseDto,
+  ): SearchResponseDto {
+    const restaurants = Array.isArray(response.restaurants)
+      ? response.restaurants.map((restaurant) =>
+          this.compactRestaurantResult(restaurant),
+        )
+      : [];
+    return {
+      ...response,
+      restaurants,
+      metadata: {
+        ...response.metadata,
+        analysisMetadata: undefined,
+      },
+    };
+  }
+
+  private compactRestaurantResult(
+    restaurant: RestaurantResultDto,
+  ): RestaurantResultDto {
+    const displayLocation = this.compactRestaurantLocation(
+      restaurant.displayLocation ?? null,
+    );
+    const compactLocations = Array.isArray(restaurant.locations)
+      ? restaurant.locations
+          .map((location) => this.compactRestaurantLocation(location))
+          .filter(
+            (
+              location,
+            ): location is NonNullable<RestaurantResultDto['displayLocation']> =>
+              location != null,
+          )
+      : [];
+    const locations =
+      compactLocations.length > 0
+        ? compactLocations
+        : displayLocation
+          ? [displayLocation]
+          : [];
+
+    return {
+      ...restaurant,
+      displayLocation,
+      locations,
+      locationCount:
+        typeof restaurant.locationCount === 'number'
+          ? restaurant.locationCount
+          : locations.length,
+      topFood: Array.isArray(restaurant.topFood)
+        ? restaurant.topFood.slice(0, 3)
+        : [],
+    };
+  }
+
+  private compactRestaurantLocation(
+    location: RestaurantResultDto['displayLocation'] | null | undefined,
+  ): NonNullable<RestaurantResultDto['displayLocation']> | null {
+    if (!location) {
+      return null;
+    }
+    return {
+      locationId: location.locationId,
+      googlePlaceId: location.googlePlaceId ?? null,
+      latitude: location.latitude ?? null,
+      longitude: location.longitude ?? null,
+      address: location.address ?? null,
+      city: location.city ?? null,
+      region: location.region ?? null,
+      operatingStatus: location.operatingStatus ?? null,
+      isPrimary: Boolean(location.isPrimary),
+    };
   }
 
   async listRestaurantDishes(restaurantId: string): Promise<FoodResultDto[]> {

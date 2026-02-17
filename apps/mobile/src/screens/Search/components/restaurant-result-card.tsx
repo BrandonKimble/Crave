@@ -23,6 +23,7 @@ import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
 const TOP_FOOD_INLINE_GAP = '\u2006\u2006\u2006\u2006';
+const ENABLE_TOP_FOOD_FIT_MEASUREMENT = false;
 
 const MAX_TOP_FOOD_FIT_CACHE_ITEMS = 1200;
 type TopFoodFitVariant =
@@ -485,7 +486,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
   );
 
   const shouldMeasureFit =
-    fitCacheKey !== null && candidateTopFoods.length > 0 && !hasCachedTopFoodFit(fitCacheKey);
+    ENABLE_TOP_FOOD_FIT_MEASUREMENT &&
+    fitCacheKey !== null &&
+    candidateTopFoods.length > 0 &&
+    !hasCachedTopFoodFit(fitCacheKey);
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,

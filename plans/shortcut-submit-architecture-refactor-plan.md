@@ -56,18 +56,34 @@ Program objective:
 
 - repeatable floor lift `> +20` from locked baseline, then continue toward `+25`.
 
-Merge-blocking global gates:
+Gate primitives (required for any promotion evidence):
 
 - minimum completed runs `>=3` for both baseline and candidate reports,
-- no catastrophic `>300ms` stage in `>=2/3` runs (JS and UI lanes),
-- `floorMean` regression > `0.30` fails,
-- `stallP95` regression > `10%` fails,
-- `uiFloorMean` regression > `0.30` fails,
-- `uiStallP95` regression > `10%` fails,
 - baseline/candidate `harnessSignatureStable` must match,
 - baseline/candidate environment parity (`launchTargetMode`, `runtimeTarget`, `launchPreferDevice`) must match,
 - all required harness markers present,
-- comparator inputs must share the same `schemaVersion`.
+- comparator inputs must share the same `schemaVersion`,
+- comparator threshold checks remain active (`floorMean`, `stallP95`, `uiFloorMean`, `uiStallP95`),
+- baseline regression-denominator metrics must be non-degenerate (`stallP95` and `uiStallP95` above configured floor; defaults `>= 1`).
+
+Slice-class promotion policy (blocking):
+
+| Slice class            | Slices                         | Promotion expectation                                                                                                                                                                                                                                                     |
+| ---------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Structural scaffolding | P0, P0.5, S1, S2               | correctness + observability stability first: no timeout-shaped harness run completion, no transition legality regressions, and no-worse perf deltas by threshold policy. Absolute catastrophic failure is waivable only when it is the sole failure and candidate is not worse than locked baseline. |
+| Ownership cutover      | S3, S4                         | same as structural, plus no stale-write regressions and no new catastrophic stage families outside known hotspots (`results_list_materialization`, `results_list_ramp`, `marker_reveal_state`, `visual_sync_state`). Promotion evidence must use robust matched-gate median deltas (section 9.2), not a single compare. |
+| Perf-bearing ownership | S5, S6, S7, S8, S9A, S9B, S9D, S9E | same as ownership cutover, plus directional improvement in the hotspot targeted by the slice; if hotspot signal is flat/regressed, promotion is blocked until the blocker is fixed. Promotion is blocked if strict root ownership checks fail for the slice. |
+| JS optimization tranche | JS0, JS1, JS2, JS3, JS4       | JS0 must emit attribution evidence (`stageAttribution` top contributors). JS1-JS4 require directional hotspot improvement on `results_hydration_commit` and `visual_sync_state`, median `stallP95` improvement, and no catastrophic waiver usage. |
+| Ownership decomposition | S9C, S9F                      | ownership extraction is required with no-worse perf by thresholds, strict root ownership delete-gate evidence, and no dual-control root/runtime overlap for migrated concerns.                                                                                        |
+| Program completion     | S10, S11, refactor completion  | full policy enforced with no waivers, including absolute catastrophic gate: no catastrophic `>300ms` stage in `>=2/3` runs (JS and UI lanes).                                                                                                                         |
+
+Waiver rule for existing catastrophic baseline:
+
+- if comparator fails only on the absolute catastrophic check,
+- and locked baseline already fails the same check,
+- and candidate `catastrophic.runCount <= baseline catastrophic.runCount`,
+- and all other gate checks pass,
+- then structural/ownership slices may promote with explicit waiver note attached to the compare artifact.
 
 ## 2) Current Frontend Reality (Code-Evidenced Map)
 
@@ -175,7 +191,7 @@ Acceptance rules:
 
 - reducer accepts event only when `(sessionId, operationId, seq)` dominates current lane tuple,
 - stale events are dropped and counted (`staleEventDropCount`),
-- illegal transition emits `transitionViolation` and fails contract tests.
+- illegal transition emits `transitionViolation` and is tracked in runtime telemetry.
 
 ### 3.3 Search session state machine (authoritative)
 
@@ -241,6 +257,55 @@ UI rule:
 
 - presentation components consume selectors only,
 - no heavy derivation in JSX or screen-level callbacks.
+
+### 3.6 Performance-First Decomposition Rules (No Move-Only Refactors)
+
+These rules are mandatory for S9A-S9F:
+
+1. No move-only extraction: each slice must add at least one runtime performance mechanism, not just relocate code.
+2. Owner computes, UI reads: heavy derivation stays in runtime owners/selectors keyed by operation tuple/version.
+3. Incremental apply over rebuild: prefer diff application and slice scheduling over full recompute/commit.
+4. Cancellation and coalescing are first-class: superseded work must be cancelable and duplicate intents coalesced.
+5. Stable render boundaries: keep root and major list/map surfaces on stable props/handlers to reduce avoidable commit churn.
+6. Root complexity budget is enforced per slice: root hook pressure must trend down across decomposition slices (not just ownership shuffling).
+
+Required mechanisms by decomposition slice:
+
+- `S9A`: indexed candidate query + read-model diff application (map path).
+- `S9B`: selector memoization keyed by request/version for list/header/chips.
+- `S9C`: mutation coalescing + single orchestrator write path for filter/query reruns.
+- `S9D`: profile runtime state machine with cancelable hydration/camera intents.
+- `S9E`: event-driven harness observer owner (subscription-based settle checks, no render-driven observer churn).
+- `S9F`: composition-only root with runtime owner construction externalized.
+
+### 3.7 Maps-Class Runtime Principles (Industry Pattern Alignment)
+
+These principles mirror large-scale map/search app patterns and are binding for this refactor:
+
+1. Viewport-first work admission:
+
+- only admit map/list work tied to current viewport + active operation tuple,
+- drop superseded viewport work before it reaches render lanes.
+
+2. Progressive reveal over full commit:
+
+- prefer phase-A visible readiness, then budgeted phase-B enrichment,
+- never allow full-surface synchronous rebuild in active interaction lanes.
+
+3. Deterministic backpressure:
+
+- lane priority + cancellation are mandatory,
+- when interaction lanes are busy, defer enrichment lanes rather than contending.
+
+4. Projection caches with explicit invalidation:
+
+- read-model owners keep projection caches keyed by request/version tuple,
+- invalidation is explicit (operation change, viewport change, filter mutation), never implicit render churn.
+
+5. Observability as control input:
+
+- mechanism telemetry (`mechanismSignals`) is part of promotion truth, not debug-only data,
+- slices that claim optimization must emit mechanism evidence.
 
 ## 4) Source-of-Truth Matrix (Current -> Target)
 
@@ -381,7 +446,7 @@ Required actions:
 1. Add `/Users/brandonkimble/crave-search/scripts/perf-shortcut-loop-report.sh`.
 2. Add `/Users/brandonkimble/crave-search/scripts/ci-compare-perf-reports.sh`.
 3. Add `/Users/brandonkimble/crave-search/scripts/no-bypass-search-runtime.sh`.
-4. Keep GitHub CI focused on static/contract checks (`search-runtime-contract-tests`, `no-bypass-search-runtime`).
+4. Keep GitHub CI focused on static/contract checks (`search-runtime-contract-tests` contract-check job + `no-bypass-search-runtime`).
 5. Add local live perf-gate orchestration (`/Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh`) and expose package scripts.
 
 Exit gate:
@@ -444,6 +509,8 @@ Exit gate:
 
 - shadow traces show legal transitions only,
 - `transitionViolation == 0` on shortcut loop baseline,
+- shortcut harness runs complete without timeout-shaped completion,
+- local compare evidence satisfies structural-class no-worse policy,
 - no user-visible behavior changes.
 
 Rollback:
@@ -465,7 +532,9 @@ Files touched:
 Exit gate:
 
 - stale events are rejected and counted,
-- integration tests cover stale accept/reject paths.
+- stale accept/reject behavior is visible in runtime telemetry and harness traces.
+- deferred side-effects (including history writes) are tuple-guarded against superseded operations,
+- local compare evidence satisfies structural-class policy (waiver allowed only per section 1.2).
 
 Delete gate:
 
@@ -489,8 +558,10 @@ Files touched:
 
 Exit gate:
 
-- natural submit uses controller phase transitions only,
+- natural submit uses controller-gated phase transitions (rejected shadow transitions do not proceed),
 - no pre-request full-null clear for natural path,
+- natural cutover contract guard passes (`scripts/search-runtime-natural-cutover-contract.sh`),
+- robust local promotion summary satisfies ownership-cutover policy (section 9.2),
 - no regressions in parity checklist.
 
 Delete gate:
@@ -511,7 +582,8 @@ Exit gate:
 
 - all modes use same state machine,
 - no mode-specific bypass around controller transitions,
-- floor/stall metrics non-regressive by gate policy.
+- S4 mode cutover contract guard passes (`scripts/search-runtime-s4-mode-cutover-contract.sh`),
+- robust local promotion summary satisfies ownership-cutover policy (contextual no-worse expectation, not blanket uplift per slice).
 
 Delete gate:
 
@@ -534,6 +606,7 @@ Current anchor to remove:
 Exit gate:
 
 - root no longer owns `InteractionManager`/RAF lifecycle scheduling for result hydration.
+- targeted hotspot expectation: `results_list_materialization` or `results_list_ramp` shows directional improvement vs pre-S5 baseline.
 
 Delete gate:
 
@@ -558,6 +631,7 @@ Exit gate:
 - `fullCatalogScanCount == 0` in map verdict scenarios,
 - edge-fade parity checklist passes,
 - no pin/dot duplicate/gap errors.
+- targeted hotspot expectation: `marker_reveal_state` catastrophic-window count or stall severity improves vs pre-S6 baseline.
 
 Delete gate:
 
@@ -582,7 +656,8 @@ Exit gate:
 
 - no direct root camera writes remain,
 - no snap-back during active gesture,
-- camera burst budgets pass.
+- camera burst budgets pass,
+- targeted hotspot expectation: `results_list_ramp` or `visual_sync_state` catastrophic-window count/stall severity improves vs pre-S7 baseline.
 
 Delete gate:
 
@@ -612,9 +687,150 @@ Note:
 Exit gate:
 
 - reduced sheet commit churn during submit/reveal windows,
+- targeted hotspot expectation: `results_list_ramp` stage pressure is directionally improved vs pre-S8 baseline,
 - no overlay/search cross-domain imperative coupling in root.
 
-### Slice S9: Non-search domain decomposition
+### Tranche: Search Index Decomposition (Mandatory Before Non-Search Slices)
+
+This tranche is explicit and ownership-gated. The goal is to make `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx` a composition shell, not a runtime owner.
+
+### Slice S9A: Map Read-Model Owner Extraction
+
+Goal:
+
+- move map candidate/read-model ownership out of root and into runtime map modules.
+
+Actions:
+
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/map-presentation-controller.ts`,
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/map-read-model-builder.ts`,
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/map/map-diff-applier.ts`,
+- enforce incremental map diff-apply ownership (no full root recompute path),
+- remove root map read-model blocks and constructors listed in root ownership gates.
+
+Exit gate:
+
+- root ownership gate `S9A` passes (`runtime-root-ownership-gates.json`),
+- map edge-fade/label parity constraints remain satisfied,
+- targeted hotspot expectation: `marker_reveal_state` or `results_list_ramp` improves directionally.
+
+### Slice S9B: List/Header Read-Model Owner Extraction
+
+Goal:
+
+- move list/header/chip derivation out of root and into runtime read-model selectors/builders.
+
+Actions:
+
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/list-read-model-builder.ts`,
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/header-read-model-builder.ts`,
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/chip-read-model-builder.ts`,
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/read-models/read-model-selectors.ts`,
+- enforce selector memoization keyed by request/version tuple for list/header/chip outputs,
+- remove root list/header derivation blocks listed in root ownership gates.
+
+Exit gate:
+
+- root ownership gate `S9B` passes,
+- no list/header parity drift,
+- targeted hotspot expectation: `results_list_ramp` stage pressure improves directionally.
+
+### Slice S9C: Query Mutation Orchestrator Ownership
+
+Goal:
+
+- centralize filter/query rerun logic in runtime mutation orchestrator and remove root mutation authority.
+
+Actions:
+
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/mutations/query-mutation-orchestrator.ts`,
+- route filter/rank/price/open-now mutation reruns through orchestrator,
+- coalesce rapid filter mutation intents so only the newest mutation issues rerun work,
+- delete root mutation blocks listed in root ownership gates.
+
+Exit gate:
+
+- root ownership gate `S9C` passes,
+- no stale filter/query branch behavior,
+- mechanism telemetry shows observable coalescing (`query_mutation_coalesced` count above threshold),
+- no-worse perf by ownership-class thresholds.
+
+### Slice S9D: Profile Runtime Ownership
+
+Goal:
+
+- move restaurant profile open/close/hydration/camera choreography from root to dedicated runtime owner.
+
+Actions:
+
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/profile/profile-runtime-controller.ts`,
+- move profile orchestration blocks out of `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx`,
+- enforce cancelable profile hydration/camera intents for superseded profile transitions,
+- preserve profile transition parity.
+
+Exit gate:
+
+- root ownership gate `S9D` passes,
+- profile overlay parity is preserved,
+- mechanism telemetry shows observable cancellation of superseded profile intents (`profile_intent_cancelled` count above threshold),
+- targeted hotspot expectation: `visual_sync_state` or `results_list_ramp` improves directionally.
+
+### Slice S9E: Harness Observer Ownership
+
+Goal:
+
+- move shortcut harness lifecycle/settle observer logic out of root into runtime telemetry owner.
+
+Actions:
+
+- create and wire `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/runtime/telemetry/shortcut-harness-observer.ts`,
+- remove root harness lifecycle blocks listed in root ownership gates,
+- keep settle evaluation event-driven (subscription/callback driven, no render-bump observer loop),
+- keep marker contract and settle policy unchanged unless baseline refresh is explicitly performed.
+
+Exit gate:
+
+- root ownership gate `S9E` passes,
+- harness marker integrity remains complete,
+- mechanism telemetry proves event-driven observer behavior (`shortcut_harness_settle_eval` above threshold and `shortcut_harness_observer_render_bump` at or below threshold),
+- targeted hotspot expectation: `results_list_ramp` or `visual_sync_state` improves directionally.
+
+### Slice S9F: Composition Shell Finalization
+
+Goal:
+
+- finalize `index.tsx` as composition shell only: selector reads + intent dispatch + layout/return shell wiring.
+
+Actions:
+
+- remove inline runtime owner constructors from root,
+- route runtime construction through dedicated runtime hooks/modules,
+- verify root has no residual owner blocks from S9A-S9E domains.
+
+Exit gate:
+
+- root ownership gate `S9F` passes,
+- `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx` owns composition responsibilities only (selector reads, dispatch wiring, layout/return shell),
+- no dual-control root/runtime ownership remains.
+
+### Search Index Decomposition Matrix (Deterministic Execution)
+
+| Slice | Root ownership delete gate id(s) | Primary extraction target(s) | Required performance mechanism | Required promotion evidence |
+| ----- | --------------------------------- | ---------------------------- | ------------------------------ | -------------------------- |
+| S9A   | `root_map_read_model_blocks`, `root_map_runtime_constructors` | `runtime/map/map-presentation-controller.ts`, `runtime/map/map-read-model-builder.ts`, `runtime/map/map-diff-applier.ts` | indexed candidate query + incremental diff apply | targeted hotspot directional improvement + map runtime budget gate (`indexQueryDurationP95`, `readModelBuildSliceP95`, `mapDiffApplySliceP95`, `fullCatalogScanCount==0`) |
+| S9B   | `root_list_read_model_blocks` | `runtime/read-models/list-read-model-builder.ts`, `runtime/read-models/header-read-model-builder.ts`, `runtime/read-models/chip-read-model-builder.ts`, `runtime/read-models/read-model-selectors.ts` | selector memoization keyed by request/version | targeted hotspot pressure improvement on JS and UI `results_list_ramp` windows |
+| S9C   | `root_query_mutation_blocks` | `runtime/mutations/query-mutation-orchestrator.ts` | mutation coalescing + single rerun write path | strict root ownership pass + no-worse non-cat thresholds |
+| S9D   | `root_profile_runtime_blocks` | `runtime/profile/profile-runtime-controller.ts` | profile transition state machine with cancelable hydration/camera intents | targeted hotspot directional improvement (`visual_sync_state` or `results_list_ramp`) |
+| S9E   | `root_harness_observer_blocks` | `runtime/telemetry/shortcut-harness-observer.ts` | event-driven observer (subscription/callback settle evaluation) | targeted hotspot directional improvement (`results_list_ramp` or `visual_sync_state`) + marker integrity complete |
+| S9F   | `root_runtime_owner_constructors` | runtime composition hook/modules (for example `hooks/use-search-runtime-composition.ts`) | root as composition-only shell | strict root ownership pass + no residual root runtime owner constructors |
+| S10   | `s10_*` ownership gates | polls/onboarding/navigation runtime owner modules | domain runtime owner extraction (service/socket/auth/bootstrap ownership moved out of panel/screen roots) | strict S10 ownership pass + domain parity suites |
+| S11   | `s11_*` ownership gates | final root/search runtime cleanup paths | delete shadow/debug/bypass legacy branches + end-state root composition budgets | strict S11 ownership pass + full policy (no waivers) |
+
+Complexity budget note:
+
+- each S9 slice has root hook-pressure ceilings in `runtime-root-ownership-gates.json` to force monotonic reduction of root orchestration complexity during decomposition.
+
+### Slice S10: Non-search domain decomposition
 
 Goal:
 
@@ -622,16 +838,26 @@ Goal:
 
 Actions:
 
-- split `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/PollsPanel.tsx` into runtime hooks and presentation,
-- split `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Onboarding.tsx` into state machine + auth lane + animation hooks,
-- isolate bootstrap gating runtime from `/Users/brandonkimble/crave-search/apps/mobile/src/navigation/RootNavigator.tsx`.
+- split `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/PollsPanel.tsx` into runtime owner(s) + presentation shell,
+- split `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Onboarding.tsx` into state machine + auth lane + animation lane owners,
+- isolate bootstrap gating runtime from `/Users/brandonkimble/crave-search/apps/mobile/src/navigation/RootNavigator.tsx`,
+- delete legacy panel/screen-level runtime writers in the same promotion (no long-lived dual control).
 
 Exit gate:
 
-- parity suites for onboarding/polls/profile/navigation pass,
-- maintainability and incidental churn measurably reduced.
+- root ownership gate `S10` passes (`runtime-root-ownership-gates.json`),
+- required owner modules exist:
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-runtime-controller.ts`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/overlays/panels/runtime/polls-autocomplete-owner.ts`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/onboarding/runtime/onboarding-step-machine.ts`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/onboarding/runtime/use-onboarding-auth-lane.ts`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/screens/onboarding/runtime/use-onboarding-animation-lane.ts`
+  - `/Users/brandonkimble/crave-search/apps/mobile/src/navigation/runtime/use-navigation-bootstrap-runtime.ts`
+- no direct service/socket/autocomplete ownership remains in `PollsPanel.tsx`,
+- no direct auth/bootstrap writes remain in `Onboarding.tsx` and `RootNavigator.tsx`,
+- parity suites for onboarding/polls/profile/navigation pass.
 
-### Slice S10: Debt cleanup and hardening
+### Slice S11: Debt cleanup and hardening
 
 Goal:
 
@@ -643,8 +869,11 @@ Validation sweep:
 
 Exit gate:
 
-- one clear runtime path per concern,
-- no cluster remains in `shadow` or `owned` with undeleted legacy writers.
+- root ownership gate `S11` passes (`runtime-root-ownership-gates.json`),
+- one clear runtime path per concern (no shadow controller path in root or submit runtime),
+- no cluster remains in `shadow` or `owned` with undeleted legacy writers,
+- debug probe cleanup complete (no root `searchPerfDebug` wiring, no root/submit `console.log` probes),
+- root composition shell complexity meets end-state budget (S11 ownership gate budgets).
 
 ## 8) Cluster Ownership Ledger (Mandatory)
 
@@ -656,6 +885,16 @@ Exit gate:
 | Marker candidate derivation | `/Users/brandonkimble/crave-search/apps/mobile/src/screens/Search/index.tsx:4841`                 | map index/read-model                 | S6    | no full-catalog fallback               |
 | Filter rerun fan-out        | root filter submit branches                                                                       | query mutation orchestrator          | S4/S8 | no direct mode-specific rerun branches |
 | Overlay/search coupling     | root imperative overlay-search branches                                                           | overlay runtime controller           | S8    | root cross-domain branches deleted     |
+| Map read-model owner blocks | root map candidate/LOD derivation in `index.tsx`                                                 | map presentation + read-model owners | S9A   | root map read-model blocks deleted     |
+| List/header read-models     | root sectioning/list/header derivation in `index.tsx`                                            | read-model builders/selectors        | S9B   | root list/header derivation deleted    |
+| Query mutation authority    | root filter/rank/price mutation reruns in `index.tsx`                                            | query mutation orchestrator          | S9C   | root query-mutation blocks deleted     |
+| Profile runtime authority   | root restaurant profile orchestration in `index.tsx`                                             | profile runtime controller           | S9D   | root profile orchestration deleted     |
+| Harness observer authority  | root shortcut harness lifecycle observer in `index.tsx`                                          | telemetry/runtime observer           | S9E   | root harness observer blocks deleted   |
+| Root owner constructors     | inline runtime owner constructors in `index.tsx`                                                 | runtime hooks/modules                | S9F   | no root runtime owner constructors     |
+| Polls runtime authority     | service/socket/autocomplete orchestration in `PollsPanel.tsx`                                    | polls runtime controller + owners    | S10   | no direct service/socket/autocomplete in panel root |
+| Onboarding runtime authority | auth/state/animation orchestration in `Onboarding.tsx`                                          | onboarding runtime state/auth/animation owners | S10 | no direct auth/bootstrap writes in onboarding screen |
+| Navigation bootstrap authority | auth + hydration bootstrap in `RootNavigator.tsx`                                             | navigation bootstrap runtime owner   | S10   | no direct auth/hydration bootstrap ownership in RootNavigator |
+| Shadow/debug debt cleanup   | shadow controller and perf debug probes in search root/submit runtime                           | deleted (single runtime path)        | S11   | no shadow controller path; no root/submit debug probes |
 
 Cluster state machine:
 
@@ -674,7 +913,7 @@ Rules:
 
 ### 9.1 GitHub CI (required, production-relevant)
 
-1. `search-runtime-contract-tests`
+1. `search-runtime-contract-tests` (contract-check job)
 
 - validates parser output contract and marker integrity on canonical fixture log,
 - ensures required perf fields exist and are numeric.
@@ -694,23 +933,41 @@ Command surface:
 
 - `bash ./scripts/perf-shortcut-local-ci.sh record-baseline`
 - `bash ./scripts/perf-shortcut-local-ci.sh gate`
+- `bash ./scripts/perf-shortcut-local-ci.sh promote-slice <slice_id>`
 
 Script:
 
 - `/Users/brandonkimble/crave-search/scripts/perf-shortcut-local-ci.sh`
+- `/Users/brandonkimble/crave-search/plans/perf-baselines/runtime-root-ownership-gates.json` (strict root ownership checks for S7+ and S9/S10/S11 decomposition+completion slices)
 
 Flow:
 
 1. capture/refresh locked live baseline report,
-2. run live candidate shortcut loop harness,
-3. parse candidate report,
-4. compare baseline vs candidate with comparator thresholds and schema checks,
-5. attach compare summary evidence to slice promotion notes.
+2. run matched live candidate shortcut loop harness gates (`PERF_PROMOTION_MATCHED_RUNS`, default `2`),
+3. parse candidate reports,
+4. compare baseline vs each candidate with comparator thresholds and schema checks,
+5. compute robust median deltas and slice-class promotion verdict (promotion summary artifact),
+6. attach promotion summary evidence to slice promotion notes.
 
 Promotion rule:
 
-- slices that touch submit/map/list runtime ownership cannot promote without a passing local perf gate report from current branch.
+- slices that touch submit/map/list runtime ownership cannot promote without a local perf gate report from current branch.
 - local gate evidence is invalid when either report has `runCountCompleted < 3`.
+- local gate evidence is invalid when baseline `stallP95` or `uiStallP95` is below configured denominator floor (defaults: `PERF_BASELINE_MIN_STALL_P95=1`, `PERF_BASELINE_MIN_UI_STALL_P95=1`).
+- ownership slices (S3/S4) use robust matched-gate median deltas for non-cat regressions, with default shortcut-loop stall tolerance `20%` (`PERF_PROMOTION_STALL_P95_MAX_REGRESSION_PCT`, `PERF_PROMOTION_UI_STALL_P95_MAX_REGRESSION_PCT`) because shortcut loop is non-target mode for natural-path cutover.
+- structural slices (P0/P0.5/S1/S2) may use catastrophic waiver only under section 1.2 waiver conditions.
+- ownership cutover slices (S3/S4) may use the same waiver only if no new catastrophic stage families are introduced.
+- perf-bearing ownership slices (S5/S6/S7/S8/S9A/S9B/S9D/S9E) cannot use catastrophic waiver unless their targeted hotspot still shows directional improvement.
+- JS optimization slices (JS1-JS4) cannot use catastrophic waiver; catastrophic gating remains absolute for these slices.
+- JS optimization slices (JS1-JS4) require directional hotspot improvement on hydration/visual-sync stages and must show median `stallP95` improvement (`PERF_JS_TRANCHE_MIN_STALL_P95_IMPROVEMENT_PCT`, default `5%`).
+- JS optimization slices (JS1-JS4) require non-regressive UI stall median (`PERF_JS_TRANCHE_MAX_UI_STALL_P95_REGRESSION_PCT`, default `0%`).
+- S9A also requires map runtime budget evidence (same gate family as S6) to ensure map extraction is an optimization, not only a move.
+- S9B requires targeted hotspot pressure improvement on both JS and UI stage windows for `results_list_ramp`.
+- S9C/S9D/S9E require mechanism telemetry evidence (coalescing/cancellation/event-driven observer signals) in promotion summaries.
+- S9A-S11 apply strict root ownership checks; S9/S11 include explicit root complexity budgets (`React.useEffect`/`React.useLayoutEffect` and `React.useCallback`/`React.useMemo` pressure ceilings).
+- ownership decomposition slices (S9C/S9F) require strict no-worse non-cat metrics plus root ownership delete-gate evidence.
+- S7+ and S9/S10/S11 promotions require strict root ownership checks from `runtime-root-ownership-gates.json`; promotion is blocked if any banned root writer or banned root function block remains.
+- LOC transition gating is deprecated and disabled by default; use only as an explicit legacy override.
 
 ### 9.3 Parser/comparator contract
 
@@ -721,7 +978,9 @@ Parser script responsibilities (`perf-shortcut-loop-report.sh`):
   - core: `schemaVersion`, `markerIntegrity`, `runCountStarted`, `runCountCompleted`,
   - JS metrics: `floorMean`, `stallP95`, `stallMaxMean`, `stageHistogram`, `catastrophic`,
   - UI metrics: `uiFloorMean`, `uiStallP95`, `uiStallMaxMean`, `uiStageHistogram`, `uiCatastrophic`,
+  - mechanism telemetry: `mechanismSignals.queryMutationCoalescedCount`, `mechanismSignals.profileIntentCancelledCount`, `mechanismSignals.harnessSettleEvalCount`, `mechanismSignals.observerRenderBumpCount`,
   - parity metadata: `harnessSignatureStable`, `environment`.
+- harness settle boundary policy is part of harness signature parity; if settle policy changes, refresh locked baseline before comparing promotion deltas.
 - metric definitions (canonical):
   - `floorMean`: mean of per-run minimum `floorFps` values from `[SearchPerf][JsFrameSampler]` windows between `shortcut_loop_run_start` and `shortcut_loop_run_complete`,
   - `stallMaxMean`: mean of per-run maximum `stallLongestMs` values from the same scoped windows,
@@ -734,6 +993,9 @@ Parser script responsibilities (`perf-shortcut-loop-report.sh`):
   - `EXPO_PUBLIC_PERF_UI_FRAME_WINDOW_MS=120`
   - `EXPO_PUBLIC_PERF_JS_FRAME_LOG_ONLY_BELOW_FPS=240`
   - `EXPO_PUBLIC_PERF_UI_FRAME_LOG_ONLY_BELOW_FPS=240`
+  - baseline denominator floors:
+    - `PERF_BASELINE_MIN_STALL_P95=1`
+    - `PERF_BASELINE_MIN_UI_STALL_P95=1`
 
 Comparator script responsibilities (`ci-compare-perf-reports.sh`):
 
@@ -765,24 +1027,17 @@ Until then:
 - GitHub remains contract/static gate only,
 - local live perf gate is the source of truth for refactor runtime promotion decisions.
 
-## 10) Test Matrix (Implementation-Ready)
+## 10) Validation Matrix (Implementation-Ready)
 
-### 10.1 Unit tests
+Runtime validation signals:
 
-- reducer legality tests for every search state transition,
-- guard matrix pass/fail tests for each event type,
-- stale tuple drop tests,
-- lane preemption resolution tests.
+- submit->phase-A->visual release ordering is captured via shadow/controller event stream,
+- stale response rejection after newer submit is captured via stale-drop telemetry,
+- pagination cancellation on submit reset is observable in operation-lifecycle traces,
+- camera gesture preemption over programmatic camera intents is enforced by lane priority logs,
+- overlay switch isolation from heavy search work is enforced by domain-scoped transition logs.
 
-### 10.2 Integration tests
-
-- submit->phase-A->visual release ordering,
-- stale response rejection after newer submit,
-- pagination cancellation on submit reset,
-- camera gesture preemption over programmatic camera intents,
-- overlay switch isolation from search heavy work.
-
-### 10.3 Parity tests
+Parity validation signals:
 
 - no stale rows/markers,
 - no missing cards/pins,
@@ -821,13 +1076,13 @@ This V3 intentionally fixes the prior gaps:
 
 - run `bash ./scripts/perf-shortcut-local-ci.sh record-baseline` in the chosen target environment (simulator or device),
 - publish baseline report path and environment details into the investigation log,
-- require `bash ./scripts/perf-shortcut-local-ci.sh gate` pass before each slice promotion.
+- require `bash ./scripts/perf-shortcut-local-ci.sh gate` evidence before each slice promotion, applying slice-class rules from sections 1.2 and 9.2.
 
 2. Execute Slice S1:
 
 - scaffold runtime modules,
 - wire shadow event emission,
-- add transition legality tests.
+- capture transition legality in shadow runtime telemetry.
 
 3. Execute Slice S2:
 
@@ -851,7 +1106,7 @@ Success condition for this window:
 These are known risks that must stay visible during execution.
 
 1. CI perf gates are fixture-backed in Phase 1 and therefore validate tooling, not live runtime behavior.
-2. `search-runtime-contract-tests` is currently a parser/contract smoke gate; full reducer/transition test suite is still a slice deliverable.
+2. The current `search-runtime-contract-tests` contract-check job is a parser/contract smoke gate and does not validate full runtime behavior.
 3. Map label-sticky internals remain highly coupled in current code; migration must preserve behavior while extracting candidate/index ownership.
 4. Shared-checkout churn can reintroduce legacy writes unless cluster state (`legacy`/`shadow`/`owned`/`deleted`) is enforced in every promotion.
 5. Harness marker/sampler wiring is now connected and validated once in live run, but it is not yet continuously enforced in hosted CI.

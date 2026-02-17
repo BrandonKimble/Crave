@@ -61,6 +61,7 @@ export class SearchOrchestrationService {
         openNow: request.openNow,
         pagination: request.pagination,
         includeSqlPreview: request.includeSqlPreview,
+        compactResponse: request.compactResponse,
         priceLevels: request.priceLevels,
         minimumVotes: request.minimumVotes,
         userId: request.userId,
@@ -126,11 +127,13 @@ export class SearchOrchestrationService {
         }),
       );
       response.metadata.sourceQuery = originalQuery;
-      response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
-        response.metadata.analysisMetadata,
-        interpretation.analysisMetadata,
-        interpretation.phaseTimings,
-      );
+      if (!request.compactResponse) {
+        response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
+          response.metadata.analysisMetadata,
+          interpretation.analysisMetadata,
+          interpretation.phaseTimings,
+        );
+      }
       this.logPhaseTimings(response, normalizedQuery.text);
 
       if (this.debugMode !== 'off') {
@@ -205,11 +208,13 @@ export class SearchOrchestrationService {
       }),
     );
     response.metadata.sourceQuery = originalQuery;
-    response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
-      response.metadata.analysisMetadata,
-      interpretation.analysisMetadata,
-      interpretation.phaseTimings,
-    );
+    if (!request.compactResponse) {
+      response.metadata.analysisMetadata = this.mergeAnalysisMetadata(
+        response.metadata.analysisMetadata,
+        interpretation.analysisMetadata,
+        interpretation.phaseTimings,
+      );
+    }
     this.logPhaseTimings(response, normalizedQuery.text);
     if (interpretation.onDemandQueued && !response.metadata.onDemandQueued) {
       response.metadata.onDemandQueued = true;

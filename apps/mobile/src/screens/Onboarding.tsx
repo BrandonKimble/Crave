@@ -17,14 +17,10 @@ import {
 import type { LayoutChangeEvent } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { makeRedirectUri } from 'expo-auth-session';
-import * as AppleAuthentication from 'expo-apple-authentication';
 import type { StackScreenProps } from '@react-navigation/stack';
-import { useAuth } from '@clerk/clerk-expo';
 import { Text, Button } from '../components';
 import EmailAuthModal from '../components/EmailAuthModal';
 import { colors as themeColors } from '../constants/theme';
-import { useClerkOAuth } from '../hooks/useClerkOAuth';
 import { FONT_SIZES, LINE_HEIGHTS } from '../constants/typography';
 import {
   onboardingSteps,
@@ -35,9 +31,10 @@ import {
 import { useOnboardingStore } from '../store/onboardingStore';
 import type { RootStackParamList } from '../types/navigation';
 import { logger } from '../utils';
-import { authService } from '../services/auth';
 import { usersService, type UsernameAvailability } from '../services/users';
-import { getOAuthErrorMessage, serializeOAuthErrorForLog } from '../utils/auth-error';
+import { findAdjacentVisibleStepIndex, getVisibleStepPosition } from './onboarding/runtime/onboarding-step-machine';
+import { useOnboardingAnimationLane } from './onboarding/runtime/use-onboarding-animation-lane';
+import { useOnboardingAuthLane } from './onboarding/runtime/use-onboarding-auth-lane';
 
 type OnboardingProps = StackScreenProps<RootStackParamList, 'Onboarding'>;
 
@@ -247,64 +244,23 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
   const ctaPressScale = React.useRef(new Animated.Value(1)).current;
   const ctaTransitionScale = React.useRef(new Animated.Value(1)).current;
   const [isAnimating, setIsAnimating] = React.useState(false);
-  const auth = useAuth();
-  const { isSignedIn } = auth;
-  const setActiveSession =
-    typeof auth.setActive === 'function'
-      ? (auth.setActive as (params: { session: string }) => Promise<void>)
-      : undefined;
-
-  React.useEffect(() => {
-    if (!auth.isLoaded || !isSignedIn) {
-      return;
-    }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main' }],
-    });
-  }, [auth.isLoaded, isSignedIn, navigation]);
-
+  const { triggerCalendarAnimation } = useOnboardingAnimationLane({
+    calendarAnimation,
+    calendarDayAnims,
+    calendarColorAnims,
+  });
+  const {
+    isSignedIn,
+    oauthStatus,
+    authError,
+    setAuthError,
+    emailModalVisible,
+    setEmailModalVisible,
+    continueWithApple,
+    continueWithGoogle,
+    navigateToMain,
+  } = useOnboardingAuthLane({ navigation });
   const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const appleOAuth = useClerkOAuth('oauth_apple');
-  const googleOAuth = useClerkOAuth('oauth_google');
-  const [oauthStatus, setOauthStatus] = React.useState<'idle' | 'apple' | 'google'>('idle');
-  const [authError, setAuthError] = React.useState<string | null>(null);
-  const [emailModalVisible, setEmailModalVisible] = React.useState(false);
-  const [nativeAppleAvailable, setNativeAppleAvailable] = React.useState(false);
-  const redirectUrl = React.useMemo(
-    () =>
-      makeRedirectUri({
-        path: 'oauth-native-callback',
-      }),
-    []
-  );
-
-  React.useEffect(() => {
-    logger.info('[Auth] Redirect URI', { redirectUrl });
-  }, [redirectUrl]);
-
-  React.useEffect(() => {
-    if (Platform.OS !== 'ios') {
-      setNativeAppleAvailable(false);
-      return;
-    }
-    let cancelled = false;
-    AppleAuthentication.isAvailableAsync()
-      .then((available) => {
-        if (!cancelled) {
-          setNativeAppleAvailable(available);
-        }
-      })
-      .catch((error) => {
-        logger.warn('Unable to determine AppleAuthentication availability', error);
-        if (!cancelled) {
-          setNativeAppleAvailable(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const locationValue = typeof answers.location === 'string' ? answers.location.trim() : '';
   const isLiveCitySelection =
@@ -344,24 +300,24 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const findNextVisibleIndex = React.useCallback(
     (startIndex: number) => {
-      for (let i = startIndex + 1; i < onboardingSteps.length; i += 1) {
-        if (isStepVisible(onboardingSteps[i])) {
-          return i;
-        }
-      }
-      return startIndex;
+      return findAdjacentVisibleStepIndex({
+        startIndex,
+        direction: 'next',
+        steps: onboardingSteps,
+        isVisible: isStepVisible,
+      });
     },
     [isStepVisible]
   );
 
   const findPreviousVisibleIndex = React.useCallback(
     (startIndex: number) => {
-      for (let i = startIndex - 1; i >= 0; i -= 1) {
-        if (isStepVisible(onboardingSteps[i])) {
-          return i;
-        }
-      }
-      return startIndex;
+      return findAdjacentVisibleStepIndex({
+        startIndex,
+        direction: 'previous',
+        steps: onboardingSteps,
+        isVisible: isStepVisible,
+      });
     },
     [isStepVisible]
   );
@@ -383,13 +339,11 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   const getPositionForIndex = React.useCallback(
     (index: number) => {
-      let position = 0;
-      for (let i = 0; i <= index; i += 1) {
-        if (isStepVisible(onboardingSteps[i])) {
-          position += 1;
-        }
-      }
-      return Math.max(1, position);
+      return getVisibleStepPosition({
+        index,
+        steps: onboardingSteps,
+        isVisible: isStepVisible,
+      });
     },
     [isStepVisible]
   );
@@ -411,16 +365,16 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
   }, [currentStepPosition, isAnimating, progress]);
 
-  const goToTabs = React.useCallback(() => {
+  const completeAndEnterApp = React.useCallback(() => {
     completeOnboarding();
-    navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
-  }, [completeOnboarding, navigation]);
+    navigateToMain();
+  }, [completeOnboarding, navigateToMain]);
 
   React.useEffect(() => {
     if (isSignedIn && hasCompletedOnboarding) {
-      goToTabs();
+      completeAndEnterApp();
     }
-  }, [goToTabs, hasCompletedOnboarding, isSignedIn]);
+  }, [completeAndEnterApp, hasCompletedOnboarding, isSignedIn]);
 
   const updateAnswer = React.useCallback((stepId: string, value: AnswerValue) => {
     setAnswers((prev) => ({ ...prev, [stepId]: value }));
@@ -439,112 +393,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
       };
     });
   }, []);
-
-  const handleOAuthPress = React.useCallback(
-    (provider: 'apple' | 'google') => {
-      if (oauthStatus !== 'idle') {
-        return;
-      }
-      const client = provider === 'apple' ? appleOAuth : googleOAuth;
-      if (!client?.startOAuthFlow) {
-        setAuthError('Unable to start that sign-in right now. Please try again.');
-        return;
-      }
-      const run = async () => {
-        try {
-          setAuthError(null);
-          setOauthStatus(provider);
-          const { createdSessionId, sessionId, setActive, authSessionResult } =
-            await client.startOAuthFlow({
-              redirectUrl,
-            });
-          const resolvedSessionId = createdSessionId ?? sessionId;
-          if (!resolvedSessionId) {
-            const resultType =
-              authSessionResult &&
-              typeof authSessionResult === 'object' &&
-              'type' in authSessionResult
-                ? String((authSessionResult as { type?: unknown }).type)
-                : '';
-            if (resultType !== 'cancel' && resultType !== 'dismiss') {
-              setAuthError('Sign-in was not completed. Please try again.');
-            }
-            return;
-          }
-          if (resolvedSessionId && setActive) {
-            await setActive({ session: resolvedSessionId });
-          }
-        } catch (error) {
-          logger.error('OAuth sign-in failed', serializeOAuthErrorForLog(error));
-          setAuthError(getOAuthErrorMessage(error));
-        } finally {
-          setOauthStatus('idle');
-        }
-      };
-      void run();
-    },
-    [appleOAuth, googleOAuth, oauthStatus, redirectUrl, setAuthError]
-  );
-
-  const handleNativeAppleSignIn = React.useCallback(() => {
-    if (oauthStatus !== 'idle') {
-      return;
-    }
-    const run = async () => {
-      try {
-        setAuthError(null);
-        setOauthStatus('apple');
-        const credential = await AppleAuthentication.signInAsync({
-          requestedScopes: [
-            AppleAuthentication.AppleAuthenticationScope.EMAIL,
-            AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
-          ],
-        });
-        if (!credential.identityToken || !credential.authorizationCode) {
-          throw new Error('Apple did not return the required tokens.');
-        }
-        const result = await authService.signInWithAppleNative({
-          identityToken: credential.identityToken,
-          authorizationCode: credential.authorizationCode,
-          email: credential.email ?? undefined,
-          givenName: credential.fullName?.givenName ?? undefined,
-          familyName: credential.fullName?.familyName ?? undefined,
-        });
-        if (!result.sessionId) {
-          throw new Error('Native Apple sign-in was not completed.');
-        }
-        if (setActiveSession) {
-          await setActiveSession({ session: result.sessionId });
-        }
-      } catch (error) {
-        if (error && typeof error === 'object' && 'code' in error) {
-          const typedError = error as { code?: string; message?: string };
-          if (typedError.code === 'ERR_CANCELED') {
-            setAuthError(null);
-            setOauthStatus('idle');
-            return;
-          }
-        }
-        logger.error('Native Apple sign-in failed', error);
-        const message =
-          error instanceof Error
-            ? error.message
-            : 'We were unable to sign you in with Apple. Please try again.';
-        setAuthError(message);
-      } finally {
-        setOauthStatus('idle');
-      }
-    };
-    void run();
-  }, [oauthStatus, setActiveSession, setAuthError, setOauthStatus]);
-
-  const handleApplePress = React.useCallback(() => {
-    if (nativeAppleAvailable) {
-      handleNativeAppleSignIn();
-      return;
-    }
-    handleOAuthPress('apple');
-  }, [handleNativeAppleSignIn, handleOAuthPress, nativeAppleAvailable]);
 
   const openEmailModal = React.useCallback(() => {
     setAuthError(null);
@@ -632,64 +480,6 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     const { width } = event.nativeEvent.layout;
     setGraphTrackWidth((prev) => (Math.abs(prev - width) < 1 ? prev : width));
   }, []);
-
-  const startCalendarAnimation = React.useCallback(() => {
-    if (calendarDayAnims.length === 0) {
-      for (let i = 0; i < 60; i++) {
-        calendarDayAnims.push(new Animated.Value(0));
-        calendarColorAnims.push(new Animated.Value(0));
-      }
-    }
-    calendarAnimation.current?.stop();
-    calendarAnimation.current = null;
-    calendarDayAnims.forEach((anim) => anim.setValue(0));
-    calendarColorAnims.forEach((anim) => anim.setValue(0));
-
-    const firstDayAnims = calendarDayAnims.slice(0, 30);
-    const secondDayAnims = calendarDayAnims.slice(30);
-    const firstColorAnims = calendarColorAnims.slice(0, 30);
-    const secondColorAnims = calendarColorAnims.slice(30);
-    const createAppear = (animations: Animated.Value[]) =>
-      Animated.stagger(
-        10,
-        animations.map((anim) =>
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 110,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: false,
-          })
-        )
-      );
-    const createColor = (animations: Animated.Value[]) =>
-      Animated.stagger(
-        25,
-        animations.map((anim) =>
-          Animated.timing(anim, {
-            toValue: 1,
-            duration: 240,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: false,
-          })
-        )
-      );
-
-    const animationSequence = Animated.sequence([
-      createAppear(firstDayAnims),
-      Animated.delay(40),
-      createColor(firstColorAnims),
-      Animated.delay(140),
-      createAppear(secondDayAnims),
-      Animated.delay(40),
-      createColor(secondColorAnims),
-    ]);
-    calendarAnimation.current = animationSequence;
-    requestAnimationFrame(() => {
-      calendarAnimation.current?.start(() => {
-        calendarAnimation.current = null;
-      });
-    });
-  }, [calendarColorAnims, calendarDayAnims]);
 
   const currencyFormatter = React.useMemo(
     () =>
@@ -839,13 +629,13 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
 
   React.useEffect(() => {
     if (activeStep.id === 'calendar-graph') {
-      startCalendarAnimation();
+      triggerCalendarAnimation();
     }
     return () => {
       calendarAnimation.current?.stop();
       calendarAnimation.current = null;
     };
-  }, [activeStep.id, startCalendarAnimation]);
+  }, [activeStep.id, calendarAnimation, triggerCalendarAnimation]);
 
   const isStepComplete = React.useMemo(() => {
     switch (activeStep.type) {
@@ -1452,7 +1242,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
         <View style={styles.accountButtons}>
           <Pressable
             style={styles.accountButton}
-            onPress={handleApplePress}
+            onPress={continueWithApple}
             disabled={oauthStatus !== 'idle'}
           >
             <Text variant="body" weight="semibold" style={styles.accountButtonText}>
@@ -1461,7 +1251,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           </Pressable>
           <Pressable
             style={styles.accountButton}
-            onPress={() => handleOAuthPress('google')}
+            onPress={continueWithGoogle}
             disabled={oauthStatus !== 'idle'}
           >
             <Text variant="body" weight="semibold" style={styles.accountButtonText}>
@@ -2171,7 +1961,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     return <View style={containerStyle}>{body}</View>;
   };
 
-  const transitionToStep = React.useCallback(
+  const animateToStepIndex = React.useCallback(
     (nextIndex: number) => {
       if (nextIndex === stepIndex || isAnimating) {
         return;
@@ -2237,7 +2027,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     [activeStep.type, isSignedIn]
   );
 
-  const handleUsernameSubmit = React.useCallback(async () => {
+  const submitUsernameStep = React.useCallback(async () => {
     if (!isSignedIn) {
       setUsernameError('Please sign in to claim a username.');
       return false;
@@ -2279,7 +2069,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
   }, [getUsernameStatusCopy, isSignedIn, usernameNormalized, usernameStatus]);
 
-  const handleContinue = React.useCallback(() => {
+  const continueOnboardingFlow = React.useCallback(() => {
     if (requiresAuthToAdvance) {
       setAuthError('Please sign in to keep going.');
       setEmailModalVisible(true);
@@ -2287,17 +2077,17 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     }
     if (activeStep.type === 'username') {
       void (async () => {
-        const ok = await handleUsernameSubmit();
+        const ok = await submitUsernameStep();
         if (!ok) {
           return;
         }
         const nextIndex = findNextVisibleIndex(stepIndex);
         if (nextIndex === stepIndex) {
           logger.info('Onboarding preferences', answers);
-          goToTabs();
+          completeAndEnterApp();
           return;
         }
-        transitionToStep(nextIndex);
+        animateToStepIndex(nextIndex);
       })();
       return;
     }
@@ -2305,29 +2095,29 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
     const nextIndex = findNextVisibleIndex(stepIndex);
     if (nextIndex === stepIndex) {
       logger.info('Onboarding preferences', answers);
-      goToTabs();
+      completeAndEnterApp();
       return;
     }
-    transitionToStep(nextIndex);
+    animateToStepIndex(nextIndex);
   }, [
     answers,
     activeStep.type,
     findNextVisibleIndex,
-    goToTabs,
-    handleUsernameSubmit,
+    completeAndEnterApp,
+    submitUsernameStep,
     requiresAuthToAdvance,
     setEmailModalVisible,
     stepIndex,
-    transitionToStep,
+    animateToStepIndex,
   ]);
 
-  const handleBack = React.useCallback(() => {
+  const goBackStep = React.useCallback(() => {
     const previousIndex = findPreviousVisibleIndex(stepIndex);
     if (previousIndex === stepIndex) {
       return;
     }
-    transitionToStep(previousIndex);
-  }, [findPreviousVisibleIndex, stepIndex, transitionToStep]);
+    animateToStepIndex(previousIndex);
+  }, [findPreviousVisibleIndex, stepIndex, animateToStepIndex]);
 
   const canContinue = isStepComplete && (activeStep.type === 'processing' ? processingReady : true);
   const isCTAInteractionDisabled = !canContinue || isAnimating;
@@ -2444,7 +2234,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
           <View style={styles.ctaRow}>
             <Pressable
               style={[styles.backButton, styles.ctaBackButton]}
-              onPress={handleBack}
+              onPress={goBackStep}
               disabled={!canGoBack || isAnimating}
               accessibilityRole="button"
               accessibilityLabel="Go back"
@@ -2464,7 +2254,7 @@ const OnboardingScreen: React.FC<OnboardingProps> = ({ navigation }) => {
             >
               <Button
                 label={continueLabel}
-                onPress={handleContinue}
+                onPress={continueOnboardingFlow}
                 onPressIn={handleCTAPressIn}
                 onPressOut={handleCTAPressOut}
                 disabled={isCTAInteractionDisabled}

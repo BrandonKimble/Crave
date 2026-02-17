@@ -1,7 +1,6 @@
 import React from 'react';
 import { Image, StyleSheet, View } from 'react-native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { useAuth } from '@clerk/clerk-expo';
 import {
   SearchScreen,
   ProfileScreen,
@@ -12,32 +11,15 @@ import {
   RecentlyViewedScreen,
 } from '../screens';
 import type { RootStackParamList } from '../types/navigation';
-import { useOnboardingStore } from '../store/onboardingStore';
+import { useNavigationBootstrapRuntime } from './runtime/use-navigation-bootstrap-runtime';
 import splashImage from '../assets/splash.png';
 
 const Stack = createStackNavigator<RootStackParamList>();
 
 const RootNavigator: React.FC = () => {
-  const hasCompletedOnboarding = useOnboardingStore((state) => state.hasCompletedOnboarding);
-  const { isLoaded, isSignedIn } = useAuth();
-  const [isHydrated, setIsHydrated] = React.useState(() =>
-    useOnboardingStore.persist.hasHydrated()
-  );
+  const { isReady, hasCompletedOnboarding, isSignedIn } = useNavigationBootstrapRuntime();
 
-  React.useEffect(() => {
-    if (useOnboardingStore.persist.hasHydrated()) {
-      setIsHydrated(true);
-      return;
-    }
-    const unsub = useOnboardingStore.persist.onFinishHydration(() => {
-      setIsHydrated(true);
-    });
-    return () => {
-      unsub();
-    };
-  }, []);
-
-  if (!isHydrated || !isLoaded) {
+  if (!isReady) {
     return (
       <View style={styles.loadingContainer}>
         <Image source={splashImage} style={styles.loadingImage} resizeMode="contain" />

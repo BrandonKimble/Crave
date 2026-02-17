@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  InteractionManager,
   View,
   TextInput,
   TouchableOpacity,
@@ -10,16 +9,12 @@ import {
   Alert,
   Dimensions,
 } from 'react-native';
-import { io, Socket } from 'socket.io-client';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Plus } from 'lucide-react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { Text } from '../../components';
-import { fetchPolls, voteOnPoll, addPollOption, Poll, PollTopicType } from '../../services/polls';
-import { resolveCoverage } from '../../services/coverage';
-import { API_BASE_URL } from '../../services/api';
-import { logger } from '../../utils';
-import { autocompleteService, type AutocompleteMatch } from '../../services/autocomplete';
+import type { AutocompleteMatch } from '../../services/autocomplete';
+import type { Poll, PollTopicType } from '../../services/polls';
 import { useCityStore } from '../../store/cityStore';
 import { useSystemStatusStore } from '../../store/systemStatusStore';
 import { colors as themeColors } from '../../constants/theme';
@@ -37,6 +32,8 @@ import type { SnapPoints } from '../BottomSheetWithFlashList';
 import { calculateSnapPoints } from '../sheetUtils';
 import OverlayHeaderActionButton from '../OverlayHeaderActionButton';
 import OverlaySheetHeaderChrome from '../OverlaySheetHeaderChrome';
+import { usePollsAutocompleteOwner } from './runtime/polls-autocomplete-owner';
+import { usePollsRuntimeController } from './runtime/polls-runtime-controller';
 import { CONTROL_HEIGHT, CONTROL_RADIUS } from '../../screens/Search/constants/ui';
 import { NAV_BOTTOM_PADDING, NAV_TOP_PADDING } from '../../screens/Search/constants/search';
 import type { MapBounds } from '../../types';
@@ -126,21 +123,12 @@ export const usePollsPanelSpec = ({
   const [dishQuery, setDishQuery] = useState('');
   const [restaurantSelection, setRestaurantSelection] = useState<AutocompleteMatch | null>(null);
   const [dishSelection, setDishSelection] = useState<AutocompleteMatch | null>(null);
-  const [restaurantSuggestions, setRestaurantSuggestions] = useState<AutocompleteMatch[]>([]);
-  const [dishSuggestions, setDishSuggestions] = useState<AutocompleteMatch[]>([]);
-  const [showRestaurantSuggestions, setShowRestaurantSuggestions] = useState(false);
-  const [showDishSuggestions, setShowDishSuggestions] = useState(false);
-  const [restaurantLoading, setRestaurantLoading] = useState(false);
-  const [dishLoading, setDishLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const snapRequestTokenRef = useRef(0);
   const [snapRequest, setSnapRequest] = useState<{
     snap: OverlaySheetSnap;
     token: number;
   } | null>(null);
-  const socketRef = useRef<Socket | null>(null);
-  const pendingPollIdRef = useRef<string | null>(null);
-  const lastResolvedCoverageKeyRef = useRef<string | null>(null);
   const activeSnapRequest = snapTo ?? snapRequest?.snap ?? null;
   const activeSnapRequestToken = snapTo ? snapToToken : snapRequest?.token;
 
@@ -187,333 +175,50 @@ export const usePollsPanelSpec = ({
     : 'Polls near here';
   const isLiveActive = polls.length > 0;
 
-  const loadPolls = useCallback(
-    async (options?: {
-      focusPollId?: string | null;
-      skipSpinner?: boolean;
-      coverageKeyOverride?: string | null;
-    }) => {
-      const skipSpinner = options?.skipSpinner ?? false;
-      const focusPollId = options?.focusPollId ?? null;
-      const coverageKeyOverride = options?.coverageKeyOverride ?? null;
+  const { castVote, submitPollOption } = usePollsRuntimeController({
+    visible,
+    bounds,
+    coverageOverride,
+    selectedPollId,
+    setSelectedPollId,
+    setPolls,
+    setCoverageKey,
+    setCoverageName,
+    setLoading,
+    setPersistedCity,
+    isSystemUnavailable,
+    pollIdParam: params?.pollId,
+    interactionRef,
+  });
 
-      if (!skipSpinner) {
-        setLoading(true);
-      }
-
-      const resolvedCoverageKey = coverageKeyOverride ?? coverageOverride ?? null;
-      const payload = resolvedCoverageKey
-        ? { coverageKey: resolvedCoverageKey }
-        : bounds
-        ? { bounds }
-        : null;
-
-      if (!payload) {
-        if (!skipSpinner) {
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const response = await fetchPolls(payload);
-        const normalizedPolls = response.polls ?? [];
-        const nextCoverageKey = response.coverageKey ?? resolvedCoverageKey ?? null;
-        const normalizedKey =
-          typeof nextCoverageKey === 'string' ? nextCoverageKey.trim().toLowerCase() : null;
-        if (normalizedKey) {
-          lastResolvedCoverageKeyRef.current = normalizedKey;
-        }
-        const nextCoverageName = response.coverageName ?? normalizedPolls[0]?.coverageName ?? null;
-
-        setPolls(normalizedPolls);
-        setCoverageKey(nextCoverageKey);
-        setCoverageName(nextCoverageName);
-        if (nextCoverageKey && !coverageOverride) {
-          setPersistedCity(nextCoverageKey);
-        }
-
-        if (!normalizedPolls.length) {
-          setSelectedPollId(null);
-          return;
-        }
-
-        const hasCurrentSelection =
-          selectedPollId && normalizedPolls.some((poll) => poll.pollId === selectedPollId);
-        let nextSelection: string | null = null;
-
-        if (focusPollId && normalizedPolls.some((poll) => poll.pollId === focusPollId)) {
-          nextSelection = focusPollId;
-        } else if (
-          pendingPollIdRef.current &&
-          normalizedPolls.some((poll) => poll.pollId === pendingPollIdRef.current)
-        ) {
-          nextSelection = pendingPollIdRef.current;
-        } else if (hasCurrentSelection) {
-          nextSelection = selectedPollId;
-        } else {
-          nextSelection = normalizedPolls[0].pollId;
-        }
-
-        if (nextSelection) {
-          setSelectedPollId(nextSelection);
-          if (pendingPollIdRef.current === nextSelection) {
-            pendingPollIdRef.current = null;
-          }
-        } else {
-          setSelectedPollId(null);
-        }
-      } catch (error) {
-        logger.error('Failed to load polls', error);
-      } finally {
-        if (!skipSpinner) {
-          setLoading(false);
-        }
-      }
-    },
-    [bounds, coverageOverride, selectedPollId, setPersistedCity]
-  );
-
-  useEffect(() => {
-    if (!visible || isSystemUnavailable || !coverageOverride) {
-      return;
-    }
-    void loadPolls({ coverageKeyOverride: coverageOverride });
-  }, [coverageOverride, isSystemUnavailable, loadPolls, visible]);
-
-  useEffect(() => {
-    if (!visible || isSystemUnavailable || coverageOverride) {
-      return;
-    }
-    if (!bounds) {
-      return;
-    }
-    let isActive = true;
-    resolveCoverage(bounds)
-      .then((response) => {
-        if (!isActive) {
-          return;
-        }
-        const nextKey =
-          typeof response.coverageKey === 'string' ? response.coverageKey.trim().toLowerCase() : '';
-        const nextName =
-          typeof response.coverageName === 'string' && response.coverageName.trim()
-            ? response.coverageName.trim()
-            : null;
-        if (!nextKey) {
-          setLoading(true);
-          lastResolvedCoverageKeyRef.current = null;
-          setCoverageName(null);
-          setCoverageKey(null);
-          setPolls([]);
-          setSelectedPollId(null);
-          void loadPolls();
-          return;
-        }
-        if (lastResolvedCoverageKeyRef.current === nextKey) {
-          if (nextName) {
-            setCoverageName(nextName);
-          }
-          return;
-        }
-        lastResolvedCoverageKeyRef.current = nextKey;
-        setCoverageKey(nextKey);
-        setCoverageName(nextName);
-        void loadPolls({ coverageKeyOverride: nextKey });
-      })
-      .catch((error) => {
-        logger.warn('Coverage resolve failed', {
-          message: error instanceof Error ? error.message : 'unknown',
-        });
-      });
-    return () => {
-      isActive = false;
-    };
-  }, [bounds, coverageOverride, isSystemUnavailable, loadPolls, visible]);
-
-  useEffect(() => {
-    if (!params?.pollId) {
-      return;
-    }
-    pendingPollIdRef.current = params.pollId;
-    if (!visible || isSystemUnavailable) {
-      return;
-    }
-    void loadPolls({ focusPollId: params.pollId });
-  }, [isSystemUnavailable, loadPolls, params?.pollId, visible]);
+  const {
+    restaurantSuggestions,
+    dishSuggestions,
+    showRestaurantSuggestions,
+    showDishSuggestions,
+    restaurantLoading,
+    dishLoading,
+    hideRestaurantSuggestions,
+    hideDishSuggestions,
+  } = usePollsAutocompleteOwner({
+    activePoll,
+    needsRestaurantInput,
+    needsDishInput,
+    restaurantQuery,
+    dishQuery,
+    interactionRef,
+  });
 
   useEffect(() => {
     setRestaurantQuery('');
     setDishQuery('');
     setRestaurantSelection(null);
     setDishSelection(null);
-    setShowRestaurantSuggestions(false);
-    setShowDishSuggestions(false);
-  }, [selectedPollId]);
+    hideRestaurantSuggestions();
+    hideDishSuggestions();
+  }, [hideDishSuggestions, hideRestaurantSuggestions, selectedPollId]);
 
-  useEffect(() => {
-    if (!visible) {
-      return;
-    }
-    const baseUrl = typeof API_BASE_URL === 'string' ? API_BASE_URL : '';
-    if (!baseUrl) {
-      return;
-    }
-    const base = baseUrl.replace(/\/api(?:\/v\d+)?$/, '');
-    socketRef.current = io(`${base}/polls`, {
-      transports: ['websocket'],
-    });
-    const socketTaskRef: {
-      current: ReturnType<typeof InteractionManager.runAfterInteractions> | null;
-    } = { current: null };
-
-    const handleSocketUpdate = () => {
-      if (interactionRef?.current.isInteracting) {
-        if (socketTaskRef.current) {
-          return;
-        }
-        socketTaskRef.current = InteractionManager.runAfterInteractions(() => {
-          socketTaskRef.current = null;
-          if (!visible) {
-            return;
-          }
-          void loadPolls({ skipSpinner: true });
-        });
-        return;
-      }
-
-      void loadPolls({ skipSpinner: true });
-    };
-
-    socketRef.current.on('poll:update', handleSocketUpdate);
-    return () => {
-      socketRef.current?.disconnect();
-      socketTaskRef.current?.cancel();
-    };
-  }, [interactionRef, loadPolls, visible]);
-
-  useEffect(() => {
-    if (!activePoll || !needsRestaurantInput) {
-      setShowRestaurantSuggestions(false);
-      setRestaurantSuggestions([]);
-      setRestaurantLoading(false);
-      return;
-    }
-    const trimmed = restaurantQuery.trim();
-    if (trimmed.length < 2) {
-      setShowRestaurantSuggestions(false);
-      setRestaurantSuggestions([]);
-      setRestaurantLoading(false);
-      return;
-    }
-
-    if (interactionRef?.current.isInteracting) {
-      return;
-    }
-
-    let isActive = true;
-    setRestaurantLoading(true);
-    const handle = setTimeout(() => {
-      autocompleteService
-        .fetchEntities(trimmed, { entityType: 'restaurant' })
-        .then((response) => {
-          if (!isActive) {
-            return;
-          }
-          const matches = response.matches.filter((match) => match.entityType === 'restaurant');
-          setRestaurantSuggestions(matches);
-          setShowRestaurantSuggestions(matches.length > 0);
-        })
-        .catch((error) => {
-          if (!isActive) {
-            return;
-          }
-          logger.warn('Restaurant autocomplete failed', {
-            message: error instanceof Error ? error.message : 'unknown',
-          });
-          setRestaurantSuggestions([]);
-          setShowRestaurantSuggestions(false);
-        })
-        .finally(() => {
-          if (!isActive) {
-            return;
-          }
-          setRestaurantLoading(false);
-        });
-    }, 250);
-
-    return () => {
-      isActive = false;
-      clearTimeout(handle);
-    };
-  }, [activePoll, interactionRef, needsRestaurantInput, restaurantQuery]);
-
-  useEffect(() => {
-    if (!activePoll || !needsDishInput) {
-      setShowDishSuggestions(false);
-      setDishSuggestions([]);
-      setDishLoading(false);
-      return;
-    }
-    const trimmed = dishQuery.trim();
-    if (trimmed.length < 2) {
-      setShowDishSuggestions(false);
-      setDishSuggestions([]);
-      setDishLoading(false);
-      return;
-    }
-
-    if (interactionRef?.current.isInteracting) {
-      return;
-    }
-
-    let isActive = true;
-    setDishLoading(true);
-    const handle = setTimeout(() => {
-      autocompleteService
-        .fetchEntities(trimmed, { entityType: 'food' })
-        .then((response) => {
-          if (!isActive) {
-            return;
-          }
-          const matches = response.matches.filter((match) => match.entityType === 'food');
-          setDishSuggestions(matches);
-          setShowDishSuggestions(matches.length > 0);
-        })
-        .catch((error) => {
-          if (!isActive) {
-            return;
-          }
-          logger.warn('Dish autocomplete failed', {
-            message: error instanceof Error ? error.message : 'unknown',
-          });
-          setDishSuggestions([]);
-          setShowDishSuggestions(false);
-        })
-        .finally(() => {
-          if (!isActive) {
-            return;
-          }
-          setDishLoading(false);
-        });
-    }, 250);
-
-    return () => {
-      isActive = false;
-      clearTimeout(handle);
-    };
-  }, [activePoll, dishQuery, interactionRef, needsDishInput]);
-
-  const handleVote = async (pollId: string, optionId: string) => {
-    try {
-      await voteOnPoll(pollId, { optionId });
-      await loadPolls();
-    } catch (error) {
-      logger.error('Vote failed', error);
-    }
-  };
-
-  const handleAddOption = async () => {
+  const submitOptionFromPanel = useCallback(async () => {
     if (!selectedPollId || !activePoll) {
       return;
     }
@@ -570,31 +275,41 @@ export const usePollsPanelSpec = ({
       }
     }
 
-    try {
-      await addPollOption(selectedPollId, payload);
-      setRestaurantQuery('');
-      setDishQuery('');
-      setRestaurantSelection(null);
-      setDishSelection(null);
-      setShowRestaurantSuggestions(false);
-      setShowDishSuggestions(false);
-      await loadPolls({ focusPollId: selectedPollId });
-    } catch (error) {
-      logger.error('Failed to add poll option', error);
-    }
-  };
+    await submitPollOption(selectedPollId, payload);
+    setRestaurantQuery('');
+    setDishQuery('');
+    setRestaurantSelection(null);
+    setDishSelection(null);
+    hideRestaurantSuggestions();
+    hideDishSuggestions();
+  }, [
+    activePoll,
+    activePollType,
+    dishQuery,
+    dishSelection?.entityId,
+    dishSelection?.name,
+    hideDishSuggestions,
+    hideRestaurantSuggestions,
+    needsDishInput,
+    needsRestaurantInput,
+    restaurantQuery,
+    restaurantSelection?.entityId,
+    restaurantSelection?.name,
+    selectedPollId,
+    submitPollOption,
+  ]);
 
-  const handleRestaurantSuggestionPress = useCallback((match: AutocompleteMatch) => {
+  const onRestaurantSuggestionPick = useCallback((match: AutocompleteMatch) => {
     setRestaurantQuery(match.name);
     setRestaurantSelection(match);
-    setShowRestaurantSuggestions(false);
-  }, []);
+    hideRestaurantSuggestions();
+  }, [hideRestaurantSuggestions]);
 
-  const handleDishSuggestionPress = useCallback((match: AutocompleteMatch) => {
+  const onDishSuggestionPick = useCallback((match: AutocompleteMatch) => {
     setDishQuery(match.name);
     setDishSelection(match);
-    setShowDishSuggestions(false);
-  }, []);
+    hideDishSuggestions();
+  }, [hideDishSuggestions]);
 
   const renderSuggestionList = (
     loading: boolean,
@@ -826,7 +541,9 @@ export const usePollsPanelSpec = ({
           <TouchableOpacity
             key={option.optionId}
             style={styles.optionBarWrapper}
-            onPress={() => handleVote(activePoll.pollId, option.optionId)}
+            onPress={() => {
+              void castVote(activePoll.pollId, option.optionId);
+            }}
           >
             <View style={styles.optionBarTrack}>
               <View
@@ -876,7 +593,7 @@ export const usePollsPanelSpec = ({
                 restaurantLoading,
                 restaurantSuggestions,
                 'Keep typing to add a restaurant',
-                handleRestaurantSuggestionPress
+                onRestaurantSuggestionPick
               )}
           </View>
         ) : null}
@@ -900,11 +617,16 @@ export const usePollsPanelSpec = ({
                 dishLoading,
                 dishSuggestions,
                 'Keep typing to add a dish',
-                handleDishSuggestionPress
+                onDishSuggestionPick
               )}
           </View>
         ) : null}
-        <TouchableOpacity onPress={handleAddOption} style={styles.submitButton}>
+        <TouchableOpacity
+          onPress={() => {
+            void submitOptionFromPanel();
+          }}
+          style={styles.submitButton}
+        >
           <Text variant="body" weight="semibold" style={styles.submitButtonText}>
             Submit option
           </Text>

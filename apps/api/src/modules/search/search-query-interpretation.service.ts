@@ -617,6 +617,7 @@ export class SearchQueryInterpretationService {
       openNow: request.openNow,
       pagination: request.pagination,
       includeSqlPreview: request.includeSqlPreview,
+      compactResponse: request.compactResponse,
       priceLevels: request.priceLevels,
       minimumVotes: request.minimumVotes,
       sourceQuery: request.query,

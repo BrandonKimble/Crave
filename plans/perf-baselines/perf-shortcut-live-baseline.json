@@ -10,14 +10,14 @@
     "uiStallMaxMean": "Mean of per-run maximum stallLongestMs across scoped [SearchPerf][UiFrameSampler] window events.",
     "uiStallP95": "P95 of scoped [SearchPerf][UiFrameSampler] window stallLongestMs values."
   },
-  "harnessRunId": "shortcut-loop-local-baseline-20260213T043532Z",
+  "harnessRunId": "shortcut-loop-local-baseline-20260213T172428Z",
   "harnessScenario": "search_shortcut_loop",
-  "harnessSignatureRaw": "enabled:1|scenario:search_shortcut_loop|runId:shortcut-loop-local-baseline-20260213T043532Z|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|sampler:1|window:120|stall:80|fps:240|uiSampler:1|uiWindow:120|uiStall:80|uiFps:240",
-  "harnessSignatureStable": "enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|sampler:1|window:120|stall:80|fps:240|uiSampler:1|uiWindow:120|uiStall:80|uiFps:240",
+  "harnessSignatureRaw": "enabled:1|scenario:search_shortcut_loop|runId:shortcut-loop-local-baseline-20260213T172428Z|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:120|stall:80|fps:240|uiSampler:1|uiWindow:120|uiStall:80|uiFps:240",
+  "harnessSignatureStable": "enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:120|stall:80|fps:240|uiSampler:1|uiWindow:120|uiStall:80|uiFps:240",
   "harnessSignatureParts": {
     "enabled": "1",
     "scenario": "search_shortcut_loop",
-    "runId": "shortcut-loop-local-baseline-20260213T043532Z",
+    "runId": "shortcut-loop-local-baseline-20260213T172428Z",
     "runs": "3",
     "start": "3000",
     "cooldown": "1800",
@@ -26,6 +26,7 @@
     "score": "coverage_display",
     "preserve": "0",
     "dock": "1",
+    "settleBoundary": "shadow_converged_or_quiet_snapshot",
     "sampler": "1",
     "window": "120",
     "stall": "80",
@@ -44,13 +45,21 @@
     "runtimeTarget": "simulator",
     "runtimeDeviceDescriptor": "iPhone 16e (B1A80340-D8E2-4C31-8A0D-25D26E6B12FB) com.apple.CoreSimulator.SimRuntime.iOS-26-2"
   },
-  "generatedAt": "2026-02-13T05:14:05.818Z",
-  "sourceLogPath": "/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-live-baseline-20260213T043532Z.log",
+  "generatedAt": "2026-02-13T17:25:16.872Z",
+  "sourceLogPath": "/Users/brandonkimble/crave-search/plans/perf-logs/perf-shortcut-live-baseline-20260213T172428Z.log",
   "markerIntegrity": {
-    "harnessRunId": "shortcut-loop-local-baseline-20260213T043532Z",
+    "harnessRunId": "shortcut-loop-local-baseline-20260213T172428Z",
     "expectedRuns": 3,
-    "startedRuns": [1, 2, 3],
-    "completedRuns": [1, 2, 3],
+    "startedRuns": [
+      1,
+      2,
+      3
+    ],
+    "completedRuns": [
+      1,
+      2,
+      3
+    ],
     "hasLoopCompleteMarker": true,
     "complete": true
   },
@@ -60,55 +69,59 @@
   "runMetrics": [
     {
       "runNumber": 1,
-      "startMs": 99506400.9,
-      "endMs": 99508570.3,
-      "floorMin": 0.6,
-      "stallLongestMax": 1645.1,
-      "catastrophicWindowCount": 1,
-      "uiFloorMin": 11.7,
-      "uiStallLongestMax": 85.5,
+      "startMs": 145644671.5,
+      "endMs": 145647023.2,
+      "floorMin": 0.8,
+      "stallLongestMax": 1215.1,
+      "catastrophicWindowCount": 2,
+      "uiFloorMin": 10,
+      "uiStallLongestMax": 100,
       "uiCatastrophicWindowCount": 0,
-      "durationMs": 2169.4,
+      "durationMs": 2351.7,
       "finalStage": "results_list_ramp"
     },
     {
       "runNumber": 2,
-      "startMs": 99510386.8,
-      "endMs": 99512494.9,
-      "floorMin": 1.1,
-      "stallLongestMax": 881.2,
-      "catastrophicWindowCount": 3,
-      "uiFloorMin": 7.7,
-      "uiStallLongestMax": 129.4,
+      "startMs": 145648838.2,
+      "endMs": 145650695.8,
+      "floorMin": 0.7,
+      "stallLongestMax": 1468.4,
+      "catastrophicWindowCount": 2,
+      "uiFloorMin": 9.6,
+      "uiStallLongestMax": 104.4,
       "uiCatastrophicWindowCount": 0,
-      "durationMs": 2108.1,
+      "durationMs": 1857.6,
       "finalStage": "results_list_ramp"
     },
     {
       "runNumber": 3,
-      "startMs": 99514303.6,
-      "endMs": 99516311.1,
-      "floorMin": 0.6,
-      "stallLongestMax": 1606.2,
+      "startMs": 145652505,
+      "endMs": 145654323.7,
+      "floorMin": 0.7,
+      "stallLongestMax": 1434.6,
       "catastrophicWindowCount": 2,
-      "uiFloorMin": 9.6,
-      "uiStallLongestMax": 104.5,
+      "uiFloorMin": 9.8,
+      "uiStallLongestMax": 101.8,
       "uiCatastrophicWindowCount": 0,
-      "durationMs": 2007.5,
+      "durationMs": 1818.7,
       "finalStage": "results_list_ramp"
     }
   ],
-  "floorMean": 0.7666666666666667,
-  "floorMin": 0.6,
-  "stallP95": 1631.4850000000001,
-  "stallMaxMean": 1377.5,
-  "uiFloorMean": 9.666666666666666,
-  "uiFloorMin": 7.7,
-  "uiStallP95": 101.46999999999998,
-  "uiStallMaxMean": 106.46666666666665,
+  "floorMean": 0.7333333333333334,
+  "floorMin": 0.7,
+  "stallP95": 1456.57,
+  "stallMaxMean": 1372.7,
+  "uiFloorMean": 9.8,
+  "uiFloorMin": 9.6,
+  "uiStallP95": 101.71,
+  "uiStallMaxMean": 102.06666666666666,
   "catastrophic": {
     "thresholdMs": 300,
-    "runNumbers": [1, 2, 3],
+    "runNumbers": [
+      1,
+      2,
+      3
+    ],
     "runCount": 3,
     "windowCount": 6
   },
@@ -122,21 +135,19 @@
     "byStageWindowCount": {
       "results_list_materialization": 1,
       "marker_reveal_state": 3,
-      "results_list_ramp": 3,
-      "visual_sync_state": 1
+      "results_list_ramp": 4
     },
     "byStageCatastrophicWindowCount": {
-      "results_list_ramp": 3,
-      "marker_reveal_state": 2,
-      "visual_sync_state": 1
+      "results_list_ramp": 4,
+      "marker_reveal_state": 2
     }
   },
   "uiStageHistogram": {
     "byStageWindowCount": {
       "results_list_materialization": 4,
       "marker_reveal_state": 7,
-      "visual_sync_state": 9,
-      "results_list_ramp": 23
+      "visual_sync_state": 6,
+      "results_list_ramp": 25
     },
     "byStageCatastrophicWindowCount": {}
   },

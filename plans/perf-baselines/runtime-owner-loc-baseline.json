@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "runtime-owner-loc-baseline.v1",
+  "generatedAt": "2026-02-13T19:00:00Z",
+  "description": "Locked LOC baseline for S6 transition guard.",
+  "enforcedSliceIds": ["S6"],
+  "minAggregateDelta": -1,
+  "sliceOverrides": {
+    "S6": {
+      "minAggregateDelta": 450,
+      "targets": {
+        "search_index_root": {
+          "maxDelta": 80
+        },
+        "search_runtime_cluster": {
+          "maxDelta": 400
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "id": "search_index_root",
+      "path": "apps/mobile/src/screens/Search/index.tsx",
+      "kind": "file",
+      "baselineLoc": 10634,
+      "maxDelta": 0
+    },
+    {
+      "id": "search_submit_hook",
+      "path": "apps/mobile/src/screens/Search/hooks/use-search-submit.ts",
+      "kind": "file",
+      "baselineLoc": 1847,
+      "maxDelta": 0
+    },
+    {
+      "id": "search_runtime_cluster",
+      "path": "apps/mobile/src/screens/Search/runtime",
+      "kind": "directory",
+      "extensions": [".ts", ".tsx"],
+      "baselineLoc": 714,
+      "maxDelta": 0
+    }
+  ],
+  "aggregate": {
+    "baselineLoc": 13195
+  }
+}

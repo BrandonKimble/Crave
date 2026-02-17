@@ -292,7 +292,17 @@ if (baselineStallP95 == null) {
 if (candidateStallP95 == null) {
   failures.push('Candidate stallP95 is missing.');
 }
-const stallRegressionPct = toPercentDelta(baselineStallP95, candidateStallP95);
+let stallRegressionPct = toPercentDelta(baselineStallP95, candidateStallP95);
+if (baselineStallP95 != null && baselineStallP95 <= 0 && candidateStallP95 != null) {
+  if (candidateStallP95 > 0) {
+    failures.push(
+      `Baseline stallP95=${baselineStallP95} is too low for percentage regression comparison; refresh baseline before gating.`
+    );
+    stallRegressionPct = null;
+  } else {
+    stallRegressionPct = 0;
+  }
+}
 if (stallRegressionPct != null && stallRegressionPct > stallP95MaxRegressionPct) {
   const formatted = Number.isFinite(stallRegressionPct)
     ? `${stallRegressionPct.toFixed(2)}%`
@@ -326,7 +336,17 @@ if (baselineUiStallP95 == null) {
 if (candidateUiStallP95 == null) {
   failures.push('Candidate uiStallP95 is missing.');
 }
-const uiStallRegressionPct = toPercentDelta(baselineUiStallP95, candidateUiStallP95);
+let uiStallRegressionPct = toPercentDelta(baselineUiStallP95, candidateUiStallP95);
+if (baselineUiStallP95 != null && baselineUiStallP95 <= 0 && candidateUiStallP95 != null) {
+  if (candidateUiStallP95 > 0) {
+    failures.push(
+      `Baseline uiStallP95=${baselineUiStallP95} is too low for percentage regression comparison; refresh baseline before gating.`
+    );
+    uiStallRegressionPct = null;
+  } else {
+    uiStallRegressionPct = 0;
+  }
+}
 if (uiStallRegressionPct != null && uiStallRegressionPct > uiStallP95MaxRegressionPct) {
   const formatted = Number.isFinite(uiStallRegressionPct)
     ? `${uiStallRegressionPct.toFixed(2)}%`

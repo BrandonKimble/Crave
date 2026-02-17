@@ -24,7 +24,10 @@ import {
 import styles from '../styles';
 import { haversineDistanceMiles, isLngLatTuple } from '../utils/geo';
 import { MARKER_VIEW_OVERSCAN_STYLE } from './marker-visibility';
+import type { MapQueryBudget } from '../runtime/map/map-query-budget';
+import type { RuntimeWorkScheduler } from '../runtime/scheduler/runtime-work-scheduler';
 
+const SEARCH_MAP_STAGED_PUBLISH_MODE = true;
 const MAP_PAN_DECELERATION_FACTOR = 0.995;
 const LABEL_STICKY_REFRESH_MS_IDLE = 140;
 const LABEL_STICKY_REFRESH_MS_MOVING = 90;
@@ -53,6 +56,7 @@ const STYLE_PIN_FILL_IMAGE_ID = 'restaurant-pin-fill';
 const STYLE_PINS_SOURCE_ID = 'restaurant-style-pins-source';
 const PIN_INTERACTION_SOURCE_ID = 'restaurant-pin-interaction-source';
 const LABEL_INTERACTION_SOURCE_ID = 'restaurant-label-interaction-source';
+const ENABLE_LABEL_PLACEMENT_BOOTSTRAP = false;
 
 // Lock each restaurant to a single chosen candidate and only reconsider when that candidate
 // disappears (i.e. it can’t be placed).
@@ -119,6 +123,11 @@ const PIN_COLLISION_OUTLINE_SIDE_PAD_IMAGE_PX =
 const PIN_COLLISION_FILL_SIDE_PAD_IMAGE_PX =
   PIN_COLLISION_SIDE_PAD_PX / (STYLE_PINS_FILL_ICON_SIZE * PIN_COLLISION_OBSTACLE_SCALE);
 const DOT_TO_PIN_TRANSITION_DURATION_MS = 300;
+const MAP_STAGE_PRESSURE_SOFT_BUDGET_MS = 8;
+const MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS = 12;
+const MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH = 2;
+const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED = 2;
+const MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF = 4;
 const DOT_TO_PIN_TRANSITION_MIN_SCALE = 0.48;
 const DOT_TO_PIN_RANK_FADE_START = 0.5;
 
@@ -128,6 +137,8 @@ const PIN_TRANSITION_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinTransitionOpa
 const PIN_RANK_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinRankOpacity'], 1] as const;
 const PIN_LABEL_OPACITY_EXPRESSION = ['coalesce', ['get', 'pinLabelOpacity'], 1] as const;
 const PIN_STEADY_OPACITY_EXPRESSION = ['-', 1, PIN_TRANSITION_ACTIVE_EXPRESSION] as const;
+const PINS_RENDER_KEY_HOLD_PREFIX = 'hold::';
+const PINS_RENDER_KEY_SHOW_PREFIX = 'show::';
 
 const withIconOpacity = (
   baseStyle: MapboxGL.SymbolLayerStyle,
@@ -280,6 +291,7 @@ const EMPTY_POINT_FEATURES: FeatureCollection<Point, RestaurantFeatureProperties
   type: 'FeatureCollection',
   features: [],
 };
+const EMPTY_SORTED_RESTAURANT_MARKERS: Array<Feature<Point, RestaurantFeatureProperties>> = [];
 const OVERLAY_Z_ANCHOR_STYLE: MapboxGL.SymbolLayerStyle = {
   // Render nothing; the layer exists purely as an ordering anchor.
   textField: '',
@@ -416,17 +428,6 @@ const getLabelCandidateInfoFromRenderedFeature = (
   }
 
   return null;
-};
-
-const getFeatureIdFromPressFeature = (feature: unknown): string | null => {
-  if (!feature || typeof feature !== 'object' || Array.isArray(feature)) {
-    return null;
-  }
-  const id = (feature as Record<string, unknown>).id;
-  if (typeof id !== 'string' || id.length === 0) {
-    return null;
-  }
-  return id;
 };
 
 const getRestaurantIdFromPressFeature = (feature: unknown): string | null => {
@@ -674,8 +675,19 @@ const getLabelTextFromPressFeature = (feature: unknown): string | null => {
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(max, value));
-const areStringArraysEqual = (left: string[], right: string[]) =>
-  left.length === right.length && left.every((value, index) => value === right[index]);
+
+const normalizePinsRenderKeyForTopology = (pinsRenderKey: string): string => {
+  if (pinsRenderKey.startsWith(PINS_RENDER_KEY_HOLD_PREFIX)) {
+    return pinsRenderKey.slice(PINS_RENDER_KEY_HOLD_PREFIX.length);
+  }
+  if (pinsRenderKey.startsWith(PINS_RENDER_KEY_SHOW_PREFIX)) {
+    return pinsRenderKey.slice(PINS_RENDER_KEY_SHOW_PREFIX.length);
+  }
+  return pinsRenderKey;
+};
+
+const isPinsRenderKeyHeld = (pinsRenderKey: string): boolean =>
+  pinsRenderKey.startsWith(PINS_RENDER_KEY_HOLD_PREFIX);
 
 const pickClosestRestaurantIdFromPressFeatures = (
   features: unknown[],
@@ -878,6 +890,7 @@ const easeOutQuart = (t: number) => 1 - Math.pow(1 - t, 4);
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const getNowMs = () =>
   typeof globalThis.performance?.now === 'function' ? globalThis.performance.now() : Date.now();
+type MapStagePressure = 'healthy' | 'pressured' | 'critical';
 
 type PinTransitionDirection = 'promote' | 'demote';
 
@@ -971,26 +984,28 @@ const createPinTransitionState = (): PinTransitionState => ({
 
 const usePinTransitionController = ({
   sortedRestaurantMarkers,
-  markersRenderKey,
+  pinsRenderKey,
   markerRevealCommitId,
   buildMarkerKey,
   markerRevealChunk,
   markerRevealStaggerMs,
   pinnedDotKeys,
+  suppressTransitions,
 }: {
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
-  markersRenderKey: string;
+  pinsRenderKey: string;
   markerRevealCommitId: number | null;
   buildMarkerKey: (feature: Feature<Point, RestaurantFeatureProperties>) => string;
   markerRevealChunk: number;
   markerRevealStaggerMs: number;
   pinnedDotKeys: Set<string>;
+  suppressTransitions: boolean;
 }) => {
   const [transitionClockMs, setTransitionClockMs] = React.useState(0);
   const pinTransitionFrameRequestRef = React.useRef<number | null>(null);
   const stateRef = React.useRef<PinTransitionState>(createPinTransitionState());
   const state = stateRef.current;
-  const isMarkerDataHeld = markersRenderKey.endsWith('::hold');
+  const isMarkerDataHeld = isPinsRenderKeyHeld(pinsRenderKey);
   const isInitialRevealCommitPending =
     markerRevealCommitId != null &&
     markerRevealCommitId !== state.appliedInitialRevealCommitId &&
@@ -998,6 +1013,9 @@ const usePinTransitionController = ({
 
   const runPinTransitionFrameRef = React.useRef<() => void>(() => undefined);
   const runPinTransitionFrame = React.useCallback(() => {
+    if (suppressTransitions) {
+      return;
+    }
     if (pinTransitionFrameRequestRef.current != null) {
       return;
     }
@@ -1041,7 +1059,7 @@ const usePinTransitionController = ({
         runPinTransitionFrameRef.current();
       }
     });
-  }, [state]);
+  }, [state, suppressTransitions]);
   runPinTransitionFrameRef.current = runPinTransitionFrame;
 
   React.useLayoutEffect(() => {
@@ -1063,6 +1081,22 @@ const usePinTransitionController = ({
     sortedRestaurantMarkers.forEach((feature) => {
       nextPinnedFeatureByMarkerKey.set(buildMarkerKey(feature), feature);
     });
+
+    if (suppressTransitions) {
+      state.promoteStartedAtByMarkerKey.clear();
+      state.pendingPromoteDelayByMarkerKey.clear();
+      state.demoteFeatureByMarkerKey.clear();
+      state.pendingInitialRevealCommitId = null;
+      state.initialRevealQueued = false;
+      if (markerRevealCommitId != null) {
+        state.appliedInitialRevealCommitId = markerRevealCommitId;
+      }
+      state.previousPinnedFeatureByMarkerKey = nextPinnedFeatureByMarkerKey;
+      if (transitionClockMs !== 0) {
+        setTransitionClockMs(0);
+      }
+      return;
+    }
 
     const now = getNowMs();
     const shouldRunInitialReveal =
@@ -1164,10 +1198,13 @@ const usePinTransitionController = ({
   }, [
     buildMarkerKey,
     isMarkerDataHeld,
+    markerRevealCommitId,
     markerRevealChunk,
     markerRevealStaggerMs,
     sortedRestaurantMarkers,
+    suppressTransitions,
     state,
+    transitionClockMs,
   ]);
 
   React.useEffect(() => {
@@ -1285,6 +1322,11 @@ type SearchMapProps = {
   onMapLoaded: () => void;
   onMarkerPress?: (restaurantId: string, pressedCoordinate?: Coordinate | null) => void;
   onVisualReady?: (requestKey: string) => void;
+  onMarkerRevealSettled?: (payload: {
+    requestKey: string;
+    markerRevealCommitId: number | null;
+    settledAtMs: number;
+  }) => void;
   selectedRestaurantId?: string | null;
   sortedRestaurantMarkers: Array<Feature<Point, RestaurantFeatureProperties>>;
   dotRestaurantFeatures?: FeatureCollection<Point, RestaurantFeatureProperties> | null;
@@ -1305,6 +1347,15 @@ type SearchMapProps = {
   disableMarkers?: boolean;
   disableBlur?: boolean;
   onProfilerRender?: React.ProfilerOnRenderCallback;
+  mapQueryBudget?: MapQueryBudget | null;
+  runtimeWorkSchedulerRef?: React.MutableRefObject<RuntimeWorkScheduler> | null;
+  selectionFeedbackOperationId?: string | null;
+  isRunOneHandoffActive?: boolean;
+  isRunOneChromeDeferred?: boolean;
+  onRuntimeMechanismEvent?: (
+    event: 'runtime_write_span',
+    payload?: Record<string, unknown>
+  ) => void;
 };
 
 const SearchMap: React.FC<SearchMapProps> = ({
@@ -1324,6 +1375,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   onMapLoaded,
   onMarkerPress,
   onVisualReady,
+  onMarkerRevealSettled,
   selectedRestaurantId,
   sortedRestaurantMarkers,
   dotRestaurantFeatures,
@@ -1344,27 +1396,387 @@ const SearchMap: React.FC<SearchMapProps> = ({
   disableMarkers = false,
   disableBlur = false,
   onProfilerRender,
+  mapQueryBudget = null,
+  runtimeWorkSchedulerRef = null,
+  selectionFeedbackOperationId = null,
+  isRunOneHandoffActive = false,
+  isRunOneChromeDeferred = false,
+  onRuntimeMechanismEvent,
 }) => {
   const shouldDisableMarkers = disableMarkers === true;
   const shouldDisableBlur = disableBlur === true;
-  const shouldRenderLabels = !shouldDisableMarkers && isMapStyleReady;
-  const shouldRenderDots =
-    !shouldDisableMarkers &&
-    dotRestaurantFeatures != null &&
-    dotRestaurantFeatures.features.length > 0;
-  const pinnedRestaurantIds = React.useMemo(
-    () => new Set(sortedRestaurantMarkers.map((feature) => feature.properties.restaurantId)),
-    [sortedRestaurantMarkers]
+  const runOneMapLoadSheddingActive = isRunOneHandoffActive || isRunOneChromeDeferred;
+  const hasStagedPublishPayload =
+    sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
+  const [stagedPublishPhase, setStagedPublishPhase] = React.useState<'dots' | 'pins' | 'full'>(
+    'full'
   );
+  const shouldUseStagedPublish =
+    !shouldDisableMarkers &&
+    SEARCH_MAP_STAGED_PUBLISH_MODE &&
+    hasStagedPublishPayload &&
+    !runOneMapLoadSheddingActive;
+  const pinsTopologyKey = React.useMemo(
+    () => normalizePinsRenderKeyForTopology(pinsRenderKey),
+    [pinsRenderKey]
+  );
+  const markersTopologyRenderKey = React.useMemo(
+    () => markersRenderKey.replace(/::pins:(?:hold|show)::/, '::pins::'),
+    [markersRenderKey]
+  );
+  const stagedPublishTokenRef = React.useRef<string | null>(null);
+  const stagedPublishHealthyLabelFrameCountRef = React.useRef(0);
+  const stagedPublishAwaitingPostDeferredFrameRef = React.useRef(false);
+  const stagedPublishConsecutiveYieldFramesRef = React.useRef(0);
+  const stagedPublishLastYieldCountRef = React.useRef(0);
+  const isRunOneHandoffActiveRef = React.useRef(isRunOneHandoffActive);
+  isRunOneHandoffActiveRef.current = isRunOneHandoffActive;
+  const isRunOneChromeDeferredRef = React.useRef(isRunOneChromeDeferred);
+  isRunOneChromeDeferredRef.current = isRunOneChromeDeferred;
+  const emitMapRuntimeWriteSpan = React.useCallback(
+    (payload: Record<string, unknown>) => {
+      onRuntimeMechanismEvent?.('runtime_write_span', {
+        domain: 'map_stage',
+        ...payload,
+      });
+    },
+    [onRuntimeMechanismEvent]
+  );
+
+  React.useEffect(() => {
+    if (!shouldUseStagedPublish) {
+      setStagedPublishPhase('full');
+      return;
+    }
+    const scheduler = runtimeWorkSchedulerRef?.current ?? null;
+    const fallbackOperationId = `map-stage:${markersTopologyRenderKey}:${pinsTopologyKey}:${
+      markerRevealCommitId ?? 'none'
+    }`;
+    const operationId = selectionFeedbackOperationId ?? fallbackOperationId;
+    const shouldCancelOwnedOperation = selectionFeedbackOperationId == null;
+    let animationFrameHandle: number | null = null;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    let labelAttemptOrdinal = 0;
+    let stageAttemptOrdinal = 0;
+    const stageToken = `${operationId}:${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+    stagedPublishTokenRef.current = stageToken;
+    stagedPublishHealthyLabelFrameCountRef.current = 0;
+    stagedPublishAwaitingPostDeferredFrameRef.current =
+      isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current;
+    let requireExtendedHealthyFrames = stagedPublishAwaitingPostDeferredFrameRef.current;
+    stagedPublishConsecutiveYieldFramesRef.current = 0;
+    stagedPublishLastYieldCountRef.current = scheduler?.snapshotPressure().yieldCount ?? 0;
+    let lastPinsGateReason: string | null = null;
+    let lastLabelsGateReason: string | null = null;
+
+    const clearNextFrameHandle = () => {
+      if (animationFrameHandle != null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(animationFrameHandle);
+        animationFrameHandle = null;
+      }
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+        timeoutHandle = null;
+      }
+    };
+
+    const isStageStillActive = () => stagedPublishTokenRef.current === stageToken;
+    const scheduleOnNextFrame = (run: () => void) => {
+      clearNextFrameHandle();
+      if (typeof requestAnimationFrame === 'function') {
+        animationFrameHandle = requestAnimationFrame(() => {
+          animationFrameHandle = null;
+          run();
+        });
+        return;
+      }
+      timeoutHandle = setTimeout(() => {
+        timeoutHandle = null;
+        run();
+      }, 0);
+    };
+    const resolveMapStagePressure = (): MapStagePressure => {
+      if (!scheduler) {
+        return 'healthy';
+      }
+      const pressureSnapshot = scheduler.snapshotPressure();
+      const yieldDelta = Math.max(
+        0,
+        pressureSnapshot.yieldCount - stagedPublishLastYieldCountRef.current
+      );
+      stagedPublishLastYieldCountRef.current = pressureSnapshot.yieldCount;
+      if (yieldDelta > 0) {
+        stagedPublishConsecutiveYieldFramesRef.current += 1;
+      } else {
+        stagedPublishConsecutiveYieldFramesRef.current = 0;
+      }
+
+      if (
+        pressureSnapshot.lastFrameSpentMs > MAP_STAGE_PRESSURE_CRITICAL_BUDGET_MS ||
+        stagedPublishConsecutiveYieldFramesRef.current >= 2
+      ) {
+        return 'critical';
+      }
+
+      if (
+        pressureSnapshot.lastFrameSpentMs > MAP_STAGE_PRESSURE_SOFT_BUDGET_MS ||
+        pressureSnapshot.queueDepth > MAP_STAGE_PRESSURE_MAX_QUEUE_DEPTH ||
+        yieldDelta > 0
+      ) {
+        return 'pressured';
+      }
+
+      return 'healthy';
+    };
+
+    const scheduleLabelsStageAttempt = () => {
+      if (!scheduler || !isStageStillActive()) {
+        return;
+      }
+      const taskId = `${operationId}:map-stage-labels:${stageToken}:${labelAttemptOrdinal}`;
+      labelAttemptOrdinal += 1;
+      scheduler.schedule({
+        id: taskId,
+        lane: 'selection_feedback',
+        operationId,
+        estimatedCostMs: 1,
+        run: () => {
+          if (!isStageStillActive()) {
+            return;
+          }
+          if (isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current) {
+            requireExtendedHealthyFrames = true;
+            stagedPublishHealthyLabelFrameCountRef.current = 0;
+            stagedPublishAwaitingPostDeferredFrameRef.current = true;
+            if (lastLabelsGateReason !== 'handoff_deferred') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: 'handoff_deferred',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = 'handoff_deferred';
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
+          if (stagedPublishAwaitingPostDeferredFrameRef.current) {
+            stagedPublishAwaitingPostDeferredFrameRef.current = false;
+            stagedPublishHealthyLabelFrameCountRef.current = 0;
+            if (lastLabelsGateReason !== 'post_deferred_cooldown') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: 'post_deferred_cooldown',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = 'post_deferred_cooldown';
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
+          const pressure = resolveMapStagePressure();
+          if (pressure !== 'healthy') {
+            stagedPublishHealthyLabelFrameCountRef.current = 0;
+            const nextReason = `pressure_${pressure}`;
+            if (lastLabelsGateReason !== nextReason) {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: nextReason,
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = nextReason;
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
+          const requiredHealthyFrames = requireExtendedHealthyFrames
+            ? MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED_AFTER_HANDOFF
+            : MAP_STAGE_LABELS_HEALTHY_FRAMES_REQUIRED;
+          stagedPublishHealthyLabelFrameCountRef.current += 1;
+          if (stagedPublishHealthyLabelFrameCountRef.current < requiredHealthyFrames) {
+            if (lastLabelsGateReason !== 'healthy_frames_pending') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'labels',
+                reason: 'healthy_frames_pending',
+                operationId,
+                requiredHealthyFrames,
+                observedHealthyFrames: stagedPublishHealthyLabelFrameCountRef.current,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastLabelsGateReason = 'healthy_frames_pending';
+            }
+            scheduleOnNextFrame(scheduleLabelsStageAttempt);
+            return;
+          }
+          setStagedPublishPhase('full');
+          emitMapRuntimeWriteSpan({
+            label: 'map_stage_phase_commit',
+            phase: 'full',
+            operationId,
+            nowMs: Number(getNowMs().toFixed(1)),
+          });
+          lastLabelsGateReason = null;
+        },
+      });
+      scheduler.startFrameLoop();
+    };
+
+    const schedulePinsStageAttempt = () => {
+      if (!scheduler || !isStageStillActive()) {
+        return;
+      }
+      const taskId = `${operationId}:map-stage-pins:${stageToken}:${stageAttemptOrdinal}`;
+      stageAttemptOrdinal += 1;
+      scheduler.schedule({
+        id: taskId,
+        lane: 'selection_feedback',
+        operationId,
+        estimatedCostMs: 1,
+        run: () => {
+          if (!isStageStillActive()) {
+            return;
+          }
+          if (isRunOneChromeDeferredRef.current || isRunOneHandoffActiveRef.current) {
+            requireExtendedHealthyFrames = true;
+            if (lastPinsGateReason !== 'handoff_deferred') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'pins',
+                reason: 'handoff_deferred',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastPinsGateReason = 'handoff_deferred';
+            }
+            scheduleOnNextFrame(schedulePinsStageAttempt);
+            return;
+          }
+          const pressure = resolveMapStagePressure();
+          if (pressure === 'critical') {
+            if (lastPinsGateReason !== 'pressure_critical') {
+              emitMapRuntimeWriteSpan({
+                label: 'map_stage_gate',
+                gate: 'pins',
+                reason: 'pressure_critical',
+                operationId,
+                nowMs: Number(getNowMs().toFixed(1)),
+              });
+              lastPinsGateReason = 'pressure_critical';
+            }
+            scheduleOnNextFrame(schedulePinsStageAttempt);
+            return;
+          }
+          setStagedPublishPhase('pins');
+          emitMapRuntimeWriteSpan({
+            label: 'map_stage_phase_commit',
+            phase: 'pins',
+            operationId,
+            pressure,
+            nowMs: Number(getNowMs().toFixed(1)),
+          });
+          lastPinsGateReason = null;
+          scheduleOnNextFrame(scheduleLabelsStageAttempt);
+        },
+      });
+      scheduler.startFrameLoop();
+    };
+
+    setStagedPublishPhase('dots');
+    emitMapRuntimeWriteSpan({
+      label: 'map_stage_phase_commit',
+      phase: 'dots',
+      operationId,
+      nowMs: Number(getNowMs().toFixed(1)),
+    });
+    if (!scheduler) {
+      scheduleOnNextFrame(() => {
+        if (!isStageStillActive()) {
+          return;
+        }
+        setStagedPublishPhase('pins');
+        emitMapRuntimeWriteSpan({
+          label: 'map_stage_phase_commit',
+          phase: 'pins',
+          operationId,
+          pressure: 'none',
+          nowMs: Number(getNowMs().toFixed(1)),
+        });
+        scheduleOnNextFrame(() => {
+          if (!isStageStillActive()) {
+            return;
+          }
+          setStagedPublishPhase('full');
+          emitMapRuntimeWriteSpan({
+            label: 'map_stage_phase_commit',
+            phase: 'full',
+            operationId,
+            nowMs: Number(getNowMs().toFixed(1)),
+          });
+        });
+      });
+      return () => {
+        clearNextFrameHandle();
+      };
+    }
+
+    scheduleOnNextFrame(schedulePinsStageAttempt);
+    return () => {
+      clearNextFrameHandle();
+      if (shouldCancelOwnedOperation) {
+        scheduler.cancelLaneTasksByOperation(operationId, 'selection_feedback');
+      }
+      if (stagedPublishTokenRef.current === stageToken) {
+        stagedPublishTokenRef.current = null;
+      }
+      stagedPublishAwaitingPostDeferredFrameRef.current = false;
+    };
+  }, [
+    markerRevealCommitId,
+    markersTopologyRenderKey,
+    pinsTopologyKey,
+    runtimeWorkSchedulerRef,
+    selectionFeedbackOperationId,
+    shouldUseStagedPublish,
+    emitMapRuntimeWriteSpan,
+  ]);
+  const shouldRenderStagedPins = !shouldDisableMarkers;
+  const transitionSortedRestaurantMarkers = shouldRenderStagedPins
+    ? sortedRestaurantMarkers
+    : EMPTY_SORTED_RESTAURANT_MARKERS;
+  const shouldRenderLabels =
+    !shouldDisableMarkers &&
+    isMapStyleReady &&
+    shouldRenderStagedPins &&
+    !isRunOneHandoffActive &&
+    (!shouldUseStagedPublish || stagedPublishPhase === 'full');
+  const shouldRenderDots = !shouldDisableMarkers && isMapStyleReady;
+  const recordRuntimeAttribution = React.useCallback(
+    (durationMs: number) => {
+      mapQueryBudget?.recordRuntimeAttributionDurationMs('map_label_bootstrap', durationMs);
+    },
+    [mapQueryBudget]
+  );
+  const markerTopologyKey = markersTopologyRenderKey;
+  const pinnedRestaurantIds = React.useMemo(() => {
+    return new Set(transitionSortedRestaurantMarkers.map((feature) => feature.properties.restaurantId));
+  }, [transitionSortedRestaurantMarkers]);
   const pinnedRestaurantIdList = React.useMemo(
     () => Array.from(pinnedRestaurantIds),
     [pinnedRestaurantIds]
   );
-  const pinnedDotKeys = React.useMemo(
-    () => new Set(sortedRestaurantMarkers.map((feature) => buildMarkerKey(feature))),
-    [buildMarkerKey, sortedRestaurantMarkers]
-  );
+  const pinnedDotKeys = React.useMemo(() => {
+    return new Set(transitionSortedRestaurantMarkers.map((feature) => buildMarkerKey(feature)));
+  }, [buildMarkerKey, transitionSortedRestaurantMarkers]);
   const visualReadySignaledRequestKeyRef = React.useRef<string | null>(null);
+  const markerRevealSettledSignaledRequestKeyRef = React.useRef<string | null>(null);
   const visualReadyPendingFramesRef = React.useRef(0);
   const visualReadyAwaitingPinTransitionStartRef = React.useRef(false);
   const {
@@ -1378,13 +1790,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
     hasStartedPromotions,
     isAwaitingInitialRevealStart,
   } = usePinTransitionController({
-    sortedRestaurantMarkers,
-    markersRenderKey,
+    sortedRestaurantMarkers: transitionSortedRestaurantMarkers,
+    pinsRenderKey,
     markerRevealCommitId,
     buildMarkerKey,
     markerRevealChunk,
     markerRevealStaggerMs,
     pinnedDotKeys,
+    suppressTransitions: runOneMapLoadSheddingActive,
   });
   const hiddenDotRestaurantIdList = React.useMemo(() => {
     const next = new Set<string>(pinnedRestaurantIdList);
@@ -1441,8 +1854,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
     width: 0,
     height: 0,
   });
-  const [visibleLabelFeatureIdList, setVisibleLabelFeatureIdList] = React.useState<string[]>([]);
-  const [visibleDotRestaurantIdList, setVisibleDotRestaurantIdList] = React.useState<string[]>([]);
   const dotPinnedKeysRef = React.useRef<Set<string>>(new Set());
   const dotPinnedStateResetKeyRef = React.useRef<string | null>(null);
   const labelStickyRefreshSeqRef = React.useRef(0);
@@ -1452,9 +1863,6 @@ const SearchMap: React.FC<SearchMapProps> = ({
   const isMapMovingRef = React.useRef(false);
   const mapLastMovedAtRef = React.useRef(0);
   const [labelPlacementEpoch, setLabelPlacementEpoch] = React.useState(0);
-  const labelPlacementBootstrapTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
   const labelPlacementBootstrapKeyRef = React.useRef<string | null>(null);
   const labelStickyCandidateByMarkerKeyRef = React.useRef<Map<string, LabelCandidate>>(new Map());
   const labelStickyLastSeenAtByMarkerKeyRef = React.useRef<Map<string, number>>(new Map());
@@ -1551,43 +1959,28 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [labelLayerTreeEpoch, shouldRenderLabels, styleURL]);
 
   React.useEffect(() => {
-    // Style reloads (and RN "Reload") can change the ordering/timing of when images + layers are
-    // registered with the native Mapbox style. If our (invisible) collision layer is created
-    // before its icon is ready, it may not participate in the initial placement pass.
-    //
-    // We replicate the "warm state" behavior you can accidentally get via Fast Refresh (undo/redo)
-    // by forcing a one-time, post-style-load re-mount of the label layers.
+    // One bootstrap bump is enough to stabilize initial label placement without paying the
+    // heavy cost of a second unconditional remount in the first hydration window.
+    if (!ENABLE_LABEL_PLACEMENT_BOOTSTRAP) {
+      labelPlacementBootstrapKeyRef.current = null;
+      return;
+    }
     if (!shouldRenderLabels) {
       labelPlacementBootstrapKeyRef.current = null;
-      if (labelPlacementBootstrapTimeoutRef.current) {
-        clearTimeout(labelPlacementBootstrapTimeoutRef.current);
-        labelPlacementBootstrapTimeoutRef.current = null;
-      }
       return;
     }
 
-    const bootstrapKey = `${styleURL}::${markersRenderKey}`;
+    const bootstrapKey = styleURL;
     if (labelPlacementBootstrapKeyRef.current === bootstrapKey) {
       return;
     }
     labelPlacementBootstrapKeyRef.current = bootstrapKey;
 
     // First bump: forces a re-layout on initial label render.
+    const firstBumpStartedAtMs = getNowMs();
     setLabelPlacementEpoch((value) => value + 1);
-
-    // Second bump: gives Mapbox a moment to register images, then forces another placement pass.
-    labelPlacementBootstrapTimeoutRef.current = setTimeout(() => {
-      setLabelPlacementEpoch((value) => value + 1);
-      labelPlacementBootstrapTimeoutRef.current = null;
-    }, 250);
-
-    return () => {
-      if (labelPlacementBootstrapTimeoutRef.current) {
-        clearTimeout(labelPlacementBootstrapTimeoutRef.current);
-        labelPlacementBootstrapTimeoutRef.current = null;
-      }
-    };
-  }, [markersRenderKey, shouldRenderLabels, styleURL]);
+    recordRuntimeAttribution(getNowMs() - firstBumpStartedAtMs);
+  }, [recordRuntimeAttribution, shouldRenderLabels, styleURL]);
 
   React.useEffect(() => {
     if (!ENABLE_STICKY_LABEL_CANDIDATES) {
@@ -1599,10 +1992,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     labelStickyProposedCandidateByMarkerKeyRef.current.clear();
     labelStickyProposedSinceAtByMarkerKeyRef.current.clear();
     setLabelStickyEpoch((value) => value + 1);
-  }, [markersRenderKey, shouldRenderLabels, styleURL]);
+  }, [markerTopologyKey, shouldRenderLabels, styleURL]);
 
+  const labelFeatureBuildDurationMsRef = React.useRef<number | null>(null);
   const restaurantLabelFeaturesWithIds = React.useMemo(() => {
+    const buildStartedAtMs = getNowMs();
     if (!restaurantFeatures.features.length) {
+      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
       return restaurantFeatures;
     }
 
@@ -1664,10 +2060,13 @@ const SearchMap: React.FC<SearchMapProps> = ({
     });
 
     if (!didChange) {
+      labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
       return restaurantFeatures;
     }
 
-    return { ...restaurantFeatures, features: nextFeatures };
+    const nextCollection = { ...restaurantFeatures, features: nextFeatures };
+    labelFeatureBuildDurationMsRef.current = getNowMs() - buildStartedAtMs;
+    return nextCollection;
   }, [
     buildMarkerKey,
     immediatePromotionStartedAtByMarkerKey,
@@ -1676,6 +2075,14 @@ const SearchMap: React.FC<SearchMapProps> = ({
     promoteStartedAtByMarkerKey,
     restaurantFeatures,
   ]);
+  React.useEffect(() => {
+    const durationMs = labelFeatureBuildDurationMsRef.current;
+    if (durationMs == null) {
+      return;
+    }
+    recordRuntimeAttribution(durationMs);
+    labelFeatureBuildDurationMsRef.current = null;
+  }, [recordRuntimeAttribution, restaurantLabelFeaturesWithIds]);
   const demotionTransitionFeatures = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
   >(() => {
@@ -1701,10 +2108,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
       });
     });
 
-    return {
+    const nextFeatures = {
       type: 'FeatureCollection',
       features,
     };
+    return nextFeatures;
   }, [demotionTransitions, pinTransitionClockMs]);
   const stylePinFeaturesWithTransitions = React.useMemo<
     FeatureCollection<Point, RestaurantFeatureProperties>
@@ -2215,101 +2623,24 @@ const SearchMap: React.FC<SearchMapProps> = ({
     } satisfies Record<LabelCandidate, MapboxGL.SymbolLayerStyle>;
   }, [labelCandidateStyles]);
 
-  const refreshVisibleLabelFeatureIds = React.useCallback(() => {
-    if (!shouldRenderLabels) {
-      setVisibleLabelFeatureIdList((previous) => (previous.length === 0 ? previous : []));
-      return;
-    }
-    const mapInstance = mapRef.current;
-    if (!mapInstance?.queryRenderedFeaturesInRect) {
-      return;
-    }
-
-    void mapInstance
-      .queryRenderedFeaturesInRect([], [], Object.values(LABEL_LAYER_IDS_BY_CANDIDATE))
-      .then((rendered) => {
-        const nextSet = new Set<string>();
-        for (const feature of rendered?.features ?? []) {
-          const featureId = getFeatureIdFromPressFeature(feature);
-          if (!featureId) {
-            continue;
-          }
-          if (!parseLabelCandidateFeatureId(featureId)) {
-            continue;
-          }
-          nextSet.add(featureId);
-        }
-        const next = Array.from(nextSet).sort();
-        setVisibleLabelFeatureIdList((previous) =>
-          areStringArraysEqual(previous, next) ? previous : next
-        );
-      })
-      .catch(() => undefined);
-  }, [mapRef, shouldRenderLabels]);
-
   const labelInteractionFilters = React.useMemo(
     () =>
       ({
-        bottom: [
-          'all',
-          ['==', ['get', 'labelCandidate'], 'bottom'],
-          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
-        ] as unknown[],
-        right: [
-          'all',
-          ['==', ['get', 'labelCandidate'], 'right'],
-          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
-        ] as unknown[],
-        top: [
-          'all',
-          ['==', ['get', 'labelCandidate'], 'top'],
-          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
-        ] as unknown[],
-        left: [
-          'all',
-          ['==', ['get', 'labelCandidate'], 'left'],
-          ['in', ['id'], ['literal', visibleLabelFeatureIdList]],
-        ] as unknown[],
+        bottom: ['==', ['get', 'labelCandidate'], 'bottom'] as unknown[],
+        right: ['==', ['get', 'labelCandidate'], 'right'] as unknown[],
+        top: ['==', ['get', 'labelCandidate'], 'top'] as unknown[],
+        left: ['==', ['get', 'labelCandidate'], 'left'] as unknown[],
       } satisfies Record<LabelCandidate, unknown[]>),
-    [visibleLabelFeatureIdList]
+    []
   );
-
-  const refreshVisibleDotRestaurantIds = React.useCallback(() => {
-    if (!shouldRenderDots) {
-      setVisibleDotRestaurantIdList((previous) => (previous.length === 0 ? previous : []));
-      return;
-    }
-    const mapInstance = mapRef.current;
-    if (!mapInstance?.queryRenderedFeaturesInRect) {
-      return;
-    }
-
-    void mapInstance
-      .queryRenderedFeaturesInRect([], [], [DOT_LAYER_ID])
-      .then((rendered) => {
-        const nextSet = new Set<string>();
-        for (const feature of rendered?.features ?? []) {
-          const restaurantId = getRestaurantIdFromPressFeature(feature);
-          if (restaurantId) {
-            nextSet.add(restaurantId);
-          }
-        }
-        const next = Array.from(nextSet).sort();
-        setVisibleDotRestaurantIdList((previous) =>
-          areStringArraysEqual(previous, next) ? previous : next
-        );
-      })
-      .catch(() => undefined);
-  }, [mapRef, shouldRenderDots]);
 
   const dotInteractionFilter = React.useMemo(
     () =>
       [
         'all',
         ['!', ['in', ['get', 'restaurantId'], ['literal', hiddenDotRestaurantIdList]]],
-        ['in', ['get', 'restaurantId'], ['literal', visibleDotRestaurantIdList]],
       ] as unknown[],
-    [hiddenDotRestaurantIdList, visibleDotRestaurantIdList]
+    [hiddenDotRestaurantIdList]
   );
 
   const isTapIntentionalForLabelFeature = React.useCallback(
@@ -2437,26 +2768,21 @@ const SearchMap: React.FC<SearchMapProps> = ({
         return;
       }
 
-      const firstLabelMatch = pickFirstRestaurantIdFromPressFeatures(features);
-      if (!firstLabelMatch) {
-        return;
-      }
       const mapInstance = mapRef.current;
       const point = getPointFromPressEvent(event);
-      const selectLabelIfIntentional = () => {
-        const restaurantId = firstLabelMatch.restaurantId;
-        const coordinate =
-          firstLabelMatch.coordinate ??
-          getCoordinateFromPressFeature(features[0]) ??
-          getCoordinateFromPressEvent(event);
-        const matchedLabelFeature =
-          features.find((feature) => getRestaurantIdFromPressFeature(feature) === restaurantId) ??
-          features[0];
-
+      const selectLabelIfIntentional = ({
+        restaurantId,
+        coordinate,
+        feature,
+      }: {
+        restaurantId: string;
+        coordinate: Coordinate | null;
+        feature: unknown;
+      }) => {
         void isTapIntentionalForLabelFeature({
           mapInstance,
           tapPoint: point,
-          feature: matchedLabelFeature,
+          feature,
         }).then((isIntentional) => {
           if (!isIntentional) {
             return;
@@ -2467,39 +2793,113 @@ const SearchMap: React.FC<SearchMapProps> = ({
       };
 
       if (!mapInstance?.queryRenderedFeaturesAtPoint || !point) {
-        selectLabelIfIntentional();
+        const fallbackMatch = pickFirstRestaurantIdFromPressFeatures(features);
+        if (!fallbackMatch) {
+          return;
+        }
+        const fallbackFeature =
+          features.find(
+            (feature) => getRestaurantIdFromPressFeature(feature) === fallbackMatch.restaurantId
+          ) ?? features[0];
+        const fallbackCoordinate =
+          fallbackMatch.coordinate ??
+          getCoordinateFromPressFeature(fallbackFeature) ??
+          getCoordinateFromPressEvent(event);
+        selectLabelIfIntentional({
+          restaurantId: fallbackMatch.restaurantId,
+          coordinate: fallbackCoordinate,
+          feature: fallbackFeature,
+        });
         return;
       }
 
       void mapInstance
-        .queryRenderedFeaturesAtPoint([point.x, point.y], [], PIN_INTERACTION_LAYER_IDS)
-        .then((renderedAtPoint) => {
-          const pinFeatures = renderedAtPoint?.features ?? [];
-          if (pinFeatures.length === 0) {
-            selectLabelIfIntentional();
+        .queryRenderedFeaturesAtPoint(
+          [point.x, point.y],
+          [],
+          Object.values(LABEL_LAYER_IDS_BY_CANDIDATE)
+        )
+        .then((renderedLabelsAtPoint) => {
+          const visibleLabelFeatures = renderedLabelsAtPoint?.features ?? [];
+          const visibleLabelMatch = pickFirstRestaurantIdFromPressFeatures(visibleLabelFeatures);
+          if (!visibleLabelMatch) {
             return;
           }
+          const matchedLabelFeature =
+            visibleLabelFeatures.find(
+              (feature) =>
+                getRestaurantIdFromPressFeature(feature) === visibleLabelMatch.restaurantId
+            ) ?? visibleLabelFeatures[0];
+          const labelCoordinate =
+            visibleLabelMatch.coordinate ??
+            getCoordinateFromPressFeature(matchedLabelFeature) ??
+            getCoordinateFromPressEvent(event);
 
-          const topPinMatch = pickTopRestaurantIdFromPressFeatures(pinFeatures);
-          if (!topPinMatch) {
-            selectLabelIfIntentional();
-            return;
-          }
-          void isTapInsidePinInteractionGeometry({
-            mapInstance,
-            tapPoint: point,
-            coordinate: topPinMatch.coordinate,
-          }).then((isIntentional) => {
-            if (!isIntentional) {
-              selectLabelIfIntentional();
-              return;
-            }
-            setOptimisticSelectedRestaurantId(topPinMatch.restaurantId);
-            onMarkerPress(topPinMatch.restaurantId, topPinMatch.coordinate);
-          });
+          return mapInstance
+            .queryRenderedFeaturesAtPoint([point.x, point.y], [], PIN_INTERACTION_LAYER_IDS)
+            .then((renderedAtPoint) => {
+              const pinFeatures = renderedAtPoint?.features ?? [];
+              if (pinFeatures.length === 0) {
+                selectLabelIfIntentional({
+                  restaurantId: visibleLabelMatch.restaurantId,
+                  coordinate: labelCoordinate,
+                  feature: matchedLabelFeature,
+                });
+                return;
+              }
+
+              const topPinMatch = pickTopRestaurantIdFromPressFeatures(pinFeatures);
+              if (!topPinMatch) {
+                selectLabelIfIntentional({
+                  restaurantId: visibleLabelMatch.restaurantId,
+                  coordinate: labelCoordinate,
+                  feature: matchedLabelFeature,
+                });
+                return;
+              }
+              void isTapInsidePinInteractionGeometry({
+                mapInstance,
+                tapPoint: point,
+                coordinate: topPinMatch.coordinate,
+              }).then((isIntentional) => {
+                if (!isIntentional) {
+                  selectLabelIfIntentional({
+                    restaurantId: visibleLabelMatch.restaurantId,
+                    coordinate: labelCoordinate,
+                    feature: matchedLabelFeature,
+                  });
+                  return;
+                }
+                setOptimisticSelectedRestaurantId(topPinMatch.restaurantId);
+                onMarkerPress(topPinMatch.restaurantId, topPinMatch.coordinate);
+              });
+            })
+            .catch(() => {
+              selectLabelIfIntentional({
+                restaurantId: visibleLabelMatch.restaurantId,
+                coordinate: labelCoordinate,
+                feature: matchedLabelFeature,
+              });
+            });
         })
         .catch(() => {
-          selectLabelIfIntentional();
+          const fallbackMatch = pickFirstRestaurantIdFromPressFeatures(features);
+          if (!fallbackMatch) {
+            return;
+          }
+          const fallbackFeature =
+            features.find(
+              (feature) => getRestaurantIdFromPressFeature(feature) === fallbackMatch.restaurantId
+            ) ?? features[0];
+          const fallbackCoordinate =
+            fallbackMatch.coordinate ??
+            getCoordinateFromPressFeature(fallbackFeature) ??
+            getCoordinateFromPressEvent(event);
+          selectLabelIfIntentional({
+            restaurantId: fallbackMatch.restaurantId,
+            coordinate: fallbackCoordinate,
+            feature: fallbackFeature,
+          });
         });
     },
     [isTapIntentionalForLabelFeature, mapRef, onMarkerPress]
@@ -2619,23 +3019,9 @@ const SearchMap: React.FC<SearchMapProps> = ({
   }, [
     mapViewportSize.height,
     mapViewportSize.width,
-    markersRenderKey,
+    markerTopologyKey,
     scheduleStickyLabelRefresh,
     shouldRenderLabels,
-  ]);
-
-  React.useEffect(() => {
-    refreshVisibleDotRestaurantIds();
-  }, [markersRenderKey, refreshVisibleDotRestaurantIds, shouldRenderDots, styleURL]);
-
-  React.useEffect(() => {
-    refreshVisibleLabelFeatureIds();
-  }, [
-    labelPlacementEpoch,
-    markersRenderKey,
-    refreshVisibleLabelFeatureIds,
-    shouldRenderLabels,
-    styleURL,
   ]);
 
   const handleDotPress = React.useCallback(
@@ -2697,7 +3083,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
   );
 
   React.useEffect(() => {
-    if (!shouldRenderDots) {
+    if (!shouldRenderDots || !dotRestaurantFeatures?.features?.length) {
       dotPinnedKeysRef.current = new Set();
       dotPinnedStateResetKeyRef.current = null;
       return;
@@ -2707,7 +3093,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
       return;
     }
 
-    const resetKey = `${styleURL}::${markersRenderKey}::${
+    const resetKey = `${styleURL}::${markerTopologyKey}::${
       dotRestaurantFeatures?.features.length ?? 0
     }`;
     let previous = dotPinnedKeysRef.current;
@@ -2734,9 +3120,8 @@ const SearchMap: React.FC<SearchMapProps> = ({
     });
   }, [
     dotRestaurantFeatures,
-    markersRenderKey,
+    markerTopologyKey,
     pinnedDotKeys,
-    pinsRenderKey,
     shouldRenderDots,
     styleURL,
   ]);
@@ -2985,73 +3370,210 @@ const SearchMap: React.FC<SearchMapProps> = ({
       }
       labelStickyRefreshQueuedRef.current = true;
       runStickyLabelRefreshRef.current();
-      refreshVisibleLabelFeatureIds();
-      refreshVisibleDotRestaurantIds();
       onMapIdle(state);
     },
-    [onMapIdle, refreshVisibleDotRestaurantIds, refreshVisibleLabelFeatureIds]
+    [onMapIdle]
   );
+  const visualReadyGateReasonRef = React.useRef<string | null>(null);
+  const visualReadyArmSnapshotRef = React.useRef<{
+    requestKey: string;
+    markersRenderKey: string;
+    pinsRenderKey: string;
+    shouldSignalVisualReady: boolean;
+  } | null>(null);
   React.useEffect(() => {
     visualReadySignaledRequestKeyRef.current = null;
+    markerRevealSettledSignaledRequestKeyRef.current = null;
     visualReadyPendingFramesRef.current = 0;
     visualReadyAwaitingPinTransitionStartRef.current = false;
+    visualReadyGateReasonRef.current = null;
   }, [visualReadyRequestKey]);
 
   React.useEffect(() => {
-    if (!visualReadyRequestKey || !shouldSignalVisualReady) {
+    if (!visualReadyRequestKey) {
       visualReadyPendingFramesRef.current = 0;
       visualReadyAwaitingPinTransitionStartRef.current = false;
+      visualReadyArmSnapshotRef.current = null;
       return;
     }
-    // Wait for a couple of render ticks after marker source/layer updates so we only ack after
-    // the map has had a chance to paint the current pin set.
-    visualReadyPendingFramesRef.current = 2;
-    visualReadyAwaitingPinTransitionStartRef.current = isAwaitingInitialRevealStart;
+    const previousArmSnapshot = visualReadyArmSnapshotRef.current;
+    if (!shouldSignalVisualReady) {
+      // Keep pending progress sticky while signal eligibility is transiently suspended.
+      visualReadyArmSnapshotRef.current = {
+        requestKey: visualReadyRequestKey,
+        markersRenderKey,
+        pinsRenderKey,
+        shouldSignalVisualReady,
+      };
+      return;
+    }
+    const armCause = (() => {
+      if (!previousArmSnapshot) {
+        return 'initial';
+      }
+      if (previousArmSnapshot.requestKey !== visualReadyRequestKey) {
+        return 'request_key_change';
+      }
+      return null;
+    })();
+    if (armCause) {
+      // Arm once per request key to avoid repeated pending-frame resets under map topology churn.
+      visualReadyPendingFramesRef.current = 2;
+      visualReadyAwaitingPinTransitionStartRef.current = isAwaitingInitialRevealStart;
+      emitMapRuntimeWriteSpan({
+        label: 'visual_ready_arm',
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+        armCause,
+        markersRenderKey,
+        pinsRenderKey,
+        sortedMarkerCount: sortedRestaurantMarkers.length,
+        dotFeatureCount: dotRestaurantFeatures?.features?.length ?? 0,
+        pendingFrames: visualReadyPendingFramesRef.current,
+        awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
+      });
+    } else {
+      if (isAwaitingInitialRevealStart) {
+        visualReadyAwaitingPinTransitionStartRef.current = true;
+      }
+      const rearmSuppressedCause =
+        previousArmSnapshot?.markersRenderKey !== markersRenderKey
+          ? 'markers_render_key_change'
+          : previousArmSnapshot?.pinsRenderKey !== pinsRenderKey
+          ? 'pins_render_key_change'
+          : previousArmSnapshot?.shouldSignalVisualReady !== shouldSignalVisualReady
+          ? 'signal_toggle'
+          : null;
+      if (rearmSuppressedCause) {
+        emitMapRuntimeWriteSpan({
+          label: 'visual_ready_arm_suppressed',
+          requestKey: visualReadyRequestKey,
+          markerRevealCommitId,
+          reason: rearmSuppressedCause,
+          markersRenderKey,
+          pinsRenderKey,
+          sortedMarkerCount: sortedRestaurantMarkers.length,
+          dotFeatureCount: dotRestaurantFeatures?.features?.length ?? 0,
+          pendingFrames: visualReadyPendingFramesRef.current,
+          awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
+        });
+      }
+    }
+    visualReadyArmSnapshotRef.current = {
+      requestKey: visualReadyRequestKey,
+      markersRenderKey,
+      pinsRenderKey,
+      shouldSignalVisualReady,
+    };
   }, [
+    emitMapRuntimeWriteSpan,
     isAwaitingInitialRevealStart,
+    markerRevealCommitId,
     markersRenderKey,
     pinsRenderKey,
     shouldSignalVisualReady,
+    sortedRestaurantMarkers.length,
+    dotRestaurantFeatures?.features?.length,
     visualReadyRequestKey,
   ]);
 
   const handleDidFinishRenderingFrame = React.useCallback(() => {
-    if (!onVisualReady || !visualReadyRequestKey || !shouldSignalVisualReady) {
+    if (!visualReadyRequestKey) {
       return;
     }
-    if (visualReadySignaledRequestKeyRef.current === visualReadyRequestKey) {
+    const shouldEmitVisualReady = Boolean(onVisualReady && shouldSignalVisualReady);
+    const shouldEmitMarkerRevealSettled = onMarkerRevealSettled != null;
+    if (!shouldEmitVisualReady && !shouldEmitMarkerRevealSettled) {
       return;
     }
+    const visualReadyAlreadySignaled =
+      visualReadySignaledRequestKeyRef.current === visualReadyRequestKey;
+    const markerRevealSettledAlreadySignaled =
+      markerRevealSettledSignaledRequestKeyRef.current === visualReadyRequestKey;
+    if (
+      (visualReadyAlreadySignaled || !shouldEmitVisualReady) &&
+      (markerRevealSettledAlreadySignaled || !shouldEmitMarkerRevealSettled)
+    ) {
+      return;
+    }
+    const emitVisualReadyGateReason = (reason: string | null) => {
+      if (visualReadyGateReasonRef.current === reason) {
+        return;
+      }
+      visualReadyGateReasonRef.current = reason;
+      if (!reason) {
+        return;
+      }
+      emitMapRuntimeWriteSpan({
+        label: 'visual_ready_gate',
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+        reason,
+        pendingFrames: visualReadyPendingFramesRef.current,
+        awaitingPinTransitionStart: visualReadyAwaitingPinTransitionStartRef.current,
+        hasPendingPromotions,
+        hasStartedPromotions,
+      });
+    };
     if (visualReadyPendingFramesRef.current > 0) {
+      emitVisualReadyGateReason('pending_frames');
       visualReadyPendingFramesRef.current -= 1;
       return;
     }
     if (visualReadyAwaitingPinTransitionStartRef.current) {
       if (hasPendingPromotions) {
+        emitVisualReadyGateReason('awaiting_pin_transition_pending_promotions');
         return;
       }
       if (!hasStartedPromotions) {
+        emitVisualReadyGateReason('awaiting_pin_transition_not_started');
         return;
       }
       visualReadyAwaitingPinTransitionStartRef.current = false;
       // Leave one more frame so the newly-armed transition properties are guaranteed painted.
       visualReadyPendingFramesRef.current = Math.max(visualReadyPendingFramesRef.current, 1);
+      emitVisualReadyGateReason('pending_transition_paint_frame');
       return;
     }
     if (requireMarkerVisualsForVisualReady) {
       const hasMarkerVisuals =
         sortedRestaurantMarkers.length > 0 || (dotRestaurantFeatures?.features?.length ?? 0) > 0;
       if (!hasMarkerVisuals) {
+        emitVisualReadyGateReason('awaiting_marker_visuals');
         return;
       }
     }
-    visualReadySignaledRequestKeyRef.current = visualReadyRequestKey;
-    onVisualReady(visualReadyRequestKey);
+    emitVisualReadyGateReason(null);
+    if (shouldEmitMarkerRevealSettled && !markerRevealSettledAlreadySignaled) {
+      markerRevealSettledSignaledRequestKeyRef.current = visualReadyRequestKey;
+      emitMapRuntimeWriteSpan({
+        label: 'marker_reveal_settled_signal',
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+      });
+      onMarkerRevealSettled?.({
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+        settledAtMs: getNowMs(),
+      });
+    }
+    if (shouldEmitVisualReady && !visualReadyAlreadySignaled) {
+      visualReadySignaledRequestKeyRef.current = visualReadyRequestKey;
+      emitMapRuntimeWriteSpan({
+        label: 'visual_ready_signal',
+        requestKey: visualReadyRequestKey,
+        markerRevealCommitId,
+      });
+      onVisualReady(visualReadyRequestKey);
+    }
   }, [
+    emitMapRuntimeWriteSpan,
     dotRestaurantFeatures?.features?.length,
     hasPendingPromotions,
     hasStartedPromotions,
+    markerRevealCommitId,
     onVisualReady,
+    onMarkerRevealSettled,
     requireMarkerVisualsForVisualReady,
     shouldSignalVisualReady,
     sortedRestaurantMarkers.length,
@@ -3071,22 +3593,20 @@ const SearchMap: React.FC<SearchMapProps> = ({
     }
   }, [onMapLoaded]);
 
-  const remountPinLayerTree = React.useCallback((reason: 'style-load' | 'missing-source-error') => {
+  const remountPinLayerTree = React.useCallback(() => {
     const nowMs = Date.now();
-    if (
-      reason === 'missing-source-error' &&
-      nowMs - pinLayerRecoveryLastAttemptAtRef.current < 400
-    ) {
+    if (nowMs - pinLayerRecoveryLastAttemptAtRef.current < 400) {
       return;
     }
     pinLayerRecoveryLastAttemptAtRef.current = nowMs;
+    const remountStartedAtMs = getNowMs();
     setPinLayerTreeEpoch((value) => value + 1);
-  }, []);
+    recordRuntimeAttribution(getNowMs() - remountStartedAtMs);
+  }, [recordRuntimeAttribution]);
 
   const handleMapLoadedStyle = React.useCallback(() => {
-    remountPinLayerTree('style-load');
     handleMapLoaded();
-  }, [handleMapLoaded, remountPinLayerTree]);
+  }, [handleMapLoaded]);
 
   const handleMapLoadedMap = React.useCallback(() => {
     handleMapLoaded();
@@ -3112,7 +3632,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
         errorText.includes(STYLE_PINS_SOURCE_ID) && errorText.includes('not in style');
 
       if (isMissingStylePinsSource) {
-        remountPinLayerTree('missing-source-error');
+        remountPinLayerTree();
       }
 
       logger.error('Mapbox map failed to load', {
@@ -3220,7 +3740,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
           <React.Profiler id="SearchMapDots" onRender={profilerCallback}>
             <MapboxGL.ShapeSource
               id={DOT_SOURCE_ID}
-              shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
+              shape={
+                dotRestaurantFeatures
+                  ? (dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
+                  : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
+              }
             >
               <MapboxGL.SymbolLayer
                 id={DOT_LAYER_ID}
@@ -3232,7 +3756,11 @@ const SearchMap: React.FC<SearchMapProps> = ({
             </MapboxGL.ShapeSource>
             <MapboxGL.ShapeSource
               id={DOT_INTERACTION_SOURCE_ID}
-              shape={dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>}
+              shape={
+                dotRestaurantFeatures
+                  ? (dotRestaurantFeatures as FeatureCollection<Point, RestaurantFeatureProperties>)
+                  : (EMPTY_POINT_FEATURES as FeatureCollection<Point, RestaurantFeatureProperties>)
+              }
               onPress={handleDotPress}
             >
               <MapboxGL.CircleLayer
@@ -3251,7 +3779,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`style-pins-source-${pinLayerTreeEpoch}`}
             id={STYLE_PINS_SOURCE_ID}
             shape={
-              stylePinFeaturesWithTransitions.features.length > 0
+              shouldRenderStagedPins && stylePinFeaturesWithTransitions.features.length > 0
                 ? stylePinFeaturesWithTransitions
                 : EMPTY_POINT_FEATURES
             }
@@ -3264,7 +3792,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
             key={`pin-interaction-source-${pinLayerTreeEpoch}`}
             id={PIN_INTERACTION_SOURCE_ID}
             shape={
-              stylePinFeaturesWithTransitions.features.length > 0
+              shouldRenderStagedPins && stylePinFeaturesWithTransitions.features.length > 0
                 ? stylePinFeaturesWithTransitions
                 : EMPTY_POINT_FEATURES
             }
@@ -3311,6 +3839,7 @@ const SearchMap: React.FC<SearchMapProps> = ({
               </MapboxGL.ShapeSource>
               {USE_STYLE_LAYER_PINS &&
               !shouldDisableMarkers &&
+              shouldRenderStagedPins &&
               PIN_COLLISION_OBSTACLE_GEOMETRY !== 'off' ? (
                 <MapboxGL.ShapeSource
                   id={RESTAURANT_LABEL_COLLISION_SOURCE_ID}
@@ -3486,6 +4015,30 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
   if (prev.disableBlur !== next.disableBlur) {
     return false;
   }
+  // Handoff props (isRunOneHandoffActive, isRunOneChromeDeferred,
+  // selectionFeedbackOperationId) only affect load shedding and staged
+  // publish which are no-ops without markers.  The map stores them in refs
+  // so callbacks always see the latest value after the next render.  Skip
+  // re-rendering for handoff-only changes to avoid a full map commit in the
+  // preflight frame when no marker data has changed.
+  const markersUnchanged =
+    prev.markersRenderKey === next.markersRenderKey &&
+    prev.sortedRestaurantMarkers === next.sortedRestaurantMarkers &&
+    prev.dotRestaurantFeatures === next.dotRestaurantFeatures;
+  if (!markersUnchanged) {
+    if (prev.isRunOneChromeDeferred !== next.isRunOneChromeDeferred) {
+      return false;
+    }
+    if (prev.isRunOneHandoffActive !== next.isRunOneHandoffActive) {
+      return false;
+    }
+    if (prev.selectionFeedbackOperationId !== next.selectionFeedbackOperationId) {
+      return false;
+    }
+  }
+  if (prev.onRuntimeMechanismEvent !== next.onRuntimeMechanismEvent) {
+    return false;
+  }
   if (prev.onProfilerRender !== next.onProfilerRender) {
     return false;
   }
@@ -3523,6 +4076,9 @@ const arePropsEqual = (prev: SearchMapProps, next: SearchMapProps) => {
     return false;
   }
   if (prev.onVisualReady !== next.onVisualReady) {
+    return false;
+  }
+  if (prev.onMarkerRevealSettled !== next.onMarkerRevealSettled) {
     return false;
   }
   if (prev.visualReadyRequestKey !== next.visualReadyRequestKey) {
