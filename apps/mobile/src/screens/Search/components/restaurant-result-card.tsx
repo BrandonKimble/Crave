@@ -1,11 +1,9 @@
 import React from 'react';
 import {
   type LayoutChangeEvent,
-  type NativeSyntheticEvent,
   Pressable,
   Share,
   TouchableOpacity,
-  type TextLayoutEventData,
   View,
 } from 'react-native';
 
@@ -16,6 +14,8 @@ import { Text } from '../../../components';
 import { colors as themeColors } from '../../../constants/theme';
 import { getPriceRangeLabel } from '../../../constants/pricing';
 import type { FoodResult, RestaurantResult } from '../../../types';
+import { useSearchInteraction } from '../context/SearchInteractionContext';
+import { useTopFoodMeasurement } from '../hooks/use-top-food-measurement';
 import styles from '../styles';
 import { SECONDARY_METRIC_ICON_SIZE, TOP_FOOD_RENDER_LIMIT } from '../constants/search';
 import { formatDistanceMiles, resolveCoverageDisplayLabel } from '../utils/format';
@@ -23,55 +23,7 @@ import { InfoCircleIcon } from './metric-icons';
 import { renderMetaDetailLine } from './render-meta-detail-line';
 
 const TOP_FOOD_INLINE_GAP = '\u2006\u2006\u2006\u2006';
-const ENABLE_TOP_FOOD_FIT_MEASUREMENT = false;
-
-const MAX_TOP_FOOD_FIT_CACHE_ITEMS = 1200;
-type TopFoodFitVariant =
-  | { kind: 'tokens'; shownCount: number; includeMore: boolean }
-  | { kind: 'ellipsis_more' }
-  | { kind: 'count' };
-const topFoodFitCache = new Map<string, TopFoodFitVariant>();
-const topFoodFitSignatureCache = new Map<string, TopFoodFitVariant>();
-const getCachedTopFoodFit = (key: string): TopFoodFitVariant | null => {
-  const value = topFoodFitCache.get(key);
-  if (!value) return null;
-  topFoodFitCache.delete(key);
-  topFoodFitCache.set(key, value);
-  return value;
-};
-const hasCachedTopFoodFit = (key: string): boolean => topFoodFitCache.has(key);
-const setCachedTopFoodFit = (key: string, value: TopFoodFitVariant): void => {
-  if (topFoodFitCache.has(key)) {
-    topFoodFitCache.delete(key);
-  }
-  topFoodFitCache.set(key, value);
-  if (topFoodFitCache.size > MAX_TOP_FOOD_FIT_CACHE_ITEMS) {
-    const oldestKey = topFoodFitCache.keys().next().value as string | undefined;
-    if (oldestKey) {
-      topFoodFitCache.delete(oldestKey);
-    }
-  }
-};
-
-const getCachedTopFoodFitBySignature = (signature: string): TopFoodFitVariant | null => {
-  const value = topFoodFitSignatureCache.get(signature);
-  if (!value) return null;
-  topFoodFitSignatureCache.delete(signature);
-  topFoodFitSignatureCache.set(signature, value);
-  return value;
-};
-const setCachedTopFoodFitBySignature = (signature: string, value: TopFoodFitVariant): void => {
-  if (topFoodFitSignatureCache.has(signature)) {
-    topFoodFitSignatureCache.delete(signature);
-  }
-  topFoodFitSignatureCache.set(signature, value);
-  if (topFoodFitSignatureCache.size > MAX_TOP_FOOD_FIT_CACHE_ITEMS) {
-    const oldestKey = topFoodFitSignatureCache.keys().next().value as string | undefined;
-    if (oldestKey) {
-      topFoodFitSignatureCache.delete(oldestKey);
-    }
-  }
-};
+const TOP_FOOD_MEASUREMENT_ITEM_GAP_PX = 0;
 
 type ScoreInfoPayload = {
   type: 'dish' | 'restaurant';
@@ -155,6 +107,7 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       ? resolveCoverageDisplayLabel(restaurant.coverageName, restaurant.coverageKey)
       : null;
 
+  const { interactionRef } = useSearchInteraction();
   const candidateTopFoods = React.useMemo(
     () => topFoodItems.slice(0, TOP_FOOD_RENDER_LIMIT),
     [topFoodItems]
@@ -170,81 +123,23 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
       return prev;
     });
   }, []);
-
-  const fitSignature = React.useMemo(() => {
-    const ids = candidateTopFoods.map((food) => food.connectionId).join('|');
-    const primaryKey = primaryFoodSingleWord ? primaryFoodTerm?.toLowerCase() ?? '' : '';
-    return `${restaurant.restaurantId}:${totalDishCount}:${candidateTopFoods.length}:${primaryKey}:${ids}`;
-  }, [
-    candidateTopFoods,
-    primaryFoodSingleWord,
-    primaryFoodTerm,
-    restaurant.restaurantId,
-    totalDishCount,
-  ]);
-  const fitCacheKey = React.useMemo(() => {
-    if (typeof topFoodLineWidth !== 'number' || topFoodLineWidth <= 0) {
-      return null;
-    }
-    return `${Math.round(topFoodLineWidth)}:${fitSignature}`;
-  }, [fitSignature, topFoodLineWidth]);
-
-  const [fitVariant, setFitVariant] = React.useState<TopFoodFitVariant | null>(() =>
-    getCachedTopFoodFitBySignature(fitSignature)
-  );
-  React.useEffect(() => {
-    const cached = getCachedTopFoodFitBySignature(fitSignature);
-    if (cached) {
-      setFitVariant(cached);
-      return;
-    }
-    setFitVariant(null);
-  }, [fitSignature]);
-  React.useEffect(() => {
-    if (!fitCacheKey) {
-      return;
-    }
-    const cached = getCachedTopFoodFit(fitCacheKey);
-    if (cached) {
-      setCachedTopFoodFitBySignature(fitSignature, cached);
-      setFitVariant(cached);
-    }
-  }, [fitCacheKey]);
-
-  type CandidateVariant = { id: string; variant: TopFoodFitVariant };
-  const fitCandidates = React.useMemo((): CandidateVariant[] => {
-    const maxCount = Math.min(candidateTopFoods.length, TOP_FOOD_RENDER_LIMIT);
-    const items: CandidateVariant[] = [];
-    const seen = new Set<string>();
-
-    const add = (variant: TopFoodFitVariant) => {
-      const id =
-        variant.kind === 'count'
-          ? 'count'
-          : variant.kind === 'ellipsis_more'
-          ? 'ellipsis_more'
-          : `t${variant.shownCount}${variant.includeMore ? 'm' : 'n'}`;
-      if (seen.has(id)) return;
-      seen.add(id);
-      items.push({ id, variant });
-    };
-
-    for (let shownCount = maxCount; shownCount >= 1; shownCount--) {
-      const hiddenCount = totalDishCount - shownCount;
-      add({ kind: 'tokens', shownCount, includeMore: hiddenCount > 0 });
-    }
-    // Fallbacks: ellipsize the first token with "+N more" if needed, or show the dish count.
-    add({ kind: 'ellipsis_more' });
-    add({ kind: 'count' });
-    return items;
-  }, [candidateTopFoods.length, totalDishCount]);
-
-  const fitMeasurementsRef = React.useRef<{
-    cacheKey: string | null;
-    width: number;
-    results: Record<string, boolean | undefined>;
-    settled: boolean;
-  }>({ cacheKey: null, width: 0, results: {}, settled: false });
+  const {
+    visibleTopFoods,
+    hiddenTopFoodCount,
+    onItemLayout,
+    onMoreLayout,
+    hasMeasured,
+    candidateTopFoods: measuredCandidateTopFoods,
+    topFoodMoreCounts,
+  } = useTopFoodMeasurement({
+    topFoodItems: candidateTopFoods,
+    totalTopFoodCount: totalDishCount,
+    maxToRender: TOP_FOOD_RENDER_LIMIT,
+    availableWidth: topFoodLineWidth ?? undefined,
+    itemGap: TOP_FOOD_MEASUREMENT_ITEM_GAP_PX,
+    enabled: true,
+    isDraggingRef: interactionRef as React.RefObject<{ isInteracting: boolean }>,
+  });
 
   const renderHighlightedFoodName = React.useCallback(
     (foodName: string): React.ReactNode => {
@@ -322,28 +217,33 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
     return `+${hiddenCount} more`;
   }, []);
 
+  const visibleTopFoodsForRender = React.useMemo(() => {
+    if (visibleTopFoods.length > 0) {
+      return visibleTopFoods;
+    }
+    if (!hasMeasured && measuredCandidateTopFoods.length > 0) {
+      return measuredCandidateTopFoods.slice(0, 1);
+    }
+    return visibleTopFoods;
+  }, [hasMeasured, measuredCandidateTopFoods, visibleTopFoods]);
+  const hiddenTopFoodCountForRender = React.useMemo(
+    () =>
+      hasMeasured
+        ? hiddenTopFoodCount
+        : Math.max(0, totalDishCount - visibleTopFoodsForRender.length),
+    [hasMeasured, hiddenTopFoodCount, totalDishCount, visibleTopFoodsForRender.length]
+  );
+
   const renderTopFoodInlineChildren = React.useCallback(
-    (variant: TopFoodFitVariant): React.ReactNode => {
-      if (variant.kind === 'count') {
+    (): React.ReactNode => {
+      if (visibleTopFoodsForRender.length === 0) {
         return dishCountLabel;
       }
-      if (variant.kind === 'ellipsis_more') {
-        // Rendered by the caller as a 2-part row so "+N more" never gets truncated by ellipsizing.
-        return null;
-      }
-
-      const shownCount = Math.max(
-        0,
-        Math.min(variant.shownCount, candidateTopFoods.length, TOP_FOOD_RENDER_LIMIT)
-      );
-      const hiddenCount = Math.max(0, totalDishCount - shownCount);
-      const moreLabel = variant.includeMore ? resolveMoreLabel(hiddenCount) : null;
+      const moreLabel = resolveMoreLabel(hiddenTopFoodCountForRender);
       const shouldIncludeMore = Boolean(moreLabel);
 
       const parts: React.ReactNode[] = [];
-      for (let idx = 0; idx < shownCount; idx++) {
-        const food = candidateTopFoods[idx];
-        if (!food) continue;
+      visibleTopFoodsForRender.forEach((food, idx) => {
         parts.push(
           <Text
             key={`rank-${food.connectionId}`}
@@ -365,10 +265,10 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
             {renderHighlightedFoodName(food.foodName)}
           </Text>
         );
-        if (idx < shownCount - 1 || shouldIncludeMore) {
+        if (idx < visibleTopFoodsForRender.length - 1 || shouldIncludeMore) {
           parts.push(TOP_FOOD_INLINE_GAP);
         }
-      }
+      });
 
       if (shouldIncludeMore) {
         parts.push(
@@ -380,116 +280,9 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
 
       return parts;
     },
-    [candidateTopFoods, dishCountLabel, renderHighlightedFoodName, resolveMoreLabel, totalDishCount]
+    [dishCountLabel, hiddenTopFoodCountForRender, renderHighlightedFoodName, resolveMoreLabel, visibleTopFoodsForRender]
   );
-
-  const renderEllipsisMoreRow = React.useCallback((): React.ReactNode => {
-    const firstFood = candidateTopFoods[0];
-    if (!firstFood) {
-      return (
-        <Text
-          variant="body"
-          weight="semibold"
-          style={styles.topFoodInlineLineText}
-          numberOfLines={1}
-          ellipsizeMode="tail"
-        >
-          {dishCountLabel}
-        </Text>
-      );
-    }
-    const hiddenCount = Math.max(0, totalDishCount - 1);
-    const moreLabel = resolveMoreLabel(hiddenCount);
-    const shouldShowMore = Boolean(moreLabel);
-    return (
-      <View style={styles.topFoodInlineEllipsisRow}>
-        <Text style={styles.topFoodInlineEllipsisToken} numberOfLines={1} ellipsizeMode="tail">
-          <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
-            1.
-          </Text>
-          <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
-            {' '}
-            {renderHighlightedFoodName(firstFood.foodName)}
-          </Text>
-        </Text>
-        {shouldShowMore ? (
-          <Text variant="body" weight="semibold" style={styles.topFoodMore} numberOfLines={1}>
-            {TOP_FOOD_INLINE_GAP}
-            {moreLabel}
-          </Text>
-        ) : null}
-      </View>
-    );
-  }, [
-    candidateTopFoods,
-    dishCountLabel,
-    renderHighlightedFoodName,
-    resolveMoreLabel,
-    totalDishCount,
-  ]);
-
-  const settleFitVariant = React.useCallback(
-    (nextVariant: TopFoodFitVariant) => {
-      if (!fitCacheKey) return;
-      setCachedTopFoodFit(fitCacheKey, nextVariant);
-      setCachedTopFoodFitBySignature(fitSignature, nextVariant);
-      setFitVariant(nextVariant);
-      const snapshot = fitMeasurementsRef.current;
-      snapshot.settled = true;
-    },
-    [fitCacheKey, fitSignature]
-  );
-
-  const maybeResolveFitVariant = React.useCallback(() => {
-    const snapshot = fitMeasurementsRef.current;
-    if (!fitCacheKey || snapshot.cacheKey !== fitCacheKey || snapshot.settled) {
-      return;
-    }
-    for (const candidate of fitCandidates) {
-      const fit = snapshot.results[candidate.id];
-      if (fit === true) {
-        settleFitVariant(candidate.variant);
-        return;
-      }
-      if (fit !== false) {
-        return;
-      }
-    }
-    // Should not happen since we include fallbacks, but keep safe.
-    settleFitVariant({ kind: 'count' });
-  }, [fitCacheKey, fitCandidates, settleFitVariant]);
-
-  const onCandidateTextLayout = React.useCallback(
-    (candidateId: string) => (event: NativeSyntheticEvent<TextLayoutEventData>) => {
-      if (!fitCacheKey) return;
-      const snapshot = fitMeasurementsRef.current;
-      if (snapshot.cacheKey !== fitCacheKey) {
-        snapshot.cacheKey = fitCacheKey;
-        snapshot.width = topFoodLineWidth ?? 0;
-        snapshot.results = {};
-        snapshot.settled = false;
-      }
-      if (snapshot.settled) {
-        return;
-      }
-      const width = snapshot.width;
-      const lines = event.nativeEvent.lines;
-      const lineWidth = typeof lines?.[0]?.width === 'number' ? lines[0].width : null;
-      const fits =
-        Array.isArray(lines) &&
-        lines.length === 1 &&
-        (lineWidth === null || lineWidth <= width + 0.5);
-      snapshot.results[candidateId] = fits;
-      maybeResolveFitVariant();
-    },
-    [fitCacheKey, maybeResolveFitVariant, topFoodLineWidth]
-  );
-
-  const shouldMeasureFit =
-    ENABLE_TOP_FOOD_FIT_MEASUREMENT &&
-    fitCacheKey !== null &&
-    candidateTopFoods.length > 0 &&
-    !hasCachedTopFoodFit(fitCacheKey);
+  const shouldRenderTopFoodMeasurementNodes = measuredCandidateTopFoods.length > 0;
 
   const restaurantStatusLine = renderMetaDetailLine(
     hasStatus ? restaurant.operatingStatus : null,
@@ -645,49 +438,53 @@ const RestaurantResultCard: React.FC<RestaurantResultCardProps> = ({
                       style={styles.topFoodInlineLineContainer}
                       onLayout={handleTopFoodLineLayout}
                     >
-                      {fitVariant?.kind === 'ellipsis_more' ? (
-                        renderEllipsisMoreRow()
-                      ) : fitVariant?.kind === 'count' ? (
-                        <Text
-                          variant="body"
-                          weight="semibold"
-                          style={styles.topFoodInlineLineText}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
-                          {dishCountLabel}
-                        </Text>
-                      ) : fitVariant ? (
-                        <Text
-                          variant="body"
-                          weight="regular"
-                          style={styles.topFoodInlineLineText}
-                          numberOfLines={1}
-                          ellipsizeMode="clip"
-                        >
-                          {renderTopFoodInlineChildren(fitVariant)}
-                        </Text>
-                      ) : (
-                        renderEllipsisMoreRow()
-                      )}
-                      {shouldMeasureFit && typeof topFoodLineWidth === 'number' ? (
-                        <View
-                          style={[
-                            styles.topFoodInlineLineMeasureContainer,
-                            { width: topFoodLineWidth },
-                          ]}
-                        >
-                          {fitCandidates.map((candidate) => (
+                      <Text
+                        variant="body"
+                        weight={visibleTopFoodsForRender.length > 0 ? 'regular' : 'semibold'}
+                        style={styles.topFoodInlineLineText}
+                        numberOfLines={1}
+                        ellipsizeMode={visibleTopFoodsForRender.length > 0 ? 'clip' : 'tail'}
+                      >
+                        {renderTopFoodInlineChildren()}
+                      </Text>
+                      {shouldRenderTopFoodMeasurementNodes ? (
+                        <View style={styles.topFoodInlineMeasure}>
+                          {measuredCandidateTopFoods.map((food, index) => (
                             <Text
-                              key={`top-food-fit-${candidate.id}`}
+                              key={`top-food-measure-item-${food.connectionId}`}
                               variant="body"
                               weight="regular"
-                              style={styles.topFoodInlineLineText}
-                              onTextLayout={onCandidateTextLayout(candidate.id)}
+                              style={styles.topFoodMeasureText}
+                              onLayout={onItemLayout(food.connectionId)}
                             >
-                              {renderTopFoodInlineChildren(candidate.variant)}
+                              <Text variant="body" weight="semibold" style={styles.topFoodRankInline}>
+                                {index + 1}.
+                              </Text>
+                              <Text variant="body" weight="regular" style={styles.topFoodNameInline}>
+                                {' '}
+                                {renderHighlightedFoodName(food.foodName)}
+                              </Text>
+                              {TOP_FOOD_INLINE_GAP}
                             </Text>
                           ))}
+                          {topFoodMoreCounts.map((count) => {
+                            const moreLabel = resolveMoreLabel(count);
+                            if (!moreLabel) {
+                              return null;
+                            }
+                            return (
+                              <Text
+                                key={`top-food-measure-more-${count}`}
+                                variant="body"
+                                weight="semibold"
+                                style={styles.topFoodMore}
+                                onLayout={onMoreLayout(count)}
+                              >
+                                {TOP_FOOD_INLINE_GAP}
+                                {moreLabel}
+                              </Text>
+                            );
+                          })}
                         </View>
                       ) : null}
                     </View>

@@ -1438,3 +1438,31 @@ Harness signature (all sets):
   - run3 `pins=30 dots=213 visible=40 sectioned=40`
 - Decision:
   - `REVERT` (attribution remained `owner:null`, catastrophic stalls worsened, and parity contract regressed `dots=213` / run1 `12/12`).
+
+### e3-top-food-measurement-hook-pass1
+
+- Log/report: `/tmp/perf-shortcut-loop-shortcut-loop-20260217T002105Z-1fb0.log`, `/tmp/perf-shortcut-loop-shortcut-loop-20260217T002105Z-1fb0.report.json`
+- Candidate:
+  - Replace inline top-food measurement flow in `restaurant-result-card.tsx` with `use-top-food-measurement` hook as single owner.
+  - Restore missing `use-autocomplete-controller.ts` wiring required by current `Search/index.tsx` decomposition.
+- Harness signature:
+  - `enabled:1|scenario:search_shortcut_loop|runs:3|start:3000|cooldown:1800|label:Best restaurants|tab:restaurants|score:coverage_display|preserve:0|dock:1|settleBoundary:shadow_converged_or_quiet_snapshot|sampler:1|window:500|stall:50|fps:58|uiSampler:1|uiWindow:500|uiStall:50|uiFps:58`
+- First `>50ms` stall `{duration, stage, elapsedMs}`:
+  - run1 `{324.6, pre_response_activation, 324.6}`
+  - run2 `{163.2, pre_response_activation, 163.1}`
+  - run3 `{195.1, pre_response_activation, 195.1}`
+- Worst stall `{duration, stage, elapsedMs}`:
+  - run1 `{637.6, pre_response_activation, 12837.6}`
+  - run2 `{506.0, pre_response_activation, 2489.4}`
+  - run3 `{349.4, pre_response_activation, 1016.1}`
+- Aggregate:
+  - `stallP95=332.04`
+  - `stallMaxMean=497.67`
+  - catastrophic: `runCount=3`, `windowCount=5`
+- Parity:
+  - run1 `pins=20 dots=20 visible=40 sectioned=40`
+  - run2 `pins=20 dots=20 visible=40 sectioned=40`
+  - run3 `pins=20 dots=20 visible=40 sectioned=40`
+- Decision:
+  - `KEEP (dependency unlock + ownership cleanup)`.
+  - Rationale: no credible stall improvement signal from this slice alone, but it re-establishes required decomposition wiring and removes inline top-food measurement ownership drift; dominant stalls remain `SearchScreen` pre-response overlap and require next structural cuts.
